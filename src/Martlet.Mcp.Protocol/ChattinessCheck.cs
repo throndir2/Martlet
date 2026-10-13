@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -67,30 +68,17 @@ internal static class ChattinessCheck
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): ScreenChattiness is Normal (1) unless saved; Watch is on and
-    // ScreenScope (Martlet.Desktop's WatchKind) is the whole screen unless saved otherwise; HearPc is off unless saved on.
+    // talk-preferences.json as the desktop reads it (TalkPreferences): ScreenChattiness, Watch, what it looks at and HearPc.
     private static (int Saved, string Source, bool Watch, string LooksAt, bool HearPc) Saved(string directory)
     {
-        const int wholeScreen = 1;
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            var root = document.RootElement;
-            bool Flag(string name, bool otherwise) => root.TryGetProperty(name, out var value) &&
-                value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : otherwise;
-            int? Number(string name) => root.TryGetProperty(name, out var number) && number.ValueKind == JsonValueKind.Number &&
-                number.TryGetInt32(out var value) ? value : null;
-            var chosen = Number("ScreenChattiness");
-            return (chosen ?? (int)ChattinessChoice.Normal, chosen is null ? "default" : "saved", Flag("Watch", true),
-                LooksAt(Number("ScreenScope") ?? wholeScreen), Flag("HearPc", false));
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return ((int)ChattinessChoice.Normal, "default", true, LooksAt(wholeScreen), false);
-        }
+        var file = TalkPreferences.Read(directory);
+        var prefs = file.Preferences;
+        var saved = file.Has(nameof(TalkPreferences.ScreenChattiness));
+        return (saved ? file.AsSaved!.ScreenChattiness : prefs.ScreenChattiness, saved ? "saved" : "default", prefs.Watch,
+            LooksAt(prefs.ScreenScope), prefs.HearPc);
     }
 
-    // As TalkPreferences.Load clamps it.
+    // TalkPreferences.Load keeps the scope from 0 to 3.
     private static string LooksAt(int scope) => Math.Clamp(scope, 0, 3) switch
     {
         0 => "active window",

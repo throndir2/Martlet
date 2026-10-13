@@ -2,6 +2,8 @@ using System.IO;
 using System.Text.Json;
 using Martlet.Conversation;
 using Martlet.Providers;
+using Martlet.Mcp.Shared;
+using Martlet.Core.Settings;
 
 namespace Martlet.Mcp;
 
@@ -340,23 +342,13 @@ internal static class BargeInCheck
     // The saved choices: When you talk over Martlet, Let me interrupt Martlet by talking and Word check.
     private static (BargeInBehavior Behavior, string Source, bool BargeIn, ListeningSensitivity WordCheck) Saved(string dataDirectory)
     {
-        var path = Path.Combine(dataDirectory, "talk-preferences.json");
-        if (!File.Exists(path)) return (BargeInBehavior.PauseAndDecide, "default", false, ListeningSensitivity.Normal);
-        try
+        var file = TalkPreferences.Read(dataDirectory);
+        var source = file.State switch
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            var root = document.RootElement;
-            var behavior = root.TryGetProperty("BargeInStyle", out var style) && style.ValueKind == JsonValueKind.Number &&
-                Enum.IsDefined((BargeInBehavior)style.GetInt32()) ? (BargeInBehavior)style.GetInt32() : BargeInBehavior.PauseAndDecide;
-            var bargeIn = root.TryGetProperty("BargeIn", out var on) && on.ValueKind == JsonValueKind.True &&
-                root.TryGetProperty("Version", out var version) && version.ValueKind == JsonValueKind.Number && version.GetInt32() >= 3;
-            var wordCheck = root.TryGetProperty("WordCheck", out var check) && check.ValueKind == JsonValueKind.Number &&
-                Enum.IsDefined((ListeningSensitivity)check.GetInt32()) ? (ListeningSensitivity)check.GetInt32() : ListeningSensitivity.Normal;
-            return (behavior, "talk-preferences.json", bargeIn, wordCheck);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return (BargeInBehavior.PauseAndDecide, "unreadable talk-preferences.json (the default)", false, ListeningSensitivity.Normal);
-        }
+            SettingsFileState.Missing => "default",
+            SettingsFileState.Unreadable => $"unreadable {TalkPreferences.FileName} (the default)",
+            _ => TalkPreferences.FileName
+        };
+        return (file.Preferences.BargeInStyle, source, file.Preferences.BargeIn, file.Preferences.WordCheck);
     }
 }

@@ -3,8 +3,15 @@ using System.Text.Json;
 using Martlet.Core.Settings;
 using Martlet.Providers;
 
+// Also built into Martlet's MCP server, in its own namespace, so its checks read the file as the desktop does.
+#if MARTLET_MCP
+namespace Martlet.Mcp.Shared;
+#else
 namespace Martlet.Desktop;
+#endif
 
+// talk-preferences.json (SettingsFiles.TalkPreferences): this record is its store. Read and write the file only through
+// Load, Read and Save here.
 // How the user talks with Martlet, chosen in Companion (Listening, Voice and Vision) and used by the talk window while it is
 // open: always listening or push-to-talk, whether replies are spoken, whether Thinking also hears the recording (HearVoice:
 // on, off, or null when never chosen, which means on only while the recording stays on this PC; see HearVoiceFor), whether
@@ -55,7 +62,11 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     int QuickSoundDelayMs = 700, Martlet.Conversation.TouchInterrupts TouchInterrupts = Martlet.Conversation.TouchInterrupts.Any,
     int ReadEveryMs = Martlet.Core.Reading.ScreenReadPace.DefaultMs)
 {
-    private const string FileName = "talk-preferences.json";
+    /// <summary>The file in the data folder (<see cref="SettingsFiles.TalkPreferences"/>).</summary>
+    internal const string FileName = "talk-preferences.json";
+
+    /// <summary>The file's path in the data folder <paramref name="directory"/>.</summary>
+    internal static string PathIn(string directory) => Path.Combine(directory, FileName);
 
     /// <summary>Companion › Listening › Start replies early, for always listening.</summary>
     internal Martlet.Conversation.EarlyReplyOptions EarlyReplyOptions =>
@@ -81,39 +92,61 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     private const int AlwaysListeningVersion = 2, OptInBargeInVersion = 3, HearVoiceChoiceVersion = 4, CurrentVersion = HearVoiceChoiceVersion;
     internal static readonly TimeSpan[] Pauses = [TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(800), TimeSpan.FromMilliseconds(1200)];
 
-    internal static TalkPreferences Load(string? directory)
+    /// <summary>The preferences saved in <paramref name="directory"/>, or the defaults when there is no readable file.</summary>
+    internal static TalkPreferences Load(string? directory) => Read(directory, savedNames: false).Preferences;
+
+    /// <summary>The file in <paramref name="directory"/> as <see cref="Load"/> reads it, with whether it was there and readable,
+    /// its values as saved and the properties it has, for status tools that say where a value came from.</summary>
+    internal static TalkPreferencesFile Read(string? directory) => Read(directory, savedNames: true);
+
+    private static TalkPreferencesFile Read(string? directory, bool savedNames)
     {
-        if (directory is null) return new();
+        if (directory is null) return TalkPreferencesFile.Missing;
         try
         {
-            var path = Path.Combine(directory, FileName);
-            if (!File.Exists(path)) return new();
-            var loaded = JsonSerializer.Deserialize<TalkPreferences>(File.ReadAllText(path)) ?? new();
-            return loaded with
-            {
-                HandsFree = loaded.Version < AlwaysListeningVersion || loaded.HandsFree,
-                BargeIn = loaded.Version >= OptInBargeInVersion && loaded.BargeIn,
-                HearVoice = loaded.Version < HearVoiceChoiceVersion && loaded.HearVoice == false ? null : loaded.HearVoice,
-                Sensitivity = double.IsFinite(loaded.Sensitivity) ? Math.Clamp(loaded.Sensitivity, 0, 1) : 0.5,
-                PauseIndex = Math.Clamp(loaded.PauseIndex, 0, Pauses.Length - 1),
-                ScreenChattiness = (int)ChattinessTags.Choice(loaded.ScreenChattiness),
-                ScreenScope = Math.Clamp(loaded.ScreenScope, 0, 3),
-                CameraId = loaded.CameraId ?? "",
-                CameraName = loaded.CameraName ?? "",
-                VideoAddress = WatchSource.WithoutCredentials(loaded.VideoAddress ?? ""),
-                WordCheck = Enum.IsDefined(loaded.WordCheck) ? loaded.WordCheck : ListeningSensitivity.Normal,
-                VoiceVolume = Martlet.Audio.PcmGain.Clamp(loaded.VoiceVolume),
-                BargeInStyle = Enum.IsDefined(loaded.BargeInStyle) ? loaded.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide,
-                QuickSoundDelayMs = Martlet.Conversation.QuickSoundOptions.DelayChoices.Contains(loaded.QuickSoundDelayMs)
-                    ? loaded.QuickSoundDelayMs : (int)Martlet.Conversation.QuickSoundOptions.DefaultDelay.TotalMilliseconds,
-                GazeUsual = loaded.GazeUsual is { } usual && Enum.IsDefined(usual) ? usual : null,
-                TouchInterrupts = Enum.IsDefined(loaded.TouchInterrupts) ? loaded.TouchInterrupts : Martlet.Conversation.TouchInterrupts.Any,
-                ReadEveryMs = Martlet.Core.Reading.ScreenReadPace.Normalize(loaded.ReadEveryMs),
-                Version = CurrentVersion
-            };
+            var path = PathIn(directory);
+            if (!File.Exists(path)) return TalkPreferencesFile.Missing;
+            var text = File.ReadAllText(path);
+            var saved = JsonSerializer.Deserialize<TalkPreferences>(text) ?? new();
+            return new(SettingsFileState.Loaded, Updated(saved), saved, savedNames ? SavedNames(text) : TalkPreferencesFile.None);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return TalkPreferencesFile.Unreadable(error);
+        }
     }
+
+    private static HashSet<string> SavedNames(string text)
+    {
+        using var document = JsonDocument.Parse(text);
+        return document.RootElement.ValueKind == JsonValueKind.Object
+            ? document.RootElement.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal) : [];
+    }
+
+    // An older file's choices as this version reads them, and every value in range.
+    private static TalkPreferences Updated(TalkPreferences loaded) =>
+        loaded with
+        {
+            HandsFree = loaded.Version < AlwaysListeningVersion || loaded.HandsFree,
+            BargeIn = loaded.Version >= OptInBargeInVersion && loaded.BargeIn,
+            HearVoice = loaded.Version < HearVoiceChoiceVersion && loaded.HearVoice == false ? null : loaded.HearVoice,
+            Sensitivity = double.IsFinite(loaded.Sensitivity) ? Math.Clamp(loaded.Sensitivity, 0, 1) : 0.5,
+            PauseIndex = Math.Clamp(loaded.PauseIndex, 0, Pauses.Length - 1),
+            ScreenChattiness = (int)ChattinessTags.Choice(loaded.ScreenChattiness),
+            ScreenScope = Math.Clamp(loaded.ScreenScope, 0, 3),
+            CameraId = loaded.CameraId ?? "",
+            CameraName = loaded.CameraName ?? "",
+            VideoAddress = CameraAddress.WithoutCredentials(loaded.VideoAddress ?? ""),
+            WordCheck = Enum.IsDefined(loaded.WordCheck) ? loaded.WordCheck : ListeningSensitivity.Normal,
+            VoiceVolume = Martlet.Audio.PcmGain.Clamp(loaded.VoiceVolume),
+            BargeInStyle = Enum.IsDefined(loaded.BargeInStyle) ? loaded.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide,
+            QuickSoundDelayMs = Martlet.Conversation.QuickSoundOptions.DelayChoices.Contains(loaded.QuickSoundDelayMs)
+                ? loaded.QuickSoundDelayMs : (int)Martlet.Conversation.QuickSoundOptions.DefaultDelay.TotalMilliseconds,
+            GazeUsual = loaded.GazeUsual is { } usual && Enum.IsDefined(usual) ? usual : null,
+            TouchInterrupts = Enum.IsDefined(loaded.TouchInterrupts) ? loaded.TouchInterrupts : Martlet.Conversation.TouchInterrupts.Any,
+            ReadEveryMs = Martlet.Core.Reading.ScreenReadPace.Normalize(loaded.ReadEveryMs),
+            Version = CurrentVersion
+        };
 
     internal bool Save(string? directory)
     {
@@ -121,13 +154,13 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
         try
         {
             Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, FileName);
+            var path = PathIn(directory);
             var temporary = Path.Combine(directory, $"talk-preferences.{Guid.NewGuid():N}.tmp");
             try
             {
                 File.WriteAllText(temporary, JsonSerializer.Serialize(this with
                 {
-                    VideoAddress = WatchSource.WithoutCredentials(VideoAddress),
+                    VideoAddress = CameraAddress.WithoutCredentials(VideoAddress),
                     Version = CurrentVersion
                 }));
                 File.Move(temporary, path, overwrite: true);
@@ -140,4 +173,32 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
+}
+
+/// <summary>talk-preferences.json as <see cref="TalkPreferences.Read"/> found it.</summary>
+/// <param name="State">Whether the file was there and readable.</param>
+/// <param name="Preferences">What the desktop uses: the file's choices after an older version was updated, or the defaults.</param>
+/// <param name="AsSaved">The file's own values before that update (the default for a property it doesn't have); null without a
+/// readable file.</param>
+/// <param name="Saved">The properties the file has.</param>
+/// <param name="Problem">Why the file couldn't be read (the error's type name).</param>
+internal sealed record TalkPreferencesFile(SettingsFileState State, TalkPreferences Preferences, TalkPreferences? AsSaved,
+    IReadOnlySet<string> Saved, string? Problem = null)
+{
+    internal static IReadOnlySet<string> None { get; } = new HashSet<string>();
+    internal static TalkPreferencesFile Missing { get; } = new(SettingsFileState.Missing, new(), null, None);
+
+    internal static TalkPreferencesFile Unreadable(Exception error) =>
+        new(SettingsFileState.Unreadable, new(), null, None, error.GetType().Name);
+
+    /// <summary>Whether the file saved <paramref name="property"/>.</summary>
+    internal bool Has(string property) => Saved.Contains(property);
+
+    /// <summary>Where <paramref name="property"/>'s value came from: the file, or why it is the default.</summary>
+    internal string Source(string property) => State switch
+    {
+        SettingsFileState.Missing => $"default (no {TalkPreferences.FileName})",
+        SettingsFileState.Unreadable => $"default ({TalkPreferences.FileName} unreadable)",
+        _ => Has(property) ? TalkPreferences.FileName : "default"
+    };
 }

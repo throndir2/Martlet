@@ -3,6 +3,7 @@ using System.Text.Json;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -97,27 +98,14 @@ internal static class GazeCheck
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): the character keeps its usual gaze unless DecideGaze is saved on.
-    private static string Saved(string directory) =>
-        Preferences(directory) is { } root && root.TryGetProperty("DecideGaze", out var value) && value.ValueKind == JsonValueKind.True
-            ? "martlet decides" : "usual gaze";
+    // talk-preferences.json as the desktop reads it (TalkPreferences): the character keeps its usual gaze unless DecideGaze is on.
+    private static string Saved(string directory) => TalkPreferences.Load(directory).DecideGaze ? "martlet decides" : "usual gaze";
 
     // talk-preferences.json's GazeUsual (null: as the personality decides) and GazeFree (on unless saved off).
     private static (GazeMode? Owner, bool Free) Usual(string directory)
     {
-        if (Preferences(directory) is not { } root) return (null, true);
-        var owner = root.TryGetProperty("GazeUsual", out var usual) && usual.ValueKind == JsonValueKind.String ? CharacterGaze.ModeOf(usual.GetString()) : null;
-        return (owner, !(root.TryGetProperty("GazeFree", out var free) && free.ValueKind == JsonValueKind.False));
-    }
-
-    private static JsonElement? Preferences(string directory)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
+        var prefs = TalkPreferences.Load(directory);
+        return (prefs.GazeUsual, prefs.GazeFree);
     }
 
     // Where the overlay turns the eyes for each gaze (CharacterGaze.Aim, the code the overlay runs every 50 ms): the character's
