@@ -7,7 +7,7 @@ using Martlet.Providers.Pictures;
 
 namespace Martlet.Desktop.Tests;
 
-public sealed class PicturePoolDesktopTests
+public sealed class PictureMakingPoolDesktopTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 15, 0, 0, TimeSpan.Zero);
 
@@ -40,11 +40,11 @@ public sealed class PicturePoolDesktopTests
             var list = PictureClient.List(directory);
             Assert.Equal(["host:m4-host", "host:m1-host", "host:m3-host"], list.Members.Select(m => m.Key));
             Assert.True(PoolSettings.Saved(directory, shared: false));
-            Assert.Equal(list.Members.Select(m => m.Key), PoolSettings.LoadFor(directory, PoolAreas.Pictures)!.Members.Select(m => m.Key));
+            Assert.Equal(list.Members.Select(m => m.Key), PoolSettings.LoadFor(directory, PoolAreas.PictureMaking)!.Members.Select(m => m.Key));
             Assert.True(PictureClient.IsSetUp(directory));
             Assert.Equal("m4-host", PictureClient.Painter(directory));
 
-            using (var pool = Assert.IsType<PicturePool>(PictureClient.For(directory, Guid.Empty, null)))
+            using (var pool = Assert.IsType<PictureMakingPool>(PictureClient.For(directory, Guid.Empty, null)))
             {
                 Assert.Equal(["m4-host", "m1-host", "m3-host"], pool.Members.Select(m => m.HostId));
                 Assert.All(pool.Members, m => Assert.Equal("c.safetensors", Assert.IsType<ComfyPictureMaker>(m.Maker).Model));
@@ -72,21 +72,21 @@ public sealed class PicturePoolDesktopTests
         var directory = Directory.CreateTempSubdirectory("martlet-picture-pool-").FullName;
         try
         {
-            var cloud = PoolMember.Cloud(PicturePoolMembers.OpenRouter, "google/gemini-3.1-flash-image");
-            var address = PoolMember.Service("http://lab:8188/").WithSetting(PoolSettingKeys.Workflow, PicturePoolMembers.ZImageTurbo);
-            Assert.True(PictureClient.SaveList(directory, new PoolList { Area = PoolAreas.Pictures.Id, Members = [address, cloud] }));
+            var cloud = PoolMember.Cloud(PictureMakingPoolMembers.OpenRouter, "google/gemini-3.1-flash-image");
+            var address = PoolMember.Service("http://lab:8188/").WithSetting(PoolSettingKeys.Workflow, PictureMakingPoolMembers.ZImageTurbo);
+            Assert.True(PictureClient.SaveList(directory, new PoolList { Area = PoolAreas.PictureMaking.Id, Members = [address, cloud] }));
             // Without the agreement the provider takes no pictures, so nothing paid is named.
             Assert.Null(PictureClient.FirstPaid(directory));
             Assert.IsType<ComfyPictureMaker>(PictureClient.For(directory, Guid.Empty, null));
 
-            Assert.True(PictureClient.SaveList(directory, PictureClient.List(directory).With(cloud.WithConsent(PoolAreas.Pictures.Id, Now))));
+            Assert.True(PictureClient.SaveList(directory, PictureClient.List(directory).With(cloud.WithConsent(PoolAreas.PictureMaking.Id, Now))));
             Assert.Equal("OpenRouter (google/gemini-3.1-flash-image)", PictureClient.FirstPaid(directory));
-            using (var pool = Assert.IsType<PicturePool>(PictureClient.For(directory, Guid.Empty, null)))
+            using (var pool = Assert.IsType<PictureMakingPool>(PictureClient.For(directory, Guid.Empty, null)))
                 Assert.Equal(["address:http://lab:8188/", "cloud:openrouter/google/gemini-3.1-flash-image"], pool.Members.Select(m => m.Id));
 
             // Its own key's reference is read from pool-keys.json.
             var id = Guid.NewGuid();
-            Assert.True(PoolKeys.Load(directory).With(PoolAreas.Pictures.Id, cloud.Key, id).Save(directory));
+            Assert.True(PoolKeys.Load(directory).With(PoolAreas.PictureMaking.Id, cloud.Key, id).Save(directory));
             Assert.Equal(id, PictureClient.CloudPlace(directory, cloud)!.CredentialId);
             Assert.Null(PictureClient.CloudPlace(directory, address));
         }

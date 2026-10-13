@@ -149,8 +149,8 @@ Verified on 2026-10-06 on Windows with no usable NVIDIA GPU in that session:
 - OpenRouter and NVIDIA Build with real keys, because each picture costs money.
 - A real Thinking model choosing to draw.
 
-The Pictures list (2026-10-09) is checked locally: `PicturePoolTests`, `PicturePoolMembersTests` and
-`PicturePoolDesktopTests`, MCP `pictures_check` with `place` `pool` (simulated ComfyUI computers, FIXTURE) and
+The Pictures list (2026-10-09) is checked locally: `PictureMakingPoolTests`, `PictureMakingPoolMembersTests` and
+`PictureMakingPoolDesktopTests`, MCP `pictures_check` with `place` `pool` (simulated ComfyUI computers, FIXTURE) and
 `pictures_status`. Companion › Pictures' list was driven through `-Desktop` on a disposable data folder: the list made from
 `pictures.json`, Down, On, Add address, Remove, a place's workflow saved, Connect and Check reporting each place, and the
 cloud provider form refusing to add a provider without the agreement or a key. Pictures drawn on real computers through

@@ -919,7 +919,10 @@ of the test words, reads Test hearing's word with Windows speech recognition
 limited to the test words (when this PC has an English recognizer), and answers
 anything else with fixed text, streamed when asked. `status` lists the recent
 requests by model, the kinds of parts they carried and what the lab answered,
-never their content. It ends with the MCP server.
+never their content. Each chat completion also has `start`: short SHA-256s of
+its `Tools` and of each of its `Messages` as sent. Compare two runs to see
+whether the start of each request stayed byte-identical, so prompt caches still
+match. It ends with the MCP server.
 
 ```powershell
 # Add lab/sees to the image models in a disposable desktop and test it (it is first in an empty list).
@@ -1151,7 +1154,7 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
 back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
-Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+Pictures list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
 simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
 or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and

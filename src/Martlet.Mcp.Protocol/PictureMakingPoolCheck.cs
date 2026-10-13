@@ -5,11 +5,11 @@ using Martlet.Providers.Pictures;
 
 namespace Martlet.Mcp;
 
-/// <summary>pictures_check with place "pool": rehearses the production picture pool (<see cref="PicturePool"/>, with
+/// <summary>pictures_check with place "pool": rehearses the production picture pool (<see cref="PictureMakingPool"/>, with
 /// <see cref="WorkQueue"/> and <see cref="ComfyPictureMaker"/>) on simulated ComfyUI computers that keep a queue as ComfyUI does,
 /// so a computer drawing another companion PC's picture shows it in its queue. FIXTURE - NOT real hosts or models; nothing
 /// leaves the process.</summary>
-internal static class PicturePoolCheck
+internal static class PictureMakingPoolCheck
 {
     private const string Checkpoint = "dreamshaper_8.safetensors";
 
@@ -81,26 +81,26 @@ internal static class PicturePoolCheck
         {
             Nodes = [Node("m1-host", "pictures"), Node("m3-host", "pictures"), Node("m4-host", "pictures"), Node("m2-host", "stt")]
         };
-        var others = PicturePoolMembers.Others(plan, ["m1-host", "m2-host", "m3-host", "m4-host"], "m3-host", "m4-host",
+        var others = PictureMakingPoolMembers.Others(plan, ["m1-host", "m2-host", "m3-host", "m4-host"], "m3-host", "m4-host",
             new WorkSharingSettings().With(new WorkSharingHost { HostId = "m1-host", OnlyFor = ["desk-9"] }), "desk-1");
-        var migrated = PicturePoolMembers.Migrate(older, others, DateTimeOffset.UtcNow);
+        var migrated = PictureMakingPoolMembers.Migrate(older, others, DateTimeOffset.UtcNow);
         Step("pictures.json becomes the Pictures list once: the chosen computer, then this PC's own, then the others that draw, " +
              "each with the same workflow; one kept for another companion PC is left out",
             migrated.Members.Select(m => m.Key).SequenceEqual(["host:m4-host", "host:m3-host"]) &&
             migrated.Members.All(m => m.Setting(PoolSettingKeys.Checkpoint) == Checkpoint),
             new { members = migrated.Members.Select(m => new { m.Key, m.Settings }) });
 
-        var cloud = PicturePoolMembers.Migrate(new PicturesSettings { Place = PicturePlace.OpenRouter }, [], DateTimeOffset.UtcNow);
-        var unagreed = new PoolList { Area = PoolAreas.Pictures.Id, Members = [PoolMember.Cloud(PicturePoolMembers.NvidiaBuild, "black-forest-labs/flux.1-schnell")] };
+        var cloud = PictureMakingPoolMembers.Migrate(new PicturesSettings { Place = PicturePlace.OpenRouter }, [], DateTimeOffset.UtcNow);
+        var unagreed = new PoolList { Area = PoolAreas.PictureMaking.Id, Members = [PoolMember.Cloud(PictureMakingPoolMembers.NvidiaBuild, "black-forest-labs/flux.1-schnell")] };
         Step("A cloud provider chosen before keeps the owner's agreement; one without an agreement takes no pictures",
-            PoolRouting.Order(PoolAreas.Pictures, cloud, "desk-1").Members.Count == 1 && PoolRouting.Order(PoolAreas.Pictures, unagreed, "desk-1").Off == false &&
-            PoolRouting.Order(PoolAreas.Pictures, unagreed, "desk-1").Members.Count == 0,
+            PoolRouting.Order(PoolAreas.PictureMaking, cloud, "desk-1").Members.Count == 1 && PoolRouting.Order(PoolAreas.PictureMaking, unagreed, "desk-1").Off == false &&
+            PoolRouting.Order(PoolAreas.PictureMaking, unagreed, "desk-1").Members.Count == 0,
             new { cloud = cloud.Members.Select(m => m.Key), unagreed = unagreed.Members.Select(m => m.Key) });
 
-        var empty = PoolRouting.Order(PoolAreas.Pictures, new PoolList { Area = PoolAreas.Pictures.Id }, "desk-1");
+        var empty = PoolRouting.Order(PoolAreas.PictureMaking, new PoolList { Area = PoolAreas.PictureMaking.Id }, "desk-1");
         Step("An empty Pictures list means pictures are off", empty.Off && empty.Members.Count == 0, new { empty.Off });
 
-        return new { ok, fixture = "simulated ComfyUI computers (FIXTURE - NOT real hosts or models)", lane = PicturePool.Lane, steps };
+        return new { ok, fixture = "simulated ComfyUI computers (FIXTURE - NOT real hosts or models)", lane = PictureMakingPool.Lane, steps };
     }
 
     private static ClusterNode Node(string host, string role) => new()
@@ -108,12 +108,12 @@ internal static class PicturePoolCheck
         HostId = host, Roles = [new ClusterNodeRole { Kind = role, Model = "" }], Revision = 1, UpdatedAt = DateTimeOffset.UnixEpoch, UpdatedBy = "mcp"
     };
 
-    private static PicturePool Pool(IReadOnlyList<Computer> computers, PictureWorkflow workflow, WorkQueue queue) => new(
-        [.. computers.Select(c => new PicturePoolMember(PoolMember.Computer(c.Id).Key, new ComfyPictureMaker(c, workflow,
+    private static PictureMakingPool Pool(IReadOnlyList<Computer> computers, PictureWorkflow workflow, WorkQueue queue) => new(
+        [.. computers.Select(c => new PictureMakingPoolMember(PoolMember.Computer(c.Id).Key, new ComfyPictureMaker(c, workflow,
             workflow == PictureWorkflow.Checkpoint ? Checkpoint : null, workflow == PictureWorkflow.Custom ? Custom() : null,
             poll: TimeSpan.FromMilliseconds(5)), c.Id))], queue);
 
-    private static async Task<(PictureResult? Result, PicturePoolRoute? Route)> DrawAsync(IReadOnlyList<Computer> computers, PictureRequest request,
+    private static async Task<(PictureResult? Result, PictureMakingPoolRoute? Route)> DrawAsync(IReadOnlyList<Computer> computers, PictureRequest request,
         PictureWorkflow workflow, CancellationToken token, bool check = true)
     {
         using var pool = Pool(computers, workflow, new WorkQueue());

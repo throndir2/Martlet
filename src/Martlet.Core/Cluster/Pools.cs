@@ -222,10 +222,11 @@ public static class PoolAreas
         Id = ClusterJobs.LipSync, Title = "Lip-sync", Page = "Companion › Lip-sync", HostRole = "audio2face",
         Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer], Required = true, Fallback = "Voice loudness on this PC"
     };
-    /// <summary>Pictures: Martlet's pictures role on this PC's host service or a paired computer (one ComfyUI per computer, so
-    /// no card members), a ComfyUI the owner runs at an address, or a cloud provider ("openrouter", "nvidia-build"). Each PC
-    /// keeps its own list. Member settings: workflow, checkpoint and file (a custom workflow in the data directory).</summary>
-    public static readonly PoolArea Pictures = new()
+    /// <summary>Picture making (pictures Martlet draws when asked; docs/GLOSSARY.md): Martlet's pictures role on this PC's host
+    /// service or a paired computer (one ComfyUI per computer, so no card members), a ComfyUI the owner runs at an address, or a
+    /// cloud provider ("openrouter", "nvidia-build"). Each PC keeps its own list. Member settings: workflow, checkpoint and file (a
+    /// custom workflow in the data directory). The ID, lane and host role stay "pictures": they are saved and sent to hosts.</summary>
+    public static readonly PoolArea PictureMaking = new()
     {
         Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures",
         Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
@@ -236,7 +237,8 @@ public static class PoolAreas
     };
     /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.
     /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware). An empty list means no model of its
-    /// own: the conversation's own model (Thinking) takes the pictures or recordings itself, as before pools.</summary>
+    /// own. <see cref="PoolArea.Fallback"/> is then true for the pictures and recordings of a reply only; which model takes each
+    /// background job is picture and recording routing (docs/DECISION_MAP.md).</summary>
     public static readonly PoolArea Vision = new()
     {
         Id = "vision", Title = "Vision", Page = "Companion › Vision", Kinds = AllKinds, Shared = false, Required = true,
@@ -263,7 +265,7 @@ public static class PoolAreas
         Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer]
     };
 
-    public static IReadOnlyList<PoolArea> All { get; } = [Speaking, Listening, Thinking, LipSync, Pictures, Singing, Vision, Hearing, Reading, Motion];
+    public static IReadOnlyList<PoolArea> All { get; } = [Speaking, Listening, Thinking, LipSync, PictureMaking, Singing, Vision, Hearing, Reading, Motion];
 
     public static PoolArea? Find(string? id) => All.FirstOrDefault(a => a.Id == id);
 }
