@@ -1210,7 +1210,7 @@ public partial class MainWindow
             "them and Martlet hears them. " + CheckInLengthHelp, "CheckInNeeds-" + id));
         view.Children.Add(needs);
         // Where it runs in the Thinking pool: like other check-ins, or its own choice.
-        var (runsOnView, readRunsOn) = RunsOnPicker("CheckInRunsOn-" + id, "CheckInRunsOnMember-" + id, name, start.RunsOn, inherit: true,
+        var (runsOnView, readRunsOn) = RunsOnPicker.Create("CheckInRunsOn-" + id, "CheckInRunsOnMember-" + id, name, start.RunsOn, inherit: true,
             ThinkingPoolSettings.Load(store?.DataDirectory), SaveNow);
         view.Children.Add(runsOnView);
         return (outcome, view, () => new CheckInEdit(

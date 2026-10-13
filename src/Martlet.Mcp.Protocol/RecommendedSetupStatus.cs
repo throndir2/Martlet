@@ -366,7 +366,7 @@ internal static class RecommendedSetupStatus
     {
         var loaded = await new SettingsStore(directory).LoadAsync(cancellation);
         var routes = new List<(string Kind, string Origin, string Model)>();
-        if (loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.ChatCompletions } thinking)
+        if (loaded.Settings.ThinkingRoute() is { RouteType: SetupRouteType.ChatCompletions } thinking)
             routes.Add(("thinking", thinking.Origin, thinking.ModelId));
         if (loaded.Settings?.ThinkingFallback is { } fallback) routes.Add(("fallback", fallback.Origin, fallback.ModelId));
         if (routes.Count == 0) return null;
@@ -428,7 +428,7 @@ internal static class RecommendedSetupStatus
         foreach (var (job, role) in new[] { (ClusterJobs.Thinking, SetupRole.Llm), (ClusterJobs.Listening, SetupRole.Stt), (ClusterJobs.Speaking, SetupRole.Tts) })
             if (routes.FirstOrDefault(r => r.Role == role) is { } route)
                 jobs.Add(new JobPlan(job, route.Gateway is { } gateway && SelfHostSetup.IsGateway(route.RouteType) ? gateway.HostId : null));
-        var thinking = routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = routes.ThinkingRoute();
         var providers = thinking?.CredentialId is null ? []
             : thinking.RouteType == SetupRouteType.OpenAi ? ["openai"]
             : ChatCompletionsEndpointCatalog.Named(thinking.Origin)?.Id is { } id ? new[] { id } : [];

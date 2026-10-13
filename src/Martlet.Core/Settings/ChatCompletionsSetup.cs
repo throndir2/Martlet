@@ -40,7 +40,7 @@ public static class ChatCompletionsSetup
         ContractRules.Require(settings.Setup is not null, "Open setup before selecting a Chat Completions route.");
         _ = BaseUri(baseUrl);
         ModelId(modelId);
-        var old = settings.Setup?.Routes.SingleOrDefault(route => route.Role == SetupRole.Llm);
+        var old = settings.ThinkingRoute();
         if (old?.RouteType == SetupRouteType.ChatCompletions && old.Origin == baseUrl && old.ModelId == modelId)
             return settings;
         return SetupSettings.ReplaceRoute(settings, new()

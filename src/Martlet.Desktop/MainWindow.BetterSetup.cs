@@ -115,7 +115,7 @@ public partial class MainWindow
     {
         if (retiredChecking || closing || store is null) return;
         var routes = new List<(string Origin, string Model)>();
-        if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.ChatCompletions } thinking)
+        if (homeSettings.ThinkingRoute() is { RouteType: SetupRouteType.ChatCompletions } thinking)
             routes.Add((thinking.Origin, thinking.ModelId));
         if (homeSettings?.ThinkingFallback is { } fallback) routes.Add((fallback.Origin, fallback.ModelId));
         if (routes.Count == 0) return;

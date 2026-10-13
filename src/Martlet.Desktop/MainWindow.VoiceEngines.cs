@@ -112,7 +112,7 @@ public partial class MainWindow
             var here = target.HostId == thisPc?.HostId;
             var voiceKind = speakingHost == target.HostId && speaking is not null ? speaking.HostRoleKind
                 : check?.Offers?.Keys.FirstOrDefault(HostRoles.Speaks);
-            var thinkingHere = here && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm));
+            var thinkingHere = here && IsLocalOllama(homeSettings.ThinkingRoute());
             if (SharedGpu.Warning(here ? "This PC" : target.HostId, SharedGpu.OnWindows(here, HardwareStore?.Find(target.HostId)),
                     voiceKind is null ? null : SpeechEngines.ForRoleKind(voiceKind)?.Name, SharedGpu.Neighbours(check?.Offers?.Keys, thinkingHere, check?.Offers))
                 is { } shared)

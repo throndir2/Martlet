@@ -32,7 +32,7 @@ internal static class ThinkingStepsCheck
             catch (ContractException error) { throw new ArgumentException(error.Message); }
         }
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
-        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = loaded.Settings.ThinkingRoute();
         var chosen = loaded.Settings?.Generation?.Reasoning;
         var steps = GenerationSettings.ThinkingSteps(loaded.Settings?.Generation);
         var localOllama = thinking is not null && ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin);

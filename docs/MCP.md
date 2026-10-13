@@ -919,7 +919,10 @@ of the test words, reads Test hearing's word with Windows speech recognition
 limited to the test words (when this PC has an English recognizer), and answers
 anything else with fixed text, streamed when asked. `status` lists the recent
 requests by model, the kinds of parts they carried and what the lab answered,
-never their content. It ends with the MCP server.
+never their content. Each chat completion also has `start`: short SHA-256s of
+its `Tools` and of each of its `Messages` as sent. Compare two runs to see
+whether the start of each request stayed byte-identical, so prompt caches still
+match. It ends with the MCP server.
 
 ```powershell
 # Add lab/sees to the image models in a disposable desktop and test it (it is first in an empty list).
@@ -970,7 +973,8 @@ a think stopped and going on from what it wrote (in place as the unfinished
 assistant message, or again with it as context), research waiting for the
 conversation instead of being refused, the conversation model's own place held
 above Idle, and the work queue stopping this PC's background request for a live
-reply. The desktop log's `Live floor:` lines say each change, and the reply
+reply (once, also when the stopped request takes 100 ms to free the computer).
+The desktop log's `Live floor:` lines say each change, and the reply
 latency line ends with what the floor held and stopped
 (`latency_report` returns it as `liveFloor`).
 
@@ -1151,7 +1155,7 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
 back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
-Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+Pictures list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
 simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
 or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
@@ -10412,16 +10416,21 @@ observe them:
   Say why it is safe ("saves nothing", "never the key"). Name controls that you
   leave out on purpose in a comment line next to it
   (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
-- **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
-  `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
-  arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
+- **Headless capabilities:** add a `Tool(...)` registration to the file of the
+  tool's `martlet_guide` area, `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs`
+  (for example `VoiceTools.cs` or `ThinkingTools.cs`; `McpServer.ToolGroups`
+  lists them). A registration is the tool's name, description, input schema
+  (strict, bounded arguments, ID-based results), handler and, when it needs
+  one, its `ToolPermission` (`Changes` makes the server refuse it without
+  `--allow-changes`). Put code that only that tool uses in the same file. Or
+  add a Doctor probe that `doctor_run` reaches.
   Keep tools local, read-only by default and free of network, audio and
   credential effects unless gated like `--allow-ui-effects` (or, for tools that
   save the owner's settings, `--allow-changes`). Begin each description with one
   sentence that says what the tool does: `martlet_guide` shows it as the tool's
   summary and searches the description.
 - **Tools for assistants:** a tool that an assistant needs to use or configure
-  Martlet goes in `AssistantTools` and `Listed` in
+  Martlet also goes in `Listed` in
   `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
   hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
   the short list small: other tools run through `martlet_call`.

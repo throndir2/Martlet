@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Settings;
 using Martlet.Core.Creations;
 using Martlet.Discord.Calls;
 
@@ -305,7 +306,7 @@ public partial class MainWindow
         if (PictureClient.FirstPaid(dataDirectory) is { } paid && !PictureClient.Fixture &&
             !ConfirmationDialog.Confirm(this, $"Draw the camera background? It may go to {paid}, which may cost money.", "Draw a camera background", "Draw", "Cancel"))
             return;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var maker = PictureClient.For(dataDirectory, homeSettings?.Profile.Id ?? Guid.Empty, thinking);
         if (maker is null) return;
         callPictureDrawing = true;
