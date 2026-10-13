@@ -101,6 +101,6 @@ also controls the touch temperament. The facts in this table come from
 `DeepThinking` in code (`DeepThinkingSettings`, `MainWindow.DeepThinking.cs`,
 `CompanionTab.DeepThinking`) is the old name of the Thinking pool. Its UI name
 is *Thinking pool*. The desktop class that holds the pool's job board is
-`Martlet.Desktop.ThinkingPool` (`src\Martlet.Desktop\ThinkingPool.cs`); a
-rename to `DesktopThinkingPool` is in progress, so that its name is different
-from the domain file `src\Martlet.Conversation\ThinkingPool.cs`.
+`DesktopThinkingPool` (`src\Martlet.Desktop\DesktopThinkingPool.cs`). Its name
+is different from the domain file `src\Martlet.Conversation\ThinkingPool.cs`,
+which has the pool's rules (`ThinkingJobBoard`).

@@ -6,7 +6,7 @@ namespace Martlet.Desktop;
 /// and touch zones as a TouchZones job (needs vision), each with the pool's priority for its kind. Measuring the eyes needs vision
 /// too, so it goes as a TouchZones job, but at the helpers' low priority. A job the pool can't finish (no member, none free in
 /// time, failed or timed out) returns null, so the conversation's own Thinking model does it after the reply, as before.</summary>
-internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobPool
+internal sealed class ThinkingPoolHelpers(Func<DesktopThinkingPool> pool) : IHelperJobPool
 {
     internal static ThinkingJobKind Kind(HelperJobKind kind) => kind switch
     {
