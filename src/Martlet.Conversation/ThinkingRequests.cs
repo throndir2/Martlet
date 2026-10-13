@@ -1,4 +1,7 @@
+using System.Globalization;
+using System.Text;
 using Martlet.Core.Contracts;
+using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
@@ -38,6 +41,140 @@ public sealed record ThinkingRequestStart(ThinkingJobKind Kind, ThinkingRequestS
     public int Tools { get; init; }
     /// <summary>The conversation's ID for it (think_longer-1), for <see cref="ThinkingRequestSource.Conversation"/>.</summary>
     public string? JobId { get; init; }
+    /// <summary>What it sends its model, when that is known when it is posted (a Thinking pool job's); a request that prepares
+    /// its input later says it with <see cref="ThinkingRequest.Asked"/>. Private, as <see cref="Topic"/>.</summary>
+    public ThinkingRequestInput? Input { get; init; }
+}
+
+/// <summary>What a request sent its model (its input), for this PC's Thinking requests page: the instructions (the system text),
+/// the earlier messages, the message with its notes, the unfinished answer it goes on with, what went with it (a picture, a
+/// recording) and the tools it could call. Private, as <see cref="ThinkingRequestInfo.Output"/>: never in logs, status files or
+/// MCP (only its <see cref="Length"/>). It is made from references only, so recording it adds no time to a reply;
+/// <see cref="Text"/> builds the readable text the first time it is read (at most <see cref="Kept"/> characters: the start and
+/// the end, where the message is) and then lets the parts go. Thread-safe.</summary>
+public sealed class ThinkingRequestInput
+{
+    /// <summary>How many characters of an input are kept: the first quarter from its start and the rest from its end.</summary>
+    public const int Kept = 32_000;
+    private readonly object gate = new();
+    private Parts? parts;
+    private string? text;
+    private int length, leftOut;
+
+    private sealed record Parts(string? Instructions, IReadOnlyList<TextHistoryMessage> History, string Message, string? Notes,
+        string? Context, string? Continuation, (int Width, int Height, ImageMediaType Type)? Picture, TimeSpan? Recording,
+        IReadOnlyList<TextToolDefinition> Tools);
+
+    private ThinkingRequestInput(Parts parts) => this.parts = parts;
+
+    /// <summary>A Thinking pool job's input: its instructions, its text, its picture or recording and its tools.</summary>
+    public static ThinkingRequestInput Of(ThinkingJob job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        return new(new(job.Instructions, [], job.Text, null, null, null, Picture(job.Image), job.Audio?.Duration, job.Tools));
+    }
+
+    /// <summary>A conversation request's input (a think's, or a research step's).</summary>
+    public static ThinkingRequestInput Of(BoundedTextInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        return new(new(input.Personality, input.History, input.UserText, input.Notes, input.Context, input.Continuation, Picture(input.Image),
+            input.Audio?.Duration, input.Tools));
+    }
+
+    /// <summary>Instructions and a message only (a simulated request's).</summary>
+    public static ThinkingRequestInput Of(string? instructions, string message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        return new(new(instructions, [], message, null, null, null, null, null, []));
+    }
+
+    private static (int, int, ImageMediaType)? Picture(BoundedImage? image) => image is null ? null : (image.Width, image.Height, image.MediaType);
+
+    /// <summary>The input as readable text: each part under its name in brackets. A longer input keeps its first
+    /// <see cref="Kept"/>/4 characters and its last ones, and says how many in the middle are left out.</summary>
+    public string Text
+    {
+        get
+        {
+            lock (gate)
+            {
+                Build();
+                return text!;
+            }
+        }
+    }
+
+    /// <summary>How many characters the whole input has as text (more than <see cref="Text"/> keeps when <see cref="LeftOut"/> > 0).</summary>
+    public int Length
+    {
+        get
+        {
+            lock (gate)
+            {
+                Build();
+                return length;
+            }
+        }
+    }
+
+    /// <summary>How many characters in the middle <see cref="Text"/> leaves out (0: none).</summary>
+    public int LeftOut
+    {
+        get
+        {
+            lock (gate)
+            {
+                Build();
+                return leftOut;
+            }
+        }
+    }
+
+    // Under the gate: the text, once.
+    private void Build()
+    {
+        if (parts is not { } p) return;
+        var all = new StringBuilder();
+        StringBuilder Part(string title)
+        {
+            if (all.Length > 0) all.Append("\n\n");
+            return all.Append('[').Append(title).Append("]\n");
+        }
+        if (!string.IsNullOrWhiteSpace(p.Instructions)) Part("Instructions").Append(p.Instructions);
+        if (p.History.Count > 0)
+        {
+            Part(string.Create(CultureInfo.CurrentCulture, $"Earlier messages ({p.History.Count})"));
+            for (var i = 0; i < p.History.Count; i++)
+                all.Append(i == 0 ? "" : "\n\n").Append(p.History[i].Role == TextHistoryRole.User ? "User: " : "Assistant: ").Append(p.History[i].Text);
+        }
+        Part("Message").Append(p.Message);
+        if (!string.IsNullOrWhiteSpace(p.Notes)) Part("Notes with the message").Append(p.Notes);
+        if (!string.IsNullOrWhiteSpace(p.Context)) Part("Context with the message").Append(p.Context);
+        if (!string.IsNullOrWhiteSpace(p.Continuation)) Part("Its unfinished answer, which it goes on with").Append(p.Continuation);
+        List<string> with = [];
+        if (p.Picture is { } picture)
+            with.Add(string.Create(CultureInfo.CurrentCulture, $"A picture: {picture.Width} x {picture.Height} {(picture.Type == ImageMediaType.Jpeg ? "JPEG" : "PNG")}."));
+        if (p.Recording is { } recording) with.Add(string.Create(CultureInfo.CurrentCulture, $"A recording: {recording.TotalSeconds:0.0} s."));
+        if (p.Tools.Count > 0)
+            with.Add(string.Create(CultureInfo.CurrentCulture, $"Tools it may call ({p.Tools.Count}): {string.Join(", ", p.Tools.Select(tool => tool.Name))}."));
+        if (with.Count > 0) Part("Sent with it").AppendJoin('\n', with);
+        length = all.Length;
+        if (all.Length <= Kept) text = all.ToString();
+        else
+        {
+            var head = Kept / 4;
+            if (char.IsHighSurrogate(all[head - 1])) head--;
+            var tail = all.Length - (Kept - head);
+            if (char.IsLowSurrogate(all[tail])) tail++;
+            leftOut = tail - head;
+            text = string.Concat(all.ToString(0, head), string.Create(CultureInfo.CurrentCulture, $"\n\n[… {leftOut:N0} characters left out here …]\n\n"),
+                all.ToString(tail, all.Length - tail));
+        }
+        parts = null;
+    }
+
+    public override string ToString() => $"{nameof(ThinkingRequestInput)} (content omitted)";
 }
 
 /// <summary>A request as it is now (see <see cref="ThinkingRequests"/>): what it is, where it is, every try and its timings. The
@@ -62,6 +199,12 @@ public sealed record ThinkingRequestInfo(long Number, ThinkingRequestStart Start
     /// to the conversation. Private, as <see cref="ThinkingRequestStart.Topic"/>: it shows on this PC's Thinking requests page
     /// only, never in logs, status files or MCP.</summary>
     public string? Output { get; init; }
+    /// <summary>What it sent its model (the newest of its <see cref="Asks"/>, or what it was posted with), or null when it isn't
+    /// known yet. Private, as <see cref="Output"/>.</summary>
+    public ThinkingRequestInput? Input { get; init; }
+    /// <summary>How many times it said what it sends (<see cref="ThinkingRequest.Asked"/>): each attempt of a think, each step of
+    /// research. 0 for a Thinking pool job, which sends what it was posted with on every try.</summary>
+    public int Asks { get; init; }
     /// <summary>Its place in line (1 is next), or 0 when it isn't in line.</summary>
     public int Position { get; init; }
     /// <summary>A slot is free, but the live conversation needs it while the user talks.</summary>
@@ -107,8 +250,9 @@ public sealed record ThinkingRequestTotals(int Count, int Succeeded, int Problem
 /// <summary>Every request for the Thinking pool's slots, with its timings: Thinking pool jobs (the judges, summaries, check-ins,
 /// memory, naming, touch zones) and the conversation's background work on the same slots (think_longer, research). It keeps every
 /// request that hasn't ended and the last <see cref="Kept"/> that ended, plus totals by kind since Martlet started. It keeps no
-/// request's text. The private parts, for this PC's page only, are <see cref="ThinkingRequestStart.Topic"/> and each ended
-/// request's <see cref="ThinkingRequestInfo.Output"/> (its first <see cref="OutputKept"/> characters).
+/// request's text in a log or a status file. The private parts, for this PC's page only, are <see cref="ThinkingRequestStart.Topic"/>,
+/// each request's <see cref="ThinkingRequestInfo.Input"/> (what it sent its model) and each ended request's
+/// <see cref="ThinkingRequestInfo.Output"/> (its first <see cref="OutputKept"/> characters).
 /// Recording is cheap (a lock and a list), so it never adds time to a reply. Thread-safe; <see cref="Changed"/> is raised on
 /// any thread, outside the lock.</summary>
 public sealed class ThinkingRequests
@@ -261,6 +405,8 @@ public sealed class ThinkingRequest
     private bool cut;
     private int? answerLength;
     private string? output;
+    private ThinkingRequestInput? input;
+    private int asks;
 
     internal ThinkingRequest(ThinkingRequests owner, long number, ThinkingRequestStart start, string? origin, DateTimeOffset posted)
     {
@@ -329,6 +475,20 @@ public sealed class ThinkingRequest
         owner.Notify();
     }
 
+    /// <summary>What it sends its model now (private: <see cref="ThinkingRequestInfo.Input"/>), for a request that prepares its
+    /// input once it has a member (a think, each research step). The newest replaces the one before.</summary>
+    public void Asked(ThinkingRequestInput what)
+    {
+        ArgumentNullException.ThrowIfNull(what);
+        lock (gate)
+        {
+            if (finished is not null) return;
+            input = what;
+            asks++;
+        }
+        owner.Notify();
+    }
+
     /// <summary>It ended (<paramref name="end"/>, an ended state) with <paramref name="why"/>, the problem in a few words, if
     /// any, and <paramref name="text"/>, what it answered (private: <see cref="ThinkingRequestInfo.Output"/>; its length is the
     /// answer's when <paramref name="answer"/> is null). A try still open ends with it.</summary>
@@ -380,7 +540,8 @@ public sealed class ThinkingRequest
 
     private ThinkingRequestInfo InfoLocked(DateTimeOffset now) => new(number, start, state, posted, [.. attempts], now)
     {
-        Origin = origin, Note = note, Finished = finished, Preemptions = preemptions, Cut = cut, AnswerLength = answerLength, Output = output
+        Origin = origin, Note = note, Finished = finished, Preemptions = preemptions, Cut = cut, AnswerLength = answerLength, Output = output,
+        Input = input ?? start.Input, Asks = asks
     };
 
     // Under the gate: ends a try still open.

@@ -12,8 +12,9 @@ namespace Martlet.Desktop;
 
 /// <summary>Thinking requests: every request for the Thinking pool's slots since Martlet started (<see cref="ThinkingRequests"/>):
 /// the waiting and running ones first, then the newest ended ones, each with its type, task, companion, member, tries and how long
-/// it waited and ran. Selecting one shows everything known about it and what it answered (its output, private to this PC: never
-/// in a log, a status file or MCP); Timing by type sums up every request that ended. The
+/// it waited and ran. Selecting one shows everything known about it, what it sent its model (its input) and what it answered (its
+/// output); both are private to this PC: never in a log, a status file or MCP. Close (or Esc) hides the details again. Timing by
+/// type sums up every request that ended. The
 /// navigation rail's count shows how many wait or run now. Nothing here sends anything: Clear finished only forgets the list.</summary>
 public partial class MainWindow
 {
@@ -164,16 +165,36 @@ public partial class MainWindow
             return;
         }
         ThinkingRequestDetailPanel.Visibility = Visibility.Visible;
+        var title = $"{request.Id}  {ThinkingRequestWords.Kind(request.Kind)}: {ThinkingRequestWords.Task(request)}";
+        if (ThinkingRequestDetailTitle.Text != title) ThinkingRequestDetailTitle.Text = title;
         // What the conversation asked for (a think's or a search's label): shown on this PC only, never in a status file.
         ThinkingRequestTopic.Text = request.Start.Topic is { } topic ? $"About: {topic}" : "";
         ThinkingRequestTopic.Visibility = request.Start.Topic is null ? Visibility.Collapsed : Visibility.Visible;
         var text = Describe(request);
         if (ThinkingRequestDetail.Text != text) ThinkingRequestDetail.Text = text;
-        // What it answered (private, as the topic). Set only when it changes, so the regular refresh keeps the scroll and selection.
+        // What it sent and what it answered (private, as the topic). Set only when they change, so the regular refresh keeps the
+        // scroll and selection.
+        var input = request.Input?.Text ?? "";
+        if (ThinkingRequestInputBox.Text != input) ThinkingRequestInputBox.Text = input;
+        var inputState = InputLine(request);
+        if (ThinkingRequestInputState.Text != inputState) ThinkingRequestInputState.Text = inputState;
         var output = request.Output ?? "";
         if (ThinkingRequestOutput.Text != output) ThinkingRequestOutput.Text = output;
         var state = OutputLine(request);
         if (ThinkingRequestOutputState.Text != state) ThinkingRequestOutputState.Text = state;
+    }
+
+    /// <summary>The line over the selected request's input: how long it is, whether it was sent, or why there is none (never the
+    /// input itself).</summary>
+    internal static string InputLine(ThinkingRequestInfo request)
+    {
+        if (request.Input is not { } input)
+            return request.Active ? "Input: none yet. It shows here when the request is sent." : "Input: none. It wasn't sent.";
+        var line = new StringBuilder(string.Create(CultureInfo.CurrentCulture, $"Input: {input.Length:N0} character{(input.Length == 1 ? "" : "s")}"));
+        if (input.LeftOut > 0) line.Append(CultureInfo.CurrentCulture, $", {input.LeftOut:N0} in the middle left out here");
+        if (request.Attempts.Count == 0) line.Append(request.Active ? ", not sent yet" : ", never sent");
+        if (request.Asks > 1) line.Append(CultureInfo.CurrentCulture, $", the newest of {request.Asks} requests it sent");
+        return line.Append('.').ToString();
     }
 
     /// <summary>The line over the selected request's output: how long it is, or why there is none (never the output itself).</summary>
@@ -224,6 +245,23 @@ public partial class MainWindow
 
     private void ThinkingRequestsList_SelectionChanged(object sender, SelectionChangedEventArgs e) => RenderRequestDetail();
 
+    // Close (or Esc): no request is selected, so the details go and the list gets the room back.
+    private void ThinkingRequestDetailClose_Click(object sender, RoutedEventArgs e) => CloseRequestDetail();
+
+    private void ThinkingRequestsPage_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Escape || ThinkingRequestDetailPanel.Visibility != Visibility.Visible) return;
+        CloseRequestDetail();
+        e.Handled = true;
+    }
+
+    private void CloseRequestDetail()
+    {
+        ThinkingRequestsList.SelectedItem = null;
+        RenderRequestDetail();
+        ThinkingRequestsList.Focus();
+    }
+
     private void ThinkingRequestsFilter_Changed(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded || ThinkingRequestsPage.Visibility != Visibility.Visible) return;
@@ -258,7 +296,9 @@ public partial class MainWindow
                 var request = requests.Post(new(kind, ThinkingRequestSource.Simulated, $"simulated-{number + 1}")
                 {
                     Task = $"Simulated {ThinkingRequestWords.Kind(kind).ToLowerInvariant()}", Timeout = TimeSpan.FromSeconds(30),
-                    MaxOutputTokens = 256, Reasoning = false
+                    MaxOutputTokens = 256, Reasoning = false,
+                    Input = ThinkingRequestInput.Of("Simulated instructions. No model is asked and nothing is sent.",
+                        $"Simulated request {number + 1} ({ThinkingRequestWords.Kind(kind).ToLowerInvariant()}): answer in one sentence.")
                 });
                 await Task.Delay(TimeSpan.FromMilliseconds(400 + number * 700));
                 request.Begin(number % 2 == 0 ? gpu : laptop);

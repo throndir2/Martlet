@@ -14,19 +14,24 @@ audio model was NOT RUN; see [Checks](#checks).
 
 ## Short answers
 
-- **Where does vision run today?** On the Thinking model. A picture goes in the
-  same request as your message, and the model that answers looks at it. There
-  was no separate vision model (VLM). Gemma 4 E2B, Martlet's default on this
-  PC, sees and hears, so one model does everything.
+- **Where does vision run?** It depends on the job. A picture with a reply
+  goes to the first image model in Companion › Vision's list. With an empty
+  list (the default), it goes in the same request as your message, and the
+  Thinking model looks at it. Gemma 4 E2B, Martlet's default on this PC, sees
+  and hears, so one model does everything. Background jobs with a picture
+  (screen summaries, touch zones, the eyes, check-ins with a screenshot) can
+  also go to Thinking pool models that see. Companion › Vision lists them
+  under *Also gets your pictures*. Each job has its own order; see [Which
+  model looks at a picture](DECISION_MAP.md#which-model-looks-at-a-picture-picture-routing).
 - **Which model writes Martlet's reply?** Always the text model: Companion ›
   Thinking. An image or audio model never talks to you. It only puts what it
   sees or hears into words for Thinking.
 - **Why choose separate models?** To talk with a strong model that only reads
-  text (for example Qwen3 8B) and to use a small vision model or a model that
+  text (for example Qwen3 8B) and to use a small image model or a model that
   hears beside it. This needs enough hardware, or cloud models.
 - **What is the default?** An empty Vision list and an empty Hearing list: the
-  text model takes pictures and recordings itself. With the default, nothing
-  changes: every request is the same, byte for byte.
+  text model takes the pictures and recordings of a reply itself. With the
+  default, nothing changes: every request is the same, byte for byte.
 - **Does it make replies slower?** No. A reply never waits for an image or
   audio model (see [Latency rules](#latency-rules)).
 
@@ -505,9 +510,14 @@ another computer.
 The pool area entries are `PoolAreas.Vision` and `PoolAreas.Hearing`
 ([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). Each PC keeps
 its own list, because which models fit beside Thinking depends on its
-hardware. An empty list means no model of its own: Thinking's own model takes
-the pictures or recordings (the list's summary says *Nothing in the list is
-on. Instead: Thinking's own model takes the pictures itself.*).
+hardware. An empty list means no model of its own. Then Thinking's own model
+takes the pictures or recordings that go with a reply (the list's summary says
+*Nothing in the list is on. Instead: Thinking's own model takes the pictures
+itself.*). That sentence is about replies only. Screen summaries and PC sound
+descriptions never go to Thinking's own model: they go to a Thinking pool
+model that sees or hears. Touch zones, the eyes and check-ins try the Thinking
+pool first too. *Also gets your pictures* (or *recordings*) under the list
+names those Thinking pool models (`SensePoolUsers`).
 
 ## Finding out what a model can do
 
@@ -549,6 +559,38 @@ cloud model asks first, because it is one small request with your key.
 
 `model-abilities.json` keeps one source and date for each model, so the
 cards say *as Martlet found out (last check on <date>: <source>)*.
+
+## What a model takes
+
+`ModelSenses` (Martlet.Conversation) is the one rule for whether a model sees
+pictures, hears recordings and calls tools. Every place uses it: the Thinking
+route, a model in the Vision or Hearing list, a Thinking pool member and a
+model in Ollama on this PC. Each fact comes from the first of these that says:
+
+1. **The route can't carry it.** Recordings go only over Chat Completions and
+   a paired computer's gateway. Tool calls go only over Chat Completions and
+   OpenAI's Responses route.
+2. **The model is retired:** its endpoint answered HTTP 410, or it is in
+   Martlet's built-in list for that endpoint.
+3. **What Martlet found out** (see above). A paired computer's model is found
+   by its gateway's origin in every place, so Test vision there counts for the
+   Vision list and the Thinking pool alike.
+4. **The model's name.**
+
+When none of these says, Martlet can't tell. Then who sends the input decides
+(`ModelSenses.Takes`, `SenseUse`):
+
+| Who sends it | When Martlet can't tell |
+| --- | --- |
+| A model in the Vision or Hearing list (`List`) | It is tried. You chose it for that sense, and a refusal is remembered. |
+| Thinking's own reply (`Reply`) | A picture is tried: a refused picture is asked again with the words only. A recording is not: a refused recording asks again and delays Martlet's first word. Thinking gets the transcript until Test hearing finds out. |
+| A Thinking pool job (`Pool`) | It gets none. Pool members are chosen for text work, and the pool doesn't remember a refusal. Test vision or Test hearing finds out. |
+
+A known answer always decides. A tool call is offered unless the model is
+known not to call tools. The Thinking pool sends recordings only to an
+OpenAI-compatible endpoint: its runner doesn't check whether a paired
+computer's Martlet is new enough for recordings, as the Hearing list's runner
+does.
 
 ## Barge-in, end of turn and the word check
 
@@ -614,8 +656,9 @@ line in the desktop log.
 
 ## For developers
 
-The types are `SenseModels` and `SenseLists` (Martlet.Core), `SenseRouting`,
-`SenseLanes`, `SensePool` and `SenseSetup` (Martlet.Conversation). The desktop's controller runs the jobs
+The types are `SenseModels` and `SenseLists` (Martlet.Core), `ModelSenses`,
+`SenseRouting`, `SenseLanes`, `SensePool` and `SenseSetup`
+(Martlet.Conversation). The desktop's controller runs the jobs
 (`LiveConversationController.Senses.cs`).
 
 ```csharp
@@ -669,7 +712,7 @@ Without a data folder, a refusal is kept in memory only.
   `model_lab` runs a fixture endpoint for the desktop's cards.
 - Tests: `SenseModelsTests` and `SenseListsTests` (members as places, the
   consent rules, the first lists from `sense-models.json`, hosts.json;
-  Martlet.Core.Tests), `SenseRoutingTests`, `SenseLanesTests`,
+  Martlet.Core.Tests), `ModelSensesTests`, `SenseRoutingTests`, `SenseLanesTests`,
   `SensePoolTests` and `SenseSetupTests` (the lists made once, a damaged list
   file never replaced; Martlet.Conversation.Tests), `ModelVisionTestTests`
   (Martlet.Providers.Tests), and in Martlet.Desktop.Tests

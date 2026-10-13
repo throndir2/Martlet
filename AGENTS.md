@@ -4,6 +4,12 @@ These instructions apply throughout Martlet. Follow more specific instructions
 and explicit user constraints as well. Read the relevant contracts and current
 implementation before editing; historical plans are not evidence of completion.
 
+Before you change a rule, find the file that owns it in the
+[decision map](docs/DECISION_MAP.md). Change the owner, not the pages and tools
+that only show its result, and update the map when an owner moves. Use the
+names in the [glossary](docs/GLOSSARY.md) in code, UI text and docs; do not add
+a new name for a concept that is there.
+
 ## Highest priority: autonomous, autopilot-style work
 
 Work autonomously end to end as if in autopilot mode. Make the decisions, do
