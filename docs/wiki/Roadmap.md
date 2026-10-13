@@ -4,7 +4,7 @@ This page separates shipped Windows functionality from plans.
 
 ## Shipped Windows / host work
 
-The current docs cover the Windows companion, Linux/Windows Docker hosts, conversation, voice, vision, memory, tools, Live2D/VRM overlay, Home Assistant, Discord, messaging, Pictures, Singing, Creations, Martlet network, sync and failover. Check each feature page for qualification limits and NOT RUN items.
+The current docs cover the Windows companion, Linux/Windows Docker hosts, conversation, voice, vision, memory, tools, Live2D/VRM overlay, Home Assistant, Discord, messaging, Picture making, Singing, Creations, Martlet network, sync and failover. Check each feature page for qualification limits and NOT RUN items.
 
 ## macOS plan
 

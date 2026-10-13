@@ -117,7 +117,7 @@ room left after the needed jobs.
 | Deep thinking | Online is allowed and no host card fits a model at least one step smarter than live Thinking | Large free models; a few seconds don't matter for Deep thinking |
 | Live Thinking | Online is "Yes" and no local card meets the target (the processor would take about 2.5 s) | About 0.5 s; transcript only, because NVIDIA logs inputs |
 | Live Thinking backup | Online is "as a backup" or "Yes": in the While gaming and Host away plans | Keeps replies quick when the local card is busy or a host is away |
-| Pictures | No graphics card can make pictures | One free key also covers NVIDIA's FLUX models |
+| Picture making | No graphics card can make pictures | One free key also covers NVIDIA's FLUX models |
 
 A local model on the processor stays as the last backup, because the free
 service has request limits and fails at times. The wizard asks for an NVIDIA key
@@ -162,7 +162,7 @@ has much free room; never split a live model between the card and main memory.
 ### Room for other jobs
 
 - The optional extras take only the room that the needed jobs leave (today's
-  rule). Pictures and singing load when used and unload after a few idle
+  rule). Picture making and singing load when used and unload after a few idle
   minutes, so they don't keep memory.
 - The PC the owner uses keeps a quarter of its main memory (at least 4 GB) for
   the owner's apps (today's rule).

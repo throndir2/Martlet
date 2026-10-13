@@ -218,7 +218,7 @@ someone in the Discord call...*).
 **Webcam: the character.** *Open camera view* moves the character into its own ordinary 16:9 window titled *Martlet camera*
 (in the taskbar, not on top) on a solid green, blue, magenta or black background, or on a picture; the window's size is fixed
 and its place is never saved, and closing it puts the overlay back where it was, zoomed as it was. For a picture, *Choose a picture file...* takes a
-PNG, JPEG or WebP (24 MB at most), *A picture from Creations...* uses one Martlet drew before, and, while Companion › Pictures
+PNG, JPEG or WebP (24 MB at most), *A picture from Creations...* uses one Martlet drew before, and, while Companion › Picture making
 has a place, *Draw it* draws a 16:9 picture from your instruction there (a cloud provider asks first, as it may cost money)
 and keeps it in Creations too. The picture is copied to `discord-camera-background` in Martlet's data folder, fills the window
 and becomes the *Picture* background choice; if that file is gone the camera goes back to green. In OBS (installed by you):
@@ -234,7 +234,7 @@ the arrow keys (Shift for 1 pixel), and press Home or 0 to reset it; Shift+drag 
 **Martlet changes its own background.** While the mode is on, every reply on a route that does function calling also gets
 `set_camera_background`: when someone in the call (or you) asks for a different background, or a new one fits, Martlet
 switches to a plain color (`color`), one of its pictures (`picture`, a creation id from `list_creations`), or draws a new
-16:9 picture (`draw`, while Companion › Pictures has a place) as an ordinary `picture-N` background job that is kept in
+16:9 picture (`draw`, while Companion › Picture making has a place) as an ordinary `picture-N` background job that is kept in
 Creations and becomes the background when it's ready. A picture goes through the same `discord-camera-background` file
 as the card's choices, so it stays the background until changed, and shows at once while the camera view is open.
 

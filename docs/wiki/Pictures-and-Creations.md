@@ -4,11 +4,11 @@ Martlet stores things it makes as **creations**: pictures, songs and reports.
 
 ## Pictures
 
-Open **Companion › Pictures**. Choose where it draws:
+Open **Companion › Picture making**. Choose where it draws:
 
 | Place | Notes |
 | --- | --- |
-| **Martlet's Pictures role** | ComfyUI with Z-Image Turbo on this PC or a paired NVIDIA host. |
+| **Martlet's Picture making role** | ComfyUI with Z-Image Turbo on this PC or a paired NVIDIA host. |
 | **My own ComfyUI** | Your existing ComfyUI on your network. |
 | **OpenRouter** | Cloud image API; costs money. |
 | **NVIDIA Build** | NVIDIA FLUX models with an `nvapi-` key. |

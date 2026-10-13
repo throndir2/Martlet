@@ -148,7 +148,7 @@ public sealed class NodePresenceTests
         Assert.Equal(
             "It hasn't answered for 3 minutes. Martlet moved Speaking to desk-host. Thinking stays with it until it is back or you move it " +
             "on the Devices page. Your Speaking pool and Thinking pool go on with your other computers. Your Listening pool has no other " +
-            "computer now. No other computer does Pictures.",
+            "computer now. No other computer does Picture making.",
             NodePresenceNotices.MissingDetail("gpu-box", Plan(), TimeSpan.FromMinutes(3.5), ["m3"]));
         Assert.Contains("Your Speaking pool, Thinking pool and Listening pool go on",
             NodePresenceNotices.MissingDetail("gpu-box", Plan(), TimeSpan.FromMinutes(3)), StringComparison.Ordinal);

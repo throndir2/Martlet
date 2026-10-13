@@ -29,7 +29,7 @@ public abstract class CloudPictureMaker(string model, Func<CancellationToken, Ta
     {
         var secret = await key(cancellationToken).ConfigureAwait(false);
         return string.IsNullOrEmpty(secret)
-            ? PictureMakerAvailability.Unavailable($"Add your {Provider} API key in Companion › Pictures.")
+            ? PictureMakerAvailability.Unavailable($"Add your {Provider} API key in Companion › Picture making.")
             : new(true, null, Where);
     }
 
@@ -40,7 +40,7 @@ public abstract class CloudPictureMaker(string model, Func<CancellationToken, Ta
         var clock = Stopwatch.StartNew();
         var secret = await key(cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrEmpty(secret))
-            throw new PictureException(PictureErrorCodes.NotAuthorized, $"Add your {Provider} API key in Companion › Pictures.");
+            throw new PictureException(PictureErrorCodes.NotAuthorized, $"Add your {Provider} API key in Companion › Picture making.");
         progress?.Report(new(PictureProgress.Drawing));
         var (bytes, seed) = await DrawAsync(request, secret, cancellationToken).ConfigureAwait(false);
         var (mediaType, width, height) = PictureImages.Require(bytes, Provider);

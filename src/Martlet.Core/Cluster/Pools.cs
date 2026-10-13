@@ -228,7 +228,7 @@ public static class PoolAreas
     /// custom workflow in the data directory). The ID, lane and host role stay "pictures": they are saved and sent to hosts.</summary>
     public static readonly PoolArea PictureMaking = new()
     {
-        Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures",
+        Id = "pictures", Title = "Picture making", Page = "Companion › Picture making", HostRole = "pictures",
         Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
     };
     public static readonly PoolArea Singing = new()
@@ -264,8 +264,17 @@ public static class PoolAreas
         Id = "motion", Title = "Motion", Page = "Companion › Motion", HostRole = "motion",
         Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer]
     };
+    /// <summary>Recognizing who speaks (<see cref="Martlet.Core.Speakers.VoiceRecognitionPool"/>, docs/VOICES.md#where-voice-recognition-runs):
+    /// this PC's processor, or a paired computer or card that runs the <c>voice-recognition</c> role. The list is the same on all
+    /// the owner's computers. Required: with nothing on, or when no computer answers in time, this PC's processor recognizes.</summary>
+    public static readonly PoolArea VoiceRecognition = new()
+    {
+        Id = "voice-recognition", Title = "Voice recognition", Page = "Companion › People", HostRole = "voice-recognition",
+        Kinds = Local, Required = true, Fallback = "This PC's processor"
+    };
 
-    public static IReadOnlyList<PoolArea> All { get; } = [Speaking, Listening, Thinking, LipSync, PictureMaking, Singing, Vision, Hearing, Reading, Motion];
+    public static IReadOnlyList<PoolArea> All { get; } =
+        [Speaking, Listening, Thinking, LipSync, PictureMaking, Singing, Vision, Hearing, Reading, Motion, VoiceRecognition];
 
     public static PoolArea? Find(string? id) => All.FirstOrDefault(a => a.Id == id);
 }

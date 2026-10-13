@@ -79,7 +79,7 @@ public sealed class PictureMakingPool : IPictureMaker, IDisposable
             first ??= availability;
         }
         return members.Count == 1 ? first! : PictureMakerAvailability.Unavailable(
-            $"{(first!.Reason ?? "It can't draw now.").TrimEnd('.')}. None of the other {members.Count - 1} places in your Pictures list can draw now either.");
+            $"{(first!.Reason ?? "It can't draw now.").TrimEnd('.')}. None of the other {members.Count - 1} places in your Picture making list can draw now either.");
     }
 
     public async Task<PictureResult> GenerateAsync(PictureRequest request, IProgress<PictureProgress>? progress, CancellationToken cancellationToken)
@@ -109,7 +109,7 @@ public sealed class PictureMakingPool : IPictureMaker, IDisposable
     {
         if (problems.Invalid is { } invalid) return invalid;
         var first = problems.First ?? last.Problem;
-        return new(first.Code, $"{first.Message.TrimEnd('.')}. No other place in your Pictures list could draw it either.", first);
+        return new(first.Code, $"{first.Message.TrimEnd('.')}. No other place in your Picture making list could draw it either.", first);
     }
 
     // One member's try: it can draw (availability), is free (its ComfyUI queue is empty, unless the picture waits there on

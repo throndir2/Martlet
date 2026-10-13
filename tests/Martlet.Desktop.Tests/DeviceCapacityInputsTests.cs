@@ -88,7 +88,7 @@ public sealed class DeviceCapacityInputsTests
 
         var network = DeviceCapacityInputs.Network(nodes, machines, plan, Catalog);
         Assert.Equal("On your computers: Character (This PC), Thinking (gpu-box), Deep thinking (gpu-box). Online: Voice (Example Voice). " +
-            "Not set up: Listening, Lip-sync, Singing, Pictures.", network.Coverage);
+            "Not set up: Listening, Lip-sync, Singing, Picture making.", network.Coverage);
         Assert.Equal("Totals across 2 computers: 32 GB graphics memory, 80 GB memory, 40 processor threads, 500 GB free disk.", network.Totals);
         Assert.Equal("Your computers could also run 2 more Thinking models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).", network.Fits);
     }
