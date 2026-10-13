@@ -294,7 +294,7 @@ public partial class MainWindow
             false => "no" + Said(fact),
             _ => byName switch { true => "yes, by its name", false => "no, by its name", _ => "not known" }
         };
-        if (LiveConversationConfiguration.Retired(thinking, abilities) is { } retired)
+        if (ModelSenses.Retired(thinking, abilities) is { } retired)
             return $"{retired.Server} retired {thinking.ModelId}" +
                 (retired.Since is { } since ? $" ({retired.Source}, {since.LocalDateTime:d MMM})" : "") + $". {retired.Remedy}";
         var hearing = HearingModelCatalog.CarriesAudio(thinking.RouteType)

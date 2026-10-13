@@ -205,7 +205,7 @@ internal static class ThinkingPoolCheck
             active = root["active"]?.DeepClone(), kept = root["kept"]?.DeepClone(), totals = root["totals"]?.DeepClone(),
             filter = new { state, kind, limit = take }, matched = matched.Length, shown = Math.Min(take, matched.Length),
             requests = new JsonArray([.. matched.Take(take).Select(request => request?.DeepClone())]),
-            note = "Each request's type, task, companion, member, tries and timings; never its text, answer or topic."
+            note = "Each request's type, task, companion, member, tries and timings, and its input's and answer's lengths; never its text, input, answer or topic."
         };
     }
 
@@ -598,13 +598,14 @@ internal static class ThinkingPoolCheck
                 $"{r.Id} {r.KindName} {r.State}: {r.Attempts.Count} tries ({string.Join(", ", r.Attempts.Select(a => $"{a.Member} {a.Duration(r.Finished ?? r.Now).TotalMilliseconds:0} ms: {a.Ending}"))}), " +
                 $"waited {r.Waited.TotalMilliseconds:0} ms, ran {r.Ran.TotalMilliseconds:0} ms, total {r.Total.TotalMilliseconds:0} ms";
             var second = TimeSpan.FromSeconds(1);
-            Check("requests: a success is recorded with one try, its timings and its output (private, for this PC's page)",
+            Check("requests: a success is recorded with one try, its timings, its input and its output (private, for this PC's page)",
                 success.Succeeded && ofDigest is { State: ThinkingRequestState.Succeeded, Attempts.Count: 1, Retries: 0, Start.Source: ThinkingRequestSource.Pool } &&
                 ofDigest.Attempts[0].Member == "bad" && ofDigest.Attempts[0].Model == "fixture-a" && ofDigest.Attempts[0].Ending == "answered" &&
                 ofDigest.Ran >= TimeSpan.FromMilliseconds(50) && ofDigest.Ran < 5 * second && ofDigest.Waited < second &&
                 ofDigest.Total >= ofDigest.Ran && ofDigest.AnswerLength == "fixture answer".Length && ofDigest.Finished is not null &&
-                ofDigest.Output == "fixture answer",
-                $"{Timing(ofDigest)}; output kept: {ofDigest.Output?.Length ?? 0} characters");
+                ofDigest.Output == "fixture answer" && ofDigest.Input?.Text == "[Instructions]\nAnswer in one word.\n\n[Message]\nfixture" &&
+                ofJudge.Input is { LeftOut: 0 },
+                $"{Timing(ofDigest)}; input kept: {ofDigest.Input?.Length ?? 0} characters; output kept: {ofDigest.Output?.Length ?? 0} characters");
             Check("requests: a retry is recorded as two tries, the failed member then the one that answered",
                 retry.Succeeded && retry.Attempts == 2 && ofMemory is { State: ThinkingRequestState.Succeeded, Attempts.Count: 2, Retries: 1 } &&
                 ofMemory.Attempts[0].Member == "bad" && ofMemory.Attempts[0].Ending == "busy: job.busy" &&
