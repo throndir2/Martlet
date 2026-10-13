@@ -144,6 +144,10 @@ desktop the same:
   1.13.8 to run the port on this PC, or `MARTLET_VOICE_RECOGNITION_IMAGE` to the
   built image to run it in Docker (`MARTLET_VOICE_RECOGNITION_GPU=1` for the
   graphics card).
+- The MCP tool `voice_recognition_engine_check` sends the same kind of speech
+  through the whole path: the desktop's client, a real gateway, this role's
+  relay and a running service. With `martletDirectory` it compares the answers
+  with this PC's engine. See [MCP](MCP.md).
 
 On the processor the answers are the same: the same voices, the same times to
 0.01 s and voiceprints with a cosine of 1.0000000. With the Windows wheel of

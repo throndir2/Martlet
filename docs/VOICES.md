@@ -443,10 +443,13 @@ People's Now problem, *This PC*'s row, Home's *Voice recognition stopped
 working on this PC* and `voices_status`'s `desktop` showed it with its retry
 time, and the background try 5 s later failed again (next in 30 s). With the
 file back, Home's *Try again now* brought it back and *Check it now* recognized
-in 149 ms. A real computer running the Voice recognition role, a real NVIDIA
-graphics card, live microphone conversations and the reply latency lines of a
-real conversation are **NOT RUN** (the host role was not merged yet, no audio
-capture in agent verification).
+in 149 ms. A real NVIDIA graphics card, live microphone conversations and the
+reply latency lines of a real conversation are **NOT RUN** (no graphics card
+reaches containers on the validation PC, no audio capture in agent
+verification). The desktop's client against a real `voice-recognition` role
+(its Linux image on this PC's Docker, through a real gateway) is checked by
+[`voice_recognition_engine_check`](MCP.md); it gave the same answers as this
+PC's engine.
 
 `voices_engine_check` runs the bundled engine on any 16 kHz mono PCM16 WAV
 files you give it. To run the native tests, point `MARTLET_SPEECH_FIXTURES` at

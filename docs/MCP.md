@@ -1539,6 +1539,32 @@ folder's engine through the keeper: `loadMs`, `analyzeMs` for 3 s of a tone,
 `routedMs` (the same through the router with this PC alone, the default list),
 `msPerSecond` and `headStartMs`. Nothing is recorded, played or sent.
 
+`voice_recognition_engine_check` (optional `endpoint`, default
+`http://127.0.0.1:50091/`, and absolute `martletDirectory`) runs Voice
+recognition on another computer through a REAL `voice-recognition` host role's
+service ([Voice recognition host](VOICE_RECOGNITION_HOST.md)) on a numeric
+loopback address. Two Windows voices (one female, one male; System.Speech
+rendered to memory, never played) speak alone, in turns, over each other for
+2 s and for 1.4 s only. Martlet.NodeLinkCheck's `voice-recognition-engine` mode
+sends each clip through the production path: the role's relay
+(`Martlet.Gateway.VoiceRecognition`) inside a real gateway on 127.0.0.1 (pinned
+TLS, pairing) and the desktop's paired client (`HostVoiceRecognition`), which
+reads every answer with `SpeakerAnswers` as People's list does. It returns
+`ok`, the service's own `/status` (`service`), the route's `model` and
+`modelRevision`, the role's `state` and `provider` (`cuda` or `cpu`) through the
+gateway, `readyMs` (how long until it said `ready`) and per clip (`clips`) the
+`voices`, the recognized `speakers` with `cleanSeconds`, `start` and `end`,
+`overlap`, `speechSeconds`, whether a `wholeVoiceprint` and a `voiceprint` came
+back, and `analyzeMs`, `voiceprintMs` and the host's own `hostMs`. With a
+`martletDirectory` (a Martlet folder with its `voice-recognition` files) it
+also runs this PC's engine on the same audio: `comparedWithThisPc` has
+`matches` (the same voices, speakers in the same order, times within 0.05 s,
+voiceprints with a cosine of at least 0.995), `lowestCosine`,
+`largestTimeDifference` and `differences`, and `ok` needs `matches`. To check a
+role in Docker on this PC, publish a forwarder in the role container's network
+namespace to 127.0.0.1:50091 (the role itself listens only on its own
+loopback). Nothing is recorded, played or kept.
+
 `voices_naming_check` rehearses [learning names](VOICES.md#what-happens-in-a-conversation)
 with the production checks and changes (`CompanionNames`, `VoiceUpdates` and the
 voice list's name rules) on a fixture voice list in memory: V1 is the owner

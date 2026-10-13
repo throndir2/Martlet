@@ -136,6 +136,24 @@ internal sealed partial class McpServer
         },
             async (arguments, cancellation) => await VoiceRecognitionCheck.RunAsync(
                 OptionalString(arguments, "martletDirectory") is not null ? MartletDirectory(arguments) : null, cancellation)),
+        Tool("voice_recognition_engine_check", "Voice recognition on another computer, through a REAL voice-recognition host role's " +
+            "service on a numeric loopback endpoint (default http://127.0.0.1:50091/: workers/voice-recognition, on its NVIDIA card or " +
+            "processor): two Windows voices (System.Speech rendered to memory, never played) speak alone, in turns, over each other " +
+            "and for 1.4 s only, and each clip goes through the production path: the role's relay (Martlet.Gateway.VoiceRecognition) " +
+            "inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired client (HostVoiceRecognition), which " +
+            "checks every answer as Companion > People's list does. Returns the service's /status, the route's model, the role's " +
+            "state and provider (cuda or cpu) through the gateway, how long it took to be ready, and per clip the voices, recognized " +
+            "speakers with their clean seconds and times, overlap, whether a whole voiceprint and a voiceprint came back, and " +
+            "analyzeMs, voiceprintMs and the host's own ms. With optional absolute martletDirectory (a Martlet folder with its " +
+            "voice-recognition files) it also runs this PC's engine on the same audio and compares: the same voices and speakers, " +
+            "times within 0.05 s and voiceprints with a cosine of at least 0.995 (comparedWithThisPc). Loopback only; runs " +
+            "Martlet.NodeLinkCheck; nothing is recorded, played or kept.", new
+        {
+            endpoint = new { type = "string", maxLength = 64 },
+            martletDirectory = new { type = "string" }
+        },
+            async (arguments, cancellation) => await VoiceRecognitionEngineCheck.RunAsync(OptionalString(arguments, "endpoint"),
+                OptionalString(arguments, "martletDirectory") is not null ? MartletDirectory(arguments) : null, cancellation)),
         Tool("voice_recording_check", "What Companion > Voice > Add a voice does with an audio or video file (path, read on this PC): " +
             "whether it is readable, the kind of file (Ogg files name their codec: OGG (Vorbis), OGG (Opus)), its channels and sample " +
             "rate, and the mono 16-bit WAV Martlet would keep and Play plays (sample rate, length, bytes, SHA-256, peak and RMS level " +

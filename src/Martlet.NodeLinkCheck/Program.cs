@@ -166,6 +166,16 @@ if (args is ["listening-engine", var listeningEndpoint, var listeningModel, var 
     Console.WriteLine(JsonSerializer.Serialize(listeningReport));
     return listeningOk ? 0 : 1;
 }
+// With "voice-recognition-engine <endpoint> <clips directory>" it recognizes who speaks in the folder's 16 kHz PCM16 clips with a
+// live voice recognition service on loopback (the voice-recognition role's worker) through the role's real relay and gateway
+// and the desktop's client (VoiceRecognitionEngineCheck) and prints its report.
+if (args is ["voice-recognition-engine", var recognitionEndpoint, var recognitionClips])
+{
+    var (recognitionOk, recognitionReport) = await Martlet.NodeLinkCheck.VoiceRecognitionEngineCheck.RunAsync(recognitionEndpoint,
+        recognitionClips, CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(recognitionReport));
+    return recognitionOk ? 0 : 1;
+}
 // With "singing-check <endpoint|fixture|paired:<data directory>> <seconds> <quality> <voice match> [save directory|-]
 // [voice WAV|-] [transcript|-] [bpm|-] [key|-] [voice ID|-] [host ID|-]" it makes one song with a singing service through the
 // singing role's real relay and gateway (SingingCheck; paired: through a paired host's own gateway, as the desktop does),
