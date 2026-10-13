@@ -562,9 +562,11 @@ pool jobs (the judges, summaries, check-ins, memory, naming and touch zones)
 and the conversation's background work on the same slots (thinking longer and
 research). The requests that wait or run come first, then the newest ended
 ones. The journal (`ThinkingRequests`) keeps every request that has not ended
-and the last 200 that ended, plus totals by kind. It keeps no request's text.
-It keeps each ended request's output (what it answered, its first 16,000
-characters) for this PC's page only. The output never goes in a log, a status
+and the last 200 that ended, plus totals by kind. It keeps no request's text in
+a log or a status file. For this PC's page only, it keeps each request's input
+(what it sent its model, read into text the first time it shows, at most
+32,000 characters) and each ended request's output (what it answered, its
+first 16,000 characters). The input and the output never go in a log, a status
 file or an MCP result.
 
 `thinking_requests` (`dataDirectory`, and the optional filters `state`, `kind`
@@ -581,7 +583,9 @@ request gives its `id` (`tr-<n>`), `kind`, `source` (`Pool`, `Conversation` or
 `posted`, `started` and `finished` times, `firstWaitMs`, `waitedMs`, `ranMs`
 and `totalMs`, and each try in `attempts` (`member`, `model`, `started`,
 `ended`, `ms` and `ending`). It also gives `retries`, `preemptions`,
-`answerCharacters`, `cut` and the request's limits. The filters are:
+`answerCharacters`, `cut`, `inputCharacters` (the input's length, or null
+when it isn't known yet), `inputs` (how many inputs a think or research job
+sent; 0 for a pool job) and the request's limits. The filters are:
 
 - `state`: `active` (waiting, running or paused), `done`, `problems` (ended
   other than succeeded or canceled, or with a retry or a stop for the
@@ -596,15 +600,27 @@ waiting. 5 ended since Martlet started (1 with a problem): they waited 2.0 s
 and ran 2.0 s on average.* `ThinkingRequestsPool` gives the pool's slots now,
 `ThinkingRequestsEmpty` the empty state, and `NavThinkingRequestsCount` how
 many requests wait or run (shown only when some do). Each row
-`ThinkingRequest-tr-<n>` is a safe click: it only selects the request, and
-`ThinkingRequestDetail` then gives the request in full (type, task, companion,
-needs, times, timings, tries, limits and the answer's length). Beside it,
-`ThinkingRequestOutput` shows what the request answered. The output is private:
-MCP never returns it. `ThinkingRequestOutputState` (a safe value) gives only
-its length, for example *Output: 98 characters.*, or why there is none
+`ThinkingRequest-tr-<n>` is a safe click: it only selects the request and
+shows its details. `ThinkingRequestDetailTitle` gives the request's ID, type
+and task, and `ThinkingRequestDetail` gives the request in full (type, task,
+companion, needs, times, timings, tries, limits and the answer's length).
+Beside it, `ThinkingRequestInput` shows what the request sent its model (the
+instructions, the earlier messages, the message with its notes, an unfinished
+answer it goes on with, and the picture, recording and tools that went with
+it), and `ThinkingRequestOutput` shows what the request answered. The input and
+the output are private: MCP never returns them. `ThinkingRequestInputState` (a
+safe value) gives only the input's length, for example *Input: 1,240
+characters.*, *Input: 52 characters, never sent.* or *Input: 9,800 characters,
+the newest of 4 requests it sent.* (each research step and each new try of a
+think sends a new input), or why there is none (*Input: none yet. It shows here
+when the request is sent.*). An input longer than 32,000 characters keeps its
+start and its end: *Input: 120,000 characters, 88,000 in the middle left out
+here.* `ThinkingRequestOutputState` (a safe value) gives only the output's
+length, for example *Output: 98 characters.*, or why there is none
 (*Output: none yet. It shows here when the request ends.*, *Output: none. It
 ended: failed.*). A long output reads *Output: the first 16,000 of 40,000
-characters*. The filters
+characters*. `ThinkingRequestDetailClose` (*Close*, or Esc) is a safe click: it
+only hides the details again. The filters
 `ThinkingRequestsFilter-all`, `-active` and `-problems`, the
 `ThinkingRequestsTimingExpander` (*Timing by type*) and `ThinkingRequestsKind`
 (it only opens) are safe clicks. `ThinkingRequestsTiming` is a safe value.
@@ -617,8 +633,9 @@ for (private): MCP never returns it.
 Setting `MARTLET_SIMULATE_THINKING_REQUESTS` to a number (1-50) before you
 launch the desktop posts that number of simulated requests once the window
 shows. They wait, run on made-up members (*gpu-box (simulated)* and *laptop
-(simulated)*), retry, fail and end over about half a minute. Each one that
-succeeds has a made-up output. No model is asked and nothing is sent. The
+(simulated)*), retry, fail and end over about half a minute. Each one has a
+made-up input, and each one that succeeds has a made-up output. No model is
+asked and nothing is sent. The
 desktop log says *Posting N simulated Thinking requests*.
 
 The `requests` steps of `thinking_pool_check` run the production job board with
@@ -1280,7 +1297,7 @@ Martlet knows, or its thoughts ahead, go in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
 each run with words and counts only (`Check-ins:`).
 
-Companion › Check-ins reads through `ui_value`: `CheckInsNow` (how many are on
+Companion › Check-ins reads through `ui_snapshot`: `CheckInsNow` (how many are on
 and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
@@ -1321,7 +1338,7 @@ answer, inputs and tools back; On and Every stay). Each check-in has *Copy as yo
 (`CheckInCopy-<id>`), which adds an own check-in (off) with the same prompt and
 choices. The script and prompt boxes
 (`CheckInScript-<id>`, `CheckInPrompt-<id>`) have automation IDs, but
-`ui_value` never reads them: the owner's words stay on the page.
+`ui_snapshot` never reads them: the owner's words stay on the page.
 `CheckInsOpenPool` only opens a page. The boxes and choices, the name, task,
 prompt and script boxes, *Use built-in settings*, *Copy as your own*, *Add a
 check-in* (`CheckInAdd`)
@@ -10197,7 +10214,7 @@ character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). `ui_type` types
 the way a person does, one key at a time: with `id` that text box takes the
 keyboard focus first; without `id` the keys go to the control that has the
 focus. Each character of `text` (at most 100), then each of `keys`
-(`backspace`, `delete`, `left`, `right`, `home`, `end`), is a key message posted
+(`backspace`, `delete`, `left`, `right`, `home`, `end`, `escape`), is a key message posted
 to that Martlet window only (`window` names one; the main window by default),
 one every `stepMs` (default 50). It returns `focused`, the automation ID of the
 control that has the keyboard focus afterwards. `ui_snapshot` marks that control
@@ -10322,4 +10339,7 @@ observe them:
   `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
   hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
   the short list small: other tools run through `martlet_call`.
-- **Docs:** update this page with the new tools, IDs and status fields.
+- **Docs:** update this page with the new tools, IDs and status fields. Write
+  each tool's name as `name`: `McpDocsAgreementTests` (Martlet.Desktop.Tests)
+  fails when a tool is not named on this page, or when the page names a tool
+  (`ui_*`, `*_status`, `*_check`, `*_selftest`...) that the server does not have.

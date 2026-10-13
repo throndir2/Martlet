@@ -14,19 +14,24 @@ audio model was NOT RUN; see [Checks](#checks).
 
 ## Short answers
 
-- **Where does vision run today?** On the Thinking model. A picture goes in the
-  same request as your message, and the model that answers looks at it. There
-  was no separate vision model (VLM). Gemma 4 E2B, Martlet's default on this
-  PC, sees and hears, so one model does everything.
+- **Where does vision run?** It depends on the job. A picture with a reply
+  goes to the first image model in Companion › Vision's list. With an empty
+  list (the default), it goes in the same request as your message, and the
+  Thinking model looks at it. Gemma 4 E2B, Martlet's default on this PC, sees
+  and hears, so one model does everything. Background jobs with a picture
+  (screen summaries, touch zones, the eyes, check-ins with a screenshot) can
+  also go to Thinking pool models that see. Companion › Vision lists them
+  under *Also gets your pictures*. Each job has its own order; see [Which
+  model looks at a picture](DECISION_MAP.md#which-model-looks-at-a-picture-picture-routing).
 - **Which model writes Martlet's reply?** Always the text model: Companion ›
   Thinking. An image or audio model never talks to you. It only puts what it
   sees or hears into words for Thinking.
 - **Why choose separate models?** To talk with a strong model that only reads
-  text (for example Qwen3 8B) and to use a small vision model or a model that
+  text (for example Qwen3 8B) and to use a small image model or a model that
   hears beside it. This needs enough hardware, or cloud models.
 - **What is the default?** An empty Vision list and an empty Hearing list: the
-  text model takes pictures and recordings itself. With the default, nothing
-  changes: every request is the same, byte for byte.
+  text model takes the pictures and recordings of a reply itself. With the
+  default, nothing changes: every request is the same, byte for byte.
 - **Does it make replies slower?** No. A reply never waits for an image or
   audio model (see [Latency rules](#latency-rules)).
 
@@ -505,9 +510,14 @@ another computer.
 The pool area entries are `PoolAreas.Vision` and `PoolAreas.Hearing`
 ([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). Each PC keeps
 its own list, because which models fit beside Thinking depends on its
-hardware. An empty list means no model of its own: Thinking's own model takes
-the pictures or recordings (the list's summary says *Nothing in the list is
-on. Instead: Thinking's own model takes the pictures itself.*).
+hardware. An empty list means no model of its own. Then Thinking's own model
+takes the pictures or recordings that go with a reply (the list's summary says
+*Nothing in the list is on. Instead: Thinking's own model takes the pictures
+itself.*). That sentence is about replies only. Screen summaries and PC sound
+descriptions never go to Thinking's own model: they go to a Thinking pool
+model that sees or hears. Touch zones, the eyes and check-ins try the Thinking
+pool first too. *Also gets your pictures* (or *recordings*) under the list
+names those Thinking pool models (`SensePoolUsers`).
 
 ## Finding out what a model can do
 
