@@ -374,10 +374,22 @@ internal static class LiveFloorCheck
             var heldOff = false;
             try { await Collect(queue, "naming", WorkPriority.Background, host); }
             catch (WorkPreemptedException) { heldOff = true; }
+            // A stopped request that takes 100 ms to free the computer (a busy PC) is stopped and counted once, not at
+            // each retry of the live request.
+            var slowQueue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(10) };
+            var slow = new SimulatedOllama("diva") { CloseDelay = TimeSpan.FromMilliseconds(100) };
+            var slowBackground = Collect(slowQueue, "remembering", WorkPriority.Background, slow);
+            await WaitAsync(() => slowQueue.Background("thinking", "diva") == 1, cancellation);
+            var slowLive = await Collect(slowQueue, "reply", WorkPriority.Live, slow);
+            var slowPreempted = false;
+            try { await slowBackground; }
+            catch (WorkPreemptedException) { slowPreempted = true; }
             Check("work queue: the live reply never waits behind this PC's own background request",
-                live == "reply by diva" && preempted && heldOff && queue.Stopped == 1,
+                live == "reply by diva" && preempted && heldOff && queue.Stopped == 1 &&
+                slowLive == "reply by diva" && slowPreempted && slowQueue.Stopped == 1,
                 $"the reply took the computer after {took} ms (the background request was stopped: {preempted}); " +
-                $"background work a host holds off for a live turn goes on later: {heldOff}");
+                $"background work a host holds off for a live turn goes on later: {heldOff}; " +
+                $"a background request that takes 100 ms to close was stopped {slowQueue.Stopped} time(s)");
         }
 
         return new
@@ -399,6 +411,7 @@ internal static class LiveFloorCheck
         private int running;
         public string Id { get; } = id;
         public bool HoldForLive { get; set; }
+        public TimeSpan CloseDelay { get; set; }
 
         public async IAsyncEnumerable<string> Run(string request, bool background,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
@@ -411,7 +424,11 @@ internal static class LiveFloorCheck
                 await Task.Delay(background ? Timeout.InfiniteTimeSpan : TimeSpan.FromMilliseconds(20), token);
                 yield return $"{request} by {Id}";
             }
-            finally { Volatile.Write(ref running, 0); }
+            finally
+            {
+                if (CloseDelay > TimeSpan.Zero) await Task.Delay(CloseDelay);
+                Volatile.Write(ref running, 0);
+            }
         }
     }
 

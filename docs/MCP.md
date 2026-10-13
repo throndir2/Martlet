@@ -973,7 +973,8 @@ a think stopped and going on from what it wrote (in place as the unfinished
 assistant message, or again with it as context), research waiting for the
 conversation instead of being refused, the conversation model's own place held
 above Idle, and the work queue stopping this PC's background request for a live
-reply. The desktop log's `Live floor:` lines say each change, and the reply
+reply (once, also when the stopped request takes 100 ms to free the computer).
+The desktop log's `Live floor:` lines say each change, and the reply
 latency line ends with what the floor held and stopped
 (`latency_report` returns it as `liveFloor`).
 
