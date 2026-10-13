@@ -157,7 +157,7 @@ public sealed class MemorySettingsTests : IDisposable
         Assert.True((await currentStore.SaveAsync(current, null)).Saved);
         var plan = await currentStore.PreviewConfigurationRestoreAsync(backup);
 
-        Assert.Contains("Memory facts, store files and exports are NOT backed up or restored", plan.Summary);
+        Assert.Contains("Memory facts, conversations, audio, logs and support data are not restored.", plan.Summary);
         Assert.Contains("\"enabled\": false", plan.CandidateJson);
         Assert.Contains(Path.GetFullPath(sourcePath).Replace("\\", "\\\\", StringComparison.Ordinal),
             plan.CandidateJson);
