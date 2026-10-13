@@ -63,9 +63,39 @@ public partial class MainWindow
             Settings = member => SenseMemberSettings(kind, options, member, thinking, keys),
             NewMember = member => SenseNewMember(kind, member, thinking),
             AddCloud = () => SenseCloudAdd(kind, options, thinking),
+            Also = () => SensePoolAlso(kind, thinking, abilities),
             Saved = (before, after) => SenseListSavedAsync(kind, before, after)
         };
         return PoolListCard(options);
+    }
+
+    /// <summary>Under the list: the Thinking pool's models that get the pictures (or recordings) too (<see cref="SensePoolUsers"/>),
+    /// each with where it runs and what it gets them for or why it gets none, and Open Thinking pool. So the page names every model
+    /// that gets them, cloud providers and servers in the Thinking pool included.</summary>
+    private IEnumerable<UIElement> SensePoolAlso(SenseKind kind, SetupRoute? thinking, ModelAbilities abilities)
+    {
+        var id = $"Pool-{SenseLists.Area(kind).Id}-Also";
+        var users = SensePoolUsers.For(kind, ThinkingPoolSettings.Load(store?.DataDirectory), abilities);
+        var senseModel = SenseRouting.For(kind, SavedSenses(), thinking, abilities).Described;
+        var elements = new List<UIElement>
+        {
+            new TextBlock { Text = $"Also gets your {SenseInputs(kind)}: the Thinking pool", FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 4) }
+        };
+        var summary = Note(SensePoolUsers.Summary(kind, users), new Thickness(0, 0, 0, 8));
+        AutomationProperties.SetAutomationId(summary, id + "Summary");
+        elements.Add(summary);
+        for (var i = 0; i < users.Count; i++)
+        {
+            var user = users[i];
+            var offline = user.Gets && user.Member.HostId is { } host && HostPresence.IsOffline(host) ? " Its computer doesn't answer now." : "";
+            var row = NetworkRowFrame();
+            row.Margin = new Thickness(0, 0, 0, 8);
+            row.Children.Add(NetworkRowText($"{id}-{i}", user.Name, SensePoolUsers.Line(kind, user, senseModel) + offline));
+            elements.Add(row);
+        }
+        elements.Add(Row(PageButton("Open Thinking pool", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: id + "Open")));
+        return elements;
     }
 
     /// <summary>A member's state on the list: its model and what it is known to do, whether it takes the {inputs} first now, and

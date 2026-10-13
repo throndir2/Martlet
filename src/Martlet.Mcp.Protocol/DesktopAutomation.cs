@@ -80,6 +80,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
         // --allow-ui-effects.
         "CheckInsOpenPool",
+        // Companion › Vision's and Hearing's lists: Open Thinking pool under "Also gets your pictures/recordings" only opens that page.
+        "Pool-vision-AlsoOpen", "Pool-hearing-AlsoOpen",
         // Companion › Pictures' Check only asks each place in the Pictures list whether it can draw now (a cloud provider: only
         // whether a key is there); a place's Connect (PicturesComfyConnect-<i>, a prefix below) only reads that ComfyUI's status and
         // models. Neither saves or draws. Draw a test picture, Set up, Save, Load workflow file, Save key and Add need
@@ -1310,6 +1312,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("Pool-speaking-On-0") is ticked, its Up, Down, Remove and Settings buttons, its kept-for choice ("Pool-speaking-OnlyFor-0"
         // reads "Every companion PC" or "Only desk-1"), and the Add buttons' labels ("Pool-speaking-AddHost-diva-host",
         // "Pool-speaking-AddThisPc", "Pool-speaking-AddGpu-diva-host-2"). Host IDs, device IDs, provider and model names, never a key.
+        // Vision's and Hearing's lists add the Thinking pool's models that see or hear ("Pool-vision-AlsoSummary", and
+        // "Pool-vision-Also-0" reads "integrate.api.nvidia.com (google/gemma-3-27b-it). A cloud provider or server in the Thinking
+        // pool. It gets your pictures for screen summaries, ...").
         "Pool-",
         // Companion › Reading, a list member's settings: This PC's engine pills ("ReadingEngine-windows-ocr" ticked or not;
         // choosing one saves pools-local.json, so it needs --allow-ui-effects), the Reading role's state on that place

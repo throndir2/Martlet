@@ -27,6 +27,9 @@ internal sealed record PoolListOptions
     /// <summary>The area's own way to add a cloud provider (provider, model, key and the owner's agreement), when it takes cloud
     /// members. It adds the member itself.</summary>
     public Func<UIElement>? AddCloud { get; init; }
+    /// <summary>Lines under the members about models outside this list that do the area's work too (Vision: the Thinking pool's
+    /// models that see); null: none.</summary>
+    public Func<IEnumerable<UIElement>>? Also { get; init; }
     /// <summary>Runs after the list was saved, with the list before and after (the area follows it: its route, its backend).</summary>
     public Func<PoolList, PoolList, Task>? Saved { get; init; }
     /// <summary>Draws the page again after a change; null: the Companion page.</summary>
@@ -76,6 +79,7 @@ public partial class MainWindow
         stack.Add(summary);
         var companions = SharingCompanions();
         for (var i = 0; i < list.Members.Count; i++) stack.Add(PoolRow(options, list, i, companions));
+        if (options.Also?.Invoke() is { } also) stack.AddRange(also);
         stack.Add(PoolAdd(options, list));
         return Card([.. stack]);
     }

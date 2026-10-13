@@ -831,6 +831,20 @@ control, described with Devices › Sharing work): `Pool-vision-...` and `Pool-h
 (`-Summary` reads *Nothing in the list is on. Instead: Thinking's own model
 takes the pictures itself.* for an empty list; `-Member-<i>` reads *1. This PC. Each companion PC
 itself; qwen2.5vl:7b: sees pictures; in use: it takes the pictures first.*).
+Under the members, *Also gets your pictures: the Thinking pool* names every
+Thinking pool model that sees (on Hearing: hears), so the page lists every
+model that gets them, cloud providers and servers included:
+`Pool-vision-AlsoSummary` (*Your pictures also go to 1 model in the Thinking
+pool, for background work. ...* or that no Thinking pool model sees) and one
+`Pool-vision-Also-<n>` per model (*integrate.api.nvidia.com
+(google/gemma-3-27b-it). A cloud provider or server in the Thinking pool. It
+gets your pictures for screen summaries, and touch zones, the character's eyes
+and check-ins with a screenshot. Requests there may cost money.*, or why it
+gets none: off, May receive pictures and recordings off, or no quick or long
+jobs). `Pool-vision-AlsoOpen` (*Open Thinking pool*) is passive. The same
+model names show in `VisionScreenSummaryStatus`, `VisionDisclosure` and
+`ThinkingSenses`, from the saved settings, so they are right before a
+conversation runs.
 `Pool-vision-Settings-<i>` and `Pool-vision-AddCloud` are passive: they only
 show a member's settings or the cloud form. In This PC's settings,
 `ImageModelLocalModel` (a combo box you can type in; `ui_set_text` works on it)
