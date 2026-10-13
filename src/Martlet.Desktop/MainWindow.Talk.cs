@@ -346,9 +346,8 @@ public partial class MainWindow
         describe.Checked += (_, _) => { if (!Talk.DescribePcSounds) SaveTalk(Talk with { DescribePcSounds = true }, render: true); };
         describe.Unchecked += (_, _) => { if (Talk.DescribePcSounds) SaveTalk(Talk with { DescribePcSounds = false }, render: true); };
         var digest = conversation?.SoundDigest?.Status;
-        var tagger = Martlet.Sherpa.SoundTagger.Included();
         var describeStatus = Note(SoundDigestStatus(Talk, conversation?.CanHearPc != false, digest,
-            digest is null ? (tagger ? CpuSoundJudge.Label : null, tagger ? Martlet.Audio.SoundJudgeKind.Cpu : null) : (digest.Judge, digest.JudgeKind),
+            digest is null ? SavedSoundJudge() : (digest.Judge, digest.JudgeKind),
             conversation?.Clock ?? TimeProvider.System), new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(describeStatus, "TalkDescribePcSoundsStatus");
         return Card([Heading("Watch along"), hear, status,
@@ -370,6 +369,20 @@ public partial class MainWindow
                 "reply never waits for it.", new Thickness(0, 0, 0, 8), "SoundDigest", "sound descriptions"),
             Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
             .. ChattinessPicker("TalkPcChattiness")]);
+    }
+
+    /// <summary>The sound judge the saved settings choose before a conversation runs, in the conversation's order
+    /// (<see cref="LiveConversationController.SoundJudge"/>): the audio model while it takes recordings, else the first Thinking pool
+    /// model that hears and takes quick jobs, else the CPU sound tagger when it is in Martlet's folder.</summary>
+    private (string? Name, Martlet.Audio.SoundJudgeKind? Kind) SavedSoundJudge()
+    {
+        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var abilities = SavedModelAbilities();
+        if (SenseRouting.For(SenseKind.Audio, SavedSenses(), thinking, abilities) is { Described: true } audio)
+            return (audio.Name, Martlet.Audio.SoundJudgeKind.AudioModel);
+        if (SensePoolUsers.For(SenseKind.Audio, ThinkingPoolSettings.Load(store?.DataDirectory), abilities).FirstOrDefault(u => u.Summaries) is { } user)
+            return (user.Member.ModelId is { Length: > 0 } model ? $"{model} on {user.Member.Computer(thinking)}" : user.Name, Martlet.Audio.SoundJudgeKind.Pool);
+        return Martlet.Sherpa.SoundTagger.Included() ? (CpuSoundJudge.Label, Martlet.Audio.SoundJudgeKind.Cpu) : (null, null);
     }
 
     /// <summary>Companion › Listening › Describe PC sounds' status: off or why it can't run, else which judge describes the
@@ -758,10 +771,13 @@ public partial class MainWindow
                 "to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8)),
             .. ChattinessPicker("VisionChattiness")]));
         page.Children.Add(GazeCard(prefs));
-        page.Children.Add(ScreenSummaryCard(prefs, image.Path == SensePath.Described));
+        // The Thinking pool's models that see: they make the screen summaries when no image model takes them.
+        var poolSees = SensePoolUsers.For(SenseKind.Image, ThinkingPoolSettings.Load(store?.DataDirectory), abilities);
+        page.Children.Add(ScreenSummaryCard(prefs, image.Path == SensePath.Described, poolSees));
 
         // What Martlet captures and where it goes, for what it looks at and how chatty it is (Turn vision on is above).
-        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source, image), new Thickness(0, 0, 0, 0));
+        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source, image) +
+            SensePoolUsers.SummaryDisclosure(prefs.ScreenSummary, poolSees, image.Path == SensePath.Described), new Thickness(0, 0, 0, 0));
         AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
         page.Children.Add(Card(Heading("What Martlet sends"), disclosure));
     }
@@ -833,16 +849,19 @@ public partial class MainWindow
     }
 
     /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, an image model of its own
-    /// (<paramref name="byImageModel"/>, the saved choice) or a Thinking model that sees in the Thinking pool sums up in the
-    /// background what changed on the screen, and the next reply gets it as a note.</summary>
-    private Border ScreenSummaryCard(TalkPreferences prefs, bool byImageModel)
+    /// (<paramref name="byImageModel"/>, the saved choice) or a Thinking model that sees in the Thinking pool (<paramref name="poolSees"/>,
+    /// named in the status) sums up in the background what changed on the screen, and the next reply gets it as a note. The saved
+    /// pool says which models make them, also before the conversation has read the pool.</summary>
+    private Border ScreenSummaryCard(TalkPreferences prefs, bool byImageModel, IReadOnlyList<SensePoolUsers.User> poolSees)
     {
-        var canSee = byImageModel || conversation?.ScreenDigestThinker.CanSee == true;
+        var makers = poolSees.Where(u => u.Summaries).ToArray();
+        // The saved pool says which models make summaries, also before the conversation has read the pool.
+        var canSee = byImageModel || makers.Length > 0 || conversation?.ScreenDigestThinker.CanSee == true;
         var box = new CheckBox { Content = "Screen summary over time", IsChecked = prefs.ScreenSummary, Margin = new Thickness(0, 0, 0, 6) };
         AutomationProperties.SetAutomationId(box, "VisionScreenSummary");
         box.Checked += (_, _) => { if (!Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = true }, render: true); };
         box.Unchecked += (_, _) => { if (Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = false }, render: true); };
-        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, canSee, byImageModel);
+        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, canSee, byImageModel, makers.Length > 0 ? SensePoolUsers.Names(makers) : null);
         var status = prefs.ScreenSummary && prefs.Watch && !canSee ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "VisionScreenSummaryStatus");
         return Card(Heading("Screen summary over time"), box, status,
@@ -855,11 +874,15 @@ public partial class MainWindow
                 "waits for it. Each summary is one more request with a picture, which may cost more.", new Thickness(0, 6, 0, 0)));
     }
 
-    internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee, bool byImageModel = false) =>
+    /// <summary>The screen summary's status; <paramref name="poolModels"/> names the Thinking pool models that make the summaries
+    /// (null: not known, or none).</summary>
+    internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee, bool byImageModel = false, string? poolModels = null) =>
         !on ? "Off. Replies know only the newest picture."
         : !vision ? "On, but vision is off. Turn vision on above."
         : !canSee ? "Off for now: the Thinking pool has no other model that sees. Add one that sees in Companion › Thinking pool."
-        : byImageModel ? "On. While Martlet watches, your image model sums up what changed for your next message."
+        : byImageModel ? "On. While Martlet watches, your image model sums up what changed for your next message." +
+            (poolModels is null ? "" : $" When it can't, the Thinking pool does it ({poolModels}).")
+        : poolModels is not null ? $"On. While Martlet watches, a Thinking pool model that sees ({poolModels}) sums up what changed for your next message."
         : "On. While Martlet watches, a Thinking model that sees sums up what changed for your next message.";
 
     private string GazeStatus(TalkPreferences prefs)

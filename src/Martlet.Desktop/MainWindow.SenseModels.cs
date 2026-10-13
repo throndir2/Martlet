@@ -127,8 +127,9 @@ public partial class MainWindow
         return $"{what} go to {(Uri.TryCreate(own.Origin, UriKind.Absolute, out var uri) ? uri.IdnHost : own.Origin)}, and requests may cost money.";
     }
 
-    /// <summary>Companion › Thinking's line on the image and audio models ("ThinkingSenses"): where pictures and recordings go now.</summary>
-    internal static string TextModelText(SenseModels senses, SetupRoute? thinking, ModelAbilities? abilities)
+    /// <summary>Companion › Thinking's line on the image and audio models ("ThinkingSenses"): where pictures and recordings go now,
+    /// and the Thinking pool models that get them too for background work (<paramref name="pool"/>; null: not said).</summary>
+    internal static string TextModelText(SenseModels senses, SetupRoute? thinking, ModelAbilities? abilities, ThinkingPoolSettings? pool = null)
     {
         string Goes(SenseKind kind) => SenseRouting.For(kind, senses, thinking, abilities) switch
         {
@@ -136,15 +137,19 @@ public partial class MainWindow
             { Path: SensePath.Thinking } => "Thinking itself",
             _ => kind == SenseKind.Image ? "no model, so Martlet can't see" : "no model, so Thinking gets the transcript only"
         };
+        string Pool(SenseKind kind) => pool is not null && SensePoolUsers.For(kind, pool, abilities).Where(u => u.Gets).ToArray() is { Length: > 0 } users
+            ? $" Background work also sends {SenseInputs(kind)} to {SensePoolUsers.Names(users)} in the Thinking pool."
+            : "";
         return $"Thinking is the text model: it writes every reply. Pictures go to {Goes(SenseKind.Image)} (Companion › Vision), and " +
-            $"recordings go to {Goes(SenseKind.Audio)} (Companion › Hearing).";
+            $"recordings go to {Goes(SenseKind.Audio)} (Companion › Hearing)." + Pool(SenseKind.Image) + Pool(SenseKind.Audio);
     }
 
     /// <summary>Companion › Thinking's Now card: the text model writes every reply, and where pictures and recordings go, with links
     /// to the image and audio models.</summary>
     private StackPanel TextModelLine(SetupRoute? thinking)
     {
-        var line = Note(TextModelText(SavedSenses(), thinking, SavedModelAbilities()), new Thickness(0, 6, 0, 0));
+        var line = Note(TextModelText(SavedSenses(), thinking, SavedModelAbilities(), ThinkingPoolSettings.Load(store?.DataDirectory)),
+            new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(line, "ThinkingSenses");
         var links = Row(PageButton("Image model", () => OpenCompanion(CompanionTab.Vision), link: true, id: "ThinkingOpenImageModel"),
             PageButton("Audio model", () => OpenCompanion(CompanionTab.Hearing), link: true, id: "ThinkingOpenAudioModel"));

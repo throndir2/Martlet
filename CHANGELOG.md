@@ -19,6 +19,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- **Vision lists every model that gets your pictures**: a cloud model in the Thinking pool (such as NVIDIA Build) that makes your screen summaries now shows under Companion › Vision's image models, with what it gets the pictures for. Hearing does the same for recordings. The screen summary line, *What Martlet sends* and Companion › Thinking also name these models, and the Thinking pool no longer says a model that sees reads only text. ([#839](https://github.com/throndir2/Martlet/pull/839))
 - **Screen summaries on cloud models time out less often**: a summary of your screen now has 30 seconds instead of 15 to get its answer, so a slow cloud endpoint such as NVIDIA Build still finishes it instead of showing *Timed out*. ([#838](https://github.com/throndir2/Martlet/pull/838))
 - When a smaller model answers and then adds "[pass]", the reply no longer shows "[pass]" at its end, and its words are still said. ([#837](https://github.com/throndir2/Martlet/pull/837))
 

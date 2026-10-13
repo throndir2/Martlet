@@ -117,7 +117,15 @@ standard page order (`MainWindow.SenseModels.cs`, `MainWindow.SensePools.cs`,
    its model and the rest of the table above. **A cloud provider or server**
    (`Pool-vision-AddCloud`) shows the cloud form. Every change saves
    `pools-local.json`, and the running conversation follows at once
-   (`ReloadSenseModels`).
+   (`ReloadSenseModels`). Under the members, **Also gets your pictures: the
+   Thinking pool** (or *recordings* on Hearing, `SensePoolUsers`) lists every
+   Thinking pool model that sees (or hears), cloud providers and servers
+   included, with what it gets them for (screen or PC sound summaries, touch
+   zones, the eyes, check-ins) or why it gets none (`Pool-vision-Also-<n>`).
+   It reads `thinking-pool.json` and `model-abilities.json` with the job
+   board's rules, so the page names every model that gets your pictures even
+   when the list itself is empty. Change those models on Companion › Thinking
+   pool (`Pool-vision-AlsoOpen`).
 3. On Hearing, *Hear how you say it* follows: the consent check box, the voice
    path and Test hearing. Listening links to Hearing.
 

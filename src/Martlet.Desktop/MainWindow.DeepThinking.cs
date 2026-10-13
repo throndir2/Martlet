@@ -92,8 +92,11 @@ public partial class MainWindow
 
         var places = ThinkLonger.Places(plan, BackgroundDuties.Of(store?.DataDirectory), choices: pool).Where(p => p.Id != "thinking").ToArray();
         var all = pool.All;
+        // What each member can do comes from the saved model abilities (the conversation's pool reads the same file), so the
+        // list says the same before the conversation has read the pool.
+        var abilities = SavedModelAbilities();
         var members = all.Select(m => new ThinkingPoolMemberStatus(m.Key, m.Computer(null), m.ThinksAtOnce, 0,
-            conversation?.PoolCan(m) ?? ThinkingCapability.Text, 0)).ToArray();
+            ThinkingPoolCapabilities.For(m, abilities), 0)).ToArray();
         var summary = Note(PoolSummary(pool, places.Sum(p => p.Slots)), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(summary, "ThinkingPoolSummary");
         stack.Add(summary);
