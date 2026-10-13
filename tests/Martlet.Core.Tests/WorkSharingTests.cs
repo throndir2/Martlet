@@ -278,6 +278,8 @@ public sealed class WorkSharingTests
         public string Id { get; } = id;
         public bool HoldForLive { get; set; }
         public bool RefuseLive { get; set; }
+        // How long a stopped request takes to free the computer, as on a busy PC.
+        public TimeSpan CloseDelay { get; set; }
         public List<string> Started { get; } = [];
 
         public async IAsyncEnumerable<string> Run(string request, bool background, [EnumeratorCancellation] CancellationToken token)
@@ -291,7 +293,11 @@ public sealed class WorkSharingTests
                 await Task.Delay(background ? Timeout.InfiniteTimeSpan : TimeSpan.FromMilliseconds(20), token);
                 yield return $"{request} by {Id}";
             }
-            finally { Volatile.Write(ref running, 0); }
+            finally
+            {
+                if (CloseDelay > TimeSpan.Zero) await Task.Delay(CloseDelay);
+                Volatile.Write(ref running, 0);
+            }
         }
 
         public void Occupy() => Interlocked.Exchange(ref running, 1);
@@ -308,13 +314,17 @@ public sealed class WorkSharingTests
         return last;
     }
 
-    [Fact]
-    public async Task A_live_request_stops_this_pcs_own_background_request_instead_of_waiting_behind_it()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(100)]
+    public async Task A_live_request_stops_this_pcs_own_background_request_instead_of_waiting_behind_it(int closeMs)
     {
+        // closeMs: the stopped request frees the computer only after the live request has retried several times.
         var queue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(10) };
         (string Lane, string Host)? stopped = null;
-        queue.Preempted += (lane, host) => stopped = (lane, host);
-        var host = new Ollama("diva");
+        var preempted = 0;
+        queue.Preempted += (lane, host) => { stopped = (lane, host); Interlocked.Increment(ref preempted); };
+        var host = new Ollama("diva") { CloseDelay = TimeSpan.FromMilliseconds(closeMs) };
         var background = Stream(queue, "remembering", WorkPriority.Background, host);
         var waited = System.Diagnostics.Stopwatch.StartNew();
         while (queue.Background("thinking", "diva") == 0 && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(5);
@@ -323,6 +333,7 @@ public sealed class WorkSharingTests
         await Assert.ThrowsAsync<WorkPreemptedException>(() => background);
         Assert.Equal(("thinking", "diva"), stopped);
         Assert.Equal(1, queue.Stopped);
+        Assert.Equal(1, preempted);
         Assert.Equal(["remembering", "reply"], host.Started);
         Assert.Equal(0, queue.Background("thinking", "diva"));
         Assert.Equal(0, queue.Running("thinking", "diva"));
