@@ -46,15 +46,17 @@ public partial class MainWindow
             var audio = SenseRouting.For(SenseKind.Audio, senses, thinking, abilities);
             voice = (audio.Model is { } own ? Talk.HearVoiceFor(VoiceNotes.StaysOnThisPc(own)) : Talk.HearVoiceFor(thinking)).On;
         }
-        return SenseDecisionFor(job, senses, thinking, abilities, ThinkingPoolSettings.Load(store?.DataDirectory), conversation?.ThinkingPool,
-            Martlet.Sherpa.SoundTagger.Included(), voice);
+        var row = SenseJobRouting.Row(job);
+        return SenseDecisionFor(job, senses, thinking, abilities,
+            conversation is null && row.PoolKind is not null ? ThinkingPoolSettings.Load(store?.DataDirectory) : new(), conversation?.ThinkingPool,
+            row.Order.Contains(SenseTaker.ThisPc) && Martlet.Sherpa.SoundTagger.Included(), voice);
     }
 
     /// <summary>Which model takes <paramref name="job"/>: the reply's route from <paramref name="senses"/> and Thinking, the pool member
     /// from <paramref name="live"/> (the conversation's Thinking pool) or, without one, the first member of the saved pool that takes
     /// the job (<see cref="SensePoolUsers"/>, the job board's rules), and whether the sound tagger is here (<paramref name="thisPc"/>).</summary>
     internal static SenseDecision SenseDecisionFor(SenseJobKind job, SenseModels senses, SetupRoute? thinking, ModelAbilities? abilities,
-        ThinkingPoolSettings pool, ThinkingPool? live, bool thisPc, bool voiceAllowed = true)
+        ThinkingPoolSettings pool, DesktopThinkingPool? live, bool thisPc, bool voiceAllowed = true)
     {
         var row = SenseJobRouting.Row(job);
         var inputs = SenseJobInputs.For(row.Kind, senses, thinking, abilities) with { ThisPc = thisPc, VoiceAllowed = voiceAllowed };

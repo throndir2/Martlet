@@ -517,7 +517,7 @@ internal static class AutomationPolicy
         new("LiveGaze", "Talk window", "Shows what Martlet looks at now and the last time it looked away, while Martlet decides. Never what is on screen."),
         // Needs --allow-ui-effects: VisionGaze-Mouse, Keep its usual gaze and VisionGaze-Martlet (they save talk-preferences.json).
         new("VisionScreenSummary", "Companion › Vision", "Shows the Screen summary over time check box. A change saves talk-preferences.json, so it needs --allow-ui-effects."),
-        new("VisionScreenSummaryStatus", "Companion › Vision", "Shows whether the screen summary runs, or why not."),
+        new("VisionScreenSummaryStatus", "Companion › Vision", "Shows whether the screen summary runs and which model makes it (SenseJobRouting's decision), or why not."),
         new("LiveScreenSummary", "Talk window", "Shows the pictures kept, the age of the last summary and the time it took. Its help text is the last summary: what changed on the screen, never a window title on its own."),
         new("TalkHearVoiceTestStatus", "Companion › Hearing", "Shows what Test hearing does and whether it stays on this PC, or what the last test found (the one-word answer of the model). Never anything said."),
         // Needs --allow-ui-effects and a model on this PC: TalkHearVoiceTest (sends the Thinking model a test recording, a provider request).
@@ -639,7 +639,7 @@ internal static class AutomationPolicy
         // Each combo's CharacterComboName-, CharacterComboState-, CharacterComboHint- and CharacterComboTry-<n> read through SafeValuePrefixes.
         // Needs --allow-ui-effects: a combo's tag, parts, When to use, on box and Remove (save), and Try and Turn off (change what the character shows).
         new("TouchZonesStatus", "Companion › Touch › Touch zones", "Shows how many zones the shown model has, how many are in use and who found them."),
-        new("TouchZonesVision", "Companion › Touch › Touch zones", "Shows whether the Thinking model can see, and where pictures go."),
+        new("TouchZonesVision", "Companion › Touch › Touch zones", "Shows which model finds the zones (SenseJobRouting's decision: a Thinking pool member, the image model or the Thinking model), and where pictures go."),
         new("TouchZonesDetection", "Companion › Touch › Touch zones", "Shows how Detect zones went, with each step while it runs."),
         new("TouchZonesLast", "Companion › Touch › Touch zones", "Shows which zone the last touch landed in and what it played."),
         new("TouchZonesSaveState", "Companion › Touch › Touch zones", "Shows whether edits saved."),

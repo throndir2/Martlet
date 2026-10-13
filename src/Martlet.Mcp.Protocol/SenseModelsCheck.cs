@@ -206,6 +206,28 @@ internal static class SenseModelsCheck
                 $"passed Test vision: {passedSaid}; failed Test vision: {failedSaid}; unknown cloud model: list {cloudList.Path} (tried), " +
                 $"pool {(cloudPool ? "sees" : "no pictures")}");
         }
+        // 10c. Which model takes each picture and recording job (SenseJobRouting, the one table): with an image model, an audio model
+        //      and a Thinking pool member that sees and hears, summaries go to the image and audio models first (the pool when they
+        //      can't), helper jobs and check-ins to the pool first; with none of them, Thinking takes the reply's picture, recording
+        //      and helper jobs, and the sound tagger names PC sounds.
+        {
+            SenseDecision Pick(SenseJobKind job, SenseModels senses, string? pool)
+            {
+                var row = SenseJobRouting.Row(job);
+                return SenseJobRouting.Decide(job, SenseJobInputs.For(row.Kind, senses, omni, null) with { PoolName = pool, ThisPc = true });
+            }
+            string Said(IEnumerable<SenseDecision> picks) => string.Join(", ", picks.Select(d => $"{d.Job} {d.Taker}"));
+            var all = Enum.GetValues<SenseJobKind>().Select(job => Pick(job, new SenseModels { Image = eyes, Audio = ears }, "diva (gemma4:e4b)")).ToArray();
+            var none = Enum.GetValues<SenseJobKind>().Select(job => Pick(job, new SenseModels(), null)).ToArray();
+            Check("job-routing",
+                Said(all) == "ReplyPicture SenseModel, ScreenSummary SenseModel, HelperPicture PoolMember, CheckInScreenshot PoolMember, " +
+                    "ReplyVoice SenseModel, PcSound SenseModel, CheckInRecording PoolMember" &&
+                Said(none) == "ReplyPicture ThinkingModel, ScreenSummary Nobody, HelperPicture ThinkingModel, CheckInScreenshot Nobody, " +
+                    "ReplyVoice ThinkingModel, PcSound ThisPc, CheckInRecording Nobody" &&
+                all[(int)SenseJobKind.ScreenSummary].Then?.Taker == SenseTaker.PoolMember,
+                $"with models of their own and a pool member: {Said(all)}; with none: {Said(none)}; empty lists say instead: " +
+                SenseJobRouting.Instead(none.Where(d => d.Row.Kind == SenseKind.Image)));
+        }
         // 11. sense-models.json round trip, and an unreadable file reads as the text model for both. Then the lists are made from it
         //     once (Vision and Hearing, pools-local.json), read back without writing, and a damaged list file reads as the text model.
         {

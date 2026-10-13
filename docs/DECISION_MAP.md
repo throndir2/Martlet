@@ -23,62 +23,56 @@ Some decisions have more than one owner today. Their sections say so and name
 the planned owner. Work to make one owner is in progress; a section marked
 **Moving** changes when that work merges.
 
-## Which model looks at a picture (picture routing)
+## Which model takes a picture or a recording (picture and recording routing)
 
-**What it decides:** for each job with a picture, which model gets the picture,
-in which order.
+**What it decides:** for each job with a picture or a recording, which model
+gets it, in which order, and what happens when no one takes it.
 
-**Moving.** Today four jobs each decide in their own place, in different
-orders. The planned owner is `PictureRouting`
-(`src\Martlet.Conversation\Vision\PictureRouting.cs`): one decision record
-with an ordered list of steps and a *why* text for each step.
+**Owner:** `SenseJobRouting` (`src\Martlet.Conversation\SenseJobRouting.cs`).
+`SenseJobRouting.Rows` is the one table of the orders (one row for each
+`SenseJobKind`), and `SenseJobRouting.Decide` gives a `SenseDecision`: each
+step in order (`SenseTaker`: the image or audio model, a Thinking pool member,
+Thinking's own model, the sound tagger on this PC, no one), whether it takes
+the job now and why. The reply jobs read their path from `SenseRouting.For`
+(`src\Martlet.Conversation\SenseRouting.cs`); whether a model sees or hears is
+`ModelSenses` (below). The orders are in
+[Who takes each picture and recording](SENSE_MODELS.md#who-takes-each-picture-and-recording).
 
-| Picture job | Order today | Owner today |
+| Job | Order | Runner that follows the decision |
 | --- | --- | --- |
-| A picture with a reply (a look, or the newest picture while Martlet watches) | 1. The image model (Companion › Vision's list). 2. Else Thinking's own model, in the reply's request. 3. Else no picture. | `SenseRouting.For(SenseKind.Image, ...)` (`src\Martlet.Conversation\SenseRouting.cs`). The list's members in order: `SensePool` (`src\Martlet.Conversation\SensePool.cs`) |
-| A screen summary | 1. The image model, but only while reply pictures go to it (path Described). 2. Else a Thinking pool member that sees (job kind `Digest`). 3. Else the simple rules. Never Thinking's own model. | `ImageModelScreenDigestThinker` and `PoolScreenDigestThinker` (`src\Martlet.Desktop\PoolScreenDigestThinker.cs`), joined in `LiveConversationController.cs` |
-| Touch zones and measuring the eyes (helper jobs) | 1. A free Thinking pool member that sees (job kind `TouchZones`). 2. Else the image model. 3. Else Thinking's own model, after the reply. | `HelperJobs.RunAsync` (`src\Martlet.Desktop\HelperJobs.cs`) with `ThinkingPoolHelpers` (`src\Martlet.Desktop\ThinkingPoolHelpers.cs`); the image model step is `AskImageModelAsync` (`src\Martlet.Desktop\LiveConversationController.Senses.cs`) |
-| A check-in with a screenshot | A Thinking pool member that sees (job kind `CheckIn`). Else the check-in waits. | `CheckIns.Needs` (`src\Martlet.Conversation\CheckIns.cs`) and the check-in runner in `src\Martlet.Desktop\MainWindow.CheckIns.cs` |
+| The picture with a reply | Image model, Thinking's own model | The reply (`SenseRouting.For`, `SensePool` for the list's members) |
+| A screen summary | Image model, Thinking pool member that sees (`digest`) | `ImageModelScreenDigestThinker` and `PoolScreenDigestThinker` (`src\Martlet.Desktop\PoolScreenDigestThinker.cs`) |
+| Touch zones and the eyes | Thinking pool member that sees (`touch-zones`), image model, Thinking's own model after the reply | `HelperJobs.RunAsync` (the pool first), then `AskHelperAsync`'s fallback (`src\Martlet.Desktop\LiveConversationController.cs`) |
+| A check-in with a screenshot | Thinking pool member that sees (`check-in`) | `CheckIns.Needs` (`src\Martlet.Conversation\CheckIns.cs`) and the check-in runner |
+| Your voice with a reply | Audio model, Thinking's own model (each when *Hear how you say it* allows it) | The reply (`SenseRouting.For`) |
+| A PC sound description | Audio model, Thinking pool member that hears (`digest`), the sound tagger | `LiveConversationController.SoundJudge()` (`src\Martlet.Desktop\LiveConversationController.AudioModel.cs`) |
+| A check-in with a recording | Thinking pool member that hears (`check-in`) | `CheckIns.Needs` and the check-in runner |
+
+The conversation decides with what it runs with
+(`LiveConversationController.SenseDecision`); a page decides from the saved
+settings with the same rules (`MainWindow.SenseDecisionFor`).
 
 **Shows it:** Companion › Vision (`ImageModelRoute` shows `SenseRoute.Why`;
-`VisionScreenSummaryStatus`; the *Also gets your pictures* rows from
-`SensePoolUsers`, `src\Martlet.Desktop\SensePoolUsers.cs`), Companion › Touch
-(`TouchZonesVision`) and Companion › Eyes. These pages compute their own text
-today (see [Pool summary text](#pool-summary-text)).
+`VisionScreenSummaryStatus`; the list summary `Pool-vision-Summary` while
+nothing is on), Companion › Hearing (`Pool-hearing-Summary`), Companion ›
+Listening (`TalkDescribePcSoundsStatus`), Companion › Touch
+(`TouchZonesVision`) and Companion › Eyes. The *Also gets your pictures* rows
+(`SensePoolUsers`) read the jobs from the table.
 
-**Tests:** `SenseRoutingTests`, `SensePoolTests` and `CheckInsTests`
-(Martlet.Conversation.Tests); `ImageModelPipelineTests`, `ScreenDigestTests`,
-`HelperJobsTests`, `SensePoolDesktopTests` and `SensePoolUsersTests`
-(Martlet.Desktop.Tests).
+**Tests:** `SenseJobRoutingTests` (each job in each setup), `SenseRoutingTests`,
+`SensePoolTests` and `CheckInsTests` (Martlet.Conversation.Tests);
+`SenseJobAgreementTests` (the page and the conversation pick the same model,
+and the page's text names it), `ImageModelPipelineTests`, `ScreenDigestTests`,
+`HelperJobsTests`, `AudioModelVoiceTests`, `PcSoundDigestTests`,
+`SensePoolDesktopTests` and `SensePoolUsersTests` (Martlet.Desktop.Tests).
 
-**MCP:** `sense_models_status`, `sense_models_check`, `image_model_check`,
-`screen_digest_check`, `helper_jobs_status`, `helper_jobs_check`,
-`check_ins_status`, `check_ins_check`; `ui_snapshot` with `idPrefix`
-`ImageModel` or `Pool-vision`.
+**MCP:** `sense_models_status` (`desktop.file.jobs`: each job's decision),
+`sense_models_check` (`job-routing`), `image_model_check`,
+`audio_model_check`, `screen_digest_check`, `sound_digest_check`,
+`helper_jobs_status`, `check_ins_status`; `ui_snapshot` with `idPrefix`
+`ImageModel`, `Pool-vision` or `Pool-hearing`.
 
 **Docs:** [SENSE_MODELS.md](SENSE_MODELS.md).
-
-## Which model hears a recording (recording routing)
-
-**What it decides:** for each job with a recording, which model gets the
-recording.
-
-**Moving**, with picture routing, to one owner for pictures and recordings.
-
-| Recording job | Order today | Owner today |
-| --- | --- | --- |
-| Your voice with a reply | 1. The audio model (Companion › Hearing's list) describes it. 2. Else Thinking's own model, when it hears and *Let Thinking hear my voice* allows it. 3. Else the transcript only. | `SenseRouting.For(SenseKind.Audio, ...)`; the voice job is in `src\Martlet.Desktop\LiveConversationController.AudioModel.cs` |
-| What this PC plays (PC sound descriptions) | 1. The audio model. 2. Else a Thinking pool member that hears (job kind `Digest`). 3. Else the sound tagger on the processor. | `LiveConversationController.SoundJudge()` (`SenseSoundJudge`, then `PoolSoundJudge`, `src\Martlet.Desktop\PoolSoundJudge.cs`), then `CpuSoundJudge` in `src\Martlet.Desktop\PcSoundDigest.cs` |
-| A check-in with a recording | A Thinking pool member that hears (job kind `CheckIn`). | `CheckIns.Needs` |
-
-**Shows it:** Companion › Hearing (`AudioModel...`, the *Also gets your
-recordings* rows) and Companion › Listening.
-
-**Tests:** `SenseRoutingTests` (Martlet.Conversation.Tests);
-`AudioModelVoiceTests` and `PcSoundDigestTests` (Martlet.Desktop.Tests).
-
-**MCP:** `audio_model_check`, `sound_digest_check`, `hearing_check`,
-`sense_models_status`.
 
 ## Whether a model sees, hears or calls tools (sense capability)
 
@@ -175,26 +169,25 @@ The keys are in the [glossary](GLOSSARY.md#thinking-pool-job-keys).
 **What it decides:** the sentence above a pool list that says what the list
 does now, and what happens when no member is on.
 
-**Moving.** Today each page makes its own sentence from the settings:
+**Owner:** `PoolListSummary.Describe` (`src\Martlet.Core\Cluster\PoolListSummary.cs`).
+`Pool-<area>-Summary` on every pool list (`PoolListCard`,
+`src\Martlet.Desktop\MainWindow.Pools.cs`) and the area's line on Devices ›
+Sharing work (`WorkSharingPool-<area>`, `MainWindow.WorkSharing.cs`) both show
+it. While nothing in the Vision or Hearing list is on, the *Instead* words
+come from the decisions above (`SenseJobRouting.Instead`, through
+`MainWindow.SenseInstead`), not from `PoolArea.Fallback`.
 
-| Text | Owner today |
+| Other text | Owner |
 | --- | --- |
-| `Pool-<area>-Summary` on every pool list | `PoolListCard` (`src\Martlet.Desktop\MainWindow.Pools.cs`), with the fixed `PoolArea.WhenEmpty` text (`src\Martlet.Core\Cluster\Pools.cs`) |
-| The same sentence on Devices › Sharing work | `src\Martlet.Desktop\MainWindow.WorkSharing.cs` (a second copy, other words) |
-| *Also gets your pictures* (or *recordings*) under the Vision and Hearing lists | `SensePoolUsers.Summary` and `SensePoolUsers.Line` (`src\Martlet.Desktop\SensePoolUsers.cs`), shown by `MainWindow.SensePools.cs` |
+| *Also gets your pictures* (or *recordings*) under the Vision and Hearing lists | `SensePoolUsers.Summary` and `SensePoolUsers.Line` (`src\Martlet.Desktop\SensePoolUsers.cs`), with the jobs from `SenseJobRouting.Rows` |
 | The Thinking pool's notes (no member, offline, no member that sees) | `ThinkingJobBoard.Guidance` (`src\Martlet.Conversation\ThinkingPool.cs`) |
 
-For Vision and Hearing, `PoolArea.WhenEmpty` is true only for a picture or a
-recording with a reply. Screen summaries and other background jobs never go
-to Thinking's own model. The *Also gets your pictures* rows name the Thinking
-pool members that get them. The planned owner is one summary function that
-reads the routing decision (picture routing above), not `PoolArea.WhenEmpty`.
+**Tests:** `PoolListSummaryTests` and `PoolsTests` (Martlet.Core.Tests);
+`SenseJobAgreementTests`, `SensePoolUsersTests` and `SensePoolDesktopTests`
+(Martlet.Desktop.Tests).
 
-**Tests:** `SensePoolUsersTests` and `SensePoolDesktopTests`
-(Martlet.Desktop.Tests); `PoolsTests` (Martlet.Core.Tests).
-
-**MCP:** `ui_snapshot` (`Pool-<area>-Summary`, `Pool-vision-AlsoSummary`,
-`Pool-vision-Also-<n>`), `work_sharing_status`.
+**MCP:** `ui_snapshot` (`Pool-<area>-Summary`, `WorkSharingPool-<area>`,
+`Pool-vision-AlsoSummary`, `Pool-vision-Also-<n>`), `work_sharing_status`.
 
 ## Shared or local: which settings travel to the owner's other computers
 

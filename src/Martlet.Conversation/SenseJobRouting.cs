@@ -234,7 +234,8 @@ public static class SenseJobRouting
                     ? new(taker, true, "the sound tagger on this PC", "The sound tagger on this PC's processor names what it hears.")
                     : new(taker, false, null, "The sound tagger isn't in Martlet's folder on this PC.");
             default:
-                return new(taker, true, null, Capitalized(row.WhenNobody) + ".");
+                // A reply without the picture or recording says why, as the reply's route does.
+                return new(taker, true, null, reply && route.Path == SensePath.None && voice ? route.Why : Capitalized(row.WhenNobody) + ".");
         }
     }
 

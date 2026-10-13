@@ -731,7 +731,14 @@ settings; before that, a kind that goes to the text model says to set up
 Thinking), and for each kind its path, model and why, `sharesConversation`, and
 its line (`busy`, `waiting`, `held` for a reply, `runs` and the `last` job's
 purpose, outcome, milliseconds, model and problem; never what was sent or
-said).
+said). Its `jobs` are the decisions of which model takes each job with a
+picture or a recording now (`SenseJobRouting`,
+[Who takes each picture and recording](SENSE_MODELS.md#who-takes-each-picture-and-recording)):
+for each `job` (`ReplyPicture`, `ScreenSummary`, `HelperPicture`,
+`CheckInScreenshot`, `ReplyVoice`, `PcSound`, `CheckInRecording`) its `kind`,
+`name`, `poolKind`, the `taker` (`SenseModel`, `PoolMember`, `ThinkingModel`,
+`ThisPc` or `Nobody`), its `model` and `why`, and each of its `steps` in order
+(`taker`, `takes`, `model`, `why`). The runners follow these decisions.
 
 Each kind's `pool` ([The image and audio pools](SENSE_MODELS.md#the-image-and-audio-pools))
 is in both parts. From the data directory, while a model of its own describes
@@ -750,7 +757,12 @@ paired computer's model that hears takes recordings), the one rule for what a
 model takes (`one-rule-for-every-place`, `ModelSenses`: a paired computer's
 Test vision counts for the Vision list and the Thinking pool alike, and a
 model Martlet can't tell about is tried from the list but gets no Thinking
-pool picture jobs), the `sense-models.json`
+pool picture jobs), the order of each job with a picture or a recording
+(`job-routing`, `SenseJobRouting`: with an image model, an audio model and a
+Thinking pool member, summaries go to the image and audio models first and
+helper jobs and check-ins to the pool first; with none, Thinking takes the
+reply's picture, recording and helper jobs and the sound tagger names PC
+sounds), the `sense-models.json`
 round trip and the lists made from it once (`lists-made-once`; a damaged list
 file reads as the text model), and the production lines (`SenseLanes`) with a
 simulated runner, NOT models: no model of its own, one job at a time, a newer
@@ -860,8 +872,11 @@ off* or *on*) end each Now card.
 
 Below it, each page has the shared pool list for its models (the pool list
 control, described with Devices › Sharing work): `Pool-vision-...` and `Pool-hearing-...`
-(`-Summary` reads *Nothing in the list is on. Instead: Thinking's own model
-takes the pictures itself.* for an empty list; `-Member-<i>` reads *1. This PC. Each companion PC
+(`-Summary` reads, for an empty list, who takes each job instead, from
+`SenseJobRouting`: *Nothing in the list is on. Instead: Thinking's own model
+(gemma4:e2b) takes the picture with a reply; diva (qwen2.5vl:7b) in the
+Thinking pool takes screen summaries, touch zones, the character's eyes and
+check-ins with a screenshot.*; `-Member-<i>` reads *1. This PC. Each companion PC
 itself; qwen2.5vl:7b: sees pictures; in use: it takes the pictures first.*).
 Under the members, *Also gets your pictures: the Thinking pool* names every
 Thinking pool model that sees (on Hearing: hears), so the page lists every

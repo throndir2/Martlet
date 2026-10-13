@@ -194,9 +194,15 @@ internal sealed partial class LiveConversationController
             ? $"Voice description: the audio model found nothing that stands out ({Ms(note.ReadyAfter ?? TimeSpan.Zero)} ms after you stopped)."
             : $"Voice description: none ({note.Outcome?.ToString() ?? "not run"}{(note.Problem is { } problem ? ": " + problem : "")}).";
 
-    /// <summary>The sound digest's judge now: the audio model while it takes recordings (the audio path is Described), else a
-    /// Thinking pool member that hears, else none (the digest uses the CPU sound tagger).</summary>
-    internal ISoundJudge? SoundJudge() => (ISoundJudge?)SenseSoundJudge.For(this) ?? PoolSoundJudge.For(ThinkingPool);
+    /// <summary>The sound digest's judge now, as <see cref="SenseJobRouting"/> decides <see cref="SenseJobKind.PcSound"/>: the audio
+    /// model while it takes recordings (the audio path is Described), else a Thinking pool member that hears, else none (the digest
+    /// uses the sound tagger on this PC's processor when it is there).</summary>
+    internal ISoundJudge? SoundJudge() => SenseDecision(SenseJobKind.PcSound).Taker switch
+    {
+        SenseTaker.SenseModel => SenseSoundJudge.For(this),
+        SenseTaker.PoolMember => PoolSoundJudge.For(ThinkingPool),
+        _ => null
+    };
 
     /// <summary>Whether the sound digest skips its turn: on the audio model, while it shares the conversation's computer and the
     /// live floor isn't idle (or a reply makes its voice); in the Thinking pool, while the live floor holds its members that hear.</summary>
