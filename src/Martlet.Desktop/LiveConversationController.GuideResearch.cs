@@ -26,12 +26,35 @@ internal sealed partial class LiveConversationController
         };
         Volatile.Write(ref guideResearch, research);
         Board.Changed += ScreenForGuides;
+        var progress = new GameProgress(new PoolGuideThinker(() => ThinkingPool), Board, clock) { Log = ErrorLog.Info };
+        Volatile.Write(ref gameProgress, progress);
+        gameProgressGuides = guides;
+        Board.Changed += ScreenForGame;
     }
 
     internal void StopGuideResearch()
     {
         Board.Changed -= ScreenForGuides;
+        Board.Changed -= ScreenForGame;
         Interlocked.Exchange(ref guideResearch, null)?.Dispose();
+        Interlocked.Exchange(ref gameProgress, null)?.Dispose();
+        Board.Clear(ContextBoard.Game);
+    }
+
+    private GameProgress? gameProgress;
+    private AppGuideService? gameProgressGuides;
+
+    /// <summary>The running note on where the user is in the game in front; null before <see cref="StartGuideResearch"/>.</summary>
+    internal GameProgress? GameProgress => Volatile.Read(ref gameProgress);
+
+    // Like ScreenForGuides: reads the screen note only when the game note wants one, and only while a game (or an app with a
+    // guide) is in front. The update runs on the thread pool, as a Research job on a Thinking pool member.
+    private void ScreenForGame()
+    {
+        if (GameProgress is not { WantsScreen: true } progress || gameProgressGuides?.Front is not { } front ||
+            !(front.Game || front.Entry is not null)) return;
+        var screen = Board.Snapshot(clock.GetLocalNow()).Notes.FirstOrDefault(n => n.Source == ContextBoard.Screen)?.Text;
+        if (screen is not null) progress.Screen(front.Entry?.Name ?? front.Program, front.Entry?.Brief, screen);
     }
 
     /// <summary>What the user does now, for choosing more wiki pages to read: the screen, sounds and activity notes on the board

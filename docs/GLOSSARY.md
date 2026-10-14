@@ -70,6 +70,7 @@ Companion › Singing ([Singing](SINGING.md#the-two-singing-pools)).
 | --- | --- | --- | --- |
 | A short note, about every 15 seconds, about what changed on your screen | `ScreenDigest` (`ScreenDigester`, `IScreenDigestThinker`) | screen summary (the setting is *Screen summary over time*) | Prompt key `screen_digest`; the `ScreenSummary` choice in `talk-preferences.json`; Thinking pool job key `digest`; image model lane key `screen-summary`; job label *Summary of the screen* |
 | A short note about a sound this PC plays | `SoundDigest` (`PcSoundDigest`, `ISoundJudge`) | PC sound description (the setting is *Describe PC sounds*) | Thinking pool job key `digest`; job label *Description of a sound on this PC* |
+| A running note on where you are in the game in front, made from the screen summaries | `GameProgress` | game note | Context board source `game`; Thinking pool job key `research`; job label *Game progress* |
 
 One Thinking pool job kind, `Digest` (key `digest`, label *Screen and sound
 summaries*), covers both.

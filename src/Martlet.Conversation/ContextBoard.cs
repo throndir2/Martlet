@@ -51,6 +51,8 @@ public sealed class ContextBoard
     public const string Gaze = "gaze";
     /// <summary>A digest of the last seconds of the screen.</summary>
     public const string Screen = "screen";
+    /// <summary>Where the user is in the game in front: a running note made from the screen summaries (<c>GameProgress</c>).</summary>
+    public const string Game = "game";
     /// <summary>A line about the sounds this PC plays (music, game sounds, laughter).</summary>
     public const string Sound = "sound";
     /// <summary>What the user seems to be doing on this PC (which apps play sound, what fills the screen), while Martlet hears it.</summary>
@@ -70,7 +72,7 @@ public sealed class ContextBoard
     public static readonly TimeSpan MaximumAge = TimeSpan.FromHours(1);
 
     // The known sources come first, in this order; others follow by name.
-    private static readonly string[] Order = [Character, Gaze, Screen, Sound, Activity, Touch];
+    private static readonly string[] Order = [Character, Gaze, Screen, Game, Sound, Activity, Touch];
 
     private readonly object gate = new();
     private readonly Dictionary<string, ContextNote> notes = new(StringComparer.Ordinal);

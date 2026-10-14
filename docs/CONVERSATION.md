@@ -331,6 +331,8 @@ can post from any thread.
 3. Use a known source name when one fits: `ContextBoard.Character`
    (`character`, posted by the conversation itself), `ContextBoard.Gaze`
    (`gaze`, also the conversation's own), `ContextBoard.Screen` (`screen`),
+   `ContextBoard.Game` (`game`: where you are in the game in front, see
+   [Where you are in a game](#where-you-are-in-a-game)),
    `ContextBoard.Sound` (`sound`), `ContextBoard.Activity` (`activity`: what you
    seem to be doing on this PC, see [Where it comes
    from](#where-it-comes-from-and-what-you-are-doing)) or `ContextBoard.Touch`
@@ -344,7 +346,7 @@ can post from any thread.
 Rules of the board:
 
 - **Order.** A request takes the notes in a stable order: `character`,
-  `gaze`, `screen`, `sound`, `activity`, `touch`, then other sources by name. The notes of one
+  `gaze`, `screen`, `game`, `sound`, `activity`, `touch`, then other sources by name. The notes of one
   request are at most 2,048 UTF-8 bytes together; a note later in the order
   that does not fit is left out. The board keeps at most 16 sources.
 - **Consume on read.** A note posted with `consume: true` goes with exactly
@@ -1571,6 +1573,41 @@ to fit drops these sections right after the earlier conversations' notes. The
 latency timeline marks *app guide*, and the desktop log notes counts, the best
 relevance and the time, never the words. Any other message gets nothing, so its
 request is what it always was.
+
+### Where you are in a game
+
+The screen summary tells only the last seconds of the screen, and it is fresh
+for 45 seconds. So Martlet also keeps a **running note** on where you are in
+the game in front: the place, what you do, what happened lately and how far
+into the game you seem (`GameProgress`,
+`src\Martlet.Conversation\Guides\GameProgress.cs`).
+
+1. While a game (or an app with a guide) is in front and the screen summary
+   changes, a Thinking pool member writes the note again. It gets the game's
+   name, its [brief](APP_GUIDES.md#the-brief) when there is one, the earlier
+   note with its age and the new screen summary. This happens at most once in
+   90 seconds, as a `Research` job (the lowest priority), never on the
+   conversation's own Thinking route and never on a reply's path.
+2. The answer is plain lines (*Where:*, *Doing:*, *Lately:*, *Progress:*),
+   at most 480 characters. *[same]* keeps the earlier note and posts it again.
+   An answer that is not a note changes nothing.
+3. The note goes on the [context board](#context-board) as source `game`,
+   right after `screen`, for 10 minutes after its last update: *Where the user
+   is in Skyrim (your running note from the screen; it may be a little out of
+   date): Where: …; Doing: …*. So replies, glances and check-ins know where you
+   are also when the newest screen summary is gone. It goes last in the
+   message and is never kept, so the start of every request stays the same.
+4. Each game keeps its own note in memory (at most 8 games), so when you go
+   back to a game, the next update starts from where you were. A note older
+   than 6 hours is not given to the model again. Nothing is saved to disk.
+
+It needs App guides on (they watch which program is in front), screen
+summaries on (Companion › Vision › *Screen summary over time*) and a Thinking
+pool member that takes research. It adds one small text request at most every
+90 seconds while you play, and nothing to a reply's wait. The desktop log says
+*Game progress: updated the note in 2.1 s (123 characters).*, never the game,
+the screen or the note. MCP's `game_progress_check` rehearses it with a
+fixture pool member ([MCP](MCP.md)).
 
 ## Reminders
 
