@@ -93,7 +93,7 @@ public sealed class SupportIntegrationTests
             ButtonById(main, "OpenTroubleshooting").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             original = main.OwnedWindows.OfType<TroubleshootingWindow>().Single();
             Click(original, "RecordButton");
-            await Until(() => Field<TextBox>(original, "WorkText").Text.Contains("Recording: ON", StringComparison.Ordinal) &&
+            await Until(() => Field<TextBox>(original, "WorkText").Text.Contains("Recording: on.", StringComparison.Ordinal) &&
                 !controller.IsBusy && Field<Button>(main, "ConversationButton").IsEnabled);
             if (blocked)
             {
@@ -125,7 +125,7 @@ public sealed class SupportIntegrationTests
                     Assert.False(controller.Recording);
                     if (blocked) Assert.True(controller.IsBusy);
                     release.Set();
-                    await Until(() => Field<TextBox>(current, "WorkText").Text.Contains("Recording: OFF", StringComparison.Ordinal) &&
+                    await Until(() => Field<TextBox>(current, "WorkText").Text.Contains("Recording: off.", StringComparison.Ordinal) &&
                         Field<Button>(current, "FreezeButton").IsEnabled);
                     Click(current, "FreezeButton");
                     await Until(() => Field<TabControl>(current, "PreviewTabs").Items.Count == 5);
@@ -323,7 +323,7 @@ public sealed class SupportIntegrationTests
         var network = new SupportController(@"\\untrusted.invalid\share\Martlet");
         Assert.Equal(SupportFailure.InvalidPath, (await Done(network.StartRecording())).Failure);
         Assert.False(network.HasResources);
-        Assert.Contains("local directory", network.Status);
+        Assert.Contains("Choose a local folder on this PC.", network.Status);
     }
 
     [Fact]
@@ -372,7 +372,7 @@ public sealed class SupportIntegrationTests
             await Until(() => Field<Button>(window, "ClearButton").IsEnabled);
             Field<TextBox>(window, "DestinationText").Text = scope.Output;
             Click(window, "ExportButton");
-            Assert.Contains("changed during confirmation", Field<TextBox>(window, "ResultText").Text);
+            Assert.Contains("The preview or destination changed.", Field<TextBox>(window, "ResultText").Text);
             Assert.False(File.Exists(scope.Output));
             Assert.False(File.Exists(Path.Combine(scope.Root, "changed.zip")));
             Field<CheckBox>(window, "LogsChoice").IsChecked = true;
@@ -521,7 +521,8 @@ public sealed class SupportIntegrationTests
             await Done(controller.StartRecording());
             response.Release.TrySetResult();
             await fixture.Finish();
-            await Until(() => controller.LiveStatus.Contains("Last conversation activity", StringComparison.Ordinal));
+            // The talk window shows the finished turn after Finish returns; wait for that status, not an earlier running one.
+            await Until(() => controller.LiveStatus.Contains("; Completed.", StringComparison.Ordinal));
             await Until(() => !controller.IsBusy);
             Assert.Null((await Done(controller.Freeze(true, Range()))).Failure);
             var preview = controller.Preview!;
@@ -569,7 +570,8 @@ public sealed class SupportIntegrationTests
             var earlierDrops = controller.Dropped;
             response.Release.TrySetResult();
             await fixture.Finish();
-            await Until(() => controller.LiveStatus.Contains("Last conversation activity", StringComparison.Ordinal));
+            // The talk window shows the finished turn after Finish returns; wait for that status, not an earlier running one.
+            await Until(() => controller.LiveStatus.Contains("; Completed.", StringComparison.Ordinal));
             Assert.False(fixture.Runner.IsRunning); // Optional journal IO cannot block the live action.
             Assert.True(controller.IsBusy);
             Assert.True(controller.Dropped > earlierDrops);

@@ -11,6 +11,20 @@ namespace Martlet.Support.Tests;
 public sealed class SnapshotTests
 {
     [Fact]
+    public async Task EveryProbeOfTheLocalDoctorReportCanBeFrozen()
+    {
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        var registry = ProbeRegistry.Local(new SettingsStore(Path.Combine(scope.Root, "first run")));
+        var report = await new ProbeExecutor(registry, clock).RunAsync();
+        Assert.Equal(registry.Definitions.Select(d => d.Id), report.Probes.Select(p => p.Id));
+        using var snapshot = SupportSnapshot.Freeze(Fixtures.Settings(), report, BuildMetadata.FromExecutingAssemblies(),
+            JournalSelection.Empty(Fixtures.Range(clock)), clock);
+        var doctor = Encoding.UTF8.GetString(snapshot.Preview("doctor.json"));
+        Assert.All(registry.Definitions, d => Assert.Contains($"\"{d.Id}\"", doctor));
+    }
+
+    [Fact]
     public async Task ActualKnownFailureToJournalToPreviewToConsentedZip()
     {
         using var scope = new TestScope();
