@@ -29,6 +29,8 @@ public sealed partial class ConversationTurn
     private readonly VoiceTagStripper shown;
     // The control tags the reply wrote, in order (ConversationRequest.ControlTags); guarded by Sync like the text.
     private readonly List<string> controls = [];
+    // Every Thinking request the reply sent, in order (SentRequests); guarded by Sync. References only, so a reply pays nothing.
+    private readonly List<ConversationSentRequest> sentRequests = [];
     // The character tags the reply wrote and the sounds and tones its voice performed, in order; guarded by Sync like the text.
     private readonly List<ReplyTag> acted = [];
     private readonly Channel<SpeechPiece> segments = Channel.CreateBounded<SpeechPiece>(new BoundedChannelOptions(2)
@@ -205,6 +207,14 @@ public sealed partial class ConversationTurn
 
     /// <summary>Whether this reply is spoken (it has a voice).</summary>
     public bool Spoken => request.Speech is not null;
+
+    /// <summary>The request this reply started from: its first input, model, limits and generation settings. Private content
+    /// (<see cref="ConversationRequest.Input"/>): show it on this PC only, never in logs, status files or MCP.</summary>
+    public ConversationRequest Request => request;
+
+    /// <summary>Every Thinking request this reply sent so far, in order (<see cref="ConversationSentRequest"/>): the first, each
+    /// one after a tool round, and each retry or fallback. Private content, as <see cref="Request"/>.</summary>
+    public IReadOnlyList<ConversationSentRequest> SentRequests { get { lock (Sync) return [.. sentRequests]; } }
 
     /// <summary>Started early (<see cref="ConversationRuntime.StartEarly"/>) and not released yet: its Thinking text streams
     /// (and its first piece may be synthesized), but nothing shows, acts, calls a tool or plays.</summary>

@@ -44,6 +44,36 @@ public sealed class ChatMessage : INotifyPropertyChanged
     /// <summary>A picture Martlet shows with this message (draw_picture, or perform_creation showing one again).</summary>
     public System.Windows.Media.ImageSource? Picture { get; init; }
     public bool HasPicture => Picture is not null;
+    /// <summary>What was sent to the Thinking model to make this message (What was sent), or null when that isn't known here (a
+    /// message from before, a picture, a note) or was let go to save memory. In memory only, never saved or logged.</summary>
+    internal MessageContext? Context
+    {
+        get => context;
+        set
+        {
+            if (ReferenceEquals(context, value)) return;
+            var had = context is not null;
+            context = value;
+            if (had != (value is not null)) Changed(nameof(HasContext));
+        }
+    }
+    public bool HasContext => context is not null;
+    private MessageContext? context;
+    /// <summary>The number of this message's What was sent link (1 for the first message that kept what was sent, then 2...), so
+    /// each link has its own automation ID (<see cref="ContextId"/>); 0 before it has one.</summary>
+    public int ContextNumber
+    {
+        get => contextNumber;
+        internal set
+        {
+            if (contextNumber == value) return;
+            contextNumber = value;
+            Changed(nameof(ContextNumber));
+            Changed(nameof(ContextId));
+        }
+    }
+    public string ContextId => $"LiveMessageContext-{contextNumber}";
+    private int contextNumber;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     internal void AddNote(string line) => Note = note.Length == 0 ? line : note + "  " + line;
@@ -1912,6 +1942,8 @@ public partial class LiveConversationWindow : ThemedWindow
             }
             else
             {
+                // Every request the reply sent (tool rounds, retries), now that it ended.
+                KeepContext(reply, done);
                 // How the reply was acted out: its tone, the voice's sounds and the character's emotes.
                 if (ReplyTag.Note(acted) is { } how) reply.AddNote(how);
                 var refusal = done.Turn?.Content.Refusal?.Trim();
@@ -2395,6 +2427,8 @@ public partial class LiveConversationWindow : ThemedWindow
         if (operation.MayPass && LiveConversationController.MaybeSilent(text)) text = "";
         if (reply is null && (text.Length > 0 || refusal.Length > 0)) reply = lastReply = Add(ChatRole.Martlet, "", CharacterName);
         if (reply is not null) reply.Text = text.Length > 0 ? text : refusal;
+        // What was sent so far; it is taken again with every request once the reply ends (Settle).
+        if (reply is { Context: null }) KeepContext(reply, operation);
         var snapshot = operation.Turn?.Snapshot;
         if (Support is { } support)
             supportProjection.Observe(support, new(operation.Id, snapshot?.TurnId, operation.Status,
@@ -3113,7 +3147,8 @@ public partial class LiveConversationWindow : ThemedWindow
         if (status.Code is "runtime.Completed")
         {
             pacer?.NoteLook(true);
-            if (done.Turn?.Content.Text.Trim() is { Length: > 0 } remark) Add(ChatRole.Martlet, remark, $"{CharacterName}, about {watchSource.Label}");
+            if (done.Turn?.Content.Text.Trim() is { Length: > 0 } remark)
+                KeepContext(Add(ChatRole.Martlet, remark, $"{CharacterName}, about {watchSource.Label}"), done);
             lookNote = $"Last look {at}: commented.{trimmed}";
             return;
         }

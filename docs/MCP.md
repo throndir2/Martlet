@@ -712,6 +712,49 @@ they need `--allow-ui-effects`. The desktop's `thinking-pool-status.json` has a
 `raiseAfterStops`, `retriesOnFailure`) and the counters `stoppedForPriority`,
 `raised` and `retried`.
 
+### What was sent (a message's context)
+
+Each of Martlet's messages in the talk window (a reply, a report, a reaction
+to a touch, a screen or camera remark) has a **What was sent** link
+(`LiveMessageContext-<n>`: `-1` on the first message that kept it, then `-2`
+and so on) beside its label while Martlet still keeps what its
+Thinking requests carried: the newest 40 messages of the open conversation, in
+memory only. A message from before the window opened, a picture and a note have
+no link. The link is a safe click: it only opens the *What was sent* window
+(`MessageContextWindow`, owned by the talk window). That window shows the
+request section by section, in the order it is sent, each with a colored bar:
+*Instructions* (part by part: the persona, the tools prompt, tool guidance,
+voice sounds and tones, character emotes and motions, the instructions for
+this kind of reply, where the character looks and the closing instructions),
+*Conversation history* (each earlier message, with the notes the conversation
+kept with yours), *The message*, *Notes with the message* (part by part:
+lorebook entries, remembered facts, who is talking, about this message, how
+chatty to be), *Context notes* (sent once, never kept), *Picture* (click it for
+`MessageContextPictureViewer`), *Recording* (`MessageContextPlay` plays it from
+memory on Windows' default speakers), *Its unfinished answer*, *Tool rounds*,
+*Tools it may call* and *Request settings* (model, destination, sampling,
+Thinking steps, max reply tokens and tags). A reply that called tools or was
+asked again sent more than one request: `MessageContextRequest` picks which
+(the last, which wrote the answer, shows first). The bar at the top shows how
+much of the request each section takes.
+
+The text is private: MCP never returns `MessageContextText-<section>-<n>` or
+the picture. Safe values: `MessageContextTitle` (*What was sent for this
+reply*), `MessageContextSummary` (the model, how many requests, the shown
+request's characters and estimated tokens, whether a picture or recording went
+with it, and the input tokens the model said its requests read, with how many
+came from its prompt cache), `MessageContextRequest` (*Request 2: after tool
+round 1*), `MessageContextSize-<section>` (*4,210 characters, about 1,100
+tokens, in 3 parts*), `MessageContextShare-<section>` (*Instructions 45%*) and
+`MessageContextPart-<section>-<n>` (a part's name and size, such as *Persona ·
+3,200 characters*; earlier messages have none, because they say who spoke).
+`MessageContextSection-<section>` (`instructions`, `history`, `message`,
+`notes`, `context`, `picture`, `recording`, `continuation`, `toolrounds`,
+`tools`, `settings`) and `MessageContextClose` are safe clicks: they only
+show or hide a section, or close the window. `MessageContextPlay` (it plays
+audio), `MessageContextCopyAll` (the clipboard) and choosing a request with
+`ui_select` need `--allow-ui-effects`.
+
 ### Image and audio models
 
 Thinking, the text model, writes every reply. Pictures and recordings go to it,

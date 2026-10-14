@@ -510,9 +510,12 @@ internal sealed class LiveConversationConfiguration
         // A screen glance's look tags (where the character looks), when they fit beside the emote tags a request may carry.
         if (gaze is not null && (character?.Tags.Count ?? 0) + gaze.Tags.Count > ConversationRequest.MaximumCharacterTags) gaze = null;
         IReadOnlyList<string>? characterTags = gaze is null ? character?.Tags : [.. character?.Tags ?? [], .. gaze.Tags];
-        var instructions = Join(persona, tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools),
-            tools?.Guidance, voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, gaze?.Instructions,
-            closingInstructions);
+        // The instructions are joined from these parts (Join's rule), and the parts are kept so this PC can show each one.
+        var instructionParts = Parts(("Persona", persona), ("Tools prompt", tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools)),
+            ("Tool guidance", tools?.Guidance), ("Voice sounds and tones", voice ? VoiceTagInstructions() : null),
+            ("Character emotes and motions", character?.Instructions), ("Instructions for this kind of reply", extraInstructions),
+            ("Where the character looks", gaze?.Instructions), ("Closing instructions", closingInstructions));
+        var instructions = instructionParts.Count == 0 ? null : string.Join("\n\n", instructionParts.Select(part => part.Text));
         var facts = memory?.Facts ?? [];
         var people = memory?.People;
         var hits = lore?.Included ?? [];
@@ -537,8 +540,10 @@ internal sealed class LiveConversationConfiguration
                 for (var start = BoundedTextInput.CacheFriendlyStart(first, history.Count); start <= history.Count; start += 2)
                 {
                     var sent = history.Skip(start).ToArray();
-                    var notes = Notes(sent, entries, recalled, voices, messageNotes, people, chattiness);
-                    if (Prompt(input, instructions, notes, sent, image, tools, audio, ContextNotes(sent, notes, board)) is not { } prompted)
+                    var noteParts = NoteParts(sent, entries, recalled, voices, messageNotes, people, chattiness);
+                    var notes = WrapNotes(noteParts);
+                    var contextParts = ContextParts(sent, notes, board);
+                    if (Prompt(input, instructions, notes, sent, image, tools, audio, WrapNotes(contextParts)) is not { } prompted)
                         continue;
                     usedHistoryMessages = history.Count - start;
                     usedMemoryFacts = memoryCount;
@@ -550,7 +555,7 @@ internal sealed class LiveConversationConfiguration
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
                         characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags, audio is null ? null : spokenWords)
-                        { Backup = backup, ElevenLabsVoice = voice ? ElevenLabsVoiceTarget() : null };
+                        { Backup = backup, ElevenLabsVoice = voice ? ElevenLabsVoiceTarget() : null, Parts = new(instructionParts, noteParts, contextParts) };
                 }
             }
         }
@@ -572,14 +577,29 @@ internal sealed class LiveConversationConfiguration
     private static string? Join(params string?[] parts) =>
         parts.Where(part => !string.IsNullOrWhiteSpace(part)).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
 
+    // The parts Join would join (those with text), each with its name.
+    private static List<RequestPart> Parts(params (string Name, string? Text)[] parts) =>
+        [.. parts.Where(part => !string.IsNullOrWhiteSpace(part.Text)).Select(part => new RequestPart(part.Name, part.Text!))];
+
     /// <summary>What marks Martlet's notes on a message (Companion › Prompts › Notes with messages).</summary>
     internal const string NotesLabel = "MARTLET_NOTES";
+
+    /// <summary>Note <paramref name="parts"/> joined between <see cref="NotesLabel"/> labels, as a request sends them; null when
+    /// there are none.</summary>
+    internal static string? WrapNotes(IReadOnlyList<RequestPart> parts) => parts.Count == 0 ? null
+        : $"[{NotesLabel}]\n" + string.Join("\n\n", parts.Select(part => part.Text)) + $"\n[/{NotesLabel}]";
 
     /// <summary>Martlet's notes on one message, between <see cref="NotesLabel"/> labels; null when nothing is new. Lore entries
     /// and remembered facts already in the notes of <paramref name="sent"/> (the earlier messages this request carries) are left
     /// out, and so are the voices and the chattiness level when the latest ones there are the same: notes on earlier
     /// messages still hold. <paramref name="message"/> (such as a smart home result) is about this message only, so it is always noted.</summary>
     private string? Notes(IReadOnlyList<TextHistoryMessage> sent, IReadOnlyList<LorebookHit> lore, IReadOnlyList<Martlet.Memory.MemoryFact> facts,
+        string? voices, string? message, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null) =>
+        WrapNotes(NoteParts(sent, lore, facts, voices, message, people, chattiness));
+
+    /// <summary>The named parts of <see cref="Notes"/>, in order, without the labels around them (<see cref="WrapNotes"/>); empty
+    /// when nothing is new.</summary>
+    private List<RequestPart> NoteParts(IReadOnlyList<TextHistoryMessage> sent, IReadOnlyList<LorebookHit> lore, IReadOnlyList<Martlet.Memory.MemoryFact> facts,
         string? voices, string? message, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null)
     {
         var earlier = string.Join("\n", sent.Where(m => m.Role == TextHistoryRole.User && m.Text.Contains(NotesLabel, StringComparison.Ordinal))
@@ -590,13 +610,15 @@ internal sealed class LiveConversationConfiguration
         // What the names on facts mean is said once while the conversation sent still carries it.
         var whoseSaid = PromptSettings.Fill(Prompts, PromptCatalog.MemoryPeople) is { } whose && Noted(whose);
         var (before, after) = newLore.Length == 0 ? (null, null) : LorebookPromptContext.Blocks(newLore, Prompts);
-        var body = Join(before, after, newFacts.Length == 0 ? null : MemoryPromptContext.Instructions(newFacts, Prompts, people, !whoseSaid),
-            voices is not null && Latest(earlier, VoicePromptContext.Label) == Clean(voices) ? null : voices, message,
-            chattiness is not null && LatestChattiness(earlier) == Clean(chattiness) ? null : chattiness);
-        if (body is null) return null;
+        var body = Parts(("Lorebook entries (before the persona)", before), ("Lorebook entries (after the persona)", after),
+            ("Remembered facts", newFacts.Length == 0 ? null : MemoryPromptContext.Instructions(newFacts, Prompts, people, !whoseSaid)),
+            ("Who is talking", voices is not null && Latest(earlier, VoicePromptContext.Label) == Clean(voices) ? null : voices),
+            ("About this message", message),
+            ("How chatty to be", chattiness is not null && LatestChattiness(earlier) == Clean(chattiness) ? null : chattiness));
+        if (body.Count == 0) return [];
         // What notes are is said once, in the first notes of the conversation sent: the instructions never change for it.
         var explained = earlier.Length > 0 ? null : PromptSettings.Fill(Prompts, PromptCatalog.Notes, ("label", NotesLabel));
-        return $"[{NotesLabel}]\n" + Join(explained, Clean(body)) + $"\n[/{NotesLabel}]";
+        return [.. Parts(("What these notes are", explained)), .. body.Select(part => part with { Text = Clean(part.Text) })];
     }
 
     // Lore and remembered text can't close the notes early.
@@ -606,12 +628,16 @@ internal sealed class LiveConversationConfiguration
     /// <see cref="NotesLabel"/> labels after the message's other <paramref name="notes"/>; null when there are none. The block
     /// is sent but never kept in history (<see cref="BoundedTextInput.Context"/>), so the next request starts like this one. It
     /// says what notes are only when neither <paramref name="notes"/> nor the earlier messages <paramref name="sent"/> did.</summary>
-    internal string? ContextNotes(IReadOnlyList<TextHistoryMessage> sent, string? notes, string? board)
+    internal string? ContextNotes(IReadOnlyList<TextHistoryMessage> sent, string? notes, string? board) =>
+        WrapNotes(ContextParts(sent, notes, board));
+
+    /// <summary>The named parts of <see cref="ContextNotes"/>, without the labels around them; empty when there are none.</summary>
+    private List<RequestPart> ContextParts(IReadOnlyList<TextHistoryMessage> sent, string? notes, string? board)
     {
-        if (string.IsNullOrWhiteSpace(board)) return null;
+        if (string.IsNullOrWhiteSpace(board)) return [];
         var explained = notes is not null || sent.Any(m => m.Role == TextHistoryRole.User && m.Text.Contains(NotesLabel, StringComparison.Ordinal))
             ? null : PromptSettings.Fill(Prompts, PromptCatalog.Notes, ("label", NotesLabel));
-        return $"[{NotesLabel}]\n" + Join(explained, Clean(board)) + $"\n[/{NotesLabel}]";
+        return [.. Parts(("What these notes are", explained)), new("Context board", Clean(board))];
     }
 
     // The last block between [label] and [/label] in the earlier notes, or null.
