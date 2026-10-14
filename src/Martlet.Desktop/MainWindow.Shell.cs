@@ -425,13 +425,17 @@ public partial class MainWindow
             talking.ReloadWhenIdle(reason);
     }
 
-    private async Task RefreshHomeAsync()
+    /// <summary>Reads settings.json and brings Home, the open conversation and the pages up to date. <paramref name="reason"/>
+    /// says why it was read (<see cref="SettingsChanges.Applied"/>; a version this Martlet saved keeps the source it was saved
+    /// with).</summary>
+    private async Task RefreshHomeAsync(SettingsChangeSource reason = SettingsChangeSource.LocalEdit)
     {
         if (store is null || setupService is null || closing || refreshingHome || setupOperations.IsRunning) return;
         refreshingHome = true;
         try
         {
             var loaded = await setupService.LoadAsync(lifetime.Token);
+            settingsChanges.Applied(loaded.Revision, reason);
             homeSettings = await LeaveRetiredVoiceAsync(loaded, lifetime.Token) ?? loaded.Settings;
             SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
             // No voice goes by the companion's own name: one learned by mistake is dropped (names the owner typed stay).

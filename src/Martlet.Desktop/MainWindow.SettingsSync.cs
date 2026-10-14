@@ -139,7 +139,8 @@ public partial class MainWindow
             var from = accountNodeFor == account ? null : accountNode ?? (marker is { } other && other != account ? AccountNode(other) : null);
             var next = AccountNode(account);
             var copies = clusterEnabled ? await ReadAccountCopiesAsync(account, token) : [];
-            waiting = await AccountSettingsSync.SwitchAsync(from, next, copies, directory, account, DateTimeOffset.UtcNow, token);
+            using (settingsChanges.From(SettingsChangeSource.AccountSwitch))
+                waiting = await AccountSettingsSync.SwitchAsync(from, next, copies, directory, account, DateTimeOffset.UtcNow, token);
             accountNode = next;
             accountNodeFor = account;
             accountSettingsCopies.Clear();
@@ -151,7 +152,7 @@ public partial class MainWindow
         homeLore = null;
         settingsLastChange = null;
         if (closing) return;
-        await RefreshHomeAsync();
+        await RefreshHomeAsync(SettingsChangeSource.AccountSwitch);
         if (characterChanged && avatar.IsShowing && Role == DeviceRole.Companion)
         {
             characterChanged = false;
@@ -219,9 +220,11 @@ public partial class MainWindow
             // The owner keeps the account entries older Martlets leave in the household's copy (docs/ACCOUNTS.md).
             var owner = accounts is { } session && accountId is { } signedIn && session.OwnerId == signedIn;
             SharedSettingsResult? accountResult;
-            (result, accountResult) = await AccountSettingsSync.SyncAsync(settingsNode, account, owner,
-                [.. reads.Select(r => r.Copy).OfType<SharedSettings>()], [.. accountReads.Select(r => r.Copy).OfType<SharedSettings>()],
-                shared, DateTimeOffset.UtcNow, lifetime.Token);
+            // What the sync takes from another computer and saves here is a remote change, not one made on this PC.
+            using (settingsChanges.From(SettingsChangeSource.RemoteSync))
+                (result, accountResult) = await AccountSettingsSync.SyncAsync(settingsNode, account, owner,
+                    [.. reads.Select(r => r.Copy).OfType<SharedSettings>()], [.. accountReads.Select(r => r.Copy).OfType<SharedSettings>()],
+                    shared, DateTimeOffset.UtcNow, lifetime.Token);
             turn.Dispose();
             if (shared) await PushSettingsAsync(reads, result.Document);
             if (shared && accountResult is not null && accountId is { } pushFor) await PushAccountSettingsAsync(accountReads, pushFor, accountResult.Document);
@@ -422,7 +425,7 @@ public partial class MainWindow
         }
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
         if (applied.Any(a => a.Key is AppSettingsSections.ThinkingPool or AppSettingsSections.ThinkingPoolChoices)) conversation?.ReloadThinkingPool();
-        await RefreshHomeAsync();
+        await RefreshHomeAsync(SettingsChangeSource.RemoteSync);
         // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
         if (applied.Any(a => a.Key is AppSettingsSections.Thinking or AppSettingsSections.Listening or AppSettingsSections.Speaking))
             foreach (var job in clusterObserved.Keys.ToArray()) clusterObserved[job] = ObservedJob(job);

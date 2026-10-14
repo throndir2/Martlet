@@ -167,8 +167,11 @@ this PC, so changes go to that person.
 The desktop watches settings.json. About 0.6 seconds after it changes and Martlet
 is not busy with Setup, it reads it again (the desktop log says `settings.json
 changed; Martlet read it again.`), so Home, the open Companion page and an open
-conversation (before its next reply) use the change without a restart. A file
-it already read is not read again.
+conversation (before its next reply) use the change without a restart. The
+desktop's `SettingsChanges` knows where each version came from (a page's own
+save, a setting taken from another computer, an account switch or the file): a
+version Martlet already applied is not read again, and the log line is written
+only for a change this Martlet didn't make (its MCP server or an edit by hand).
 
 ### Limits
 

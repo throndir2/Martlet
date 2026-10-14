@@ -16,6 +16,11 @@ public sealed partial class SettingsStore
     public string DataDirectory { get; }
     public string FilePath => Path.Combine(DataDirectory, "settings.json");
 
+    /// <summary>Raised with the new revision (SHA-256 of the file, as <see cref="LoadAsync"/> gives it) after this store saved
+    /// settings.json; never for a file another process wrote. Runs in the saver's flow, before the save returns; a handler
+    /// must not throw.</summary>
+    public event Action<string>? Saved;
+
     public SettingsStore(string dataDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
@@ -116,7 +121,9 @@ public sealed partial class SettingsStore
             var snapshot = migratedFrom is { } version ? $"settings.v{version}.{Guid.NewGuid():N}.bak" : null;
             await WriteAtomicAsync(bytes, FilePath, existing.State != SettingsLoadState.FirstRun,
                 snapshot is null ? null : Path.Combine(DataDirectory, snapshot), cancellationToken);
-            return new(true, Convert.ToHexString(SHA256.HashData(bytes)), null, migratedFrom, snapshot);
+            var revision = Convert.ToHexString(SHA256.HashData(bytes));
+            Saved?.Invoke(revision);
+            return new(true, revision, null, migratedFrom, snapshot);
         }
         catch (ContractException ex)
         {

@@ -4,16 +4,18 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Follows settings.json when something other than Martlet's own pages changes it, such as Martlet's MCP server
-/// (character_create, settings_set) or an edit by hand: a short pause after the last change, Martlet reads it again, so Home,
-/// the open Companion page and an open conversation (before its next reply) use it without a restart. A file Martlet already
-/// read is not read again.</summary>
+/// <summary>Follows settings.json when it changes: a short pause after the last change, Martlet reads it again, so Home, the
+/// open Companion page and an open conversation (before its next reply) use it without a restart. <see cref="settingsChanges"/>
+/// knows where each version came from: a version Martlet applied already (after a page's save or a setting taken from another
+/// computer) is not applied again, and only a version this Martlet didn't write (Martlet's MCP server, such as character_create
+/// or settings_set, or an edit by hand) is logged as a change from outside.</summary>
 public partial class MainWindow
 {
     private FileSystemWatcher? settingsWatcher;
     private readonly DispatcherTimer settingsFileTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
-    /// <summary>The settings.json revision the last follow read (SHA-256 of the file).</summary>
-    private string? settingsFileRevision;
+    /// <summary>Where each version of settings.json came from and which one Martlet applied (local edit, settings sync, account
+    /// switch or the file).</summary>
+    private readonly SettingsChanges settingsChanges = new();
 
     private void StartSettingsWatch()
     {
@@ -67,9 +69,9 @@ public partial class MainWindow
         SettingsLoadResult loaded;
         try { loaded = await store.LoadAsync(lifetime.Token); }
         catch (OperationCanceledException) { return; }
-        if (closing || loaded.Revision is null || loaded.Revision == settingsFileRevision) return;
-        settingsFileRevision = loaded.Revision;
-        ErrorLog.Info("settings.json changed; Martlet read it again.");
-        await RefreshHomeAsync();
+        if (closing || loaded.Revision is null || settingsChanges.IsApplied(loaded.Revision)) return;
+        var source = settingsChanges.SourceOf(loaded.Revision);
+        if (source == SettingsChangeSource.File) ErrorLog.Info("settings.json changed; Martlet read it again.");
+        await RefreshHomeAsync(source);
     }
 }
