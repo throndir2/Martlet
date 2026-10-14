@@ -38,7 +38,7 @@ internal sealed partial class LiveConversationController
             if (pcAudio?.Sound is { } sound)
                 // The audio model of its own judges first while it takes recordings, then a Thinking pool member that hears.
                 soundDigest = new PcSoundDigest(sound, () => pcAudio.WithoutMartlet != true && owner.Speaking is not null,
-                    owner.SoundJudge, owner.Board, owner.dataDirectory, held: owner.SoundJudgeHeld);
+                    owner.senseSession.SoundJudge, owner.Board, owner.dataDirectory, held: owner.senseSession.SoundJudgeHeld);
             // What makes sound on this PC is followed only while Martlet hears the PC; its clock must be this controller's, which
             // times each utterance.
             if (pcAudio is not null && pcActivity is not null)

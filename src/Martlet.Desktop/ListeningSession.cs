@@ -342,8 +342,8 @@ internal sealed partial class LiveConversationController
         {
             if (options is not { Straight: true, Hear: true, Pc: false }) return false;
             var configured = utterance.Authorization.Configuration;
-            if (!owner.ThinkingTakesVoice(configured)) return false;
-            if (!options.HearsWith(owner.RecordingStaysOnThisPc(configured)) || configured.Hearing() != HearingSupport.Supported) return false;
+            if (!owner.senseSession.ThinkingTakesVoice(configured)) return false;
+            if (!options.HearsWith(owner.senseSession.RecordingStaysOnThisPc(configured)) || configured.Hearing() != HearingSupport.Supported) return false;
             if (owner.routing.Deaf(configured)) return false;
             if (owner.smartHome is { ControlEnabled: true, ModelToolsEnabled: false }) return false;
             return !(options.BargeIn && owner.Speaking is not null && utterance.TalkOver is null);
@@ -382,7 +382,7 @@ internal sealed partial class LiveConversationController
                 }
                 // An audio model of its own hears it beside speech-to-text and puts what the words miss into words (never on the
                 // reply's path: the reply takes them only if they are ready in time).
-                utterance.VoiceNote = owner.StartVoiceNote(utterance, audio);
+                utterance.VoiceNote = owner.senseSession.StartVoiceNote(utterance, audio);
                 // Never longer than the uploads' own 30 s deadlines (one for each piece of a long turn), even if a native boundary
                 // ignores them.
                 using var deadline = new CancellationTokenSource(LiveConversationConfiguration.TranscriptionTime(audio), owner.clock);
@@ -434,7 +434,7 @@ internal sealed partial class LiveConversationController
                 utterance.Heard = await owner.HeardAsync(utterance, linked.Token).ConfigureAwait(false);
                 if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
                 var heardBy = utterance.Authorization.Configuration;
-                if (listening.Options.HearsWith(owner.RecordingStaysOnThisPc(heardBy)) && owner.ThinkingTakesVoice(heardBy) && Hearable(audio, "Thinking"))
+                if (listening.Options.HearsWith(owner.senseSession.RecordingStaysOnThisPc(heardBy)) && owner.senseSession.ThinkingTakesVoice(heardBy) && Hearable(audio, "Thinking"))
                     utterance.Recording = audio;
                 utterance.Publish(new("listen.heard", Finished: true));
             }

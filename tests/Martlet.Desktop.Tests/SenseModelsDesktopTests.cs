@@ -89,7 +89,7 @@ public sealed class SenseModelsDesktopTests
         var body = Encoding.UTF8.GetString(fixture.Chat.Body);
         Assert.Contains("image_url", body);
         Assert.Contains("Describe what the user sees, in words for another model.", body);
-        Assert.Equal((1, SenseJobOutcome.Succeeded), (fixture.Controller.Senses.Status()[0].Runs, fixture.Controller.Senses.Status()[0].LastOutcome));
+        Assert.Equal((1, SenseJobOutcome.Succeeded), (fixture.Controller.Sense.Senses.Status()[0].Runs, fixture.Controller.Sense.Senses.Status()[0].LastOutcome));
     }
 
     [Fact]
@@ -116,8 +116,8 @@ public sealed class SenseModelsDesktopTests
         Assert.Equal(SenseJobOutcome.NoModel, (await Describe(fixture)).Outcome);
         Assert.Equal(calls, fixture.Chat.Calls);
         // The status file says where pictures go now, never what was sent.
-        await fixture.Advance(() => File.Exists(Path.Combine(fixture.DirectoryPath, LiveConversationController.SenseStatusFile)));
-        var status = fixture.Controller.SenseStatusJson();
+        await fixture.Advance(() => File.Exists(Path.Combine(fixture.DirectoryPath, LiveConversationController.SenseSession.SenseStatusFile)));
+        var status = fixture.Controller.Sense.SenseStatusJson();
         Assert.Contains("\"path\": \"None\"", status);
         Assert.DoesNotContain("Window: a game.", status);
     }
@@ -185,11 +185,11 @@ public sealed class SenseModelsDesktopTests
         var operation = fixture.Start("Hello there.");
         await fixture.Advance(() => fixture.Chat.Calls == 1 && operation.Turn is not null);
         var job = fixture.Controller.RunSenseAsync(SenseKind.Image, Look(), CancellationToken.None);
-        await fixture.Advance(() => fixture.Controller.Senses.Status()[0].Held == 1);
+        await fixture.Advance(() => fixture.Controller.Sense.Senses.Status()[0].Held == 1);
         await fixture.Pass(TimeSpan.FromMilliseconds(200));
         // The reply's Thinking request runs on the same computer and nothing of it came yet: the image model waits.
         Assert.Equal(0, Volatile.Read(ref described));
-        Assert.True(fixture.Controller.SenseHeld(SenseKind.Image));
+        Assert.True(fixture.Controller.Sense.SenseHeld(SenseKind.Image));
 
         reply.SetResult();
         await fixture.Advance(() => job.IsCompleted);
@@ -229,7 +229,7 @@ public sealed class SenseModelsDesktopTests
         reply.SetResult();
         await fixture.Finish(operation);
         Assert.Equal("Hello!", operation.Turn!.Content.Text);
-        Assert.False(fixture.Controller.SenseHeld(SenseKind.Image));
+        Assert.False(fixture.Controller.Sense.SenseHeld(SenseKind.Image));
     }
 
     [Fact]
@@ -238,14 +238,14 @@ public sealed class SenseModelsDesktopTests
         await using var fixture = await LiveFixture.Create();
         fixture.Controller.SenseModels = WithEyes;
         var answers = new Queue<SenseAnswer>([SenseAnswer.Done("Words from the test."), SenseAnswer.Rejected("it refused the picture")]);
-        fixture.Controller.SenseRunner = (kind, model, job, _) =>
+        fixture.Controller.Sense.SenseRunner = (kind, model, job, _) =>
         {
             Assert.Equal((SenseKind.Image, Eyes.Key, "reply picture"), (kind, model.Key, job.Purpose));
             return Task.FromResult(answers.Dequeue());
         };
-        fixture.Controller.SenseSharing = kind => kind == SenseKind.Image;
+        fixture.Controller.Sense.SenseSharing = kind => kind == SenseKind.Image;
         Assert.True(fixture.Controller.SenseSharesConversation(SenseKind.Image));
-        Assert.False(fixture.Controller.SenseHeld(SenseKind.Image));
+        Assert.False(fixture.Controller.Sense.SenseHeld(SenseKind.Image));
 
         Assert.Equal("Words from the test.", (await Describe(fixture)).Text);
         Assert.Equal(SenseJobOutcome.Refused, (await Describe(fixture)).Outcome);
@@ -267,12 +267,12 @@ public sealed class SenseModelsDesktopTests
         }).Save(fixture.DirectoryPath));
         fixture.Controller.ReloadAbilities();
 
-        var before = fixture.Controller.SenseRoute(SenseKind.Image, null);
+        var before = fixture.Controller.Sense.SenseRoute(SenseKind.Image, null);
         Assert.Equal(SensePath.None, before.Path);
         Assert.Contains("doesn't see pictures", before.Why);
         Assert.Equal(SensePath.None, fixture.Controller.SenseRoute(SenseKind.Image).Path);
         // The status file says whether a conversation loaded the settings (the fixture's did).
-        Assert.Contains("\"conversation\": true", fixture.Controller.SenseStatusJson());
+        Assert.Contains("\"conversation\": true", fixture.Controller.Sense.SenseStatusJson());
     }
 
     [Fact]
@@ -281,7 +281,7 @@ public sealed class SenseModelsDesktopTests
         await using var fixture = await LiveFixture.Create();
         fixture.Controller.SenseModels = WithEyes;
         var jobs = new List<SenseJob>();
-        fixture.Controller.SenseRunner = (kind, model, job, _) =>
+        fixture.Controller.Sense.SenseRunner = (kind, model, job, _) =>
         {
             Assert.Equal((SenseKind.Image, Eyes.Key), (kind, model.Key));
             lock (jobs) jobs.Add(job);
@@ -294,7 +294,7 @@ public sealed class SenseModelsDesktopTests
         await fixture.Advance(() => asked.IsCompleted);
         Assert.Equal(("LEFT 0.31 0.42 0.05; RIGHT 0.62 0.42 0.05", (string?)null), await asked);
         var job = Assert.Single(jobs);
-        Assert.Equal(("eyes", LiveConversationController.HelperPriority, "Find both eyes.", "The close-up."),
+        Assert.Equal(("eyes", LiveConversationController.SenseSession.HelperPriority, "Find both eyes.", "The close-up."),
             (job.Purpose, job.Priority, job.Instructions, job.Text));
         Assert.Same(picture, job.Image);
         Assert.Equal((SenseJob.MaximumOutputTokens, false, (bool?)null), (job.MaxOutputTokens, job.DropWhenStale, job.Reasoning));
@@ -317,6 +317,6 @@ public sealed class SenseModelsDesktopTests
         await fixture.Advance(() => asked.IsCompleted);
         Assert.NotNull((await asked).Answer);
         Assert.Equal(1, fixture.Llm.Calls);
-        Assert.Equal(0, fixture.Controller.Senses.Status()[0].Runs);
+        Assert.Equal(0, fixture.Controller.Sense.Senses.Status()[0].Runs);
     }
 }

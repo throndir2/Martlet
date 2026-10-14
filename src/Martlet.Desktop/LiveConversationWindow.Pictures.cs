@@ -1,5 +1,4 @@
 using Martlet.Conversation;
-using Martlet.Core.Contracts;
 
 namespace Martlet.Desktop;
 
@@ -31,18 +30,15 @@ public partial class LiveConversationWindow
     private bool Talking => listener is { Hearing: true } || MicBusy || Recording || pendingText is not null || heardQueue.Count > 0 ||
         typedAt != 0 && clock.GetElapsedTime(typedAt) < TypingCounts;
 
-    /// <summary>Has the image model describe the newest picture (or, with <paramref name="attention"/>, the one kept for a look at
-    /// what wants your attention) when it should now. Only a fresh picture goes, only when the controller wants it described,
-    /// and only then is it encoded.</summary>
+    /// <summary>Tells the conversation's image and audio models (<see cref="LiveConversationController.PictureMoment"/>) about a
+    /// picture moment: the newest picture (or, with <paramref name="attention"/>, the one kept for a look at what wants your
+    /// attention), whether it is fresh, and how to encode it. The image model decides whether it describes the picture now.</summary>
     private void DescribeAhead(PictureTrigger why, bool attention = false)
     {
         var (frame, shot) = attention ? (attentionFrame, attentionShot) : (latestFrame, latestShot);
-        if (frame is null || shot is null || !attention && clock.GetElapsedTime(latestAt) > SeenFreshness) return;
-        var active = SinceActivity is { } since && since <= controller.Pictures.Timing.ActiveFor;
-        if (!controller.WantsDescription(shot, why, active)) return;
-        try { controller.DescribeAhead(Seen(frame, shot), why); }
-        catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
-            System.Runtime.InteropServices.ExternalException) { }
+        if (frame is null) return;
+        controller.PictureMoment(why, shot, attention || clock.GetElapsedTime(latestAt) <= SeenFreshness, SinceActivity,
+            () => Seen(frame, shot!));
     }
 
     /// <summary>The start of the vision button's tooltip while Martlet watches: where its pictures go.</summary>
