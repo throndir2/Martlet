@@ -12,7 +12,7 @@ namespace Martlet.Desktop.Tests;
 public sealed class OptionalExtrasTests
 {
     private static readonly CompanionTab[] Extras =
-        [.. MainWindow.SideListOrder().Where(tab => MainWindow.GroupOf(tab) == CompanionGroup.Extras)];
+        [.. CompanionPages.SideListOrder().Where(tab => CompanionPages.GroupOf(tab) == CompanionGroup.Extras)];
 
     private static string Fact(PickerOption option, string key) => option.Facts.Single(f => f.Key == key).Value;
 

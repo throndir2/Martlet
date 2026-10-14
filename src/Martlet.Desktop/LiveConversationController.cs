@@ -585,19 +585,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         add => routing.FailuresChanged += value;
         remove => routing.FailuresChanged -= value;
     }
-    // Hearing what this PC plays runs the same way on a slot of its own, with its own speech-to-text credentials.
-    private readonly PcAudioCaptureFactory? pcAudio;
-    private readonly SetupOperationRunner pcSlot = new();
-    private readonly OpenAiTranscriptionAdapter pcTranscription;
-    private LiveListener? pcListener;
-    private LiveConversationOperation? pcTranscribing;
-    // Companion › Listening › Describe PC sounds: the sound digest of what this PC plays (null when Martlet can't hear the PC).
-    private readonly PcSoundDigest? soundDigest;
-    // What makes sound on this PC (which app, what kind), while Martlet hears it: labels each line it hears and keeps the
-    // context board's "activity" note (null when Martlet can't hear the PC).
-    private readonly PcActivityMonitor? pcActivity;
-    private string? activityNote;
-    private long activityPostedAt;
+    // Hearing what this PC plays: its devices, slot, speech-to-text, sound digest and activity note (PcAudioSession.cs).
+    private readonly PcAudioSession pcSession;
     /// <inheritdoc cref="ListeningSession.Listen"/>
     internal LiveListener Listen(ListeningOptions options) => listeningSession.Listen(options);
 
@@ -728,39 +717,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     internal Guid ConversationId { get { lock (gate) return conversationId; } }
     /// <summary>How echo reduction went the last time Martlet listened; null when this controller has none.</summary>
     internal EchoReductionReport? EchoReport => echoReducer?.Report;
-    /// <summary>Martlet can hear what this PC plays (Companion › Listening › Hear what this PC plays).</summary>
-    internal bool CanHearPc => pcAudio is not null;
-    /// <summary>The sound digest of what this PC plays (Companion › Listening › Describe PC sounds), or null when Martlet can't
-    /// hear the PC here.</summary>
-    internal PcSoundDigest? SoundDigest => soundDigest;
-    /// <summary>What makes sound on this PC while Martlet hears it (a YouTube video in Chrome, a game, a voice chat in Discord):
-    /// the talk window turns it on with the PC listener; null when Martlet can't hear the PC here.</summary>
-    internal PcActivityMonitor? PcActivity => pcActivity;
-
-    /// <summary>How long the context board's note on what the user is doing stays fresh (the monitor posts it again sooner).</summary>
-    internal static TimeSpan ActivityNoteAge => TimeSpan.FromSeconds(30);
-
-    // The monitor's newest look (on its own thread): the context board's "activity" note, posted when it changed or every 10
-    // seconds so it stays fresh, and cleared when the monitor stops or nothing is known. The desktop log says when it changed.
-    private void PostActivity(PcActivityState state)
-    {
-        var note = state.Note;
-        var now = clock.GetTimestamp();
-        if (note is null)
-        {
-            Board.Clear(ContextBoard.Activity);
-            activityNote = null;
-            return;
-        }
-        if (note == activityNote && clock.GetElapsedTime(activityPostedAt, now) < TimeSpan.FromSeconds(10)) return;
-        Board.Post(ContextBoard.Activity, note, clock.GetLocalNow(), ActivityNoteAge);
-        if (note != activityNote)
-            ErrorLog.Info($"What you're doing on this PC, as Martlet guesses it: {string.Join("; ", state.Activities.Select(entry =>
-                $"{entry.Source.Kind} ({(entry.Source.Kind == PcActivityKind.Game ? "a game" : entry.Source.App)}" +
-                $"{(entry.FullScreen ? ", full screen" : "")}{(entry.Audible ? "" : ", quiet")})"))}.");
-        activityNote = note;
-        activityPostedAt = now;
-    }
+    /// <inheritdoc cref="PcAudioSession.CanHearPc"/>
+    internal bool CanHearPc => pcSession.CanHearPc;
+    /// <inheritdoc cref="PcAudioSession.SoundDigest"/>
+    internal PcSoundDigest? SoundDigest => pcSession.SoundDigest;
+    /// <inheritdoc cref="PcAudioSession.PcActivity"/>
+    internal PcActivityMonitor? PcActivity => pcSession.PcActivity;
+    /// <inheritdoc cref="PcAudioSession.ActivityNoteAge"/>
+    internal static TimeSpan ActivityNoteAge => PcAudioSession.ActivityNoteAge;
     /// <summary>Martlet's background work in this conversation (think_longer): what runs, what finished and what waits to be
     /// brought up.</summary>
     internal BackgroundJobs Jobs => jobs;
@@ -772,12 +736,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>The background-jobs.json status file in the data directory (kinds, states and times only; never a task or
     /// result), which MCP's think_longer_status reads.</summary>
     internal const string JobsStatusFile = "background-jobs.json";
-    /// <summary>Whether hearing what this PC plays leaves Martlet's own voice out (null until it first listened); without it,
-    /// that listening holds off while Martlet speaks.</summary>
-    internal bool? PcWithoutMartlet => pcAudio?.WithoutMartlet;
-    /// <summary>The one output hearing what this PC plays heard last time (another output was in use, or Windows can't leave
-    /// Martlet out), or null.</summary>
-    internal string? PcOutput => pcAudio?.Output;
+    /// <inheritdoc cref="PcAudioSession.PcWithoutMartlet"/>
+    internal bool? PcWithoutMartlet => pcSession.PcWithoutMartlet;
+    /// <inheritdoc cref="PcAudioSession.PcOutput"/>
+    internal string? PcOutput => pcSession.PcOutput;
     /// <summary>The controller's clock, for timing what it measured (such as when the user's voice began).</summary>
     internal TimeProvider Clock => clock;
 
@@ -887,7 +849,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         this.playbackDevices = playbackDevices;
         this.singing = singing;
         this.echoReducer = echoReducer;
-        this.pcAudio = pcAudio;
         this.characterActions = characterActions;
         this.history = history;
         Board = board ?? new();
@@ -902,17 +863,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         this.tools = tools;
         this.runtimeFactory = runtimeFactory;
         this.dataDirectory = dataDirectory;
-        if (pcAudio?.Sound is { } sound)
-            // The audio model of its own judges first while it takes recordings, then a Thinking pool member that hears.
-            soundDigest = new PcSoundDigest(sound, () => pcAudio.WithoutMartlet != true && Speaking is not null,
-                SoundJudge, Board, dataDirectory, held: SoundJudgeHeld);
-        // What makes sound on this PC is followed only while Martlet hears the PC; its clock must be this controller's, which
-        // times each utterance.
-        if (pcAudio is not null && pcActivity is not null)
-        {
-            this.pcActivity = pcActivity;
-            pcActivity.Updated += PostActivity;
-        }
         localTranscription = localListener is null ? null : new(localListener, this.clock);
         localWords = localListener;
         // The Parakeet model on this PC that hears an utterance when Listening's own route fails (LocalSpeechSetup.ListeningStandIn).
@@ -927,9 +877,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
         listeningSession = new(this, turnJudge, transcriptionFactory);
-        var pcCredentials = new ConversationCredentialSource(() => Volatile.Read(ref pcTranscribing)?.Authorization);
-        pcTranscription = transcriptionFactory?.Invoke(pcCredentials, this.clock) ??
-            OpenAiTranscriptionAdapter.Create(pcCredentials, this.clock);
+        pcSession = new(this, pcAudio, pcActivity, transcriptionFactory);
         hostTranscription = new(hostListener ?? new HostTranscriptionClient(), this.clock);
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
         jobs = new(this.clock);
@@ -1097,7 +1045,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private LiveListener[] RevokeListeningLocked()
     {
         Interlocked.Increment(ref listenEpoch);
-        return new[] { listeningSession.listener, pcListener }.OfType<LiveListener>().Where(running => running.Running).ToArray();
+        return new[] { listeningSession.listener, pcSession.pcListener }.OfType<LiveListener>().Where(running => running.Running).ToArray();
     }
 
     private static void Cancel(LiveListener[] listeners)
@@ -4287,7 +4235,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // Hands-free listening also learns, frame by frame, which of what it hears was the speakers' sound.
         if (!pc && operation.HandsFree && operation.Listening?.ReduceEcho == true && echoReducer is not null)
             operation.Echo = new EchoTimeline(LiveConversationConfiguration.CaptureDuration);
-        var devices = pc ? pcAudio ?? throw new LiveActionException("conversation.configuration_unsupported")
+        var devices = pc ? pcSession.pcAudio ?? throw new LiveActionException("conversation.configuration_unsupported")
             : operation.Listening?.ReduceEcho == true && echoReducer is not null
             ? echoReducer.For(audio.Output.EndpointId, operation.Echo) : captureDevices;
         await using var microphone = new MicrophoneCapture(runtime.SessionId, devices,
@@ -4426,7 +4374,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             owned = RevokeLocked();
             stopListening = RevokeListeningLocked();
             microphone = listeningSession.listener;
-            playing = pcListener;
+            playing = pcSession.pcListener;
         }
         owned?.Cancel("conversation.closed");
         StopMemoryUpkeep();
@@ -4435,8 +4383,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         StopRequests();
         Cancel(stopListening);
         echoReducer?.Forget();
-        soundDigest?.Dispose();
-        pcActivity?.Dispose();
+        pcSession.DisposeWatchers();
         // Background work ends with Martlet, and so does the live floor (a hold on a host's graphics cards is let go).
         StopPresence();
         jobs.Dispose();
@@ -4455,7 +4402,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (owned is null || owned.Worker.Completion.IsCompleted) transcription.Dispose();
         else DisposeAfterReleaseAsync(owned).Forget();
         DisposeAfterListening(microphone, listeningSession.listenTranscription);
-        DisposeAfterListening(playing, pcTranscription);
+        DisposeAfterListening(playing, pcSession.pcTranscription);
     }
 
     // A listener's speech-to-text is disposed once its loop has let go of it.

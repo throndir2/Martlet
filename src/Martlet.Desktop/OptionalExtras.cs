@@ -23,7 +23,7 @@ internal static class OptionalExtras
 
     /// <summary>The part of the priority list (<see cref="ComponentRanking"/>) an Optional extras page sets, when the list has it.</summary>
     internal static PlanComponent? Component(CompanionTab tab) =>
-        MainWindow.GroupOf(tab) == CompanionGroup.Extras && Enum.TryParse<PlanComponent>(tab.ToString(), out var component) &&
+        CompanionPages.GroupOf(tab) == CompanionGroup.Extras && Enum.TryParse<PlanComponent>(tab.ToString(), out var component) &&
         Enum.IsDefined(component) && ComponentRanking.All.Any(info => info.Component == component)
             ? component : null;
 

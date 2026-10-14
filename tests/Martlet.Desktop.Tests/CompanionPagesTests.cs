@@ -12,27 +12,27 @@ public sealed class CompanionPagesTests
     [Fact]
     public void TheCharacterHasAGroupOfItsOwnPages()
     {
-        var groups = Enum.GetValues<CompanionTab>().GroupBy(MainWindow.GroupOf).OrderBy(g => g.Key).ToArray();
-        Assert.Equal(new[] { "How it works", "Optional extras", "Who it is", "How it looks", "What it does" }, groups.Select(g => MainWindow.GroupTitle(g.Key)));
+        var groups = Enum.GetValues<CompanionTab>().GroupBy(CompanionPages.GroupOf).OrderBy(g => g.Key).ToArray();
+        Assert.Equal(new[] { "How it works", "Optional extras", "Who it is", "How it looks", "What it does" }, groups.Select(g => CompanionPages.GroupTitle(g.Key)));
         Assert.Equal(new[] { "Character", "Speech bubbles", "Emotes and motions", "Eyes", "Touch" },
-            groups.Single(g => g.Key == CompanionGroup.HowItLooks).Select(MainWindow.TabTitle));
+            groups.Single(g => g.Key == CompanionGroup.HowItLooks).Select(CompanionPages.TabTitle));
         Assert.DoesNotContain(CompanionTab.Character, groups.Single(g => g.Key == CompanionGroup.WhoItIs));
     }
 
     [Fact]
     public void TheJobsMartletNeedsComeFirstAndTheExtrasSayTheyAreOptional()
     {
-        var groups = MainWindow.SideListOrder().GroupBy(MainWindow.GroupOf).ToDictionary(g => g.Key, g => g.ToArray());
-        Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Lip-sync" }, groups[CompanionGroup.HowItWorks].Select(MainWindow.TabTitle));
+        var groups = CompanionPages.SideListOrder().GroupBy(CompanionPages.GroupOf).ToDictionary(g => g.Key, g => g.ToArray());
+        Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Lip-sync" }, groups[CompanionGroup.HowItWorks].Select(CompanionPages.TabTitle));
         // The Optional extras follow the priority list: vision, reading, hearing, the Thinking pool, smart home, singing, pictures,
         // then motion, which the list doesn't rank.
         Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Thinking pool", "Smart home", "Singing", "Picture making", "Motion" },
-            groups[CompanionGroup.Extras].Select(MainWindow.TabTitle));
-        Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional.", MainWindow.TabIntro(tab)));
-        Assert.All(groups[CompanionGroup.Extras], tab => Assert.EndsWith($" Off: {OptionalExtras.OffMeans(tab)}.", MainWindow.TabIntro(tab)));
-        Assert.All(groups[CompanionGroup.HowItWorks], tab => Assert.DoesNotContain("Optional", MainWindow.TabIntro(tab)));
+            groups[CompanionGroup.Extras].Select(CompanionPages.TabTitle));
+        Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional.", CompanionPages.TabIntro(tab)));
+        Assert.All(groups[CompanionGroup.Extras], tab => Assert.EndsWith($" Off: {OptionalExtras.OffMeans(tab)}.", CompanionPages.TabIntro(tab)));
+        Assert.All(groups[CompanionGroup.HowItWorks], tab => Assert.DoesNotContain("Optional", CompanionPages.TabIntro(tab)));
         // The side list holds every page once, each group together.
-        Assert.Equal(Enum.GetValues<CompanionTab>().Length, MainWindow.SideListOrder().Distinct().Count());
+        Assert.Equal(Enum.GetValues<CompanionTab>().Length, CompanionPages.SideListOrder().Distinct().Count());
     }
 
     [Theory]
@@ -47,9 +47,9 @@ public sealed class CompanionPagesTests
     public void EveryPageHasItsOwnTitleIconAndIntro()
     {
         var tabs = Enum.GetValues<CompanionTab>();
-        Assert.Equal(tabs.Length, tabs.Select(MainWindow.TabTitle).Distinct().Count());
-        Assert.Equal(tabs.Length, tabs.Select(MainWindow.TabGlyph).Distinct().Count());
-        Assert.All(tabs, tab => Assert.NotEmpty(MainWindow.TabIntro(tab)));
+        Assert.Equal(tabs.Length, tabs.Select(CompanionPages.TabTitle).Distinct().Count());
+        Assert.Equal(tabs.Length, tabs.Select(CompanionPages.TabGlyph).Distinct().Count());
+        Assert.All(tabs, tab => Assert.NotEmpty(CompanionPages.TabIntro(tab)));
     }
 
     [Fact]

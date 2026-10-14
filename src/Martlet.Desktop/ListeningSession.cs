@@ -56,7 +56,7 @@ internal sealed partial class LiveConversationController
         {
             if (!options.HandsFree || options.Pc && (options.RequireVoiceId || options.Hear || options.ReduceEcho || options.Straight))
                 throw new LiveActionException("conversation.invalid_input");
-            if (options.Pc && owner.pcAudio is null) throw new LiveActionException("conversation.configuration_unsupported");
+            if (options.Pc && owner.pcSession.pcAudio is null) throw new LiveActionException("conversation.configuration_unsupported");
             options.Activity.Validate();
             Voiceprint? voiceprint = null;
             if (options.RequireVoiceId) voiceprint = owner.voiceIdentity?.Current ?? throw new LiveActionException("voiceid.not_enrolled");
@@ -68,12 +68,12 @@ internal sealed partial class LiveConversationController
                 var selected = owner.configuration ?? throw new LiveActionException("conversation.setup_required");
                 if (selected.Unavailable(false, true) is not null) throw new LiveActionException("conversation.configuration_unsupported");
                 // What the PC plays is heard on a slot of its own, beside the microphone.
-                listening.Worker = (options.Pc ? owner.pcSlot : listenSlot).TryStart(async token =>
+                listening.Worker = (options.Pc ? owner.pcSession.pcSlot : listenSlot).TryStart(async token =>
                 {
                     await started.Task.ConfigureAwait(false);
                     return await ListenLoopAsync(listening, token).ConfigureAwait(false);
                 }) ?? throw new LiveActionException("conversation.ownership_busy");
-                if (options.Pc) owner.pcListener = listening;
+                if (options.Pc) owner.pcSession.pcListener = listening;
                 else listener = listening;
             }
             started.SetResult();
@@ -139,7 +139,7 @@ internal sealed partial class LiveConversationController
         /// <paramref name="echo"/>: the capture under way, whose own echo reduction decides once it has opened.</summary>
         internal bool Held(ListeningOptions options, EchoTimeline? echo = null)
         {
-            if (options.Pc) return owner.pcAudio?.WithoutMartlet != true && (Held(false) || owner.singing?.Playing == true);
+            if (options.Pc) return owner.pcSession.pcAudio?.WithoutMartlet != true && (Held(false) || owner.singing?.Playing == true);
             var over = ListensOverMartlet(options, echo);
             return Held(over) || !over && owner.singing?.Playing == true;
         }
@@ -389,13 +389,13 @@ internal sealed partial class LiveConversationController
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
                 // What the PC plays is transcribed beside the microphone, with its own speech-to-text credentials.
                 var pc = listening.Options.Pc;
-                if (pc) Volatile.Write(ref owner.pcTranscribing, utterance);
+                if (pc) Volatile.Write(ref owner.pcSession.pcTranscribing, utterance);
                 else Volatile.Write(ref transcribing, utterance);
                 TranscriptionResult? result;
-                try { result = await owner.TranscribeAsync(utterance, audio, pc ? owner.pcTranscription : listenTranscription, linked.Token).ConfigureAwait(false); }
+                try { result = await owner.TranscribeAsync(utterance, audio, pc ? owner.pcSession.pcTranscription : listenTranscription, linked.Token).ConfigureAwait(false); }
                 finally
                 {
-                    if (pc) Interlocked.CompareExchange(ref owner.pcTranscribing, null, utterance);
+                    if (pc) Interlocked.CompareExchange(ref owner.pcSession.pcTranscribing, null, utterance);
                     else Interlocked.CompareExchange(ref transcribing, null, utterance);
                 }
                 if (result is null) return;
