@@ -13,19 +13,21 @@ using Martlet.Core.Singing;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Companion › Singing (an optional extra): Martlet writes a song from lyrics and a style and sings it with the voice it speaks with,
-/// on the <c>singing</c> host role (ACE-Step 1.5 writes the music, SoulX-Singer-SVC or VevoSing matches the singing to the
-/// voice). In the standard order: Now; the singing pool (the shared list control, docs/SINGING.md#the-singing-pool: the
-/// computers that make songs, in order, with no separate on/off switch: with none on, Martlet doesn't sing); each member's
-/// Settings say where Singing stands there (with the voice matches read from its singing service through the gateway), set
-/// the role up after a confirmation naming the downloads, licences and terms, add VevoSing with its own confirmation, and
-/// choose its own quality; what Singing is (the role's facts); then the song choices (<see cref="SingingPreferences"/>:
-/// quality, and the voice match as a second option picker). Songs are only ever performed by Martlet in conversation (through
-/// <see cref="SongMaker"/>), never played from a button here. Automation IDs: <c>SingingNow</c>, the list's
-/// <c>Pool-singing-...</c> (and per member <c>Pool-singing-State-&lt;key&gt;</c>, <c>Pool-singing-SetUp-&lt;key&gt;</c>,
-/// <c>Pool-singing-AddVevo-&lt;key&gt;</c>, <c>Pool-singing-Quality-&lt;key&gt;</c>), <c>Picker-Singing-Role</c>,
-/// <c>SingingGpu</c>, <c>SingingQuality</c>, <c>Picker-SingingVoiceMatch-&lt;SoulX|VevoSing&gt;</c>, <c>SingingUseSoulX</c>,
-/// <c>SingingUseVevoSing</c> and <c>SingingVoiceMatchState</c>.
+/// Companion › Singing (an optional extra): Martlet writes a song from lyrics and a style and sings it with the voice it speaks
+/// with, on the <c>singing</c> host role. A song has two parts, each with its own pool list (the shared list control,
+/// docs/SINGING.md#the-two-singing-pools): the music (<see cref="PoolAreas.Singing"/>: ACE-Step 1.5 writes it with its own singer;
+/// with none on, Martlet doesn't sing) and the voice match (<see cref="PoolAreas.VoiceMatch"/>: SoulX-Singer-SVC or VevoSing
+/// matches the singing to the voice; with none on, songs keep the music model's own singer), which may be other computers. In
+/// the standard order: Now; the two lists, where each member's Settings say where Singing stands there (with the voice matches
+/// read from its singing service through the gateway), set the role up after a confirmation naming the downloads, licences and
+/// terms, and choose that member's own quality (music: High quality by default, or Fast) or model (voice match: SoulX-Singer
+/// by default, or VevoSing, added with its own confirmation); what Singing is (the role's facts); then the voice match models
+/// compared. Songs are only ever performed by Martlet in conversation (through <see cref="SongMaker"/>), never played from a
+/// button here. Automation IDs: <c>SingingNow</c>, the lists' <c>Pool-singing-...</c> and <c>Pool-voice-match-...</c> (and per
+/// member <c>Pool-&lt;area&gt;-State-&lt;key&gt;</c>, <c>Pool-&lt;area&gt;-SetUp-&lt;key&gt;</c>,
+/// <c>Pool-singing-Quality-&lt;key&gt;</c>, <c>Pool-voice-match-Model-&lt;key&gt;</c> and
+/// <c>Pool-voice-match-AddVevo-&lt;key&gt;</c>), <c>Picker-Singing-Role</c>, <c>SingingGpu</c> and
+/// <c>Picker-SingingVoiceMatch-&lt;SoulX|VevoSing&gt;</c>.
 /// </summary>
 public partial class MainWindow
 {
@@ -50,34 +52,39 @@ public partial class MainWindow
     private readonly HashSet<string> singingReads = new(StringComparer.Ordinal);
 
 
-    /// <summary>The song maker Martlet's conversation uses: <see cref="SongClient"/> on the singing pool, or the FIXTURE - NOT AI
+    /// <summary>The song maker Martlet's conversation uses: <see cref="SongClient"/> on the singing pools, or the FIXTURE - NOT AI
     /// maker when MARTLET_SINGING_FIXTURE is 1; null before Martlet has its data directory.</summary>
     internal ISongMaker? SongMaker => store is null ? null : SongClient.For(store.DataDirectory);
 
-    /// <summary>Companion › Singing in the standard order: Now (whether Martlet sings, where and with what), the singing pool
-    /// (the shared list control: the computers that sing, in order; with none on, Martlet doesn't sing; each one's Settings say
-    /// where Singing stands there, set it up, add VevoSing or give it its own quality), what Singing is (the role's facts), then
-    /// the song choices (quality, and the voice match as a second option picker).</summary>
+    /// <summary>Companion › Singing in the standard order: Now (whether Martlet sings, where and with what), the music list and
+    /// the voice match list (the shared list control; each member's Settings say where Singing stands there, set it up, and
+    /// choose its own quality or model), what Singing is (the role's facts), then the voice match models compared.</summary>
     private void RenderSingingTab(Panel page)
     {
         var preferences = store is null ? new SingingPreferences() : SingingPreferences.Load(store.DataDirectory);
         EnsureSingingPool(preferences);
+        EnsureVoiceMatchPool(preferences);
         var thisPc = ThisPcHost();
         var listed = store is not null && WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Singing) is not null;
         var members = store is null ? [] : SongClient.Members(store.DataDirectory);
+        var matchOff = store is not null && SongClient.VoiceMatchOff(store.DataDirectory);
+        var matchers = store is null || matchOff ? [] : SongClient.Members(store.DataDirectory, PoolAreas.VoiceMatch);
         var active = store is not null && SongClient.IsSetUp(store.DataDirectory);
         var own = NetworkMap.Hosts(Inputs()).Where(h => !h.Shared).ToArray();
         var readySomewhere = own.Any(h => Offers(h, HostRoles.Singing)) || thisPc is not null && Offers(thisPc, HostRoles.Singing);
         // The voice matches set up on each member that sings, read once from its singing service.
-        var singers = members.Select(m => m.Host).DistinctBy(h => h.HostId).Where(h => Offers(h, HostRoles.Singing)).ToArray();
+        var singers = members.Concat(matchers).Select(m => m.Host).DistinctBy(h => h.HostId).Where(h => Offers(h, HostRoles.Singing)).ToArray();
         foreach (var host in singers.Where(h => !singingServices.ContainsKey(h.HostId))) ReadSingingServiceAsync(host).Forget();
         string Name(string hostId) => hostId == thisPc?.HostId ? "this PC" : hostId;
         IReadOnlyList<string> where = listed ? [.. members.Select(m => Name(m.Host.HostId)).Distinct()]
             : preferences.Host is { } saved ? [Name(saved)] : [];
+        IReadOnlyList<string> matchWhere = [.. matchers.Select(m => Name(m.Host.HostId)).Distinct()];
+        var quality = members.Count > 0 ? SingingPool.Quality(members[0].Member) : SongQuality.HighQuality;
+        var model = matchers.Count > 0 ? SingingPool.VoiceMatch(matchers[0].Member) : SongVoiceMatch.SoulX;
 
         // ---------- Now ----------
-        var nowText = new TextBlock { Text = SingingNow(preferences, active, where, listed, readySomewhere), FontSize = 15,
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
+        var nowText = new TextBlock { Text = SingingNow(preferences, active, where, listed, readySomewhere, matchWhere, matchOff, quality, model),
+            FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
         AutomationProperties.SetAutomationId(nowText, "SingingNow");
         var now = new List<UIElement> { Heading("Now"), nowText,
             Note("Ask Martlet to sing you a song. It writes the song in the background while you keep talking, then sings it with " +
@@ -86,26 +93,15 @@ public partial class MainWindow
             now.Add(Warning("There's no voice to sing with yet. Choose a voice on Companion › Voice."));
         page.Children.Add(Card([.. now]));
 
-        // ---------- the singing pool: the computers that sing, in order ----------
-        page.Children.Add(PoolListCard(new PoolListOptions
-        {
-            Area = PoolAreas.Singing,
-            Heading = "Where Martlet sings",
-            Intro = "The computers that make songs, in order. A song goes to the first one that isn't singing another song and has " +
-                "the voice match; when all are busy it waits on the one with the shortest line. With none on, Martlet doesn't sing. " +
-                "Open a computer's Settings to set Singing up there, add VevoSing or choose its own quality.",
-            Status = SingingMemberStatus,
-            Settings = SingingMemberSettings,
-            CanAdd = host => !host.Shared && HostCan(host.HostId, HostRoles.Singing) is not { Allowed: false },
-            Saved = (before, after) =>
-            {
-                // A computer added that doesn't sing yet shows its Settings, where Set up is.
-                foreach (var added in after.Members.Where(m => before.Find(m.Key) is null))
-                    if (SingingMemberHost(added) is not { } host || !Offers(host, HostRoles.Singing))
-                        poolExpanded.Add(PoolAreas.Singing.Id + " " + added.Key);
-                return Task.CompletedTask;
-            }
-        }));
+        // ---------- the two pools: the music, then the voice match ----------
+        page.Children.Add(PoolListCard(SingingListOptions(PoolAreas.Singing, "Music: where Martlet writes songs",
+            "The computers that write a song's music with ACE-Step 1.5 and its own singer, in order. A song goes to the first one " +
+            "that isn't making another song; when all are busy it waits on the one with the shortest line. With none on, Martlet " +
+            "doesn't sing. Open a computer's Settings to set Singing up there or choose its quality (High quality by default).")));
+        page.Children.Add(PoolListCard(SingingListOptions(PoolAreas.VoiceMatch, "Voice match: where Martlet matches the singing to its voice",
+            "The computers that match a song's singing to the voice Martlet speaks with, in order. They can be other computers " +
+            "than the ones that write the music. With none on, songs keep the music model's own singer. Open a computer's " +
+            "Settings to set Singing up there, choose its model (SoulX-Singer by default) or add VevoSing.")));
 
         // ---------- what Singing is: the role's facts ----------
         var role = OptionalExtras.SingingChoices(active, readySomewhere).First(o => !o.IsOff) with
@@ -119,44 +115,31 @@ public partial class MainWindow
         };
         page.Children.Add(Card(Heading("What Singing is"), OptionPickerBody("Singing", [role])));
 
-        // ---------- configuration: the song choices, kept on this PC (singing.json) and read when a song starts ----------
-        var quality = new ComboBox { MinHeight = 30, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0) };
-        quality.Items.Add(new ComboBoxItem { Content = "Fast (recommended)", Tag = SongQuality.Fast });
-        quality.Items.Add(new ComboBoxItem { Content = "High quality (clearer words, a few seconds more)", Tag = SongQuality.HighQuality });
-        quality.SelectedIndex = preferences.Quality == SongQuality.HighQuality ? 1 : 0;
-        AutomationProperties.SetName(quality, "Quality");
-        AutomationProperties.SetAutomationId(quality, "SingingQuality");
-        quality.SelectionChanged += (_, _) => SaveSinging(p => p with { Quality = quality.SelectedIndex == 1 ? SongQuality.HighQuality : SongQuality.Fast },
-            null, choice: false);
-        // VevoSing chosen while no computer in the list that sings has it: songs use SoulX-Singer until one does.
-        var vevoNowhere = preferences.VoiceMatch == SongVoiceMatch.VevoSing && singers.Length > 0 &&
-            singers.All(h => singingServices.TryGetValue(h.HostId, out var service) && service?.Has(SongVoiceMatch.VevoSing) != true);
-        var matches = OptionalExtras.VoiceMatches(preferences.VoiceMatch).Select(option =>
-        {
-            var match = Enum.Parse<SongVoiceMatch>(option.Key);
-            var use = preferences.VoiceMatch == match ? null : (Func<Button?>)(() => PageButton($"Use {option.Name}",
-                () => SaveSinging(p => p with { VoiceMatch = match }, $"Songs now use {option.Name}.", choice: false), primary: true,
-                id: "SingingUse" + option.Key));
-            if (match != SongVoiceMatch.VevoSing || !vevoNowhere) return option with { Action = use };
-            return option with
-            {
-                Action = use,
-                Details = () =>
-                {
-                    var missing = Note("VevoSing isn't set up on any computer in the list. Songs use SoulX-Singer until you add it: " +
-                        "open a computer's Settings above and choose Add VevoSing here.", new Thickness(0, 6, 0, 0));
-                    AutomationProperties.SetAutomationId(missing, "SingingVoiceMatchState");
-                    return [missing];
-                }
-            };
-        }).ToList();
-        page.Children.Add(Card(Heading("Song choices"),
-            Note("Kept on this PC and used from the next song. A computer with its own quality in the list above uses that instead.",
-                new Thickness(0, 0, 0, 4)),
-            Labeled("Quality", quality),
-            new TextBlock { Text = "Voice match", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 6) },
-            OptionPickerBody("SingingVoiceMatch", matches)));
+        // ---------- the voice match models compared; each computer in the voice match list chooses its own ----------
+        page.Children.Add(Card(Heading("Voice match models"),
+            Note("Each computer in the voice match list uses SoulX-Singer unless its Settings choose VevoSing. \"In use\" is the " +
+                "first computer's model.", new Thickness(0, 0, 0, 4)),
+            OptionPickerBody("SingingVoiceMatch", OptionalExtras.VoiceMatches(model))));
     }
+
+    /// <summary>The list options of one of Singing's pools: the members' lines and Settings, which computers can be added, and
+    /// a computer added that doesn't sing yet showing its Settings (where Set up is).</summary>
+    private PoolListOptions SingingListOptions(PoolArea area, string heading, string intro) => new()
+    {
+        Area = area,
+        Heading = heading,
+        Intro = intro,
+        Status = member => SingingMemberStatus(area, member),
+        Settings = member => SingingMemberSettings(area, member),
+        CanAdd = host => !host.Shared && HostCan(host.HostId, HostRoles.Singing) is not { Allowed: false },
+        Saved = (before, after) =>
+        {
+            foreach (var added in after.Members.Where(m => before.Find(m.Key) is null))
+                if (SingingMemberHost(added) is not { } host || !Offers(host, HostRoles.Singing))
+                    poolExpanded.Add(area.Id + " " + added.Key);
+            return Task.CompletedTask;
+        }
+    };
 
     /// <summary>The paired computer a singing pool member sings on: this PC's own host service for this PC, else the computer
     /// (a card's computer); null when it isn't paired here (or this PC has no host service yet).</summary>
@@ -168,17 +151,18 @@ public partial class MainWindow
     private string SingingSetupKey(PoolMember member) => SingingMemberHost(member) is { } host && host.HostId != ThisPcHost()?.HostId
         ? host.HostId : member.Kind == PoolMemberKind.ThisPc || member.HostId == ThisPcHost()?.HostId ? SingingThisPc : member.HostId ?? SingingThisPc;
 
-    /// <summary>A singing pool member's line in the list: whether Singing runs there (and its voice matches), is being set up,
-    /// failed, or why it can't sing.</summary>
-    private string? SingingMemberStatus(PoolMember member)
+    /// <summary>A member's line in one of Singing's lists: whether Singing runs there (and its voice matches), is being set up,
+    /// failed, or why it can't sing; then its quality (music) or its model (voice match).</summary>
+    private string? SingingMemberStatus(PoolArea area, PoolMember member)
     {
         var key = SingingSetupKey(member);
         if (singingPendingHost == key) return singingPendingVevo ? "adding VevoSing..." : "setting Singing up...";
         var host = SingingMemberHost(member);
         var parts = new List<string>();
+        SongClient.SingingService? service = null;
         if (host is not null && Offers(host, HostRoles.Singing))
         {
-            singingServices.TryGetValue(host.HostId, out var service);
+            singingServices.TryGetValue(host.HostId, out service);
             parts.Add(service is null ? "runs Singing" : service.Has(SongVoiceMatch.VevoSing)
                 ? "runs Singing with SoulX-Singer and VevoSing" : "runs Singing with SoulX-Singer");
         }
@@ -192,16 +176,25 @@ public partial class MainWindow
         }
         if (singingFailures.GetValueOrDefault(key) is { } failed) parts.Add("setup failed: " + failed.TrimEnd('.'));
         if (member.Kind == PoolMemberKind.Gpu) parts.Add("its computer picks the card");
-        if (SingingPool.Quality(member) is { } quality) parts.Add(quality == SongQuality.HighQuality ? "high quality" : "fast");
+        if (area == PoolAreas.VoiceMatch)
+        {
+            var model = SingingPool.VoiceMatch(member);
+            parts.Add(model == SongVoiceMatch.VevoSing && service is not null && !service.Has(SongVoiceMatch.VevoSing)
+                ? "VevoSing chosen, but it isn't set up here: SoulX-Singer until you add it" : SingingPool.Name(model));
+        }
+        else if (service is { Kinds.Count: > 0 } && !service.Singer.Splits)
+            parts.Add($"{(SingingPool.Quality(member) == SongQuality.Fast ? "fast" : "high quality")}; makes whole songs until Martlet is updated there");
+        else parts.Add(SingingPool.Quality(member) == SongQuality.Fast ? "fast" : "high quality");
         return string.Join("; ", parts);
     }
 
-    /// <summary>A singing pool member's Settings (automation IDs <c>Pool-singing-&lt;part&gt;-&lt;member key&gt;</c>): where Singing
-    /// stands there (State), Set up Singing here (SetUp) where it doesn't run yet, Add VevoSing here (AddVevo) where it runs
-    /// without VevoSing, and its own quality (Quality: the song choice, Fast or High quality).</summary>
-    private UIElement? SingingMemberSettings(PoolMember member)
+    /// <summary>A member's Settings in one of Singing's lists (automation IDs <c>Pool-&lt;area&gt;-&lt;part&gt;-&lt;member key&gt;</c>):
+    /// where Singing stands there (State), Set up Singing here (SetUp) where it doesn't run yet, then for the music its own
+    /// quality (Quality: High quality, the default, or Fast), and for the voice match Add VevoSing here (AddVevo) where it runs
+    /// without VevoSing and its own model (Model: SoulX-Singer, the default, or VevoSing).</summary>
+    private UIElement? SingingMemberSettings(PoolArea area, PoolMember member)
     {
-        var id = $"Pool-{PoolAreas.Singing.Id}-";
+        var id = $"Pool-{area.Id}-";
         var host = SingingMemberHost(member);
         var thisPc = ThisPcHost();
         var onThisPc = member.Kind == PoolMemberKind.ThisPc || host is not null && host.HostId == thisPc?.HostId;
@@ -211,6 +204,7 @@ public partial class MainWindow
         SongClient.SingingService? service = null;
         var known = ready && singingServices.TryGetValue(host!.HostId, out service);
         var vevo = service?.Has(SongVoiceMatch.VevoSing) == true;
+        var match = area == PoolAreas.VoiceMatch;
         var cannot = ready ? null : onThisPc ? ThisPcCannotSing()
             : host is null ? "It isn't paired with this PC."
             : hostChecks.GetValueOrDefault(host.HostId)?.Reachable == false ? "It isn't reachable right now."
@@ -219,10 +213,12 @@ public partial class MainWindow
             : ready ? (service is null ? "Singing is ready here." : vevo ? "Singing is ready here with SoulX-Singer and VevoSing."
                 : "Singing is ready here with SoulX-Singer.")
             : cannot ?? (singingFailures.GetValueOrDefault(key) is { } why ? $"Setting Singing up failed: {why}" : "Singing isn't set up here yet.");
-        if (ready && !pending && singingVevoFailures.GetValueOrDefault(key) is { } vevoFailed) state += $" Adding VevoSing failed: {vevoFailed}";
+        if (ready && !pending && service is not null && !service.Singer.Splits)
+            state += " Its Martlet is too old to make the music and the voice match apart: it makes whole songs until Martlet is updated there.";
+        if (match && ready && !pending && singingVevoFailures.GetValueOrDefault(key) is { } vevoFailed) state += $" Adding VevoSing failed: {vevoFailed}";
         var panel = new StackPanel();
         var line = Note(state, new Thickness(0, 0, 0, 4));
-        if (cannot is not null || !pending && (ready ? singingVevoFailures.ContainsKey(key) : singingFailures.ContainsKey(key)))
+        if (cannot is not null || !pending && (ready ? match && singingVevoFailures.ContainsKey(key) : singingFailures.ContainsKey(key)))
             line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(line, id + "State-" + member.Key);
         panel.Children.Add(line);
@@ -240,40 +236,55 @@ public partial class MainWindow
                 AutomationProperties.SetHelpText(action, cannot);
             }
         }
-        else if (known && !vevo)
+        else if (match && known && !vevo)
         {
             action = PageButton(pending ? "Adding VevoSing..." : "Add VevoSing here", () => SetUpSingingAsync(setUpHost, vevosing: true).Forget(),
                 id: id + "AddVevo-" + member.Key);
             action.IsEnabled = !pending && singingPendingHost is null;
         }
         if (action is not null) panel.Children.Add(Row(action));
-        var quality = new ComboBox { MinHeight = 30, MinWidth = 260, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0) };
-        quality.Items.Add(new ComboBoxItem { Content = "The song choice below", Tag = null });
-        quality.Items.Add(new ComboBoxItem { Content = "Fast", Tag = SongQuality.Fast });
-        quality.Items.Add(new ComboBoxItem { Content = "High quality", Tag = SongQuality.HighQuality });
-        quality.SelectedIndex = SingingPool.Quality(member) switch { SongQuality.Fast => 1, SongQuality.HighQuality => 2, _ => 0 };
-        AutomationProperties.SetName(quality, $"Quality on {member.Name}");
-        AutomationProperties.SetAutomationId(quality, id + "Quality-" + member.Key);
-        quality.SelectionChanged += (_, _) =>
+        var choice = new ComboBox { MinHeight = 30, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0) };
+        if (match)
         {
-            var chosen = (quality.SelectedItem as ComboBoxItem)?.Tag as SongQuality?;
-            if (chosen == SingingPool.Quality(member)) return;
-            SaveSingingMember(SingingPool.WithQuality(member, chosen), chosen is null
-                ? $"{member.Name} makes songs in the song choice's quality."
-                : $"{member.Name} makes songs in {(chosen == SongQuality.HighQuality ? "high quality" : "fast")} quality.");
-        };
-        panel.Children.Add(Labeled("Quality here", quality));
+            choice.Items.Add(new ComboBoxItem { Content = "SoulX-Singer (recommended: keeps the tune and the words)", Tag = SongVoiceMatch.SoulX });
+            choice.Items.Add(new ComboBoxItem { Content = "VevoSing (closer to the voice; personal, non-commercial use only)", Tag = SongVoiceMatch.VevoSing });
+            choice.SelectedIndex = SingingPool.VoiceMatch(member) == SongVoiceMatch.VevoSing ? 1 : 0;
+            AutomationProperties.SetName(choice, $"Voice match model on {member.Name}");
+            AutomationProperties.SetAutomationId(choice, id + "Model-" + member.Key);
+            choice.SelectionChanged += (_, _) =>
+            {
+                if ((choice.SelectedItem as ComboBoxItem)?.Tag is not SongVoiceMatch chosen || chosen == SingingPool.VoiceMatch(member)) return;
+                SaveSingingMember(area, SingingPool.WithVoiceMatch(member, chosen), $"{member.Name} matches voices with {SingingPool.Name(chosen)}." +
+                    (chosen == SongVoiceMatch.VevoSing && known && !vevo ? " Add VevoSing there first; until then it uses SoulX-Singer." : ""));
+            };
+            panel.Children.Add(Labeled("Model here", choice));
+        }
+        else
+        {
+            choice.Items.Add(new ComboBoxItem { Content = "High quality (recommended: the clearest words)", Tag = SongQuality.HighQuality });
+            choice.Items.Add(new ComboBoxItem { Content = "Fast (a few seconds quicker, less clear words)", Tag = SongQuality.Fast });
+            choice.SelectedIndex = SingingPool.Quality(member) == SongQuality.Fast ? 1 : 0;
+            AutomationProperties.SetName(choice, $"Quality on {member.Name}");
+            AutomationProperties.SetAutomationId(choice, id + "Quality-" + member.Key);
+            choice.SelectionChanged += (_, _) =>
+            {
+                if ((choice.SelectedItem as ComboBoxItem)?.Tag is not SongQuality chosen || chosen == SingingPool.Quality(member)) return;
+                SaveSingingMember(area, SingingPool.WithQuality(member, chosen),
+                    $"{member.Name} writes music in {(chosen == SongQuality.HighQuality ? "high" : "fast")} quality.");
+            };
+            panel.Children.Add(Labeled("Quality here", choice));
+        }
         return panel;
     }
 
-    /// <summary>Saves one singing pool member's settings in the list (pools.json, shared with your other computers).</summary>
-    private void SaveSingingMember(PoolMember member, string done)
+    /// <summary>Saves one member's settings in one of Singing's lists (pools.json, shared with your other computers).</summary>
+    private void SaveSingingMember(PoolArea area, PoolMember member, string done)
     {
         if (store is null) return;
-        var list = WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Singing) ?? new PoolList { Area = PoolAreas.Singing.Id };
-        if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.Singing, list.With(member)))
+        var list = WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
+        if (!PoolSettings.SaveFor(store.DataDirectory, area, list.With(member)))
         {
-            ActionText.Text = "Couldn't save the Singing list on this PC.";
+            ActionText.Text = $"Couldn't save the {area.Title} list on this PC.";
             return;
         }
         QueueSettingsSync();
@@ -299,27 +310,53 @@ public partial class MainWindow
             (preferences.Off ? " (all off: singing was off)." : "."));
     }
 
-    /// <summary>Companion › Singing's Now line (SingingNow). <paramref name="where"/>: the computers songs go to, in order (the
-    /// list's members that are on; before the list, the computer Martlet sings on). <paramref name="listed"/>: the list exists.</summary>
-    internal static string SingingNow(SingingPreferences preferences, bool active, IReadOnlyList<string> where, bool listed, bool readySomewhere)
+    /// <summary>Makes the voice match list once from the music list (the same computers, on and off alike, each with the voice
+    /// match Companion › Singing chose before), so the computers that sang whole songs keep matching the voice. Until it is
+    /// made, songs use the music list for their voice match too (<see cref="SongClient.Members"/>).</summary>
+    private void EnsureVoiceMatchPool(SingingPreferences preferences)
+    {
+        if (store is null || WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.VoiceMatch) is not null ||
+            WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Singing) is not { Members.Count: > 0 } music)
+            return;
+        var list = new PoolList
+        {
+            Area = PoolAreas.VoiceMatch.Id,
+            Members = [.. music.Members.Select(m => SingingPool.WithVoiceMatch(m.WithSetting(SingingPool.QualitySetting, null), preferences.OlderVoiceMatch))]
+        };
+        if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.VoiceMatch, list)) return;
+        QueueSettingsSync();
+        ErrorLog.Info($"Pools: the Voice match list was made from the Singing list: {string.Join(", ", list.Members.Select(m => m.Name))} " +
+            $"({SingingPool.Name(preferences.OlderVoiceMatch)}).");
+    }
+
+    /// <summary>Companion › Singing's Now line (SingingNow). <paramref name="where"/>: the computers that write the music, in
+    /// order (the list's members that are on; before the list, the computer Martlet sings on). <paramref name="listed"/>: the
+    /// list exists. <paramref name="matchWhere"/>: the computers that match the voice; <paramref name="matchOff"/>: the voice match
+    /// list has nothing on. <paramref name="quality"/> and <paramref name="model"/>: the first computer's in each list.</summary>
+    internal static string SingingNow(SingingPreferences preferences, bool active, IReadOnlyList<string> where, bool listed, bool readySomewhere,
+        IReadOnlyList<string>? matchWhere = null, bool matchOff = false, SongQuality quality = SongQuality.HighQuality,
+        SongVoiceMatch model = SongVoiceMatch.SoulX)
     {
         var stays = readySomewhere ? " Singing stays set up on your computers." : "";
         if (listed && where.Count == 0 && !DesktopSongSource.Fixture)
-            return $"Off. {OptionalExtras.OffMeans(CompanionTab.Singing)}: no computer in the list is on." + stays;
+            return $"Off. {OptionalExtras.OffMeans(CompanionTab.Singing)}: no computer in the music list is on." + stays;
         if (!listed && preferences.Off) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Singing)}." + stays;
-        if (!active) return "Not set up yet. Add one of your computers to the list below and set Singing up there.";
-        var place = DesktopSongSource.Fixture ? "this PC (FIXTURE - NOT AI)" : where.Count switch
+        if (!active) return "Not set up yet. Add one of your computers to the music list below and set Singing up there.";
+        static string Place(IReadOnlyList<string> computers) => computers.Count switch
         {
             0 => "this PC",
-            1 => where[0],
-            _ => $"{where[0]} (or the first free one of {where.Count} computers)"
+            1 => computers[0],
+            _ => $"{computers[0]} (or the first free one of {computers.Count} computers)"
         };
-        return $"Martlet sings on {place} with {(preferences.VoiceMatch == SongVoiceMatch.VevoSing ? "VevoSing" : "SoulX-Singer")}, " +
-            $"{(preferences.Quality == SongQuality.HighQuality ? "high quality" : "fast")}.";
+        var music = DesktopSongSource.Fixture ? "this PC (FIXTURE - NOT AI)" : Place(where);
+        var written = $"Martlet writes the music on {music} in {(quality == SongQuality.Fast ? "fast" : "high")} quality";
+        if (matchOff) return written + ". Voice match is off: songs keep the music model's own singer.";
+        var matched = DesktopSongSource.Fixture ? music : Place(matchWhere is { Count: > 0 } ? matchWhere : where);
+        return $"{written}, and matches the voice on {matched} with {SingingPool.Name(model)}.";
     }
+
     /// <summary>Saves a change to singing.json and shows <paramref name="done"/>; the next song uses it. A change of the main
-    /// choice (<paramref name="choice"/>: Off, or where Martlet sings) shows the option in use again; a song choice keeps the
-    /// page as it is.</summary>
+    /// choice (<paramref name="choice"/>) shows the option in use again.</summary>
     private void SaveSinging(Func<SingingPreferences, SingingPreferences> change, string? done, bool choice = true)
     {
         if (store is null) return;
@@ -327,7 +364,7 @@ public partial class MainWindow
         {
             var next = change(SingingPreferences.Load(store.DataDirectory));
             next.Save(store.DataDirectory);
-            ErrorLog.Info($"Singing: {(next.Off ? "off" : "on")}, host {next.Host ?? "none"}, {next.VoiceMatch}, {next.Quality}.");
+            ErrorLog.Info($"Singing: {(next.Off ? "off" : "on")}, host {next.Host ?? "none"}.");
             if (done is not null) ActionText.Text = done;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -336,7 +373,6 @@ public partial class MainWindow
             return;
         }
         if (choice) ForgetPicker("Singing");
-        ForgetPicker("SingingVoiceMatch");
         Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.Singing) RenderTab(); });
     }
     private bool Offers(PairedHost host, string kind) => hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(kind) == true;

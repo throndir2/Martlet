@@ -6,8 +6,9 @@ namespace Martlet.Core.Singing;
 /// <summary>
 /// Makes a song sung in a voice from Martlet's shared voice library: the music is written from the lyrics and style, then the
 /// singing is matched to the chosen voice's recording. The production implementation is the desktop's client for the
-/// <c>singing</c> host role (route <c>martlet.gateway.song.v1</c>); <see cref="FixtureSongMaker"/> is a deterministic
-/// FIXTURE - NOT AI stand-in for tests. A song takes from tens of seconds to several minutes, so callers run it as a
+/// <c>singing</c> host role (route <c>martlet.gateway.song.v1</c>): the music on the singing pool (<c>singing</c>), then the
+/// voice match on the voice match pool (<c>voice-match</c>), which may be another computer; <see cref="FixtureSongMaker"/> is
+/// a deterministic FIXTURE - NOT AI stand-in for tests. A song takes from tens of seconds to several minutes, so callers run it as a
 /// background job and report <see cref="SongProgress"/>.
 /// </summary>
 public interface ISongMaker
@@ -23,8 +24,8 @@ public interface ISongMaker
     Task<SongResult> GenerateAsync(SongRequest request, IProgress<SongProgress>? progress, CancellationToken cancellationToken);
 }
 
-/// <summary>How the music is written: <see cref="Fast"/> is ACE-Step 1.5 turbo (8 steps, the default);
-/// <see cref="HighQuality"/> is ACE-Step 1.5 SFT (50 steps), clearer lyrics for a few more seconds.</summary>
+/// <summary>How the music is written: <see cref="HighQuality"/> is ACE-Step 1.5 SFT (50 steps, the default), the clearest
+/// words; <see cref="Fast"/> is ACE-Step 1.5 turbo (8 steps), a few seconds quicker but less clear.</summary>
 public enum SongQuality
 {
     Fast,
@@ -66,7 +67,7 @@ public sealed record SongRequest
     public string? Key { get; init; }
     /// <summary>Optional seed for a repeatable song; a random one is chosen (and returned in the result) when null.</summary>
     public long? Seed { get; init; }
-    public SongQuality Quality { get; init; } = SongQuality.Fast;
+    public SongQuality Quality { get; init; } = SongQuality.HighQuality;
     public SongVoiceMatch VoiceMatch { get; init; } = SongVoiceMatch.SoulX;
 
     /// <summary>Throws <see cref="SongException"/> (<c>request.invalid</c>) when a field is outside its bounds.</summary>
@@ -117,7 +118,8 @@ public enum SongStage
 /// ahead.</summary>
 public sealed record SongProgress(SongStage Stage, double Fraction, int? QueuePosition = null)
 {
-    /// <summary>Set once the singing pool gives the song to a computer: that computer's host ID (null on other reports).</summary>
+    /// <summary>Set once the singing pool gives the song's music to a computer, and again when the voice match pool gives it its
+    /// voice match: that computer's host ID (null on other reports).</summary>
     public string? Host { get; init; }
 
     /// <summary>A short owner-facing description such as "Writing the music".</summary>
@@ -206,9 +208,11 @@ public sealed record SongLyricWord(TimeSpan Start, TimeSpan End, string Text, in
 /// <summary>How long one stage took on the host (loading models counts as <see cref="SongStage.Loading"/>).</summary>
 public sealed record SongStageTiming(SongStage Stage, TimeSpan Duration);
 
-/// <summary>What made the song: the models, whether it was the FIXTURE - NOT AI engine, and the choices used.</summary>
+/// <summary>What made the song: the models, whether it was the FIXTURE - NOT AI engine, and the choices used.
+/// <see cref="VoiceMatch"/> is null (and <see cref="Converter"/> empty) when no voice match was made: the song keeps the music
+/// model's own singer.</summary>
 public sealed record SongEngineIdentity(string Generator, string Separator, string Converter, SongQuality Quality,
-    SongVoiceMatch VoiceMatch, bool Fixture);
+    SongVoiceMatch? VoiceMatch, bool Fixture);
 
 /// <summary>A finished song: the mix to play, the separate vocals and backing (for ducking or stopping the voice), the
 /// lyric lines with their sections and times, the beat grid, and how long each stage took. The three tracks are

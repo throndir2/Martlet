@@ -6,6 +6,8 @@ exits when the host releases it after an idle period, or by itself after a song 
 system memory (it says "released" first), which frees all of its memory; the next song starts a new one.
 
 stdin:  {"type": "run", "job": {...}} | {"type": "cancel", "job_id"}
+        (job["kind"]: song, music or match; song and match jobs have the voice's reference.wav in their directory, a
+        match job also its input.pcm)
 stdout: {"type": "state", "state"} (ready, or released before it ends) | {"type": "progress", "job_id", "stage", "fraction"}
         | {"type": "completed", "job_id", "meta"} | {"type": "failed", "job_id", "error": {"code", "summary"}}
         | {"type": "canceled", "job_id"}
@@ -91,7 +93,8 @@ class Worker:
                 return job_id in self.canceled
 
         try:
-            job["reference_audio"] = (directory / "reference.wav").read_bytes()
+            if job.get("kind", "song") in ("song", "match"):
+                job["reference_audio"] = (directory / "reference.wav").read_bytes()
             meta = self.engine.run(job, directory, report, canceled)
             self.finish({"type": "completed", "job_id": job_id, "meta": meta})
         except engines.JobCanceled:

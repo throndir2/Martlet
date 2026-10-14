@@ -10,7 +10,12 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- **Singing's music and voice match each have their own list**: Companion › Singing now has a *Music* list (the computers that write a song) and a *Voice match* list (the computers that change the singing into Martlet's voice), so one computer can write the music while another matches the voice. Each computer chooses its own quality or voice match model, and your other computers follow the same lists. With nothing on in the *Voice match* list, songs keep the music model's own singer. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - **Your character comes alive when Chatterbox Original speaks expressively**: a sentence said in its *expressive* tone now makes a Live2D or VRM character lift its brows and bob with lively nods, as every other voice sound and tone already moves the character. ([#887](https://github.com/throndir2/Martlet/pull/887))
+
+### Changed
+
+- **Songs are made in high quality by default**: each computer that writes music now uses High quality (the clearest words) unless you choose Fast for it. The *Song choices* card is gone: the quality and the voice match model are now set for each computer in the lists. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 
 ## [0.77.0] - 2026-10-13
 

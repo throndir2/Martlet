@@ -51,6 +51,19 @@ Code about the pictures Martlet sees is in `Martlet.Conversation`
 (`SenseRouting`, `SensePool`) and in the desktop's `LiveConversation...Pictures.cs`,
 `PictureDescriptions.cs` and `ScreenDigest.cs` files.
 
+## Singing: the music and the voice match
+
+A song has two parts, made by two models, each with its own pool list on
+Companion › Singing ([Singing](SINGING.md#the-two-singing-pools)).
+
+| Concept | Code name | UI name | Kept names |
+| --- | --- | --- | --- |
+| The model that writes a song's music with its own singer (ACE-Step 1.5) | music model (`SongQuality`: `HighQuality`, the default, or `Fast`) | music | "song model", "generator" (`SongEngineIdentity.Generator`) |
+| The model that changes the singing into the voice Martlet speaks with (SoulX-Singer or VevoSing) | voice match (`SongVoiceMatch`, `SongVoiceMatchResult`, `SongVoice`) | voice match | "converter" (`SongEngineIdentity.Converter`). Do not use "SVC" in UI text |
+| The list of computers that write songs' music | pool area `PoolAreas.Singing` (title *Song music*) | Companion › Singing, *Music: where Martlet writes songs* | Area ID, lane and host role `singing`; automation IDs `Pool-singing-...` |
+| The list of computers that match songs' voices | pool area `PoolAreas.VoiceMatch` | Companion › Singing, *Voice match: where Martlet matches the singing to its voice* | Area ID and lane `voice-match`; automation IDs `Pool-voice-match-...` |
+| A singing host job | job kind `song` (the whole song), `music` or `match` (`GatewaySongKinds`) | (not shown) | |
+
 ## Summaries of the screen and of sounds
 
 | Concept | Code name | UI name | Kept names |

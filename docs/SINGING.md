@@ -127,11 +127,16 @@ model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither 
 - **Provisioning** (`martlet-singing provision`) downloads and verifies the pinned files. **Nothing is downloaded at run
   time:** `HF_HUB_OFFLINE`, ACE-Step's downloader is replaced by a refusal, Whisper base sits in the Hugging Face cache
   layout and Whisper medium where `whisper.load_model` looks.
-- **Service** `martlet_singing.host` listens on 127.0.0.1:50085 only. A song is a **job**: `POST /jobs` starts one (the
-  request and the voice's recording), `GET /jobs/<id>` reports its stage and progress, `GET /jobs/<id>/tracks/<track>`
-  pages a finished track's PCM out, and `POST /jobs/<id>/cancel` stops it. One song is made at a time and up to four more
-  wait in order (`singing.busy` beyond that); finished songs are kept for 30 minutes. `GET /status` reports the state,
-  engine, pinned models, voice matches set up, the queue and the graphics card's memory.
+- **Service** `martlet_singing.host` listens on 127.0.0.1:50085 only. A song is a **job**: `POST /jobs` starts one,
+  `GET /jobs/<id>` reports its stage and progress, `GET /jobs/<id>/tracks/<track>` pages a finished track's PCM out, and
+  `POST /jobs/<id>/cancel` stops it. A job's `kind` is `song` (the default: the request and the voice's recording, the
+  whole pipeline), `music` (no voice: the music, separated and timed against the separated vocals; tracks `mix`,
+  `vocals` and `backing`) or `match` (the voice's recording and `input_frames`: the job waits in state `receiving` until
+  `POST /jobs/<id>/input?offset=<frame>` pages of 48 kHz mono PCM have sent that many frames, then converts them; its
+  only track is `vocals`, as long as the input). One job is made at a time and up to four more wait (or receive) in order
+  (`singing.busy` beyond that); a job that receives no complete input within 300 s fails; finished jobs are kept for 30
+  minutes. `GET /status` reports the state, engine, pinned models, voice matches set up, the job kinds it makes
+  (`kinds`), the queue and the graphics card's memory.
 - **Worker process** `martlet_singing.worker` starts with the first song and runs the stages **one at a time**. The
   graphics card's free memory is read from nvidia-smi (every process; on Windows CUDA's own figure ignores the others and
   spills into shared memory instead of failing):
@@ -182,7 +187,8 @@ weights) to the loopback service. Each request is one operation, answered with J
 
 | Operation | Payload | Answer |
 | --- | --- | --- |
-| `start` | `lyrics`, `style`, `duration_seconds` (15-180), `language`, `quality` (`fast`, `high_quality`), `voice_match` (`soulx`, `vevosing`), `voice_id`, optional `bpm`, `key`, `seed`, `reference_audio_base64` | `{job_id, state, queue_position}` or `{error: {code, summary}}` |
+| `start` | `kind` (optional: `song`, the default, `music` or `match`). `song`: `lyrics`, `style`, `duration_seconds` (15-180), `language`, `quality` (`fast`, `high_quality`), `voice_match` (`soulx`, `vevosing`), `voice_id`, optional `bpm`, `key`, `seed`, `reference_audio_base64`. `music`: the same without `voice_match`, `voice_id` and the recording. `match`: `voice_match`, `voice_id`, `input_frames` (1 to 9,600,000) and optional `reference_audio_base64` | `{job_id, state, queue_position}` (a match job: state `receiving`) or `{error: {code, summary}}` |
+| `input` | `job_id`, `offset_frames` (the frames already sent), `pcm_base64` (48 kHz mono signed 16-bit PCM, at most 3,840,000 bytes: 40 s) | the job's view with `received_frames`; the last page queues it |
 | `status` | `job_id` (without it: the service's status) | `{state, stage, fraction, queue_position, error?, result?}` |
 | `result` | `job_id`, `track` (`mix`, `vocals`, `backing`), `offset_frames`, `maximum_frames` | one page (at most 4.8 MB of PCM) as events of `{track, sample_rate, channels, total_frames, offset_frames, frames, pcm_base64}` |
 | `cancel` | `job_id` | `{job_id, state}` |
@@ -196,28 +202,40 @@ No path or URL is ever accepted. Host configuration kind: `singing`.
 
 **Companion > Singing** (an optional extra, on its own page) has the standard page order:
 
-1. **Now**: whether Martlet sings, where and with what, and any problem (no voice to sing with).
-2. **Where Martlet sings**: the singing pool list ([below](#the-singing-pool)), the shared list control of every pooled
-   area. It holds the computers that make songs, in order: this PC, your paired computers (not hosts friends share, and
-   only those that can run Singing) and single graphics cards. There is no separate Off: with no computer in the list on,
-   Martlet doesn't sing, and the role stays set up on your computers. Each computer's **Settings** say where Singing
-   stands there (not set up, setting up, ready with the voice matches set up there, failed with the reason, or why that
-   computer can't sing), offer **Set up Singing here** (after a confirmation naming the downloads, licences and terms) or
-   **Add VevoSing here**, and choose that computer's own **Quality** (the song choice, Fast or High quality). A computer
-   added that doesn't sing yet opens its Settings. The list is `pools.json`, shared with your other computers.
-3. **What Singing is**: the role's facts compared with the catalog's numbers: an NVIDIA graphics card, about 5.1 GB of
+1. **Now**: whether Martlet sings, where it writes the music and in which quality, where it matches the voice and with
+   which model (or that the voice match is off), and any problem (no voice to sing with).
+2. **Music: where Martlet writes songs**: the singing pool list (`singing`, [below](#the-two-singing-pools)), the shared
+   list control of every pooled area. It holds the computers that write a song's music with ACE-Step 1.5 and its own
+   singer, in order: this PC, your paired computers (not hosts friends share, and only those that can run Singing) and
+   single graphics cards. There is no separate Off: with no computer in the list on, Martlet doesn't sing, and the role
+   stays set up on your computers. Each computer's **Settings** say where Singing stands there (not set up, setting up,
+   ready with the voice matches set up there, failed with the reason, why that computer can't sing, or that its Martlet
+   is too old to make the music apart), offer **Set up Singing here** (after a confirmation naming the downloads,
+   licences and terms), and choose that computer's own **Quality**: **High quality** (ACE-Step 1.5 SFT, 50 steps, the
+   default: the clearest words) or **Fast** (turbo, 8 steps).
+3. **Voice match: where Martlet matches the singing to its voice**: the voice match pool list (`voice-match`). It holds
+   the computers that match a song's vocals to the voice Martlet speaks with, in order; they can be other computers than
+   the music's. With no computer in it on, songs keep the music model's own singer. Each computer's **Settings** say
+   where Singing stands there, offer **Set up Singing here** or **Add VevoSing here**, and choose that computer's own
+   **Model**: **SoulX-Singer** (the default; Apache-2.0, any use; keeps the tune and the words) or **VevoSing** (closer
+   to the voice but may drift off-key; CC-BY-NC-ND-4.0, personal, non-commercial use only). A computer that chose
+   VevoSing but doesn't have it yet matches with SoulX-Singer until it is added.
+4. **What Singing is**: the role's facts compared with the catalog's numbers: an NVIDIA graphics card, about 5.1 GB of
    graphics memory and up to 7.2 GB (a 6 GB+ card), the download (about 31 GB with the image), about 1 to 2 minutes for
    a 30-second song, free, the licences, and that the lyrics, the style and the voice's recording go to the computer that
    sings; and whether Singing needs a graphics card of its own ([below](#does-singing-need-its-own-graphics-card)).
-4. **Song choices**: **Quality** (Fast, High quality) and **Voice match**, a second option picker that compares
-   SoulX-Singer (the default; Apache-2.0, any use) and VevoSing (closer to the voice but may drift off-key;
-   CC-BY-NC-ND-4.0, personal, non-commercial use only). Both are kept in `singing.json` on this PC. A computer with its
-   own quality in the list uses that instead.
+5. **Voice match models**: an option picker that compares SoulX-Singer and VevoSing (their footprint and licence);
+   *in use* is the first voice match computer's model.
 
-The first time the page opens, it makes the list once from the older choice (the computer Martlet sang on, then your
-other computers that run Singing; all off when singing was off), so nothing chosen is lost. It does this only when this
-PC sang on one of your computers: an empty list made here would turn singing off on your other computers.
+A computer added to either list that doesn't sing yet opens its Settings. Both lists, with each computer's quality and
+model, are `pools.json`, shared with your other computers.
 
+The first time the page opens, it makes the music list once from the older choice (the computer Martlet sang on, then
+your other computers that run Singing; all off when singing was off), so nothing chosen is lost. It does this only when
+this PC sang on one of your computers: an empty list made here would turn singing off on your other computers. When
+there is a music list and no voice match list, the page makes the voice match list once from the music list (the same
+computers, on and off alike), each with the voice match the page chose before (`voiceMatch` in `singing.json`).
+Until then, songs use the music list for their voice match too.
 There is no play button: Martlet performs its songs itself in conversation. The Devices map lists the role as "Singing"
 ("Ready. Martlet makes its songs here when you ask it to sing.").
 
@@ -233,17 +251,16 @@ Singing installs like every other role, through `martlet-host add singing`:
   ready here with SoulX-Singer.*; a failed run says why and Set up tries again (downloads already verified are kept).
 - A plain Set up installs **ACE-Step, Demucs and SoulX-Singer only** (`SINGING_VOICE_MATCHES=soulx`, about 16 GB). The
   page reads the voice matches set up on each computer in the list from its singing service, through the gateway.
-- **VevoSing is optional.** Using it under Voice match while no computer in the list has it says so ("Songs use
-  SoulX-Singer until you add it"). A computer's Settings offer **Add VevoSing here**, with its own confirmation naming CC-BY-NC-ND-4.0
+- **VevoSing is optional.** A voice match computer that chose VevoSing without it says so ("SoulX-Singer until you
+  add it"). Its Settings offer **Add VevoSing here**, with its own confirmation naming CC-BY-NC-ND-4.0
   (personal, non-commercial use only) and its downloads (Vevo1.5 and Whisper medium, about 4.5 GB), which happen only
-  then (`martlet-host add singing` again with `soulx-vevosing`; SoulX-Singer's files are kept). A VevoSing song goes to a
-  computer in the list with VevoSing; with none, it is sung with SoulX-Singer instead.
+  then (`martlet-host add singing` again with `soulx-vevosing`; SoulX-Singer's files are kept).
 - The Devices map's *Install Singing* and the Martlet hosts window's role cards run the same `martlet-host add singing`
   with the role's install dialog (`martlet-host describe singing`: its terms, the model and voice-match choices with
   SoulX-Singer preselected, and VevoSing's terms only when it is chosen). *Remove Singing* stops it and keeps the
   downloads.
 - The host image carries the singing sources (`/opt/martlet/source/workers/singing`) the role's image is built from,
-  like every role that builds on the host; the role's image tag (`martlet-singing:2`) is bumped whenever those sources
+  like every role that builds on the host; the role's image tag (`martlet-singing:3`) is bumped whenever those sources
   change, so `martlet-host update` (Martlet updating its hosts) rebuilds it.
 
 For other code (the conversation's `sing_song` tool), `Martlet.Core.Singing` holds the contract: `ISongMaker`
@@ -252,60 +269,84 @@ For other code (the conversation's `sing_song` tool), `Martlet.Core.Singing` hol
 `BeatsPerBar`, `Beats`, `Downbeats`, `StageTimings`), `SongLyrics.Parse`, `SongException` codes and the FIXTURE - NOT AI
 `FixtureSongMaker`. The desktop's implementation is `SongClient` (`SongClient.For(dataDirectory)`, also
 `MainWindow.SongMaker`); `MARTLET_SINGING_FIXTURE=1` makes it the fixture. `SongClient.IsSetUp(dataDirectory)` answers
-without the network whether singing is set up (the fixture is on, or the singing pool list has a member on that is paired
+without the network whether singing is set up (the fixture is on, or the music list has a member on that is paired
 here, or, without a list yet, a computer still paired with this PC ran Singing when
 the desktop last checked its computers: `host` in `singing.json`, kept while that computer is unreachable and cleared once
-it answers without Singing), `SongClient.SpeakingVoiceId(dataDirectory)` is the voice Martlet speaks with, and
-`SingingPreferences.Load(dataDirectory)` holds the card's choices.
+it answers without Singing), `SongClient.VoiceMatchOff(dataDirectory)` says whether the voice match list has nothing
+on, `SongClient.SpeakingVoiceId(dataDirectory)` is the voice Martlet speaks with, and
+`SingingPreferences.Load(dataDirectory)` holds the page's older choices. `SongVoice.WithVoice` puts a song's music and its
+voice match (`SongVoiceMatchResult`) together.
 
-### The singing pool
+### The two singing pools
 
-Songs go to a pool of the owner's own computers that run the singing role, not to one computer (`SingingPool` in
-`Martlet.Core.Singing`, used by `SongClient`). Hosts that friends share are never in it.
+A song is made in two jobs, each on its own pool of the owner's own computers that run the singing role
+(`SingingPool` in `Martlet.Core.Singing`, used by `SongClient`). Hosts that friends share are never in them.
 
-1. **Members.** With a singing pool list (the `singing` area of `pools.json`,
+1. **The music** (the `singing` pool, lane `singing`): a `music` job writes the music with the music model's own singer,
+   separates it into vocals and backing, and times the lyric lines, words and beats against the separated vocals. The
+   computer's own quality (`quality` in its settings, `SingingPool.Quality`: `fast`, or high quality without one) is the
+   job's quality.
+2. **The voice match** (the `voice-match` pool, lane `voice-match`): a `match` job converts those vocals to the voice. This
+   PC sends the vocals in pages of at most 40 s (`input`), and the computer's own model (`model` in its settings,
+   `SingingPool.VoiceMatch`: `vevosing`, or SoulX-Singer without one; SoulX-Singer where VevoSing isn't set up,
+   `SingingPool.MatchWith`) matches them; the matched vocals are gated to the original's sung phrases and levelled to its
+   loudness there, and keep its timing.
+3. **Put together** on this PC (`SongVoice.WithVoice`): mix = backing + matched vocals; when the mix would clip, the mix,
+   vocals and backing are scaled together to 0.98 of full scale, so they stay in step. The lines, words and beats are the
+   music's.
+
+With nothing on in the voice match list, the song is the music job's result: the music model's own singer. With a voice
+match list that has members on but none paired with this PC, the song fails and says so. A music computer whose Martlet
+is too old to make the music apart (its status has no `kinds`) makes the whole song there instead, with SoulX-Singer;
+such a computer is passed over for a voice match ("update Martlet there").
+
+In each pool:
+
+1. **Members.** With the pool's list (its area of `pools.json`,
    [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)), its members that are on, kept for this PC and paired
-   here, in the owner's order: `this-pc` is this PC's own host service, a card is its computer. An empty list, or one with
-   no member on, is off. Without a list yet, the older choices: the computer Martlet sings on (`host` in `singing.json`)
-   first, then the computers the shared plan says run Singing (fewest plan jobs first), then the other paired computers
-   (`SongClient.Members`).
-2. **Choosing.** The song goes through `WorkQueue.Shared` (lane `singing`, background priority; the member key is the
-   computer). Each member in order is asked for its singing status. The first that sings nothing now and has the song's
-   voice match takes it; while the first member is free, nothing else is asked.
-3. **Passed over.** A member that sings another song, doesn't answer, doesn't sing, isn't set up, or lacks the voice
-   match (VevoSing is set up only on some computers) is passed over for the next.
-4. **All busy.** The song waits in line on the member with the fewest songs before it (the first of those in order).
-   The singing host keeps the line, so this PC doesn't ask again and again. A full line (`singing.busy`) passes the song
+   here, in the owner's order: `this-pc` is this PC's own host service, a card is its computer. The voice match pool
+   without a list yet uses the music list. Without a list at all, the older choices: the computer Martlet sings on
+   (`host` in `singing.json`) first, then the computers the shared plan says run Singing (fewest plan jobs first), then
+   the other paired computers (`SongClient.Members`).
+2. **Choosing.** The job goes through `WorkQueue.Shared` (the pool's lane, background priority; the member key is the
+   computer). Each member in order is asked for its singing status. The first that makes nothing now and can make the
+   job takes it; while the first member is free, nothing else is asked.
+3. **Passed over.** A member that makes another job, doesn't answer, doesn't sing, isn't set up, or (for a voice match)
+   can't make it apart is passed over for the next.
+4. **All busy.** The job waits in line on the member with the fewest jobs before it (the first of those in order).
+   The singing host keeps the line, so this PC doesn't ask again and again. A full line (`singing.busy`) passes the job
    to the next; when every line is full the song fails with `singing.busy`.
-5. **During the song.** A member that stops answering is replaced by the next, and the song is made again there. A song
+5. **During the job.** A member that stops answering is replaced by the next, and the job is made again there. A job
    that fails on its computer (`song.failed`) is not made again elsewhere. The voice recording goes to whichever member
-   takes the song, when it lacks it.
-6. **Availability.** `GetAvailabilityAsync` reads every member's status at once. Its host is where the next song would
-   go (`SingingPool.Pick`), and its voice matches are those set up on any member, so a VevoSing song goes to a member
-   with VevoSing.
+   takes the voice match, when it lacks it.
+6. **Availability.** `GetAvailabilityAsync` reads every music member's status at once. Its host is where the next song's
+   music would go (`SingingPool.Pick`).
 
-The song job holds the member that makes the song from background thinks (it starts with the computer Martlet sings on
-and moves when `SongProgress.Host` names another). The desktop log says where each song went
-(`Singing: m4-host makes the song (number 2 of 3 in the singing pool).`, and `Sharing work: singing went to host:m4-host
-(1 busy).` when the first member was passed over). A member with its own quality (`quality` in its settings: `fast` or
-`high_quality`, `SingingPool.Quality`) makes the song in that quality; without one, the song choice. Every member that
-sings is kept from background thinks (`BackgroundDuties`).
+The song job holds the member that makes each part from background thinks (it starts with the computer Martlet sings on
+and moves when `SongProgress.Host` names another). The desktop log says where each part went
+(`Singing: m4-host writes the music (number 2 of 3 in its list).`, `Singing: m3-host matches the voice (number 1 of 1 in
+its list).`, and `Sharing work: singing went to host:m4-host (1 busy).` when the first member was passed over). Every
+member of both lists is kept from background thinks (`BackgroundDuties`).
 
 ## Verification
 
 - `python -m unittest discover -s tests -t .` in `workers/singing` (with `PYTHONPATH=workers/singing`) runs the service
-  with the fixture: every stage, aligned paged tracks, sections and beat grid, refusals, cancel, queue, the idle release
-  and the restart of a killed worker.
+  with the fixture: every stage, aligned paged tracks, sections and beat grid, refusals, cancel, queue, the idle release,
+  the restart of a killed worker, and the `music` and `match` kinds (a match job's input pages, a wrong offset refused,
+  its vocals-only track, a receiving job canceled).
 - `tests/Martlet.Gateway.Tests/SongRelayTests.cs` makes a song through a real gateway and paired client against a
-  controlled service: voice resolution (and the one-time recording upload), progress, paging, failures, cancellation and
-  the loopback-only relay. `tests/Martlet.Core.Tests/SongContractsTests.cs` checks the contract and the fixture.
+  controlled service: voice resolution (and the one-time recording upload), progress, paging, failures, cancellation, the
+  loopback-only relay, and a song's music and voice match as two jobs (the vocals sent in pages).
+  `tests/Martlet.Core.Tests/SongContractsTests.cs` checks the contract and the fixture.
 - MCP `singing_check` makes a song through the production path (fixture service, or a live one on loopback, or with
-  `dataDirectory` a real paired host through its own gateway, as the desktop does); `singing_status` reads a live service,
-  and with a paired data directory each host's singing through its gateway, the singing pool (`pool`: the list or the
-  older choices, each member's verdict now and where the next song goes) and this PC's Docker side of the role (a setup
-  in progress included). `singing_pool_check` rehearses the pool with simulated computers. See [MCP](MCP.md).
+  `dataDirectory` a real paired host through its own gateway, as the desktop does; `split` makes it as two jobs, as the
+  two pools do); `singing_status` reads a live service, and with a paired data directory each host's singing through its
+  gateway, the two singing pools (`pool` and `pool.voiceMatch`: the lists or the older choices, each member's quality or
+  model, its verdict now and where the next job goes) and this PC's Docker side of the role (a setup in progress
+  included). `singing_pool_check` rehearses the two pools with simulated computers. See [MCP](MCP.md).
 - `tests/Martlet.Core.Tests/SingingPoolTests.cs` and `tests/Martlet.Desktop.Tests/SingingPoolMembersTests.cs` check the
-  pool's order, list, choices, lines and failures. Songs between real hosts in a pool are **NOT RUN**.
+  pools' order, lists, qualities and models, lines, failures and how the music and voice match are put together. Songs
+  whose music and voice match are made on two different real hosts are **NOT RUN**.
 
 ## Singing in conversation
 

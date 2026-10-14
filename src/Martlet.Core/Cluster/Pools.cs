@@ -232,9 +232,20 @@ public static class PoolAreas
         Id = "pictures", Title = "Picture making", Page = "Companion › Picture making", HostRole = "pictures",
         Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
     };
+    /// <summary>Singing's music (docs/SINGING.md): this PC's own host service, a paired computer or one of its cards that runs the
+    /// <c>singing</c> role writes a song's music with the music model's own singer, separates it and times it. Member setting:
+    /// <see cref="Martlet.Core.Singing.SingingPool.QualitySetting"/>. The ID and lane stay "singing": they are saved.</summary>
     public static readonly PoolArea Singing = new()
     {
-        Id = "singing", Title = "Singing", Page = "Companion › Singing", HostRole = "singing", Kinds = Local
+        Id = "singing", Title = "Song music", Page = "Companion › Singing", HostRole = "singing", Kinds = Local
+    };
+    /// <summary>Singing's voice match (docs/SINGING.md): a computer or card that runs the <c>singing</c> role matches a song's
+    /// vocals to the voice Martlet speaks with. Member setting: <see cref="PoolSettingKeys.Model"/> (soulx or vevosing). Required:
+    /// with nothing on, songs keep the music model's own singer.</summary>
+    public static readonly PoolArea VoiceMatch = new()
+    {
+        Id = "voice-match", Title = "Voice match", Page = "Companion › Singing", HostRole = "singing", Kinds = Local, Required = true,
+        Fallback = "Songs keep the music model's own singer"
     };
     /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.
     /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware). An empty list means no model of its
@@ -275,7 +286,7 @@ public static class PoolAreas
     };
 
     public static IReadOnlyList<PoolArea> All { get; } =
-        [Speaking, Listening, Thinking, LipSync, PictureMaking, Singing, Vision, Hearing, Reading, Motion, VoiceRecognition];
+        [Speaking, Listening, Thinking, LipSync, PictureMaking, Singing, VoiceMatch, Vision, Hearing, Reading, Motion, VoiceRecognition];
 
     public static PoolArea? Find(string? id) => All.FirstOrDefault(a => a.Id == id);
 }

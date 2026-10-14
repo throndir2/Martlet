@@ -14,8 +14,10 @@ namespace Martlet.Gateway.Singing;
 /// Gateway relay from a paired client to this host's own loopback singing service (the <c>singing</c> host role:
 /// workers/singing/martlet_singing/host.py), which writes a song with ACE-Step 1.5, separates its vocals and matches them to
 /// a voice of the shared voice library (SoulX-Singer-SVC, or VevoSing when the owner set it up). A song takes far longer
-/// than one request, so each request is one job operation (<c>start</c>, <c>status</c>, <c>result</c> page, <c>cancel</c>)
-/// answered with JSON text events. Enabling the role is the host owner's standing permission for paired <c>voice</c>
+/// than one request, so each request is one job operation (<c>start</c>, <c>status</c>, <c>result</c> page, <c>cancel</c>,
+/// and <c>input</c> pages of the vocals a voice match job converts) answered with JSON text events. A start's kind
+/// (<see cref="GatewaySongKinds"/>) asks for the whole song, only its music, or only a voice match, so the music and the voice
+/// match can be made on two different computers. Enabling the role is the host owner's standing permission for paired <c>voice</c>
 /// devices to send lyrics and a style and have songs sung in a voice of the owner's shared voice list; the gateway hands the
 /// service that voice's recording (nothing else on the host is reachable through it, and no path or URL is accepted).
 /// </summary>
@@ -96,6 +98,9 @@ public sealed class SongRelayWorker : ISongGatewayInferenceWorker, IAsyncDisposa
                     payload.JobId is null ? "status" : $"jobs/{payload.JobId}", null, stop.Token).ConfigureAwait(false),
                 GatewaySongOperation.Cancel => await JsonAsync(HttpMethod.Post, $"jobs/{payload.JobId}/cancel", "{}"u8.ToArray(),
                     stop.Token).ConfigureAwait(false),
+                GatewaySongOperation.Input => await JsonAsync(HttpMethod.Post, string.Create(CultureInfo.InvariantCulture,
+                    $"jobs/{payload.JobId}/input?offset={payload.OffsetFrames}"), payload.InputPcm.ToArray(), stop.Token,
+                    "application/octet-stream").ConfigureAwait(false),
                 _ => await ResultAsync(payload, stop.Token).ConfigureAwait(false)
             };
             stop.Token.ThrowIfCancellationRequested();
@@ -118,25 +123,29 @@ public sealed class SongRelayWorker : ISongGatewayInferenceWorker, IAsyncDisposa
         CancellationToken token)
     {
         var start = payload.Start!;
-        var body = new JsonObject
+        var body = new JsonObject { ["request_id"] = request.RequestId.ToString("D"), ["kind"] = start.Kind };
+        if (start.Kind != GatewaySongKinds.Match)
         {
-            ["request_id"] = request.RequestId.ToString("D"),
-            ["lyrics"] = start.Lyrics,
-            ["style"] = start.Style,
-            ["duration_seconds"] = start.DurationSeconds,
-            ["language"] = start.Language,
-            ["quality"] = start.Quality,
-            ["voice_match"] = start.VoiceMatch,
-            ["voice_id"] = start.VoiceId,
-            ["reference"] = new JsonObject
+            body["lyrics"] = start.Lyrics;
+            body["style"] = start.Style;
+            body["duration_seconds"] = start.DurationSeconds;
+            body["language"] = start.Language;
+            body["quality"] = start.Quality;
+            if (start.Bpm is { } bpm) body["bpm"] = bpm;
+            if (start.Key is { } key) body["key"] = key;
+            if (start.Seed is { } seed) body["seed"] = seed;
+        }
+        if (start.Kind != GatewaySongKinds.Music)
+        {
+            body["voice_match"] = start.VoiceMatch;
+            body["voice_id"] = start.VoiceId;
+            body["reference"] = new JsonObject
             {
                 ["audio_sha256"] = start.ReferenceAudioSha256,
                 ["audio_base64"] = Convert.ToBase64String(payload.ReferenceAudio.Span)
-            }
-        };
-        if (start.Bpm is { } bpm) body["bpm"] = bpm;
-        if (start.Key is { } key) body["key"] = key;
-        if (start.Seed is { } seed) body["seed"] = seed;
+            };
+        }
+        if (start.Kind == GatewaySongKinds.Match) body["input_frames"] = start.InputFrames;
         var bytes = Encoding.UTF8.GetBytes(body.ToJsonString());
         try
         {
@@ -208,13 +217,13 @@ public sealed class SongRelayWorker : ISongGatewayInferenceWorker, IAsyncDisposa
     }
 
     private async Task<(IReadOnlyList<byte[]>, string?)> JsonAsync(HttpMethod method, string path, byte[]? body,
-        CancellationToken token)
+        CancellationToken token, string mediaType = "application/json")
     {
         using var request = new HttpRequestMessage(method, new Uri(endpoint, path));
         if (body is not null)
         {
             request.Content = new ByteArrayContent(body);
-            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
         }
         HttpResponseMessage response;
         try

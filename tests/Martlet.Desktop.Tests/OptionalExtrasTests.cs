@@ -175,11 +175,15 @@ public sealed class OptionalExtrasTests
             Assert.False(SongClient.IsSetUp(directory));
             Assert.StartsWith("Off. Martlet doesn't sing.", MainWindow.SingingNow(saved, active: false, [], listed: false, readySomewhere: true));
             Assert.StartsWith("Not set up yet.", MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: false, readySomewhere: false));
-            // With the singing pool list, Off is a list with no computer on, and Martlet sings on the first free one.
-            Assert.Equal("Off. Martlet doesn't sing: no computer in the list is on.",
+            // With the singing pool list, Off is a list with no computer on; the music and the voice match each name their computers.
+            Assert.Equal("Off. Martlet doesn't sing: no computer in the music list is on.",
                 MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: true, readySomewhere: false));
-            Assert.Equal("Martlet sings on m3-host (or the first free one of 2 computers) with SoulX-Singer, fast.",
-                MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host", "m4-host"], listed: true, readySomewhere: true));
+            Assert.Equal("Martlet writes the music on m3-host (or the first free one of 2 computers) in high quality, and matches the " +
+                "voice on m4-host with SoulX-Singer.",
+                MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host", "m4-host"], listed: true, readySomewhere: true, ["m4-host"]));
+            Assert.Equal("Martlet writes the music on m3-host in fast quality. Voice match is off: songs keep the music model's own singer.",
+                MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host"], listed: true, readySomewhere: true, [], matchOff: true,
+                    quality: SongQuality.Fast));
         }
         finally
         {

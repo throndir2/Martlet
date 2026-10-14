@@ -520,9 +520,10 @@ public sealed partial class GatewayInferenceRoute
 
     /// <summary>
     /// The singing host role's song jobs (<c>workers/singing</c>): one short request per operation. <c>start</c> queues a
-    /// song from lyrics, style and a voice of the shared speaking-voice list (the gateway hands the worker that voice's
-    /// recording); <c>status</c> reports the stage; <c>result</c> pages one finished track's 48 kHz PCM16 out in JSON text
-    /// events; <c>cancel</c> stops the job. A song takes far longer than one request, so the job lives on the host and the
+    /// job (<see cref="GatewaySongKinds"/>): a whole song from lyrics, style and a voice of the shared speaking-voice list
+    /// (the gateway hands the worker that voice's recording), only its music, or only the voice match of vocals that
+    /// <c>input</c> pages send next; <c>status</c> reports the stage; <c>result</c> pages one finished track's 48 kHz PCM16
+    /// out in JSON text events; <c>cancel</c> stops the job. A song takes far longer than one request, so the job lives on the host and the
     /// client polls it. Every event's text is one JSON object; job-level failures (busy, missing voice match) are such an
     /// object with an <c>error</c>.
     /// </summary>
@@ -568,6 +569,11 @@ public sealed partial class GatewayInferenceRoute
     public const int SongMaximumPageBytes = 4_800_000;
     /// <summary>At most this much PCM (base64 in the event's JSON text) per event of a <c>result</c> page.</summary>
     public const int SongMaximumEventPcmBytes = 96_000;
+    /// <summary>At most this much PCM in one <c>input</c> page of a voice match job's vocals (40 s of 48 kHz mono; its
+    /// base64 fits the request bound).</summary>
+    public const int SongMaximumInputPageBytes = 3_840_000;
+    /// <summary>At most this many 48 kHz frames in a song's track, and in a voice match job's vocals.</summary>
+    public const long SongMaximumFrames = 48_000L * 200;
 
     /// <summary>
     /// The pictures host role's ComfyUI relay (<c>workers/pictures</c>): one request is one bounded ComfyUI API operation.
@@ -1047,18 +1053,21 @@ public enum GatewaySongOperation
     Start,
     Status,
     Result,
-    Cancel
+    Cancel,
+    Input
 }
 
-/// <summary>One operation on the host's song jobs. <see cref="GatewaySongOperation.Start"/> carries the song request and the
-/// chosen voice's recording, which the gateway resolved from its shared speaking-voice list (or checked against it when the
-/// client sent it); the others name a job.</summary>
+/// <summary>One operation on the host's song jobs. <see cref="GatewaySongOperation.Start"/> carries the job request and, for a
+/// job with a voice, the chosen voice's recording, which the gateway resolved from its shared speaking-voice list (or checked
+/// against it when the client sent it); <see cref="GatewaySongOperation.Input"/> carries one page of the vocals a voice match
+/// job converts; the others name a job.</summary>
 public sealed class GatewaySongPayload : GatewayInferencePayload
 {
     private readonly byte[] referenceAudio;
+    private readonly byte[] inputPcm;
 
     internal GatewaySongPayload(GatewaySongOperation operation, string? jobId = null, GatewaySongStart? start = null,
-        byte[]? referenceAudio = null, string? track = null, long offsetFrames = 0, int maximumFrames = 0)
+        byte[]? referenceAudio = null, string? track = null, long offsetFrames = 0, int maximumFrames = 0, byte[]? inputPcm = null)
     {
         Operation = operation;
         JobId = jobId;
@@ -1067,23 +1076,46 @@ public sealed class GatewaySongPayload : GatewayInferencePayload
         Track = track;
         OffsetFrames = offsetFrames;
         MaximumFrames = maximumFrames;
+        this.inputPcm = inputPcm ?? [];
     }
 
     public GatewaySongOperation Operation { get; }
     public string? JobId { get; }
     public GatewaySongStart? Start { get; }
-    /// <summary>The voice's recording (a mono 16-bit PCM WAV) for <see cref="GatewaySongOperation.Start"/>; empty otherwise.</summary>
+    /// <summary>The voice's recording (a mono 16-bit PCM WAV) for a <see cref="GatewaySongOperation.Start"/> of a job with a
+    /// voice (<see cref="GatewaySongKinds.Song"/> or <see cref="GatewaySongKinds.Match"/>); empty otherwise.</summary>
     public ReadOnlyMemory<byte> ReferenceAudio => referenceAudio;
     /// <summary><c>mix</c>, <c>vocals</c> or <c>backing</c> for <see cref="GatewaySongOperation.Result"/>.</summary>
     public string? Track { get; }
+    /// <summary>The first frame of a <see cref="GatewaySongOperation.Result"/> page, or of an
+    /// <see cref="GatewaySongOperation.Input"/> page.</summary>
     public long OffsetFrames { get; }
     public int MaximumFrames { get; }
-    internal override void Clear() => CryptographicOperations.ZeroMemory(referenceAudio);
+    /// <summary>One page of 48 kHz mono signed 16-bit PCM vocals for <see cref="GatewaySongOperation.Input"/>; empty otherwise.</summary>
+    public ReadOnlyMemory<byte> InputPcm => inputPcm;
+    internal override void Clear()
+    {
+        CryptographicOperations.ZeroMemory(referenceAudio);
+        CryptographicOperations.ZeroMemory(inputPcm);
+    }
 }
 
-/// <summary>The song a <c>start</c> asks for (bounds as in <c>Martlet.Core.Singing.SongRequest</c>).</summary>
-public sealed record GatewaySongStart(string Lyrics, string Style, int DurationSeconds, string Language, int? Bpm, string? Key,
-    long? Seed, string Quality, string VoiceMatch, string VoiceId, string ReferenceAudioSha256)
+/// <summary>The jobs a song <c>start</c> asks for. <see cref="Song"/>: the whole song (the music, then the voice match), as
+/// one job on one computer. <see cref="Music"/>: only the music with the music model's own singer, separated into vocals
+/// and backing and timed. <see cref="Match"/>: only the voice match of vocals the client sends next (<c>input</c> pages).</summary>
+public static class GatewaySongKinds
+{
+    public const string Song = "song";
+    public const string Music = "music";
+    public const string Match = "match";
+}
+
+/// <summary>The job a <c>start</c> asks for (bounds as in <c>Martlet.Core.Singing.SongRequest</c>). A
+/// <see cref="GatewaySongKinds.Music"/> start has no voice (<see cref="VoiceMatch"/>, <see cref="VoiceId"/> and
+/// <see cref="ReferenceAudioSha256"/> are null). A <see cref="GatewaySongKinds.Match"/> start has no lyrics, style, language
+/// or quality (null, duration 0) and says how many 48 kHz mono frames of vocals follow (<see cref="InputFrames"/>).</summary>
+public sealed record GatewaySongStart(string Kind, string? Lyrics, string? Style, int DurationSeconds, string? Language, int? Bpm,
+    string? Key, long? Seed, string? Quality, string? VoiceMatch, string? VoiceId, string? ReferenceAudioSha256, long InputFrames = 0)
 {
     public override string ToString() => "Gateway song start (content omitted)";
 }

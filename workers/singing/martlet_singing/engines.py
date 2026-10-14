@@ -1,9 +1,14 @@
 """The song engines the singing worker runs: the real pipeline (ACE-Step 1.5 -> Demucs vocals -> SoulX-Singer-SVC or
 VevoSing -> mix -> lyric and beat timing) and the deterministic FIXTURE - NOT AI tone engine for plumbing checks.
 
-An engine writes mix.pcm (48 kHz stereo), vocals.pcm (48 kHz mono) and backing.pcm (48 kHz stereo) as signed 16-bit
-little-endian PCM into the job directory and returns the song's metadata. Stages run one at a time and each releases the
-graphics card's memory it used before the next starts.
+A job has one of three kinds:
+  song   the whole pipeline: writes mix.pcm (48 kHz stereo), vocals.pcm (48 kHz mono, the matched voice) and backing.pcm
+         (48 kHz stereo).
+  music  the music only (ACE-Step, Demucs, beat and lyric timing): mix.pcm, vocals.pcm (the separated vocals, mono) and
+         backing.pcm. The client then sends the vocals to a match job, maybe on another computer.
+  match  the voice match only: reads input.pcm (48 kHz mono signed 16-bit) and writes vocals.pcm, the same length.
+Tracks are signed 16-bit little-endian PCM in the job directory; the engine returns the job's metadata. Stages run one at
+a time and each releases the graphics card's memory it used before the next starts.
 """
 
 from __future__ import annotations
@@ -24,6 +29,9 @@ Report = Callable[[str, float], None]
 Canceled = Callable[[], bool]
 
 FIXTURE_STAGE_SECONDS = float(os.environ.get("MARTLET_SINGING_FIXTURE_STAGE_SECONDS", "0.05"))
+# The voice match's own figures reported in the result's engine.match.
+MATCH_KEYS = ("shift_semitones", "singer_hz", "voice_hz", "load_seconds", "pitch_seconds", "convert_seconds",
+              "process_seconds", "peak_vram_mib", "transformers", "warm")
 
 
 class SongError(Exception):
@@ -67,17 +75,58 @@ class FixtureEngine:
 
     def run(self, job: dict[str, Any], directory: Path, report: Report, canceled: Canceled) -> dict[str, Any]:
         timer = Timer()
-        for index, stage in enumerate(("writing_music", "separating", "matching_voice", "mixing", "aligning")):
+        kind = job.get("kind", "song")
+        if kind == "match":
+            self._stages(("matching_voice", "mixing"), timer, report, canceled)
+            started = time.perf_counter()
+            meta = self.match(job, directory)
+            timer.add("mixing", started)
+        else:
+            stages = ("writing_music", "separating", "mixing", "aligning") if kind == "music" else (
+                "writing_music", "separating", "matching_voice", "mixing", "aligning")
+            self._stages(stages, timer, report, canceled)
+            started = time.perf_counter()
+            meta = self.compose(job, directory)
+            timer.add("aligning", started)
+            if kind == "music":
+                meta["engine"].update(converter=None, voice_match=None)
+        meta["timings"] = timer.as_list()
+        return meta
+
+    @staticmethod
+    def _stages(stages: tuple[str, ...], timer: Timer, report: Report, canceled: Canceled) -> None:
+        for index, stage in enumerate(stages):
             _check(canceled)
-            report(stage, index / 5)
+            report(stage, index / len(stages))
             started = time.perf_counter()
             time.sleep(FIXTURE_STAGE_SECONDS)
             timer.add(stage, started)
-        started = time.perf_counter()
-        meta = self.compose(job, directory)
-        timer.add("aligning", started)
-        meta["timings"] = timer.as_list()
-        return meta
+
+    @staticmethod
+    def match(job: dict[str, Any], directory: Path) -> dict[str, Any]:
+        """FIXTURE - NOT AI "voice match": the input vocals at 0.8 times their level, silent wherever a 10 ms block of the
+        input is quieter than -40 dBFS."""
+        frames = int(job["input_frames"])
+        source = array.array("h")
+        source.frombytes((directory / "input.pcm").read_bytes()[: frames * 2])
+        if sys.byteorder != "little":
+            source.byteswap()
+        if len(source) < frames:
+            source.extend(array.array("h", bytes(2 * (frames - len(source)))))
+        vocals = array.array("h", bytes(frames * 2))
+        hop = audio.OUTPUT_RATE // 100
+        for start in range(0, frames, hop):
+            block = source[start:start + hop]
+            if max(block) > 327 or min(block) < -327:
+                vocals[start:start + len(block)] = array.array("h", (int(round(v * 0.8)) for v in block))
+        if sys.byteorder != "little":
+            vocals.byteswap()
+        (directory / "vocals.pcm").write_bytes(vocals.tobytes())
+        return {
+            "engine": {"generator": None, "separator": None, "converter": "FIXTURE - NOT AI", "quality": None,
+                       "voice_match": job["voice_match"], "fixture": True},
+            "frames": frames,
+        }
 
     @staticmethod
     def compose(job: dict[str, Any], directory: Path) -> dict[str, Any]:
@@ -88,7 +137,8 @@ class FixtureEngine:
         seed = job.get("seed")
         if seed is None:
             seed = int.from_bytes(hashlib.sha256((job["lyrics"] + "\n" + job["style"]).encode()).digest()[:4], "little")
-        voice = hashlib.sha256(job["voice_id"].encode()).digest()
+        # A music job has no voice: its melody's key comes from no voice at all.
+        voice = hashlib.sha256(str(job.get("voice_id") or "").encode()).digest()
         root = 196.0 * 2 ** ((voice[0] % 12) / 12)
         bpm = int(job.get("bpm") or 96)
         beat = 60.0 / bpm
@@ -146,7 +196,7 @@ class FixtureEngine:
             (directory / f"{name}.pcm").write_bytes(samples.tobytes())
         return {
             "engine": {"generator": FixtureEngine.identity_generator, "separator": "FIXTURE - NOT AI",
-                       "converter": "FIXTURE - NOT AI", "quality": job["quality"], "voice_match": job["voice_match"],
+                       "converter": "FIXTURE - NOT AI", "quality": job["quality"], "voice_match": job.get("voice_match"),
                        "fixture": True},
             "frames": frames, "seed": seed, "bpm": bpm, "key": job.get("key"), "beats_per_bar": 4,
             "beats": beats, "downbeats": downbeats, "lyrics": lyric,
@@ -163,8 +213,9 @@ def _sample(value: float) -> int:
 
 class SongEngine:
     """ACE-Step 1.5 writes the song; Demucs (htdemucs_ft's vocals model) separates the vocals; SoulX-Singer-SVC (or
-    VevoSing) matches them to the voice's recording; the matched vocals go back over the backing. Models load on first
-    use, stay in system memory between songs and use the graphics card only during their stage."""
+    VevoSing) matches them to the voice's recording; the matched vocals go back over the backing. A music job stops after
+    the separation (and timing); a match job only matches uploaded vocals. Models load on first use, stay in system memory
+    between songs and use the graphics card only during their stage."""
 
     def __init__(self, models: Path, device: str, voice_matches: list[str]) -> None:
         self.models = models
@@ -223,17 +274,108 @@ class SongEngine:
     # ---- the job
 
     def run(self, job: dict[str, Any], directory: Path, report: Report, canceled: Canceled) -> dict[str, Any]:
+        kind = job.get("kind", "song")
+        if kind == "music":
+            return self._run_music(job, directory, report, canceled)
+        if kind == "match":
+            return self._run_match(job, directory, report, canceled)
+        return self._run_song(job, directory, report, canceled)
+
+    def _run_song(self, job: dict[str, Any], directory: Path, report: Report, canceled: Canceled) -> dict[str, Any]:
+        """The whole song: the music, its vocals separated and matched to the voice, mixed back over the backing."""
+        timer = self._begin()
+        reference, reference_rate = _reference(job)
+        seed, mix48, plan, lrc_raw, sentences, resident = self._music(job, timer, report, canceled)
+        vocals48, backing48 = self._separation(mix48, timer, report, canceled)
+        converted48, matched = self._matching(vocals48, reference, reference_rate, job["voice_match"], directory, timer,
+                                              report, canceled, 0.6)
+
+        report("mixing", 0.85)
+        started = time.perf_counter()
+        # The vocals track drives lip sync: only the sung phrases stay, so no backing bleed or conversion noise remains.
+        converted48, bleed_db = _gate_and_level(converted48, vocals48.mean(axis=0))
+        mix = backing48 + converted48[None, :]
+        mix, backing48, converted48 = _peak_limit([mix, backing48, converted48], measured=[mix])
+        frames = mix.shape[1]
+        _write_pcm(directory / "mix.pcm", mix)
+        _write_pcm(directory / "backing.pcm", backing48)
+        _write_pcm(directory / "vocals.pcm", converted48[None, :])
+        timer.add("mixing", started)
+
+        alignment = self._align(job, plan, lrc_raw, sentences, backing48, converted48, timer, report)
+        engine = {**self._music_engine(job, resident), "converter": pins.CONVERTER_IDS[job["voice_match"]],
+                  "voice_match": job["voice_match"], "match": _match_summary(matched)}
+        return {"engine": engine, "frames": frames, "seed": seed, **alignment, "vocal_bleed_db": bleed_db,
+                "timings": timer.as_list(), "peak_vram_mib": self._peak_vram(matched)}
+
+    def _run_music(self, job: dict[str, Any], directory: Path, report: Report, canceled: Canceled) -> dict[str, Any]:
+        """The music only: the generated mix, its separated vocals (mono) and backing, the beat grid and the lyric and word
+        times from the separated vocals. A match job (here or on another computer) then sings the vocals in a voice."""
+        timer = self._begin()
+        seed, mix48, plan, lrc_raw, sentences, resident = self._music(job, timer, report, canceled)
+        vocals48, backing48 = self._separation(mix48, timer, report, canceled)
+
+        report("mixing", 0.85)
+        started = time.perf_counter()
+        # One shared scale keeps backing + vocals equal to the mix.
+        mix48, vocals, backing48 = _peak_limit([mix48, vocals48.mean(axis=0), backing48])
+        _write_pcm(directory / "mix.pcm", mix48)
+        _write_pcm(directory / "vocals.pcm", vocals[None, :])
+        _write_pcm(directory / "backing.pcm", backing48)
+        timer.add("mixing", started)
+
+        alignment = self._align(job, plan, lrc_raw, sentences, backing48, vocals, timer, report)
+        return {"engine": self._music_engine(job, resident), "frames": mix48.shape[1], "seed": seed, **alignment,
+                "timings": timer.as_list(), "peak_vram_mib": self._peak_vram()}
+
+    def _run_match(self, job: dict[str, Any], directory: Path, report: Report, canceled: Canceled) -> dict[str, Any]:
+        """The voice match only: the uploaded vocals (input.pcm, 48 kHz mono) sung in the voice, gated to the input's
+        phrases and levelled to its loudness, the same length."""
         import numpy as np
+
+        timer = self._begin()
+        reference, reference_rate = _reference(job)
+        frames = int(job["input_frames"])
+        original = _fit(np.frombuffer((directory / "input.pcm").read_bytes(), dtype="<i2").astype(np.float32) / 32768.0,
+                        frames)
+        # A music model left warm on the card by an earlier music job makes room for the voice match as after the music.
+        if self.dit_resident and any(k.startswith("dit:") for k in self.ace) and _card_free_mib() < 3_072:
+            self._park_or_release()
+        self._free()
+        _check(canceled)
+        vm = job["voice_match"]
+        converted48, matched = self._matching(original[None, :], reference, reference_rate, vm, directory, timer, report,
+                                              canceled, 0.05)
+
+        report("mixing", 0.9)
+        started = time.perf_counter()
+        converted48, bleed_db = _gate_and_level(converted48, original)
+        (converted48,) = _peak_limit([converted48])
+        converted48 = _fit(converted48, frames)
+        _write_pcm(directory / "vocals.pcm", converted48[None, :])
+        timer.add("mixing", started)
+        return {
+            "engine": {"generator": None, "separator": None, "converter": pins.CONVERTER_IDS[vm], "quality": None,
+                       "voice_match": vm, "fixture": False, "match": _match_summary(matched)},
+            "frames": frames, "timings": timer.as_list(), "peak_vram_mib": self._peak_vram(matched),
+            "vocal_bleed_db": bleed_db,
+        }
+
+    # ---- shared steps
+
+    def _begin(self) -> Timer:
         import torch
 
-        timer = Timer()
-        torch.cuda.reset_peak_memory_stats() if torch.cuda.is_available() else None
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+        return Timer()
+
+    def _music(self, job: dict[str, Any], timer: Timer, report: Report, canceled: Canceled):
+        """Writes the music, then makes room on the card for the next stage. Returns the seed, the 48 kHz stereo mix, the
+        planner's metadata, ACE-Step's LRC and sentence timestamps, and whether the music model stayed on the card."""
         seed = job.get("seed")
         if seed is None:
             seed = random.SystemRandom().randrange(0, 2**32)
-        reference_pcm, reference_rate = audio.parse_reference(job["reference_audio"])
-        reference = np.frombuffer(reference_pcm, dtype="<i2").astype(np.float32) / 32768.0
-
         report("writing_music", 0.0)
         mix48, plan, lrc_raw, sentences = self._write_music(job, seed, timer, report, canceled)
         resident = self.dit_resident
@@ -244,12 +386,19 @@ class SongEngine:
         # a released model doesn't always give its memory back, and the next song loading it again beside it (and beside
         # the voice match kept in memory) ran the system out of memory, so the next song starts a fresh worker instead.
         if not (self.dit_resident and _card_free_mib() >= 3_072):
-            if self._keep(8.0):
-                self._park_ace()
-            else:
-                self.ace.clear()
-                self.exit_after_song = True
+            self._park_or_release()
         self._free()
+        return seed, mix48, plan, lrc_raw, sentences, resident
+
+    def _park_or_release(self) -> None:
+        """Moves the music model to system memory when there is plenty, or releases it (and the worker ends after this job)."""
+        if self._keep(8.0):
+            self._park_ace()
+        else:
+            self.ace.clear()
+            self.exit_after_song = True
+
+    def _separation(self, mix48, timer: Timer, report: Report, canceled: Canceled):
         report("separating", 0.45)
         started = time.perf_counter()
         vocals48, backing48 = self._separate(mix48)
@@ -258,31 +407,21 @@ class SongEngine:
             self._free()
         timer.add("separating", started)
         _check(canceled)
+        return vocals48, backing48
 
-        report("matching_voice", 0.6)
+    def _matching(self, vocals48, reference, reference_rate: int, voice_match: str, directory: Path, timer: Timer,
+                  report: Report, canceled: Canceled, fraction: float):
+        report("matching_voice", fraction)
         started = time.perf_counter()
-        converted48, matched = self._match(vocals48, reference, reference_rate, job["voice_match"], directory, canceled)
+        converted48, matched = self._match(vocals48, reference, reference_rate, voice_match, directory, canceled)
         timer.add("matching_voice", started)
         _check(canceled)
+        return converted48, matched
 
-        report("mixing", 0.85)
-        started = time.perf_counter()
+    def _align(self, job: dict[str, Any], plan: dict[str, Any], lrc_raw: str, sentences: list[dict[str, Any]], backing48,
+               vocals, timer: Timer, report: Report) -> dict[str, Any]:
+        """The beat grid from the backing and the lyric lines' and words' times from the (mono) vocals."""
         from martlet_singing import timing
-
-        # The vocals track drives lip sync: only the sung phrases stay, so no backing bleed or conversion noise remains.
-        converted48, bleed_db = timing.gate_vocals(converted48, vocals48.mean(axis=0), audio.OUTPUT_RATE)
-        original_rms = float(np.sqrt(np.mean(vocals48.mean(axis=0) ** 2)) + 1e-9)
-        converted48 = converted48 * (original_rms / (float(np.sqrt(np.mean(converted48 ** 2))) + 1e-9))
-        mix = backing48 + converted48[None, :]
-        peak = float(np.max(np.abs(mix))) if mix.size else 0.0
-        if peak > 0.98:
-            scale = 0.98 / peak
-            mix, backing48, converted48 = mix * scale, backing48 * scale, converted48 * scale
-        frames = mix.shape[1]
-        _write_pcm(directory / "mix.pcm", mix)
-        _write_pcm(directory / "backing.pcm", backing48)
-        _write_pcm(directory / "vocals.pcm", converted48[None, :])
-        timer.add("mixing", started)
 
         report("aligning", 0.92)
         started = time.perf_counter()
@@ -291,37 +430,38 @@ class SongEngine:
         if beats_per_bar not in (2, 3, 4, 6):
             beats_per_bar = 4
         grid = timing.beat_grid(backing48.mean(axis=0), audio.OUTPUT_RATE, bpm_planned, beats_per_bar)
-        lines = timing.lyric_times(audio.lyric_lines(job["lyrics"]), lrc_raw, converted48, audio.OUTPUT_RATE, grid["downbeats"])
-        words, word_source, word_metric = timing.word_times(audio.lyric_lines(job["lyrics"]), sentences, lines, converted48,
+        lines = timing.lyric_times(audio.lyric_lines(job["lyrics"]), lrc_raw, vocals, audio.OUTPUT_RATE, grid["downbeats"])
+        words, word_source, word_metric = timing.word_times(audio.lyric_lines(job["lyrics"]), sentences, lines, vocals,
                                                             audio.OUTPUT_RATE)
         if lrc_raw and (word_metric.get("median_onset_offset_ms_raw") or 0) > 1_000:
             # ACE-Step's alignment missed the singing (its words sit over a second from any vocal onset, as when a short song
             # crams its lines): time the lines and words from the vocals' phrases instead.
             lrc_raw, sentences = "", []
-            lines = timing.lyric_times(audio.lyric_lines(job["lyrics"]), "", converted48, audio.OUTPUT_RATE, grid["downbeats"])
-            words, word_source, word_metric = timing.word_times(audio.lyric_lines(job["lyrics"]), [], lines, converted48,
+            lines = timing.lyric_times(audio.lyric_lines(job["lyrics"]), "", vocals, audio.OUTPUT_RATE, grid["downbeats"])
+            words, word_source, word_metric = timing.word_times(audio.lyric_lines(job["lyrics"]), [], lines, vocals,
                                                                 audio.OUTPUT_RATE)
         timer.add("aligning", started)
+        return {"bpm": grid["bpm"] or bpm_planned, "planned_bpm": bpm_planned,
+                "key": plan.get("keyscale") or job.get("key"), "beats_per_bar": beats_per_bar,
+                "beats": grid["beats"], "downbeats": grid["downbeats"], "lyrics": lines,
+                "words": words, "word_timing_source": word_source, "word_timing": word_metric,
+                "lyric_timing_source": "ace-step-lrc" if lrc_raw else "vocal-phrases"}
+
+    def _music_engine(self, job: dict[str, Any], resident: bool) -> dict[str, Any]:
+        """The result's engine block for a job that wrote music (no voice match: a song fills those in)."""
+        plans = self._plans(job)
+        return {"generator": pins.GENERATOR_IDS[job["quality"]], "separator": pins.SEPARATOR_ID, "converter": None,
+                "quality": job["quality"], "voice_match": None, "fixture": False,
+                "planner": "lm" if plans else "none", "lm_backend": self.lm_backend if plans else None,
+                "dit_resident": resident, "dit_warm_after": bool(self.ace) and self.dit_resident,
+                "quantization": self.quantized}
+
+    def _peak_vram(self, matched: dict[str, Any] | None = None) -> int:
+        import torch
 
         peak_vram = round(torch.cuda.max_memory_reserved() / 2**20) if torch.cuda.is_available() else 0
         self._free()  # what stays on the card between songs is the warm music model, not the allocator's cache
-        peak_vram = max(peak_vram, int(matched.get("peak_vram_mib") or 0))
-        return {
-            "engine": {"generator": pins.GENERATOR_IDS[job["quality"]], "separator": pins.SEPARATOR_ID,
-                       "converter": pins.CONVERTER_IDS[job["voice_match"]], "quality": job["quality"],
-                       "voice_match": job["voice_match"], "fixture": False,
-                       "planner": "lm" if self._plans(job) else "none", "lm_backend": self.lm_backend if self._plans(job) else None,
-                       "dit_resident": resident, "dit_warm_after": bool(self.ace) and self.dit_resident,
-                       "quantization": self.quantized, "match": {k: matched.get(k) for k in (
-                           "shift_semitones", "singer_hz", "voice_hz", "load_seconds", "pitch_seconds", "convert_seconds",
-                           "process_seconds", "peak_vram_mib", "transformers", "warm")}},
-            "frames": frames, "seed": seed, "bpm": grid["bpm"] or bpm_planned, "planned_bpm": bpm_planned,
-            "key": plan.get("keyscale") or job.get("key"), "beats_per_bar": beats_per_bar,
-            "beats": grid["beats"], "downbeats": grid["downbeats"], "lyrics": lines,
-            "words": words, "word_timing_source": word_source, "word_timing": word_metric,
-            "lyric_timing_source": "ace-step-lrc" if lrc_raw else "vocal-phrases", "vocal_bleed_db": bleed_db,
-            "timings": timer.as_list(), "peak_vram_mib": peak_vram,
-        }
+        return max(peak_vram, int((matched or {}).get("peak_vram_mib") or 0))
 
     # ---- stage 1: ACE-Step
 
@@ -690,6 +830,42 @@ def _fit(samples, frames: int):
 
     samples = samples[:frames]
     return np.pad(samples, (0, frames - samples.shape[-1])) if samples.shape[-1] < frames else samples
+
+
+def _reference(job: dict[str, Any]):
+    """The voice's recording as float samples and its rate."""
+    import numpy as np
+
+    pcm, rate = audio.parse_reference(job["reference_audio"])
+    return np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0, rate
+
+
+def _gate_and_level(converted, original):
+    """The matched vocals silenced outside the phrases the original (mono) vocals sing and levelled to the original's
+    loudness, and how loud what the gate removed was (dB relative to the sung parts)."""
+    import numpy as np
+
+    from martlet_singing import timing
+
+    converted, bleed_db = timing.gate_vocals(converted, original, audio.OUTPUT_RATE)
+    original_rms = float(np.sqrt(np.mean(original ** 2)) + 1e-9)
+    converted = converted * (original_rms / (float(np.sqrt(np.mean(converted ** 2))) + 1e-9))
+    return converted, bleed_db
+
+
+def _peak_limit(tracks: list[Any], measured: list[Any] | None = None) -> list[Any]:
+    """The tracks scaled by one shared factor so the loudest sample of the measured tracks (default: all) is at most 0.98."""
+    import numpy as np
+
+    peak = max((float(np.max(np.abs(t))) if t.size else 0.0) for t in (measured or tracks))
+    if peak > 0.98:
+        scale = 0.98 / peak
+        return [t * scale for t in tracks]
+    return list(tracks)
+
+
+def _match_summary(matched: dict[str, Any]) -> dict[str, Any]:
+    return {k: matched.get(k) for k in MATCH_KEYS}
 
 
 def _resample(samples, source: int, target: int):

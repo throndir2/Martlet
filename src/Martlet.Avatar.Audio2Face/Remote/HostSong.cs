@@ -83,24 +83,144 @@ public sealed partial class Audio2FaceHostConnection
     }
 
     /// <summary>
-    /// Makes one song with the host's singing role: starts the job (naming the voice by its shared-library ID; when the host
-    /// lacks that voice's recording, sends <paramref name="recording"/> once), polls it every <paramref name="pollInterval"/>
-    /// reporting each stage, then fetches the mix, vocals and backing in pages. Cancelling cancels the job on the host.
+    /// Makes one whole song with the host's singing role (its music, then its voice match, on that computer): starts the job
+    /// (naming the voice by its shared-library ID; when the host lacks that voice's recording, sends <paramref name="recording"/>
+    /// once), polls it every <paramref name="pollInterval"/> reporting each stage, then fetches the mix, vocals and backing in
+    /// pages. Cancelling cancels the job on the host.
     /// </summary>
     public async Task<SongResult> MakeSongAsync(HostRoute route, SongRequest song, Func<CancellationToken, Task<byte[]?>>? recording,
         IProgress<SongProgress>? progress, CancellationToken cancellationToken, TimeSpan? pollInterval = null)
     {
         ArgumentNullException.ThrowIfNull(song);
         song.Validate();
+        var start = MusicStart(song);
+        start["voice_match"] = song.VoiceMatch == SongVoiceMatch.VevoSing ? "vevosing" : "soulx";
+        start["voice_id"] = song.VoiceId;
+        return await TracksAsync(route, song, start, recording, progress, cancellationToken, pollInterval).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes only a song's music with the host's singing role (a <c>music</c> job): the music model's own singer, separated
+    /// into vocals and backing, with the lyric lines, words and beats timed. <see cref="SongResult.Engine"/> has no voice match;
+    /// <see cref="MatchVoiceAsync"/> (on this computer or another) matches the vocals to a voice, and <see cref="SongVoice"/>
+    /// puts them together. Cancelling cancels the job on the host.
+    /// </summary>
+    public async Task<SongResult> MakeMusicAsync(HostRoute route, SongRequest song, IProgress<SongProgress>? progress,
+        CancellationToken cancellationToken, TimeSpan? pollInterval = null)
+    {
+        ArgumentNullException.ThrowIfNull(song);
+        song.Validate();
+        var start = MusicStart(song);
+        start["kind"] = "music";
+        return await TracksAsync(route, song, start, null, progress, cancellationToken, pollInterval).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Matches a song's <paramref name="vocals"/> (48 kHz mono, from <see cref="MakeMusicAsync"/>) to voice
+    /// <paramref name="voiceId"/> of the shared voice library with the host's singing role (a <c>match</c> job): starts the job
+    /// (sending <paramref name="recording"/> once when the host lacks the voice's recording), sends the vocals in pages, polls it
+    /// and fetches the matched vocals, which are as long as <paramref name="vocals"/>. Cancelling cancels the job on the host.
+    /// </summary>
+    public async Task<SongVoiceMatchResult> MatchVoiceAsync(HostRoute route, string voiceId, SongVoiceMatch match, SongTrack vocals,
+        Func<CancellationToken, Task<byte[]?>>? recording, IProgress<SongProgress>? progress, CancellationToken cancellationToken,
+        TimeSpan? pollInterval = null)
+    {
+        ArgumentNullException.ThrowIfNull(voiceId);
+        ArgumentNullException.ThrowIfNull(vocals);
+        if (vocals.Channels != 1 || vocals.SampleRate != SongTrack.SampleRateHz || vocals.Frames == 0)
+            throw new ArgumentException("The vocals must be 48 kHz mono PCM.", nameof(vocals));
+        var start = new Dictionary<string, object>
+        {
+            ["operation"] = "start", ["kind"] = "match", ["voice_match"] = match == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+            ["voice_id"] = voiceId, ["input_frames"] = vocals.Frames
+        };
+        var reporter = new Reporter(progress);
+        var (view, jobId) = await StartJobAsync(route, start, recording, cancellationToken).ConfigureAwait(false);
+        JsonElement result;
+        try
+        {
+            // The vocals go in pages, in order; the job starts once the last one is there.
+            var pcm = vocals.Pcm16;
+            for (var offset = 0; offset < pcm.Length; offset += SongInputPageBytes)
+            {
+                var length = Math.Min(SongInputPageBytes, pcm.Length - offset);
+                view = Single(await SongCallAsync(route, new Dictionary<string, object>
+                {
+                    ["operation"] = "input", ["job_id"] = jobId, ["offset_frames"] = offset / 2,
+                    ["pcm_base64"] = Convert.ToBase64String(pcm.Span.Slice(offset, length))
+                }, cancellationToken).ConfigureAwait(false));
+                ThrowIfError(view);
+            }
+            result = await WaitAsync(route, view, jobId, reporter, cancellationToken, pollInterval).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await CancelJobAsync(route, jobId).ConfigureAwait(false);
+            throw;
+        }
+        var delivering = System.Diagnostics.Stopwatch.StartNew();
+        reporter.Report(new SongProgress(SongStage.Delivering, 0.95));
+        var frames = result.GetProperty("frames").GetInt64();
+        if (frames != vocals.Frames) throw Invalid();
+        var matched = await TrackAsync(route, jobId, "vocals", 1, frames, cancellationToken).ConfigureAwait(false);
+        var engine = result.GetProperty("engine");
+        var timings = Timings(result);
+        timings.Add(new SongStageTiming(SongStage.Delivering, delivering.Elapsed));
+        reporter.Report(new SongProgress(SongStage.Completed, 1));
+        return new SongVoiceMatchResult(jobId, new SongTrack(SongTrackKind.Vocals, SongTrack.SampleRateHz, 1, matched),
+            engine.GetProperty("converter").GetString() ?? "", VoiceMatchOf(engine) ?? match, engine.GetProperty("fixture").GetBoolean(),
+            timings);
+    }
+
+    /// <summary>PCM sent per <c>input</c> request of a voice match job (40 s of 48 kHz mono; the gateway's page bound).</summary>
+    public const int SongInputPageBytes = 3_840_000;
+
+    private static Dictionary<string, object> MusicStart(SongRequest song)
+    {
         var start = new Dictionary<string, object>
         {
             ["operation"] = "start", ["lyrics"] = song.Lyrics, ["style"] = song.Style, ["duration_seconds"] = song.DurationSeconds,
-            ["language"] = song.Language, ["quality"] = song.Quality == SongQuality.HighQuality ? "high_quality" : "fast",
-            ["voice_match"] = song.VoiceMatch == SongVoiceMatch.VevoSing ? "vevosing" : "soulx", ["voice_id"] = song.VoiceId
+            ["language"] = song.Language, ["quality"] = song.Quality == SongQuality.HighQuality ? "high_quality" : "fast"
         };
         if (song.Bpm is { } bpm) start["bpm"] = bpm;
         if (song.Key is { } key) start["key"] = key;
         if (song.Seed is { } seed) start["seed"] = seed;
+        return start;
+    }
+
+    // A whole song or its music: start the job, wait for it, then fetch the mix, vocals and backing.
+    private async Task<SongResult> TracksAsync(HostRoute route, SongRequest song, Dictionary<string, object> start,
+        Func<CancellationToken, Task<byte[]?>>? recording, IProgress<SongProgress>? progress, CancellationToken cancellationToken,
+        TimeSpan? pollInterval)
+    {
+        var reporter = new Reporter(progress);
+        var (view, jobId) = await StartJobAsync(route, start, recording, cancellationToken).ConfigureAwait(false);
+        JsonElement result;
+        try { result = await WaitAsync(route, view, jobId, reporter, cancellationToken, pollInterval).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await CancelJobAsync(route, jobId).ConfigureAwait(false);
+            throw;
+        }
+
+        var delivering = System.Diagnostics.Stopwatch.StartNew();
+        reporter.Report(new SongProgress(SongStage.Delivering, 0.95));
+        var frames = result.GetProperty("frames").GetInt64();
+        var mix = await TrackAsync(route, jobId, "mix", 2, frames, cancellationToken).ConfigureAwait(false);
+        reporter.Report(new SongProgress(SongStage.Delivering, 0.97));
+        var vocals = await TrackAsync(route, jobId, "vocals", 1, frames, cancellationToken).ConfigureAwait(false);
+        var backing = await TrackAsync(route, jobId, "backing", 2, frames, cancellationToken).ConfigureAwait(false);
+        var made = ReadResult(jobId, song, result, mix, vocals, backing);
+        var timings = made.StageTimings.ToList();
+        timings.Add(new SongStageTiming(SongStage.Delivering, delivering.Elapsed));
+        reporter.Report(new SongProgress(SongStage.Completed, 1));
+        return made with { StageTimings = timings };
+    }
+
+    // Starts a job; a job with a voice whose recording the host lacks is started again with the recording.
+    private async Task<(JsonElement View, string JobId)> StartJobAsync(HostRoute route, Dictionary<string, object> start,
+        Func<CancellationToken, Task<byte[]?>>? recording, CancellationToken cancellationToken)
+    {
         IReadOnlyList<JsonElement> started;
         try
         {
@@ -116,10 +236,39 @@ public sealed partial class Audio2FaceHostConnection
         }
         var view = Single(started);
         ThrowIfError(view);
-        var jobId = view.GetProperty("job_id").GetString() ?? throw Invalid();
+        return (view, view.GetProperty("job_id").GetString() ?? throw Invalid());
+    }
+
+    // Polls a job until it is done, reporting each stage; its result, or the job's failure.
+    private async Task<JsonElement> WaitAsync(HostRoute route, JsonElement view, string jobId, Reporter reporter,
+        CancellationToken cancellationToken, TimeSpan? pollInterval)
+    {
         var interval = pollInterval ?? TimeSpan.FromSeconds(1);
-        SongProgress? last = null;
-        void Report(SongProgress value)
+        while (true)
+        {
+            var state = view.GetProperty("state").GetString();
+            if (state == "completed") return view.GetProperty("result");
+            reporter.Report(Progress(view));
+            if (state == "canceled") throw new OperationCanceledException("The song was canceled on the host.");
+            if (state is "failed" or "unknown") ThrowIfError(view, fallback: true);
+            await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+            view = Single(await SongCallAsync(route, Job("status", jobId), cancellationToken).ConfigureAwait(false));
+        }
+    }
+
+    private async Task CancelJobAsync(HostRoute route, string jobId)
+    {
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try { await SongCallAsync(route, Job("cancel", jobId), cancel.Token).ConfigureAwait(false); }
+        catch (Exception error) when (error is SongException or HttpRequestException or IOException or OperationCanceledException) { }
+    }
+
+    // Passes on a progress report only when it says something new.
+    private sealed class Reporter(IProgress<SongProgress>? progress)
+    {
+        private SongProgress? last;
+
+        public void Report(SongProgress value)
         {
             if (last is not null && last.Stage == value.Stage && Math.Abs(last.Fraction - value.Fraction) < 0.01 &&
                 last.QueuePosition == value.QueuePosition)
@@ -127,46 +276,7 @@ public sealed partial class Audio2FaceHostConnection
             last = value;
             progress?.Report(value);
         }
-        JsonElement result;
-        try
-        {
-            while (true)
-            {
-                var state = view.GetProperty("state").GetString();
-                if (state != "completed") Report(Progress(view));
-                if (state == "completed")
-                {
-                    result = view.GetProperty("result");
-                    break;
-                }
-                if (state == "canceled") throw new OperationCanceledException("The song was canceled on the host.");
-                if (state is "failed" or "unknown") ThrowIfError(view, fallback: true);
-                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
-                view = Single(await SongCallAsync(route, Job("status", jobId), cancellationToken).ConfigureAwait(false));
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            try { await SongCallAsync(route, Job("cancel", jobId), cancel.Token).ConfigureAwait(false); }
-            catch (Exception error) when (error is SongException or HttpRequestException or IOException or OperationCanceledException) { }
-            throw;
-        }
-
-        var delivering = System.Diagnostics.Stopwatch.StartNew();
-        Report(new SongProgress(SongStage.Delivering, 0.95));
-        var frames = result.GetProperty("frames").GetInt64();
-        var mix = await TrackAsync(route, jobId, "mix", 2, frames, cancellationToken).ConfigureAwait(false);
-        Report(new SongProgress(SongStage.Delivering, 0.97));
-        var vocals = await TrackAsync(route, jobId, "vocals", 1, frames, cancellationToken).ConfigureAwait(false);
-        var backing = await TrackAsync(route, jobId, "backing", 2, frames, cancellationToken).ConfigureAwait(false);
-        var made = ReadResult(jobId, song, result, mix, vocals, backing);
-        var timings = made.StageTimings.ToList();
-        timings.Add(new SongStageTiming(SongStage.Delivering, delivering.Elapsed));
-        Report(new SongProgress(SongStage.Completed, 1));
-        return made with { StageTimings = timings };
     }
-
     private async Task<IReadOnlyList<JsonElement>> SongCallAsync(HostRoute route, IReadOnlyDictionary<string, object> payload,
         CancellationToken token)
     {
@@ -249,11 +359,7 @@ public sealed partial class Audio2FaceHostConnection
                         ? TimeSpan.FromSeconds(end.GetDouble()) : null,
                     line.GetProperty("text").GetString() ?? "",
                     line.TryGetProperty("section", out var section) ? section.GetString() ?? "" : ""));
-        var timings = new List<SongStageTiming>();
-        if (meta.TryGetProperty("timings", out var timingList) && timingList.ValueKind == JsonValueKind.Array)
-            foreach (var timing in timingList.EnumerateArray())
-                if (Stage(timing.GetProperty("stage").GetString()) is { } stage)
-                    timings.Add(new SongStageTiming(stage, TimeSpan.FromSeconds(timing.GetProperty("seconds").GetDouble())));
+        var timings = Timings(meta);
         var words = new List<SongLyricWord>();
         if (meta.TryGetProperty("words", out var wordList) && wordList.ValueKind == JsonValueKind.Array)
             foreach (var word in wordList.EnumerateArray())
@@ -272,8 +378,7 @@ public sealed partial class Audio2FaceHostConnection
             Engine = new SongEngineIdentity(engine.GetProperty("generator").GetString() ?? "",
                 engine.GetProperty("separator").GetString() ?? "", engine.GetProperty("converter").GetString() ?? "",
                 engine.GetProperty("quality").GetString() == "high_quality" ? SongQuality.HighQuality : SongQuality.Fast,
-                engine.GetProperty("voice_match").GetString() == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX,
-                engine.GetProperty("fixture").GetBoolean()),
+                VoiceMatchOf(engine), engine.GetProperty("fixture").GetBoolean()),
             Seed = meta.GetProperty("seed").GetInt64(),
             Bpm = Number("bpm"),
             Key = meta.TryGetProperty("key", out var keyValue) && keyValue.ValueKind == JsonValueKind.String ? keyValue.GetString() : null,
@@ -286,6 +391,22 @@ public sealed partial class Audio2FaceHostConnection
                 ? source.GetString() ?? "" : "",
             StageTimings = timings
         };
+    }
+
+    // The voice match a job's engine names, or null for music without one.
+    private static SongVoiceMatch? VoiceMatchOf(JsonElement engine) =>
+        engine.TryGetProperty("voice_match", out var match) && match.ValueKind == JsonValueKind.String
+            ? match.GetString() == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
+            : null;
+
+    private static List<SongStageTiming> Timings(JsonElement meta)
+    {
+        var timings = new List<SongStageTiming>();
+        if (meta.TryGetProperty("timings", out var timingList) && timingList.ValueKind == JsonValueKind.Array)
+            foreach (var timing in timingList.EnumerateArray())
+                if (Stage(timing.GetProperty("stage").GetString()) is { } stage)
+                    timings.Add(new SongStageTiming(stage, TimeSpan.FromSeconds(timing.GetProperty("seconds").GetDouble())));
+        return timings;
     }
 
     private static SongStage? Stage(string? name) => name switch

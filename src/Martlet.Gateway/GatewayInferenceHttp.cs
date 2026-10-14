@@ -44,8 +44,8 @@ internal sealed partial class GatewayHttpApplication
         // A recording sent with the request is kept for a voice of the shared list, so the next request can name it.
         if (!friend && request.Payload is GatewayF5SynthesisPayload speech)
             SpeakingVoices.Remember(speech.ReferenceAudioSha256, speech.ReferenceAudio.Span);
-        if (!friend && request.Payload is GatewaySongPayload { Start: { } song } songPayload)
-            SpeakingVoices.Remember(song.ReferenceAudioSha256, songPayload.ReferenceAudio.Span);
+        if (!friend && request.Payload is GatewaySongPayload { Start.ReferenceAudioSha256: { } songAudio } songPayload)
+            SpeakingVoices.Remember(songAudio, songPayload.ReferenceAudio.Span);
         GatewayInferenceRouteRegistry.GatewayInferenceJob job;
         try
         {

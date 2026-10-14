@@ -4,23 +4,21 @@ Martlet can write a song and sing it in a voice from **Companion › Voice › V
 
 ## Pipeline
 
-The **singing** host role runs on an NVIDIA GPU and:
+A song has two parts. Each part has its own list of computers on **Companion › Singing**, and each runs on the **singing** host role on an NVIDIA GPU:
 
-1. writes music with ACE-Step 1.5;
-2. separates vocals and backing with Demucs;
-3. matches the vocals to your chosen voice with SoulX-Singer-SVC by default, or VevoSing;
-4. mixes and aligns tracks, lyrics, words and beat grid;
-5. saves a `song` creation.
+1. **Music**: ACE-Step 1.5 writes the song with its own singer, Demucs separates the vocals and the backing, and the lyrics, words and beats get their times. Each computer in the *Music* list chooses its **Quality**: **High quality** (the default, the clearest words) or **Fast**.
+2. **Voice match**: SoulX-Singer-SVC (the default) or VevoSing changes the singing into your chosen voice. Each computer in the *Voice match* list chooses its **Model**. These can be other computers than the music's.
+3. Your PC puts the matched vocals over the backing and saves a `song` creation.
 
-Songs are made ahead of time, not in real time.
+With nothing on in the *Voice match* list, songs keep the music model's own singer. Songs are made ahead of time, not in real time.
 
 ## Setup
 
-Open **Companion › Singing** (under *Optional extras*). The card shows the selected computer, setup status, GPU suitability, **Set up**, **Quality** and **Voice match**. Setup uses the normal host role flow and downloads pinned model files only after you choose it and accept terms.
+Open **Companion › Singing** (under *Optional extras*). Add your computers to the *Music* list and the *Voice match* list. Each computer's **Settings** show its setup status, **Set up Singing here**, its quality or model, and **Add VevoSing here**. Setup uses the normal host role flow and downloads pinned model files only after you choose it and accept terms. Your other computers follow the same lists.
 
 ## Hardware
 
-Docs say Singing needs an NVIDIA GPU with 6 GB+ and roughly 5-7 GB free while a song is made. It shares a card with speaking/listening/lip-sync and frees resources after idle time. A second host helps if your main GPU is busy.
+Docs say Singing needs an NVIDIA GPU with 6 GB+ and roughly 5-7 GB free while a song is made. It shares a card with speaking/listening/lip-sync and frees resources after idle time. A second host helps if your main GPU is busy: it can write the music while another one matches the voice.
 
 ## In conversation
 

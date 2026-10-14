@@ -259,13 +259,15 @@ internal sealed partial class McpServer
             async (arguments, cancellation) => await VoiceEngineCheckAsync(arguments, cancellation)),
         Tool("singing_status", "Read the singing host role: its loopback service's own status (default http://127.0.0.1:50085/: " +
             "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
-            "voice matches set up (soulx, vevosing), queue, whether the worker process holds the graphics card, the card's memory " +
-            "and the idle release time) and, with a data directory, the Singing card's saved choices (singing.json: quality and " +
-            "voice match) and, when that directory is paired with hosts (hosts.json), Singing on each paired host read through its " +
+            "voice matches set up (soulx, vevosing), the job kinds it makes (song, and music and match apart), queue, whether the " +
+            "worker process holds the graphics card, the card's memory and the idle release time) and, with a data directory, " +
+            "singing.json's older choices (the older voice match, the computer last seen singing) and, when that directory is " +
+            "paired with hosts (hosts.json), Singing on each paired host read through its " +
             "own gateway as the card reads it (reachable, offers the song route, the service's state, voice matches, models and " +
             "their size, worker and GPU; a role in Docker on this PC listens only inside the gateway's network, so this is how " +
-            "to read it), the singing pool as the desktop's SongClient uses it (pool: the order songs try the owner's own paired " +
-            "computers, what the pool does with each now for the saved voice match, and where the next song goes) " +
+            "to read it), the two singing pools as the desktop's SongClient uses them (pool: the order a song's music tries the " +
+            "owner's own paired computers with each one's quality, what the pool does with each now and where the next song's " +
+            "music goes; pool.voiceMatch: the same for the voice match, with each one's model, or off) " +
             "plus what this PC's Docker shows of the role (container, images, models volume, and whether a " +
             "\"martlet-host add singing\" is running now: a setup in progress). Read-only; the pairing secret from Windows " +
             "Credential Manager only signs the requests and is never returned.", new
@@ -289,7 +291,9 @@ internal sealed partial class McpServer
             "disposable folder) it writes mix.wav, vocals.wav and backing.wav there for a report. voiceRecording (an absolute path " +
             "to a copy of a mono 16-bit PCM WAV, 1-30 s) with its voiceTranscript sings in that voice instead of the starter voice. " +
             "bpm (default 90; 0 for none) and key (default \"G major\"; empty for none) are sent as Martlet's own model writes " +
-            "them; without either the host's music planner runs first. " +
+            "them; without either the host's music planner runs first. quality defaults to high_quality, as songs do. With split " +
+            "true the song is made as the desktop's two pools make it: a music job, then a voice match job on its vocals (sent in " +
+            "pages), put together on this PC; the report adds matchJobId and matchHost. " +
             "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
         {
             endpoint = new { type = "string", maxLength = 64 },
@@ -303,17 +307,21 @@ internal sealed partial class McpServer
             voiceRecording = new { type = "string", maxLength = 260 },
             voiceTranscript = new { type = "string", maxLength = 4096 },
             bpm = new { type = "integer", minimum = 0, maximum = 240 },
-            key = new { type = "string", maxLength = 16 }
+            key = new { type = "string", maxLength = 16 },
+            split = new { type = "boolean" }
         },
             async (arguments, cancellation) => await SingingCheckAsync(arguments, cancellation)),
-        Tool("singing_pool_check", "Rehearse the singing pool (SingingPool through WorkQueue, what the desktop's SongClient runs) with " +
-            "simulated singing computers, NOT real hosts or models: the order (the computer Martlet sings on first, then the shared " +
-            "plan's singers, fewest jobs first, then the other paired computers), a free first computer taking the song with no other " +
-            "asked, a computer singing another song passed over at once, a VevoSing song passing over a computer without VevoSing " +
-            "(and failing with singing.voice_match_unavailable where none has it), computers that don't answer or don't sing passed " +
-            "over, every computer busy so the song waits in line on the one with the fewest songs before it, every line full " +
-            "(singing.busy), a failed song not made again elsewhere, and a computer that stops answering during the song replaced " +
-            "by the next. In-process; reads nothing.", new { },
+        Tool("singing_pool_check", "Rehearse the two singing pools (SingingPool through WorkQueue, what the desktop's SongClient runs: " +
+            "a song's music on the singing pool, then its voice match on the voice match pool) with simulated singing computers, NOT " +
+            "real hosts or models: the order (the computer Martlet sings on first, then the shared plan's singers, fewest jobs first, " +
+            "then the other paired computers), a pool list's members, a free first computer taking the job with no other asked, a " +
+            "computer making another job passed over at once, the voice match list's own computers and models (SoulX-Singer unless " +
+            "a member chooses VevoSing; high quality music unless a member chooses fast), a voice match passing over a computer " +
+            "whose Martlet can't make it apart, a VevoSing member matching with SoulX-Singer where VevoSing isn't set up, the music " +
+            "and voice match put together (mix = backing + matched vocals, scaled together against clipping), computers that " +
+            "don't answer or don't sing passed over, every computer busy so the job waits in line on the one with the fewest jobs " +
+            "before it, every line full (singing.busy), a failed job not made again elsewhere, and a computer that stops answering " +
+            "during the job replaced by the next. In-process; reads nothing.", new { },
             async (_, cancellation) => await SingingPoolCheck.RunAsync(cancellation)),
         Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
             "directory, or modelId): the model's name-based hearing, the route's (the production decision: only Chat Completions routes, " +
@@ -948,7 +956,7 @@ internal sealed partial class McpServer
         var seconds = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("seconds", out var value) &&
             value.TryGetInt32(out var number) ? number : endpoint == "fixture" ? 20 : 30;
         if (seconds is < 15 or > 180) throw new ArgumentException("seconds must be 15 to 180.");
-        var quality = OptionalString(arguments, "quality") ?? "fast";
+        var quality = OptionalString(arguments, "quality") ?? "high_quality";
         var voiceMatch = OptionalString(arguments, "voiceMatch") ?? "soulx";
         if (quality is not ("fast" or "high_quality")) throw new ArgumentException("quality must be fast or high_quality.");
         if (voiceMatch is not ("soulx" or "vevosing")) throw new ArgumentException("voiceMatch must be soulx or vevosing.");
@@ -974,7 +982,9 @@ internal sealed partial class McpServer
             throw new ArgumentException("voiceId and host need dataDirectory (a paired desktop data directory).");
         command = [.. command, recording ?? "-", OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript ? transcript : "-",
             bpm == 0 ? "-" : bpm.ToString(System.Globalization.CultureInfo.InvariantCulture), key.Length == 0 ? "-" : key,
-            voiceId ?? "-", host ?? "-"];
+            voiceId ?? "-", host ?? "-",
+            arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("split", out var split) && split.ValueKind == JsonValueKind.True
+                ? "split" : "-"];
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(20), cancellation, command);
     }
 
@@ -1000,7 +1010,7 @@ internal sealed partial class McpServer
             service = new
             {
                 answered = true, state = Field("state"), ready = Field("ready"), engine = Field("engine"), error = Field("error"),
-                qualities = Field("qualities"), voiceMatches = Field("voice_matches"), queue = Field("queue"), running = Field("running"),
+                qualities = Field("qualities"), voiceMatches = Field("voice_matches"), kinds = Field("kinds"), queue = Field("queue"), running = Field("running"),
                 workerRunning = Field("worker_running"), restarts = Field("restarts"), idleReleaseSeconds = Field("idle_release_seconds"),
                 gpu = Field("gpu"),
                 evidence = worker.ValueKind == JsonValueKind.Object && worker.TryGetProperty("evidence", out var evidence) ? evidence.GetString() : null,
@@ -1032,8 +1042,9 @@ internal sealed partial class McpServer
                 var host = saved.RootElement.TryGetProperty("host", out var h) && h.ValueKind == JsonValueKind.String ? h.GetString() : null;
                 choices = new
                 {
-                    quality = saved.RootElement.TryGetProperty("quality", out var q) ? q.GetString() : null,
-                    voiceMatch = saved.RootElement.TryGetProperty("voiceMatch", out var m) ? m.GetString() : null,
+                    // The voice match the page chose before each computer had its own (the voice match list is made from it once);
+                    // the quality and the model are now each pool member's settings (pool.members and pool.voiceMatch.members).
+                    olderVoiceMatch = saved.RootElement.TryGetProperty("voiceMatch", out var m) ? m.GetString() : null,
                     // The computer the desktop last saw running Singing; set up (SongClient.IsSetUp) while it is still paired.
                     host,
                     setUp = host is not null && PairedHostIds(directory).Contains(host)
@@ -1041,7 +1052,7 @@ internal sealed partial class McpServer
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
             {
-                choices = new { quality = "fast", voiceMatch = "soulx", saved = false };
+                choices = new { olderVoiceMatch = (string?)null, saved = false };
             }
         }
         return new { endpoint = uri.GetLeftPart(UriPartial.Authority) + "/", route = "martlet.gateway.song.v1", port = 50085, service, choices, paired };

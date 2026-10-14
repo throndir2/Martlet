@@ -34,11 +34,13 @@ internal static class BackgroundDuties
     internal static BackgroundPlace? Singer(string? dataDirectory) =>
         dataDirectory is null ? null : Computer(Singers(dataDirectory).FirstOrDefault(), Singing);
 
-    /// <summary>The computers that sing: the singing pool's members that are on and paired here (Companion › Singing's list),
-    /// or, before the list, the computer Martlet sings on (singing.json).</summary>
+    /// <summary>The computers that sing: the singing pool's members that are on and paired here (Companion › Singing's music
+    /// list), then the voice match list's, or, before the lists, the computer Martlet sings on (singing.json).</summary>
     private static IReadOnlyList<string> Singers(string dataDirectory) =>
         WorkSharingRoster.Shared.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
-            ? [.. SongClient.Members(dataDirectory).Select(m => m.Host.HostId).Distinct(StringComparer.Ordinal)]
+            ? [.. SongClient.Members(dataDirectory)
+                .Concat(SongClient.VoiceMatchOff(dataDirectory) ? [] : SongClient.Members(dataDirectory, Martlet.Core.Cluster.PoolAreas.VoiceMatch))
+                .Select(m => m.Host.HostId).Distinct(StringComparer.Ordinal)]
             : SingingPreferences.Load(dataDirectory).Host is { } host ? [host] : [];
 
     /// <summary>Paired computer <paramref name="host"/> as the place of a song it makes (the singing pool gave it the song).</summary>

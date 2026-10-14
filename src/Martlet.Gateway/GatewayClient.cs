@@ -629,17 +629,25 @@ internal static class GatewayClientJson
             case GatewaySongOperation.Start:
                 var start = song.Start ?? throw new GatewayProtocolException("request.invalid");
                 payload["operation"] = "start";
-                payload["lyrics"] = start.Lyrics;
-                payload["style"] = start.Style;
-                payload["duration_seconds"] = start.DurationSeconds;
-                payload["language"] = start.Language;
-                payload["quality"] = start.Quality;
-                payload["voice_match"] = start.VoiceMatch;
-                payload["voice_id"] = start.VoiceId;
-                if (start.Bpm is { } bpm) payload["bpm"] = bpm;
-                if (start.Key is { } key) payload["key"] = key;
-                if (start.Seed is { } seed) payload["seed"] = seed;
-                if (!song.ReferenceAudio.IsEmpty) payload["reference_audio_base64"] = Convert.ToBase64String(song.ReferenceAudio.Span);
+                if (start.Kind != GatewaySongKinds.Song) payload["kind"] = start.Kind;
+                if (start.Kind != GatewaySongKinds.Match)
+                {
+                    payload["lyrics"] = start.Lyrics!;
+                    payload["style"] = start.Style!;
+                    payload["duration_seconds"] = start.DurationSeconds;
+                    payload["language"] = start.Language!;
+                    payload["quality"] = start.Quality!;
+                    if (start.Bpm is { } bpm) payload["bpm"] = bpm;
+                    if (start.Key is { } key) payload["key"] = key;
+                    if (start.Seed is { } seed) payload["seed"] = seed;
+                }
+                if (start.Kind != GatewaySongKinds.Music)
+                {
+                    payload["voice_match"] = start.VoiceMatch!;
+                    payload["voice_id"] = start.VoiceId!;
+                    if (!song.ReferenceAudio.IsEmpty) payload["reference_audio_base64"] = Convert.ToBase64String(song.ReferenceAudio.Span);
+                }
+                if (start.Kind == GatewaySongKinds.Match) payload["input_frames"] = start.InputFrames;
                 break;
             case GatewaySongOperation.Result:
                 payload["operation"] = "result";
@@ -647,6 +655,12 @@ internal static class GatewayClientJson
                 payload["track"] = song.Track!;
                 payload["offset_frames"] = song.OffsetFrames;
                 payload["maximum_frames"] = song.MaximumFrames;
+                break;
+            case GatewaySongOperation.Input:
+                payload["operation"] = "input";
+                payload["job_id"] = song.JobId!;
+                payload["offset_frames"] = song.OffsetFrames;
+                payload["pcm_base64"] = Convert.ToBase64String(song.InputPcm.Span);
                 break;
             default:
                 payload["operation"] = song.Operation == GatewaySongOperation.Status ? "status" : "cancel";
