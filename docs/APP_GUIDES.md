@@ -463,6 +463,11 @@ Limits: at most 4 areas an hour, and the same area again only after 24 hours.
 `update_guide_brief` with a `focus` researches an area again after 1 hour. The
 log has counts and times only, never area names, questions, links or text.
 
+The conversation itself learns where the player is from a separate running
+note, the game note ([Where you are in a
+game](CONVERSATION.md#where-you-are-in-a-game)). It uses the same screen
+summaries and the brief, and goes on the context board as source `game`.
+
 Research needs App guides on, *Read up when I start a game or app* on, screen
 digests on (they give the clues) and a Thinking pool member. It costs nothing
 when the pool members are local. On a paid cloud pool member it is bounded by

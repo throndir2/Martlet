@@ -5901,6 +5901,23 @@ Live replies and looks log *Context board: the request took N notes (sources;
 bytes; consumed)* in the desktop log (`logs_tail`), and `LiveTurnInputs`
 counts them (*... and 2 context notes*). Loopback only; no credentials.
 
+`game_progress_check` rehearses [where you are in a
+game](CONVERSATION.md#where-you-are-in-a-game) with the production note keeper
+(`GameProgress`) and context board and a FIXTURE Thinking pool member (canned
+answers, NOT AI; nothing is sent). Two FIXTURE screen summaries make a note
+and a newer note built on the first, a `[same]` answer keeps the note, and a
+bad answer leaves the board as it was. It returns `updates` (each step's
+`Updated`, `Kept`, `Characters` and `Problem`), `secondBuiltOnFirst`,
+`instructionsStayTheSame`, `board` (`sources`: `screen`, then `game`; `game`:
+the note's text and `maxAgeSeconds` 600; `gameAfterScreen`), `counts` and
+`limits` (`everySeconds` 90, `noteAgeSeconds` 600, `earlierNoteHours` 6,
+`maximumCharacters` 480, `maximumGames` 8, `maxOutputTokens` 200); `ok` is
+true when all of them hold. An optional `reply` is cleaned like a pool
+member's answer and shown as `reply.cleaned` and its `board` line. Live
+updates log *Game progress: updated the note in N s (N characters).* in the
+desktop log (`logs_tail` `contains` `Game progress`). It reads no credentials
+and contacts nothing.
+
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):
 `settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,

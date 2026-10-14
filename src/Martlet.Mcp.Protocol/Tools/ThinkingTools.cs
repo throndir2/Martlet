@@ -299,6 +299,18 @@ internal sealed partial class McpServer
             reply = new { type = "string", maxLength = 1024 }
         },
             async (arguments, cancellation) => await ScreenDigestCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation)),
+        Tool("game_progress_check", "Where the user is in a game (docs/CONVERSATION.md, Where you are in a game): the running note " +
+            "a Thinking pool member keeps from the screen summaries while a game is in front, rehearsed with the production note " +
+            "keeper (GameProgress) and context board and a FIXTURE pool member (canned answers, NOT AI; nothing is sent). Two " +
+            "FIXTURE screen summaries make a note and a newer note built on it, \"[same]\" keeps it, a bad answer leaves the board " +
+            "as it was. Returns each update, whether the second request carried the earlier note, whether the instructions stay " +
+            "the same, the board's sources and game note (source game, right after screen) and the limits. reply (optional) is " +
+            "cleaned like a pool member's answer and shown as the board line. Live updates log \"Game progress: updated the note\" " +
+            "in the desktop log. Reads no credentials and contacts nothing.", new
+        {
+            reply = new { type = "string", maxLength = 2048 }
+        },
+            async (arguments, cancellation) => await GameProgressCheck.RunAsync(OptionalString(arguments, "reply"), cancellation)),
         Tool("context_board", "The context board (where background sources such as a screen digest, the sounds this PC plays, " +
             "touches on the character and the character's lingering emotes keep their newest short note for the live " +
             "conversation), rehearsed with the production board, request layout and Chat Completions adapter against a fixture " +
