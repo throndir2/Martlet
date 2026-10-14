@@ -2867,7 +2867,7 @@ public partial class LiveConversationWindow : ThemedWindow
         digest.Tick();
         // With an image model of its own: while you talk or type, it describes the newest picture ahead of time, so the reply
         // takes the description without waiting (the controller asks only when none counts for that picture).
-        if (Talking && controller.ImageDescribed) DescribeAhead(PictureTrigger.Talking);
+        if (Talking) DescribeAhead(PictureTrigger.Talking);
         // Something wants your attention: capture now, while the notification is still up.
         if (noticing && attentionWatcher.Check() is { } signal)
         {
@@ -2957,7 +2957,7 @@ public partial class LiveConversationWindow : ThemedWindow
             // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
             if (source.IsScreen) Gaze?.Observe(frame);
             // With an image model of its own, a changed picture is described ahead of time while you talk with Martlet (paced).
-            if (changed && controller.ImageDescribed) DescribeAhead(PictureTrigger.Changed);
+            if (changed) DescribeAhead(PictureTrigger.Changed);
             var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning || Conversing;
             // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
             var idle = source.IsScreen ? glancer.UserIdle : TimeSpan.Zero;
@@ -2985,7 +2985,7 @@ public partial class LiveConversationWindow : ThemedWindow
                     attentionNote = null;
                     lookWanted = true;
                     waitNote = null;
-                    if (controller.ImageDescribed) DescribeAhead(PictureTrigger.Look, attention: true);
+                    DescribeAhead(PictureTrigger.Look, attention: true);
                     if (!operations.IsRunning) TryStartCommentary();
                     return;
                 }
@@ -3018,7 +3018,7 @@ public partial class LiveConversationWindow : ThemedWindow
             };
             if (!lookWanted) return;
             // With an image model of its own, the look's picture is described now: a look or a reply that takes it uses that.
-            if (controller.ImageDescribed) DescribeAhead(PictureTrigger.Look);
+            DescribeAhead(PictureTrigger.Look);
             if (!operations.IsRunning) TryStartCommentary();
         }
         finally

@@ -54,7 +54,7 @@ public sealed class SenseJobAgreementTests
         fixture.Controller.Configure(await fixture.Store.LoadAsync());
         fixture.Controller.ReloadThinkingPool();
         fixture.Controller.SenseModels = senses;
-        fixture.Controller.SoundTaggerHere = soundTagger;
+        fixture.Controller.Sense.SoundTaggerHere = soundTagger;
         return fixture;
     }
 
@@ -108,7 +108,7 @@ public sealed class SenseJobAgreementTests
         // PC sound descriptions: Companion › Listening's judge is the judge the sound digest gets.
         var sound = controller.SenseDecision(SenseJobKind.PcSound);
         var (judge, kind) = MainWindow.SoundJudgeOf(sound);
-        var running = controller.SoundJudge();
+        var running = controller.Sense.SoundJudge();
         Assert.Equal(sound.Taker is SenseTaker.SenseModel or SenseTaker.PoolMember ? judge : null, running?.Name);
         if (running is not null) Assert.Equal(kind, running.Kind);
 

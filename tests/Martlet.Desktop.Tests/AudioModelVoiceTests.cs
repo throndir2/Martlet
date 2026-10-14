@@ -69,17 +69,17 @@ public sealed class AudioModelVoiceTests
         await using var fixture = await LiveFixture.Create();
         await ThinkingThatHears(fixture);
         fixture.Controller.SenseModels = WithEars(LocalEars);
-        fixture.Controller.SenseSharing = _ => false;
+        fixture.Controller.Sense.SenseSharing = _ => false;
         Assert.Equal(SensePath.Described, fixture.Controller.SenseRoute(SenseKind.Audio).Path);
-        Assert.False(fixture.Controller.ThinkingTakesVoice(fixture.Controller.Configuration));
+        Assert.False(fixture.Controller.Sense.ThinkingTakesVoice(fixture.Controller.Configuration));
         var jobs = new ConcurrentQueue<SenseJob>();
-        fixture.Controller.SenseRunner = (_, _, job, _) =>
+        fixture.Controller.Sense.SenseRunner = (_, _, job, _) =>
         {
             jobs.Enqueue(job);
             return Task.FromResult(SenseAnswer.Done("Laughs; sounds excited."));
         };
         var described = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Controller.VoiceDescribed += _ => described.TrySetResult();
+        fixture.Controller.Sense.VoiceDescribed += _ => described.TrySetResult();
         // Speech-to-text answers after the audio model, so its words are ready when the reply's request is built.
         fixture.Stt.Respond = async (_, token) =>
         {
@@ -139,17 +139,17 @@ public sealed class AudioModelVoiceTests
         await using var fixture = await LiveFixture.Create();
         await ThinkingThatHears(fixture);
         fixture.Controller.SenseModels = WithEars(LocalEars);
-        fixture.Controller.SenseSharing = _ => false;
+        fixture.Controller.Sense.SenseSharing = _ => false;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var asked = 0;
-        fixture.Controller.SenseRunner = async (_, _, _, token) =>
+        fixture.Controller.Sense.SenseRunner = async (_, _, _, token) =>
         {
             Interlocked.Increment(ref asked);
             await release.Task.WaitAsync(token);
             return SenseAnswer.Done("Sighs; sounds tired.");
         };
         var described = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Controller.VoiceDescribed += _ => described.TrySetResult();
+        fixture.Controller.Sense.VoiceDescribed += _ => described.TrySetResult();
         fixture.Stt.Respond = (_, _) => Task.FromResult(Words("Hello there."));
         var bodies = new ConcurrentQueue<string>();
         fixture.Chat.Respond = (_, _) =>
@@ -201,10 +201,10 @@ public sealed class AudioModelVoiceTests
     {
         await using var fixture = await LiveFixture.Create();
         fixture.Controller.SenseModels = WithEars(local ? LocalEars : CloudEars);
-        fixture.Controller.SenseSharing = _ => false;
+        fixture.Controller.Sense.SenseSharing = _ => false;
         Assert.Equal(local, fixture.Controller.RecordingStaysOnThisPc());
         var asked = 0;
-        fixture.Controller.SenseRunner = (_, _, _, _) =>
+        fixture.Controller.Sense.SenseRunner = (_, _, _, _) =>
         {
             Interlocked.Increment(ref asked);
             return Task.FromResult(SenseAnswer.Done("Calm."));
@@ -233,16 +233,16 @@ public sealed class AudioModelVoiceTests
         await using var fixture = await LiveFixture.Create();
         await ThinkingThatHears(fixture);
         fixture.Controller.SenseModels = WithEars(LocalEars);
-        fixture.Controller.SenseSharing = _ => true;
+        fixture.Controller.Sense.SenseSharing = _ => true;
         var replied = 0;
         var afterReply = false;
-        fixture.Controller.SenseRunner = (_, _, _, _) =>
+        fixture.Controller.Sense.SenseRunner = (_, _, _, _) =>
         {
             afterReply = Volatile.Read(ref replied) == 1;
             return Task.FromResult(SenseAnswer.Done("Whispers."));
         };
         var described = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Controller.VoiceDescribed += _ => described.TrySetResult();
+        fixture.Controller.Sense.VoiceDescribed += _ => described.TrySetResult();
         fixture.Stt.Respond = (_, _) => Task.FromResult(Words("Hello there."));
         var bodies = new ConcurrentQueue<string>();
         fixture.Chat.Respond = (_, _) =>
@@ -275,10 +275,10 @@ public sealed class AudioModelVoiceTests
         await ThinkingThatHears(fixture);
         var configured = fixture.Controller.Configuration!;
         Assert.Equal(SensePath.Thinking, fixture.Controller.SenseRoute(SenseKind.Audio).Path);
-        Assert.True(fixture.Controller.ThinkingTakesVoice(configured));
-        Assert.False(fixture.Controller.DescribesVoice(configured));
+        Assert.True(fixture.Controller.Sense.ThinkingTakesVoice(configured));
+        Assert.False(fixture.Controller.Sense.DescribesVoice(configured));
         Assert.Equal(configured.RecordingStaysOnThisPc(), fixture.Controller.RecordingStaysOnThisPc());
-        Assert.Null(fixture.Controller.SoundJudge());
+        Assert.Null(fixture.Controller.Sense.SoundJudge());
         var bodies = new ConcurrentQueue<string>();
         fixture.Chat.Respond = (_, _) =>
         {
@@ -300,12 +300,12 @@ public sealed class AudioModelVoiceTests
         await using var fixture = await LiveFixture.Create();
         Assert.Null(SenseSoundJudge.For(fixture.Controller));
         fixture.Controller.SenseModels = WithEars(LocalEars);
-        var judge = Assert.IsType<SenseSoundJudge>(fixture.Controller.SoundJudge());
+        var judge = Assert.IsType<SenseSoundJudge>(fixture.Controller.Sense.SoundJudge());
         Assert.Equal(SoundJudgeKind.AudioModel, judge.Kind);
         Assert.Equal("Ollama on this PC (gemma3n:e4b)", judge.Name);
         Assert.Equal("Ollama on this PC (gemma3n:e4b), the audio model, hears a short clip.", PcSoundDigest.JudgeText(judge.Name, judge.Kind));
         SenseJob? seen = null;
-        fixture.Controller.SenseRunner = (kind, _, job, _) =>
+        fixture.Controller.Sense.SenseRunner = (kind, _, job, _) =>
         {
             Assert.Equal(SenseKind.Audio, kind);
             seen = job;
@@ -318,12 +318,12 @@ public sealed class AudioModelVoiceTests
         Assert.Equal(SoundDigest.Prompt, seen.Text);
         Assert.Equal(TimeSpan.FromSeconds(3), seen.Audio!.Duration);
         // On the conversation's computer it waits while the live turn needs it; elsewhere it never does.
-        fixture.Controller.SenseSharing = _ => true;
-        Assert.False(fixture.Controller.SoundJudgeHeld());
+        fixture.Controller.Sense.SenseSharing = _ => true;
+        Assert.False(fixture.Controller.Sense.SoundJudgeHeld());
         fixture.Controller.LiveFloor.Words("a test");
-        Assert.True(fixture.Controller.SoundJudgeHeld());
-        fixture.Controller.SenseSharing = _ => false;
-        Assert.False(fixture.Controller.SoundJudgeHeld());
+        Assert.True(fixture.Controller.Sense.SoundJudgeHeld());
+        fixture.Controller.Sense.SenseSharing = _ => false;
+        Assert.False(fixture.Controller.Sense.SoundJudgeHeld());
     }
 
     [Fact]

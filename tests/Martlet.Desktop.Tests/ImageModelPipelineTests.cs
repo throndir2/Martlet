@@ -92,8 +92,8 @@ public sealed class ImageModelPipelineTests
         var seen = Game(fixture);
 
         // You start to talk: the image model describes the newest picture ahead of time, with what was said lately.
-        fixture.Controller.DescribeAhead(seen, PictureTrigger.Talking);
-        await fixture.Advance(() => fixture.Controller.Pictures.For(seen.Shot()) is not null);
+        fixture.Controller.Sense.DescribeAhead(seen, PictureTrigger.Talking);
+        await fixture.Advance(() => fixture.Controller.Sense.Pictures.For(seen.Shot()) is not null);
         var eyes = Chat(fixture.Chat.Body);
         Assert.Equal("qwen2.5vl:7b", eyes.Model);
         Assert.Equal(1, eyes.Pictures);
@@ -130,7 +130,7 @@ public sealed class ImageModelPipelineTests
         // The pace for descriptions while you talk is one every 4 s.
         fixture.Clock.Advance(TimeSpan.FromSeconds(5));
         var later = Game(fixture);
-        fixture.Controller.DescribeAhead(later with { Title = "Discord", App = "Discord", FullScreen = false }, PictureTrigger.Talking);
+        fixture.Controller.Sense.DescribeAhead(later with { Title = "Discord", App = "Discord", FullScreen = false }, PictureTrigger.Talking);
         await fixture.Advance(() => fixture.Chat.Calls == 2);
         Assert.Contains("What was said lately, oldest first:\nUser: What do you think?", Chat(fixture.Chat.Body).User);
         Assert.Contains("Martlet: Almost there!", Chat(fixture.Chat.Body).User);
@@ -148,7 +148,7 @@ public sealed class ImageModelPipelineTests
             return ChatReply(Described);
         };
         var seen = Game(fixture);
-        fixture.Controller.DescribeAhead(seen, PictureTrigger.Talking);
+        fixture.Controller.Sense.DescribeAhead(seen, PictureTrigger.Talking);
         await fixture.Advance(() => fixture.Chat.Calls == 1);
 
         fixture.Answer("Hi!");
@@ -165,7 +165,7 @@ public sealed class ImageModelPipelineTests
 
         // The description that comes later is there for the next reply.
         release.SetResult();
-        await fixture.Advance(() => fixture.Controller.Pictures.For(seen.Shot()) is not null);
+        await fixture.Advance(() => fixture.Controller.Sense.Pictures.For(seen.Shot()) is not null);
         fixture.Answer("Oh, nice.");
         var next = Reply(fixture, "And now?", seen with { TakenAt = fixture.Clock.GetUtcNow() });
         await fixture.Finish(next);
@@ -223,7 +223,7 @@ public sealed class ImageModelPipelineTests
         Assert.Contains(PictureDescriptions.Instructions(null)!, sent.Instructions);
         Assert.DoesNotContain(SeenTags.Instructions(null, StayQuiet.Marker)!, sent.Instructions);
         Assert.Equal("the image model's description of the picture", look.Inputs);
-        Assert.Same(fixture.Controller.Pictures.For(new SeenScreen(Image, "ELDEN RING", Whole, "ELDEN RING", true, picture).Shot(), exact: true),
+        Assert.Same(fixture.Controller.Sense.Pictures.For(new SeenScreen(Image, "ELDEN RING", Whole, "ELDEN RING", true, picture).Shot(), exact: true),
             look.Described);
 
         // A second look at the same picture uses the description again: no second request to the image model.
@@ -270,7 +270,7 @@ public sealed class ImageModelPipelineTests
     {
         await using var fixture = await LiveFixture.Create();
         fixture.Controller.SenseModels = WithEyes;
-        fixture.Controller.SenseSharing = kind => kind == SenseKind.Image;
+        fixture.Controller.Sense.SenseSharing = kind => kind == SenseKind.Image;
         var stopped = 0;
         fixture.Chat.Respond = async (_, token) =>
         {
@@ -279,7 +279,7 @@ public sealed class ImageModelPipelineTests
             return ChatReply(Described);
         };
         var seen = Game(fixture);
-        fixture.Controller.DescribeAhead(seen, PictureTrigger.Talking);
+        fixture.Controller.Sense.DescribeAhead(seen, PictureTrigger.Talking);
         await fixture.Advance(() => fixture.Chat.Calls == 1);
 
         // Thinking answers only once the description was stopped, so the reply holds the hardware meanwhile.
@@ -295,9 +295,9 @@ public sealed class ImageModelPipelineTests
         await fixture.Finish(reply);
         Assert.False(reply.ScreenDescribed);
         Assert.Equal(0, Thinking(fixture.Llm.Body).Pictures);
-        await fixture.Advance(() => fixture.Controller.Pictures.Now().Running == 0);
-        Assert.Null(fixture.Controller.Pictures.For(seen.Shot()));
-        Assert.Equal(SenseJobOutcome.Preempted, fixture.Controller.Senses.Status()[0].LastOutcome);
+        await fixture.Advance(() => fixture.Controller.Sense.Pictures.Now().Running == 0);
+        Assert.Null(fixture.Controller.Sense.Pictures.For(seen.Shot()));
+        Assert.Equal(SenseJobOutcome.Preempted, fixture.Controller.Sense.Senses.Status()[0].LastOutcome);
     }
 
     [Fact]
@@ -320,10 +320,10 @@ public sealed class ImageModelPipelineTests
         Assert.Equal("They switched from VS Code to a boss fight.", await digest);
         var eyes = Chat(fixture.Chat.Body);
         Assert.Equal((PoolScreenDigestThinker.Instructions, "FIXTURE summary message.", 1), (eyes.System, eyes.User, eyes.Pictures));
-        Assert.Equal("screen summary", fixture.Controller.Senses.Status()[0].LastPurpose);
+        Assert.Equal("screen summary", fixture.Controller.Sense.Senses.Status()[0].LastPurpose);
 
         // On the conversation's own computer and graphics card, the summary right after you start to speak isn't made there.
-        fixture.Controller.SenseSharing = _ => true;
+        fixture.Controller.Sense.SenseSharing = _ => true;
         Assert.False(thinker.SeesBesideConversation);
     }
 

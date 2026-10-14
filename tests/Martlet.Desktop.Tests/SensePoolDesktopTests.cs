@@ -34,8 +34,8 @@ public sealed class SensePoolDesktopTests
     {
         var fixture = await LiveFixture.Create();
         // The Vision list: the image model, a text-only model (left out: it doesn't see) and a spare model that sees.
-        fixture.Controller.SenseListsNow = new SenseSetup(new(), [Eyes, TextOnly, Spare], [], null, null, "lists");
-        fixture.Controller.SenseAttemptRunner = (kind, member, fallback, job, _) =>
+        fixture.Controller.Sense.SenseListsNow = new SenseSetup(new(), [Eyes, TextOnly, Spare], [], null, null, "lists");
+        fixture.Controller.Sense.SenseAttemptRunner = (kind, member, fallback, job, _) =>
         {
             Assert.Equal(SenseKind.Image, kind);
             lock (asked) asked.Add((member.Key, fallback));
@@ -50,7 +50,7 @@ public sealed class SensePoolDesktopTests
         var asked = new List<(string Key, bool Fallback)>();
         await using var fixture = await PoolFixture(asked, member => member.Key == Eyes.Key
             ? SenseAttempt.Busy("it is busy with another job") : SenseAttempt.Done(SenseAnswer.Done("Words from the spare model.")));
-        Assert.Equal([Eyes.Key, Spare.Key], fixture.Controller.SenseMembers(SenseKind.Image, Eyes).Select(m => m.Key));
+        Assert.Equal([Eyes.Key, Spare.Key], fixture.Controller.Sense.SenseMembers(SenseKind.Image, Eyes).Select(m => m.Key));
 
         var job = fixture.Controller.RunSenseAsync(SenseKind.Image, Look(), CancellationToken.None);
         await fixture.Advance(() => job.IsCompleted);
@@ -58,7 +58,7 @@ public sealed class SensePoolDesktopTests
 
         Assert.Equal("Words from the spare model.", result.Text);
         Assert.Equal([(Eyes.Key, false), (Spare.Key, true)], asked);
-        var status = fixture.Controller.SenseStatusJson();
+        var status = fixture.Controller.Sense.SenseStatusJson();
         Assert.Contains("\"lane\": \"vision\"", status);
         Assert.Contains("\"elsewhere\": 1", status);
         Assert.Contains("\"member\": \"" + Spare.Key + "\"", status);
@@ -92,12 +92,12 @@ public sealed class SensePoolDesktopTests
     public async Task The_first_model_in_the_list_that_sees_takes_the_pictures_and_an_empty_list_leaves_them_to_thinking()
     {
         await using var fixture = await LiveFixture.Create();
-        fixture.Controller.SenseListsNow = new SenseSetup(new(), [TextOnly, Eyes, Spare], [], null, null, "lists");
+        fixture.Controller.Sense.SenseListsNow = new SenseSetup(new(), [TextOnly, Eyes, Spare], [], null, null, "lists");
         var route = fixture.Controller.SenseRoute(SenseKind.Image);
         Assert.Equal((SensePath.Described, Eyes.Key), (route.Path, route.Model!.Key));
-        Assert.Equal([Eyes.Key, Spare.Key], fixture.Controller.SenseMembers(SenseKind.Image, Eyes).Select(m => m.Key));
+        Assert.Equal([Eyes.Key, Spare.Key], fixture.Controller.Sense.SenseMembers(SenseKind.Image, Eyes).Select(m => m.Key));
 
-        fixture.Controller.SenseListsNow = new SenseSetup(new(), [], [], null, null, "lists");
+        fixture.Controller.Sense.SenseListsNow = new SenseSetup(new(), [], [], null, null, "lists");
         // The fixture's Thinking model (OpenAI) sees, so it takes the pictures itself.
         Assert.Equal(SensePath.Thinking, fixture.Controller.SenseRoute(SenseKind.Image).Path);
     }

@@ -585,6 +585,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         add => routing.FailuresChanged += value;
         remove => routing.FailuresChanged -= value;
     }
+    // The image and audio models: routes, lanes, picture descriptions and voice notes (SenseSession.cs).
+    private readonly SenseSession senseSession;
     // Hearing what this PC plays: its devices, slot, speech-to-text, sound digest and activity note (PcAudioSession.cs).
     private readonly PcAudioSession pcSession;
     /// <inheritdoc cref="ListeningSession.Listen"/>
@@ -616,7 +618,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     // spoken reply heard.
     private readonly BackgroundJobs jobs;
     private readonly Dictionary<string, ThinkSlot> thinkSlots = new(StringComparer.Ordinal);
-    private sealed class ThinkSlot
+    internal sealed class ThinkSlot
     {
         internal ICredentialAuthority? Authorization;
         internal ConversationCredentialSource? Credentials;
@@ -717,6 +719,64 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     internal Guid ConversationId { get { lock (gate) return conversationId; } }
     /// <summary>How echo reduction went the last time Martlet listened; null when this controller has none.</summary>
     internal EchoReductionReport? EchoReport => echoReducer?.Report;
+    // ---------- the image and audio models: what other code calls (SenseSession.cs does the work) ----------
+
+    /// <summary>The image and audio models' session, for its test knobs and status (<see cref="SenseSession"/>).</summary>
+    internal SenseSession Sense => senseSession;
+
+    /// <inheritdoc cref="SenseSession.SenseModels"/>
+    internal SenseModels SenseModels { get => senseSession.SenseModels; set => senseSession.SenseModels = value; }
+
+    /// <inheritdoc cref="SenseSession.ReloadSenseModels"/>
+    internal void ReloadSenseModels() => senseSession.ReloadSenseModels();
+
+    /// <inheritdoc cref="SenseSession.LoadSenseSetup"/>
+    internal static SenseSetup LoadSenseSetup(string directory, ModelAbilities? abilities) => SenseSession.LoadSenseSetup(directory, abilities);
+
+    /// <inheritdoc cref="SenseSession.SenseRoute(SenseKind)"/>
+    internal SenseRoute SenseRoute(SenseKind kind) => senseSession.SenseRoute(kind);
+
+    /// <inheritdoc cref="SenseSession.SenseDecision"/>
+    internal SenseDecision SenseDecision(SenseJobKind job) => senseSession.SenseDecision(job);
+
+    /// <inheritdoc cref="SenseSession.RunSenseAsync"/>
+    internal Task<SenseJobResult> RunSenseAsync(SenseKind kind, SenseJob job, CancellationToken token) =>
+        senseSession.RunSenseAsync(kind, job, token);
+
+    /// <inheritdoc cref="SenseSession.TestSenseAsync"/>
+    internal Task<SenseAnswer> TestSenseAsync(SenseKind kind, DeepThinkingSettings model, SenseJob job, CancellationToken token) =>
+        senseSession.TestSenseAsync(kind, model, job, token);
+
+    /// <inheritdoc cref="SenseSession.SenseSharesConversation"/>
+    internal bool SenseSharesConversation(SenseKind kind) => senseSession.SenseSharesConversation(kind);
+
+    /// <inheritdoc cref="SenseSession.RecordingStaysOnThisPc"/>
+    internal bool RecordingStaysOnThisPc(LiveConversationConfiguration? configured = null) => senseSession.RecordingStaysOnThisPc(configured);
+
+    /// <inheritdoc cref="SenseSession.ImageRoute"/>
+    internal SenseRoute ImageRoute => senseSession.ImageRoute;
+
+    /// <inheritdoc cref="SenseSession.CanSee"/>
+    internal bool CanSee => senseSession.CanSee;
+
+    /// <inheritdoc cref="SenseSession.ImageDescribed"/>
+    internal bool ImageDescribed => senseSession.ImageDescribed;
+
+    /// <inheritdoc cref="SenseSession.OwnImageModel"/>
+    internal bool OwnImageModel => senseSession.OwnImageModel;
+
+    /// <inheritdoc cref="SenseSession.ImageAdvice"/>
+    internal string ImageAdvice() => senseSession.ImageAdvice();
+
+    /// <inheritdoc cref="SenseSession.PictureMoment"/>
+    internal void PictureMoment(PictureTrigger why, PictureShot? shot, bool fresh, TimeSpan? sinceActivity, Func<SeenScreen> picture) =>
+        senseSession.PictureMoment(why, shot, fresh, sinceActivity, picture);
+
+    /// <inheritdoc cref="SenseSession.ForgetPictures"/>
+    internal void ForgetPictures() => senseSession.ForgetPictures();
+
+    /// <inheritdoc cref="SenseSession.PictureNow"/>
+    internal (TimeSpan? Age, TimeSpan? Took, string? Model, bool? LastReplyTook) PictureNow => senseSession.PictureNow;
     /// <inheritdoc cref="PcAudioSession.CanHearPc"/>
     internal bool CanHearPc => pcSession.CanHearPc;
     /// <inheritdoc cref="PcAudioSession.SoundDigest"/>
@@ -843,6 +903,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     {
         this.operations = operations;
+        senseSession = new(this);
         this.settings = settings;
         this.vault = vault;
         this.captureDevices = captureDevices;
@@ -887,7 +948,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // The image and audio models this PC uses (docs/SENSE_MODELS.md: the Vision and Hearing lists), before anything can send them
         // work, and what models were found to hear and see, which routes them before a talk window loads the settings.
         poolAbilities = dataDirectory is null ? null : ModelAbilities.Load(dataDirectory);
-        if (dataDirectory is not null) senseSetup = LoadSenseSetup(dataDirectory, poolAbilities);
+        if (dataDirectory is not null) senseSession.senseSetup = SenseSession.LoadSenseSetup(dataDirectory, poolAbilities);
         helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
         StartMemoryUpkeep();
@@ -902,7 +963,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         jobs.Changed += WritePoolStatus;
         WriteJobsStatus();
         // sense-models-status.json from the start, before a talk window loads the settings (it says so).
-        QueueSenseStatus();
+        senseSession.QueueSenseStatus();
     }
 
     /// <summary>Saves what Martlet found out about a Thinking model (model-abilities.json) and lets the running conversation use
@@ -967,8 +1028,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         UseLiveResources(next);
         // Where pictures and recordings go follows the new Thinking model too (docs/SENSE_MODELS.md); without a data folder (tests)
         // the choices set on the controller stay.
-        if (dataDirectory is not null) ReloadSenseModels();
-        else SenseRoutesChanged();
+        if (dataDirectory is not null) senseSession.ReloadSenseModels();
+        else senseSession.SenseRoutesChanged();
         stop?.Cancel("conversation.configuration_changed");
         Cancel(stopListening);
         // Opening the talk window starts the MCP servers in the background, so their tools are ready by the first reply.
@@ -1107,13 +1168,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             long acceptedRevision = revision = checked(revision + 1);
             // Vision being on is the permission for its pictures. They go in Thinking's own request, to the image model to be
             // described in words for Thinking, or nowhere when no model takes them (docs/SENSE_MODELS.md).
-            var imagePath = SenseRoute(SenseKind.Image, selected).Path;
+            var imagePath = senseSession.SenseRoute(SenseKind.Image, selected).Path;
             if (imagePath == SensePath.None) seen = null;
             // Hearing that is on only because it was never chosen holds only while the recording stays on this PC; an audio model
             // of its own takes recordings in Thinking's place, so then Thinking never gets one (docs/SENSE_MODELS.md).
-            var stays = RecordingStaysOnThisPc(selected);
+            var stays = senseSession.RecordingStaysOnThisPc(selected);
             var hear = (microphone ? listening?.HearsWith(stays) == true : recording is not null && (!hearLocalOnly || stays)) &&
-                ThinkingTakesVoice(selected);
+                senseSession.ThinkingTakesVoice(selected);
             if (!hear) recording = null;
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller,
@@ -1156,7 +1217,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         published.SetResult();
         SuperviseAsync(operation).Forget();
         // Pressing the talk button: recording and speech-to-text give the image model time to describe the picture first.
-        if (microphone && operation is { ImagePath: SensePath.Described, Seen: { } pressed }) DescribeAhead(pressed, PictureTrigger.Talking);
+        if (microphone && operation is { ImagePath: SensePath.Described, Seen: { } pressed }) senseSession.DescribeAhead(pressed, PictureTrigger.Talking);
         return operation;
     }
 
@@ -1169,7 +1230,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         lastCache = null;
         conversationId = Guid.NewGuid();
         // The image model's descriptions belong to this conversation too.
-        pictures?.Forget();
+        senseSession.pictures?.Forget();
         // The audio model's late words were about messages the conversation no longer keeps.
         Board.Clear(VoiceNotes.BoardSource);
         // And the rest of a reply cut off belongs to a reply it no longer keeps.
@@ -1233,7 +1294,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
             // Martlet can't see only when no model takes pictures (docs/SENSE_MODELS.md).
-            var imagePath = SenseRoute(SenseKind.Image, selected).Path;
+            var imagePath = senseSession.SenseRoute(SenseKind.Image, selected).Path;
             if (imagePath == SensePath.None) throw new LiveActionException("commentary.vision_unsupported");
             long acceptedRevision = revision = checked(revision + 1);
             var authorization = new ConversationAuthorization(selected, voice, false, clock,
@@ -1315,8 +1376,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (operation.ImagePath == SensePath.Described)
             {
                 operation.Publish(new("commentary.describing"));
-                var first = await DescribeLookAsync(looked, operation.Authorization.Configuration.Prompts, worker).ConfigureAwait(false);
-                NoteLookPicture(first);
+                var first = await senseSession.DescribeLookAsync(looked, operation.Authorization.Configuration.Prompts, worker).ConfigureAwait(false);
+                senseSession.NoteLookPicture(first);
                 if (first.Description is not { } words)
                 {
                     ErrorLog.Info($"Vision: the image model couldn't describe the picture for a {(camera ? "camera look" : "screen glance")} " +
@@ -1615,11 +1676,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (audio is null) return new(SetupWorkOutcome.Completed);
                 operation.LatencyTimeline?.Mark("recording");
                 // An audio model of its own hears it beside speech-to-text (never on the reply's path).
-                if (StartVoiceNote(operation, audio) is { } note) operation.VoiceNotes = [note];
+                if (senseSession.StartVoiceNote(operation, audio) is { } note) operation.VoiceNotes = [note];
                 var result = await TranscribeAsync(operation, audio, transcription, worker).ConfigureAwait(false);
                 if (result is null)
                 {
-                    CancelVoiceNotes(operation);
+                    SenseSession.CancelVoiceNotes(operation);
                     return new(operation.Transcription?.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
                 }
                 operation.LatencyTimeline?.Mark("speech-to-text");
@@ -1830,8 +1891,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // With an image model of its own (the Described path) no picture goes to Thinking. The reply takes the image model's
                 // description of the picture it would have sent when one is ready now (it never waits for one), as a note sent with
                 // this request only, and every reply is told what such notes are, the same way each time (docs/SENSE_MODELS.md).
-                var describes = (operation.ImagePath ?? SenseRoute(SenseKind.Image, configured).Path) == SensePath.Described;
-                var description = describes ? DescriptionFor(operation) : null;
+                var describes = (operation.ImagePath ?? senseSession.SenseRoute(SenseKind.Image, configured).Path) == SensePath.Described;
+                var description = describes ? senseSession.DescriptionFor(operation) : null;
                 // The note and the [Screen] line say the window and program the description was made of.
                 var describedSeen = description is null ? null
                     : operation.Seen! with { Title = description.Shot.Title, App = description.Shot.App, FullScreen = description.Shot.FullScreen };
@@ -1873,8 +1934,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // An audio model of its own puts the user's voice into words (the audio path is Described): every reply is told
                 // what its notes are, the same way each time, and its words about how the user sounded go with this request only
                 // when they are ready now (never waited for).
-                var described = DescribesVoice(configured) ? PromptSettings.Fill(prompts, PromptCatalog.HeardVoiceDescribed) : null;
-                heardHow = VoiceNow(operation, prompts);
+                var described = senseSession.DescribesVoice(configured) ? PromptSettings.Fill(prompts, PromptCatalog.HeardVoiceDescribed) : null;
+                heardHow = SenseSession.VoiceNow(operation, prompts);
                 // Singing on a route without function calling: the reply writes song tags in place of the song tools, told the
                 // same way every time (settings alone decide it), so the request starts the same.
                 var singsWithTags = conversationTools.SingsWithTags(configured);
@@ -1984,7 +2045,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.BoardNotes = board.Notes.Count;
             // The audio model's words it carried leave a short line after the message in the conversation, before the board's.
             operation.BoardKept = heardHow.Kept is null ? board.KeptText : board.KeptText is null ? heardHow.Kept : heardHow.Kept + "\n" + board.KeptText;
-            SentVoiceNotes(operation, heardHow.Ready);
+            senseSession.SentVoiceNotes(operation, heardHow.Ready);
             // What this reply took (MomentTurn): the talk window's LiveTurnInputs line and the desktop log, after the request
             // started so the first words never wait for it.
             operation.Inputs = MomentTurn.Describe(own is not null || straight,
@@ -2004,7 +2065,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 turn.Note($"prepared {ReplyLatency.Before(before, operation.ReplyStartedAt)}.");
             // Whether a reply with a picture on the Described path took the image model's description (MCP's image_model_check reads
             // the newest line).
-            NotePicturePath(operation);
+            senseSession.NotePicturePath(operation);
             // Which way what was said went to Thinking (MCP's hearing_check reads the newest line), and once speech-to-text beside
             // the reply has the words, how long after the reply started they came.
             if (straight)
@@ -2205,7 +2266,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (operation.StraightWords is { } spoken)
                 foreach (var words in spoken) words.Release();
             // And the audio model may hear what it carried now (or its words go to the next request when Martlet didn't answer).
-            EndVoiceNotes(operation);
+            senseSession.EndVoiceNotes(operation);
             if (operation.Turn is { } turn)
             {
                 await turn.StopAsync().ConfigureAwait(false);
@@ -2596,7 +2657,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var input = BackgroundJobs.ReportMessage(selected.Prompts, delivery.Jobs);
                 // While vision is on, the newest picture goes with it too (or the image model's description of it), so the report
                 // sees what the user is doing.
-                var imagePath = SenseRoute(SenseKind.Image, selected).Path;
+                var imagePath = senseSession.SenseRoute(SenseKind.Image, selected).Path;
                 if (imagePath == SensePath.None) seen = null;
                 long acceptedRevision = revision = checked(revision + 1);
                 var authorization = new ConversationAuthorization(selected, voice, false, clock,
@@ -3390,8 +3451,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         var (answer, failure, _) = await helpers.RunAsync(kind, purpose, image is null ? HelperCapability.Text : HelperCapability.Vision,
             () => new BoundedTextInput(text, instructions, image: image),
-            worker => image is not null && SenseDecision(SenseJobKind.HelperPicture).After(SenseTaker.PoolMember)?.Taker == SenseTaker.SenseModel
-                ? AskImageModelAsync(kind, purpose, instructions, text, image, worker)
+            worker => image is not null && senseSession.SenseDecision(SenseJobKind.HelperPicture).After(SenseTaker.PoolMember)?.Taker == SenseTaker.SenseModel
+                ? senseSession.AskImageModelAsync(kind, purpose, instructions, text, image, worker)
                 : AskThinkingAsync(purpose, instructions, text, image, worker), token).ConfigureAwait(false);
         return (answer, failure);
     }
@@ -4423,7 +4484,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         ConversationRuntime? song;
         lock (gate)
         {
-            owned = [.. thinkSlots.Values.Select(slot => slot.Runtime), .. senseSlots.Values.Select(slot => slot.Runtime)];
+            owned = [.. thinkSlots.Values.Select(slot => slot.Runtime), .. senseSession.senseSlots.Values.Select(slot => slot.Runtime)];
             song = conversationTools.songRuntime;
         }
         foreach (var runtime in owned)

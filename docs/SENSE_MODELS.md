@@ -348,7 +348,8 @@ screen in 1.4 s (...)` and `Picture path: described (...)` with times only.
 `image-model-status.json` counts described replies, replies that went without,
 looks and descriptions. MCP's `image_model_check` reads both and rehearses the
 pipeline against fixture endpoints ([MCP](MCP.md#image-and-audio-models)).
-Code: `PictureDescriptions.cs` (shared with MCP), `LiveConversationController.Pictures.cs`,
+Code: `PictureDescriptions.cs` (shared with MCP), `SenseSession.Pictures.cs` (with
+`PictureMoment`, which decides when a picture is described ahead of time),
 `LiveConversationWindow.Pictures.cs` and `ImageModelScreenDigestThinker`
 (`PoolScreenDigestThinker.cs`). Tests: `ImageModelPipelineTests`
 (Martlet.Desktop.Tests).
@@ -696,8 +697,8 @@ line in the desktop log.
 
 The types are `SenseModels` and `SenseLists` (Martlet.Core), `ModelSenses`,
 `SenseJobRouting`, `SenseRouting`, `SenseLanes`, `SensePool` and `SenseSetup`
-(Martlet.Conversation). The desktop's controller runs the jobs
-(`LiveConversationController.Senses.cs`).
+(Martlet.Conversation). The desktop's controller runs the jobs in its
+`SenseSession` (`SenseSession.cs`).
 
 ```csharp
 // Where pictures go now: Thinking, Described or None, the model and why.
