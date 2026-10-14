@@ -5517,14 +5517,16 @@ nothing.
 `screen_digest_check` runs the [screen summary over
 time](SCREEN_COMMENTARY.md#martlet-knows-what-changed-over-time) once with the
 desktop's production `ScreenDigester` on **FIXTURE** frames (made-up pictures of
-a code editor, then a game with low health; no screen capture) and a FIXTURE
+a code editor, then a game whose health drops; no screen capture) and a FIXTURE
 thinker and context board (no model; nothing is sent). `setting` is Companion ›
 Vision › *Screen summary over time* from the data directory's
 talk-preferences.json (on by default; optional absolute `dataDirectory`, a
 disposable one through `scripts\Invoke-MartletMcp.ps1`), `timing` the window,
 spacing, fresh, job time (`jobSeconds`: how long one summary may wait for a
-model and run), stale and board ages, `observed` which frames the ring kept or
-skipped, `job` the reason, frames, contact sheet size and bytes and the message
+model and run), stale and board ages and `sheetFrames` (the most screenshots on
+one contact sheet: 6, in a 3 x 2 grid), `observed` which frames the ring kept or
+skipped, `job` the reason, frames (6 for the fixture game), contact sheet size
+and bytes and the message
 as Companion › Prompts › *Screen summary over time* makes it, `answer` the
 FIXTURE reply (or `reply`, up to 1,024 characters) and `parsed` what Martlet
 keeps of it, `board` the note posted as source `screen` with its maximum age,

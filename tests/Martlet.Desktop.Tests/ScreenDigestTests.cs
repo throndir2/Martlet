@@ -93,6 +93,17 @@ public sealed class ScreenDigestTests
         Assert.Equal((44, 10), (two.Width, two.Height));
         Assert.Equal(new[] { "left", "right" }, ScreenDigestSheet.Places(2));
 
+        // Six pictures (the default for a screen that changes all the time, such as a game) go in a 3x2 grid.
+        var sixPicked = ScreenDigestSheet.Pick(frames, new ScreenDigestTiming().SheetFrames);
+        Assert.Equal(new[] { "w0", "w1", "w2", "w4", "w5", "w6" }, sixPicked.Select(f => f.Title).ToArray());
+        Assert.Equal(6, ScreenDigestSheet.Pick(frames, 9).Count);
+        var six = ScreenDigestSheet.Compose(sixPicked)!.Value;
+        Assert.Equal((68, 24), (six.Width, six.Height));
+        // Top right holds the third picture, bottom right the newest.
+        Assert.Equal(60, six.Pixels[((5 * 68) + 48 + 10) * 4 + 2]);
+        Assert.Equal(180, six.Pixels[(((14 + 5) * 68) + 48 + 10) * 4 + 2]);
+        Assert.Equal(new[] { "top left", "top middle", "top right", "bottom left", "bottom middle" }, ScreenDigestSheet.Places(5));
+
         var image = ScreenDigestSheet.Encode(four.Pixels, four.Width, four.Height);
         Assert.Equal(ImageMediaType.Jpeg, image.MediaType);
         Assert.Equal((44, 24), (image.Width, image.Height));

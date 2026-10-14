@@ -74,7 +74,10 @@ internal static class ScreenDigestCheck
         {
             ("Program.cs - Visual Studio Code", 1.0, "dotnet build", false),
             ("Program.cs - Visual Studio Code", 0.001, "dotnet build", false),
-            ("ELDEN RING", 0.6, "HP 20%", true),
+            ("ELDEN RING", 0.6, "HP 80%", true),
+            ("ELDEN RING", 0.3, "HP 60%", true),
+            ("ELDEN RING", 0.3, "HP 45%", true),
+            ("ELDEN RING", 0.3, "HP 30%", true),
             ("ELDEN RING", 0.05, "HP 20%", true)
         };
         var observed = new List<object>();
