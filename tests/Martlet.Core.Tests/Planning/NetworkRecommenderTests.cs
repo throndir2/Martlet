@@ -658,6 +658,81 @@ public sealed class NetworkRecommenderTests
         Assert.False(parts[PlanComponent.SmartHome].On);
         Assert.Equal("Off: Martlet doesn't control your smart home.", parts[PlanComponent.SmartHome].Where);
         Assert.False(parts[PlanComponent.SmartHome].OwnerOff);
+        Assert.True(parts[PlanComponent.People].On);
+        Assert.Equal("WeSpeaker voice recognition inside Martlet on this PC's processor", parts[PlanComponent.People].Where);
+        Assert.False(parts[PlanComponent.People].OffInReview);
+        Assert.False(parts[PlanComponent.Motion].On);
+        Assert.True(parts[PlanComponent.Motion].OffInReview);
+        Assert.Equal("Off: Martlet makes no new body motions; the ones it kept still play.", parts[PlanComponent.Motion].Where);
+    }
+
+    private static NetworkSetupRequest Recognizing(PartChoice people) =>
+        Network(Companion("c1"), Host("big-box", Nvidia(32, "RTX 5090")) with
+        {
+            Roles = [Role("motion", "hy-motion-1.0-lite"), Role("voice-recognition", "wespeaker-en-voxceleb-resnet34-lm")]
+        }) with
+        {
+            Choices = [people]
+        };
+
+    [Fact]
+    public void PeopleNamesTheVoiceRecognitionRoleAndTheRoleAlwaysStays()
+    {
+        var on = NetworkRecommender.Recommend(Recognizing(new PartChoice(PlanComponent.People, true) { HostId = "big-box" }));
+        var people = on.Components.Single(c => c.Component == PlanComponent.People);
+        Assert.True(people.On);
+        Assert.Equal("Martlet's Voice recognition role on big-box's RTX 5090", people.Where);
+        Assert.Contains("each companion PC's processor recognizes voices", people.Why, StringComparison.Ordinal);
+        Assert.Contains(RolesOf(on, "big-box"), r => r.Kind == "voice-recognition");
+        Assert.DoesNotContain(on.Changes, c => c.RoleKind == "voice-recognition");
+        // The role's footprint counts on its card: the CUDA variant on a host with an NVIDIA card.
+        Assert.Contains(NetworkRecommender.Today(Recognizing(new PartChoice(PlanComponent.People, true))).Machine("big-box")!.Usage!.Items,
+            i => i.OptionId == "people:voice-recognition-cuda");
+
+        var off = NetworkRecommender.Recommend(Recognizing(new PartChoice(PlanComponent.People, false) { HostId = "big-box" }));
+        var offPart = off.Components.Single(c => c.Component == PlanComponent.People);
+        Assert.False(offPart.On);
+        Assert.True(offPart.OwnerOff);
+        Assert.Equal("Off: Martlet doesn't check who is talking.", offPart.Where);
+        Assert.Contains("stays on big-box", offPart.Why, StringComparison.Ordinal);
+        Assert.DoesNotContain(off.Changes, c => c.RoleKind == "voice-recognition");
+
+        // A list whose computer doesn't run the role: this PC recognizes voices itself.
+        var missing = NetworkRecommender.Recommend(Network(Companion("c1"), Host("big-box", Nvidia(32))) with
+        {
+            Choices = [new PartChoice(PlanComponent.People, true) { HostId = "big-box" }]
+        }).Components.Single(c => c.Component == PlanComponent.People);
+        Assert.Equal("WeSpeaker voice recognition inside Martlet on each companion PC's processor", missing.Where);
+        Assert.Contains("doesn't run Martlet's Voice recognition role", missing.Why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MotionIsAnOptionalExtraThatGoesWhenTurnedOffOrWithoutRoom()
+    {
+        var request = Recognizing(new PartChoice(PlanComponent.People, true));
+        var kept = NetworkRecommender.Recommend(request);
+        var motion = kept.Components.Single(c => c.Component == PlanComponent.Motion);
+        Assert.True(motion.On);
+        Assert.Equal("On big-box's RTX 5090", motion.Where);
+        Assert.Contains(RolesOf(kept, "big-box"), r => r.Kind == "motion");
+
+        var off = NetworkRecommender.Recommend(request with { Off = [PlanComponent.Motion] });
+        var remove = off.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "motion");
+        Assert.Equal("You turned motion off.", remove.Why);
+        Assert.True(off.Components.Single(c => c.Component == PlanComponent.Motion).OwnerOff);
+        Assert.DoesNotContain(off.Changes, c => c.RoleKind == "voice-recognition");
+
+        // HY-Motion takes most of a card: it gets only the room the jobs Martlet needs to talk leave.
+        var crowded = NetworkRecommender.Recommend(Network(Companion("c1"), Host("full-box", Nvidia(24, "RTX 4090")) with
+        {
+            Roles = [Role("ollama", "gemma4:12b"), Role("motion", "hy-motion-1.0-lite")]
+        }) with
+        {
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, "full-box", OptionId: "gemma4:12b")]
+        });
+        var gone = crowded.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "motion");
+        Assert.Equal(SetupChangeBenefit.Required, gone.Benefit);
+        Assert.False(crowded.Components.Single(c => c.Component == PlanComponent.Motion).On);
     }
 
     [Fact]

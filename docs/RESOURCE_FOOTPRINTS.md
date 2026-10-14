@@ -261,6 +261,36 @@ holds its own copy.
   ([Thunder Compute guide](https://www.thundercompute.com/blog/z-image-turbo-comfyui)).
   Martlet frees it a few minutes after the last picture. Not measured.
 
+### Motion
+
+| Option id | GPU (min card) | VRAM steady / peak | RAM | CPU | Disk | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| `motion:hy-motion-1.0-lite` | N (22.5 GB: a 24 GB card) | 19 / 20 E | 4 / 18 E | 1 / 4 E | 35 S (19.9 downloads + ~15 image) | S |
+| `motion:hy-motion-1.0` | N (25.4 GB: a 26 GB card) | 21.5 / 22.5 E | 4 / 18 E | 1 / 4 E | 37.5 S (22.3 downloads + ~15 image) | S |
+
+- **Motion (S):** Tencent's minimum cards and the downloads are from
+  [Motion host](MOTION_HOST.md) (`min_vram` 23000 and 26000 MiB in its
+  `role.conf`). The 16 GB Qwen3-8B text encoder loads into main memory first,
+  so the host needs about 32 GB of memory. The graphics memory is an estimate
+  that leaves a 24 GB card's 10% headroom; no 24 GB card was available to
+  measure it. The role frees the card a few minutes after the last motion.
+
+### People (voice recognition)
+
+| Option id | Where | VRAM steady / peak | RAM | CPU | Disk | Speed | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `people:wespeaker` | CPU (inside Martlet, Windows) | 0 | **0.16** M | 0.2 / **4** M | 0.04 M (41 MB models, shipped with Martlet) | **75-180 ms** M for 3 s of speech | M |
+| `people:voice-recognition-cpu` | CPU (`voice-recognition` role) | 0 | 0.3 / 0.5 E | 0.2 / 4 E | 0.6 E (image with the models) | ~150 ms E | E |
+| `people:voice-recognition-cuda` | NVIDIA GPU (`voice-recognition` role, 2 GB+ card) | 0.5 / 0.8 E | 0.5 / 1 E | 0.2 / 1 E | 2.6 E (about 2 GB of CUDA libraries more) | ~100 ms E | E |
+
+- **People:** inside Martlet it was measured on the i7-13700K: 0.16 GB and
+  4 threads for about 156 ms per 12 s utterance, and 75-180 ms for 3 s of
+  speech ([Voices](VOICES.md#where-voice-recognition-runs)). The Voice
+  recognition role runs the same models and steps
+  ([Voice recognition host](VOICE_RECOGNITION_HOST.md)); its numbers are
+  estimates. A host with an NVIDIA card runs the CUDA build by default, so the
+  planner counts that option there.
+
 ### Vision, Reading, Hearing and Smart home
 
 | Option id | GPU | VRAM steady / peak | RAM | CPU | Disk | Speed | Evidence |
@@ -301,8 +331,10 @@ Measured on the i7-13700K the same way as Parakeet:
 | --- | --- | --- | --- |
 | Desktop app, idle, no character (Release build, disposable data folder) | 0.15 GB | ~0 (0.23 peak) | |
 | Silero VAD v6.2.1 (ONNX Runtime, 1 thread, 32 ms frames in real time) | 0.06 GB (with Python) | 0.02-0.05 | 1.3 MB model + 16.5 MB runtime |
-| Speaker recognition (WeSpeaker ResNet34-LM, 4 threads) | 0.16 GB (with Python) | 4 threads for ~156 ms per 12 s utterance | 26.5 MB (41 MB with segmentation) |
 | Echo cancellation, memory, perception capture | E: small (lexical memory, WebRTC-class AEC) | E: <0.5 | |
+
+Speaker recognition is the `people:wespeaker` option in
+[People (voice recognition)](#people-voice-recognition).
 
 ### Hosted options
 

@@ -12,8 +12,3 @@
 Martlet.Launcher.Tests.LauncherReviewRegressionTests.EvidenceRootCannotHideInsidePayloadThroughAncestorLink  # env: symlink privilege
 Martlet.Updates.Tests.ActivationTests.LinkedActivationSourcesAreRejectedWithoutChangingTheirTargets  # env: symlink privilege
 Martlet.Updates.Tests.SelectionTests.ActualFilesystemLinksAreRefusedWithoutFollowingTheirTargets  # env: symlink privilege
-
-
-# Fails alone on origin/main f27f8efd on 2026-10-13: the Motion host role (deploy/host/roles/motion) has no planner option
-# yet. Fix: https://github.com/throndir2/Martlet/issues/860
-Martlet.Core.Tests.Planning.FootprintCatalogTests.EveryHostRoleThatDoesAPartHasAnOption

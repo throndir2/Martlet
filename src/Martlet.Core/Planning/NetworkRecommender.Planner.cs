@@ -231,8 +231,10 @@ public static partial class NetworkRecommender
             LipSyncRole => PlanComponent.LipSync,
             ReadingRole => PlanComponent.Reading,
             SmartHomeRole => PlanComponent.SmartHome,
+            VoiceRecognitionRole => PlanComponent.People,
             SingingRole => PlanComponent.Singing,
             PicturesRole => PlanComponent.Pictures,
+            MotionRole => PlanComponent.Motion,
             _ => IsVoice(kind) ? PlanComponent.Voice : null
         };
 
@@ -250,9 +252,9 @@ public static partial class NetworkRecommender
             _ => voiceKinds.Contains(kind) && Wants(PlanComponent.Voice)
         };
 
-        /// <summary>An optional extra (singing, pictures, Reading): it keeps its place only with the room the jobs Martlet needs to
-        /// talk leave (<see cref="ComponentRanking"/>).</summary>
-        private static bool Extra(string kind) => kind is SingingRole or PicturesRole or ReadingRole;
+        /// <summary>An optional extra (singing, pictures, motion, Reading): it keeps its place only with the room the jobs Martlet
+        /// needs to talk leave (<see cref="ComponentRanking"/>).</summary>
+        private static bool Extra(string kind) => kind is SingingRole or PicturesRole or MotionRole or ReadingRole;
 
         private bool IsVoice(string kind) => voiceKinds.Contains(kind);
 
@@ -590,7 +592,7 @@ public static partial class NetworkRecommender
         /// <summary>A companion PC's card counts as this many busy roles (its games and the character's renderer).</summary>
         private const int CompanionLoad = 2;
 
-        /// <summary>Singing and pictures free the card after a few idle minutes, so they don't make a card busy.</summary>
+        /// <summary>Singing, pictures and motion free the card after a few idle minutes, so they don't make a card busy.</summary>
         private static bool OnDemand(string kind) => Extra(kind);
 
         private static string CardText(Node node, int? card) => card is { } c && c < node.Spec.Gpus.Count

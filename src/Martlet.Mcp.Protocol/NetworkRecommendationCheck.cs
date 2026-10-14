@@ -254,6 +254,48 @@ internal static class NetworkRecommendationCheck
                 twoCompanionPcs = shared.Changes.Select(c => $"{c.Kind} {c.MachineId} {c.RoleKind ?? c.Job}")
             });
 
+        // People and Motion (docs/RECOMMENDED_SETUPS.md#the-priority-list): the Voice recognition role is counted where it runs and
+        // never moved or removed; People's line names the first computer of the Voice recognition list. Motion is an optional extra
+        // like singing: it stays on a card with room for its footprint, goes from a card without, and goes when the owner turns it off.
+        NetworkSetupRequest Recognizing(bool peopleOn, params PlanComponent[] off) => Network(Companion("desk-1"),
+            Host("big-box", Nvidia(32, "RTX 5090")) with
+            {
+                Roles = [Role("motion", "hy-motion-1.0-lite"), Role("voice-recognition", "wespeaker-en-voxceleb-resnet34-lm")]
+            },
+            Host("full-box", Nvidia(24, "RTX 4090")) with { Roles = [Role("ollama", "gemma4:12b"), Role("motion", "hy-motion-1.0-lite")] }) with
+        {
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, "full-box", OptionId: "gemma4:12b")],
+            Choices = [new PartChoice(PlanComponent.People, peopleOn) { HostId = "big-box" }],
+            Off = off
+        };
+        var recognizing = NetworkRecommender.Recommend(Recognizing(true));
+        var motionOff = NetworkRecommender.Recommend(Recognizing(true, PlanComponent.Motion));
+        var peopleOff = NetworkRecommender.Recommend(Recognizing(false));
+        ComponentStatus PartOf(NetworkRecommendation r, PlanComponent component) => r.Components.Single(p => p.Component == component);
+        Step("13", "People and Motion are parts of the priority list: People names the Voice recognition role on big-box's card and the " +
+            "role always stays; Motion stays on the card with room, goes from the card Thinking fills and goes when turned off",
+            recognizing.Components.Select(p => p.Component).SequenceEqual(ComponentRanking.All.Select(i => i.Component)) &&
+            PartOf(recognizing, PlanComponent.People) is { On: true, OffInReview: false } people &&
+            people.Where == "Martlet's Voice recognition role on big-box's RTX 5090" &&
+            PartOf(recognizing, PlanComponent.Motion) is { On: true, OffInReview: true } motion && motion.Where.Contains("big-box's RTX 5090", StringComparison.Ordinal) &&
+            recognizing.Changes.Any(c => c.Kind == SetupChangeKind.RemoveRole && c.MachineId == "full-box" && c.RoleKind == "motion") &&
+            !recognizing.Changes.Any(c => c.RoleKind == "voice-recognition") &&
+            recognizing.Target.Machine("big-box")?.Roles.Any(r => r.Kind == "motion") == true &&
+            motionOff.Changes.Any(c => c.Kind == SetupChangeKind.RemoveRole && c.MachineId == "big-box" && c.RoleKind == "motion" &&
+                c.Why.StartsWith("You turned motion off", StringComparison.Ordinal)) &&
+            PartOf(motionOff, PlanComponent.Motion) is { On: false, OwnerOff: true } &&
+            PartOf(peopleOff, PlanComponent.People) is { On: false, OwnerOff: true } offPeople && offPeople.Why.Contains("stays on big-box", StringComparison.Ordinal) &&
+            !peopleOff.Changes.Any(c => c.RoleKind == "voice-recognition") && WithinCapacity(recognizing),
+            new
+            {
+                parts = recognizing.Components.Where(p => p.Component is PlanComponent.People or PlanComponent.Motion)
+                    .Select(p => $"{p.Rank}. {p.Name}: {p.Where} {p.Why}"),
+                changes = recognizing.Changes.Select(c => $"{c.Kind} {c.MachineId} {c.RoleKind ?? c.Job} [{c.Benefit}]: {c.Why}"),
+                motionOff = motionOff.Changes.Select(c => $"{c.Kind} {c.MachineId} {c.RoleKind ?? c.Job}: {c.Why}"),
+                peopleOff = $"{PartOf(peopleOff, PlanComponent.People).Where} {PartOf(peopleOff, PlanComponent.People).Why}",
+                usage = recognizing.Target.Machines.Select(m => new { m.MachineId, vram = m.Usage?.Gpus.Select(g => g.Vram) })
+            });
+
         // Rule 6: heavy roles on a companion PC move to a host.
         var heavy = Network(Companion("desk-1", true, Nvidia(12, "RTX 4070")) with
         {

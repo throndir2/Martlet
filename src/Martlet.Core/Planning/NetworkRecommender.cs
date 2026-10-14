@@ -51,8 +51,8 @@ namespace Martlet.Core.Planning;
 /// sorted target.</item>
 /// <item>Off is a state: the owner can turn off the parts <see cref="ComponentRanking.CanBeOff"/> allows
 /// (<see cref="NetworkSetupRequest.Off"/>), and their roles go. The parts this PC sets on their Companion pages (Vision,
-/// Reading, Hearing, Smart home; <see cref="ComponentRanking.SetOnPage"/>) are off by <see cref="NetworkSetupRequest.Choices"/>:
-/// Reading's role goes when no other companion PC may use it, and Home Assistant always stays (it runs the owner's home).
+/// Reading, Hearing, People, Smart home; <see cref="ComponentRanking.SetOnPage"/>) are off by <see cref="NetworkSetupRequest.Choices"/>:
+/// Reading's role goes when no other companion PC may use it, and the Voice recognition role and Home Assistant always stay.
 /// <see cref="NetworkRecommendation.Components"/> lists every part in priority order with where it runs or that it is off.</item>
 /// <item>Setup order: the changes follow the priority list, Thinking first (make before break within each job); see
 /// <c>SetupOrder</c>.</item>
@@ -63,13 +63,17 @@ public static partial class NetworkRecommender
     /// <summary>The host role kinds the recommender places, besides the voice engines.</summary>
     public const string ThinkingRole = "ollama", DeepThinkingRole = "deep-thinking", ListeningRole = "stt", LipSyncRole = "audio2face";
 
-    /// <summary>The host role kinds of the optional extras, which get only the room the needed jobs leave: singing, pictures
-    /// and Reading (RapidOCR or PP-OCRv5, on a processor unless the owner chose PP-OCRv5 server on a graphics card).</summary>
-    private const string SingingRole = "singing", PicturesRole = "pictures", ReadingRole = "ocr";
+    /// <summary>The host role kinds of the optional extras, which get only the room the needed jobs leave: singing, pictures,
+    /// motion and Reading (RapidOCR or PP-OCRv5, on a processor unless the owner chose PP-OCRv5 server on a graphics card).</summary>
+    private const string SingingRole = "singing", PicturesRole = "pictures", MotionRole = "motion", ReadingRole = "ocr";
 
     /// <summary>Home Assistant (Smart home): the recommender counts it where it runs and never moves or removes it, because it
     /// runs the owner's home.</summary>
     private const string SmartHomeRole = "home-assistant";
+
+    /// <summary>Voice recognition (People): the recommender counts it where it runs and never moves or removes it; Companion ›
+    /// People's Voice recognition list says which computers recognize voices, with this PC's processor as the fallback.</summary>
+    private const string VoiceRecognitionRole = "voice-recognition";
 
     private const string SpeakingPool = "speaking-pool", ListeningPool = "listening-pool", ThinkingPoolPlace = "thinking-pool", Kept = "kept";
     private const double Epsilon = 1e-6;
