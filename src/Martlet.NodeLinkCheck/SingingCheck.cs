@@ -23,7 +23,10 @@ namespace Martlet.NodeLinkCheck;
 /// gateway and singing role, a voice from that gateway's shared speaking-voice list (nothing is added to the list), the
 /// pairing secret read from Windows Credential Manager only to sign the requests (never printed). Nothing is played or
 /// recorded. Reports the service's own status before and after, every stage seen with when, the host's stage timings, and
-/// the three tracks.
+/// the three tracks. With split, the song is made as the desktop's two pools make it: a music job
+/// (<see cref="Audio2FaceHostConnection.MakeMusicAsync"/>), then a voice match job on its vocals
+/// (<see cref="Audio2FaceHostConnection.MatchVoiceAsync"/>, the vocals sent in pages), put together on this PC
+/// (<see cref="SongVoice"/>); both jobs on the one host.
 /// </summary>
 internal static class SingingCheck
 {
@@ -31,13 +34,13 @@ internal static class SingingCheck
 
     internal static async Task<(bool Ok, object Report)> RunAsync(string endpointText, int seconds, string quality, string voiceMatch,
         string? saveDirectory, string? voiceRecording, string? voiceTranscript, int? bpm, string? key, CancellationToken token,
-        string? voiceId = null, string? hostId = null)
+        string? voiceId = null, string? hostId = null, bool split = false)
     {
         if (seconds is < SongRequest.MinimumDurationSeconds or > SongRequest.MaximumDurationSeconds)
             throw new ArgumentException($"seconds must be {SongRequest.MinimumDurationSeconds} to {SongRequest.MaximumDurationSeconds}.");
         if (endpointText.StartsWith(PairedPrefix, StringComparison.Ordinal))
             return await PairedAsync(endpointText[PairedPrefix.Length..], hostId, voiceId, seconds, quality, voiceMatch, saveDirectory,
-                voiceRecording, bpm, key, token);
+                voiceRecording, bpm, key, token, split);
         FixtureService? fixture = null;
         Uri endpoint;
         if (endpointText == "fixture")
@@ -70,7 +73,7 @@ internal static class SingingCheck
         try
         {
             return await SongAsync(fixture is null ? endpoint.ToString() : "fixture (workers/singing, FIXTURE - NOT AI)", seconds, quality,
-                voiceMatch, bpm, key, saveDirectory, async open =>
+                voiceMatch, bpm, key, saveDirectory, split, async open =>
                 {
                     var host = await VoiceEngineCheck.LiveHost.StartAsync(new SongRelayWorker(endpoint));
                     try
@@ -104,7 +107,8 @@ internal static class SingingCheck
     /// prefix of 8+ characters; default the first live voice). When the host lacks the voice's recording it is sent once, from
     /// <paramref name="voiceRecording"/> or that data directory's voice store, checked against the voice's SHA-256.</summary>
     private static async Task<(bool Ok, object Report)> PairedAsync(string dataDirectory, string? hostId, string? voiceId, int seconds,
-        string quality, string voiceMatch, string? saveDirectory, string? voiceRecording, int? bpm, string? key, CancellationToken token)
+        string quality, string voiceMatch, string? saveDirectory, string? voiceRecording, int? bpm, string? key, CancellationToken token,
+        bool split)
     {
         if (!Path.IsPathFullyQualified(dataDirectory) || !Directory.Exists(dataDirectory))
             throw new ArgumentException("paired: needs the absolute path of a Martlet desktop data directory.");
@@ -113,7 +117,7 @@ internal static class SingingCheck
             throw new ArgumentException(hostId is null ? "That data directory has no paired hosts." : $"{hostId} isn't paired in that data directory.");
         string? audioSha256 = null, chosenId = null;
         var tried = new List<object>();
-        return await SongAsync("paired", seconds, quality, voiceMatch, bpm, key, saveDirectory, async open =>
+        return await SongAsync("paired", seconds, quality, voiceMatch, bpm, key, saveDirectory, split, async open =>
         {
             foreach (var candidate in hosts)
             {
@@ -218,12 +222,13 @@ internal static class SingingCheck
 
     /// <summary>Makes the song through what <paramref name="open"/> connects to and reports it.</summary>
     private static async Task<(bool Ok, object Report)> SongAsync(string endpointLabel, int seconds, string quality, string voiceMatch,
-        int? bpm, string? key, string? saveDirectory, Func<CancellationToken, Task<Opened>> open,
+        int? bpm, string? key, string? saveDirectory, bool split, Func<CancellationToken, Task<Opened>> open,
         Func<CancellationToken, Task<byte[]?>> recording, CancellationToken token)
     {
         var stages = new List<object>();
         var watch = Stopwatch.StartNew();
-        object? before = null, after = null, host_ = null, extra = null;
+        object? before = null, after = null, host_ = null, extra = null, matchHost = null;
+        string? matchJob = null;
         string? voiceName = null;
         SongResult? song = null;
         string? failure = null, problem = null;
@@ -257,7 +262,17 @@ internal static class SingingCheck
                 atMs = Math.Round(watch.Elapsed.TotalMilliseconds)
             }));
             watch.Restart();
-            song = await connection.MakeSongAsync(route, request, recording, progress, token, TimeSpan.FromMilliseconds(500));
+            if (split)
+            {
+                // As the desktop's two pools make it: the music, then the voice match of its vocals, put together here.
+                var music = await connection.MakeMusicAsync(route, request, progress, token, TimeSpan.FromMilliseconds(500));
+                var matched = await connection.MatchVoiceAsync(route, request.VoiceId, request.VoiceMatch, music.Vocals, recording, progress,
+                    token, TimeSpan.FromMilliseconds(500));
+                matchJob = matched.JobId;
+                song = SongVoice.WithVoice(music, matched);
+                matchHost = await JobReportAsync(connection, route, matched.JobId, token);
+            }
+            else song = await connection.MakeSongAsync(route, request, recording, progress, token, TimeSpan.FromMilliseconds(500));
             host_ = await JobReportAsync(connection, route, song.JobId, token);
             after = await StatusAsync(connection, route, token);
             if (saveDirectory is not null)
@@ -310,7 +325,7 @@ internal static class SingingCheck
             route = Audio2FaceHostConnection.SongRouteId,
             paired = extra,
             voice = voiceName,
-            request = new { seconds, quality, voiceMatch, bpm, key },
+            request = new { seconds, quality, voiceMatch, bpm, key, split },
             statusBefore = before,
             stages,
             elapsedMs = Math.Round(elapsed.TotalMilliseconds),
@@ -344,6 +359,8 @@ internal static class SingingCheck
                 backing = Track(song.Backing)
             },
             host = host_,
+            matchJobId = matchJob,
+            matchHost,
             saved = saveDirectory,
             failure,
             problem,

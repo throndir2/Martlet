@@ -243,7 +243,7 @@ for `SetupRole.Llm` again in a caller.
 ## Which member takes a request of an ordered pool
 
 **What it decides:** for an area with an ordered list (Speaking, Listening,
-lip-sync, picture making, singing, vision, hearing, reading, motion), which
+lip-sync, picture making, singing and its voice match, vision, hearing, reading, motion), which
 members a request tries, in which order, and what a busy or unavailable member
 does.
 

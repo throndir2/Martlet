@@ -251,7 +251,8 @@ public static class SongCreations
             Key = result.Key, Lines = map.Lines.Count, Words = map.Words.Count, WordsEstimated = wordsEstimated,
             WordTimingSource = wordsEstimated ? "spread over each line's singing" : result.WordTimingSource,
             MouthSource = mouth.Source.ToString(), MouthNote = mouth.Note, Generator = result.Engine.Generator,
-            Converter = result.Engine.Converter, Quality = result.Engine.Quality.ToString(), VoiceMatch = result.Engine.VoiceMatch.ToString(),
+            Converter = result.Engine.Converter, Quality = result.Engine.Quality.ToString(),
+            VoiceMatch = result.Engine.VoiceMatch?.ToString() ?? "None",
             Fixture = result.Engine.Fixture, Seed = result.Seed
         };
         return new()

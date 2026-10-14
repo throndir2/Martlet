@@ -46,22 +46,19 @@ internal static class SingingStatus
         return new { dataDirectory, hosts, pool = Pool(dataDirectory, [.. paired.Select(h => h.HostId)], states), thisPcDocker = await DockerAsync(token) };
     }
 
-    /// <summary>The singing pool as the desktop's SongClient uses it (SingingPool.Members): with a pool list (the singing area
-    /// of pools.json) its members that are on and paired here, in the owner's order; without one yet, this PC's own paired
-    /// computers (the computer Martlet sings on, singing.json's host, first; then those the shared plan, cluster.json, says
-    /// run Singing; then the rest). Also what the pool does with each now for the saved voice match, and where the next song
-    /// goes.</summary>
+    /// <summary>The two singing pools as the desktop's SongClient uses them (SingingPool.Members): the music (the singing area
+    /// of pools.json) and the voice match (the voice-match area; until that list is made, the music list). With a list, its
+    /// members that are on and paired here, in the owner's order, each with its own setting (quality or model); without one
+    /// yet, this PC's own paired computers (the computer Martlet sings on, singing.json's host, first; then those the shared
+    /// plan, cluster.json, says run Singing; then the rest). Also what each pool does with each member now, where the next
+    /// song's music and voice match go, and whether the voice match is off (songs keep the music model's own singer).</summary>
     private static object Pool(string dataDirectory, IReadOnlyList<string> paired, IReadOnlyDictionary<string, SingerState?> states)
     {
         string? saved = null;
-        var match = SongVoiceMatch.SoulX;
         try
         {
             using var choices = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "singing.json")));
             if (choices.RootElement.TryGetProperty("host", out var host) && host.ValueKind == JsonValueKind.String) saved = host.GetString();
-            if (choices.RootElement.TryGetProperty("voiceMatch", out var voiceMatch) && voiceMatch.ValueKind == JsonValueKind.String &&
-                voiceMatch.GetString() == "vevosing")
-                match = SongVoiceMatch.VevoSing;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
         ClusterPlan plan;
@@ -70,24 +67,43 @@ internal static class SingingStatus
         var singers = plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == "singing"))
             .Select(n => new WorkPlace(n.HostId, false, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))
             .ToArray();
+        var device = Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory);
+        var own = OwnHost(dataDirectory);
         var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing);
-        var members = SingingPool.Members(list, Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory), saved, OwnHost(dataDirectory), paired, singers);
+        var voiceList = PoolSettings.LoadFor(dataDirectory, PoolAreas.VoiceMatch);
+        var members = SingingPool.Members(list, device, saved, own, paired, singers);
+        var matchOff = voiceList is not null && voiceList.NoneOn;
+        var matchers = matchOff ? [] : SingingPool.Members(voiceList ?? list, device, saved, own, paired, singers, PoolAreas.VoiceMatch);
         var order = members.Select(m => m.HostId).Distinct(StringComparer.Ordinal).ToArray();
-        var next = SingingPool.Pick(order, states, match);
+        var matchOrder = matchers.Select(m => m.HostId).Distinct(StringComparer.Ordinal).ToArray();
+        var next = SingingPool.Pick(order, states);
+        var nextMatch = SingingPool.Pick(matchOrder, states, match: true);
+        string Verdict(string host, bool match) =>
+            states.TryGetValue(host, out var state) ? SingingPool.Verdict(host, state, match) : "passed over: it didn't answer";
         return new
         {
-            configured = list is not null, off = list is not null && members.Count == 0, saved,
-            voiceMatch = match == SongVoiceMatch.VevoSing ? "vevosing" : "soulx", order,
+            configured = list is not null, off = list is not null && members.Count == 0, saved, order,
             members = members.Select((m, index) => new
             {
                 position = index + 1, key = m.Member.Key, host = m.HostId, plannedSinger = singers.Any(s => s.HostId == m.HostId),
-                settings = m.Member.Settings,
-                verdict = states.TryGetValue(m.HostId, out var state) ? SingingPool.Verdict(m.HostId, state, match) : "passed over: it didn't answer"
+                settings = m.Member.Settings, quality = SingingPool.Quality(m.Member) == SongQuality.Fast ? "fast" : "high_quality",
+                verdict = Verdict(m.HostId, false)
             }),
-            nextSong = next is { } chosen ? new { host = chosen.HostId, ahead = chosen.Ahead, waitsInLine = chosen.Ahead > 0 } : null
+            nextSong = next is { } chosen ? new { host = chosen.HostId, ahead = chosen.Ahead, waitsInLine = chosen.Ahead > 0 } : null,
+            voiceMatch = new
+            {
+                configured = voiceList is not null, off = matchOff, order = matchOrder,
+                members = matchers.Select((m, index) => new
+                {
+                    position = index + 1, key = m.Member.Key, host = m.HostId, settings = m.Member.Settings,
+                    model = SingingPool.VoiceMatch(m.Member) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+                    matchesWith = SingingPool.MatchWith(m.Member, states.GetValueOrDefault(m.HostId)) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+                    verdict = Verdict(m.HostId, true)
+                }),
+                next = nextMatch is { } match ? new { host = match.HostId, ahead = match.Ahead, waitsInLine = match.Ahead > 0 } : null
+            }
         };
     }
-
     // The host saved as this PC's own host service (Docker Desktop here) in hosts.json, for the pool's this-pc member.
     private static string? OwnHost(string dataDirectory)
     {
@@ -117,7 +133,7 @@ internal static class SingingStatus
             return (new
             {
                 answered = true, state = Field("state"), ready = Field("ready"), engine = Field("engine"), error = Field("error"),
-                voiceMatches = Field("voice_matches"), qualities = Field("qualities"), queue = Field("queue"), running = Field("running"),
+                voiceMatches = Field("voice_matches"), kinds = Field("kinds"), qualities = Field("qualities"), queue = Field("queue"), running = Field("running"),
                 workerRunning = Field("worker_running"), restarts = Field("restarts"), idleReleaseSeconds = Field("idle_release_seconds"),
                 gpu = Field("gpu"),
                 sources = worker.ValueKind == JsonValueKind.Object && worker.TryGetProperty("sources", out var sources) ? sources.Clone() : (JsonElement?)null,

@@ -177,18 +177,19 @@ if (args is ["voice-recognition-engine", var recognitionEndpoint, var recognitio
     return recognitionOk ? 0 : 1;
 }
 // With "singing-check <endpoint|fixture|paired:<data directory>> <seconds> <quality> <voice match> [save directory|-]
-// [voice WAV|-] [transcript|-] [bpm|-] [key|-] [voice ID|-] [host ID|-]" it makes one song with a singing service through the
+// [voice WAV|-] [transcript|-] [bpm|-] [key|-] [voice ID|-] [host ID|-] [split|-]" it makes one song with a singing service through the
 // singing role's real relay and gateway (SingingCheck; paired: through a paired host's own gateway, as the desktop does),
-// optionally in the voice of a recording copy or a shared voice, with a tempo and key, and saving its WAVs, and prints its report.
+// optionally in the voice of a recording copy or a shared voice, with a tempo and key, as two jobs (split: the music, then the
+// voice match), and saving its WAVs, and prints its report.
 if (args is ["singing-check", var singingEndpoint, var singingSeconds, var singingQuality, var singingMatch, .. var singingMore] &&
-    singingMore.Length <= 7)
+    singingMore.Length <= 8)
 {
     string? Optional(int index) => singingMore.Length > index && singingMore[index] is { Length: > 0 } value && value != "-" ? value : null;
     var (singingOk, singingReport) = await Martlet.NodeLinkCheck.SingingCheck.RunAsync(singingEndpoint,
         int.Parse(singingSeconds, System.Globalization.CultureInfo.InvariantCulture), singingQuality, singingMatch,
         Optional(0), Optional(1), Optional(2),
         Optional(3) is { } singingBpm ? int.Parse(singingBpm, System.Globalization.CultureInfo.InvariantCulture) : null, Optional(4),
-        CancellationToken.None, Optional(5), Optional(6));
+        CancellationToken.None, Optional(5), Optional(6), Optional(7) == "split");
     Console.WriteLine(JsonSerializer.Serialize(singingReport));
     return singingOk ? 0 : 1;
 }

@@ -42,15 +42,34 @@ public sealed class SingingPoolMembersTests
             {
                 Area = PoolAreas.Singing.Id,
                 Members = [PoolMember.Computer("m4-host"), PoolMember.Computer("m1-host") with { Off = true }, PoolMember.Computer("friend-host"),
-                    PoolMember.Computer("gone-host"), SingingPool.WithQuality(PoolMember.Computer("m3-host"), SongQuality.HighQuality)]
+                    PoolMember.Computer("gone-host"), SingingPool.WithQuality(PoolMember.Computer("m3-host"), SongQuality.Fast)]
             }));
             Assert.Equal(["m4-host", "m3-host"], SongClient.Members(directory).Select(m => m.Host.HostId));
-            Assert.Equal(SongQuality.HighQuality, SingingPool.Quality(SongClient.Members(directory)[1].Member));
-            Assert.Null(SingingPool.Quality(SongClient.Members(directory)[0].Member));
+            Assert.Equal(SongQuality.Fast, SingingPool.Quality(SongClient.Members(directory)[1].Member));
+            Assert.Equal(SongQuality.HighQuality, SingingPool.Quality(SongClient.Members(directory)[0].Member));
             Assert.True(SongClient.IsSetUp(directory));
+            // Without a voice match list yet, the music list's computers match the voice too.
+            Assert.Equal(["m4-host", "m3-host"], SongClient.Members(directory, PoolAreas.VoiceMatch).Select(m => m.Host.HostId));
+            Assert.False(SongClient.VoiceMatchOff(directory));
             // Every member that sings is kept from background thinks; a song holds the first.
             Assert.Equal(["m3-host", "m4-host"], BackgroundDuties.Of(directory).Keys.Order(StringComparer.Ordinal));
             Assert.Equal("host:m4-host", BackgroundDuties.Singer(directory)!.Id);
+            // The voice match list is its own: other computers, each with its own model; its computers are kept for singing too.
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.VoiceMatch, new PoolList
+            {
+                Area = PoolAreas.VoiceMatch.Id,
+                Members = [SingingPool.WithVoiceMatch(PoolMember.Computer("m1-host"), SongVoiceMatch.VevoSing), PoolMember.Computer("friend-host")]
+            }));
+            Assert.Equal(["m1-host"], SongClient.Members(directory, PoolAreas.VoiceMatch).Select(m => m.Host.HostId));
+            Assert.Equal(SongVoiceMatch.VevoSing, SingingPool.VoiceMatch(SongClient.Members(directory, PoolAreas.VoiceMatch)[0].Member));
+            Assert.Equal(["m1-host", "m3-host", "m4-host"], BackgroundDuties.Of(directory).Keys.Order(StringComparer.Ordinal));
+            // A voice match list with nothing on: songs keep the music model's own singer.
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.VoiceMatch, new PoolList
+            {
+                Area = PoolAreas.VoiceMatch.Id, Members = [PoolMember.Computer("m1-host") with { Off = true }]
+            }));
+            Assert.True(SongClient.VoiceMatchOff(directory));
+            Assert.True(SongClient.IsSetUp(directory));
             // An empty list is off, whatever singing.json says.
             Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Singing, new PoolList { Area = PoolAreas.Singing.Id }));
             Assert.Empty(SongClient.Members(directory));

@@ -620,7 +620,7 @@ internal sealed partial class LiveConversationController
             }
             owner.tools?.Record(server, SongTools.SingName, "started " + started.Id, label, false);
             ErrorLog.Info($"Singing: started {started.Id} ({arguments.Seconds} s, {(writer is null ? "lyrics given" : $"lyrics written on {where}")}, " +
-                $"made on {setup.Where} with {setup.Quality} quality and {setup.VoiceMatch} voice match; " +
+                $"made on {setup.Where}; " +
                 $"{owner.jobs.StartedWithinHour(SongTools.KindName)} of {SongTools.PerHour} this hour)" +
                 (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
             return new(SongTools.Started(started, toldUser, writer is not null));
@@ -634,13 +634,6 @@ internal sealed partial class LiveConversationController
             job.Report(BackgroundJobState.Running, "Checking the singing computer");
             var availability = await setup.Maker.GetAvailabilityAsync(token).ConfigureAwait(false);
             if (!availability.Available) return BackgroundJobOutcome.Failed(availability.Reason ?? "singing isn't available right now");
-            // VevoSing chosen where no computer that sings has it (Companion > Singing offers Add VevoSing there): sing with SoulX.
-            var voiceMatch = setup.VoiceMatch;
-            if (!availability.VoiceMatches.Contains(voiceMatch))
-            {
-                ErrorLog.Info($"Singing: {voiceMatch} isn't set up on any computer that sings; {job.Id} uses SoulX-Singer.");
-                voiceMatch = SongVoiceMatch.SoulX;
-            }
             WrittenSong? written;
             string? problem;
             if (writerFor is not null)
@@ -708,7 +701,7 @@ internal sealed partial class LiveConversationController
             var request = new SongRequest
             {
                 Lyrics = written.Lyrics, Style = written.Style, VoiceId = setup.VoiceId, DurationSeconds = arguments.Seconds,
-                Bpm = written.Bpm, Key = written.Key, Quality = setup.Quality, VoiceMatch = voiceMatch
+                Bpm = written.Bpm, Key = written.Key
             };
             SongResult result;
             try { result = await setup.Maker.GenerateAsync(request, new SongJobProgress(job, singer), token).ConfigureAwait(false); }

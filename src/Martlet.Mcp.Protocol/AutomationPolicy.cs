@@ -304,8 +304,9 @@ internal static class AutomationPolicy
         new("WorkSharingOpen-", "Devices › Sharing work", "An Open button, such as WorkSharingOpen-speaking; only opens the page of that area."),
         // Needs --allow-ui-effects: a pool list's On, Up, Down, Remove, Add and kept-for choices (they save pools.json and share it).
         // Needs --allow-ui-effects: Pool-lip-sync-SaveEndpoint (it saves the address in Pool-lip-sync-Endpoint).
-        new("Pool-singing-Settings-", "Companion › Singing", "The Settings button of a list member, such as Pool-singing-Settings-0; only shows or hides its Singing state, Set up Singing here, Add VevoSing here and its own quality."),
-        // Needs --allow-ui-effects: Singing's Set up Singing here, Add VevoSing here and quality (they save or install).
+        new("Pool-singing-Settings-", "Companion › Singing", "The Settings button of a member of the music list, such as Pool-singing-Settings-0; only shows or hides its Singing state, Set up Singing here and its own quality."),
+        new("Pool-voice-match-Settings-", "Companion › Singing", "The Settings button of a member of the voice match list, such as Pool-voice-match-Settings-0; only shows or hides its Singing state, Set up Singing here, Add VevoSing here and its own model."),
+        // Needs --allow-ui-effects: Singing's Set up Singing here, Add VevoSing here, quality (Pool-singing-Quality-<key>) and model (Pool-voice-match-Model-<key>) (they save or install).
         new("Pool-pictures-Settings-", "Companion › Picture making", "The Settings button of a place, such as Pool-pictures-Settings-0; only shows or hides its settings."),
         new("PicturesComfyConnect-", "Companion › Picture making", "The Connect button of a place, such as PicturesComfyConnect-0; only reads the version, checkpoints and models of that ComfyUI server."),
         new("Pool-motion-Settings-", "Companion › Motion", "The Settings button of a list member, such as Pool-motion-Settings-0; only shows or hides where Motion stands there and its Set up Motion here button."),
@@ -568,13 +569,10 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: FindLocalModels (fills the unsaved Thinking fields).
         new("AdvisorStep", "Setup advisor", "Shows which step the setup advisor shows."),
         new("AdvisorSummary", "Setup advisor", "Shows the plan's summary: the one-line explanation of the goal."),
-        new("SingingNow", "Companion › Singing", "Shows whether and where Martlet sings, such as the computer, the singer and the quality, or Off with the reason (for example, no computer in the list is on)."),
+        new("SingingNow", "Companion › Singing", "Shows whether and where Martlet sings: the computers that write the music and its quality, and those that match the voice and their model, or that the voice match is off, or Off with the reason (for example, no computer in the music list is on)."),
         new("SingingGpu", "Companion › Singing", "Shows whether Singing needs a graphics card of its own; fixed text."),
-        new("SingingQuality", "Companion › Singing", "Shows the saved quality: Fast or High quality."),
-        new("SingingUseSoulX", "Companion › Singing", "Shows the label of the Use SoulX-Singer button. Clicking it needs --allow-ui-effects."),
-        new("SingingUseVevoSing", "Companion › Singing", "Shows the label of the Use VevoSing button. Clicking it needs --allow-ui-effects."),
-        new("SingingVoiceMatchState", "Companion › Singing", "Shows that VevoSing is not set up when it is chosen and no computer in the list has it."),
-        // The Singing list, each member's Singing state, Set up Singing here, Add VevoSing here and quality read through the Pool- prefix; Picker-Singing-Role tells what Singing is.
+        // The music list (Pool-singing-...) and the voice match list (Pool-voice-match-...), each member's Singing state, Set up Singing here, quality, Add VevoSing here and model read through the Pool- prefix;
+        // Picker-Singing-Role tells what Singing is and Picker-SingingVoiceMatch-<SoulX|VevoSing> compares the voice match models.
         // Songs are only performed in conversation; singing_check exercises them headlessly.
         new("CompanionGroupTitle", "Any Companion page", "Shows the page's group in the side list, such as HOW IT WORKS or OPTIONAL EXTRAS; fixed text."),
         new("CompanionPageTitle", "Any Companion page", "Shows the page's name, such as Thinking pool or Picture making; fixed text."),

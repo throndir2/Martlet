@@ -6,9 +6,9 @@ using Martlet.Core.Singing;
 
 namespace Martlet.Desktop;
 
-/// <summary>What a new song is made with: the song maker, the voice (a <c>SpeakingVoice.Id</c>) and Companion › Voice ›
-/// Singing's choices, and where it is made (for the log).</summary>
-internal sealed record SongSetup(ISongMaker Maker, string VoiceId, SongQuality Quality, SongVoiceMatch VoiceMatch, string Where);
+/// <summary>What a new song is made with: the song maker, the voice (a <c>SpeakingVoice.Id</c>) and where it is made (for the
+/// log). The quality and the voice match are each pool member's own settings (Companion › Singing).</summary>
+internal sealed record SongSetup(ISongMaker Maker, string VoiceId, string Where);
 
 /// <summary>Where songs come from: whether singing is set up (the song tools are offered only then, so this changes only when
 /// the owner changes the setup) and, for a new song, the maker and choices or why there are none.</summary>
@@ -18,9 +18,9 @@ internal interface ISongSource
     (SongSetup? Setup, string? Problem) Current();
 }
 
-/// <summary>Where songs come from on this PC: Companion › Singing's computer through <see cref="SongClient"/> (or the
+/// <summary>Where songs come from on this PC: Companion › Singing's lists through <see cref="SongClient"/> (or the
 /// FIXTURE - NOT AI song maker when <c>MARTLET_SINGING_FIXTURE=1</c>, for automated checks), sung in the voice Martlet speaks
-/// with and the card's quality and voice match (singing.json). Whether singing is set up is read without the network
+/// with, with each computer's own quality and voice match (pools.json). Whether singing is set up is read without the network
 /// (<see cref="SongClient.IsSetUp"/>) and kept for a few seconds, so asking for every reply costs nothing. In fixture mode songs
 /// also play into <see cref="SilentSongOutput"/>, so automated checks never sound.</summary>
 internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
@@ -52,12 +52,11 @@ internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
                 : "singing isn't set up on any of your computers (Companion › Singing).");
         var voice = SongClient.SpeakingVoiceId(dataDirectory) ?? (Fixture ? "fixture-voice" : null);
         if (voice is null) return (null, "there's no voice to sing with yet (Companion › Voice).");
-        var choices = SingingPreferences.Load(dataDirectory);
         var pool = SongClient.Members(dataDirectory);
-        return (new SongSetup(SongClient.For(dataDirectory), voice, choices.Quality, choices.VoiceMatch,
+        return (new SongSetup(SongClient.For(dataDirectory), voice,
             Fixture ? "this PC (FIXTURE - NOT AI)"
             : pool.Count > 1 ? $"the first free one of {string.Join(", ", pool.Select(m => m.Host.HostId).Distinct())}"
-            : pool.FirstOrDefault().Host?.HostId ?? choices.Host ?? "the singing computer"), null);
+            : pool.FirstOrDefault().Host?.HostId ?? SingingPreferences.Load(dataDirectory).Host ?? "the singing computer"), null);
     }
 
     public override string ToString() => nameof(DesktopSongSource);

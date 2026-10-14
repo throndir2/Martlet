@@ -283,9 +283,11 @@ Pictures go through each PC's Picture making list (`PictureMakingPool`, lane `pi
 computer whose ComfyUI already draws a picture is passed over for a free one,
 and when all are busy the picture waits in the shortest queue
 ([Picture making](PICTURES.md#more-than-one-picture-computer)).
-Songs go through the singing pool (`SingingPool`, lane `singing`): a computer
-that sings another song is passed over for a free one, and when all are busy
-the song waits on the shortest line ([Singing](SINGING.md#the-singing-pool)).
+Songs go through two pools: their music through the singing pool
+(`SingingPool`, lane `singing`) and their voice match through the voice match
+pool (lane `voice-match`), which may be other computers. In each, a computer
+that makes another job is passed over for a free one, and when all are busy
+the job waits on the shortest line ([Singing](SINGING.md#the-two-singing-pools)).
 Reading the screen goes through each PC's Reading list on Companion › Reading
 (lane `reading`): Windows OCR on this PC and your computers' Reading role, in
 order ([the Reading pool](READING.md#the-reading-pool)). Recognizing who

@@ -4292,8 +4292,12 @@ runs), sending the voice's recording once when the gateway lacks it. Arguments:
 service with the FIXTURE - NOT AI engine using the `python` on `PATH` or
 `MARTLET_PYTHON`; or a numeric loopback address of a live singing service, for
 example `http://127.0.0.1:50085/`), `seconds` (15-180; default 20 for the fixture,
-30 otherwise), `quality` (`fast` or `high_quality`) and `voiceMatch` (`soulx` or
-`vevosing`), and optionally `voiceRecording` (the absolute path of a copy of a
+30 otherwise), `quality` (`high_quality`, the default as for songs, or `fast`)
+and `voiceMatch` (`soulx` or `vevosing`), `split` (true: make the song as the
+desktop's two pools do, a music job with `MakeMusicAsync`, then a voice match
+job on its vocals with `MatchVoiceAsync`, the vocals sent in `input` pages, put
+together on this PC with `SongVoice`; the report adds `matchJobId` and
+`matchHost`, the voice match job's own report), and optionally `voiceRecording` (the absolute path of a copy of a
 mono 16-bit PCM WAV, 1-30 s, such as one of the owner's voice recordings) with
 its `voiceTranscript`, which the check adds to the gateway's voice list as the
 desktop adds a recorded voice and sings in instead of the starter voice, and
@@ -4347,28 +4351,33 @@ hosts skipped. `endpoint` is ignored then; `voiceId` and `host` need
 `singing_status` reads a singing service's own `/status` over a numeric loopback
 `endpoint` (default `http://127.0.0.1:50085/`): `answered`, `state`
 (`not_provisioned`, `ready`, `loading`, `busy`), `ready`, `engine` (`song` or
-`fixture`), `qualities`, `voiceMatches`, `queue`, `running`, `workerRunning`
+`fixture`), `qualities`, `voiceMatches`, `kinds` (the job kinds it makes:
+`song`, and `music` and `match` apart), `queue`, `running`, `workerRunning`
 (whether the worker process holds models), `restarts`, `idleReleaseSeconds`,
 `gpu` (used and total MiB), `evidence`, `sources` (pinned commits) and `models`
 (each pinned file's ID, revision, licence and size) with `modelBytes`, or why it
 could not be read. With a `dataDirectory` (the script passes its disposable one)
-it adds `choices`, the Singing card's saved quality and voice match
-(`singing.json`; the defaults when none are saved), `host` (the computer the
-desktop last saw running Singing) and `setUp` (that computer is still paired:
-what `SongClient.IsSetUp` answers without the fixture). When that data directory
+it adds `choices` from `singing.json`: `olderVoiceMatch` (the voice match the
+page chose before each computer had its own; the voice match list is made from
+it once), `host` (the computer the desktop last saw running Singing) and `setUp`
+(that computer is still paired: what `SongClient.IsSetUp` answers without the
+fixture). When that data directory
 is paired with hosts (`hosts.json`), it adds `paired` (Martlet.NodeLinkCheck's
 `singing-status` mode): for each paired host, read through its own gateway as the
 Singing card reads it (the pairing secret from Windows Credential Manager only
 signs the requests), `reachable`, `offersSinging`, `model` and `service` (the same
 status fields as above plus the models' count, total bytes and licences), or the
-`problem`; `pool`, the singing pool as the desktop's `SongClient` uses it
+`problem`; `pool`, the two singing pools as the desktop's `SongClient` uses them
 (`SingingPool.Members`): `configured` (the `singing` area of `pools.json` has a
-list), `off` (that list has no member on), `saved`, `voiceMatch`, `order` (the
-computers songs try), `members` (each one's `position`, member `key`, `host`,
-`plannedSinger` (the shared plan says it runs Singing), `settings` and
-`verdict` now: `takes a song now`, `busy: N songs before a new one` or `passed
-over: ...`) and `nextSong` (`host`, `ahead`, `waitsInLine`: where the next
-song goes, `SingingPool.Pick`; null when no member can sing it); and
+list), `off` (that list has no member on), `saved`, `order` (the computers a
+song's music tries), `members` (each one's `position`, member `key`, `host`,
+`plannedSinger` (the shared plan says it runs Singing), `settings`, `quality`
+and `verdict` now: `takes a job now`, `busy: N jobs before a new one` or
+`passed over: ...`), `nextSong` (`host`, `ahead`, `waitsInLine`: where the next
+song's music goes, `SingingPool.Pick`; null when no member can make it), and
+`voiceMatch` (the `voice-match` area: `configured`, `off` (songs keep the music
+model's own singer), `order`, `members` with each one's `model`, `matchesWith`
+(SoulX-Singer where its VevoSing isn't set up) and `verdict`, and `next`); and
 `thisPcDocker`, what this PC's Docker shows of the role:
 `containers` (name, image, state, status), `images` (`martlet-singing` tags,
 sizes), `modelsVolume` (whether `martlet-singing-models` exists) and
@@ -4379,25 +4388,30 @@ it from this PC. Read-only. As with `voice_engine_check`, a role service on a ho
 listens only in the host's loopback, so `endpoint` reads it only there or through
 a forwarded port.
 
-`singing_pool_check` rehearses the singing pool
-([Singing](SINGING.md#the-singing-pool)) with the production code
-(`SingingPool` through `WorkQueue`, what `SongClient` runs) on simulated
+`singing_pool_check` rehearses the two singing pools
+([Singing](SINGING.md#the-two-singing-pools)) with the production code
+(`SingingPool` through `WorkQueue`, what `SongClient` runs: a song's music on
+the singing pool, then its voice match on the voice match pool) on simulated
 singing computers that answer the singing status (state, line, voice
-matches) and make a song as a host does (a full line refuses with
+matches, job kinds) and make a job as a host does (a full line refuses with
 `singing.busy`; a computer that is off doesn't answer). It returns `ok`,
 `fixture` (`simulated singing computers (NOT real hosts or models)`) and
 `steps`, each with `name`, `passed` and `detail`: the order without a list
 (the computer Martlet sings on, then the plan's singers, then the other
 paired computers), a `pools.json` list winning (this PC as its own host
 service, a card as its computer; off, unpaired and kept-for-others members
-left out; an empty list off), a free first computer taking the song with no
-other asked, a busy one passed over at once, a VevoSing song passing over a
-computer without VevoSing (and `singing.voice_match_unavailable` where none
-has it), computers that don't answer or don't sing passed over, every
-computer busy so the song waits on the shortest line, every line full
-(`singing.busy`), a failed song not made again elsewhere, and a computer that
-stops answering during the song replaced by the next. In-process; reads
-nothing.
+left out; an empty list off), a free first computer taking the job with no
+other asked, a busy one passed over at once, the voice match list's own
+computers and models (SoulX-Singer unless a member chooses VevoSing; high
+quality music unless a member chooses fast), a voice match passing over a
+computer whose Martlet can't make it apart (that computer still writes music,
+as whole songs), a VevoSing member matching with SoulX-Singer where VevoSing
+isn't set up, the music and the voice match put together (`SongVoice`: mix =
+backing + matched vocals, scaled together against clipping), computers that
+don't answer or don't sing passed over, every computer busy so the job waits
+on the shortest line, every line full (`singing.busy`), a failed job not made
+again elsewhere, and a computer that stops answering during the job replaced
+by the next. In-process; reads nothing.
 
 `pc_scope` reads the [PC scope](ACCOUNTS.md#pc-scope) that the desktop with
 the data folder uses (optional absolute `dataDirectory`; the script gives a
@@ -9433,52 +9447,58 @@ voice engine there, or says one would share the card before one is set up.
 
 Companion › Singing (`CompanionTab-Singing`, under *Optional extras*;
 [Singing](SINGING.md)) has the standard order. `SingingNow` says whether and
-where Martlet sings ("Off. Martlet doesn't sing: no computer in the list is on.
-Singing stays set up on your computers.", "Not set up yet. ...", "Martlet sings
-on gpu-pc (or the first free one of 2 computers) with SoulX-Singer, fast.").
-There is no Off choice and no single-computer choice: *Where Martlet sings* is
-the shared pool list ([the singing pool](SINGING.md#the-singing-pool)) with the
-`Pool-singing-...` IDs below (summary, each member's line with its state, such
-as "1. gpu-pc. A paired computer; runs Singing with SoulX-Singer and VevoSing;
-high quality.", On, Up, Down, Remove, Settings, kept-for and the Add buttons;
-only computers that aren't shared by friends and can run Singing can be added).
-A member's Settings (`Pool-singing-Settings-<i>`, passive) shows
-`Pool-singing-State-<member key>` ("Singing is ready here with SoulX-Singer.",
-"Setting Singing up here...", "Singing isn't set up here yet.", "Setting Singing
-up failed: ..." or why that computer can't sing, such as "Needs an NVIDIA
-graphics card with 6 GB+; this PC has ..."; the voice matches come from that
-computer's singing service, read through its gateway once the page shows it),
-`Pool-singing-SetUp-<member key>` (*Set up Singing here* while it isn't ready
-there; disabled with the reason as help text when the computer can't sing),
-`Pool-singing-AddVevo-<member key>` (*Add VevoSing here* where it runs without
-VevoSing) and `Pool-singing-Quality-<member key>` (*The song choice below*,
-*Fast* or *High quality*: that computer's own quality, saved in the list). A
-computer added that doesn't sing yet opens its Settings. The list, the quality
-and both buttons save `pools.json` or install, so they need
-`--allow-ui-effects`. *What Singing is* shows the role's details only
-(`Picker-Singing-Role`): its facts (`PickerFact-Singing-<fact>`: `vram`,
-`download`, `song`, `license`, `cost`, `data`) and `SingingGpu` (fixed text: its
-first sentence, with all of it in `help`), which answers whether Singing needs a
-graphics card of its own. Under *Song choices*, `SingingQuality` ("Fast
-(recommended)", "High quality ...") reports the saved quality (`ui_select` on it
-saves `singing.json`, so it needs `--allow-ui-effects`), and the voice match is a
-second option picker: `Picker-SingingVoiceMatch-SoulX` and
-`Picker-SingingVoiceMatch-VevoSing` (passive; SoulX-Singer is in use by default)
-compare their footprint and license (`PickerFact-SingingVoiceMatch-license`:
-VevoSing is "CC-BY-NC-ND-4.0: personal, non-commercial use only ..."), and
-`SingingUseSoulX` or `SingingUseVevoSing` saves the choice (needs
-`--allow-ui-effects`). With VevoSing chosen while no computer in the list that
-sings has it, `SingingVoiceMatchState` says so ("VevoSing isn't set up on any
-computer in the list. Songs use SoulX-Singer until you add it: ..."). *Set up
-Singing here* asks one confirmation naming the downloads, licences and terms and
-sets the role up through `martlet-host add singing` (a run window on this PC
-whose `HostRunStatus` follows the image build, the service starting and each
-model file's download, for example "Singing: downloading model-svc.pt, 45% of
-2730 MiB..."); *Add VevoSing here* asks its own confirmation naming VevoSing's
+where Martlet sings ("Off. Martlet doesn't sing: no computer in the music list
+is on. Singing stays set up on your computers.", "Not set up yet. ...",
+"Martlet writes the music on gpu-pc (or the first free one of 2 computers) in
+high quality, and matches the voice on gpu-pc with SoulX-Singer.", or "... Voice
+match is off: songs keep the music model's own singer."). A song has two
+parts, each with its own shared pool list
+([the two singing pools](SINGING.md#the-two-singing-pools)): *Music: where
+Martlet writes songs* (`Pool-singing-...`; with none on, Martlet doesn't sing)
+and *Voice match: where Martlet matches the singing to its voice*
+(`Pool-voice-match-...`; with none on, songs keep the music model's own
+singer). Each list has the shared IDs (summary, each member's line with its
+state, such as "1. gpu-pc. A paired computer; runs Singing with SoulX-Singer and
+VevoSing; high quality." or "...; SoulX-Singer.", On, Up, Down, Remove,
+Settings, kept-for and the Add buttons; only computers that aren't shared by
+friends and can run Singing can be added). A member's Settings
+(`Pool-<area>-Settings-<i>`, passive) shows `Pool-<area>-State-<member key>`
+("Singing is ready here with SoulX-Singer.", "Setting Singing up here...",
+"Singing isn't set up here yet.", "Setting Singing up failed: ..." or why that
+computer can't sing, such as "Needs an NVIDIA graphics card with 6 GB+; this PC
+has ..."; the voice matches come from that computer's singing service, read
+through its gateway once the page shows it; a computer whose Martlet is too old
+to make the music and the voice match apart says so) and
+`Pool-<area>-SetUp-<member key>` (*Set up Singing here* while it isn't ready
+there; disabled with the reason as help text when the computer can't sing). A
+music member adds `Pool-singing-Quality-<member key>` (*High quality*, the
+default, or *Fast*: that computer's own quality, saved in the list). A voice
+match member adds `Pool-voice-match-AddVevo-<member key>` (*Add VevoSing here*
+where it runs without VevoSing) and `Pool-voice-match-Model-<member key>`
+(*SoulX-Singer*, the default, or *VevoSing*: that computer's own model, saved in
+the list; where VevoSing isn't set up it matches with SoulX-Singer). A computer
+added that doesn't sing yet opens its Settings. The lists, the quality, the
+model and both buttons save `pools.json` or install, so they need
+`--allow-ui-effects`. The first time the page opens with a music list and no
+voice match list, it makes the voice match list from the music list. *What
+Singing is* shows the role's details only (`Picker-Singing-Role`): its facts
+(`PickerFact-Singing-<fact>`: `vram`, `download`, `song`, `license`, `cost`,
+`data`) and `SingingGpu` (fixed text: its first sentence, with all of it in
+`help`), which answers whether Singing needs a graphics card of its own. *Voice
+match models* compares the two models: `Picker-SingingVoiceMatch-SoulX` and
+`Picker-SingingVoiceMatch-VevoSing` (passive; *in use* is the first voice match
+computer's model) compare their footprint and license
+(`PickerFact-SingingVoiceMatch-license`: VevoSing is "CC-BY-NC-ND-4.0:
+personal, non-commercial use only ..."). *Set up Singing here* asks one
+confirmation naming the downloads, licences and terms and sets the role up
+through `martlet-host add singing` (a run window on this PC whose
+`HostRunStatus` follows the image build, the service starting and each model
+file's download, for example "Singing: downloading model-svc.pt, 45% of 2730
+MiB..."); *Add VevoSing here* asks its own confirmation naming VevoSing's
 CC-BY-NC-ND-4.0 terms and downloads. There is no play button: songs are only
 performed by Martlet in conversation, so make and inspect real songs headlessly
-with `singing_check`.
-
+with `singing_check` (`split` makes the song as the two pools do: a music job,
+then a voice match job) and rehearse the two pools with `singing_pool_check`.
 Companion › Motion (`CompanionTab-Motion`, under *Optional extras*;
 [the motion pool](MOTION_HOST.md#the-motion-pool)) has the standard order.
 `MotionNow` says whether and where Martlet makes body motions ("Martlet makes
