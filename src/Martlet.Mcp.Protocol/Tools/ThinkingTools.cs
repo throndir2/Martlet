@@ -242,7 +242,8 @@ internal sealed partial class McpServer
             async (arguments, cancellation) => await OllamaRecoveryCheck.RunAsync(OptionalBool(arguments, "fixture") ?? false, cancellation)),
         Tool("pc_activity_check", "Hear what this PC plays: which app plays what Martlet hears and what kind of thing it is (a YouTube " +
             "video in a browser, a show or movie in Plex or a player, a game, a voice chat in Discord, a call, music), told apart " +
-            "deterministically from the app, the site its browser window shows, where its program is installed (a game library), " +
+            "deterministically from the app, the site its browser window shows, where its program is installed (a game library, or " +
+            "a game engine's files beside it), " +
             "the window in front and full screen, and how busy it keeps the graphics card. live: the production PcActivityMonitor and " +
             "WindowsPcActivitySource on this PC for seconds (default 3): every app with an audio session (the volume mixer's meters " +
             "only; nothing is recorded, played, kept or sent; raw window titles are never returned) with its kind and label, the " +

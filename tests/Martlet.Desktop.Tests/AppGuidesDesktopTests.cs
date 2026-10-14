@@ -217,6 +217,19 @@ public sealed class AppGuidesDesktopTests
         Assert.Equal(Path.GetFileNameWithoutExtension(path), AppGuideWatch.Describe(path, "", fullScreen, exclusive).Name);
     }
 
+    [Fact]
+    public void TheWatchTellsAWindowedUnityGameOutsideAnyLibrary()
+    {
+        var folder = Directory.CreateTempSubdirectory("martlet-guide-engine-");
+        try
+        {
+            File.WriteAllBytes(Path.Combine(folder.FullName, "UnityPlayer.dll"), []);
+            var path = Path.Combine(folder.FullName, "StarRail.exe");
+            Assert.Equal(("Star Rail", "StarRail", true), AppGuideWatch.Describe(path, "Star Rail", fullScreen: false, exclusive: false));
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private static string Instructions(byte[] body)
     {
         using var json = JsonDocument.Parse(body);

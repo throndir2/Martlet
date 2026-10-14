@@ -497,7 +497,9 @@ the limits above.
   thread-pool timer every 4 seconds: it reads the name and file of the program
   in front (`ActiveApp`), whether it fills its screen and whether Windows says a
   game runs in exclusive full screen, and tells a game with
-  `PcActivity.Classify` (a game library folder or exclusive full screen). It
+  `PcActivity.Classify` (a game library folder, a game engine's files beside
+  its program (Unity or an Unreal shipping build, so a windowed game in any
+  folder counts) or exclusive full screen). It
   matches the program to the list by key, name or program names, ignoring case
   and punctuation (*ELDEN RING™* is *Elden Ring*). Martlet's own windows are
   passed over.
