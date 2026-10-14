@@ -8,11 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **See everything Martlet sent to make a reply**: each of Martlet's messages in the talk window now has a *What was sent* link. It opens a window with the whole request, in the order it went to the Thinking model: the instructions (part by part: persona, tools, voice, closing), the conversation history, your message, the notes with it (lorebook entries, remembered facts and more), the context notes, the picture you can open full size, the recording you can play, any tool calls and their results, the tools it could use and the request's settings. Each part has its own color, and a bar shows how much of the request each part takes. ([#899](https://github.com/throndir2/Martlet/pull/899))
+
 ## [0.79.0] - 2026-10-13
 
 ### Added
 
-- **See everything Martlet sent to make a reply**: each of Martlet's messages in the talk window now has a *What was sent* link. It opens a window with the whole request, in the order it went to the Thinking model: the instructions (part by part: persona, tools, voice, closing), the conversation history, your message, the notes with it (lorebook entries, remembered facts and more), the context notes, the picture you can open full size, the recording you can play, any tool calls and their results, the tools it could use and the request's settings. Each part has its own color, and a bar shows how much of the request each part takes. ([#899](https://github.com/throndir2/Martlet/pull/899))
 - **Martlet keeps track of where you are in your game**: while you play, it keeps a short running note of the place you're at, what you're doing, what happened lately and how far you seem to be, updated from what it sees on your screen, so it knows what's going on even when you haven't said anything for a while. It needs App guides, screen summaries and a Thinking pool member, and adds no wait to replies. ([#897](https://github.com/throndir2/Martlet/pull/897))
 - **Singing's music and voice match each have their own list**: Companion › Singing now has a *Music* list (the computers that write a song) and a *Voice match* list (the computers that change the singing into Martlet's voice), so one computer can write the music while another matches the voice. Each computer chooses its own quality or voice match model, and your other computers follow the same lists. With nothing on in the *Voice match* list, songs keep the music model's own singer. ([#894](https://github.com/throndir2/Martlet/pull/894))
 
