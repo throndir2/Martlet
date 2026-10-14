@@ -131,6 +131,10 @@ public sealed class ConversationRequest(
     /// ([laughs], [whispers]) stay in the text it is sent.</summary>
     [JsonIgnore] public ElevenLabsVoiceTarget? ElevenLabsVoice { get; init; }
 
+    /// <summary>The named parts <see cref="Input"/>'s instructions and notes were joined from, so this PC can show what was sent
+    /// part by part; null when the request wasn't built from parts. Never sent as such.</summary>
+    [JsonIgnore] public RequestParts? Parts { get; init; }
+
     /// <summary>The tags the reply's voice keeps in the text it is sent (every other voice tag is dropped): ElevenLabs' or the
     /// host engine's; none without a voice.</summary>
     internal IReadOnlyList<VoiceTag> KeptVoiceTags => Speech is null ? [] : SpeechEngines.TagsFor(ElevenLabsVoice is not null, HostSpeech?.ModelId);

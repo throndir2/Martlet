@@ -65,6 +65,15 @@ public sealed class LiveConversationTests
         Assert.True(before >= 0 && before < after, notes);
         Assert.Contains("[MARTLET_LOREBOOK]", notes);
         Assert.DoesNotContain(LiveConversationConfiguration.ReplyLengthInstructions, notes);
+        // What was sent shows the instructions and the notes part by part, and the parts join to exactly what was sent.
+        var parts = request.Parts!;
+        Assert.Equal(instructions, string.Join("\n\n", parts.Instructions.Select(part => part.Text)));
+        Assert.Contains(parts.Instructions, part => part.Name == "Persona" && part.Text.Contains("Companion name:"));
+        Assert.Equal(("Closing instructions", LiveConversationConfiguration.ReplyLengthInstructions), (parts.Instructions[^1].Name, parts.Instructions[^1].Text));
+        Assert.Equal(notes, LiveConversationConfiguration.WrapNotes(parts.Notes));
+        Assert.Contains(parts.Notes, part => part.Name == "Lorebook entries (before the persona)" && part.Text.Contains("The castle is Mab's."));
+        Assert.Contains(parts.Notes, part => part.Name == "Lorebook entries (after the persona)" && part.Text.Contains("fears the castle."));
+        Assert.Empty(parts.Context);
         fixture.NoEffects();
     }
     [Fact]
@@ -3005,6 +3014,175 @@ public sealed class LiveConversationTests
         }
         finally { window.Close(); }
     });
+
+    // What was sent: each of Martlet's replies keeps what its request carried, exactly as sent, and its link opens the viewer with
+    // every section in the order the request sends it. MCP reads only the sizes, never the text.
+    [Fact]
+    public Task WhatWasSentShowsEachRepliesRequestSectionBySection() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            fixture.Answer("Hi there.");
+            Control<TextBox>(window, "InputText").Text = "Hello?";
+            Click(window, "SendButton");
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Hi there.") &&
+                window.Current is null or { OwnershipReleased: true });
+            fixture.Answer("Fine, thanks.");
+            Control<TextBox>(window, "InputText").Text = "How are you?";
+            Click(window, "SendButton");
+            await fixture.Advance(() => fixture.Llm.Calls == 2 && window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Fine, thanks.") &&
+                window.Current is null or { OwnershipReleased: true });
+            await Heartbeat();
+
+            Assert.All(window.Messages.Where(m => m.Role == ChatRole.Martlet), m => Assert.True(m.HasContext));
+            Assert.DoesNotContain(window.Messages, m => m.IsUser && m.HasContext);
+            var reply = window.Messages.Last(m => m.Role == ChatRole.Martlet);
+            var context = Assert.IsType<MessageContext>(reply.Context);
+            Assert.True(context.Sent);
+            Assert.Equal("reply", context.Kind);
+            var sent = Assert.Single(context.Requests);
+            var sections = context.Sections(0);
+            var keys = sections.Select(section => section.Key).ToList();
+            Assert.True(keys.IndexOf("instructions") == 0 && keys.IndexOf("history") == 1 && keys.IndexOf("message") == 2, string.Join(", ", keys));
+            Assert.Equal("settings", keys[^1]);
+            Assert.Equal("How are you?", Assert.Single(sections.Single(s => s.Key == "message").Blocks).Text);
+            var history = sections.Single(s => s.Key == "history").Blocks;
+            Assert.StartsWith("Hello?", history.First(block => block.Mine).Text);
+            Assert.Contains(history, block => !block.Mine && block.Text == "Hi there." && block.Label == window.CharacterName);
+            // The instructions show part by part, and the parts join to exactly the instructions sent.
+            var instructions = sections.Single(s => s.Key == "instructions").Blocks;
+            Assert.True(instructions.Count > 1);
+            Assert.Contains(instructions, block => block.Label == "Instructions for this kind of reply");
+            Assert.Equal(sent.Input.Personality, string.Join("\n\n", instructions.Select(block => block.Text)));
+            // Its size counts exactly what was sent, the blank lines between the parts too.
+            Assert.Equal(sent.Input.Personality!.Length, sections.Single(s => s.Key == "instructions").Characters);
+            // It is what the model got.
+            using (var body = JsonDocument.Parse(fixture.Llm.Body))
+            {
+                Assert.Equal(sent.Input.Personality, body.RootElement.GetProperty("instructions").GetString());
+                Assert.Equal(sent.Input.SentUserText, ResponsesCurrentUserText(body));
+            }
+
+            // Its link opens the viewer.
+            var link = ContextLinks(window).Single(button => ReferenceEquals(button.DataContext, reply));
+            Assert.Equal("LiveMessageContext-2", AutomationProperties.GetAutomationId(link));
+            Assert.Equal(["LiveMessageContext-1", "LiveMessageContext-2"], ContextLinks(window).Select(AutomationProperties.GetAutomationId));
+            link.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var viewer = Assert.IsType<MessageContextWindow>(window.ContextViewer);
+            try
+            {
+                viewer.UpdateLayout();
+                Assert.Same(context, viewer.Context);
+                Assert.Equal("What was sent for this reply", Assert.IsType<TextBlock>(viewer.FindName("HeadingText")).Text);
+                var summary = Assert.IsType<TextBlock>(viewer.FindName("SummaryText")).Text;
+                Assert.StartsWith(TextFixtures.Model + " · 1 request ·", summary);
+                Assert.DoesNotContain("How are you", summary);
+                var expanders = Descendants<Expander>(viewer).Select(AutomationProperties.GetAutomationId).ToArray();
+                Assert.Equal(keys.Select(key => "MessageContextSection-" + key), expanders);
+                var texts = Descendants<TextBox>(viewer).Where(box => AutomationProperties.GetAutomationId(box).StartsWith("MessageContextText-history-", StringComparison.Ordinal))
+                    .Select(box => box.Text).ToArray();
+                Assert.Contains("Hi there.", texts);
+                // What MCP reads: sizes and shares, never the text.
+                var size = Descendants<TextBlock>(viewer).Single(block => AutomationProperties.GetAutomationId(block) == "MessageContextSize-message").Text;
+                Assert.Matches(@"^\d+ characters, about \d+ tokens$", size);
+                Assert.Contains(Descendants<TextBlock>(viewer), block => AutomationProperties.GetAutomationId(block) == "MessageContextShare-instructions");
+                Assert.All(Descendants<TextBlock>(viewer).Where(block => AutomationProperties.GetAutomationId(block).StartsWith("MessageContextPart-", StringComparison.Ordinal)),
+                    block => Assert.DoesNotContain("How are you", block.Text));
+                // The same window shows the other message's.
+                window.OpenContext(window.Messages.First(m => m.Role == ChatRole.Martlet).Context!);
+                Assert.Same(viewer, window.ContextViewer);
+                Assert.Equal("Hello?", Assert.Single(viewer.Context.Sections(0).Single(s => s.Key == "message").Blocks).Text);
+            }
+            finally { viewer.Close(); }
+            Assert.Null(window.ContextViewer);
+        }
+        finally { window.Close(); }
+    });
+
+    // What was sent shows the picture and the recording a request carried (Play plays it), says when a later request went without
+    // the picture, and shows the notes kept with your earlier messages apart from your words.
+    [Fact]
+    public Task WhatWasSentShowsThePictureTheRecordingAndEachRequest() => DispatcherTest(async () =>
+    {
+        var image = new BoundedImage(TinyPng(), ImageMediaType.Png, 2, 2);
+        var audio = BoundedWaveAudio.FromPcm(new Martlet.Core.Audio.PcmFormat
+        {
+            SampleRate = 16_000, Channels = 1, Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian
+        }, new byte[3_200]);
+        var input = new BoundedTextInput("What do you see?", "Be brief.",
+            [new(TextHistoryRole.User, "Hi\n\n[MARTLET_NOTES]\nA note.\n[/MARTLET_NOTES]"), new(TextHistoryRole.Assistant, "Hello!")],
+            image: image, audio: audio, context: "[MARTLET_NOTES]\nThe screen shows a game.\n[/MARTLET_NOTES]");
+        var request = new ConversationRequest(input, TextFixtures.Selection, new(), new());
+        var context = MessageContext.For(request,
+            [new(input, TextFixtures.Selection, false, false, "first", DateTimeOffset.Now),
+             new(input.WithoutImage(), TextFixtures.Selection, false, false, "again without the picture, which the model refused", DateTimeOffset.Now)],
+            "reply", "Ivy", 1_200, 800);
+        var viewer = new MessageContextWindow(context) { ShowActivated = false, ShowInTaskbar = false };
+        viewer.Show();
+        try
+        {
+            viewer.UpdateLayout();
+            // The last request shows first: it went without the picture.
+            Assert.Equal(1, viewer.Shown);
+            Assert.Equal("Not sent", SizeText(viewer, "picture"));
+            Assert.DoesNotContain(Descendants<Image>(viewer), picture => AutomationProperties.GetAutomationId(picture) == "MessageContextPicture");
+            Assert.EndsWith("The model said its requests read 1,200 input tokens, 800 of them from its prompt cache.",
+                Assert.IsType<TextBlock>(viewer.FindName("SummaryText")).Text);
+            viewer.ShowRequest(0);
+            viewer.UpdateLayout();
+            Assert.Equal(0, viewer.Shown);
+            Assert.Contains(Descendants<Image>(viewer), picture => AutomationProperties.GetAutomationId(picture) == "MessageContextPicture");
+            Assert.Equal("Play", Descendants<Button>(viewer).Single(button => AutomationProperties.GetAutomationId(button) == "MessageContextPlay").Content);
+            Assert.False(viewer.Playing);
+            Assert.StartsWith("0.1 s", SizeText(viewer, "recording"));
+            var history = context.Sections(0).Single(s => s.Key == "history").Blocks;
+            Assert.Equal(["Hi", "[MARTLET_NOTES]\nA note.\n[/MARTLET_NOTES]", "Hello!"], history.Select(block => block.Text));
+            Assert.Equal(ContextBlockStyle.Kept, history[1].Style);
+            Assert.Equal("Ivy", history[2].Label);
+            Assert.Equal("The screen shows a game.", context.Sections(0).Single(s => s.Key == "context").Blocks.Single().Text.Split('\n')[1]);
+            // Copy all has every section, in the order the request sends them.
+            var text = context.Text(0);
+            int At(string title) => text.IndexOf("=== " + title, StringComparison.Ordinal);
+            Assert.True(At("Instructions") < At("Conversation history") && At("Conversation history") < At("The message") &&
+                At("The message") < At("Context notes") && At("Context notes") < At("Picture") && At("Picture") < At("Recording") &&
+                At("Recording") < At("Request settings"), text);
+        }
+        finally { viewer.Close(); }
+        await Task.CompletedTask;
+    });
+
+    private static string SizeText(Window window, string key) =>
+        Descendants<TextBlock>(window).Single(block => AutomationProperties.GetAutomationId(block) == "MessageContextSize-" + key).Text;
+
+    private static Button[] ContextLinks(Window window)
+    {
+        window.UpdateLayout();
+        return [.. Descendants<Button>(Control<ItemsControl>(window, "History")).Where(button => button.Name == "ContextLink" && button.IsVisible)];
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T found) yield return found;
+            foreach (var deeper in Descendants<T>(child)) yield return deeper;
+        }
+    }
+
+    private static byte[] TinyPng()
+    {
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(2, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null,
+            new byte[16], 8);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
 
     [Fact]
     public Task ATouchThatIsNotIntimateWaitsWhileMartletTalksWhenOnlyIntimateTouchesStopIt() => DispatcherTest(async () =>

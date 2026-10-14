@@ -67,6 +67,33 @@ public sealed class ToolLoopTests
         Assert.NotEqual(actions[0].Context.Ids.RequestId, actions[1].Context.Ids.RequestId);
     }
 
+    // What was sent (the talk window's viewer) shows each request a reply sent: the first, then the one after each tool round.
+    [Fact]
+    public async Task The_turn_keeps_every_request_it_sent_in_order_with_why()
+    {
+        await using var harness = new Harness(textOnly: true);
+        harness.Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(
+            harness.Llm.Calls == 1 ? CallTrace() : Harness.Trace("You need ", "milk.")));
+        var request = Request(new FixtureTools("Buy milk."));
+        var turn = harness.Start(request);
+        Assert.Same(request, turn.Request);
+        await Harness.Finish(turn, harness.Clock);
+
+        var sent = turn.SentRequests;
+        Assert.Equal(2, sent.Count);
+        Assert.Same(request.Input, sent[0].Input);
+        Assert.Equal("first", sent[0].Why);
+        Assert.Equal("after tool round 1", sent[1].Why);
+        Assert.Same(request.Input, sent[1].Input.Origin);
+        Assert.Equal("Buy milk.", Assert.Single(Assert.Single(sent[1].Input.ToolRounds).Results).Output);
+        Assert.All(sent, one => Assert.False(one.Fallback));
+        Assert.All(sent, one => Assert.Equal(TextFixtures.Selection.UpstreamModelId, one.Model.UpstreamModelId));
+        Assert.True(sent[1].At >= sent[0].At);
+        // Private content never shows in its text form.
+        Assert.DoesNotContain("milk", sent[1].ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("notes", sent[0].ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task A_model_that_rejects_tools_is_asked_once_more_without_them()
     {

@@ -86,6 +86,8 @@ internal static class AutomationPolicy
         new("LiveSongStop", "Talk window", "Stop singing: only ends the song playing (musically); nothing in the talk window plays a song."),
         new("LiveTasks", "Talk window", "The background tasks chip: only opens the task list."),
         new("LiveTasksClose", "Talk window", "Only closes the task list."),
+        new("MessageContextClose", "What was sent", "Close: only closes the What was sent window."),
+        // Needs --allow-ui-effects: MessageContextPlay (it plays the recording) and MessageContextCopyAll (it writes the clipboard).
         new("TouchZonesStop", "Companion › Touch › Touch zones", "Stop: only stops finding zones; sends nothing (the zones found until then are already saved)."),
         new("TouchZonesZoomIn", "Companion › Touch › Touch zones", "Zoom in: only makes the picture on the zone map larger (TouchZonesZoom says how far); saves nothing."),
         new("TouchZonesZoomOut", "Companion › Touch › Touch zones", "Zoom out: only makes the picture on the zone map smaller (TouchZonesZoom says how far); saves nothing."),
@@ -278,6 +280,8 @@ internal static class AutomationPolicy
         new("LiveJobCancel-", "Talk window", "The Cancel button of a background job, such as LiveJobCancel-think-1; only stops that job. It sends, saves and starts nothing."),
         new("CharacterProfileEdit-", "Companion › Profiles", "The Edit button of a profile, such as CharacterProfileEdit-3f2a9c1b; only opens the form. The form's Save writes."),
         new("LiveJobResultToggle-", "Talk window", "The Show result button of a finished task in the task list, such as LiveJobResultToggle-think-1; only shows or hides what the task found."),
+        new("LiveMessageContext-", "Talk window", "What was sent, on one of Martlet's messages, such as LiveMessageContext-2 (the second message that kept it): only opens the What was sent window (MessageContextWindow) for that message. MCP never reads its text."),
+        new("MessageContextSection-", "What was sent", "A section, such as MessageContextSection-instructions or MessageContextSection-history; only shows or hides its text."),
         // Never returned: LiveJobResult-<id> (what a task found is not a readable value).
         new("ReadingModel-", "Companion › Reading", "A model pill in a list member's settings, such as ReadingModel-this-pc-ppocrv5-mobile; only shows that model's details and its Set up or Switch button."),
         // Needs --allow-ui-effects: a Reading model's Set up and Switch (they set up the model or switch to it on that computer).
@@ -755,6 +759,10 @@ internal static class AutomationPolicy
         new("DeepThinkingLocalShare", "Companion › Deep thinking", "Shows the line on sharing this PC's graphics card between Deep thinking and the Thinking model."),
         new("DeepThinkingKeyStatus", "Companion › Deep thinking", "Shows what an endpoint's key field will do. Never a key or a typed base URL."),
         new("LiveTasks", "Talk window", "Shows the background tasks chip, such as 'Background tasks: 1 running · 1 ready'."),
+        new("MessageContextTitle", "What was sent", "Shows the title, such as 'What was sent for this reply' (or remark, report...)."),
+        new("MessageContextSummary", "What was sent", "Shows the model, how many requests the message took, the shown request's size and whether a picture or recording went with it, and the input tokens the model said it read. Never the text."),
+        new("MessageContextRequest", "What was sent", "Shows which request is shown, such as 'Request 2: after tool round 1'."),
+        // Never returned: MessageContextText-<section>-<n> (what was sent) and MessageContextPicture.
         new("LiveJobs", "Talk window", "Shows the line under the task list's title: that tasks keep going while you talk and when finished work comes up. Never what a task is about."),
         new("LiveSong", "Talk window", "Shows the song panel's line: the song's id, state, position, line number and section, lead-in, vamps, ducking, or where and why it stopped. Never its title or words."),
         // Never returned: LiveJob-<id> (what a task is about) and LiveSongLine (the song's title and words).
@@ -1125,6 +1133,9 @@ internal static class AutomationPolicy
         new("DeviceAlsoFits-", "Devices", "What else fits on the selected device, such as DeviceAlsoFits-0: Room for another Deep thinking model (Gemma 4 12B) here."),
         new("AdvisorChoice-", "Setup advisor", "A role's pick and status in the plan, such as AdvisorChoice-3: Speech-to-text: Parakeet speech recognition (Available). The plan has no personal data."),
         new("LiveJobState-", "Talk window", "A background task's status in the task list, such as LiveJobState-think-1: Checking it fits beside Thinking. Never what the task is about or what it found."),
+        new("MessageContextSize-", "What was sent", "A section's size, such as MessageContextSize-history: 4,210 characters, about 1,100 tokens. Never the text."),
+        new("MessageContextShare-", "What was sent", "A section's share of the request in the bar at the top, such as MessageContextShare-instructions: Instructions 45%."),
+        new("MessageContextPart-", "What was sent", "A part's name and size, such as MessageContextPart-instructions-0: Persona · 3,200 characters. Never the text, and never on earlier messages (they say who spoke)."),
         new("AppGuideName-", "Companion › App guides", "An app's name on the list, such as AppGuideName-elden-ring: Elden Ring."),
         new("AppGuideStatus-", "Companion › App guides", "An app's line, such as AppGuideStatus-elden-ring: 42 pages, 3.1 MB, read 10 Oct 2026, 18:40., No guide yet. or Reading up now: Reading page 3. Never a guide's text."),
         // Needs --allow-ui-effects: AppGuideRead-<key>, AppGuideStop-<key>, AppGuideAskAgain-<key>, AppGuideDelete-<key>, AppGuideAdd and AppGuideAddRead.

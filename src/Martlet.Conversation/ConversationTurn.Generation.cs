@@ -223,9 +223,9 @@ public sealed partial class ConversationTurn
         bool fallback = false, bool withoutReasoning = false, bool hedged = false, string why = "first")
     {
         var traced = TraceRequest(why);
-        if (traced is null) return await RequestCoreAsync(input, ids, segmenter, fallback, withoutReasoning, hedged).ConfigureAwait(false);
+        if (traced is null) return await RequestCoreAsync(input, ids, segmenter, fallback, withoutReasoning, hedged, why).ConfigureAwait(false);
         RoundResult result;
-        try { result = await RequestCoreAsync(input, ids, segmenter, fallback, withoutReasoning, hedged).ConfigureAwait(false); }
+        try { result = await RequestCoreAsync(input, ids, segmenter, fallback, withoutReasoning, hedged, why).ConfigureAwait(false); }
         catch (Exception error)
         {
             TraceRequestEnded(traced, null, error);
@@ -236,7 +236,7 @@ public sealed partial class ConversationTurn
     }
 
     private async Task<RoundResult> RequestCoreAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter,
-        bool fallback, bool withoutReasoning, bool hedged)
+        bool fallback, bool withoutReasoning, bool hedged, string why)
     {
         var model = fallback ? request.Fallback!.Model : request.Model;
         var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
@@ -260,6 +260,9 @@ public sealed partial class ConversationTurn
         {
             textRequestAfter ??= requestedAfter;
             TraceAuthorized(requestedAfter);
+            // What goes to the model now, as it goes (a reference, so the reply pays nothing for it).
+            if (sentRequests.Count < ConversationSentRequest.MaximumKept)
+                sentRequests.Add(new(input, model, fallback, withoutReasoning, why, Clock.GetUtcNow()));
         }
         // Backup Thinking races the reply's first request only. That request then has a stop of its own, so the stream that
         // loses is stopped alone.
