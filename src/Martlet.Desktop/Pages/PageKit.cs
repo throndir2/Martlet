@@ -160,4 +160,78 @@ internal static class PageKit
             Marshal.ZeroFreeGlobalAllocUnicode(pointer);
         }
     }
+
+    // ---------- option rows, Now cards and hints ----------
+
+    internal static TextBlock OptionTitle(string title, string? tag, double size = 16)
+    {
+        var text = new TextBlock { FontSize = size, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+        text.Inlines.Add(title);
+        if (tag is not null)
+        {
+            var badge = new System.Windows.Documents.Run("  \u00b7  " + tag) { FontWeight = FontWeights.Normal, FontSize = size - 2 };
+            badge.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, tag == "in use" ? "SuccessBrush" : "AccentBrush");
+            text.Inlines.Add(badge);
+        }
+        return text;
+    }
+
+    internal static Border Option(IEnumerable<UIElement> children, bool inUse)
+    {
+        var stack = new StackPanel();
+        foreach (var child in children) stack.Children.Add(child);
+        var option = new Border { Child = stack, BorderThickness = new Thickness(inUse ? 2 : 1), CornerRadius = new CornerRadius(14),
+            Padding = new Thickness(16), Margin = new Thickness(0, 10, 0, 0) };
+        option.SetResourceReference(Border.BorderBrushProperty, inUse ? "AccentBrush" : "BorderBrush");
+        return option;
+    }
+
+    /// <summary>A page's Now card: what it uses, then any problem that stops it. <paramref name="id"/> names its status text for
+    /// UI Automation ("<c>id</c>" and "<c>id</c>Problem").</summary>
+    internal static Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem, string? id = null, string? warning = null)
+    {
+        var now = new StackPanel();
+        now.Children.Add(Heading("Now"));
+        var status = new TextBlock { Text = text, FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        if (id is not null) AutomationProperties.SetAutomationId(status, id);
+        now.Children.Add(status);
+        // A job's coverage problem, or another reason (such as a character that did not close cleanly) it is not working.
+        if ((problem is null ? warning : $"Needs attention: {problem.Problem} {problem.Effect}") is { } line)
+        {
+            var problemText = new TextBlock { Text = line, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            problemText.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            if (id is not null) AutomationProperties.SetAutomationId(problemText, id + "Problem");
+            now.Children.Add(problemText);
+        }
+        return Card(now);
+    }
+
+    /// <summary>A text box with a grey <paramref name="hint"/> over it while it is empty. The hint starts where typed text starts:
+    /// the box's style (and so its padding) applies only once it is on the page, so the caret's first place sets the hint's margin.</summary>
+    internal static Grid WithHint(TextBox box, string hint, string? id = null)
+    {
+        var shown = new TextBlock
+        {
+            Text = hint, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(box.Padding.Left + 1, 0, box.Padding.Right + 1, 0),
+            Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed
+        };
+        shown.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        if (id is not null) AutomationProperties.SetAutomationId(shown, id);
+        var placed = false;
+        box.SizeChanged += (_, _) =>
+        {
+            // Text scrolled sideways moves the caret's first place, so only an empty box (or the first layout) is measured.
+            if (placed && box.Text.Length > 0) return;
+            var start = box.GetRectFromCharacterIndex(0);
+            if (start.IsEmpty) return;
+            shown.Margin = new Thickness(start.Left, 0, start.Left, 0);
+            placed = true;
+        };
+        box.TextChanged += (_, _) => shown.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var grid = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        grid.Children.Add(box);
+        grid.Children.Add(shown);
+        return grid;
+    }
 }

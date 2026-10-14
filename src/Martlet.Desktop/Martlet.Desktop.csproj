@@ -16,6 +16,8 @@
     <Using Include="Martlet.Logging" />
     <!-- The page builders (Card, Heading, Note, Warning, Row, PageButton, TerminalRow, TakeKey and the dense rows) for every page: Pages\PageKit.cs. -->
     <Using Include="Martlet.Desktop.PageKit" Static="true" />
+    <!-- The Companion page catalog (TabTitle, TabIntro, GroupOf...) for the frame and every page: Pages\Companion\CompanionPages.cs. -->
+    <Using Include="Martlet.Desktop.CompanionPages" Static="true" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />
     <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />

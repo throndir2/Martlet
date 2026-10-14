@@ -13,10 +13,18 @@ A moved page has these parts:
 | Page | `ThinkingPool\ThinkingPoolPage.cs` | Makes the WPF controls and connects their events. It has no decisions and reads no settings files. |
 | Page model | `ThinkingPool\ThinkingPoolPageModel.cs` | Reads the settings once each time the page draws, decides what each line says and saves the changes. It has no WPF types. |
 | Services | `ThinkingPool\IThinkingPoolPageServices.cs` | Lists everything the page and its model need from the app. `MainWindow` implements it (for example in `MainWindow.ThinkingPool.cs`). |
-| Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Warning`, `Row`, `PageButton`, `Choice` (a large radio choice), `TerminalRow`, `TakeKey` and the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`). |
+| Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Warning`, `Row`, `PageButton`, `Choice` (a large radio choice), `TerminalRow`, `TakeKey`, the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`), the option rows (`Option`, `OptionTitle`), `PageNowCard` and `WithHint`. |
 
 Moved pages: Thinking pool (`ThinkingPool\`), Check-ins (`CheckIns\`) and Vision
-(`Vision\`). `Shared\` has the parts that more than one page uses, such as
+(`Vision\`). `Companion\CompanionPages.cs` is the catalog of all Companion pages
+(titles, groups, icons, intros and job roles), without WPF.
+`MainWindow.Companion.cs` is only the frame (the side list and `RenderTab`). The
+pages that are not moved yet have one file each: the job pages (Thinking,
+Listening, Voice) in `MainWindow.JobPages.cs` and `MainWindow.LocalThinking.cs`,
+Character, Eyes and Touch in `MainWindow.CharacterPages.cs`, and Personality and
+Memory in `MainWindow.PersonalityAndMemory.cs`. The job pages call about 25
+cards from other `MainWindow` files, so move those cards first before the job
+pages get a page class. `Shared\` has the parts that more than one page uses, such as
 `ChattinessPicker` (Vision and Listening). Vision's image-model list and its Now
 lines are shared with Hearing, so `MainWindow` still makes them and gives them
 to `VisionPage` as builders.
