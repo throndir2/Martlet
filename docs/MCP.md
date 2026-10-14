@@ -6260,7 +6260,7 @@ otherwise), `RecommendedSetupTitle`,
 Ollama on This PC's NVIDIA GeForce RTX 4070.* and an optional part that is off
 *7. Singing (optional): Off: Martlet doesn't sing.*, with why; parts are
 `Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `Vision`, `Reading`,
-`Hearing`, `DeepThinking`, `SmartHome`, `Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
+`Hearing`, `People`, `DeepThinking`, `SmartHome`, `Singing`, `Pictures` and `Motion`), `RecommendedSetupOffline` (one sentence about the
 computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
 words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
