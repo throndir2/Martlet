@@ -156,10 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.78.0
+## 🆕 What's new in 0.79.0
 
-- 🧭 **The recommended setup now includes People and Motion**: Home's review shows where Martlet recognizes who is talking and where it makes body motions, counts their graphics memory and lets you turn Motion off.
-- 🎭 **Your character comes alive when Chatterbox Original speaks expressively**: an *expressive* sentence makes a Live2D or VRM character lift its brows and nod with energy.
+- 🎮 **Martlet keeps track of where you are in your game**: a short running note of where you are, what you're doing and how far you seem to be, from what it sees on your screen.
+- 🕹️ **Martlet knows a game in a window, wherever it is installed**: Unity, Unreal and HoYoPlay games count as games even outside Steam or Epic.
+- 👀 **The screen summary sees more of a game**: it looks at up to 6 recent screenshots, so it follows fast action better.
+- 🎵 **Singing's music and voice match each have their own list**: one computer can write the music while another matches Martlet's voice, and songs use High quality by default.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

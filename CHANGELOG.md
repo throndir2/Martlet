@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-10-13
+
 ### Added
 
 - **Martlet keeps track of where you are in your game**: while you play, it keeps a short running note of the place you're at, what you're doing, what happened lately and how far you seem to be, updated from what it sees on your screen, so it knows what's going on even when you haven't said anything for a while. It needs App guides, screen summaries and a Thinking pool member, and adds no wait to replies. ([#897](https://github.com/throndir2/Martlet/pull/897))
