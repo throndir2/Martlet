@@ -66,7 +66,7 @@ public sealed class CharacterGestureTests
         ]);
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "blush", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff",
-            "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic",
+            "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic", "expressive",
             "shy", "giggle", "flinch", "lean_in", "look_away", "think", .. FirstOverlays, .. Levels, .. LaterOverlays], Gestures(inventory));
         var prompt = WithoutCombos(inventory).Prompt(null, null);
         Assert.NotNull(prompt);
@@ -89,7 +89,7 @@ public sealed class CharacterGestureTests
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "blush", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
             "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "sarcastic", "angry", "fear", "crying",
-            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy", .. FirstOverlays,
+            "whispering", "expressive", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy", .. FirstOverlays,
             "mouth_open", .. Levels, .. LaterOverlays], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);

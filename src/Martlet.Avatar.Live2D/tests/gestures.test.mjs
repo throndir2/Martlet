@@ -5,7 +5,7 @@ import { BLUSH_LEVELS, GESTURES, GesturePlayer, HOLDABLE_GESTURES, HOLD_PARTS, d
 
 test("a model gets only the gestures whose standard parameters it has", () => {
   assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY"]), ["nod", "shake", "bow", "blush", "laugh", "chuckle", "sigh", "gasp",
-    "cough", "clear_throat", "sniff", "shush", "inhale", "exhale", "mumble", "sneeze", "fear", "crying",
+    "cough", "clear_throat", "sniff", "shush", "inhale", "exhale", "mumble", "sneeze", "fear", "crying", "expressive",
     "shy", "giggle", "flinch", "look_away", "think", "blush_deep", "blush_fierce"]);
   assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamBodyAngleZ", "ParamEyeLSmile",
     "ParamEyeRSmile", "ParamCheek", "ParamBrowLY", "ParamBrowRY", "ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm",
@@ -37,6 +37,8 @@ test("voice emotes move the head and face and settle back", () => {
   assert.ok(gestureFrame("crying", 1.5).look.y < -0.4 && gestureFrame("crying", 1.5).parameters.ParamEyeLOpen < -0.6);
   assert.ok(Math.abs(gestureFrame("hum", 0.65 + 0.325).parameters.ParamAngleZ) > 6);
   assert.ok(gestureFrame("dramatic", 1.2).parameters.ParamAngleZ < -14);
+  const expressive = gestureFrame("expressive", 0.55);
+  assert.ok(expressive.parameters.ParamBrowLY > 0.4 && expressive.parameters.ParamBodyAngleY > 0, "the brows lift and the body bobs");
   for (const name of GESTURES) {
     const start = gestureFrame(name, 0);
     assert.ok(Math.abs(start.look.x) < 1e-9 && Math.abs(start.look.y) < 1e-9, name);

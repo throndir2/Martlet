@@ -112,6 +112,8 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
             AngleZ, HeadSpine),
         Voice("dramatic", "dramatic, for playful theatrics", "throws the head back with a sweeping flourish", AngleZ,
             ["head", "leftUpperArm", "rightUpperArm"]),
+        Voice("expressive", "expressive and animated, for excitement, delight or strong feeling",
+            "comes alive: the brows lift and the head and body bob with lively nods", AngleY, HeadSpine),
         // Touch and mood gestures, after the rest so the reply instructions' earlier lines (and prompt caches) stay the same.
         new("wink", "wink", "wink, for a playful joke, teasing or a shared secret", "winks one eye with a little smile and a head tilt",
             ["ParamEyeLOpen"], Head),
