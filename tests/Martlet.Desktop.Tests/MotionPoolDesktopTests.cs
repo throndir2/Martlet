@@ -34,7 +34,6 @@ public sealed class MotionPoolDesktopTests
                 .Observe("m3-host", null, [new() { Kind = "motion", Model = "hy-motion-1.0-lite" }], false, "desk-1", Now)
                 .Observe("desk-host", null, [new() { Kind = "motion", Model = "hy-motion-1.0" }], false, "desk-1", Now)
                 .Observe("friend-host", null, [new() { Kind = "motion", Model = "hy-motion-1.0" }], false, "desk-1", Now));
-            WorkSharingRoster.Forget();
 
             // No list and no motion.json: automatic, every own paired computer that runs Motion (never a friend's host).
             Assert.Equal(["desk-host", "m3-host"], MotionClient.Hosts(directory));
@@ -48,7 +47,6 @@ public sealed class MotionPoolDesktopTests
                 Members = [PoolMember.Computer("m3-host"), PoolMember.Computer("m1-host") with { Off = true }, PoolMember.Computer("friend-host"),
                     PoolMember.Computer("gone-host"), PoolMember.Computer("desk-host")]
             }));
-            WorkSharingRoster.Forget();
             Assert.Equal(["m3-host", "desk-host"], MotionClient.Hosts(directory));
             using (var maker = Assert.IsType<PoolMotionMaker>(MotionClient.For(directory)))
             {
@@ -62,7 +60,6 @@ public sealed class MotionPoolDesktopTests
             // A list with nothing on turns motion off, whatever motion.json says.
             Assert.True(new MotionSettings { Place = MotionPlace.Host, HostId = "m3-host" }.Save(directory));
             Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Motion, new PoolList { Area = PoolAreas.Motion.Id }));
-            WorkSharingRoster.Forget();
             Assert.Empty(MotionClient.Hosts(directory));
             Assert.False(MotionClient.IsSetUp(directory));
             Assert.Null(MotionClient.For(directory));
@@ -71,7 +68,6 @@ public sealed class MotionPoolDesktopTests
         }
         finally
         {
-            WorkSharingRoster.Forget();
             Directory.Delete(directory, true);
         }
     }

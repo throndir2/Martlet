@@ -25,7 +25,6 @@ public sealed class PoolCloudTests
             Assert.False(PoolCloud.Usable(directory, SetupRole.Tts, openai));
             var key = Guid.NewGuid();
             Assert.True(new PoolKeys().With(PoolAreas.Speaking.Id, openai.Key, key).Save(directory));
-            WorkSharingRoster.Forget();
             var use = PoolCloud.Find(directory, SetupRole.Tts, openai);
             Assert.NotNull(use);
             Assert.Equal((SetupRouteType.OpenAi, "openai-tts", "alloy", key), (use.Type, use.Alias, use.Voice, use.CredentialId));
@@ -39,7 +38,6 @@ public sealed class PoolCloudTests
                 CredentialId = Guid.NewGuid()
             };
             JobSavedRoute.Save(directory, HostJob.Speaking.SavedFile, saved);
-            WorkSharingRoster.Forget();
             var member = PoolCloud.MemberOf(saved)!;
             Assert.Equal("cloud:openai/tts-1-hd", member.Key);
             var kept = PoolCloud.Find(directory, SetupRole.Tts, member with { Settings = new Dictionary<string, string>() });
@@ -49,7 +47,6 @@ public sealed class PoolCloudTests
             var eleven = Agreed(PoolMember.Cloud("elevenlabs", ElevenLabsSetup.ModelIds[0]).WithSetting(PoolSettingKeys.Voice, "voice0123456789abcde"),
                 PoolAreas.Speaking);
             Assert.True(PoolKeys.Load(directory).With(PoolAreas.Speaking.Id, eleven.Key, Guid.NewGuid()).Save(directory));
-            WorkSharingRoster.Forget();
             var elevenUse = PoolCloud.Find(directory, SetupRole.Tts, eleven);
             Assert.Equal((SetupRouteType.ElevenLabs, ElevenLabsSetup.Alias, ElevenLabsSetup.Origin), (elevenUse!.Type, elevenUse.Alias, elevenUse.Origin));
 
@@ -63,16 +60,14 @@ public sealed class PoolCloudTests
             {
                 Area = PoolAreas.Speaking.Id, Members = [PoolMember.Computer("m1-host"), openai, Agreed(PoolMember.Cloud("openai", "tts-1"), PoolAreas.Speaking)]
             }));
-            WorkSharingRoster.Forget();
-            var places = WorkSharingRoster.Places(directory, WorkSharingJobs.Speaking, "chatterbox", null, "m1-host",
+            var places = WorkSharingRoster.Shared.Places(directory, WorkSharingJobs.Speaking, "chatterbox", null, "m1-host",
                 m => PoolCloud.Usable(directory, SetupRole.Tts, m));
             Assert.Equal(["m1-host", openai.Key], places.Select(p => p.Host?.HostId ?? p.Cloud!.Key));
             // Order (the computers only) is unchanged for its other callers.
-            Assert.Equal(["m1-host"], WorkSharingRoster.Order(directory, WorkSharingJobs.Speaking, "chatterbox", null, "m1-host").Select(p => p.Host!.HostId));
+            Assert.Equal(["m1-host"], WorkSharingRoster.Shared.Order(directory, WorkSharingJobs.Speaking, "chatterbox", null, "m1-host").Select(p => p.Host!.HostId));
         }
         finally
         {
-            WorkSharingRoster.Forget();
             Directory.Delete(directory, true);
         }
     }

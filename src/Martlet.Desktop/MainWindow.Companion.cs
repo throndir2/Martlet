@@ -449,7 +449,7 @@ public partial class MainWindow
         switch (section)
         {
             case CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening: RenderJobTab(body, section); break;
-            case CompanionTab.Vision: RenderVisionPage(body); break;
+            case CompanionTab.Vision: VisionPage.Render(body); break;
             case CompanionTab.Reading: RenderReadingTab(body); break;
             case CompanionTab.Hearing: RenderHearingPage(body); break;
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;

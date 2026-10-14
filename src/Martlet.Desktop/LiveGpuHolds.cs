@@ -17,7 +17,7 @@ internal static class LiveGpuHolds
     // friend shares with this PC is never held: holds are its owner's (it answers a friend's hold with access.friend).
     private static IHostGpuHoldChannel? Connect(string hostId)
     {
-        if (WorkSharingRoster.DataDirectory is not { } directory) return null;
+        if (WorkSharingRoster.Shared.DataDirectory is not { } directory) return null;
         IReadOnlyList<PairedHost> hosts;
         try { hosts = HostRegistry.Load(directory); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return null; }

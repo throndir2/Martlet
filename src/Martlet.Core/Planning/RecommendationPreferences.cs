@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Martlet.Core.Cluster;
+using Martlet.Core.Settings;
 
 namespace Martlet.Core.Planning;
 
@@ -218,6 +219,7 @@ public sealed record RecommendationPreferences
             {
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
+            SettingsFiles.NotifySaved(path);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }

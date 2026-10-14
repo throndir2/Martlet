@@ -25,7 +25,6 @@ public sealed class VoiceRecognitionPoolTests : IDisposable
 
     public void Dispose()
     {
-        WorkSharingRoster.Forget();
         Directory.Delete(directory, true);
     }
 
@@ -41,7 +40,6 @@ public sealed class VoiceRecognitionPoolTests : IDisposable
     private void Save(params PoolMember[] members)
     {
         Assert.True(PoolSettings.SaveFor(directory, PoolAreas.VoiceRecognition, new PoolList { Area = PoolAreas.VoiceRecognition.Id, Members = members }));
-        WorkSharingRoster.Forget();
     }
 
     private static float[] Print(float lean)

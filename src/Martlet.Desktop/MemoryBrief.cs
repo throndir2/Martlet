@@ -211,9 +211,9 @@ internal static class MemoryBriefWriter
 internal sealed class MemoryBriefService : IDisposable
 {
     /// <summary>How long after a change a check waits, so a burst of changes (a sync, several facts) makes one check.</summary>
-    internal static TimeSpan Settle { get; set; } = TimeSpan.FromSeconds(30);
+    internal static TimeSpan Settle { get; } = TimeSpan.FromSeconds(30);
     /// <summary>The first check after Martlet starts, once the memory spaces had time to load.</summary>
-    internal static TimeSpan StartDelay { get; set; } = TimeSpan.FromSeconds(45);
+    internal static TimeSpan StartDelay { get; } = TimeSpan.FromSeconds(45);
     /// <summary>A brief taken from another computer isn't written again here sooner (the facts it names may still be on their
     /// way through the memory sync).</summary>
     internal static readonly TimeSpan AfterFollowing = TimeSpan.FromMinutes(2);

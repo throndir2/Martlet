@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 /// pool's own choices (which computers it never uses, which are kept for one companion PC), still in work-sharing.json.</summary>
 public partial class MainWindow
 {
-    private WorkSharingSettings SharingSettings() => WorkSharingRoster.Settings(store?.DataDirectory);
+    private WorkSharingSettings SharingSettings() => WorkSharingRoster.Shared.Settings(store?.DataDirectory);
 
     /// <summary>The host role that does a shared job.</summary>
     private static string SharingRole(string job) => job switch
@@ -64,7 +64,7 @@ public partial class MainWindow
         var settings = SharingSettings();
         WorkSharingStatusText.Text = WorkSharingStatusLine();
         // Each area's machines are a list on its own page now; this card says what each list holds and opens it.
-        foreach (var area in PoolAreas.All.Where(a => RoutePools.Any(p => p.Area == a) || WorkSharingRoster.Pool(store.DataDirectory, a) is not null))
+        foreach (var area in PoolAreas.All.Where(a => RoutePools.Any(p => p.Area == a) || WorkSharingRoster.Shared.Pool(store.DataDirectory, a) is not null))
             WorkSharingJobsPanel.Children.Add(PoolSummaryRow(area));
         WorkSharingJobsPanel.Children.Add(SharingJobCard(settings, WorkSharingJobs.DeepThinking));
         var hosts = clusterPlan.Nodes.Where(n => !n.Removed).Select(n => n.HostId)
@@ -102,7 +102,7 @@ public partial class MainWindow
     /// (<c>WorkSharingOpen-&lt;area&gt;</c>).</summary>
     private FrameworkElement PoolSummaryRow(PoolArea area)
     {
-        var list = WorkSharingRoster.Pool(store?.DataDirectory, area);
+        var list = WorkSharingRoster.Shared.Pool(store?.DataDirectory, area);
         var detail = PoolListSummary.Describe(area, list, list?.NoneOn != false ? SenseInstead(area) : null, names: true);
         var row = NetworkRowFrame();
         if (PoolTab(area) is { } tab)
@@ -119,7 +119,7 @@ public partial class MainWindow
 
     private static string WorkSharingStatusLine()
     {
-        var recent = WorkSharingRoster.Recent();
+        var recent = WorkSharingRoster.Shared.Recent();
         if (recent.Count == 0) return "Since Martlet started, no request from this PC needed another computer.";
         return "Since Martlet started: " + string.Join("; ", recent.OrderBy(r => r.Key, StringComparer.Ordinal).Select(r =>
             $"{WorkSharingJobs.Title(r.Key)} went elsewhere {r.Value.Count} time{(r.Value.Count == 1 ? "" : "s")} (last to {r.Value.Last.HostId}" +
@@ -262,7 +262,6 @@ public partial class MainWindow
             RenderWorkSharing();
             return false;
         }
-        WorkSharingRoster.Forget();
         ErrorLog.Info("Sharing work: " + done);
         ActionText.Text = done + " Your other computers follow it.";
         QueueSettingsSync();

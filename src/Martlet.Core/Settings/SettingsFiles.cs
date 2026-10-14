@@ -96,4 +96,11 @@ public static class SettingsFiles
     /// <summary>The registered file with this name (its path in the data folder), or null.</summary>
     public static SettingsFile? Find(string fileName) =>
         All.FirstOrDefault(file => string.Equals(file.FileName, fileName.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Raised with a file's full path after its store saved it on this computer, so a reader that keeps a copy (the
+    /// desktop's WorkSharingRoster) reads it again at once. Runs on the thread that saved; a handler must not throw.</summary>
+    public static event Action<string>? Saved;
+
+    /// <summary>For a store, after it saved <paramref name="path"/>: raises <see cref="Saved"/>.</summary>
+    public static void NotifySaved(string path) => Saved?.Invoke(path);
 }

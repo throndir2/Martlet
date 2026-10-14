@@ -149,7 +149,7 @@ internal sealed partial class LiveConversationController
     private DeepThinkingPool PoolPlan(IReadOnlyList<SetupRoute> routes, bool live = false, bool longJobs = false)
     {
         var pool = Volatile.Read(ref thinkingPool);
-        return (longJobs ? pool.ForLongJobs() : pool).Plan(routes, WorkSharingRoster.Settings(dataDirectory), WorkSharingRoster.Device,
+        return (longJobs ? pool.ForLongJobs() : pool).Plan(routes, WorkSharingRoster.Shared.Settings(dataDirectory), WorkSharingRoster.Device,
             live ? HostPresence.Offline : null);
     }
 

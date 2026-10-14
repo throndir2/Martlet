@@ -63,7 +63,7 @@ public partial class MainWindow
         var preferences = store is null ? new SingingPreferences() : SingingPreferences.Load(store.DataDirectory);
         EnsureSingingPool(preferences);
         var thisPc = ThisPcHost();
-        var listed = store is not null && WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.Singing) is not null;
+        var listed = store is not null && WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Singing) is not null;
         var members = store is null ? [] : SongClient.Members(store.DataDirectory);
         var active = store is not null && SongClient.IsSetUp(store.DataDirectory);
         var own = NetworkMap.Hosts(Inputs()).Where(h => !h.Shared).ToArray();
@@ -270,13 +270,12 @@ public partial class MainWindow
     private void SaveSingingMember(PoolMember member, string done)
     {
         if (store is null) return;
-        var list = WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.Singing) ?? new PoolList { Area = PoolAreas.Singing.Id };
+        var list = WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Singing) ?? new PoolList { Area = PoolAreas.Singing.Id };
         if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.Singing, list.With(member)))
         {
             ActionText.Text = "Couldn't save the Singing list on this PC.";
             return;
         }
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
         ErrorLog.Info("Pools: " + done);
         ActionText.Text = done + " Your other computers follow it.";
@@ -288,14 +287,13 @@ public partial class MainWindow
     /// one of your computers: the list is shared, and an empty one made here would turn singing off on your other computers.</summary>
     private void EnsureSingingPool(SingingPreferences preferences)
     {
-        if (store is null || WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.Singing) is not null) return;
+        if (store is null || WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Singing) is not null) return;
         var own = NetworkMap.Hosts(Inputs()).Where(h => !h.Shared).ToArray();
         if (preferences.Host is not { } saved || own.All(h => h.HostId != saved)) return;
         var list = new PoolList { Area = PoolAreas.Singing.Id };
         foreach (var id in own.Where(h => h.HostId != saved && Offers(h, HostRoles.Singing)).Select(h => h.HostId).Prepend(saved))
             list = list.With(PoolMember.Computer(id) with { Off = preferences.Off });
         if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.Singing, list)) return;
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
         ErrorLog.Info($"Pools: the Singing list was made from Companion › Singing's computer: {string.Join(", ", list.Members.Select(m => m.Name))}" +
             (preferences.Off ? " (all off: singing was off)." : "."));

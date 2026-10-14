@@ -44,7 +44,6 @@ public sealed class SingingPoolMembersTests
                 Members = [PoolMember.Computer("m4-host"), PoolMember.Computer("m1-host") with { Off = true }, PoolMember.Computer("friend-host"),
                     PoolMember.Computer("gone-host"), SingingPool.WithQuality(PoolMember.Computer("m3-host"), SongQuality.HighQuality)]
             }));
-            WorkSharingRoster.Forget();
             Assert.Equal(["m4-host", "m3-host"], SongClient.Members(directory).Select(m => m.Host.HostId));
             Assert.Equal(SongQuality.HighQuality, SingingPool.Quality(SongClient.Members(directory)[1].Member));
             Assert.Null(SingingPool.Quality(SongClient.Members(directory)[0].Member));
@@ -54,7 +53,6 @@ public sealed class SingingPoolMembersTests
             Assert.Equal("host:m4-host", BackgroundDuties.Singer(directory)!.Id);
             // An empty list is off, whatever singing.json says.
             Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Singing, new PoolList { Area = PoolAreas.Singing.Id }));
-            WorkSharingRoster.Forget();
             Assert.Empty(SongClient.Members(directory));
             Assert.False(SongClient.IsSetUp(directory));
             Assert.Null(BackgroundDuties.Singer(directory));

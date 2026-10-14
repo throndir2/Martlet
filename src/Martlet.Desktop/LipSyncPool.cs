@@ -58,14 +58,14 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
     /// <summary>The places from this PC's files: lip-sync's saved list, or the one made from the older choices.</summary>
     internal static IReadOnlyList<LipSyncPlace> FromFiles(AvatarProfile? profile)
     {
-        var directory = WorkSharingRoster.DataDirectory;
+        var directory = WorkSharingRoster.Shared.DataDirectory;
         var paired = directory is null ? new Dictionary<string, AvatarRemoteHost>(StringComparer.Ordinal)
-            : WorkSharingRoster.Hosts(directory).GroupBy(h => h.HostId, StringComparer.Ordinal)
+            : WorkSharingRoster.Shared.Hosts(directory).GroupBy(h => h.HostId, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.First().Pairing, StringComparer.Ordinal);
         var assigned = Assigned(profile);
         if (assigned is not null) paired.TryAdd(assigned.HostId, assigned);
-        var list = WorkSharingRoster.Pool(directory, PoolAreas.LipSync) ?? Migrate(profile, directory);
-        return FromList(list, paired, assigned is not null && WorkSharingRoster.IsShared(assigned.HostId) ? assigned : null);
+        var list = WorkSharingRoster.Shared.Pool(directory, PoolAreas.LipSync) ?? Migrate(profile, directory);
+        return FromList(list, paired, assigned is not null && WorkSharingRoster.Shared.IsShared(assigned.HostId) ? assigned : null);
     }
 
     /// <summary>The places for <paramref name="list"/>, in order (<see cref="PoolRouting.Stops(PoolArea, PoolList?, string, Func{PoolMember, PoolStop?})"/>
@@ -95,7 +95,7 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
     /// Audio2Face (in Devices › Sharing work's order for lip-sync), then this PC's own Audio2Face service.</summary>
     internal static PoolList Migrate(AvatarProfile? profile, string? directory) =>
         LipSyncSharing.FromOlderChoices(profile?.LipSync == AvatarLipSync.Loudness, Assigned(profile) is { } assigned
-            ? [.. WorkSharingRoster.Order(directory, WorkSharingJobs.LipSync, HostRoles.Audio2Face, null, assigned.HostId)
+            ? [.. WorkSharingRoster.Shared.Order(directory, WorkSharingJobs.LipSync, HostRoles.Audio2Face, null, assigned.HostId)
                 .Select(place => place.Host?.HostId ?? assigned.HostId)]
             : []);
 
@@ -179,7 +179,7 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
     {
         if (!await member.Link.ReadyAsync(token).ConfigureAwait(false))
             throw new Audio2FaceHostException("worker.unavailable", $"{member.HostId} isn't ready for lip-sync.");
-        await using var frames = WorkSharingRoster.Watched(member.HostId, "lip-sync",
+        await using var frames = WorkSharingRoster.Shared.Watched(member.HostId, "lip-sync",
             member.Link.AnimateAsync(ids, epoch, sampleRate, pcm, token), token).GetAsyncEnumerator(token);
         while (true)
         {

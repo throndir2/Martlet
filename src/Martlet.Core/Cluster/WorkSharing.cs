@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Martlet.Core.Settings;
 
 namespace Martlet.Core.Cluster;
 
@@ -177,6 +178,7 @@ public sealed record WorkSharingSettings
             {
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
+            SettingsFiles.NotifySaved(path);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }

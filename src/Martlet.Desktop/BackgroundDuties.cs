@@ -37,7 +37,7 @@ internal static class BackgroundDuties
     /// <summary>The computers that sing: the singing pool's members that are on and paired here (Companion › Singing's list),
     /// or, before the list, the computer Martlet sings on (singing.json).</summary>
     private static IReadOnlyList<string> Singers(string dataDirectory) =>
-        WorkSharingRoster.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
+        WorkSharingRoster.Shared.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
             ? [.. SongClient.Members(dataDirectory).Select(m => m.Host.HostId).Distinct(StringComparer.Ordinal)]
             : SingingPreferences.Load(dataDirectory).Host is { } host ? [host] : [];
 

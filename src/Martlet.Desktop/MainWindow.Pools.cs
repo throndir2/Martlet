@@ -65,7 +65,7 @@ public partial class MainWindow
     {
         var area = options.Area;
         var id = "Pool-" + area.Id;
-        var list = store is null ? new PoolList { Area = area.Id } : WorkSharingRoster.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
+        var list = store is null ? new PoolList { Area = area.Id } : WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
         var stack = new List<UIElement> { Heading(options.Heading) };
         if (options.Intro is not null) stack.Add(Note(options.Intro, new Thickness(0, 0, 0, 8)));
         var summary = Note(PoolListSummary.Describe(area, list, list.NoneOn ? options.Instead?.Invoke() : null), new Thickness(0, 0, 0, 8));
@@ -222,7 +222,6 @@ public partial class MainWindow
             ActionText.Text = $"Couldn't save the {area.Title} list on this PC.";
             return false;
         }
-        WorkSharingRoster.Forget();
         ErrorLog.Info($"Pools: {done}");
         ActionText.Text = done + (area.Shared ? " Your other computers follow it." : "");
         if (area.Shared) QueueSettingsSync();
@@ -265,7 +264,7 @@ public partial class MainWindow
         var made = false;
         foreach (var (area, role, job) in RoutePools)
         {
-            if (WorkSharingRoster.Pool(store.DataDirectory, area) is { } existing)
+            if (WorkSharingRoster.Shared.Pool(store.DataDirectory, area) is { } existing)
             {
                 // A graphics card of a computer is one row for its computer here: a host runs one route per engine.
                 if (existing.Members.Any(m => m.Kind == PoolMemberKind.Gpu))
@@ -285,7 +284,6 @@ public partial class MainWindow
             ErrorLog.Info($"Pools: made the {area.Title} list from Sharing work: {(list.Members.Count == 0 ? "empty" : string.Join(", ", list.Members.Select(m => m.Key)))}.");
         }
         if (!made) return;
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
     }
 
@@ -297,13 +295,12 @@ public partial class MainWindow
         var member = RouteMember(area, route);
         var known = poolRouteSeen.TryGetValue(area.Id, out var seen);
         poolRouteSeen[area.Id] = member?.Key;
-        if (member is null || route!.Enabled == false || WorkSharingRoster.Pool(store.DataDirectory, area) is not { } list) return;
+        if (member is null || route!.Enabled == false || WorkSharingRoster.Shared.Pool(store.DataDirectory, area) is not { } list) return;
         // A cloud route's key stays the member's own (pool-keys.json), so it can take its turn after the route moves elsewhere.
         if (member.Kind == PoolMemberKind.Cloud && route.CredentialId is { } credential)
         {
             var keys = PoolKeys.Load(store.DataDirectory);
-            if (keys.For(area.Id, member.Key) != credential && keys.With(area.Id, member.Key, credential).Save(store.DataDirectory))
-                WorkSharingRoster.Forget();
+            if (keys.For(area.Id, member.Key) != credential) keys.With(area.Id, member.Key, credential).Save(store.DataDirectory);
         }
         PoolList next;
         if (list.Find(member.Key) is null) next = list with { Members = [member, .. list.Members] };
@@ -313,7 +310,6 @@ public partial class MainWindow
             next = list.With(list.Find(member.Key)!.WithSetting(PoolSettingKeys.Voice, voice));
         else return;
         if (!PoolSettings.SaveFor(store.DataDirectory, area, next)) return;
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
         ErrorLog.Info($"Pools: {member.Name} does {area.Title} now, so it is first in the list.");
     }
@@ -323,7 +319,7 @@ public partial class MainWindow
     private async Task FollowPoolOnOffAsync(PoolArea area, SetupRole role)
     {
         if (store is null || setupService is null || area.ConversationFirst) return;
-        if (WorkSharingRoster.Pool(store.DataDirectory, area) is not { } list) return;
+        if (WorkSharingRoster.Shared.Pool(store.DataDirectory, area) is not { } list) return;
         var loaded = await setupService.LoadAsync(lifetime.Token);
         if (loaded.Error is not null || loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == role) is not { } route) return;
         var off = list.NoneOn;

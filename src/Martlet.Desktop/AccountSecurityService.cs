@@ -11,14 +11,13 @@ namespace Martlet.Desktop;
 /// becoming active and showing it, decrypting an account's files at unlock and encrypting them when it stops being active,
 /// *Sign in as someone else* and *Continue as ...?* (Prove sign-ins), checked changes to this PC's account directory, and what
 /// happens when Martlet closes (*Remember me on this PC* off signs out; encrypted accounts are encrypted). Runs at start and at
-/// switches, never during a reply. One per process (<see cref="Current"/>, set by App).
+/// switches, never during a reply. One per process (App.AccountSecurity).
 /// </summary>
 internal sealed class AccountSecurityService(AccountSession session, string dataDirectory)
 {
     private readonly Dictionary<Guid, byte[]> fileKeys = [];
     private readonly HashSet<Guid> justProved = [];
 
-    internal static AccountSecurityService? Current { get; set; }
 
     internal AccountSession Session => session;
     internal string DataDirectory => dataDirectory;

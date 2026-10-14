@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Martlet.Core.Settings;
 
 namespace Martlet.Core.Cluster;
 
@@ -430,6 +431,7 @@ public sealed record PoolSettings
             {
                 if (System.IO.File.Exists(temporary)) System.IO.File.Delete(temporary);
             }
+            SettingsFiles.NotifySaved(path);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
@@ -490,6 +492,7 @@ public sealed record PoolKeys
             {
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
+            SettingsFiles.NotifySaved(path);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }

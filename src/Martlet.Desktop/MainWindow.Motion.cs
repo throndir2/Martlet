@@ -35,7 +35,7 @@ public partial class MainWindow
     private void RenderMotionTab(Panel page)
     {
         EnsureMotionPool();
-        var list = store is null ? null : WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.Motion);
+        var list = store is null ? null : WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Motion);
         var listed = list is not null;
         var members = store is null ? [] : MotionClient.Members(store.DataDirectory);
         var older = store is null ? new MotionSettings() : MotionClient.Settings(store.DataDirectory);
@@ -127,7 +127,7 @@ public partial class MainWindow
     /// adding the role somewhere still turns motion on.</summary>
     private void EnsureMotionPool()
     {
-        if (store is null || WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.Motion) is not null) return;
+        if (store is null || WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Motion) is not null) return;
         var paired = MotionClient.Paired(store.DataDirectory).Select(h => h.HostId).ToArray();
         var runners = MotionPool.Runners(ClusterSync.LoadPlan(store.DataDirectory), null, ThisPcHost()?.HostId)
             .Concat(paired.Where(id => hostChecks.GetValueOrDefault(id)?.Offers?.ContainsKey(HostRoles.Motion) == true))
@@ -135,7 +135,6 @@ public partial class MainWindow
             .Distinct(StringComparer.Ordinal).ToArray();
         var older = MotionClient.Settings(store.DataDirectory);
         if (MotionPool.FirstList(older, runners) is not { } list || !PoolSettings.SaveFor(store.DataDirectory, PoolAreas.Motion, list)) return;
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
         ErrorLog.Info($"Pools: the Motion list was made from the motion choice ({older.Describe()}): " +
             (list.Members.Count == 0 ? "empty (off)." : string.Join(", ", list.Members.Select(m => m.Name)) + (list.NoneOn ? " (all off: motion was off)." : ".")));
@@ -145,11 +144,10 @@ public partial class MainWindow
     /// joins the Motion list at its end when the list exists and doesn't have it, so adding the role turns motion on there.</summary>
     private void JoinMotionPool(string hostId)
     {
-        if (store is null || WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.Motion) is not { } list) return;
+        if (store is null || WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Motion) is not { } list) return;
         var own = ThisPcHost()?.HostId;
         if (list.Members.Any(m => m.HostId == hostId || m.Kind == PoolMemberKind.ThisPc && hostId == own)) return;
         if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.Motion, list.With(PoolMember.Computer(hostId)))) return;
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
         ErrorLog.Info($"Pools: {hostId} runs Motion now, so it joined the Motion list.");
         if (!closing && openTab == CompanionTab.Motion) Dispatcher.InvokeAsync(RenderTab);

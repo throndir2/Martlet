@@ -19,8 +19,9 @@ public partial class MainWindow
     private void InitializeAccountSecurity()
     {
         if (accounts is null || store is null) return;
-        security = AccountSecurityService.Current is { } opened && opened.Session == accounts ? opened : new AccountSecurityService(accounts, store.DataDirectory);
-        AccountSecurityService.Current ??= security;
+        var app = Application.Current as App;
+        security = app?.AccountSecurity is { } opened && opened.Session == accounts ? opened : new AccountSecurityService(accounts, store.DataDirectory);
+        if (app is not null) app.AccountSecurity ??= security;
         securedAccount = accounts.AccountId;
         accounts.AccountChanged += () =>
         {

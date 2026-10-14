@@ -35,7 +35,7 @@ public partial class MainWindow
     private void InitializeFriends()
     {
         // A host a friend shares turned this PC away for its owner's own work: say so once, in plain words.
-        WorkSharingRoster.OwnerFirst += (hostId, job) => Dispatcher.InvokeAsync(() =>
+        WorkSharingRoster.Shared.OwnerFirst += (hostId, job) => Dispatcher.InvokeAsync(() =>
         {
             if (!closing) ActionText.Text = WorkSharingRoster.OwnerFirstText(hostId, job);
         });
