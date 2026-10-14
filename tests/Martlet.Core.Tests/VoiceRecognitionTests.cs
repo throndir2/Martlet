@@ -46,6 +46,20 @@ public sealed class VoiceRecognitionTests
         Assert.Equal("Voice recognition", WorkSharingJobs.Title(VoiceRecognitionRouter<int>.Lane));
     }
 
+    [Fact]
+    public void The_recommended_setup_puts_a_computer_first_and_keeps_this_pc_as_the_fallback()
+    {
+        // No list saved yet (this PC's processor alone): the computer goes before it.
+        Assert.Equal(["host:gpu-pc", "this-pc"], Keys(VoiceRecognitionPool.Targets(VoiceRecognitionPool.First(null, "gpu-pc"), "desk-1", Paired)));
+        // A computer already in the list but off, after this PC: it turns on and goes first; the others keep their order.
+        var moved = VoiceRecognitionPool.First(List(PoolMember.ThisPc(), PoolMember.Computer("m3-host"), PoolMember.Computer("gpu-pc") with { Off = true }), "gpu-pc");
+        Assert.Equal(["host:gpu-pc", "this-pc", "host:m3-host"], moved.Members.Select(m => m.Key));
+        Assert.All(moved.Members, m => Assert.False(m.Off));
+        Assert.True(VoiceRecognitionPool.IsFirst(moved, "gpu-pc"));
+        Assert.False(VoiceRecognitionPool.IsFirst(null, "gpu-pc"));
+        Assert.True(VoiceRecognitionPool.IsFirst(List(PoolMember.ThisPc() with { Off = true }, PoolMember.Computer("gpu-pc")), "gpu-pc"));
+    }
+
     // ---------- the keeper ----------
 
     private sealed class Engine(Func<bool> fails, List<string> log) : IVoiceEngine<int>

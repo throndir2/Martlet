@@ -314,7 +314,11 @@ public static class SetupExecutor
                 ? $"{machine} joins the Thinking pool by itself on its next check, once it runs the Thinking pool role."
                 : $"{machine} leaves the Thinking pool by itself once it no longer runs the Thinking pool role.");
         if (change.Kind is SetupChangeKind.JoinPool or SetupChangeKind.LeavePool)
-            return change.Job is WorkSharingJobs.Thinking or WorkSharingJobs.Listening or WorkSharingJobs.Speaking
+            return change.Job is WorkSharingJobs.VoiceRecognition
+                ? Item(SetupStepVerdict.Ready, change.Kind == SetupChangeKind.JoinPool
+                    ? $"The Voice recognition list: {machine} recognizes who is talking first; each companion PC's processor stays the fallback."
+                    : $"The Voice recognition list: {machine} no longer recognizes who is talking.")
+                : change.Job is WorkSharingJobs.Thinking or WorkSharingJobs.Listening or WorkSharingJobs.Speaking
                 ? Item(SetupStepVerdict.Ready, change.Kind == SetupChangeKind.JoinPool
                     ? $"The {Job(change.Job)} list: {machine} takes {Job(change.Job)} when the ones before it are busy."
                     : $"The {Job(change.Job)} list: {machine} no longer takes {Job(change.Job)}.")

@@ -37,6 +37,15 @@ public static partial class NetworkRecommender
                 }
                 if (job is ClusterJobs.Speaking or ClusterJobs.Listening) PoolChanges(job, decision, today, changes);
             }
+            // People: the host that recognizes voices goes first in Companion › People's Voice recognition list (after its role).
+            if (peopleFirst is { Join: true } first)
+                changes.Add(new SetupChange(SetupChangeKind.JoinPool, first.HostId,
+                    $"{NameOf(first.HostId)} goes first in the Voice recognition list.",
+                    $"{NameOf(first.HostId)} recognizes who is talking for every companion PC; when it doesn't answer in time, " +
+                    $"{OwnPcs()}'s processor does.")
+                {
+                    Benefit = SetupChangeBenefit.Improvement, Job = WorkSharingJobs.VoiceRecognition
+                });
             return SetupOrder(changes);
         }
 

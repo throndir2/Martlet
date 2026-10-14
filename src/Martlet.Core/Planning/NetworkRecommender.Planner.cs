@@ -35,6 +35,9 @@ public static partial class NetworkRecommender
         private string? cannotSpeak;
         /// <summary>The hosted Deep thinking model suggested for the Thinking pool (<see cref="OnlineDeepThinking"/>), or null.</summary>
         private ComponentOption? onlineDeep;
+        /// <summary>People: the host the recommendation sets up for voice recognition or puts first in Companion › People's Voice
+        /// recognition list, why, and whether it joins the list first (<see cref="People"/>); null when nothing changes.</summary>
+        private (string HostId, string Why, bool Join)? peopleFirst;
 
         public NetworkSetup Current { get; }
 
@@ -77,6 +80,7 @@ public static partial class NetworkRecommender
             Pool(ClusterJobs.Listening);
             SpareThinkingModels();
             Extras();
+            People();
             DeepThinking();
             Leftovers();
             var target = BuildTarget();

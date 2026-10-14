@@ -69,8 +69,9 @@ internal static class SimulatedRecommendedSetup
                 "on all your computers. Nothing was saved."));
 
         public Task<SetupStepResult> ShareAsync(string job, string machineId, bool join, CancellationToken cancel) =>
-            Task.FromResult(SetupStepResult.Done($"FIXTURE: {WorkSharingJobs.Title(job)} would {(join ? "" : "no longer ")}go to " +
-                $"{machineId} when its computer is busy. Nothing was saved."));
+            Task.FromResult(SetupStepResult.Done(job == WorkSharingJobs.VoiceRecognition
+                ? $"FIXTURE: {machineId} would {(join ? "go first in" : "leave")} the Voice recognition list. Nothing was saved."
+                : $"FIXTURE: {WorkSharingJobs.Title(job)} would {(join ? "" : "no longer ")}go to {machineId} when its computer is busy. Nothing was saved."));
 
         public Task<SetupRouteReading> ReadRouteAsync(string job, string optionId, CancellationToken cancel) =>
             Task.FromResult(new SetupRouteReading(SetupStepVerdict.Ready,

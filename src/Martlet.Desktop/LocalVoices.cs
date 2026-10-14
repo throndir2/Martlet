@@ -112,7 +112,11 @@ internal sealed class LocalVoices : IDisposable
         WriteChoice(EnabledFile, on);
         Enabled = on;
         if (on) keeper.Resume();
-        else keeper.Pause();
+        else
+        {
+            keeper.Pause();
+            unplaced.Clear();
+        }
         Changed?.Invoke();
         WriteStateSoon();
     }
@@ -130,8 +134,10 @@ internal sealed class LocalVoices : IDisposable
     }
 
     /// <summary>Who spoke in one utterance (16 kHz mono samples). Confident matches teach the voice a little more; a clearly new
-    /// voice with enough clean speech joins the list as "Voice N"; anything in between stays unattributed. A voice heard drops
-    /// any name it learned in conversation that is one of the <paramref name="companion"/>'s own, so nobody is called by it.</summary>
+    /// voice with enough clean speech joins the list as "Voice N"; anything in between stays unattributed, but waits up to 30
+    /// minutes in memory (its voiceprint, never audio) for others like it: a few that agree and sound like nobody known join the
+    /// list together (<see cref="UnplacedVoices"/>). A voice heard drops any name it learned in conversation that is one of the
+    /// <paramref name="companion"/>'s own, so nobody is called by it.</summary>
     internal HeardVoices Recognize(float[] samples, CompanionNames? companion = null)
     {
         if (!Active) return HeardVoices.None;
@@ -164,25 +170,23 @@ internal sealed class LocalVoices : IDisposable
                         heard.Add(new(roster.Resolve(match.Voice.Id), match.Kind, match.Score, speaker.CleanSeconds, false));
                         break;
                     case VoiceMatchKind.New:
-                        var (next, added) = roster.Add(speaker.Voiceprint, speaker.CleanSeconds, by, now, out var forgotten);
-                        roster = next;
-                        if (forgotten is not null)
-                            notes.Add($"Martlet forgot {forgotten.DisplayName} (not heard since {forgotten.LastHeardAt.ToLocalTime():yyyy-MM-dd}) " +
-                                $"to make room for a new voice: the voice list keeps at most {VoiceRoster.MaximumVoices:N0} voices. " +
-                                "Name a voice in Companion › People to keep it.");
-                        if (added is null && !listFullNoted)
-                            notes.Add($"A new voice wasn't added: the voice list is full ({VoiceRoster.MaximumVoices:N0} voices) and every " +
-                                "voice has a name or belongs to someone. Forget or merge a voice in Companion › People to make room.");
-                        listFullNoted = added is null;
+                        var added = AddLocked(speaker.Voiceprint, speaker.CleanSeconds, now, notes);
                         if (added is not null) spans.Add((added.Id, speaker.Start, speaker.End));
                         heard.Add(new(added, added is null ? VoiceMatchKind.Unsure : VoiceMatchKind.New, match.Score, speaker.CleanSeconds, added is not null));
                         break;
                     default:
-                        heard.Add(new(null, match.Kind, match.Score, speaker.CleanSeconds, false) { Closest = ClosestLocked(match) });
+                        // Unsure alone, but it may be a new voice that sounds a little like a known one (docs/VOICES.md#voices-heard-only-a-little).
+                        if (NoteUnplacedLocked(speaker.Voiceprint, speaker.CleanSeconds, now, notes) is { } grouped)
+                        {
+                            spans.Add((grouped.Id, speaker.Start, speaker.End));
+                            heard.Add(new(grouped, VoiceMatchKind.New, match.Score, speaker.CleanSeconds, true));
+                        }
+                        else heard.Add(new(null, match.Kind, match.Score, speaker.CleanSeconds, false) { Closest = ClosestLocked(match) });
                         break;
                 }
             }
-            // Too short to learn from: a confident match is still recognized, but nothing new is added.
+            // Too short to learn from: a confident match is still recognized, but nothing new is added from this utterance
+            // alone. One voice's short remarks of the last 30 minutes add up to a new voice (docs/VOICES.md#voices-heard-only-a-little).
             if (heard.Count == 0 && analysis.Whole is { } whole)
             {
                 var match = roster.Identify(whole);
@@ -191,6 +195,11 @@ internal sealed class LocalVoices : IDisposable
                     roster = roster.Heard(match.Voice!.Id, by, now);
                     spans.Add((match.Voice.Id, 0, samples.Length / (double)SpeakerEngine.SampleRate));
                     heard.Add(new(roster.Resolve(match.Voice.Id), match.Kind, match.Score, analysis.SpeechSeconds, false));
+                }
+                else if (analysis is { Voices: <= 1, Overlap: false } && NoteUnplacedLocked(whole, analysis.SpeechSeconds, now, notes) is { } grouped)
+                {
+                    spans.Add((grouped.Id, 0, samples.Length / (double)SpeakerEngine.SampleRate));
+                    heard.Add(new(grouped, VoiceMatchKind.New, match.Score, analysis.SpeechSeconds, true));
                 }
                 else heard.Add(new(null, match.Kind, match.Score, analysis.SpeechSeconds, false) { Closest = ClosestLocked(match) });
             }
@@ -253,6 +262,41 @@ internal sealed class LocalVoices : IDisposable
     private (byte[] Hash, SpeakerAnalysis Analysis)? identified;
     // A full list whose voices all have names was already noted in the log; noted again after a voice can be added.
     private bool listFullNoted;
+    // The voices heard in the last 30 minutes that couldn't be placed yet: voiceprints only, in memory only (docs/VOICES.md#voices-heard-only-a-little).
+    private readonly UnplacedVoices unplaced = new();
+
+    /// <summary>How many voiceprints of voices Martlet couldn't place yet wait for others like them (counts only).</summary>
+    internal int Unplaced => unplaced.Count;
+
+    // Adds a new voice ("Voice N") to the list (the caller holds the gate), noting when the full list forgot a voice or had no
+    // room. The voiceprints waiting that agree with it are that voice, so they are forgotten.
+    private KnownVoice? AddLocked(float[] voiceprint, double seconds, DateTimeOffset now, List<string> notes)
+    {
+        var (next, added) = roster.Add(voiceprint, seconds, by, now, out var forgotten);
+        roster = next;
+        if (forgotten is not null)
+            notes.Add($"Martlet forgot {forgotten.DisplayName} (not heard since {forgotten.LastHeardAt.ToLocalTime():yyyy-MM-dd}) " +
+                $"to make room for a new voice: the voice list keeps at most {VoiceRoster.MaximumVoices:N0} voices. " +
+                "Name a voice in Companion › People to keep it.");
+        if (added is null && !listFullNoted)
+            notes.Add($"A new voice wasn't added: the voice list is full ({VoiceRoster.MaximumVoices:N0} voices) and every " +
+                "voice has a name or belongs to someone. Forget or merge a voice in Companion › People to make room.");
+        listFullNoted = added is null;
+        if (added is not null) unplaced.Forget(voiceprint);
+        return added;
+    }
+
+    // Notes a voiceprint Martlet couldn't place (the caller holds the gate); the new voice when it completes a group of the
+    // last 30 minutes (UnplacedVoices), else null.
+    private KnownVoice? NoteUnplacedLocked(float[] voiceprint, double seconds, DateTimeOffset now, List<string> notes)
+    {
+        if (unplaced.Note(voiceprint, seconds, now, roster) is not { } group) return null;
+        var added = AddLocked(group.Voiceprint, group.Seconds, now, notes);
+        if (added is not null)
+            notes.Add($"Voice recognition: added {added.DisplayName} from {group.Utterances} short or uncertain utterances of the last " +
+                $"{UnplacedVoices.Window.TotalMinutes:0} minutes ({group.Seconds:0.0} s of speech) that sound like nobody Martlet knew.");
+        return added;
+    }
 
     // The known voice an Unsure match sounded most like (as the list has it now), for learning names only; null otherwise.
     private KnownVoice? ClosestLocked(VoiceMatch match) =>
@@ -385,8 +429,12 @@ internal sealed class LocalVoices : IDisposable
     }
     internal void Forget(string id) => Change(r => r.Forget(id, by, Now));
 
-    /// <summary>Forgets every voice (tombstones remain, so other copies drop them too).</summary>
-    internal void ForgetAll() => Change(r => r.Live.Aggregate(r, (current, voice) => current.Forget(voice.Id, by, Now)));
+    /// <summary>Forgets every voice (tombstones remain, so other copies drop them too), and the voiceprints that wait.</summary>
+    internal void ForgetAll()
+    {
+        unplaced.Clear();
+        Change(r => r.Live.Aggregate(r, (current, voice) => current.Forget(voice.Id, by, Now)));
+    }
 
     /// <summary>Merges another computer's copy into this PC's list; true when this PC's list changed.</summary>
     internal bool Merge(VoiceRoster incoming)
@@ -560,7 +608,7 @@ internal sealed class LocalVoices : IDisposable
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
             Volatile.Write(ref stateQueued, 0);
             VoiceRecognitionHosts.WriteState(directory, Enabled, keeper.Status, keeper.Loaded, LastRecognition, router.Hosts,
-                RecognitionTargets, RecognitionProblem);
+                RecognitionTargets, RecognitionProblem, unplaced.Count);
         });
     }
 

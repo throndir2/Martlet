@@ -118,14 +118,15 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
     // ---------- this PC's state, for MCP ----------
 
     /// <summary>Writes how recognition is doing on this PC to <see cref="StateFile"/> (this PC only, never shared; no audio, no
-    /// voiceprints, no names): this PC's engine, the last recognition, the computers tried and the places it tries now. MCP's
-    /// voices_status reads it.</summary>
+    /// voiceprints, no names): this PC's engine, the last recognition, the computers tried, the places it tries now and how many
+    /// voiceprints of voices it couldn't place yet wait (<paramref name="unplaced"/>, <see cref="Martlet.Core.Speakers.UnplacedVoices"/>).
+    /// MCP's voices_status reads it.</summary>
     internal static void WriteState(string directory, bool enabled, VoiceEngineStatus engine, bool loaded, VoiceRecognitionLast? last,
-        IReadOnlyList<VoiceRecognitionHost> hosts, IReadOnlyList<VoiceRecognitionTarget> tries, string? problem)
+        IReadOnlyList<VoiceRecognitionHost> hosts, IReadOnlyList<VoiceRecognitionTarget> tries, string? problem, int unplaced = 0)
     {
         var state = new
         {
-            schema_version = 1, updated_at = DateTimeOffset.UtcNow, enabled, problem,
+            schema_version = 1, updated_at = DateTimeOffset.UtcNow, enabled, problem, unplaced,
             engine = new
             {
                 state = engine.State.ToString().ToLowerInvariant(), loaded, engine.Problem, engine.Failures, failed_at = engine.FailedAt,

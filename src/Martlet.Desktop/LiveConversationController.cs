@@ -4373,13 +4373,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
 
-    // Voice ID (before anything is uploaded), then who is talking alongside speech-to-text: the audio to transcribe, or null
+    // Who is talking (alongside speech-to-text), then Voice ID (before anything is uploaded): the audio to transcribe, or null
     // with the reason published. Both look at the first minute of a longer turn (what the speaker engine takes at once).
     private BoundedWaveAudio? Screen(LiveConversationOperation operation, byte[] speech)
     {
         var permission = operation.Authorization;
         permission.Check();
         var voice = speech.AsSpan(0, Math.Min(speech.Length, VoiceCheckBytes));
+        // Voices are recognized (and learned) only from the microphone, never from what the PC plays. People hears every voice
+        // the microphone hears, also one Voice ID then ignores: Voice ID only decides whether Martlet answers.
+        if (operation.Listening?.Pc != true) Recognize(operation, voice);
         if (operation.Voiceprint is { } voiceprint)
         {
             operation.Publish(new("speaker.checking"));
@@ -4393,8 +4396,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             operation.Publish(new("speaker.verified"));
         }
-        // Voices are recognized (and learned) only from the microphone, never from what the PC plays.
-        if (operation.Listening?.Pc != true) Recognize(operation, voice);
         if (speech.Length < 2)
         {
             operation.Publish(new("mic.no_speech", Finished: true));

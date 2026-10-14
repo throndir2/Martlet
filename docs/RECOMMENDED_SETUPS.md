@@ -411,7 +411,9 @@ motion are fun on request, and they need the most graphics memory.
   Home Assistant always stay: People's choice is the same on all your
   computers, and Home Assistant runs your home. People's line names the first
   computer of the Voice recognition list that runs the role, else WeSpeaker
-  inside Martlet on the processor.
+  inside Martlet on the processor. While People is on, the recommendation also
+  sets People up on a host (see
+  [People in the recommended setup](#people-in-the-recommended-setup)).
 - **A companion PC's graphics card takes only Thinking and the voice.**
   Thinking goes first. Then comes your voice engine (Chatterbox Turbo) if it
   fits beside Thinking. If it doesn't fit, Chatterbox Nano goes on the card,
@@ -443,6 +445,32 @@ Parakeet on the processor, lip-sync by the voice's loudness, and Deep thinking,
 singing and pictures off. Reconfigure turns singing off first, then sets up
 Thinking, then listening, lip-sync and the voice.
 
+### People in the recommended setup
+
+People (recognizing who is talking, [VOICES](VOICES.md)) is part of the
+recommended setup. It is on by default; you turn it on or off on Companion ›
+People, and the review says so when it is off. While it is on:
+
+1. With one companion PC alone, nothing changes: WeSpeaker inside Martlet
+   recognizes voices on its processor.
+2. When a host that answers already runs the Voice recognition role, it stays
+   where it runs. If that host isn't first in People's Voice recognition list,
+   Reconfigure puts it first.
+3. Else Reconfigure installs the role on a host that Martlet can change, and
+   puts that host first in the list. There are two routes:
+   - **The GPU route:** the role's CUDA build on an NVIDIA graphics card with
+     room for it (under 1 GB) beside the jobs that come first. It is
+     faster than a processor.
+   - **The CPU route:** the same models on the host's processor, when no
+     host's card has room.
+4. Each companion PC's processor stays the fallback: when the host doesn't
+   answer in time, the companion PC recognizes the voice itself, so no reply
+   waits for it. A companion PC never gets the role: it stays light for games.
+
+The review's People line names the host and the card or processor, and the
+changes are an *Install* step and a *goes first in the Voice recognition list*
+step. The recommender never moves or removes a Voice recognition role.
+
 ### Every way to extend Martlet
 
 An audit (2026-10-08, updated 2026-10-13) of every host role in
@@ -467,7 +495,7 @@ that every host role has a catalog option.
 | 6 | Vision | The image model: looks at your screen or a camera | Thinking's own model (nothing more), a graphics card (Ollama on this PC or a paired computer), or online | None (Ollama) | Optional | Yes | Companion › Vision |
 | 7 | Reading | Reads the small text on the screen while Martlet watches | The processor: Windows OCR inside Martlet, or RapidOCR or PP-OCRv5 mobile in the Reading role; PP-OCRv5 server on an NVIDIA graphics card | `ocr` | Optional | Yes | Companion › Reading |
 | 8 | Hearing | The audio model: hears how you say things | Thinking's own model (nothing more), a graphics card (Ollama on this PC), or online (NVIDIA Build's Nemotron 3 Nano Omni) | None (Ollama) | Optional | Yes | Companion › Hearing |
-| 9 | People | Recognizes who is talking (pyannote and WeSpeaker voiceprints) | The processor inside Martlet (about 0.16 GB, 4 threads for 0.16 s per utterance), or the Voice recognition role on another computer's NVIDIA card or processor, with this PC's processor as the fallback | `voice-recognition` | Optional, on by default | Yes | Companion › People |
+| 9 | People | Recognizes who is talking (pyannote and WeSpeaker voiceprints) | The processor inside Martlet (about 0.16 GB, 4 threads for 0.16 s per utterance), or the Voice recognition role on a host's NVIDIA card or processor, which the recommended setup installs when a host answers, with this PC's processor as the fallback | `voice-recognition` | Optional, on by default | Yes | Companion › People |
 | 10 | Deep thinking | The Thinking pool: thinks longer, web research, screen and sound summaries, judges, helper jobs, check-ins | A graphics card, or online | `deep-thinking` | Optional | Yes | Companion › Thinking pool |
 | 11 | Smart home | Home Assistant, the hub that controls your devices | The processor of a Linux computer with Docker Engine, always on, or your own hub | `home-assistant` | Optional | Yes | Companion › Smart home |
 | 12 | Singing | Sings songs on request | A large NVIDIA card | `singing` | Optional | Yes | Companion › Singing |

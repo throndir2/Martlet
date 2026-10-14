@@ -11,6 +11,12 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - **See everything Martlet sent to make a reply**: each of Martlet's messages in the talk window now has a *What was sent* link. It opens a window with the whole request, in the order it went to the Thinking model: the instructions (part by part: persona, tools, voice, closing), the conversation history, your message, the notes with it (lorebook entries, remembered facts and more), the context notes, the picture you can open full size, the recording you can play, any tool calls and their results, the tools it could use and the request's settings. Each part has its own color, and a bar shows how much of the request each part takes. ([#899](https://github.com/throndir2/Martlet/pull/899))
+- **The recommended setup sets up recognizing who is talking**: when one of your hosts answers, Reconfigure installs Martlet's Voice recognition role there, on its NVIDIA graphics card when it has room or else on its processor, and puts it first in Companion › People's list, so your companion PCs stay light. Each companion PC still recognizes voices itself when the host doesn't answer in time. ([#900](https://github.com/throndir2/Martlet/pull/900))
+
+### Fixed
+
+- **Martlet notices new people who say only a little**: a guest who makes only short remarks, or who sounds a bit like someone Martlet already knows, now shows up in Companion › People once a few of their remarks within 30 minutes agree. Martlet keeps no audio for this, only voiceprints in memory. ([#900](https://github.com/throndir2/Martlet/pull/900))
+- **Voice ID no longer hides other people from People**: with *only respond to my voice* on, Martlet still ignores other voices, but now learns them in Companion › People too. ([#900](https://github.com/throndir2/Martlet/pull/900))
 
 ## [0.79.0] - 2026-10-13
 

@@ -231,6 +231,25 @@ public sealed class SetupExecutionTests
     }
 
     [Fact]
+    public async Task People_puts_a_computer_first_in_the_voice_recognition_list()
+    {
+        var targets = new Targets();
+        SetupChange[] changes =
+        [
+            new(SetupChangeKind.JoinPool, "gpu-box", "gpu-box goes first in the Voice recognition list.", "w") { Job = WorkSharingJobs.VoiceRecognition }
+        ];
+        var recommendation = new NetworkRecommendation(new([], []), new([], []), changes) { Fingerprint = "people" };
+        var preflight = await SetupExecutor.PrepareAsync(recommendation, targets, default);
+        var item = Assert.Single(preflight.Items);
+        Assert.Equal(SetupStepVerdict.Ready, item.Verdict);
+        Assert.Contains("gpu-box recognizes who is talking first", item.Text, StringComparison.Ordinal);
+
+        var outcome = await SetupExecutor.ApplyAsync(recommendation, preflight, targets, null, default);
+        Assert.True(outcome.Succeeded);
+        Assert.Equal(["voice-recognition+gpu-box"], targets.Shared);
+    }
+
+    [Fact]
     public async Task Apply_never_makes_a_change_the_review_did_not_show_or_one_it_could_not_make()
     {
         var targets = new Targets();
