@@ -573,6 +573,7 @@ NVIDIA Build and its old key.
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
 | `memory-brief` | The [memory brief](MEMORY.md#the-memory-brief) (`memory-brief.json`): its text, on or off, whether Martlet or the owner wrote it and the facts it was written from, so every computer sends the same one and none writes it again for facts that didn't change | |
+| `known-programs` | The [programs Martlet knows](APP_GUIDES.md#known-programs) (`known-programs.json`): whether each program is a game or an app and its usual name, so a program is looked up on the web once for all computers. Both computers' programs are kept | |
 | `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |

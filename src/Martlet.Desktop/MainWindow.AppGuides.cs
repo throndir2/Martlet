@@ -15,6 +15,7 @@ public partial class MainWindow
 {
     private AppGuideService? appGuides;
     private AppGuideWatch? appGuideWatch;
+    private ProgramKnowledge? programKnowledge;
     // The library revision the page last drew its list for: other changes (reading-up progress) only update its status lines.
     private int appGuidesDrawn = -1;
     private TextBlock? appGuidesNowText, appGuidesFrontText;
@@ -34,7 +35,8 @@ public partial class MainWindow
             conversation.Guides = appGuides;
             conversation.StartGuideResearch(appGuides, web);
         }
-        appGuideWatch = new AppGuideWatch(appGuides);
+        programKnowledge = new ProgramKnowledge(store.DataDirectory, web, () => conversation?.GuideThinker) { Log = ErrorLog.Info };
+        appGuideWatch = new AppGuideWatch(appGuides, programKnowledge);
         appGuideWatch.OfferDue += offer => Dispatcher.BeginInvoke(() => OfferAppGuide(offer));
         appGuides.Changed += () => Dispatcher.BeginInvoke(AppGuidesChanged);
         LoadAppGuidesAsync().Forget();
@@ -61,6 +63,7 @@ public partial class MainWindow
     {
         conversation?.StopGuideResearch();
         appGuideWatch?.Dispose();
+        programKnowledge?.Dispose();
         appGuides?.Dispose();
     }
 
@@ -135,7 +138,10 @@ public partial class MainWindow
             "wiki sites see the requests and this PC's " +
             "internet address. The guides stay on this PC. To stop a read, press Stop reading below or tell Martlet no. To stop it " +
             "from reading up on its own, turn off Read up when I start a game or app. To notice a game, Martlet looks only at the " +
-            "name of the program in front and whether it fills the screen, never at window titles or the screen.",
+            "name of the program in front and whether it fills the screen, never at window titles or the screen. When it can't " +
+            "tell from the program's files whether a program you open is a game, it sends the name and maker the program's file " +
+            "gives to DuckDuckGo once, and a Thinking pool helper reads the results. What it learns is kept with your settings " +
+            "on all your computers, so it never asks again.",
             new Thickness(24, 2, 0, 8));
         AutomationProperties.SetAutomationId(disclosure, "AppGuidesDisclosure");
         var ask = new CheckBox { Content = "Read up when I start a game or app", IsChecked = library.ReadUpWhenStarted, IsEnabled = library.On };
@@ -145,7 +151,7 @@ public partial class MainWindow
         var askNote = Note("When a game, or an app on your list, without a guide comes to the front, Martlet reads up on it on its " +
             "own and tells you, in character. If you tell it you'd rather it didn't, it stops and doesn't read up on that app on its " +
             "own again.", new Thickness(24, 2, 0, 4));
-        var front = Note(AppGuidesFront(guides), new Thickness(0, 8, 0, 0));
+        var front = Note(AppGuidesFront(guides, programKnowledge), new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(front, "AppGuidesFront");
         AutomationProperties.SetLiveSetting(front, AutomationLiveSetting.Polite);
         appGuidesFrontText = front;
@@ -280,17 +286,30 @@ public partial class MainWindow
         return text;
     }
 
-    /// <summary>What is in front, as App guides sees it.</summary>
-    private static string AppGuidesFront(AppGuideService guides)
+    /// <summary>What is in front, as App guides sees it, and how many programs Martlet knows.</summary>
+    private static string AppGuidesFront(AppGuideService guides, ProgramKnowledge? knowledge)
     {
         if (!guides.On) return "Martlet doesn't look at which app is in front while App guides are off.";
-        if (guides.Front is not { } front) return "In front: nothing Martlet has noticed yet.";
+        var known = knowledge is null ? "" : KnownProgramsLine(knowledge);
+        if (guides.Front is not { } front) return "In front: nothing Martlet has noticed yet." + known;
         var name = front.Entry?.Name ?? (front.Program.Length > 0 ? front.Program : front.File);
-        var what = front.Game ? "a game" : front.Entry is not null ? "on your list" : "not a game";
+        var what = front.Game ? "a game"
+            : front.Entry is not null ? "on your list"
+            : knowledge?.Find(front.File) is not null ? "not a game"
+            : knowledge?.Busy == true ? "looking up what it is"
+            : "not a game, as far as Martlet knows";
         var guide = front.Entry is { BuiltAt: not null } entry
             ? guides.IsReady(entry.Key) ? "its guide is ready" : "its guide is loading"
             : "no guide";
-        return $"In front: {name} ({what}{(front.FullScreen ? ", full screen" : "")}), {guide}.";
+        return $"In front: {name} ({what}{(front.FullScreen ? ", full screen" : "")}), {guide}." + known;
+    }
+
+    private static string KnownProgramsLine(ProgramKnowledge knowledge)
+    {
+        var all = knowledge.Known.Programs;
+        if (all.Count == 0) return "";
+        var games = all.Count(p => p.Game);
+        return $" Martlet knows {all.Count} program{(all.Count == 1 ? "" : "s")} ({games} game{(games == 1 ? "" : "s")}).";
     }
 
     /// <summary>A row's line: its guide (pages, size, when, where from), a problem, being read now, or declined.</summary>
@@ -317,7 +336,7 @@ public partial class MainWindow
     {
         if (appGuides is not { } guides) return;
         if (appGuidesNowText is not null) appGuidesNowText.Text = AppGuidesNow(guides);
-        if (appGuidesFrontText is not null) appGuidesFrontText.Text = AppGuidesFront(guides);
+        if (appGuidesFrontText is not null) appGuidesFrontText.Text = AppGuidesFront(guides, programKnowledge);
         foreach (var entry in guides.Library.Apps)
             if (appGuideRows.TryGetValue(entry.Key, out var line)) line.Text = AppGuideStatus(guides, entry);
     }

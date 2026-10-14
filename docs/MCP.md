@@ -7261,6 +7261,16 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   `saved` (the brief and areas in the library), `thinkingRequests` (each kind
   with its count and largest input), `sameInstructionsEveryTime` and `log`
   (counts and times only; no area names or links).
+- `knownPrograms` ([known programs](APP_GUIDES.md#known-programs), with FIXTURE
+  search results and a canned pool member, NOT the web or a model): `lookedUp`
+  (*StarRail* with *Star Rail* and *HoYoVerse SG* in its file becomes the game
+  *Honkai: Star Rail*, `web`), `readsUpOn` (the offer uses that name),
+  `lookedUpAgain` false, `app` (an app is kept and `appReadUpOn` is null),
+  `couldntTell` (not kept, `triedAgainThisSession` false), `filesKeepWebName`,
+  `ownerChoiceKept`, `withoutPoolMember` false, `afterRestart`,
+  `searchQueries`, `poolAsks` and `twoComputers` (two simulated computers with
+  `KnownProgramsFile.Section`: `shared` true when both lists end the same and
+  hold both programs, `applied`, `waitingNotes` and `scope` `household`).
 
 Each part has an `ok`. Temporary folder, deleted afterwards; reads no
 credentials.
@@ -7270,7 +7280,9 @@ absolute `dataDirectory`, default the current user's; the script gives it its
 disposable one): `folder` (`<data folder>\guides`), whether it `exists`, whether
 `library.json` is `saved` (else `on` and `readUpWhenStarted` are the defaults,
 both on), `on`,
-`readUpWhenStarted` (kept as `askWhenStarted` in the file), how many `guides`, `pages` and `bytes`, and each app on the
+`readUpWhenStarted` (kept as `askWhenStarted` in the file), `knownPrograms`
+(`known-programs.json`: `saved`, `readable`, `count`, `games` and the newest 50
+`programs` with `program`, `name`, `game`, `by` and `at`), how many `guides`, `pages` and `bytes`, and each app on the
 list (`apps`): `key`, `name`, `programs`, `sites` (the start pages the owner
 gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem`, whether
 its guide `file` is there, whether it has a `brief` with `briefAt` and

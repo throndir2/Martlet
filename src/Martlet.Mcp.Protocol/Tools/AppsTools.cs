@@ -337,12 +337,16 @@ internal sealed partial class McpServer
             "from the links with notes on what the user does now, added to the guide; only the " +
             "indexes that can be used now kept in memory (none at start, the app in front's, the 2 used last, none after the idle " +
             "time); and the tools (read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one " +
-            "at a time and 4 an hour). Reports counts, relevance and search time, also on a guide of 25,000 sections. Temporary folder, deleted " +
+            "at a time and 4 an hour); and known programs (a program Martlet can't tell from its files looked up once with FIXTURE " +
+            "search results and a stand-in pool member: a game kept under its usual name and read up on, an app kept, an answer that " +
+            "doesn't tell not kept, the owner's choice kept, nothing without a pool member, and known-programs.json shared between " +
+            "two simulated computers keeping both lists). Reports counts, relevance and search time, also on a guide of 25,000 sections. Temporary folder, deleted " +
             "afterwards; reads no credentials.", new { },
             async (_, cancellation) => await AppGuidesCheck.RunAsync(cancellation)),
         Tool("app_guides_status", "Companion > App guides from a data directory (guides\\library.json): whether the library is saved " +
             "(else the defaults: both on), whether App guides are on and " +
-            "read up when a game starts, and each app on the list with its program names, start pages, whether the owner said no " +
+            "read up when a game starts, the programs Martlet knows (known-programs.json: count, games and the newest 50 with their " +
+            "name, kind, source and time), and each app on the list with its program names, start pages, whether the owner said no " +
             "to reading up on it, its guide's pages, sections, size and time, and the last problem. Never a guide's text. Read-only.", new
         {
             dataDirectory = new { type = "string" }

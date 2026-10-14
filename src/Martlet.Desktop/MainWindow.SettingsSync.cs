@@ -296,6 +296,7 @@ public partial class MainWindow
         TouchTemperamentKey => "touch temperaments",
         ConversationHistoryKey => "your conversation history choices",
         MemoryBriefFile.SharedKey => "the memory brief",
+        KnownProgramsFile.SharedKey => "the programs Martlet knows",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",
@@ -620,6 +621,8 @@ public partial class MainWindow
         // Finding by meaning (on or off, and which embedding model) is the household's choice, the same on every computer; each
         // computer makes its own vectors.
         yield return MeaningSearchFile.Section(directory, () => conversation?.Meaning?.Reload());
+        // The programs Martlet knows (a game or an app, and its usual name) are the household's: one look-up serves every computer.
+        yield return KnownProgramsFile.Section(directory, () => programKnowledge?.Reload());
         yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
             Task.FromResult<SharedLocal?>(localVoices.Available
                 ? new(JsonSerializer.Serialize(new SharedSwitch(localVoices.Enabled), SharedJson), null, localVoices.EnabledChangedAt is null,

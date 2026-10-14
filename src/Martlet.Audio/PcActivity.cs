@@ -161,6 +161,15 @@ public static class PcActivity
         return new(PcActivityKind.Other, Clean(app.Process) is { Length: > 0 } name ? name : "an app");
     }
 
+    /// <summary>Whether Martlet knows <paramref name="process"/> by its name: a browser, a player or an app it names (Discord,
+    /// OBS, Steam and other launchers). Such a program is never looked up on the web.</summary>
+    public static bool KnownApp(string? process)
+    {
+        if (string.IsNullOrWhiteSpace(process)) return false;
+        var key = Key(process);
+        return Browsers.ContainsKey(key) || Players.ContainsKey(key) || Apps.ContainsKey(key) || Named.ContainsKey(key);
+    }
+
     /// <summary>Every source is a video, stream, show, movie, music or game (never a voice chat, a call, a browser on a site
     /// Martlet doesn't know or an unknown app, which may play the user's own voice back).</summary>
     public static bool MediaOnly(IReadOnlyCollection<PcSource>? sources) => sources is { Count: > 0 } && sources.All(source => source.Media);

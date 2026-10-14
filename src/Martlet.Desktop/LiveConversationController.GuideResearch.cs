@@ -11,9 +11,14 @@ namespace Martlet.Desktop;
 internal sealed partial class LiveConversationController
 {
     private AppGuideResearcher? guideResearch;
+    private PoolGuideThinker? guideThinker;
 
     /// <summary>The research on games and apps with a guide; null before <see cref="StartGuideResearch"/>.</summary>
     internal AppGuideResearcher? GuideResearch => Volatile.Read(ref guideResearch);
+
+    /// <summary>Research's model work on the Thinking pool (Research jobs, never the conversation's own route), for looking up
+    /// programs Martlet doesn't know.</summary>
+    internal IGuideThinker GuideThinker => guideThinker ??= new PoolGuideThinker(() => ThinkingPool);
 
     /// <summary>Starts the research for <paramref name="guides"/>: a brief after every read, and a look at each new screen summary
     /// (at most every few minutes) for an area to research.</summary>

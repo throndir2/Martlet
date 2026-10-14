@@ -504,10 +504,37 @@ the limits above.
   game runs in exclusive full screen, and tells a game with
   `PcActivity.Classify` (a game library folder, a game engine's files beside
   its program (Unity or an Unreal shipping build, so a windowed game in any
-  folder counts) or exclusive full screen). It
+  folder counts) or exclusive full screen) and with the [known
+  programs](#known-programs). It
   matches the program to the list by key, name or program names, ignoring case
   and punctuation (*ELDEN RING™* is *Elden Ring*). Martlet's own windows are
   passed over.
+- **Known programs** (`ProgramKnowledge`, kept in `KnownProgramsFile`): what
+  each program the user opens is (a game or an app) and its usual name, so a
+  later look knows it at once. <a id="known-programs"></a>
+  1. A game its files tell (a game library or a game engine) is kept as known
+     (`files`).
+  2. A program in front that Martlet doesn't know, can't tell from its files
+     and doesn't know by name (`PcActivity.KnownApp`: browsers, players,
+     Discord, launchers and others), outside the Windows folder, is looked up
+     in the background while *Read up when I start a game or app* is on. The
+     name and maker in its program file (for example *Star Rail* and
+     *HoYoVerse SG*) go to the web search (DuckDuckGo). A Thinking pool member
+     (a Research job, never the conversation's own route) reads at most 6
+     results and answers in JSON: a game or an app, and its usual name (*Honkai:
+     Star Rail*). The answer is kept (`web`), and the next look uses it: a game
+     is read up on under its usual name.
+  3. Only one look-up runs at a time, at most 20 an hour, and each program at
+     most once a session. Without a pool member that can take research,
+     nothing is searched. An answer that doesn't tell is not kept.
+  4. What the files tell never replaces what the web or the owner told, and
+     Martlet never replaces the owner's own choice (`owner`).
+  5. The list is `known-programs.json` in the data folder (at most 1,000
+     programs), shared as the household setting `known-programs`, so a program
+     is looked up once for all the owner's computers. Taking another
+     computer's list keeps the programs only this computer knows; the next
+     sync shares them.
+  6. The log gets counts and times only, never a program's name.
 - **Reading up on its own.** When a game (or an app on the list) without a
   guide comes to the front, *Read up when I start a game or app* is on, nothing
   else is being read up on, the user never said no to it and its last try

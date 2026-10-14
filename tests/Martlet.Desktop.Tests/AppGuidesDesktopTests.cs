@@ -2,6 +2,7 @@ using System.Text.Json;
 using Martlet.Conversation;
 using Martlet.Conversation.Guides;
 using Martlet.Conversation.Tests;
+using Martlet.Core.Settings;
 using Martlet.Desktop;
 using Martlet.Providers.Tests;
 
@@ -228,6 +229,60 @@ public sealed class AppGuidesDesktopTests
             Assert.Equal(("Star Rail", "StarRail", true), AppGuideWatch.Describe(path, "Star Rail", fullScreen: false, exclusive: false));
         }
         finally { folder.Delete(recursive: true); }
+    }
+
+    [Fact]
+    public async Task TheWatchUsesKnownProgramsKeepsGamesItsFilesTellAndLooksUpTheRest()
+    {
+        var folder = Directory.CreateTempSubdirectory("martlet-guide-known-");
+        try
+        {
+            var search = new LookUpSearch();
+            var thinker = new LookUpThinker();
+            using var knowledge = new ProgramKnowledge(folder.FullName, search, () => thinker);
+            var games = Path.Combine(folder.FullName, "Games");
+
+            // A game its files tell is kept as known.
+            Assert.Equal(("Frost Runner", true), AppGuideWatch.Know(knowledge, ("Frost Runner", "FrostRunner", true),
+                Path.Combine(games, "FrostRunner.exe"), mayLookUp: true));
+            Assert.Equal(KnownProgramsFile.ByFiles, knowledge.Find("FrostRunner")?.By);
+
+            // Programs Martlet knows by name, those in the Windows folder, and any while Read up is off are never looked up.
+            AppGuideWatch.Know(knowledge, ("Discord", "Discord", false), Path.Combine(games, "Discord.exe"), mayLookUp: true);
+            AppGuideWatch.Know(knowledge, ("Notepad", "notepad", false),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "notepad.exe"), mayLookUp: true);
+            AppGuideWatch.Know(knowledge, ("Star Rail", "StarRail", false), Path.Combine(games, "StarRail.exe"), mayLookUp: false);
+            Assert.Empty(search.Queries);
+
+            // An unknown program is looked up in the background; the next looks use its usual name.
+            Assert.Equal(("Star Rail", false), AppGuideWatch.Know(knowledge, ("Star Rail", "StarRail", false),
+                Path.Combine(games, "StarRail.exe"), mayLookUp: true));
+            for (var i = 0; i < 200 && knowledge.Find("StarRail") is null; i++) await Task.Delay(10);
+            Assert.Equal(("Honkai: Star Rail", true), AppGuideWatch.Know(knowledge, ("Star Rail", "StarRail", false),
+                Path.Combine(games, "StarRail.exe"), mayLookUp: true));
+            Assert.Equal(["Star Rail"], search.Queries);
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
+    private sealed class LookUpSearch : IWebSearch
+    {
+        private readonly List<string> queries = [];
+        public IReadOnlyList<string> Queries { get { lock (queries) return [.. queries]; } }
+
+        public Task<IReadOnlyList<WebSearchResult>> SearchAsync(string query, CancellationToken cancellationToken)
+        {
+            lock (queries) queries.Add(query);
+            return Task.FromResult<IReadOnlyList<WebSearchResult>>([new("Honkai: Star Rail", "https://hsr.example/", "A space fantasy RPG.")]);
+        }
+    }
+
+    private sealed class LookUpThinker : IGuideThinker
+    {
+        public bool CanThink => true;
+
+        public Task<(string? Text, string? Problem)> ThinkAsync(GuideThinkingAsk ask, CancellationToken cancellationToken) =>
+            Task.FromResult<(string?, string?)>(("{\"kind\":\"game\",\"name\":\"Honkai: Star Rail\"}", null));
     }
 
     private static string Instructions(byte[] body)

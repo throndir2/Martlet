@@ -63,6 +63,7 @@ public static class SettingsFiles
             "Martlet.Core.Planning.RecommendationPreferences"),
         new(PoolSettings.FileName, SettingsFileScope.Shared, PoolSettings.SharedKey, "Martlet.Core.Cluster.PoolSettings"),
         new(MeaningSearchFile.FileName, SettingsFileScope.Shared, MeaningSearchFile.SharedKey, "Martlet.Core.Settings.MeaningSearchFile"),
+        new(KnownProgramsFile.FileName, SettingsFileScope.Shared, KnownProgramsFile.SharedKey, "Martlet.Core.Settings.KnownProgramsFile"),
         new("character-actions.json", SettingsFileScope.Shared, "character-actions", "Martlet.Avatar.Hosting.CharacterActions"),
         new("updates.json", SettingsFileScope.Shared, "updates", "Martlet.Desktop.UpdatePreferences"),
         // Each person's.

@@ -10,6 +10,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- **Martlet looks up programs it doesn't know**: when you open a program and Martlet can't tell from its files whether it's a game, it searches the web for it once and a Thinking pool helper decides what it is and what it's called (Star Rail becomes *Honkai: Star Rail*). Martlet remembers the answer on all your computers, so a game is read up on right away the next time. ([#898](https://github.com/throndir2/Martlet/pull/898))
+
 - **Martlet keeps track of where you are in your game**: while you play, it keeps a short running note of the place you're at, what you're doing, what happened lately and how far you seem to be, updated from what it sees on your screen, so it knows what's going on even when you haven't said anything for a while. It needs App guides, screen summaries and a Thinking pool member, and adds no wait to replies. ([#897](https://github.com/throndir2/Martlet/pull/897))
 - **Singing's music and voice match each have their own list**: Companion › Singing now has a *Music* list (the computers that write a song) and a *Voice match* list (the computers that change the singing into Martlet's voice), so one computer can write the music while another matches the voice. Each computer chooses its own quality or voice match model, and your other computers follow the same lists. With nothing on in the *Voice match* list, songs keep the music model's own singer. ([#894](https://github.com/throndir2/Martlet/pull/894))
 
