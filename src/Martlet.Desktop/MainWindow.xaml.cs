@@ -75,6 +75,7 @@ public partial class MainWindow : ThemedWindow
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
         var vault = new WindowsCredentialStore();
         setupService = store is null ? null : new SetupService(store, vault);
+        if (store is not null) store.Saved += settingsChanges.Written;
         companionService = store is null ? null : new CompanionSettingsService(store);
         memory = store is null ? null : new DesktopMemoryService(store);
         conversationHistory = store is null ? null : new DesktopConversationHistory(store.DataDirectory);
@@ -316,7 +317,7 @@ public partial class MainWindow : ThemedWindow
             await model.RefreshAsync();
             support.ObserveReport(model.Report, record: true);
         }
-        if (!closing) await RefreshHomeAsync();
+        if (!closing) await RefreshHomeAsync(SettingsChangeSource.File);
     }
 
     private void Render()
