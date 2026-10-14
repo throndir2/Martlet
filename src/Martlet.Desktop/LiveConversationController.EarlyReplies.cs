@@ -143,7 +143,7 @@ internal sealed partial class LiveConversationController
         // Home Assistant's Assist acts on the house as it answers; a reply that may use it never starts early.
         if (smartHome is { ControlEnabled: true, ModelToolsEnabled: false }) return null;
         if (Speaking is not null || singing?.Playing == true) return null;
-        var straight = GoesStraight(listening, utterance);
+        var straight = listeningSession.GoesStraight(listening, utterance);
         // An audio model of its own takes recordings in Thinking's place: then Thinking gets none (docs/SENSE_MODELS.md).
         var hear = listening.HearsWith(RecordingStaysOnThisPc(configured)) && ThinkingTakesVoice(configured);
         var voice = plan.Voice;
