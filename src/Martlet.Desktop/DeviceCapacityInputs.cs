@@ -73,8 +73,10 @@ internal static class DeviceCapacityInputs
         HostRoles.Stt => PlanComponent.Listening,
         HostRoles.Ocr => PlanComponent.Reading,
         "home-assistant" => PlanComponent.SmartHome,
+        HostRoles.VoiceRecognition => PlanComponent.People,
         HostRoles.Singing => PlanComponent.Singing,
         HostRoles.Pictures => PlanComponent.Pictures,
+        HostRoles.Motion => PlanComponent.Motion,
         _ when HostRoles.Speaks(kind) => PlanComponent.Voice,
         _ => null
     };
@@ -154,10 +156,12 @@ internal static class DeviceCapacityInputs
         PlanComponent.Vision => "image model",
         PlanComponent.Reading => "Reading role",
         PlanComponent.Hearing => "audio model",
+        PlanComponent.People => "Voice recognition role",
         PlanComponent.DeepThinking => "Deep thinking model",
         PlanComponent.SmartHome => "Home Assistant",
         PlanComponent.Singing => "singing service",
         PlanComponent.Pictures => "picture service",
+        PlanComponent.Motion => "motion service",
         _ => ComponentRanking.Name(component)
     };
 
@@ -175,7 +179,7 @@ internal static class DeviceCapacityInputs
     /// <summary>What else fits on <paramref name="machineId"/> (null: across the network), most important part first: for
     /// Thinking and Deep thinking how many more of the model in use (or the best one that fits); for the other parts, the best
     /// option, only while none of your computers runs that part. Things that run inside the app, and the parts this PC chooses on
-    /// their Companion pages (<see cref="ComponentRanking.SetOnPage"/>: Vision, Reading, Hearing, Smart home), are left out.</summary>
+    /// their Companion pages (<see cref="ComponentRanking.SetOnPage"/>: Vision, Reading, Hearing, People, Smart home), are left out.</summary>
     internal static IReadOnlyList<CapacityFit> Fits(PlacementPlan plan, FootprintCatalog catalog, string? machineId)
     {
         var fits = new List<CapacityFit>();

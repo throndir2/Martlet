@@ -171,8 +171,9 @@ public sealed class PlacementEngineTests
         Assert.Equal(Enum.GetValues<PlanComponent>(), all.Select(i => i.Component));
         Assert.Equal(Enumerable.Range(1, all.Count), all.Select(i => i.Rank));
         Assert.Equal(all.OrderBy(i => i.Necessity == ComponentNecessity.Optional ? 1 : 0).Select(i => i.Component), all.Select(i => i.Component));
-        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.DeepThinking, PlanComponent.SmartHome,
-            PlanComponent.Singing, PlanComponent.Pictures], all.Where(i => i.Necessity == ComponentNecessity.Optional).Select(i => i.Component));
+        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.People, PlanComponent.DeepThinking,
+            PlanComponent.SmartHome, PlanComponent.Singing, PlanComponent.Pictures, PlanComponent.Motion],
+            all.Where(i => i.Necessity == ComponentNecessity.Optional).Select(i => i.Component));
         foreach (var info in all)
         {
             Assert.Equal(info.Necessity == ComponentNecessity.Optional || info.Component == PlanComponent.LipSync, ComponentRanking.CanBeOff(info.Component));
@@ -181,13 +182,38 @@ public sealed class PlacementEngineTests
         }
         Assert.Equal("Companion \u203a Hearing", ComponentRanking.Page(PlanComponent.Hearing));
         Assert.Equal("Companion \u203a Thinking pool", ComponentRanking.Page(PlanComponent.DeepThinking));
+        Assert.Equal("Companion \u203a People", ComponentRanking.Page(PlanComponent.People));
+        Assert.Equal("Companion \u203a Motion", ComponentRanking.Page(PlanComponent.Motion));
         // Only Thinking and the voice may use a companion PC's card; Vision and Hearing only as Thinking's own model.
         Assert.Equal([PlanComponent.Thinking, PlanComponent.Voice], all.Select(i => i.Component).Where(ComponentRanking.UsesCompanionCard));
-        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.SmartHome],
+        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.People, PlanComponent.SmartHome],
             all.Select(i => i.Component).Where(ComponentRanking.SetOnPage));
         foreach (var preference in Enum.GetValues<HostingPreference>())
-            Assert.All(new[] { PlanStep.Vision, PlanStep.Reading, PlanStep.Hearing, PlanStep.SmartHome },
+            Assert.All(new[] { PlanStep.Vision, PlanStep.Reading, PlanStep.Hearing, PlanStep.People, PlanStep.SmartHome, PlanStep.Motion },
                 step => Assert.Contains(step, ComponentRanking.ClaimOrder(preference)));
+    }
+
+    [Fact]
+    public void PeopleRecognizesVoicesInsideMartletAndMotionNeedsABigNvidiaCard()
+    {
+        var plan = Plan(HostingPreference.PreferLocal, Pc(32, 16, Nvidia(12)));
+        var people = plan.Primary(PlanComponent.People);
+        Assert.NotNull(people);
+        Assert.Equal("people:wespeaker", people.Option.Id);
+        Assert.Equal("this-pc", people.MachineId);
+        Assert.Null(people.GpuIndex);
+        Assert.Null(plan.Primary(PlanComponent.Motion));
+        Assert.Contains(plan.Dropped, d => d.Component == PlanComponent.Motion && d.Reason == DropReason.NoRoom);
+
+        var big = PlacementEngine.Plan(new PlanRequest([Pc(32, 16, Nvidia(12)), Host("motion-box", 64, 16, Nvidia(32))])
+        {
+            Preference = HostingPreference.PreferLocal, Wanted = [PlanComponent.People, PlanComponent.Motion]
+        });
+        var motion = big.Primary(PlanComponent.Motion);
+        Assert.NotNull(motion);
+        Assert.Equal("motion-box", motion.MachineId);
+        Assert.Equal("motion:hy-motion-1.0", motion.Option.Id);
+        Assert.Equal("this-pc", big.Primary(PlanComponent.People)!.MachineId);
     }
 
     [Fact]

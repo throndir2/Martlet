@@ -2,7 +2,7 @@ namespace Martlet.Core.Planning;
 
 /// <summary>A job Martlet needs done somewhere in the user's network or by a hosted provider. The order of the values is
 /// the default priority (<see cref="ComponentRanking"/>); see docs/RECOMMENDED_SETUPS.md#the-priority-list.</summary>
-public enum PlanComponent { Thinking, Voice, Listening, Character, LipSync, Vision, Reading, Hearing, DeepThinking, SmartHome, Singing, Pictures }
+public enum PlanComponent { Thinking, Voice, Listening, Character, LipSync, Vision, Reading, Hearing, People, DeepThinking, SmartHome, Singing, Pictures, Motion }
 
 /// <summary>Required: Martlet cannot converse without it, so it always gets at least a baseline (hosted counts).
 /// Core: the voice conversation needs it; it always gets at least its processor baseline. Optional: dropped when nothing has room.</summary>
@@ -33,12 +33,16 @@ public static class ComponentRanking
             "Reads the small text on your screen exactly while Martlet watches: Windows OCR inside Martlet, or the Reading role (RapidOCR or PP-OCRv5)."),
         new(PlanComponent.Hearing, 8, ComponentNecessity.Optional, "Hearing",
             "Hears how you say things: tone, laughs and sighs. Thinking's own model hears by default; an audio model of its own needs a graphics card or an online provider."),
-        new(PlanComponent.DeepThinking, 9, ComponentNecessity.Optional, "Deep thinking",
+        new(PlanComponent.People, 9, ComponentNecessity.Optional, "People",
+            "Recognizes who is talking, so Martlet knows whom it talks to. It runs inside Martlet on the processor; the Voice recognition role can do it on another computer's graphics card or processor."),
+        new(PlanComponent.DeepThinking, 10, ComponentNecessity.Optional, "Deep thinking",
             "Thinks things over in the background with a bigger model. Nice to have, never on the reply path."),
-        new(PlanComponent.SmartHome, 10, ComponentNecessity.Optional, "Smart home",
+        new(PlanComponent.SmartHome, 11, ComponentNecessity.Optional, "Smart home",
             "Controls your lights and devices through Home Assistant. Home Assistant runs on a processor, always on, on a Linux computer or your own hub."),
-        new(PlanComponent.Singing, 11, ComponentNecessity.Optional, "Singing", "Sings songs on request. Needs a large NVIDIA card."),
-        new(PlanComponent.Pictures, 12, ComponentNecessity.Optional, "Picture making", "Draws pictures on request. Needs a large NVIDIA card.")
+        new(PlanComponent.Singing, 12, ComponentNecessity.Optional, "Singing", "Sings songs on request. Needs a large NVIDIA card."),
+        new(PlanComponent.Pictures, 13, ComponentNecessity.Optional, "Picture making", "Draws pictures on request. Needs a large NVIDIA card."),
+        new(PlanComponent.Motion, 14, ComponentNecessity.Optional, "Motion",
+            "Makes new body motions for a VRM character from a description. Needs an NVIDIA card with 24 GB or more.")
     ];
 
     public static ComponentInfo Of(PlanComponent component) => All.First(info => info.Component == component);
@@ -57,10 +61,12 @@ public static class ComponentRanking
         PlanComponent.Vision => "Martlet doesn't look at your screen or camera",
         PlanComponent.Reading => "Martlet doesn't read the text on your screen",
         PlanComponent.Hearing => "Martlet gets only the words you say, not how you say them",
+        PlanComponent.People => "Martlet doesn't check who is talking",
         PlanComponent.DeepThinking => "Martlet doesn't think things over in the background",
         PlanComponent.SmartHome => "Martlet doesn't control your smart home",
         PlanComponent.Singing => "Martlet doesn't sing",
         PlanComponent.Pictures => "Martlet doesn't draw pictures",
+        PlanComponent.Motion => "Martlet makes no new body motions; the ones it kept still play",
         _ => "it doesn't run"
     };
 
@@ -70,11 +76,12 @@ public static class ComponentRanking
     /// Reading and Smart home run on a processor (Reading with PP-OCRv5 server on a graphics card only when the owner chooses it).</summary>
     public static bool UsesCompanionCard(PlanComponent component) => component is PlanComponent.Thinking or PlanComponent.Voice;
 
-    /// <summary>The parts this PC chooses on their own Companion page and that the network review doesn't place or turn off:
-    /// Vision's image model and Hearing's audio model (sense-models.json), Reading (reading.json) and Smart home (the Home
-    /// Assistant connection). The review shows where each runs; its page turns it on or off.</summary>
+    /// <summary>The parts the owner chooses on their own Companion page and that the network review doesn't place or turn off:
+    /// Vision's image model and Hearing's audio model (sense-models.json), Reading (reading.json), People (voice-recognition.txt
+    /// and the Voice recognition list) and Smart home (the Home Assistant connection). The review shows where each runs; its page
+    /// turns it on or off.</summary>
     public static bool SetOnPage(PlanComponent component) =>
-        component is PlanComponent.Vision or PlanComponent.Reading or PlanComponent.Hearing or PlanComponent.SmartHome;
+        component is PlanComponent.Vision or PlanComponent.Reading or PlanComponent.Hearing or PlanComponent.People or PlanComponent.SmartHome;
 
     /// <summary>Where the owner sets a part up in the app ("Companion › Vision").</summary>
     public static string Page(PlanComponent component) => "Companion \u203a " + component switch
@@ -91,20 +98,20 @@ public static class ComponentRanking
         ?
         [
             PlanStep.Character, PlanStep.ThinkingPrimary, PlanStep.Voice, PlanStep.Listening, PlanStep.LipSync,
-            PlanStep.ListeningUpgrade, PlanStep.Vision, PlanStep.Reading, PlanStep.Hearing, PlanStep.DeepThinking, PlanStep.SmartHome,
-            PlanStep.Singing, PlanStep.Pictures
+            PlanStep.ListeningUpgrade, PlanStep.Vision, PlanStep.Reading, PlanStep.Hearing, PlanStep.People, PlanStep.DeepThinking,
+            PlanStep.SmartHome, PlanStep.Singing, PlanStep.Pictures, PlanStep.Motion
         ]
         :
         [
             PlanStep.Character, PlanStep.Voice, PlanStep.Listening, PlanStep.LipSync, PlanStep.ThinkingPrimary,
-            PlanStep.ThinkingFallback, PlanStep.ListeningUpgrade, PlanStep.Vision, PlanStep.Reading, PlanStep.Hearing,
-            PlanStep.DeepThinking, PlanStep.SmartHome, PlanStep.Singing, PlanStep.Pictures
+            PlanStep.ThinkingFallback, PlanStep.ListeningUpgrade, PlanStep.Vision, PlanStep.Reading, PlanStep.Hearing, PlanStep.People,
+            PlanStep.DeepThinking, PlanStep.SmartHome, PlanStep.Singing, PlanStep.Pictures, PlanStep.Motion
         ];
 }
 
 /// <summary>One step of the engine's claim order (<see cref="ComponentRanking.ClaimOrder"/>).</summary>
 public enum PlanStep
 {
-    Character, ThinkingPrimary, ThinkingFallback, Voice, Listening, ListeningUpgrade, LipSync, Vision, Reading, Hearing, DeepThinking,
-    SmartHome, Singing, Pictures
+    Character, ThinkingPrimary, ThinkingFallback, Voice, Listening, ListeningUpgrade, LipSync, Vision, Reading, Hearing, People, DeepThinking,
+    SmartHome, Singing, Pictures, Motion
 }

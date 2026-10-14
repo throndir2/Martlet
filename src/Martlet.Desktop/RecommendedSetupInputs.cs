@@ -197,9 +197,11 @@ internal static class RecommendedSetupInputs
     /// <paramref name="senses"/>. Hearing: <paramref name="hearVoice"/> (Let ... hear my voice; null: never chosen, which counts as
     /// on) and the audio model. Reading: <paramref name="reading"/>. Smart home: <paramref name="homeAddress"/>, the Home
     /// Assistant this PC connects to (empty: none). <paramref name="readingModel"/>: the model the Reading role runs on that
-    /// computer, when known (null: RapidOCR, the first Reading role). Pure.</summary>
+    /// computer, when known (null: RapidOCR, the first Reading role). People: <paramref name="recognizeVoices"/>
+    /// (voice-recognition.txt; on unless the owner turned it off) and the Voice recognition list <paramref name="voiceRecognition"/>
+    /// (null: this PC's processor). Pure.</summary>
     internal static IReadOnlyList<PartChoice> Choices(bool watch, bool? hearVoice, SenseModels senses, ReadingSettings reading, string? homeAddress,
-        string? readingModel = null)
+        string? readingModel = null, bool recognizeVoices = true, PoolList? voiceRecognition = null)
     {
         ArgumentNullException.ThrowIfNull(senses);
         ArgumentNullException.ThrowIfNull(reading);
@@ -216,11 +218,22 @@ internal static class RecommendedSetupInputs
                 HostId = reading.Place == ReadingPlace.Host ? reading.HostId : null
             },
             Sense(PlanComponent.Hearing, hearVoice != false, senses.Place(SenseKind.Audio)),
+            People(recognizeVoices, voiceRecognition),
             new PartChoice(PlanComponent.SmartHome, home.Length > 0)
             {
                 Where = home.Length == 0 ? null : $"Your own Home Assistant at {(Uri.TryCreate(home, UriKind.Absolute, out var uri) ? uri.Host : home)}"
             }
         ];
+    }
+
+    /// <summary>People as a part choice: on or off, and the first place in the Voice recognition list that is on. A computer (or
+    /// one of its cards) gives its host ID; this PC, an empty list or a list with nothing on is WeSpeaker inside Martlet.</summary>
+    private static PartChoice People(bool on, PoolList? list)
+    {
+        var first = (list ?? Martlet.Core.Speakers.VoiceRecognitionPool.Default()).Members.FirstOrDefault(m => !m.Off);
+        return first is { OnHost: true, HostId: { } host }
+            ? new(PlanComponent.People, on) { HostId = host }
+            : new(PlanComponent.People, on) { OptionId = "people:wespeaker" };
     }
 
     /// <summary>The image or audio model as a part choice: Thinking's own model (<paramref name="own"/> null), a model in Ollama

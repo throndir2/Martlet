@@ -53,6 +53,18 @@ public sealed class DeviceCapacityInputsTests
     }
 
     [Fact]
+    public void Every_host_role_that_does_a_part_maps_to_it_on_the_devices_page()
+    {
+        Assert.Equal(PlanComponent.Motion, DeviceCapacityInputs.KindComponent(HostRoles.Motion));
+        Assert.Equal(PlanComponent.People, DeviceCapacityInputs.KindComponent(HostRoles.VoiceRecognition));
+        Assert.Equal("motion service", DeviceCapacityInputs.Noun(PlanComponent.Motion));
+        // The Voice recognition role's option from its model: the processor one first (the host may run either).
+        var option = PlanningCatalog.Current.FindModel(PlanComponent.People, "wespeaker-en-voxceleb-resnet34-lm");
+        Assert.Equal("voice-recognition", option?.HostRoleKind);
+        Assert.False(option?.RunsInApp);
+    }
+
+    [Fact]
     public void Todays_jobs_and_host_roles_become_the_engines_current_setup()
     {
         var (inputs, nodes) = Network();
@@ -88,7 +100,7 @@ public sealed class DeviceCapacityInputsTests
 
         var network = DeviceCapacityInputs.Network(nodes, machines, plan, Catalog);
         Assert.Equal("On your computers: Character (This PC), Thinking (gpu-box), Deep thinking (gpu-box). Online: Voice (Example Voice). " +
-            "Not set up: Listening, Lip-sync, Singing, Picture making.", network.Coverage);
+            "Not set up: Listening, Lip-sync, Singing, Picture making, Motion.", network.Coverage);
         Assert.Equal("Totals across 2 computers: 32 GB graphics memory, 80 GB memory, 40 processor threads, 500 GB free disk.", network.Totals);
         Assert.Equal("Your computers could also run 2 more Thinking models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).", network.Fits);
     }

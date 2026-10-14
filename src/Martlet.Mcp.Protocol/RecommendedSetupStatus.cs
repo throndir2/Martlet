@@ -450,15 +450,20 @@ internal static class RecommendedSetupStatus
 
     /// <summary>This PC's choices for the parts it sets on their Companion pages, as the desktop reads them: vision on and Let ...
     /// hear my voice (talk-preferences.json), the image and audio models (sense-models.json), Reading (its list in
-    /// pools-local.json, else the older reading.json; <paramref name="own"/> is this PC's own host service) and the Home
-    /// Assistant address (smart-home.json; never its token).</summary>
+    /// pools-local.json, else the older reading.json; <paramref name="own"/> is this PC's own host service), People (Recognize
+    /// voices in conversations in voice-recognition.txt, on unless it says off, and the Voice recognition list in pools.json) and
+    /// the Home Assistant address (smart-home.json; never its token).</summary>
     private static IReadOnlyList<PartChoice> Choices(string directory, string? own)
     {
         var talk = TalkPreferences.Load(directory);
         var home = Json(directory, "smart-home.json")?["Address"] is JsonValue a && a.TryGetValue<string>(out var address) ? address : null;
         var reading = PoolSettings.LoadFor(directory, PoolAreas.Reading) is { } list
             ? Martlet.Core.Reading.ReadingPool.Choice(list, own) : Martlet.Core.Reading.ReadingSettings.Load(directory);
-        return RecommendedSetupInputs.Choices(talk.Watch, talk.HearVoice, SenseSetup.Read(directory).Senses, reading, home);
+        string? recognition;
+        try { recognition = File.ReadAllText(Path.Combine(directory, "voice-recognition.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { recognition = null; }
+        return RecommendedSetupInputs.Choices(talk.Watch, talk.HearVoice, SenseSetup.Read(directory).Senses, reading, home,
+            recognizeVoices: recognition != "off", voiceRecognition: PoolSettings.LoadFor(directory, PoolAreas.VoiceRecognition));
     }
 
     private static JsonObject? Json(string directory, string file)

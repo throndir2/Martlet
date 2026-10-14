@@ -289,10 +289,12 @@ public static class PlacementEngine
                     case PlanStep.Vision: Sense(PlanComponent.Vision); break;
                     case PlanStep.Reading: InAppFirst(PlanComponent.Reading); break;
                     case PlanStep.Hearing: Sense(PlanComponent.Hearing); break;
+                    case PlanStep.People: InAppFirst(PlanComponent.People); break;
                     case PlanStep.DeepThinking: DeepThinking(); break;
                     case PlanStep.SmartHome: Simple(PlanComponent.SmartHome); break;
                     case PlanStep.Singing: Simple(PlanComponent.Singing); break;
                     case PlanStep.Pictures: Simple(PlanComponent.Pictures); break;
+                    case PlanStep.Motion: Simple(PlanComponent.Motion); break;
                 }
             }
             UpgradeSuggestions();
@@ -388,7 +390,7 @@ public static class PlacementEngine
             if (option.IsLocal)
             {
                 score += option.Component is PlanComponent.Voice or PlanComponent.Listening or PlanComponent.LipSync or PlanComponent.Character
-                    or PlanComponent.Vision or PlanComponent.Reading or PlanComponent.Hearing
+                    or PlanComponent.Vision or PlanComponent.Reading or PlanComponent.Hearing or PlanComponent.People
                     ? LocalAudioBonus
                     : Preference == HostingPreference.PreferHosted ? 0 : 5;
             }

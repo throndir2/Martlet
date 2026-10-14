@@ -23,6 +23,7 @@ public static partial class NetworkRecommender
                     PlanComponent.LipSync => LipSyncStatus(target),
                     PlanComponent.Vision or PlanComponent.Hearing => SenseStatus(target, info.Component),
                     PlanComponent.Reading => ReadingStatus(),
+                    PlanComponent.People => PeopleStatus(),
                     PlanComponent.DeepThinking => DeepThinkingStatus(target),
                     PlanComponent.SmartHome => SmartHomeStatus(),
                     _ => ExtraStatus(info.Component)
@@ -99,11 +100,11 @@ public static partial class NetworkRecommender
                 : "It needs a host with a graphics card.") + suggestion);
         }
 
-        /// <summary>Singing and pictures: where they run, or why they are off (you turned them off, no room left beside the jobs
-        /// that come first, or never set up).</summary>
+        /// <summary>Singing, pictures and motion: where they run, or why they are off (you turned them off, no room left beside the
+        /// jobs that come first, or never set up).</summary>
         private (bool On, string Where, string Why) ExtraStatus(PlanComponent part)
         {
-            var kind = part == PlanComponent.Singing ? SingingRole : PicturesRole;
+            var kind = part switch { PlanComponent.Singing => SingingRole, PlanComponent.Pictures => PicturesRole, _ => MotionRole };
             if (IsOff(part)) return (false, OffWhere(part), $"You turned {ComponentRanking.Name(part).ToLowerInvariant()} off.");
             var places = nodes.Where(n => n.Presence == Presence.Here)
                 .SelectMany(n => n.Roles.Where(r => r.Kind == kind).Select(r => CardText(n, r.Card))).ToList();
@@ -112,6 +113,34 @@ public static partial class NetworkRecommender
                 return (false, OffWhere(part), $"It runs on {away.Name}, which isn't answering.");
             var leaving = nodes.SelectMany(n => n.Today).FirstOrDefault(r => r.Kind == kind && r.Leave is not null);
             return (false, OffWhere(part), leaving?.Leave?.Why ?? "It isn't set up on any of your computers.");
+        }
+
+        /// <summary>People: whether Martlet recognizes who is talking (voice-recognition.txt, the same on all the owner's computers)
+        /// and where (Companion › People's Voice recognition list: <see cref="PartChoice.HostId"/> is the first computer that is on
+        /// in it). WeSpeaker inside Martlet on the processor by default; the Voice recognition role on a computer, with this PC's
+        /// processor as the fallback. The recommender never moves or removes the role.</summary>
+        private (bool On, string Where, string Why) PeopleStatus()
+        {
+            const PlanComponent part = PlanComponent.People;
+            var page = ComponentRanking.Page(part);
+            if (!Wants(part)) return (false, OffWhere(part), "Not planned.");
+            var choice = Choice(part);
+            var runs = nodes.Where(n => n.Presence == Presence.Here && n.Roles.Any(r => r.Kind == VoiceRecognitionRole)).Select(n => n.Name).ToList();
+            if (choice is { On: false })
+                return (false, OffWhere(part), $"Voice recognition is off. Turn it on in {page}." +
+                    (runs.Count > 0 ? $" Martlet's Voice recognition role stays on {List(runs)}." : ""));
+            var inApp = catalog.For(part).FirstOrDefault(o => o.IsLocal && o.RunsInApp);
+            var here = $"{(inApp is null ? "WeSpeaker voice recognition" : Plain(inApp))} inside Martlet on {OwnPcs()}'s processor";
+            const string beside = "It recognizes who is talking beside speech-to-text, so a reply never waits for it.";
+            if (choice?.HostId is not { } hostId) return (true, choice?.Where ?? here, $"{beside} Nothing leaves this PC.");
+            if (NodeOf(hostId) is not { } node)
+                return (true, $"Martlet's Voice recognition role on {hostId}, else {here}", beside);
+            if (node.Presence == Presence.Gone)
+                return (true, here, $"Martlet's Voice recognition role runs on {node.Name}, which isn't answering, so {OwnPcs()} recognizes voices itself.");
+            if (node.Roles.FirstOrDefault(r => r.Kind == VoiceRecognitionRole) is not { } role)
+                return (true, here, $"{node.Name} doesn't run Martlet's Voice recognition role, so {OwnPcs()} recognizes voices itself. Set it up in {page}.");
+            return (true, $"Martlet's Voice recognition role on {CardText(node, role.Card)}",
+                $"{beside} When it doesn't answer in time, {OwnPcs()}'s processor recognizes voices.");
         }
 
         /// <summary>The option that does Thinking in <paramref name="target"/>: the role its host runs, else the job's option.</summary>

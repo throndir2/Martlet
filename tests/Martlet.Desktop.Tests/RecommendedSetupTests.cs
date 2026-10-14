@@ -534,7 +534,7 @@ public sealed class RecommendedSetupTests
             new Martlet.Core.Reading.ReadingSettings { Place = Martlet.Core.Reading.ReadingPlace.Host, HostId = "cpu-box" },
             "http://homeassistant.local:8123").ToDictionary(c => c.Component);
 
-        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.SmartHome], choices.Keys);
+        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.People, PlanComponent.SmartHome], choices.Keys);
         Assert.Equal("vision:qwen2.5vl:7b", choices[PlanComponent.Vision].OptionId);
         Assert.True(choices[PlanComponent.Hearing].On);
         Assert.Null(choices[PlanComponent.Hearing].OptionId);
@@ -557,10 +557,25 @@ public sealed class RecommendedSetupTests
         Assert.False(defaults[PlanComponent.Hearing].On);
         Assert.Equal("reading:windows-ocr", defaults[PlanComponent.Reading].OptionId);
         Assert.False(defaults[PlanComponent.SmartHome].On);
+        // People: on by default, inside Martlet on this PC's processor until the Voice recognition list names a computer first.
+        Assert.True(defaults[PlanComponent.People].On);
+        Assert.Equal("people:wespeaker", defaults[PlanComponent.People].OptionId);
+        Assert.Null(defaults[PlanComponent.People].HostId);
+        var list = new Martlet.Core.Cluster.PoolList
+        {
+            Area = Martlet.Core.Cluster.PoolAreas.VoiceRecognition.Id,
+            Members = [Martlet.Core.Cluster.PoolMember.Computer("off-box") with { Off = true }, Martlet.Core.Cluster.PoolMember.Computer("gpu-box"),
+                Martlet.Core.Cluster.PoolMember.ThisPc()]
+        };
+        var people = RecommendedSetupInputs.Choices(watch: false, hearVoice: false, new SenseModels(), new Martlet.Core.Reading.ReadingSettings(), "",
+            recognizeVoices: false, voiceRecognition: list).Single(c => c.Component == PlanComponent.People);
+        Assert.False(people.On);
+        Assert.Equal("gpu-box", people.HostId);
+        Assert.Null(people.OptionId);
 
         var sources = RecommendedSetupInputs.Sources(Network(Plan()), null, "desktop-desk", "desk-host", 400, choices: [.. choices.Values]);
         var request = RecommendedSetupInputs.Request(sources).Request;
-        Assert.Equal(4, request.Choices.Count);
+        Assert.Equal(5, request.Choices.Count);
         Assert.True(request.CompanionPcs >= 1);
     }
 
