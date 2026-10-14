@@ -778,7 +778,7 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: WebResearchOn (ticking it saves the reply settings).
         new("AppGuidesNow", "Companion › App guides", "Shows the Now line: off, or how many guides and pages and their size, and what Martlet reads up on now."),
         new("AppGuidesDisclosure", "Companion › App guides", "Shows the fixed disclosure of what leaves this PC."),
-        new("AppGuidesFront", "Companion › App guides", "Shows what is in front as App guides sees it: a program's name, whether it is a game or on the list, and whether its guide is ready."),
+        new("AppGuidesFront", "Companion › App guides", "Shows what is in front as App guides sees it: a program's name, whether it is a game or on the list (or Martlet is looking up what it is), whether its guide is ready, and how many programs Martlet knows."),
         new("AppGuidesEmpty", "Companion › App guides", "Shows the empty list's line."),
         new("AppGuidesResult", "Companion › App guides", "Shows what the last action did."),
         new("AppGuidesOn", "Companion › App guides", "Shows the On box's state as checkedState. Ticking it saves library.json in the guides folder, so that needs --allow-ui-effects."),

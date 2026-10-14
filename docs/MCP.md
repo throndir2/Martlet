@@ -10150,7 +10150,9 @@ Companion › *App guides* (`CompanionTab-AppGuides`,
 games and apps, or notice which one you play.*, *On. No guides yet.* or *On. 2
 guides, 84 pages, 6.1 MB. Reading up on Stardew Valley: Reading page 3.*), the
 fixed `AppGuidesDisclosure`, `AppGuidesFront` (*In front:
-Elden Ring (a game, full screen), its guide is ready.*, or why Martlet doesn't
+Elden Ring (a game, full screen), its guide is ready.*, *In front: Star Rail
+(looking up what it is), no guide.*, with *Martlet knows 3 programs (2 games).*
+at the end once it knows any [program](APP_GUIDES.md#known-programs), or why Martlet doesn't
 look), `AppGuidesEmpty` and `AppGuidesResult` (what the last action did), the
 `AppGuidesOn` and `AppGuidesAsk` (*Read up when I start a game or app*) check boxes (`checkedState`; `ui_toggle` saves
 `guides\library.json`, so it needs `--allow-ui-effects`), and for each app on
