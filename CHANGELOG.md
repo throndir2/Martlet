@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Your character comes alive when Chatterbox Original speaks expressively**: a sentence said in its *expressive* tone now makes a Live2D or VRM character lift its brows and bob with lively nods, as every other voice sound and tone already moves the character. ([#887](https://github.com/throndir2/Martlet/pull/887))
+
 ## [0.77.0] - 2026-10-13
 
 ### Added
