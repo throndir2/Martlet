@@ -15,7 +15,12 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- **The screen summary sees more of a game**: Martlet now looks at up to 6 recent screenshots (it was 4) when it sums up what changed on your screen, so it follows fast action, like a boss fight, better. ([#895](https://github.com/throndir2/Martlet/pull/895))
 - **Songs are made in high quality by default**: each computer that writes music now uses High quality (the clearest words) unless you choose Fast for it. The *Song choices* card is gone: the quality and the voice match model are now set for each computer in the lists. ([#894](https://github.com/throndir2/Martlet/pull/894))
+
+### Fixed
+
+- **Martlet knows a game in a window, wherever it is installed**: games made with Unity or Unreal (such as Honkai: Star Rail) and games in HoYoPlay's folder now count as games even in a window and outside Steam or Epic, so Martlet reads up on them on its own. ([#896](https://github.com/throndir2/Martlet/pull/896))
 
 ## [0.78.0] - 2026-10-13
 

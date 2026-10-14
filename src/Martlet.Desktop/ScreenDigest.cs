@@ -41,8 +41,10 @@ internal sealed record ScreenDigestTiming
     internal TimeSpan MaximumAge { get; init; } = TimeSpan.FromSeconds(45);
     /// <summary>How long Martlet waits after a failed summary before it asks again.</summary>
     internal TimeSpan FailureWait { get; init; } = TimeSpan.FromSeconds(60);
-    /// <summary>How many pictures go into one summary's contact sheet (2 to 4).</summary>
-    internal int SheetFrames { get; init; } = 4;
+    /// <summary>How many pictures go into one summary's contact sheet (2 to 6). Six (a 3x2 grid, one every 4 to 5 s of the
+    /// window while a game changes all the time) is the most that stays readable: Ollama gives Gemma 4 a fixed 280 image tokens
+    /// for the whole sheet, so more pictures make each one smaller.</summary>
+    internal int SheetFrames { get; init; } = 6;
     /// <summary>The longest edge of each kept picture, in pixels.</summary>
     internal int PanelEdge { get; init; } = 512;
 }
@@ -158,31 +160,37 @@ internal sealed class ScreenDigestRing(ScreenDigestTiming timing)
     }
 }
 
-/// <summary>One picture made of the summary's screenshots (a contact sheet): two side by side, or three or four in a 2x2
-/// grid, oldest first, with thin grey lines between them. One picture keeps the request to one image, which every Thinking
-/// model that sees accepts, and its size (at most about 1024 px wide) bounds the vision tokens.</summary>
+/// <summary>One picture made of the summary's screenshots (a contact sheet): two side by side, three or four in a 2x2 grid,
+/// or five or six in a 3x2 grid, oldest first, with thin grey lines between them. One picture keeps the request to one image,
+/// which every Thinking model that sees accepts, and its size (at most about 1540 x 580 px) bounds the vision tokens.</summary>
 internal static class ScreenDigestSheet
 {
     private const int Gap = 4;
+    internal const int MostFrames = 6;
 
     /// <summary>Up to <paramref name="count"/> pictures spread evenly over the kept ones, always the oldest and the newest.</summary>
     internal static IReadOnlyList<ScreenDigestFrame> Pick(IReadOnlyList<ScreenDigestFrame> frames, int count)
     {
-        count = Math.Clamp(count, 2, 4);
+        count = Math.Clamp(count, 2, MostFrames);
         if (frames.Count <= count) return [.. frames];
         return [.. Enumerable.Range(0, count).Select(i => frames[(int)Math.Round(i * (frames.Count - 1) / (double)(count - 1))])];
     }
 
-    private static readonly string[] Two = ["left", "right"], Four = ["top left", "top right", "bottom left", "bottom right"];
+    private static readonly string[] Two = ["left", "right"], Four = ["top left", "top right", "bottom left", "bottom right"],
+        Six = ["top left", "top middle", "top right", "bottom left", "bottom middle", "bottom right"];
+
+    /// <summary>How many pictures go side by side on the sheet.</summary>
+    private static int Columns(int count) => count <= 1 ? 1 : count <= 4 ? 2 : 3;
 
     /// <summary>Where each picture is on the sheet, in the words the prompt uses.</summary>
-    internal static string[] Places(int count) => count <= 2 ? Two[..count] : Four[..count];
+    internal static string[] Places(int count) => count <= 2 ? Two[..count] : count <= 4 ? Four[..count] : Six[..Math.Min(count, MostFrames)];
 
-    /// <summary>Lays the pictures out (BGRA32, top-down); null when a picture was already cleared.</summary>
+    /// <summary>Lays the pictures out (BGRA32, top-down); null when a picture was already cleared or there are more than
+    /// <see cref="MostFrames"/>.</summary>
     internal static (byte[] Pixels, int Width, int Height)? Compose(IReadOnlyList<ScreenDigestFrame> picked)
     {
-        if (picked.Count == 0) return null;
-        var columns = picked.Count == 1 ? 1 : 2;
+        if (picked.Count == 0 || picked.Count > MostFrames) return null;
+        var columns = Columns(picked.Count);
         var rows = picked.Count <= 2 ? 1 : 2;
         int cell = picked.Max(f => f.Width), cellHeight = picked.Max(f => f.Height);
         int width = columns * cell + (columns - 1) * Gap, height = rows * cellHeight + (rows - 1) * Gap;
@@ -191,7 +199,7 @@ internal static class ScreenDigestSheet
         for (var i = 0; i < sheet.Length; i += 4) { sheet[i] = sheet[i + 1] = sheet[i + 2] = 96; sheet[i + 3] = 255; }
         for (var n = 0; n < picked.Count; n++)
         {
-            int left = n % 2 * (cell + Gap), top = n / 2 * (cellHeight + Gap);
+            int left = n % columns * (cell + Gap), top = n / columns * (cellHeight + Gap);
             for (var y = 0; y < cellHeight; y++)
                 Array.Fill(sheet, (byte)0, ((top + y) * width + left) * 4, cell * 4);
             var frame = picked[n];

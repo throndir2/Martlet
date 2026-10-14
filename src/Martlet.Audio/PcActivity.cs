@@ -134,7 +134,8 @@ public static class PcActivity
     public const int MaximumActivities = 5;
     private const int MaximumName = 40;
 
-    /// <summary>What <paramref name="app"/> is: a site in a browser, a known player or app, a game (in a game library, in
+    /// <summary>What <paramref name="app"/> is: a site in a browser, a known player or app, a game (in a game library, made with a
+    /// game engine, in
     /// exclusive full screen, full screen with the graphics card busy, or the graphics card very busy), or something else.</summary>
     public static PcSource Classify(PcAppFacts app)
     {
@@ -240,7 +241,21 @@ public static class PcActivity
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
         var normal = path.Replace('/', '\\');
-        return GameLibraries.Any(folder => normal.Contains(folder, StringComparison.OrdinalIgnoreCase));
+        return GameLibraries.Any(folder => normal.Contains(folder, StringComparison.OrdinalIgnoreCase)) || MadeWithGameEngine(normal);
+    }
+
+    /// <summary>Whether the program in <paramref name="path"/> is a game made with a game engine, wherever it is installed (a
+    /// launcher's own folder such as HoYoPlay's, or any folder the user chose): an Unreal shipping build (its file name ends in
+    /// -Shipping), or a Unity game (UnityPlayer.dll or GameAssembly.dll beside its program). Each folder is checked once.</summary>
+    public static bool MadeWithGameEngine(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        if (System.IO.Path.GetFileNameWithoutExtension(path).EndsWith("-Shipping", StringComparison.OrdinalIgnoreCase)) return true;
+        if (System.IO.Path.GetDirectoryName(path) is not { Length: > 0 } folder) return false;
+        if (EngineFolders.TryGetValue(folder, out var known)) return known;
+        var found = EngineFiles.Any(file => System.IO.File.Exists(System.IO.Path.Combine(folder, file)));
+        if (EngineFolders.Count >= 512) EngineFolders.Clear();
+        return EngineFolders[folder] = found;
     }
 
     // A game's name: the title of its window (trademark signs dropped), else its process name.
@@ -404,8 +419,13 @@ public static class PcActivity
     [
         @"\steamapps\common\", @"\epic games\", @"\gog games\", @"\gog galaxy\games\", @"\xboxgames\", @"\riot games\",
         @"\ea games\", @"\origin games\", @"\ubisoft game launcher\games\", @"\rockstar games\", @"\itch\apps\",
-        @"\amazon games\library\", @"\modifiablewindowsapps\", @"\battlestate games\", @"\wargaming.net\games\"
+        @"\amazon games\library\", @"\modifiablewindowsapps\", @"\battlestate games\", @"\wargaming.net\games\", @"\hoyoplay\games\"
     ];
+
+    // Files a game engine puts beside its game's program: Unity's player, and the code of a Unity game built with IL2CPP.
+    private static readonly string[] EngineFiles = ["UnityPlayer.dll", "GameAssembly.dll"];
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> EngineFolders =
+        new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>Martlet's guess for "Do you play games or use heavy apps on this PC?" (docs/RECOMMENDATION_DESIGN.md): a game

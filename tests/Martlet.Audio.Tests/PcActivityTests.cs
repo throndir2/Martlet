@@ -46,6 +46,28 @@ public sealed class PcActivityTests
     }
 
     [Fact]
+    public void A_game_made_with_a_game_engine_counts_in_a_window_wherever_it_is_installed()
+    {
+        var folder = Directory.CreateTempSubdirectory("martlet-engine-");
+        try
+        {
+            var unity = Path.Combine(folder.FullName, "Star Rail Games");
+            var tool = Path.Combine(folder.FullName, "Some Tool");
+            Directory.CreateDirectory(unity);
+            Directory.CreateDirectory(tool);
+            File.WriteAllBytes(Path.Combine(unity, "UnityPlayer.dll"), []);
+            var game = PcActivity.Classify(new("StarRail", Path.Combine(unity, "StarRail.exe"), ["Honkai: Star Rail"], Foreground: true));
+            Assert.Equal(PcActivityKind.Game, game.Kind);
+            Assert.Equal("a game (Honkai: Star Rail)", game.Label);
+            Assert.True(PcActivity.MadeWithGameEngine(@"E:\Games\AbioticFactor\Binaries\Win64\AbioticFactor-Win64-Shipping.exe"));
+            Assert.Equal(PcActivityKind.Game, PcActivity.Classify(new("Genshin", @"C:\Program Files\HoYoPlay\games\Genshin\Genshin.exe")).Kind);
+            Assert.Equal(PcActivityKind.Other, PcActivity.Classify(new("SomeTool", Path.Combine(tool, "SomeTool.exe"), Foreground: true)).Kind);
+            Assert.False(PcActivity.MadeWithGameEngine(null));
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
+    [Fact]
     public void Only_videos_shows_games_and_music_are_media_and_lines_say_where_they_came_from()
     {
         var youtube = new PcSource(PcActivityKind.Video, "Chrome", "YouTube");

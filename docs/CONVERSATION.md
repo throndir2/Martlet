@@ -3486,7 +3486,9 @@ while the PC listener runs and Windows isn't locked):
   names a music file, otherwise a show or movie), known apps (Plex, Netflix,
   Kodi, Jellyfin, Spotify, Discord, TeamSpeak, Mumble, Zoom, Teams, Slack and
   others) and games: an app installed in a game library (Steam, Epic, GOG,
-  Xbox, Riot, EA, Ubisoft and others), one Windows runs in exclusive full
+  Xbox, Riot, EA, Ubisoft, HoYoPlay and others), one made with a game engine
+  (UnityPlayer.dll or GameAssembly.dll beside its program, or an Unreal
+  `-Shipping` program) in any folder, one Windows runs in exclusive full
   screen, one that fills the screen with the 3D engine at least 10% busy, or one
   that keeps it at least 35% busy in a window. Launchers, OBS, voice changers,
   editors and Windows itself are never games. Anything else is *something
