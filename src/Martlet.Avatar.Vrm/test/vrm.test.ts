@@ -564,6 +564,12 @@ test("voice emotes move the head, spine, shoulders and arms and return to idle",
   assert.ok(bone("leftUpperArm").rotation.z > -0.3 && bone("rightUpperArm").rotation.z < 0.3, "the arms open out");
   for (let i = 0; i < 40; i++) runtime.update(0.05);
   assert.ok(bone("rightUpperArm").rotation.z > 1, "the arms come back down");
+  assert.equal(runtime.playGesture("expressive"), true);
+  let moved = 0;
+  for (let i = 0; i < 20; i++) { runtime.update(0.05); moved = Math.max(moved, Math.abs(bone("head").rotation.x - rest)); }
+  assert.ok(moved > 0.03, "the head bobs with lively nods");
+  for (let i = 0; i < 40; i++) runtime.update(0.05);
+  assert.ok(Math.abs(bone("spine").rotation.x) < 1e-9, "the spine settles after the expressive emote");
   assert.equal(runtime.playGesture("clear_throat"), true);
   runtime.dispose();
 });

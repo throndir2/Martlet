@@ -16,7 +16,7 @@ type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
  *  levels (see VRM_BLUSH_LEVELS). */
 export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce", "blush",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
-  "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic",
+  "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic", "expressive",
   "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy",
   "eyes_up", "mouth_open", "blush_deep", "blush_fierce"] as const);
 export type VrmGesture = typeof VRM_GESTURES[number];
@@ -50,7 +50,7 @@ const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.
   laugh: headSpine, chuckle: head, sigh: headSpine, gasp: headSpine, cough: headSpine, clear_throat: head, groan: head, sniff: head,
   shush: headSpine, inhale: headSpine, exhale: headSpine, mumble: head, hum: head, sneeze: headSpine, whistle: head,
   happy: headSpine, sarcastic: head, angry: headSpine, fear: headSpine, crying: headSpine, whispering: headSpine,
-  dramatic: ["head", "leftUpperArm", "rightUpperArm"],
+  dramatic: ["head", "leftUpperArm", "rightUpperArm"], expressive: headSpine,
   wink: head, pout: head, shy: headSpine, giggle: headSpine, flinch: headSpine, lean_in: headSpine, look_away: head, think: head,
   eye_roll: head, drowsy: headSpine,
   // The eye bones turn up; the mouth needs the oh or aa expression (see gestures).
@@ -60,7 +60,7 @@ const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
   nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2, blush: 4,
   laugh: 2, chuckle: 1.4, sigh: 2.4, gasp: 1.6, cough: 1.5, clear_throat: 1.2, groan: 2.2, sniff: 1, shush: 2, inhale: 1.6,
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
-  whispering: 2.2, dramatic: 2.4,
+  whispering: 2.2, dramatic: 2.4, expressive: 2.2,
   wink: 1.1, pout: 2.6, shy: 3.5, giggle: 1.6, flinch: 1.4, lean_in: 2.8, look_away: 2.4, think: 2.8, eye_roll: 1.8, drowsy: 4.5,
   eyes_up: 3, mouth_open: 2.6, blush_deep: 4, blush_fierce: 4,
 });
@@ -249,6 +249,11 @@ export function gesturePose(name: VrmGesture, t: number, w: number): GesturePose
     }
     case "whispering": pose.gx = 0.3 * w; pose.tilt = 0.25 * w; pose.spineX = 0.12 * w; pose.spineZ = 0.06 * w; break;
     case "dramatic": pose.gx = 0.3 * Math.sin(Math.PI * t / GESTURE_SECONDS.dramatic) * w; pose.gy = 0.4 * w; pose.spineX = -0.1 * w; pose.open = w; break;
+    case "expressive": {
+      const bob = Math.abs(cycle(t, 0.55));
+      pose.gx = 0.12 * cycle(t, 1.1) * w; pose.gy = (0.3 - 0.45 * bob) * w; pose.tilt = 0.12 * cycle(t, 1.1) * w;
+      pose.spineX = 0.05 * bob * w; pose.shoulders = 0.3 * bob * w; pose.face = { happy: 0.4 * w }; break;
+    }
     case "wink": pose.gx = 0.05 * w; pose.gy = 0.05 * w; pose.tilt = 0.1 * w; pose.face = { blinkLeft: w, happy: 0.2 * w }; break;
     case "pout": case "shy": case "look_away": case "drowsy": case "eyes_up": case "mouth_open": moodPose(pose, name, t, w); break;
     case "giggle": {

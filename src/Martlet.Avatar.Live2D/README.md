@@ -43,7 +43,7 @@ the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
 `smile`, `blush`, `surprise`, and the voice emotes `laugh`, `chuckle`, `sigh`,
 `gasp`, `cough`, `clear_throat`, `groan`, `sniff`, `shush`, `inhale`, `exhale`,
 `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`, `angry`, `fear`,
-`crying`, `whispering`, `dramatic`, then `wink`, `pout`, `shy`, `giggle`, `flinch`,
+`crying`, `whispering`, `dramatic`, `expressive`, then `wink`, `pout`, `shy`, `giggle`, `flinch`,
 `lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`, then the held face parts
 `eyes_up` and `mouth_open`, and last the stronger blush levels `blush_deep` and
 `blush_fierce`), added to the look-at angles and those parameters

@@ -14,9 +14,6 @@ Martlet.Updates.Tests.ActivationTests.LinkedActivationSourcesAreRejectedWithoutC
 Martlet.Updates.Tests.SelectionTests.ActualFilesystemLinksAreRefusedWithoutFollowingTheirTargets  # env: symlink privilege
 
 
-# Failing on a clean export of origin/main 6bb387c on 2026-10-07: the voice cue "expressive" (Chatterbox Original) has no
-# global voice emote yet (shown without the layered-held-emotes change).
-Martlet.Desktop.Tests.CharacterGestureTests.EveryVoiceSoundAndToneHasAGlobalEmoteLinkedToItThatFollowsTheVoiceOnly
 # Fails alone on origin/main f27f8efd on 2026-10-13: the Motion host role (deploy/host/roles/motion) has no planner option
 # yet. Fix: https://github.com/throndir2/Martlet/issues/860
 Martlet.Core.Tests.Planning.FootprintCatalogTests.EveryHostRoleThatDoesAPartHasAnOption

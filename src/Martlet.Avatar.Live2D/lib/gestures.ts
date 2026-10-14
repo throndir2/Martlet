@@ -5,7 +5,7 @@
  *  BLUSH_LEVELS). */
 export const GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "smile", "blush", "surprise",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
-  "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic",
+  "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic", "expressive",
   "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy",
   "eyes_up", "mouth_open", "blush_deep", "blush_fierce"] as const);
 export type Gesture = typeof GESTURES[number];
@@ -59,7 +59,7 @@ export const GESTURE_REQUIREMENTS: Readonly<Record<Gesture, readonly string[]>> 
   laugh: angleY, chuckle: angleY, sigh: angleY, gasp: angleY, cough: angleY, clear_throat: angleY, groan: angleZ, sniff: angleY,
   shush: angleY, inhale: angleY, exhale: angleY, mumble: angleX, hum: angleZ, sneeze: angleY, whistle: angleZ,
   happy: ["ParamEyeLSmile", "ParamEyeRSmile"], sarcastic: angleZ, angry: ["ParamBrowLY", "ParamBrowRY"], fear: angleX,
-  crying: angleY, whispering: angleZ, dramatic: angleZ,
+  crying: angleY, whispering: angleZ, dramatic: angleZ, expressive: angleY,
   wink: ["ParamEyeLOpen"], pout: ["ParamMouthForm"], shy: ["ParamAngleX", "ParamAngleY"], giggle: angleY, flinch: angleY,
   lean_in: angleZ, look_away: angleX, think: angleY, eye_roll: ["ParamEyeBallX", "ParamEyeBallY"],
   drowsy: ["ParamEyeLOpen", "ParamEyeROpen"],
@@ -70,7 +70,7 @@ const DURATION: Readonly<Record<Gesture, number>> = Object.freeze({
   nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, smile: 3.5, blush: 4, surprise: 2,
   laugh: 2, chuckle: 1.4, sigh: 2.4, gasp: 1.6, cough: 1.5, clear_throat: 1.2, groan: 2.2, sniff: 1, shush: 2, inhale: 1.6,
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
-  whispering: 2.2, dramatic: 2.4,
+  whispering: 2.2, dramatic: 2.4, expressive: 2.2,
   wink: 1.1, pout: 2.6, shy: 3.5, giggle: 1.6, flinch: 1.4, lean_in: 2.8, look_away: 2.4, think: 2.8, eye_roll: 1.8, drowsy: 4.5,
   eyes_up: 3, mouth_open: 2.6, blush_deep: 4, blush_fierce: 4,
 });
@@ -237,6 +237,12 @@ export function gestureFrame(name: Gesture, seconds: number): GestureFrame | und
       const amount = envelope(t, total, 0.3);
       return { look: { x: 0.4 * Math.sin(Math.PI * t / total) * amount, y: 0.45 * amount }, parameters: {
         ParamAngleZ: -15 * amount, ParamBodyAngleZ: -10 * amount, ...brows(0.5 * amount), ...eyes(-0.4 * amount),
+      } };
+    }
+    case "expressive": {
+      const amount = envelope(t, total, 0.25), bob = Math.abs(wave(t, 0.55));
+      return { look: { x: 0.12 * wave(t, 1.1) * amount, y: (0.2 - 0.3 * bob) * amount }, parameters: {
+        ...brows(0.5 * amount), ...eyes(0.2 * amount), ParamAngleZ: 7 * wave(t, 1.1) * amount, ParamBodyAngleY: 2 * bob * amount,
       } };
     }
     case "wink": {
