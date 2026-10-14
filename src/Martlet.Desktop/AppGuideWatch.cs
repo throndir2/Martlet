@@ -9,7 +9,8 @@ namespace Martlet.Desktop;
 /// <summary>Companion › App guides' look at the program in front (docs/APP_GUIDES.md): every <see cref="Every"/> while App guides
 /// are on, on a thread-pool timer (never the UI thread, never a reply's path), it reads the program the window in front belongs
 /// to (its name and file, <see cref="ActiveApp"/>), whether it fills its screen and whether Windows says a game runs in exclusive
-/// full screen, tells a game with <see cref="PcActivity.Classify"/> (a game library folder or exclusive full screen) and gives it to
+/// full screen, tells a game with <see cref="PcActivity.Classify"/> (a game library folder, a game engine's files beside its
+/// program, or exclusive full screen) and gives it to
 /// <see cref="AppGuideService.See"/>. Then it raises <see cref="OfferDue"/> when Martlet may read up on it on its own. It never reads
 /// window titles or the screen; Martlet's own windows are passed over (what was in front before stays).</summary>
 internal sealed class AppGuideWatch : IDisposable
