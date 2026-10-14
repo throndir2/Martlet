@@ -16,11 +16,13 @@ internal sealed record SafeReport(int SchemaVersion, DateTimeOffset CreatedAt, s
 
 internal static class ReportProjection
 {
+    // Every probe of ProbeRegistry.Local (SnapshotTests.EveryProbeOfTheLocalDoctorReportCanBeFrozen): a report with any other
+    // probe is refused, so a new Doctor probe needs its id here.
     private static readonly string[] ProbeIds =
     [
         "settings.load", "provider.connection", "audio.playback", "application.version", "runtime.version", "platform.architecture",
         "audio.input", "pipeline.vad", "pipeline.stt", "pipeline.policy", "pipeline.llm", "pipeline.tts",
-        "host.connection", "fixture.session"
+        "host.connection", "planning.catalog", "fixture.session"
     ];
 
     internal static void ValidateProbe(ProbeResult probe)
