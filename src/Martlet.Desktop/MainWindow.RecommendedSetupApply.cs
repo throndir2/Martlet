@@ -349,6 +349,23 @@ public partial class MainWindow
         public Task<SetupStepResult> ShareAsync(string job, string machineId, bool join, CancellationToken cancel)
         {
             var title = WorkSharingJobs.Title(job);
+            // People's Voice recognition list: the computer goes first (this PC's processor stays the fallback), also before any
+            // list was saved (which means this PC's processor alone).
+            if (job == WorkSharingJobs.VoiceRecognition && window.store is { } own)
+            {
+                var recognition = PoolAreas.VoiceRecognition;
+                var people = WorkSharingRoster.Shared.Pool(own.DataDirectory, recognition);
+                var computer = PoolMember.Computer(machineId).Key;
+                if (join ? Martlet.Core.Speakers.VoiceRecognitionPool.IsFirst(people, machineId) : people?.Find(computer) is null)
+                    return Task.FromResult(SetupStepResult.Done(join ? $"{machineId} is already first in the {title} list." : $"{machineId} isn't in the {title} list."));
+                var reordered = join ? Martlet.Core.Speakers.VoiceRecognitionPool.First(people, machineId) : people!.Without(computer);
+                var said = join ? $"{machineId} is now first in the {title} list: it recognizes who is talking, and each companion PC's " +
+                    "processor does when it doesn't answer in time." : $"{machineId} is no longer in the {title} list.";
+                if (!PoolSettings.SaveFor(own.DataDirectory, recognition, reordered)) return Task.FromResult(SetupStepResult.Failed($"Couldn't save the {title} list on this PC."));
+                ErrorLog.Info("Pools: " + said);
+                window.QueueSettingsSync();
+                return Task.FromResult(SetupStepResult.Done(said));
+            }
             // A job with a pool list: the computer joins its list (or turns on in it), or leaves it.
             if (PoolAreas.Find(job) is { } area && window.store is { } store && WorkSharingRoster.Shared.Pool(store.DataDirectory, area) is { } list)
             {

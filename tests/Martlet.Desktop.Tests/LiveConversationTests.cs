@@ -2041,7 +2041,7 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
-    public async Task VoiceIdDiscardsAnotherVoiceBeforeUpload()
+    public async Task VoiceIdDiscardsAnotherVoiceBeforeUploadButPeopleStillRecognizesIt()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.VoiceId." + Guid.NewGuid().ToString("N"));
         try
@@ -2050,7 +2050,7 @@ public sealed class LiveConversationTests
             var print = new float[SpeakerEncoder.EmbeddingSize];
             for (var i = 0; i < print.Length; i += 7) print[i] = 1;
             identity.Save(new(SpeakerEncoder.Average([print]), 0.9f, 0.9f, DateTimeOffset.Now, 20));
-            await using var fixture = await LiveFixture.Create(voiceIdentity: identity);
+            await using var fixture = await LiveFixture.Create(voiceIdentity: identity, voices: true);
             EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
             var operation = fixture.Controller.Start(null, voice: false, microphone: true, approved: true, true, true,
                 listening: new(HandsFree: true, new VoiceActivitySettings(), RequireVoiceId: true));
@@ -2059,6 +2059,10 @@ public sealed class LiveConversationTests
             Assert.Equal(SpeakerVerdict.OtherSpeaker, operation.SpeakerCheck!.Verdict);
             Assert.Equal(0, fixture.Stt.Calls);
             Assert.Equal(0, fixture.Llm.Calls);
+            // Voice ID only decides whether Martlet answers: People still recognizes (and learns) the voice it ignored.
+            Assert.True(fixture.Voices!.Active);
+            Assert.NotNull(operation.Recognition);
+            await operation.Recognition;
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }

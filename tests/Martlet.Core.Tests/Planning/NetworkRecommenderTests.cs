@@ -697,13 +697,75 @@ public sealed class NetworkRecommenderTests
         Assert.Contains("stays on big-box", offPart.Why, StringComparison.Ordinal);
         Assert.DoesNotContain(off.Changes, c => c.RoleKind == "voice-recognition");
 
-        // A list whose computer doesn't run the role: this PC recognizes voices itself.
+        // A list whose computer doesn't run the role: Reconfigure installs it there, on its graphics card.
         var missing = NetworkRecommender.Recommend(Network(Companion("c1"), Host("big-box", Nvidia(32))) with
         {
             Choices = [new PartChoice(PlanComponent.People, true) { HostId = "big-box" }]
-        }).Components.Single(c => c.Component == PlanComponent.People);
-        Assert.Equal("WeSpeaker voice recognition inside Martlet on each companion PC's processor", missing.Where);
-        Assert.Contains("doesn't run Martlet's Voice recognition role", missing.Why, StringComparison.Ordinal);
+        });
+        var install = Assert.Single(missing.Changes, c => c.RoleKind == "voice-recognition");
+        Assert.Equal((SetupChangeKind.AddRole, "big-box", false), (install.Kind, install.MachineId, install.OnProcessor));
+        Assert.DoesNotContain(missing.Changes, c => c.Job == WorkSharingJobs.VoiceRecognition);
+        var missingPart = missing.Components.Single(c => c.Component == PlanComponent.People);
+        Assert.Equal("Martlet's Voice recognition role on big-box's RTX 32 GB", missingPart.Where);
+        Assert.Contains("first in Companion \u203a People's Voice recognition list already", missingPart.Why, StringComparison.Ordinal);
+
+        // A computer of the list that isn't answering: each companion PC recognizes voices itself, and nothing changes there.
+        var away = NetworkRecommender.Recommend(Network(Companion("c1"), Host("big-box", Nvidia(32)) with { Online = false }) with
+        {
+            Choices = [new PartChoice(PlanComponent.People, true) { HostId = "big-box" }]
+        });
+        Assert.DoesNotContain(away.Changes, c => c.RoleKind == "voice-recognition" || c.Job == WorkSharingJobs.VoiceRecognition);
+        Assert.Equal("WeSpeaker voice recognition inside Martlet on this PC's processor",
+            away.Components.Single(c => c.Component == PlanComponent.People).Where);
+    }
+
+    [Fact]
+    public void TheRecommendedSetupSetsPeopleUpOnAHostsGraphicsCardElseItsProcessor()
+    {
+        var people = new PartChoice(PlanComponent.People, true) { OptionId = "people:wespeaker" };
+        var request = Network(Companion("c1"), Companion("c2"), Host("gpu-box", Nvidia(24, "RTX 4090"))) with { Choices = [people] };
+        var card = NetworkRecommender.Recommend(request);
+
+        var add = Assert.Single(card.Changes, c => c.RoleKind == "voice-recognition");
+        Assert.Equal((SetupChangeKind.AddRole, "gpu-box", "wespeaker-en-voxceleb-resnet34-lm", false, SetupChangeBenefit.Improvement),
+            (add.Kind, add.MachineId, add.Model, add.OnProcessor, add.Benefit));
+        Assert.Contains("faster than a processor", add.Why, StringComparison.Ordinal);
+        var first = Assert.Single(card.Changes, c => c.Job == WorkSharingJobs.VoiceRecognition);
+        Assert.Equal((SetupChangeKind.JoinPool, "gpu-box"), (first.Kind, first.MachineId));
+        Assert.True(card.Changes.ToList().IndexOf(add) < card.Changes.ToList().IndexOf(first));
+        var part = card.Components.Single(c => c.Component == PlanComponent.People);
+        Assert.Equal("Martlet's Voice recognition role on gpu-box's RTX 4090", part.Where);
+        Assert.Contains("puts gpu-box first", part.Why, StringComparison.Ordinal);
+        Assert.Contains("each companion PC's processor recognizes voices", part.Why, StringComparison.Ordinal);
+        Assert.Contains(NetworkRecommender.Recommend(request).Target.Machine("gpu-box")!.Usage!.Items, i => i.OptionId == "people:voice-recognition-cuda");
+
+        // Once it runs and the list has it first, the recommendation is stable.
+        var applied = Apply(request, card) with { Choices = [people with { HostId = "gpu-box", OptionId = null }] };
+        Assert.DoesNotContain(NetworkRecommender.Recommend(applied).Changes, c => c.RoleKind == "voice-recognition" || c.Job == WorkSharingJobs.VoiceRecognition);
+
+        // A host without a graphics card recognizes on its processor.
+        var processor = NetworkRecommender.Recommend(Network(Companion("c1"), Companion("c2"), Host("cpu-box")) with { Choices = [people] });
+        Assert.Contains(processor.Changes, c => c is { Kind: SetupChangeKind.AddRole, RoleKind: "voice-recognition", MachineId: "cpu-box" });
+        Assert.Equal("Martlet's Voice recognition role on cpu-box's processor", processor.Components.Single(c => c.Component == PlanComponent.People).Where);
+
+        // A host that runs the role already but isn't first in the list only goes first.
+        var running = NetworkRecommender.Recommend(Network(Companion("c1"), Host("gpu-box", Nvidia(24)) with
+        {
+            Roles = [Role("voice-recognition", "wespeaker-en-voxceleb-resnet34-lm")]
+        }) with { Choices = [people] });
+        Assert.DoesNotContain(running.Changes, c => c.RoleKind == "voice-recognition");
+        Assert.Contains(running.Changes, c => c is { Kind: SetupChangeKind.JoinPool, MachineId: "gpu-box", Job: WorkSharingJobs.VoiceRecognition });
+
+        // Nothing changes with People off, without this PC's choice, for one companion PC alone or on a host Martlet can't change.
+        Assert.DoesNotContain(NetworkRecommender.Recommend(request with { Choices = [people with { On = false }] }).Changes,
+            c => c.RoleKind == "voice-recognition" || c.Job == WorkSharingJobs.VoiceRecognition);
+        Assert.DoesNotContain(NetworkRecommender.Recommend(request with { Choices = [] }).Changes, c => c.RoleKind == "voice-recognition");
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Network(Companion("c1", true, Nvidia(12))) with { Choices = [people] }).Changes,
+            c => c.RoleKind == "voice-recognition");
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Network(Companion("c1"), Host("gpu-box", Nvidia(24)) with { Manageable = false }) with
+        {
+            Choices = [people]
+        }).Changes, c => c.RoleKind == "voice-recognition");
     }
 
     [Fact]

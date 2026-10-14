@@ -76,6 +76,8 @@ public static partial class NetworkRecommender
     private const string VoiceRecognitionRole = "voice-recognition";
 
     private const string SpeakingPool = "speaking-pool", ListeningPool = "listening-pool", ThinkingPoolPlace = "thinking-pool", Kept = "kept";
+    /// <summary>The purpose of the Voice recognition role the recommender places for People.</summary>
+    private const string PeoplePlace = "people";
     private const double Epsilon = 1e-6;
 
     /// <summary>The recommended setup for <paramref name="request"/>'s computers and the changes that get there from today's, with

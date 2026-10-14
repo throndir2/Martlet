@@ -296,6 +296,32 @@ internal static class NetworkRecommendationCheck
                 usage = recognizing.Target.Machines.Select(m => new { m.MachineId, vram = m.Usage?.Gpus.Select(g => g.Vram) })
             });
 
+        // People in the Recommended setup (docs/RECOMMENDED_SETUPS.md#people-in-the-recommended-setup): with People on and no
+        // host running the Voice recognition role, Reconfigure installs it on a host's graphics card (the GPU route), else on a
+        // host's processor (the CPU route), and puts that host first in the Voice recognition list; applied, nothing changes.
+        var peopleOn = new PartChoice(PlanComponent.People, true) { OptionId = "people:wespeaker" };
+        var gpuPeople = Network(Companion("desk-1"), Companion("desk-2"), Host("gpu-box", Nvidia(24, "RTX 4090"))) with { Choices = [peopleOn] };
+        var gpuRoute = NetworkRecommender.Recommend(gpuPeople);
+        var cpuRoute = NetworkRecommender.Recommend(Network(Companion("desk-1"), Companion("desk-2"), Host("cpu-box")) with { Choices = [peopleOn] });
+        var settled = NetworkRecommender.Recommend(Apply(gpuPeople, gpuRoute) with { Choices = [peopleOn with { HostId = "gpu-box", OptionId = null }] });
+        bool Installs(NetworkRecommendation r, string host) =>
+            r.Changes.Any(c => c is { Kind: SetupChangeKind.AddRole, RoleKind: "voice-recognition" } && c.MachineId == host) &&
+            r.Changes.Any(c => c.Kind == SetupChangeKind.JoinPool && c.Job == WorkSharingJobs.VoiceRecognition && c.MachineId == host);
+        Step("13", "People is part of the Recommended setup: the Voice recognition role on a host's graphics card (GPU route), else a " +
+            "host's processor (CPU route), first in the Voice recognition list; once applied nothing changes",
+            Installs(gpuRoute, "gpu-box") && PartOf(gpuRoute, PlanComponent.People).Where == "Martlet's Voice recognition role on gpu-box's RTX 4090" &&
+            gpuRoute.Target.Machine("gpu-box")!.Usage!.Items.Any(i => i.OptionId == "people:voice-recognition-cuda") &&
+            Installs(cpuRoute, "cpu-box") && PartOf(cpuRoute, PlanComponent.People).Where == "Martlet's Voice recognition role on cpu-box's processor" &&
+            !settled.Changes.Any(c => c.RoleKind == "voice-recognition" || c.Job == WorkSharingJobs.VoiceRecognition) && WithinCapacity(gpuRoute),
+            new
+            {
+                gpu = $"{PartOf(gpuRoute, PlanComponent.People).Where}: {PartOf(gpuRoute, PlanComponent.People).Why}",
+                gpuChanges = gpuRoute.Changes.Where(c => c.RoleKind == "voice-recognition" || c.Job == WorkSharingJobs.VoiceRecognition)
+                    .Select(c => $"{c.Kind} {c.MachineId} [{c.Benefit}]: {c.Summary} Why: {c.Why}"),
+                cpu = PartOf(cpuRoute, PlanComponent.People).Where,
+                settled = settled.Changes.Select(c => $"{c.Kind} {c.MachineId} {c.RoleKind ?? c.Job}")
+            });
+
         // Rule 6: heavy roles on a companion PC move to a host.
         var heavy = Network(Companion("desk-1", true, Nvidia(12, "RTX 4070")) with
         {

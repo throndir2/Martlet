@@ -80,8 +80,9 @@ Companion › Listening links to People and says how many voices are known.
 
 ## What happens in a conversation
 
-For each push-to-talk or hands-free utterance (after Voice ID, when that is
-on), while speech-to-text runs:
+For each push-to-talk or hands-free utterance from the microphone, while
+speech-to-text runs, also one that Voice ID then ignores (Voice ID only decides
+whether Martlet answers; People still learns who is around):
 
 1. **Who spoke.** pyannote segmentation finds who spoke when (up to three
    people per ten seconds; longer utterances are clustered). For each person,
@@ -97,7 +98,9 @@ on), while speech-to-text runs:
    everyone) adds *Voice N*. Anything in between stays unattributed: Martlet
    never forces a guess. An utterance too short for clean evidence is matched
    on all its speech, but only a confident match counts and nothing is learned
-   or added. When the list is full (1,000 voices), the longest-unheard voice with
+   or added from it alone. Short remarks and uncertain matches wait for a while
+   and can add up to a new voice (see
+   [voices heard only a little](#voices-heard-only-a-little)). When the list is full (1,000 voices), the longest-unheard voice with
    no name that isn't linked to anyone's account makes room, and the log says
    which voice was forgotten and when it was last heard. When every voice has a
    name or is linked, the new voice isn't added and the log says so once; forget
@@ -183,6 +186,35 @@ samples are a private copy that is cleared when recognition ends; the only audio
 kept is a voice's clips while you haven't named it (below). `voices.json` holds
 only voiceprints (256 numbers per sample) and names.
 
+## Voices heard only a little
+
+A new voice joins the list at once only when one utterance has at least 2 s of
+clean speech from it and it sounds like nobody Martlet knows (below 0.45). A
+guest who says only short things ("Hi!", "Yes, me too"), or who sounds a little
+like someone Martlet knows (between 0.45 and 0.70), would never be added from
+one utterance. So Martlet keeps the voiceprints of the voices it couldn't place
+for 30 minutes, and adds a voice when they add up:
+
+1. Martlet notes a voiceprint when a voice was an uncertain match, or when an
+   utterance was too short to split and only one voice spoke in it (no
+   overlap).
+2. When at least 3 of the voiceprints of the last 30 minutes agree with each
+   other (at least 0.60 against their average) and have at least 3 s of speech
+   together, Martlet checks their average against the list.
+3. The average becomes a new *Voice N* when it sounds like nobody known, or
+   when the voiceprints agree with each other at least 0.20 more than the
+   average agrees with the voice it sounds a little like. A known voice heard
+   from far away usually stays that voice. When the average is a known voice,
+   the voiceprints were that voice and are dropped.
+4. The desktop log says *Voice recognition: added Voice N from 3 short or
+   uncertain utterances of the last 30 minutes*. The new voice gets the
+   utterance's clip, as any new voice does.
+
+Martlet keeps no audio for this: only voiceprints, in memory, on this PC. They
+are never saved or synced, and go after 30 minutes, when you turn recognition
+off or when you forget all voices. MCP's `voices_noticing_check` rehearses the
+rules, and `voices_status` counts the voiceprints that wait (`unplaced`).
+
 ## People tools
 
 Martlet's Thinking model can look up the people in the voice list with two
@@ -261,6 +293,11 @@ it on, says where it runs and shows whom it knows.
   up after 2.5 seconds.
 - **Shared.** The list is in `pools.json` (the `pools` shared setting), the
   same on all your computers. *This PC* means each companion PC itself.
+- **The Recommended setup sets it up.** While People is on and a host answers,
+  Home's Recommended setup installs the Voice recognition role on a host (its
+  NVIDIA graphics card when one has room, else its processor) and puts that
+  host first in the list. See
+  [People in the recommended setup](RECOMMENDED_SETUPS.md#people-in-the-recommended-setup).
 - **Check it now** (under Recognize voices) recognizes three seconds of a
   test tone the way your voice goes, through the list, and says which place
   answered and how long it took. Nothing is learned or kept.
@@ -455,7 +492,8 @@ voices, colds, distance and a new microphone can fool it or split one person
 into two voices (merge them). Scores are cosine similarities, not calibrated
 probabilities, and the thresholds are AudioTranscriber's conservative
 defaults. Voice ID (Companion › Listening) is a separate, bundled filter that
-discards other voices before upload; People recognizes everyone after it.
+discards other voices before upload, so Martlet answers only you; People still
+recognizes and learns every voice the microphone hears.
 
 ## Qualification
 

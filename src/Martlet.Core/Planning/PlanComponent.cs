@@ -34,7 +34,7 @@ public static class ComponentRanking
         new(PlanComponent.Hearing, 8, ComponentNecessity.Optional, "Hearing",
             "Hears how you say things: tone, laughs and sighs. Thinking's own model hears by default; an audio model of its own needs a graphics card or an online provider."),
         new(PlanComponent.People, 9, ComponentNecessity.Optional, "People",
-            "Recognizes who is talking, so Martlet knows whom it talks to. It runs inside Martlet on the processor; the Voice recognition role can do it on another computer's graphics card or processor."),
+            "Recognizes who is talking, so Martlet knows whom it talks to. It runs inside Martlet on the processor; the recommended setup puts the Voice recognition role on a host's graphics card or processor, so the companion PC stays light."),
         new(PlanComponent.DeepThinking, 10, ComponentNecessity.Optional, "Deep thinking",
             "Thinks things over in the background with a bigger model. Nice to have, never on the reply path."),
         new(PlanComponent.SmartHome, 11, ComponentNecessity.Optional, "Smart home",

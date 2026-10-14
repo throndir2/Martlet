@@ -118,7 +118,8 @@ public static partial class NetworkRecommender
         /// <summary>People: whether Martlet recognizes who is talking (voice-recognition.txt, the same on all the owner's computers)
         /// and where (Companion › People's Voice recognition list: <see cref="PartChoice.HostId"/> is the first computer that is on
         /// in it). WeSpeaker inside Martlet on the processor by default; the Voice recognition role on a computer, with this PC's
-        /// processor as the fallback. The recommender never moves or removes the role.</summary>
+        /// processor as the fallback. The recommender sets the role up on a host when none runs it (<see cref="People"/>), and
+        /// never moves or removes it.</summary>
         private (bool On, string Where, string Why) PeopleStatus()
         {
             const PlanComponent part = PlanComponent.People;
@@ -132,6 +133,11 @@ public static partial class NetworkRecommender
             var inApp = catalog.For(part).FirstOrDefault(o => o.IsLocal && o.RunsInApp);
             var here = $"{(inApp is null ? "WeSpeaker voice recognition" : Plain(inApp))} inside Martlet on {OwnPcs()}'s processor";
             const string beside = "It recognizes who is talking beside speech-to-text, so a reply never waits for it.";
+            var fallback = $"When it doesn't answer in time, {OwnPcs()}'s processor recognizes voices.";
+            // The host the recommendation sets up or puts first in the Voice recognition list.
+            if (peopleFirst is { } first && NodeOf(first.HostId) is { } chosen &&
+                chosen.Roles.FirstOrDefault(r => r.Kind == VoiceRecognitionRole) is { } placed)
+                return (true, $"Martlet's Voice recognition role on {CardText(chosen, placed.Card)}", $"{beside} {first.Why} {fallback}");
             if (choice?.HostId is not { } hostId) return (true, choice?.Where ?? here, $"{beside} Nothing leaves this PC.");
             if (NodeOf(hostId) is not { } node)
                 return (true, $"Martlet's Voice recognition role on {hostId}, else {here}", beside);

@@ -111,6 +111,37 @@ public static partial class NetworkRecommender
 
         private bool VoiceOnWindowsCard(Node node, int card) => node.OnWindows && node.Roles.Any(r => r.Card == card && IsVoice(r.Kind));
 
+        /// <summary>People (rank 9, docs/RECOMMENDED_SETUPS.md#people-in-the-recommended-setup): while this PC's People choice is on
+        /// and a host answers, a host recognizes voices with Martlet's Voice recognition role and goes first in Companion › People's
+        /// Voice recognition list, so the companion PCs stay light for games; each companion PC's processor stays the fallback.
+        /// Today's role stays where it runs (the recommender never moves or removes it), and a host that runs it but isn't first
+        /// in the list goes first. Else the role goes where it has the most room: a host's NVIDIA graphics card (the CUDA build)
+        /// when one has room beside the jobs that come first, else a host's processor. Nothing changes for one companion PC
+        /// alone, a request without this PC's choice, or a network whose hosts have no room.</summary>
+        private void People()
+        {
+            const PlanComponent part = PlanComponent.People;
+            if (!Wants(part) || singlePc || Choice(part) is not { On: true } choice) return;
+            bool Runs(Node node) => node.Presence == Presence.Here && !node.Companion && node.Roles.Any(r => r.Kind == VoiceRecognitionRole);
+            if (NodeOf(choice.HostId) is { } listed && Runs(listed)) return;
+            if (nodes.Where(Runs).OrderBy(n => n.Id, StringComparer.Ordinal).FirstOrDefault() is { } running)
+            {
+                peopleFirst = (running.Id, $"{running.Name} already runs it, so Reconfigure puts {running.Name} first in {ComponentRanking.Page(part)}'s " +
+                    "Voice recognition list.", true);
+                return;
+            }
+            var options = catalog.For(part).Where(o => o.IsLocal && o.HostRoleKind == VoiceRecognitionRole)
+                .OrderByDescending(o => o.UsesGpu).ThenBy(o => o.Id, StringComparer.Ordinal).ToArray();
+            if (FindSlot(options, new Query(VoiceRecognitionRole) { Optional = true, StrictWindows = true, LeastLoaded = true }) is not { } slot) return;
+            var why = $"{CardText(slot)} recognizes who is talking" + (slot.Card is null ? "" : ", faster than a processor") +
+                $", so {OwnPcs()} stays light for games.";
+            Place(slot, VoiceRecognitionRole, PeoplePlace, SetupChangeBenefit.Improvement, why);
+            var join = slot.Node.Id != choice.HostId;
+            peopleFirst = (slot.Node.Id, join
+                ? $"Reconfigure installs it and puts {slot.Node.Name} first in {ComponentRanking.Page(part)}'s Voice recognition list."
+                : $"Reconfigure installs it on {slot.Node.Name}, which is first in {ComponentRanking.Page(part)}'s Voice recognition list already.", join);
+        }
+
         /// <summary>Rules 1, 5 and 9: the Thinking pool. Today's Deep thinking roles stay on hosts, moved to a card no live job
         /// uses when there is one; then every host the owner didn't leave out of the pool gets one on a card free for it, with
         /// the biggest model that fits. A companion PC keeps its own only while no host thinks in the background.</summary>

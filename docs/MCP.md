@@ -1655,6 +1655,25 @@ fixture: `answer.updates`, `refused` (line and reason), `applied` (what the talk
 window would say) and the fixture `voices` afterwards. It never reads or writes
 the saved voice list and uses no audio, model or network.
 
+`voices_noticing_check` rehearses how People notices a new voice
+([voices heard only a little](VOICES.md#voices-heard-only-a-little)) with the
+production voice list matching (`VoiceRoster.Identify`) and the memory of
+voices heard only a little (`UnplacedVoices`), on FIXTURE voiceprints (seeded
+random numbers, not real voices). Its `scenarios` (each `passed`; `ok` is all
+of them): `long` (a new voice with 2 s or more of clean speech is added at
+once), `short remarks` (three short remarks within 30 minutes add the voice on
+the third), `two remarks` and `too old` (they wait), `different people` (six
+people's single remarks never make one voice), `sounds a little like you`
+(someone whose every remark is an uncertain match for a known voice is added
+once three agree) and `you, far from the microphone` (a known voice's uncertain
+remarks never make a new voice). Each has the matches with the owner's voice,
+`newVoiceOn` (which utterance made it), the new voice's `utterances`,
+`seconds` and score against the owner, and `waiting`. `rules` gives the window,
+the minimum utterances and seconds, the agreement, the margin and the
+thresholds. It is in memory only: nothing is read, recorded, saved or sent.
+`voices_status`'s `recognitionWhere.desktop.unplaced` says how many voiceprints
+wait in the running desktop (a count only).
+
 `voices_people` runs the [People tools](VOICES.md#people-tools) (the `people`
 check-in tool set, which learning names uses too) on a data directory's saved
 `voices.json`, exactly as a check-in gets them: `tool` is `people_list`
@@ -6512,7 +6531,11 @@ while Smart home is off); People and Motion (step 13: People names the Voice
 recognition role on the first computer of its list and that role always
 stays, also with People off; Motion keeps its HY-Motion role on the card with
 room, its role goes from the card Thinking fills and from every computer when
-the owner turns Motion off); heavy roles on a companion PC
+the owner turns Motion off); People in the Recommended setup (step 13: with
+People on and no host running the Voice recognition role, Reconfigure installs
+it on a host's graphics card, the GPU route with the CUDA build, else on a
+host's processor, the CPU route, and puts that host first in the Voice
+recognition list; once applied nothing changes); heavy roles on a companion PC
 (they move to the host, Improvement); the setup order (step 12: job by job,
 Thinking first, each job make before break); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the

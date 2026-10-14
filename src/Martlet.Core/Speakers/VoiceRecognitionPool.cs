@@ -28,6 +28,22 @@ public static class VoiceRecognitionPool
     /// <summary>The first list: this PC's processor, where recognition always ran before the list.</summary>
     public static PoolList Default() => new() { Area = Area.Id, Members = [PoolMember.ThisPc()] };
 
+    /// <summary>The Recommended setup's change for People: <paramref name="list"/> (null: <see cref="Default"/>) with computer
+    /// <paramref name="hostId"/> on and first, so it recognizes who is talking; the other members keep their order after it, and
+    /// this PC's processor stays the fallback.</summary>
+    public static PoolList First(PoolList? list, string hostId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        var current = list ?? Default();
+        var key = PoolMember.Computer(hostId).Key;
+        var listed = current.With((current.Find(key) ?? PoolMember.Computer(hostId)) with { Off = false });
+        return listed.Move(key, -listed.Members.Count);
+    }
+
+    /// <summary>Whether computer <paramref name="hostId"/> is the first member that is on in <paramref name="list"/>.</summary>
+    public static bool IsFirst(PoolList? list, string hostId) =>
+        (list ?? Default()).Members.FirstOrDefault(m => !m.Off)?.Key == PoolMember.Computer(hostId).Key;
+
     /// <summary>Where <paramref name="member"/> recognizes, in words: "this PC's processor" or "gpu-pc's Voice recognition role".</summary>
     public static string Describe(PoolMember member)
     {

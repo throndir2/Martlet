@@ -23,7 +23,8 @@ internal sealed partial class McpServer
             "(standIn), recognitionWhere (Companion > People > Where it runs: the Voice recognition list in pools.json, its members, " +
             "the places this PC tries in order with this PC's processor last as the fallback, and desktop: the running desktop's " +
             "voice-recognition-state.json with this PC's engine state, problem, failures, retry time, reloads and speed, the last " +
-            "recognition's place, milliseconds and the places passed over, and each computer's last answer or rest), " +
+            "recognition's place, milliseconds and the places passed over, each computer's last answer or rest, and unplaced: how " +
+            "many voiceprints of voices heard only a little wait in memory to add up to a new voice), " +
             "sharing (the voice list always syncs with your paired hosts, whatever Keep Martlet the same on all my " +
             "computers says: state, hosts, and friendHostsNeverUsed for hosts a friend shares), " +
             "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
@@ -124,6 +125,16 @@ internal sealed partial class McpServer
         },
             arguments => VoiceNamingCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"),
                 OptionalString(arguments, "reply"))),
+        Tool("voices_noticing_check", "Companion > People: rehearse how Martlet notices a new voice (docs/VOICES.md#voices-heard-only-a-little) " +
+            "with the production voice list matching and the memory of voices heard only a little (UnplacedVoices), on FIXTURE " +
+            "voiceprints (seeded random numbers, NOT real voices). Scenarios: a long utterance of a new voice (added at once), three " +
+            "short remarks within 30 minutes (added on the third), two remarks (waits), remarks more than 30 minutes apart (wait), " +
+            "six different people (never one voice), someone who sounds a little like a known voice (added once three agree) and a " +
+            "known voice far from the microphone (never a new voice). Per scenario: each utterance's match with the owner's voice, " +
+            "on which utterance a new voice was made, its utterances, seconds and score against the owner, and how many voiceprints " +
+            "still wait; the rules (window, minimum utterances and seconds, agreement, margin, thresholds). ok when every scenario " +
+            "does what it should. In memory; nothing is read, recorded, saved or sent.", new { },
+            _ => VoicesNoticingCheck.Run()),
         Tool("voices_engine_check", "Run the voice recognition engine that ships in a Martlet folder (optional absolute " +
             "martletDirectory, default the installed release's Desktop folder): load its sherpa-onnx runtime and the WeSpeaker and " +
             "pyannote models, take a voiceprint of a generated test tone and, for optional wavFiles (absolute paths to 16 kHz mono " +
