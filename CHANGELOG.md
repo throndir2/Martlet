@@ -8,10 +8,12 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-10-13
+
 ### Added
 
-- **Your character comes alive when Chatterbox Original speaks expressively**: a sentence said in its *expressive* tone now makes a Live2D or VRM character lift its brows and bob with lively nods, as every other voice sound and tone already moves the character. ([#887](https://github.com/throndir2/Martlet/pull/887))
 - **The recommended setup now includes People and Motion**: Home's review lists where Martlet recognizes who is talking and where it makes body motions, counts their graphics memory on your computers, and lets you turn Motion off. ([#891](https://github.com/throndir2/Martlet/pull/891))
+- **Your character comes alive when Chatterbox Original speaks expressively**: a sentence said in its *expressive* tone now makes a Live2D or VRM character lift its brows and bob with lively nods, as every other voice sound and tone already moves the character. ([#887](https://github.com/throndir2/Martlet/pull/887))
 
 ## [0.77.0] - 2026-10-13
 

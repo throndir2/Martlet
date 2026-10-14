@@ -156,13 +156,10 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.77.0
+## 🆕 What's new in 0.78.0
 
-- 🤫 **Martlet stays quiet while you talk to someone else**: the new *Talking to someone else* check-in notices a conversation in the room or on a call, and Martlet holds back until you talk to it again.
-- 🎙️ **Voice recognition on your other computers**: the new *Voice recognition* role recognizes who is speaking on another computer's NVIDIA graphics card or processor, and Companion › People › Where it runs chooses the order.
-- 👥 **Check-ins know the people Martlet knows by voice**: a new *People* tool set lets a check-in see the names, how often each voice was heard and who spoke lately.
-- 💃 **Companion › Motion controls your VRM character's body motions**: turn motion off, or choose which of your computers make new motions and in what order.
-- 🔍 **See what each Thinking request sent**: select a request to see its input beside its output.
+- 🧭 **The recommended setup now includes People and Motion**: Home's review shows where Martlet recognizes who is talking and where it makes body motions, counts their graphics memory and lets you turn Motion off.
+- 🎭 **Your character comes alive when Chatterbox Original speaks expressively**: an *expressive* sentence makes a Live2D or VRM character lift its brows and nod with energy.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
