@@ -45,8 +45,8 @@ The network recommender (`NetworkRecommender`) then applies
 card runs at most one language model. A review window first lists **every part,
 in priority order** ([the priority list](#the-priority-list)): where each part
 runs, or *Off* and why, with an **Off** choice for each optional part that
-runs on your computers' host services (Vision, Reading, Hearing and Smart home
-are turned off on their Companion pages). Then it
+runs on your computers' host services (Vision, Reading, Hearing, People and
+Smart home are turned off on their Companion pages). Then it
 shows each computer today and in the recommended setup, with a resource bar
 like the Devices page, including what a companion PC does itself (Thinking in
 Ollama, Parakeet). It also shows who does each job (Speaking, Listening,
@@ -373,24 +373,27 @@ priority order**.
 | 6 | Vision (the image model) | Optional | Martlet doesn't look at your screen or camera |
 | 7 | Reading (text on the screen) | Optional | Martlet doesn't read the text on your screen |
 | 8 | Hearing (the audio model) | Optional | Martlet gets only the words you say, not how you say them |
-| 9 | Deep thinking (the Thinking pool) | Optional | Martlet doesn't think things over in the background |
-| 10 | Smart home (Home Assistant) | Optional | Martlet doesn't control your smart home |
-| 11 | Singing | Optional | Martlet doesn't sing |
-| 12 | Picture making | Optional | Martlet doesn't draw pictures |
+| 9 | People (voice recognition) | Optional | Martlet doesn't check who is talking |
+| 10 | Deep thinking (the Thinking pool) | Optional | Martlet doesn't think things over in the background |
+| 11 | Smart home (Home Assistant) | Optional | Martlet doesn't control your smart home |
+| 12 | Singing | Optional | Martlet doesn't sing |
+| 13 | Picture making | Optional | Martlet doesn't draw pictures |
+| 14 | Motion (body motions for VRM characters) | Optional | Martlet makes no new body motions; the ones it kept still play |
 
 The needed parts come first. The optional parts follow in the order they help
 most. Vision, Reading and Hearing make every conversation better, and they
 need nothing more while Thinking's own model sees and hears (Vision before
-Reading, because Reading only reads while Martlet watches). Deep thinking
-helps in the background. Smart home helps only in a home with smart devices.
-Singing and pictures are fun on request, and they need the most graphics
-memory.
+Reading, because Reading only reads while Martlet watches). People knows who
+talks, on a little of the processor. Deep thinking helps in the background.
+Smart home helps only in a home with smart devices. Singing, pictures and
+motion are fun on request, and they need the most graphics memory.
 
 - **Off is a normal state.** An optional part with no room, or with no
-  processor option (singing, pictures, Deep thinking), is off. The review shows
-  each part as *Off*, with why. You can also tick **Off** for an optional part
-  in the review: Martlet saves the choice on this PC (`recommended-setup.json`),
-  plans again without that part, and Reconfigure turns its roles off.
+  processor option (singing, pictures, motion, Deep thinking), is off. The
+  review shows each part as *Off*, with why. You can also tick **Off** for an
+  optional part in the review: Martlet saves the choice on this PC
+  (`recommended-setup.json`), plans again without that part, and Reconfigure
+  turns its roles off.
 - **Turning a part off deletes nothing.** Reconfigure stops the part's roles
   and takes them out of the gateway, but the host keeps their models, images
   and data. Each host service reports the models it keeps (`downloads` in its
@@ -398,13 +401,17 @@ memory.
   and *already downloaded*, and it shows no download size. The planner also
   prefers a computer that still has the model, and it does not need free disk
   space there.
-- **Vision, Reading, Hearing and Smart home are this PC's choice.** You turn
-  them on or off on their Companion pages (`sense-models.json`, `reading.json`,
-  the talk preferences and the Home Assistant connection;
+- **Vision, Reading, Hearing, People and Smart home are set on their pages.**
+  You turn them on or off on their Companion pages (`sense-models.json`,
+  `reading.json`, the talk preferences, `voice-recognition.txt` with the Voice
+  recognition list in `pools.json`, and the Home Assistant connection;
   `ComponentRanking.SetOnPage`). The review shows where each one runs and its
   page, but no **Off** box. Reading's role (`ocr`) goes when Reading is off on
-  this PC and no other companion PC may use it. Home Assistant always stays,
-  because it runs your home.
+  this PC and no other companion PC may use it. The Voice recognition role and
+  Home Assistant always stay: People's choice is the same on all your
+  computers, and Home Assistant runs your home. People's line names the first
+  computer of the Voice recognition list that runs the role, else WeSpeaker
+  inside Martlet on the processor.
 - **A companion PC's graphics card takes only Thinking and the voice.**
   Thinking goes first. Then comes your voice engine (Chatterbox Turbo) if it
   fits beside Thinking. If it doesn't fit, Chatterbox Nano goes on the card,
@@ -438,10 +445,11 @@ Thinking, then listening, lip-sync and the voice.
 
 ### Every way to extend Martlet
 
-An audit (2026-10-08) of every host role in
+An audit (2026-10-08, updated 2026-10-13) of every host role in
 [`deploy/host/roles`](../deploy/host/roles), every Companion page and every
 feature. Each part that takes compute (a graphics card, a processor or an
-online provider) is a ranked part in [the priority list](#the-priority-list),
+online provider), or that you can run on another of your computers, is a
+ranked part in [the priority list](#the-priority-list),
 with a catalog option and footprint for each way to run it
 ([`FootprintCatalog.Seed.cs`](../src/Martlet.Core/Planning/FootprintCatalog.Seed.cs),
 [Resource footprints](RESOURCE_FOOTPRINTS.md)). `FootprintCatalogTests` checks
@@ -459,10 +467,12 @@ that every host role has a catalog option.
 | 6 | Vision | The image model: looks at your screen or a camera | Thinking's own model (nothing more), a graphics card (Ollama on this PC or a paired computer), or online | None (Ollama) | Optional | Yes | Companion › Vision |
 | 7 | Reading | Reads the small text on the screen while Martlet watches | The processor: Windows OCR inside Martlet, or RapidOCR or PP-OCRv5 mobile in the Reading role; PP-OCRv5 server on an NVIDIA graphics card | `ocr` | Optional | Yes | Companion › Reading |
 | 8 | Hearing | The audio model: hears how you say things | Thinking's own model (nothing more), a graphics card (Ollama on this PC), or online (NVIDIA Build's Nemotron 3 Nano Omni) | None (Ollama) | Optional | Yes | Companion › Hearing |
-| 9 | Deep thinking | The Thinking pool: thinks longer, web research, screen and sound summaries, judges, helper jobs, check-ins | A graphics card, or online | `deep-thinking` | Optional | Yes | Companion › Thinking pool |
-| 10 | Smart home | Home Assistant, the hub that controls your devices | The processor of a Linux computer with Docker Engine, always on, or your own hub | `home-assistant` | Optional | Yes | Companion › Smart home |
-| 11 | Singing | Sings songs on request | A large NVIDIA card | `singing` | Optional | Yes | Companion › Singing |
-| 12 | Picture making | Draws pictures on request | A large NVIDIA card (ComfyUI with Z-Image Turbo), or online (NVIDIA Build's FLUX, OpenRouter) | `pictures` | Optional | Yes | Companion › Picture making |
+| 9 | People | Recognizes who is talking (pyannote and WeSpeaker voiceprints) | The processor inside Martlet (about 0.16 GB, 4 threads for 0.16 s per utterance), or the Voice recognition role on another computer's NVIDIA card or processor, with this PC's processor as the fallback | `voice-recognition` | Optional, on by default | Yes | Companion › People |
+| 10 | Deep thinking | The Thinking pool: thinks longer, web research, screen and sound summaries, judges, helper jobs, check-ins | A graphics card, or online | `deep-thinking` | Optional | Yes | Companion › Thinking pool |
+| 11 | Smart home | Home Assistant, the hub that controls your devices | The processor of a Linux computer with Docker Engine, always on, or your own hub | `home-assistant` | Optional | Yes | Companion › Smart home |
+| 12 | Singing | Sings songs on request | A large NVIDIA card | `singing` | Optional | Yes | Companion › Singing |
+| 13 | Picture making | Draws pictures on request | A large NVIDIA card (ComfyUI with Z-Image Turbo), or online (NVIDIA Build's FLUX, OpenRouter) | `pictures` | Optional | Yes | Companion › Picture making |
+| 14 | Motion | Makes new body motions for a VRM character from a description | An NVIDIA card with 24 GB or more (HY-Motion 1.0 Lite) or 26 GB or more (HY-Motion 1.0), and about 32 GB of memory | `motion` | Optional | Yes | Companion › Motion |
 
 **Features without compute of their own** (they use the parts above, or
 small work inside Martlet that the footprints count as always on):
@@ -470,16 +480,17 @@ small work inside Martlet that the footprints count as always on):
 | Feature | What it uses | Needed or optional | Can be off | Set up in |
 | --- | --- | --- | --- | --- |
 | Screen commentary, camera looks | Vision (and Reading); summaries on the Thinking pool | Optional | Yes | Companion › Vision |
-| Web research | A search service online (a search API or your SearXNG), then Thinking or the Thinking pool | Optional, on by default | Yes | Companion › Thinking pool › Web research |
+| Web research | DuckDuckGo's search page online (no key), then Thinking or the Thinking pool | Optional, on by default | Yes | Companion › Thinking pool › Web research |
 | Tools: MCP servers and the terminal | Programs you add, on this PC or online; the terminal runs PowerShell on this PC | Optional, the terminal off by default | Yes | Companion › Tools |
 | Discord, Messaging (Telegram, WhatsApp) | The network, then Thinking, the voice and the other parts | Optional | Yes | Companion › Discord, Companion › Messaging |
 | Memory, lorebooks | Words matched on this PC's processor; away from the reply, also an embedding model in Ollama on the processor when it is downloaded | Memory on by default; lorebooks optional | Yes | Companion › Memory, Companion › Lorebook |
 | Check-ins and reminders | Thinking or the Thinking pool | Optional | Yes | Companion › Check-ins |
-| People (voice recognition) | WeSpeaker on this PC's processor, inside Martlet (about 0.16 GB, 4 threads for 0.16 s per utterance) | On by default | Yes | Companion › People |
 | Cloud providers | Online accounts and keys for Thinking, the voice, listening, Vision and Hearing | Optional | Yes | The page of each part |
 
 Not in Martlet yet: Voice Studio training (it would take most of a large
-graphics card for hours). When it ships, it becomes a ranked part.
+graphics card for hours). When it ships, it becomes a ranked part. Web
+research could use a SearXNG you run yourself, but Martlet has no search
+provider for it yet; when one ships, it becomes a ranked part too.
 
 ### The rules
 

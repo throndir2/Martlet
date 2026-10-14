@@ -271,6 +271,51 @@ public sealed partial class FootprintCatalog
             Source = "Hosted: uses no local resources; each picture costs money (docs/PICTURES.md)"
         },
 
+        // Motion: body motions for VRM characters (Companion › Motion, docs/MOTION_HOST.md). HY-Motion 1.0 with its Qwen3-8B and
+        // CLIP text encoders on one big NVIDIA card; it frees the card a few minutes after the last motion.
+        new()
+        {
+            Id = "motion:hy-motion-1.0-lite", Component = PlanComponent.Motion, DisplayName = "Motion (HY-Motion 1.0 Lite)", ModelId = "hy-motion-1.0-lite",
+            HostRoleKind = "motion", Gpu = GpuRequirement.Nvidia, MinGpuGb = 22.5, Platforms = DockerNvidia,
+            Steady = new(19, 4, 1, 35), Peak = new(20, 18, 4, 35), QualityTier = 3, Evidence = FootprintEvidence.Sourced,
+            Source = "Sourced: Tencent's minimum card 24 GB (role.conf min_vram 23000 MiB), about 32 GB of system memory while the 16 GB " +
+                $"Qwen3-8B encoder loads, 19.9 GB of downloads plus a 15 GB image (docs/MOTION_HOST.md); VRAM and CPU estimate ({Doc})"
+        },
+        new()
+        {
+            Id = "motion:hy-motion-1.0", Component = PlanComponent.Motion, DisplayName = "Motion (HY-Motion 1.0)", ModelId = "hy-motion-1.0",
+            HostRoleKind = "motion", Gpu = GpuRequirement.Nvidia, MinGpuGb = 25.4, Platforms = DockerNvidia,
+            Steady = new(21.5, 4, 1, 37.5), Peak = new(22.5, 18, 4, 37.5), QualityTier = 4, Evidence = FootprintEvidence.Sourced,
+            Source = "Sourced: Tencent's minimum card 26 GB (role.conf min_vram 26000 MiB), about 32 GB of system memory while the 16 GB " +
+                $"Qwen3-8B encoder loads, 22.3 GB of downloads plus a 15 GB image (docs/MOTION_HOST.md); VRAM and CPU estimate ({Doc})"
+        },
+
+        // People: recognizing who is talking (Companion › People, docs/VOICES.md). WeSpeaker and pyannote in sherpa-onnx inside
+        // Martlet on the processor, or the voice-recognition role with the same models on a computer's graphics card or processor.
+        new()
+        {
+            Id = "people:wespeaker", Component = PlanComponent.People, DisplayName = "WeSpeaker voice recognition", RunsInApp = true,
+            Platforms = ["windows"], Steady = new(0, 0.16, 0.2, 0.04), Peak = new(0, 0.16, 4, 0.04),
+            QualityTier = 3, FirstWordMs = 150, Evidence = FootprintEvidence.Measured,
+            Source = "Measured: 0.16 GB and 4 threads for about 156 ms per 12 s utterance on an i7-13700K; 75-180 ms for 3 s of speech; " +
+                $"41 MB of models shipped with Martlet (docs/VOICES.md) ({Doc})"
+        },
+        new()
+        {
+            Id = "people:voice-recognition-cpu", Component = PlanComponent.People, DisplayName = "Martlet's Voice recognition role on the processor",
+            ModelId = "wespeaker-en-voxceleb-resnet34-lm", HostRoleKind = "voice-recognition", Platforms = DockerNvidia,
+            Steady = new(0, 0.3, 0.2, 0.6), Peak = new(0, 0.5, 4, 0.6), QualityTier = 3, FirstWordMs = 150,
+            Source = $"Estimate: the same models and threads as inside Martlet, in a python:3.12 image (docs/VOICE_RECOGNITION_HOST.md) ({Doc})"
+        },
+        new()
+        {
+            Id = "people:voice-recognition-cuda", Component = PlanComponent.People, DisplayName = "Martlet's Voice recognition role on the graphics card",
+            ModelId = "wespeaker-en-voxceleb-resnet34-lm", HostRoleKind = "voice-recognition", Gpu = GpuRequirement.Nvidia, MinGpuGb = 2,
+            Platforms = DockerNvidia, Steady = new(0.5, 0.5, 0.2, 2.6), Peak = new(0.8, 1, 1, 2.6), QualityTier = 3, FirstWordMs = 100,
+            Source = "Estimate: the CUDA 12 build adds about 2 GB of NVIDIA libraries to the image (docs/VOICE_RECOGNITION_HOST.md); " +
+                $"VRAM for two small ONNX models estimate ({Doc})"
+        },
+
         // Vision: the image model (Companion › Vision). Thinking's own model by default; a model of its own describes each
         // picture for Thinking.
         new()

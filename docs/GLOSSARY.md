@@ -32,7 +32,7 @@ To find who decides something, see the [decision map](DECISION_MAP.md).
 
 | Concept | Code name | UI name | Kept names |
 | --- | --- | --- | --- |
-| Pictures that Martlet **sees**: your screen, your camera, and pictures of the character for touch zones and the eyes | picture (`Image` on a job, `SenseKind.Image`, `PictureDescriptions`, `LiveConversationController.Pictures.cs`) | pictures, your pictures | |
+| Pictures that Martlet **sees**: your screen, your camera, and pictures of the character for touch zones and the eyes | picture (`Image` on a job, `SenseKind.Image`, `PictureDescriptions`, `SenseSession.Pictures.cs`) | pictures, your pictures | |
 | Pictures that Martlet **makes** when you ask (ComfyUI or a cloud provider) | picture making: `PoolAreas.PictureMaking`, `PictureMakingPool`, `PictureMakingPoolMembers`, `IPictureMaker` and the `*PictureMaker` classes, namespaces `Martlet.*.Pictures` | Picture making (Companion › Picture making) | Area ID, lane and host role `pictures`; `pictures.json`; `CompanionTab.Pictures` (automation ID `CompanionTab-Pictures`); automation IDs `Pool-pictures-...` and `Pictures...`; MCP tools `pictures_status`, `pictures_check`, `draw_picture`; `MARTLET_PICTURES_FIXTURE` |
 
 The UI calls the picture making page, its list and its host role *Picture

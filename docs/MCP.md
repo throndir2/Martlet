@@ -6274,7 +6274,7 @@ otherwise), `RecommendedSetupTitle`,
 Ollama on This PC's NVIDIA GeForce RTX 4070.* and an optional part that is off
 *7. Singing (optional): Off: Martlet doesn't sing.*, with why; parts are
 `Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `Vision`, `Reading`,
-`Hearing`, `DeepThinking`, `SmartHome`, `Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
+`Hearing`, `People`, `DeepThinking`, `SmartHome`, `Singing`, `Pictures` and `Motion`), `RecommendedSetupOffline` (one sentence about the
 computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
 words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
@@ -6323,7 +6323,7 @@ when the review sent the owner there. `RecommendedSetupApply`
 it saves `recommended-setup.json`) and each optional part's Off checkbox
 `RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
 again, in `recommended-setup.json`, and the review opens again planned that
-way; Vision, Reading, Hearing and Smart home have none, because their
+way; Vision, Reading, Hearing, People and Smart home have none, because their
 Companion page turns them off) and Your preferences need `--allow-ui-effects`:
 `RecommendedSetupQuality` (`ui_select`: *Balanced: first word in 0.4 s or
 less*, *Quick replies: first word in 0.25 s or less* or *Smarter replies:
@@ -6446,7 +6446,11 @@ advanced lip-sync off with their roles removed); every way to extend Martlet
 Off on their Companion page; Vision on Thinking's own model, Hearing's model
 of its own on a companion PC's card with a note, Reading off on this PC so its
 `ocr` role goes, but not with a second companion PC, and Home Assistant stays
-while Smart home is off); heavy roles on a companion PC
+while Smart home is off); People and Motion (step 13: People names the Voice
+recognition role on the first computer of its list and that role always
+stays, also with People off; Motion keeps its HY-Motion role on the card with
+room, its role goes from the card Thinking fills and from every computer when
+the owner turns Motion off); heavy roles on a companion PC
 (they move to the host, Improvement); the setup order (step 12: job by job,
 Thinking first, each job make before break); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the

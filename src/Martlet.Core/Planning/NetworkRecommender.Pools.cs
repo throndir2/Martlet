@@ -86,8 +86,8 @@ public static partial class NetworkRecommender
 
         private static bool LiveOn(Node node, int card) => node.Roles.Any(r => r.Card == card && r.Kind != DeepThinkingRole);
 
-        /// <summary>Needed jobs before optional extras (<see cref="ComponentRanking"/>): today's singing, pictures and Reading roles
-        /// stay where the jobs Martlet needs to talk (Thinking, the voice, listening, lip-sync) and their pools left room, and go
+        /// <summary>Needed jobs before optional extras (<see cref="ComponentRanking"/>): today's singing, pictures, motion and Reading
+        /// roles stay where the jobs Martlet needs to talk (Thinking, the voice, listening, lip-sync) and their pools left room, and go
         /// where they didn't, or when the owner turned their part off. Reading is this PC's choice, so its role goes only while no
         /// other companion PC may use it.</summary>
         private void Extras()
@@ -101,7 +101,7 @@ public static partial class NetworkRecommender
                             ? $"{ComponentRanking.Name(component)} is off in {ComponentRanking.Page(component)}, and no other companion PC uses it."
                             : $"You turned {ComponentRanking.Name(component).ToLowerInvariant()} off.");
                     // Rule 6: with a host that answers, a companion PC runs no models (Reading is this PC's choice on its page).
-                    else if (node.Companion && hostAnswers && role.Kind is SingingRole or PicturesRole)
+                    else if (node.Companion && hostAnswers && role.Kind is SingingRole or PicturesRole or MotionRole)
                         role.Leave = (SetupChangeBenefit.Improvement, $"A host answers, so {node.Name}, a companion PC, runs no models and stays light for games.");
                     else if (!Keep(node, role, Kept, out _))
                         role.Leave = (SetupChangeBenefit.Required,

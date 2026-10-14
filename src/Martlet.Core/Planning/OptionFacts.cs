@@ -310,6 +310,7 @@ public static class OptionFacts
         PlanComponent.Listening => "Transcript",
         PlanComponent.Reading => "Read time",
         PlanComponent.Vision or PlanComponent.Hearing => "Description",
+        PlanComponent.People => "Recognition",
         _ => "Response"
     };
 
@@ -320,6 +321,7 @@ public static class OptionFacts
         PlanComponent.Listening => "to transcript",
         PlanComponent.Reading => "to read the screen",
         PlanComponent.Vision or PlanComponent.Hearing => "to describe",
+        PlanComponent.People => "to recognize who spoke",
         _ => "to respond"
     };
 
@@ -331,6 +333,7 @@ public static class OptionFacts
         PlanComponent.Reading => "About how long it takes to read the text of one screenshot. A reply never waits for it.",
         PlanComponent.Vision => "About how long it takes to put one picture into words. A reply never waits for it.",
         PlanComponent.Hearing => "About how long it takes to describe how you sounded. A reply never waits for it.",
+        PlanComponent.People => "About how long it takes to recognize who spoke in a few seconds of speech. A reply never waits for it.",
         _ => "About how long until it responds."
     };
 

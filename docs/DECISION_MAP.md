@@ -45,7 +45,7 @@ the job now and why. The reply jobs read their path from `SenseRouting.For`
 | Touch zones and the eyes | Thinking pool member that sees (`touch-zones`), image model, Thinking's own model after the reply | `HelperJobs.RunAsync` (the pool first), then `AskHelperAsync`'s fallback (`src\Martlet.Desktop\LiveConversationController.cs`) |
 | A check-in with a screenshot | Thinking pool member that sees (`check-in`) | `CheckIns.Needs` (`src\Martlet.Conversation\CheckIns.cs`) and the check-in runner |
 | Your voice with a reply | Audio model, Thinking's own model (each when *Hear how you say it* allows it) | The reply (`SenseRouting.For`) |
-| A PC sound description | Audio model, Thinking pool member that hears (`digest`), the sound tagger | `LiveConversationController.SoundJudge()` (`src\Martlet.Desktop\LiveConversationController.AudioModel.cs`) |
+| A PC sound description | Audio model, Thinking pool member that hears (`digest`), the sound tagger | `SenseSession.SoundJudge()` (`src\Martlet.Desktop\SenseSession.AudioModel.cs`) |
 | A check-in with a recording | Thinking pool member that hears (`check-in`) | `CheckIns.Needs` and the check-in runner |
 
 The conversation decides with what it runs with

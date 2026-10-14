@@ -90,13 +90,13 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// a Deep thinking role for the pool there.</summary>
     public IReadOnlyCollection<string> ThinkingPoolOptOut { get; init; } = [];
     /// <summary>The parts the owner turned off (<see cref="ComponentRanking.CanBeOff"/>: lip-sync means advanced lip-sync, so
-    /// the face follows the voice's loudness; Deep thinking, singing and pictures). The recommender removes their roles and
+    /// the face follows the voice's loudness; Deep thinking, singing, pictures and motion). The recommender removes their roles and
     /// plans without them. Unlike <see cref="Wanted"/>, which leaves a part it doesn't plan as it is. A part this PC sets on
     /// its Companion page (<see cref="ComponentRanking.SetOnPage"/>) is off by <see cref="Choices"/> instead.</summary>
     public IReadOnlyCollection<PlanComponent> Off { get; init; } = [];
     /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="ComponentRanking.SetOnPage"/>:
-    /// Vision, Reading, Hearing and Smart home), for their lines in <see cref="NetworkRecommendation.Components"/>. A part with
-    /// no choice reads as its default.</summary>
+    /// Vision, Reading, Hearing, People and Smart home), for their lines in <see cref="NetworkRecommendation.Components"/>. A part
+    /// with no choice reads as its default.</summary>
     public IReadOnlyList<PartChoice> Choices { get; init; } = [];
     /// <summary>How many companion PCs the owner has, also the ones <see cref="Machines"/> leaves out (no hardware report); 0:
     /// count the machines. A part this PC turned off on its page may still be used by another companion PC.</summary>

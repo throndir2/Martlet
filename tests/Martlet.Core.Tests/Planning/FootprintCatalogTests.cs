@@ -63,6 +63,24 @@ public sealed class FootprintCatalogTests
         Assert.All(Options.Where(o => o.HostRoleKind == "ocr"), o => Assert.Equal(PlanComponent.Reading, o.Component));
         Assert.Equal(["ppocrv5-mobile", "ppocrv5-server", "rapidocr-ppocrv4"], Options.Where(o => o.HostRoleKind == "ocr").Select(o => o.ModelId).Order());
         Assert.Equal(PlanComponent.SmartHome, Options.Single(o => o.HostRoleKind == "home-assistant").Component);
+        Assert.All(Options.Where(o => o.HostRoleKind == "motion"), o => Assert.Equal(PlanComponent.Motion, o.Component));
+        Assert.Equal(["hy-motion-1.0", "hy-motion-1.0-lite"], Options.Where(o => o.HostRoleKind == "motion").Select(o => o.ModelId).Order());
+        Assert.All(Options.Where(o => o.HostRoleKind == "voice-recognition"), o => Assert.Equal(PlanComponent.People, o.Component));
+        Assert.Equal([GpuRequirement.None, GpuRequirement.Nvidia], Options.Where(o => o.HostRoleKind == "voice-recognition").Select(o => o.Gpu));
+    }
+
+    [Fact]
+    public void MotionNeedsTheCardTencentNamesAndPeopleRunsInMartletOnTheProcessor()
+    {
+        // deploy/host/roles/motion/role.conf: min_vram 23000 MiB for Lite and 26000 MiB for the standard model.
+        Assert.Equal(23000 / 1024d, FootprintCatalog.Default.Find("motion:hy-motion-1.0-lite")!.MinGpuGb, 1);
+        Assert.Equal(26000 / 1024d, FootprintCatalog.Default.Find("motion:hy-motion-1.0")!.MinGpuGb, 1);
+        // A 24 GB card has room for Lite once the planner keeps its headroom.
+        Assert.True(PlacementEngine.GpuCapacityGb(new MachineGpu("RTX 4090", GpuVendor.Nvidia, 24)) >=
+            FootprintCatalog.Default.Find("motion:hy-motion-1.0-lite")!.GpuGb);
+        var inApp = Assert.Single(FootprintCatalog.Default.For(PlanComponent.People), o => o.RunsInApp);
+        Assert.Equal("people:wespeaker", inApp.Id);
+        Assert.Equal(GpuRequirement.None, inApp.Gpu);
     }
 
     private static string RepositoryRoot()

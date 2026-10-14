@@ -145,7 +145,7 @@ internal sealed partial class LiveConversationController
         if (Speaking is not null || singing?.Playing == true) return null;
         var straight = listeningSession.GoesStraight(listening, utterance);
         // An audio model of its own takes recordings in Thinking's place: then Thinking gets none (docs/SENSE_MODELS.md).
-        var hear = listening.HearsWith(RecordingStaysOnThisPc(configured)) && ThinkingTakesVoice(configured);
+        var hear = listening.HearsWith(senseSession.RecordingStaysOnThisPc(configured)) && senseSession.ThinkingTakesVoice(configured);
         var voice = plan.Voice;
         LiveConversationOperation operation;
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
