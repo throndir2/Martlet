@@ -222,8 +222,9 @@ also keeps a short **screen summary over time**:
    `digest` job: it comes after the barge-in and end-of-turn judges and may take
    the pool's last free slot). It is
    never the model your conversation uses. The job is one small picture (a
-   contact sheet: 2 to 4 of the kept pictures, oldest first, about 1024 x 580
-   px and about 30 KB), the windows' titles and the programs in front, the text
+   contact sheet: 2 to 6 of the kept pictures, oldest first, at most about
+   1544 x 580 px: 2 side by side, 3 or 4 in a 2 x 2 grid, 5 or 6 in a 3 x 2
+   grid), the windows' titles and the programs in front, the text
    Companion › Reading read
    on them, and Companion › Prompts › *Screen summary over time*. One job runs at
    a time. The pool drops a job that no member takes, or that does not finish,
@@ -248,6 +249,16 @@ also keeps a short **screen summary over time**:
    picture, which may cost more. Stopping watching, pausing, locking Windows
    or turning it off lets every kept picture go and takes the note off the
    board.
+
+The sheet holds at most **6** screenshots. A game changes all the time, so
+the ring then keeps 8 pictures over 24 seconds, and 6 of them show the
+action about every 4 to 5 seconds. More panels do not help local models: many
+of them give one picture a fixed number of image tokens. For example, Ollama
+gives Gemma 4 280 image tokens (about 645,000 pixels) for each picture. A
+2 x 2 sheet fits at full size, a 3 x 2 sheet is made about 15% smaller, and a
+3 x 3 sheet would make health bars, scores and small text too small to read.
+Models that read a picture at its own size (Qwen VL and most cloud models)
+get 1.5 times as many pixels with 6 screenshots as with 4.
 
 The talk window's `LiveScreenSummary` line says how many pictures are kept,
 when the last summary came and how long it took; its tooltip is the summary.

@@ -286,7 +286,7 @@ internal sealed partial class McpServer
         },
             async (arguments, cancellation) => await ActiveAppCheck.RunAsync(DataDirectory(arguments), cancellation)),
         Tool("screen_digest_check", "The screen summary over time (docs/SCREEN_COMMENTARY.md), run once with the desktop's " +
-            "production ScreenDigester on FIXTURE frames (made-up pictures of a code editor, then a game with low health; no " +
+            "production ScreenDigester on FIXTURE frames (made-up pictures of a code editor, then a game whose health drops; no " +
             "screen capture) and a FIXTURE thinker and context board (no model, nothing sent). Returns the setting (Companion > " +
             "Vision > Screen summary over time, from talk-preferences.json, on by default), which frames the ring kept or skipped, " +
             "the job (reason, frames, contact sheet size and bytes, the message as Companion > Prompts > Screen summary over time " +
