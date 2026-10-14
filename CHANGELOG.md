@@ -10,11 +10,11 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- **Singing's music and voice match each have their own list**: Companion › Singing now has a *Music* list (the computers that write a song) and a *Voice match* list (the computers that change the singing into Martlet's voice), so one computer can write the music while another matches the voice. Each computer chooses its own quality or voice match model, and your other computers follow the same lists. With nothing on in the *Voice match* list, songs keep the music model's own singer. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- **Singing's music and voice match each have their own list**: Companion › Singing now has a *Music* list (the computers that write a song) and a *Voice match* list (the computers that change the singing into Martlet's voice), so one computer can write the music while another matches the voice. Each computer chooses its own quality or voice match model, and your other computers follow the same lists. With nothing on in the *Voice match* list, songs keep the music model's own singer. ([#894](https://github.com/throndir2/Martlet/pull/894))
 
 ### Changed
 
-- **Songs are made in high quality by default**: each computer that writes music now uses High quality (the clearest words) unless you choose Fast for it. The *Song choices* card is gone: the quality and the voice match model are now set for each computer in the lists. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- **Songs are made in high quality by default**: each computer that writes music now uses High quality (the clearest words) unless you choose Fast for it. The *Song choices* card is gone: the quality and the voice match model are now set for each computer in the lists. ([#894](https://github.com/throndir2/Martlet/pull/894))
 
 ## [0.78.0] - 2026-10-13
 
