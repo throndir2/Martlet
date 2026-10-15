@@ -8,6 +8,16 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Martlet now checks a fact it isn't sure of, like a price, a date or how to get something in a game, with a quick look-up and tells you in a minute or two, instead of guessing. It still answers what it knows at once, and does full research (or in-depth research when you ask) for bigger questions. ([#911](https://github.com/throndir2/Martlet/pull/911))
+- While Martlet researches something, it tells you as soon as it finds what you wanted, then keeps going for the full report. ([#911](https://github.com/throndir2/Martlet/pull/911))
+- After a research report is ready, Martlet checks each claim against the page it cites and adds a *Source check* to the report, without making you wait for it. ([#911](https://github.com/throndir2/Martlet/pull/911))
+
+### Changed
+
+- Research reads the parts of a long page that match what you asked, not only its start, and reads several pages at once. ([#911](https://github.com/throndir2/Martlet/pull/911))
+
 ## [0.81.0] - 2026-10-15
 
 ### Added
