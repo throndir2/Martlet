@@ -40,7 +40,7 @@ internal static class BackgroundDuties
         WorkSharingRoster.Shared.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
             ? [.. SongClient.Members(dataDirectory)
                 .Concat(SongClient.VoiceMatchOff(dataDirectory) ? [] : SongClient.Members(dataDirectory, Martlet.Core.Cluster.PoolAreas.VoiceMatch))
-                .Select(m => m.Host.HostId).Distinct(StringComparer.Ordinal)]
+                .Select(m => m.Host?.HostId).OfType<string>().Distinct(StringComparer.Ordinal)]
             : SingingPreferences.Load(dataDirectory).Host is { } host ? [host] : [];
 
     /// <summary>Paired computer <paramref name="host"/> as the place of a song it makes (the singing pool gave it the song).</summary>

@@ -6,8 +6,8 @@ exits when the host releases it after an idle period, or by itself after a song 
 system memory (it says "released" first), which frees all of its memory; the next song starts a new one.
 
 stdin:  {"type": "run", "job": {...}} | {"type": "cancel", "job_id"}
-        (job["kind"]: song, music or match; song and match jobs have the voice's reference.wav in their directory, a
-        match job also its input.pcm)
+        (job["kind"]: song, music, match or separate; song and match jobs have the voice's reference.wav in their
+        directory, match and separate jobs also their input.pcm; song and music jobs may name a music "model")
 stdout: {"type": "state", "state"} (ready, or released before it ends) | {"type": "progress", "job_id", "stage", "fraction"}
         | {"type": "completed", "job_id", "meta"} | {"type": "failed", "job_id", "error": {"code", "summary"}}
         | {"type": "canceled", "job_id"}
@@ -34,7 +34,8 @@ class Worker:
         if config["engine"] == "fixture":
             self.engine: Any = engines.FixtureEngine()
         else:
-            self.engine = engines.SongEngine(Path(config["models"]), config["device"], list(config.get("voice_matches", ["soulx"])))
+            self.engine = engines.SongEngine(Path(config["models"]), config["device"], list(config.get("voice_matches", ["soulx"])),
+                                             list(config.get("music_models", ["ace-step-v15"])))
         self.output = output
         self.lock = threading.Lock()
         self.canceled: set[str] = set()

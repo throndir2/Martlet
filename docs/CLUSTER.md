@@ -635,6 +635,7 @@ with the reason from its row here; `SettingsFilesTests` checks that they agree.
 | Memory local models took in Ollama (`model-memory.json`) | Measured on this PC |
 | The Picture making, Vision, Hearing and Reading lists (`pools-local.json`) | Each computer chooses them itself |
 | Which saved key each cloud pool member uses (`pool-keys.json`) | The keys are in this PC's Windows Credential Manager |
+| Which saved key each Singing cloud provider uses (`singing-keys.json`; the keys themselves travel as the `singing-keys` setting) | The keys are in this PC's Windows Credential Manager |
 | Embedding vectors for finding by meaning (memory's and reports' in memory only; guides' in `meaning\guides`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
 | That this computer made or saw Martlet's [starter motions](AVATARS.md#starter-motions) made (`motion-starters.json` in the account's creations folder) | What this computer saw, so it never makes them again after you delete them; the motions themselves are shared creations |
 

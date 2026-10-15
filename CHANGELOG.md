@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Singing has more choices: ACE-Step 1.5 XL on your own computers, and ElevenLabs Music, Mureka and fal.ai as cloud providers for the music, and the ElevenLabs Voice Changer for the voice match. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Mureka can sing a song in Martlet's own voice. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.80.0] - 2026-10-14
 
 ### Added

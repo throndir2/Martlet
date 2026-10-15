@@ -4354,12 +4354,14 @@ runs), sending the voice's recording once when the gateway lacks it. Arguments:
 service with the FIXTURE - NOT AI engine using the `python` on `PATH` or
 `MARTLET_PYTHON`; or a numeric loopback address of a live singing service, for
 example `http://127.0.0.1:50085/`), `seconds` (15-180; default 20 for the fixture,
-30 otherwise), `quality` (`high_quality`, the default as for songs, or `fast`)
+30 otherwise), `quality` (`high_quality`, the default as for songs, `fast`, or `xl`: high quality on ACE-Step 1.5 XL, the request's `model` `ace-step-v15-xl`; a service without XL refuses with `singing.model_unavailable`)
 and `voiceMatch` (`soulx` or `vevosing`), `split` (true: make the song as the
 desktop's two pools do, a music job with `MakeMusicAsync`, then a voice match
 job on its vocals with `MatchVoiceAsync`, the vocals sent in `input` pages, put
 together on this PC with `SongVoice`; the report adds `matchJobId` and
-`matchHost`, the voice match job's own report), and optionally `voiceRecording` (the absolute path of a copy of a
+`matchHost`, the voice match job's own report, and `separated`: the music's mix sent back in pages to a `separate` job,
+as a cloud provider's song is finished, with its `jobId`, `seconds`, `lines`, `words`, `beats`, `separator` and
+`sameLength`), and optionally `voiceRecording` (the absolute path of a copy of a
 mono 16-bit PCM WAV, 1-30 s, such as one of the owner's voice recordings) with
 its `voiceTranscript`, which the check adds to the gateway's voice list as the
 desktop adds a recorded voice and sings in instead of the starter voice, and
@@ -4414,7 +4416,7 @@ hosts skipped. `endpoint` is ignored then; `voiceId` and `host` need
 `endpoint` (default `http://127.0.0.1:50085/`): `answered`, `state`
 (`not_provisioned`, `ready`, `loading`, `busy`), `ready`, `engine` (`song` or
 `fixture`), `qualities`, `voiceMatches`, `kinds` (the job kinds it makes:
-`song`, and `music` and `match` apart), `queue`, `running`, `workerRunning`
+`song`, `music` and `match` apart, and `separate`), `musicModels` (`ace-step-v15`, and `ace-step-v15-xl` where XL is set up), `queue`, `running`, `workerRunning`
 (whether the worker process holds models), `restarts`, `idleReleaseSeconds`,
 `gpu` (used and total MiB), `evidence`, `sources` (pinned commits) and `models`
 (each pinned file's ID, revision, licence and size) with `modelBytes`, or why it
@@ -4433,7 +4435,7 @@ status fields as above plus the models' count, total bytes and licences), or the
 (`SingingPool.Members`): `configured` (the `singing` area of `pools.json` has a
 list), `off` (that list has no member on), `saved`, `order` (the computers a
 song's music tries), `members` (each one's `position`, member `key`, `host`,
-`plannedSinger` (the shared plan says it runs Singing), `settings`, `quality`
+`plannedSinger` (the shared plan says it runs Singing), `settings`, `quality`, `musicModel`, `cloud` (a cloud member's name, such as `fal.ai (MiniMax Music)`; it takes part only when this PC has its key in `singing-keys.json`)
 and `verdict` now: `takes a job now`, `busy: N jobs before a new one` or
 `passed over: ...`), `nextSong` (`host`, `ahead`, `waitsInLine`: where the next
 song's music goes, `SingingPool.Pick`; null when no member can make it), and
@@ -4449,6 +4451,15 @@ in Docker listens only inside its gateway's network, so `paired` is how to read
 it from this PC. Read-only. As with `voice_engine_check`, a role service on a host
 listens only in the host's loopback, so `endpoint` reads it only there or through
 a forwarded port.
+
+`singing_cloud_check` runs Singing's cloud clients (`SingingCloudClient`) against loopback fakes of each provider's API
+in this process (FIXTURE - NOT AI: no real provider is called and nothing costs money). Its `steps` check ElevenLabs
+Music (a `music_v1` composition plan of the lyric sections, 48 kHz PCM), the ElevenLabs Voice Changer (an instant voice
+clone made once and found again by name, then speech to speech as MP3, gated to the sung phrases), Mureka (its vocal
+clone, generate, poll, line times, a FLAC song), fal.ai MiniMax Music and ACE-Step (the queue and each model's fields),
+a rate limit as `singing.busy` and a refused key as `singing.unavailable`, and a cloud song used without separating
+(`SongVoice.Unseparated`, lines spread over the singing). It returns `ok`, `fixture` and `steps`. In-process; reads
+nothing.
 
 `singing_pool_check` rehearses the two singing pools
 ([Singing](SINGING.md#the-two-singing-pools)) with the production code
@@ -9569,7 +9580,15 @@ to make the music and the voice match apart says so) and
 `Pool-<area>-SetUp-<member key>` (*Set up Singing here* while it isn't ready
 there; disabled with the reason as help text when the computer can't sing). A
 music member adds `Pool-singing-Quality-<member key>` (*High quality*, the
-default, or *Fast*: that computer's own quality, saved in the list). A voice
+default, or *Fast*: that computer's own quality, saved in the list),
+`Pool-singing-MusicModel-<member key>` (*ACE-Step 1.5*, the default, or *ACE-Step 1.5 XL*, saved in the list; where XL
+isn't set up it uses ACE-Step 1.5) and `Pool-singing-AddXl-<member key>` (*Add ACE-Step 1.5 XL here*). Under each list,
+`Pool-singing-AddCloud` and `Pool-voice-match-AddCloud` (*A cloud provider*, safe clicks) show the Singing cloud form:
+`SingingCloudProvider-<area>`, `SingingCloudModel-<area>`, `SingingCloudKey-<area>` (a password box; never read),
+`SingingCloudKeyStatus-<area>`, `SingingCloudConsent-<area>` (what goes to the provider and that it may cost money),
+`SingingCloudAdd-<area>` (needs `--allow-ui-effects`) and `SingingCloudState-<area>`. A cloud member's settings show
+`Pool-<area>-CloudKeyStatus-<member key>`, a key box with `Pool-<area>-CloudSaveKey-<member key>` and, for Mureka,
+`Pool-singing-OwnVoice-<member key>` (*Sing in Martlet's voice*). A voice
 match member adds `Pool-voice-match-AddVevo-<member key>` (*Add VevoSing here*
 where it runs without VevoSing) and `Pool-voice-match-Model-<member key>`
 (*SoulX-Singer*, the default, or *VevoSing*: that computer's own model, saved in

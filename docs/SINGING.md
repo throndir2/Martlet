@@ -328,6 +328,42 @@ and moves when `SongProgress.Host` names another). The desktop log says where ea
 its list).`, and `Sharing work: singing went to host:m4-host (1 busy).` when the first member was passed over). Every
 member of both lists is kept from background thinks (`BackgroundDuties`).
 
+### Other music and voice match options
+
+Each list can hold more than ACE-Step 1.5 and SoulX-Singer or VevoSing:
+
+| List | Option | What it is | Where it runs |
+| --- | --- | --- | --- |
+| Music | **ACE-Step 1.5 XL** | ACE-Step's 4B SFT music model (`acestep-v15-xl-sft`, MIT), always 50 steps. Clearer words and richer music than the 2B model. | A singing computer: **Add ACE-Step 1.5 XL here** in the member's settings (about 20 GB more; host choice `SINGING_MUSIC_MODELS=standard-xl`). Then pick it in the member's **Music model** box (`model` setting `ace-step-v15-xl`). It needs 22 GB free on the card for full precision, else int8. A computer without XL uses ACE-Step 1.5. |
+| Music | **ElevenLabs Music** | `music_v1` from a composition plan: each lyric section with its lines, the style, the length. | Cloud (`POST /v1/music`, 48 kHz PCM). |
+| Music | **Mureka** | Mureka's song model (`auto`), lyrics and a style prompt. Its lyric line times are kept. With **Sing in Martlet's voice** on, Mureka sings in a vocal clone made once from the voice Martlet speaks with, and the song skips the voice match. | Cloud (`api.mureka.ai`). |
+| Music | **fal.ai** | MiniMax Music v1.5 (`fal-ai/minimax-music/v1.5`, the default) or ACE-Step (`fal-ai/ace-step`) through fal's queue. | Cloud (`queue.fal.run`). |
+| Voice match | **ElevenLabs Voice Changer** | `eleven_multilingual_sts_v2` speech to speech, in an instant voice clone made once from the voice Martlet speaks with. The result is gated to the song's sung phrases and levelled as a computer's is (`SongVoice.Gate`). | Cloud (`/v1/speech-to-speech`). |
+
+**Cloud members.** Add one with **A cloud provider** under a list (`Pool-singing-AddCloud`, `Pool-voice-match-AddCloud`).
+The form names the provider, the model, the key and what goes to the provider; adding it needs the owner's agreement
+(`PoolConsent`), as every cloud member does. A member without its key on this PC is passed over. Each song may cost money;
+Martlet never adds credit. Rate limits (429) count as busy, refused keys, missing models and server errors as unavailable,
+so the next member takes the song (`SingingCloudClient`).
+
+**Keys.** Singing has one key per provider (`SingingKeys`, `singing-keys.json`: the credential ID of each; the key itself
+is in Windows Credential Manager). The keys travel to the owner's other computers in the shared `singing-keys` section,
+as the Thinking pool's keys do. ElevenLabs can use Speaking's ElevenLabs key; a Singing key of its own replaces it.
+
+**Finishing a cloud song.** A cloud provider gives only the mixed song. When a computer in the music list (or the voice
+match list) is set up for it, a `separate` job there separates the song with Demucs and times the lines, words and beats
+as for a music job. Without one, the song is not separated: the vocals are the mix's middle and the backing its sides
+(`SongVoice.Unseparated`), the lines are spread over the sung phrases (`SongVoice.SpreadLines`, or Mureka's own line
+times), and the voice match is skipped, because it needs separated vocals.
+
+**Not added, and why** (2026-10-15):
+
+- YingMusic-SVC: needs PyTorch 2.4, an OpenVoice checkpoint that is not published, and is derived from GPL Seed-VC.
+- HeartMuLa, DiffRhythm: deferred. Each needs its own large image and models, and neither is measured here yet.
+- YuE and Vevo2: non-commercial weights.
+- Seed-VC: GPL-3.0 and archived. RVC: needs minutes of training audio per voice.
+- Suno and Udio: no official public API.
+
 ## Verification
 
 - `python -m unittest discover -s tests -t .` in `workers/singing` (with `PYTHONPATH=workers/singing`) runs the service
@@ -347,6 +383,10 @@ member of both lists is kept from background thinks (`BackgroundDuties`).
 - `tests/Martlet.Core.Tests/SingingPoolTests.cs` and `tests/Martlet.Desktop.Tests/SingingPoolMembersTests.cs` check the
   pools' order, lists, qualities and models, lines, failures and how the music and voice match are put together. Songs
   whose music and voice match are made on two different real hosts are **NOT RUN**.
+- `tests/Martlet.Core.Tests/SingingCloudTests.cs` checks cloud members (agreement, key), the XL choice, the shared keys,
+  an unseparated mix and the gated cloud voice match. MCP `singing_cloud_check` drives each cloud provider's client against
+  a loopback fake of its API, and `singing_check` with `quality` `xl` and `split` makes an XL music job and a `separate`
+  job with the fixture. Real cloud songs (they cost money) and real ACE-Step 1.5 XL and Demucs on a card are **NOT RUN**.
 
 ## Singing in conversation
 

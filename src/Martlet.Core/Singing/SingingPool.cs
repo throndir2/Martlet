@@ -11,8 +11,14 @@ public sealed record SingerState(string? State, int Waiting, IReadOnlyList<SongV
     /// <summary>The job kinds the service makes; a service that doesn't say makes whole songs only.</summary>
     public IReadOnlyList<string> Kinds { get; init; } = ["song"];
 
+    /// <summary>The music models set up there; ACE-Step 1.5 is always set up where Singing is.</summary>
+    public IReadOnlyList<SongMusicModel> MusicModels { get; init; } = [SongMusicModel.AceStep15];
+
     /// <summary>Whether the service makes a song's music and its voice match as two jobs (so they can run on two computers).</summary>
     public bool Splits => Kinds.Contains("music") && Kinds.Contains("match");
+
+    /// <summary>Whether the service separates and times a song made elsewhere (a cloud provider's).</summary>
+    public bool Separates => Kinds.Contains("separate");
 
     /// <summary>The jobs before a new one there: the one it makes now and those waiting.</summary>
     public int Ahead => (State == "busy" ? 1 : 0) + Math.Max(0, Waiting);
@@ -24,6 +30,7 @@ public sealed record SingerState(string? State, int Waiting, IReadOnlyList<SongV
         var waiting = 0;
         List<SongVoiceMatch> matches = [SongVoiceMatch.SoulX];
         List<string> kinds = ["song"];
+        List<SongMusicModel> models = [SongMusicModel.AceStep15];
         if (status.ValueKind == JsonValueKind.Object)
         {
             if (status.TryGetProperty("state", out var value) && value.ValueKind == JsonValueKind.String) state = value.GetString();
@@ -34,10 +41,14 @@ public sealed record SingerState(string? State, int Waiting, IReadOnlyList<SongV
                 matches.Add(SongVoiceMatch.VevoSing);
             if (status.TryGetProperty("kinds", out var made) && made.ValueKind == JsonValueKind.Array)
                 foreach (var kind in made.EnumerateArray())
-                    if (kind.ValueKind == JsonValueKind.String && kind.GetString() is "music" or "match" && !kinds.Contains(kind.GetString()!))
+                    if (kind.ValueKind == JsonValueKind.String && kind.GetString() is "music" or "match" or "separate" &&
+                        !kinds.Contains(kind.GetString()!))
                         kinds.Add(kind.GetString()!);
+            if (status.TryGetProperty("music_models", out var music) && music.ValueKind == JsonValueKind.Array &&
+                music.EnumerateArray().Any(m => m.ValueKind == JsonValueKind.String && m.GetString() == "ace-step-v15-xl"))
+                models.Add(SongMusicModel.AceStep15Xl);
         }
-        return new(state, waiting, matches) { Kinds = kinds };
+        return new(state, waiting, matches) { Kinds = kinds, MusicModels = models };
     }
 }
 
@@ -91,23 +102,50 @@ public static class SingingPool
     public static PoolMember WithVoiceMatch(PoolMember member, SongVoiceMatch match) =>
         member.WithSetting(ModelSetting, match == SongVoiceMatch.VevoSing ? "vevosing" : null);
 
-    /// <summary>The model's name in the app: "SoulX-Singer" or "VevoSing".</summary>
-    public static string Name(SongVoiceMatch match) => match == SongVoiceMatch.VevoSing ? "VevoSing" : "SoulX-Singer";
+    /// <summary>The model's name in the app: "SoulX-Singer", "VevoSing", "ElevenLabs Voice Changer" or "Mureka".</summary>
+    public static string Name(SongVoiceMatch match) => match switch
+    {
+        SongVoiceMatch.VevoSing => "VevoSing",
+        SongVoiceMatch.ElevenLabs => "ElevenLabs Voice Changer",
+        SongVoiceMatch.Mureka => "Mureka",
+        _ => "SoulX-Singer"
+    };
+
+    /// <summary>A singing pool member's music model (<see cref="PoolMember.Settings"/>, <see cref="ModelSetting"/>):
+    /// "ace-step-v15-xl", or ACE-Step 1.5 without one.</summary>
+    public static SongMusicModel MusicModel(PoolMember member) =>
+        member.Setting(ModelSetting) == "ace-step-v15-xl" ? SongMusicModel.AceStep15Xl : SongMusicModel.AceStep15;
+
+    /// <summary><paramref name="member"/> with <paramref name="model"/>; ACE-Step 1.5, the default, is saved as no setting.</summary>
+    public static PoolMember WithMusicModel(PoolMember member, SongMusicModel model) =>
+        member.WithSetting(ModelSetting, model == SongMusicModel.AceStep15Xl ? "ace-step-v15-xl" : null);
+
+    /// <summary>The music model's name in the app: "ACE-Step 1.5" or "ACE-Step 1.5 XL".</summary>
+    public static string Name(SongMusicModel model) => model == SongMusicModel.AceStep15Xl ? "ACE-Step 1.5 XL" : "ACE-Step 1.5";
+
+    /// <summary>The music model a singing pool member uses on a computer in <paramref name="state"/>: its own model when it is set
+    /// up there, else ACE-Step 1.5 (always set up where Singing is).</summary>
+    public static SongMusicModel MusicWith(PoolMember member, SingerState? state) =>
+        MusicModel(member) is var wanted && state?.MusicModels.Contains(wanted) == true ? wanted : SongMusicModel.AceStep15;
 
     /// <summary>The <paramref name="area"/> pool (default: the singing pool) of companion PC <paramref name="device"/>, each
-    /// member with the paired computer it runs on. With a pool list (<paramref name="list"/>, the area's list in pools.json): its
-    /// members in the owner's order (<see cref="PoolRouting.Order"/>), this PC as its own host service (<paramref name="own"/>)
-    /// and a card as its computer, each only while it is paired here (<paramref name="paired"/>, without hosts friends share). An
-    /// empty list, or one with no member on, is off. Without a list yet: the older choices (<see cref="Order"/>).</summary>
-    public static IReadOnlyList<(PoolMember Member, string HostId)> Members(PoolList? list, string device, string? saved, string? own,
-        IReadOnlyList<string> paired, IReadOnlyList<WorkPlace> singers, PoolArea? area = null)
+    /// member with the paired computer it runs on (null for a cloud provider). With a pool list (<paramref name="list"/>, the
+    /// area's list in pools.json): its members in the owner's order (<see cref="PoolRouting.Order"/>), this PC as its own host
+    /// service (<paramref name="own"/>) and a card as its computer, each only while it is paired here (<paramref name="paired"/>,
+    /// without hosts friends share), and each cloud provider the owner agreed to that <paramref name="cloud"/> says this PC can
+    /// use (it has its key). An empty list, or one with no member on, is off. Without a list yet: the older choices
+    /// (<see cref="Order"/>).</summary>
+    public static IReadOnlyList<(PoolMember Member, string? HostId)> Members(PoolList? list, string device, string? saved, string? own,
+        IReadOnlyList<string> paired, IReadOnlyList<WorkPlace> singers, PoolArea? area = null, Func<PoolMember, bool>? cloud = null)
     {
         ArgumentNullException.ThrowIfNull(paired);
-        // A job's key in the queue is the member's key (a card of a computer is its own stop).
+        // A job's key in the queue is the member's key (a card of a computer is its own stop; a cloud provider is its own).
         if (list is not null)
-            return [.. PoolRouting.Stops(area ?? PoolAreas.Singing, list, device, m => PoolRouting.HostOf(m, own) is { } host &&
-                paired.Contains(host, StringComparer.Ordinal) ? new PoolStop(m, host) { Key = m.Key } : null).Select(s => (s.Member, s.HostId!))];
-        return [.. Order(saved, paired, singers).Select(id => (id == own ? PoolMember.ThisPc() : PoolMember.Computer(id), id))];
+            return [.. PoolRouting.Stops(area ?? PoolAreas.Singing, list, device, m =>
+                m.Kind == PoolMemberKind.Cloud ? cloud?.Invoke(m) == true ? new PoolStop(m, null) { Key = m.Key } : null
+                : PoolRouting.HostOf(m, own) is { } host && paired.Contains(host, StringComparer.Ordinal) ? new PoolStop(m, host) { Key = m.Key }
+                : null).Select(s => (s.Member, s.HostId))];
+        return [.. Order(saved, paired, singers).Select(id => (id == own ? PoolMember.ThisPc() : PoolMember.Computer(id), (string?)id))];
     }
 
     /// <summary>The order songs try the owner's own computers: <paramref name="saved"/> (the computer Martlet sings on,
@@ -180,8 +218,8 @@ public static class SingingPool
     public static WorkRefusal Classify(Exception error) => error switch
     {
         SongException { Code: SongErrorCodes.Busy } => WorkRefusal.Busy,
-        SongException { Code: SongErrorCodes.Unavailable or SongErrorCodes.VoiceMatchUnavailable or SongErrorCodes.VoiceMissing } =>
-            WorkRefusal.Unavailable,
+        SongException { Code: SongErrorCodes.Unavailable or SongErrorCodes.VoiceMatchUnavailable or SongErrorCodes.ModelUnavailable or
+            SongErrorCodes.VoiceMissing } => WorkRefusal.Unavailable,
         SongException => WorkRefusal.None,
         HttpRequestException or IOException => WorkRefusal.Unavailable,
         _ => WorkRefusal.None

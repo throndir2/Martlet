@@ -630,6 +630,16 @@ internal static class GatewayClientJson
                 var start = song.Start ?? throw new GatewayProtocolException("request.invalid");
                 payload["operation"] = "start";
                 if (start.Kind != GatewaySongKinds.Song) payload["kind"] = start.Kind;
+                if (start.Kind == GatewaySongKinds.Separate)
+                {
+                    payload["lyrics"] = start.Lyrics!;
+                    payload["language"] = start.Language!;
+                    payload["input_frames"] = start.InputFrames;
+                    payload["input_channels"] = start.InputChannels;
+                    if (start.Bpm is { } separateBpm) payload["bpm"] = separateBpm;
+                    if (start.Key is { } separateKey) payload["key"] = separateKey;
+                    break;
+                }
                 if (start.Kind != GatewaySongKinds.Match)
                 {
                     payload["lyrics"] = start.Lyrics!;
@@ -640,6 +650,7 @@ internal static class GatewayClientJson
                     if (start.Bpm is { } bpm) payload["bpm"] = bpm;
                     if (start.Key is { } key) payload["key"] = key;
                     if (start.Seed is { } seed) payload["seed"] = seed;
+                    if (start.Model is { } model) payload["model"] = model;
                 }
                 if (start.Kind != GatewaySongKinds.Music)
                 {

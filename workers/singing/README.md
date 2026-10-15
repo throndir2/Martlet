@@ -6,7 +6,10 @@ The `singing` host role's loopback song service: ACE-Step 1.5 writes the music, 
 - `martlet_singing/host.py`: the HTTP front (`serve`, `provision [--fixture]`): jobs (start, status, track pages,
   cancel), one at a time with a waiting queue; it starts `martlet_singing/worker.py` as a separate process with the first
   job, restarts it if it dies and stops it after an idle period (`MARTLET_SINGING_IDLE_SECONDS`, default 300).
-  `GET /status` lists the job kinds (`"kinds"`). `POST /jobs` takes a `kind`:
+  `provision` downloads the choices' models: `SINGING_VOICE_MATCHES` (`soulx` or `soulx-vevosing`) and
+  `SINGING_MUSIC_MODELS` (`standard`, the default, or `standard-xl`, which adds ACE-Step 1.5 XL SFT: about 20 GB more).
+  `GET /status` lists the job kinds (`"kinds"`) and the music models set up (`"music_models"`: `ace-step-v15` and, with
+  `standard-xl`, `ace-step-v15-xl`; `[]` before provisioning). `POST /jobs` takes a `kind`:
   - `song` (the default): the whole song. Tracks `mix`, `vocals` (the matched voice) and `backing`.
   - `music`: the music only, with no voice (`lyrics`, `style`, `duration_seconds`, `language`, `quality`, optional
     `bpm`, `key`, `seed`). Tracks `mix`, `vocals` (the separated vocals, mono) and `backing`, with the beat grid and the
@@ -15,11 +18,21 @@ The `singing` host role's loopback song service: ACE-Step 1.5 writes the music, 
     state `receiving`. Send the vocals (signed 16-bit little-endian mono PCM at 48 kHz, 2 bytes to 4.8 MB a page) with
     `POST /jobs/<id>/input?offset=<frames already received>`. The job queues when all `input_frames` arrived and fails
     when they do not arrive in 300 s (`MARTLET_SINGING_RECEIVE_SECONDS`). Its only track is `vocals`, the same length.
+  - `separate`: a finished song made elsewhere (for example by a cloud music service), separated and timed here
+    (`lyrics`, `language`, `input_frames` up to 200 s, `input_channels` 1 or 2, optional `bpm`, `key`). It receives its
+    song like a match job: interleaved signed 16-bit little-endian PCM at 48 kHz with `input_channels` channels, in whole
+    frames up to 4.8 MB a page. Demucs separates it, and the beat grid (at `bpm` when given) and the lyric and word times
+    come from its vocals' phrases. Tracks `mix`, `vocals` (mono) and `backing`, as long as the input.
+
+  `song` and `music` jobs take an optional `model`: `ace-step-v15` (the default: turbo, or SFT for `high_quality`) or
+  `ace-step-v15-xl` (ACE-Step 1.5 XL SFT, always 50 steps; `singing.model_unavailable` when it is not set up). The result's
+  `engine.model` names the model used.
 
   The desktop can then make a song on two computers: a `music` job on one, a `match` job with its vocals on another, and
   it mixes the matched vocals over the backing itself.
 - `martlet_singing/engines.py`: the real pipeline (each stage moves its model onto the graphics card and back; the
-  `music` and `match` kinds run its first and second half) and the FIXTURE - NOT AI tone engine.
+  `music` and `match` kinds run its first and second half, `separate` the separation and timing) and the FIXTURE - NOT AI
+  tone engine. One music model is loaded at a time; it loads with int8 weights unless the card has 11 GB free (XL: 22 GB).
 - `martlet_singing/timing.py`: the beat grid (fitted to the backing's onsets, ACE-Step's planned tempo preferred) and the
   lyric lines' sung starts (ACE-Step's LRC snapped to the vocals' onsets, or the vocals' phrases).
 - `martlet_singing/pins.py`: the pinned source commits and model files (sizes, SHA-256, licences).

@@ -81,6 +81,8 @@ public static class SettingsFiles
         new(PoolSettings.LocalFileName, SettingsFileScope.Local, null, "Martlet.Core.Cluster.PoolSettings", "Each computer chooses them itself"),
         new(PoolKeys.FileName, SettingsFileScope.Local, null, "Martlet.Core.Cluster.PoolKeys",
             "The keys are in this PC's Windows Credential Manager"),
+        new(Singing.SingingKeys.FileName, SettingsFileScope.Local, null, "Martlet.Core.Singing.SingingKeys",
+            "The keys are in this PC's Windows Credential Manager"),
         new(ModelLimits.FileName, SettingsFileScope.Local, null, "Martlet.Core.Settings.ModelLimits", "Measured on this PC"),
         new(MeasuredModelMemory.FileName, SettingsFileScope.Local, null, "Martlet.Core.Planning.MeasuredModelMemory", "Measured on this PC"),
         new("terminal.json", SettingsFileScope.Local, null, "Martlet.Mcp.Client.TerminalSettings",

@@ -310,7 +310,10 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: Pool-lip-sync-SaveEndpoint (it saves the address in Pool-lip-sync-Endpoint).
         new("Pool-singing-Settings-", "Companion › Singing", "The Settings button of a member of the music list, such as Pool-singing-Settings-0; only shows or hides its Singing state, Set up Singing here and its own quality."),
         new("Pool-voice-match-Settings-", "Companion › Singing", "The Settings button of a member of the voice match list, such as Pool-voice-match-Settings-0; only shows or hides its Singing state, Set up Singing here, Add VevoSing here and its own model."),
-        // Needs --allow-ui-effects: Singing's Set up Singing here, Add VevoSing here, quality (Pool-singing-Quality-<key>) and model (Pool-voice-match-Model-<key>) (they save or install).
+        new("Pool-singing-AddCloud", "Companion › Singing", "The 'A cloud provider' button of the music list, Pool-singing-AddCloud; only shows the Singing cloud form (ElevenLabs Music, Mureka or fal.ai), whose own Add button commits."),
+        new("Pool-voice-match-AddCloud", "Companion › Singing", "The 'A cloud provider' button of the voice match list, Pool-voice-match-AddCloud; only shows the Singing cloud form (ElevenLabs Voice Changer), whose own Add button commits."),
+        // Needs --allow-ui-effects: Singing's Set up Singing here, Add VevoSing here, Add ACE-Step 1.5 XL here (Pool-singing-AddXl-<key>), quality (Pool-singing-Quality-<key>), music model (Pool-singing-MusicModel-<key>) and model (Pool-voice-match-Model-<key>) (they save or install).
+        // Needs --allow-ui-effects: the Singing cloud form's provider choice and Add button (SingingCloudProvider-<area>, SingingCloudAdd-<area>), a cloud member's Save key (Pool-<area>-CloudSaveKey-<key>) and Mureka's own voice box (Pool-singing-OwnVoice-<key>) (they save keys or pools.json).
         new("Pool-pictures-Settings-", "Companion › Picture making", "The Settings button of a place, such as Pool-pictures-Settings-0; only shows or hides its settings."),
         new("PicturesComfyConnect-", "Companion › Picture making", "The Connect button of a place, such as PicturesComfyConnect-0; only reads the version, checkpoints and models of that ComfyUI server."),
         new("Pool-motion-Settings-", "Companion › Motion", "The Settings button of a list member, such as Pool-motion-Settings-0; only shows or hides where Motion stands there and its Set up Motion here button."),
@@ -1030,6 +1033,12 @@ internal static class AutomationPolicy
     [
         new("AccountSwitch-", "Account picker", "An account signed in on this PC, such as AccountSwitch-<32 hex>; reads its display name (Sam (in use) or Alex), and its checked state shows the one in use. Display names only."),
         // Needs --allow-ui-effects: clicking an AccountSwitch-<32 hex> account (it switches the account).
+        new("SingingCloudProvider-", "Companion › Singing", "The provider chosen in a Singing cloud form, such as SingingCloudProvider-singing."),
+        new("SingingCloudModel-", "Companion › Singing", "The model ID in a Singing cloud form, such as SingingCloudModel-voice-match."),
+        new("SingingCloudKeyStatus-", "Companion › Singing", "What a Singing cloud form's key field will do: use the saved key, Speaking's ElevenLabs key, or ask for one. Never the key."),
+        new("SingingCloudConsent-", "Companion › Singing", "The agreement box of a Singing cloud form: what goes to the provider and that it may cost money."),
+        new("SingingCloudAdd-", "Companion › Singing", "The label of a Singing cloud form's Add button."),
+        new("SingingCloudState-", "Companion › Singing", "What a Singing cloud form's last Add did."),
         new("PicturesMemberState-", "Companion › Picture making", "Where the Picture making role stands on one place of the Picture making list, such as PicturesMemberState-0: Picture making role ready. or Not set up yet ..."),
         new("PicturesSetUp-", "Companion › Picture making", "The label of a place's Set up button, such as PicturesSetUp-0."),
         new("PicturesWorkflow-", "Companion › Picture making", "The chosen workflow of a place, such as PicturesWorkflow-0."),

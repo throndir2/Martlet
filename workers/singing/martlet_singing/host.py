@@ -7,25 +7,33 @@ wait in order. The worker process starts with the first job, is restarted if it 
 which frees the graphics card and system memory so the speaking and listening roles can use them.
 
 A job has a kind:
-  song   (default) the whole song: music, separation, voice match, mix and timing -> tracks mix, vocals, backing.
-  music  the music only (no voice): tracks mix, vocals (the separated vocals) and backing, with the beat and lyric times.
-  match  the voice match only: the client uploads 48 kHz mono vocals (often a music job's, from another computer) with
-         POST /jobs/<id>/input; the job waits in state "receiving" until all input_frames arrived (at most 300 s), then
-         queues. Its only track is vocals, the same length as the input.
+  song     (default) the whole song: music, separation, voice match, mix and timing -> tracks mix, vocals, backing.
+  music    the music only (no voice): tracks mix, vocals (the separated vocals) and backing, with the beat and lyric times.
+  match    the voice match only: the client uploads 48 kHz mono vocals (often a music job's, from another computer) with
+           POST /jobs/<id>/input; the job waits in state "receiving" until all input_frames arrived (at most 300 s), then
+           queues. Its only track is vocals, the same length as the input.
+  separate a finished song made elsewhere (for example by a cloud music service): the client uploads it (48 kHz, mono or
+           stereo: input_channels) like a match job's vocals; Demucs separates it and the beat, lyric and word times come
+           from its vocals. Tracks mix, vocals and backing, the same length as the input.
+A song or music job may ask for a music model ("model"): ace-step-v15 (the default) or ace-step-v15-xl (ACE-Step 1.5 XL
+SFT, 50 steps), which is there only when the owner chose SINGING_MUSIC_MODELS standard-xl.
 
 Commands:
   serve                 listen on 127.0.0.1:$MARTLET_SINGING_PORT (default 50085)
-  provision [--fixture] download and verify the pinned model files ($SINGING_VOICE_MATCHES: soulx or soulx-vevosing), then
-                        write the worker config (--fixture: deterministic FIXTURE - NOT AI engine for plumbing checks)
+  provision [--fixture] download and verify the pinned model files ($SINGING_VOICE_MATCHES: soulx or soulx-vevosing;
+                        $SINGING_MUSIC_MODELS: standard or standard-xl), then write the worker config (--fixture:
+                        deterministic FIXTURE - NOT AI engine for plumbing checks, with both music models)
 
 HTTP (127.0.0.1 only; every answer is JSON except track pages):
-  GET  /status                         {"state", "ready", "engine", "worker", "qualities", "voice_matches", "kinds",
-                                        "queue", ...}
-  POST /jobs                           a job request ("kind": song, music or match) -> the job's view or {"error"}
+  GET  /status                         {"state", "ready", "engine", "worker", "qualities", "voice_matches", "music_models",
+                                        "kinds", "queue", ...}
+  POST /jobs                           a job request ("kind": song, music, match or separate) -> the job's view or {"error"}
   GET  /jobs/<id>                      {"job_id", "kind", "state", "stage", "fraction", "queue_position"?,
-                                        "input_frames"? and "received_frames"? (match), "error"?, "result"?}
-  POST /jobs/<id>/input?offset=<frame> a match job's vocals: raw signed 16-bit little-endian mono PCM at 48 kHz, 2 bytes to
-                                       4.8 MB, offset = the frames already received -> the job's view or {"error"}
+                                        "input_frames"? and "received_frames"? (match and separate), "input_channels"?
+                                        (separate), "error"?, "result"?}
+  POST /jobs/<id>/input?offset=<frame> a match or separate job's input: raw interleaved signed 16-bit little-endian PCM at
+                                       48 kHz with the job's channels (match: mono), whole frames up to 4.8 MB, offset =
+                                       the frames already received -> the job's view or {"error"}
   GET  /jobs/<id>/tracks/<track>?offset=<frame>&frames=<n>
                                        raw signed 16-bit PCM (X-Song-Sample-Rate, X-Song-Channels, X-Song-Total-Frames)
   POST /jobs/<id>/cancel               the job's view
@@ -68,9 +76,13 @@ MAX_KEPT = 6
 PAGE_BYTES = 4_800_000
 STAGES = ("queued", "loading", "writing_music", "separating", "matching_voice", "mixing", "aligning", "completed")
 TERMINAL = {"completed", "failed", "canceled"}
-KINDS = ("song", "music", "match")
+KINDS = ("song", "music", "match", "separate")
+# The kinds whose job waits in state "receiving" for its input (input.pcm) before it queues.
+RECEIVING_KINDS = ("match", "separate")
 # The stage a job reports when it starts on a worker that is already running (a new worker reports "loading").
-FIRST_STAGES = {"song": "writing_music", "music": "writing_music", "match": "matching_voice"}
+FIRST_STAGES = {"song": "writing_music", "music": "writing_music", "match": "matching_voice", "separate": "separating"}
+# SINGING_MUSIC_MODELS -> the music models provisioned.
+MUSIC_MODEL_CHOICES = {"standard": ["ace-step-v15"], "standard-xl": ["ace-step-v15", "ace-step-v15-xl"]}
 MAX_INPUT_FRAMES = audio.OUTPUT_RATE * 200
 RECEIVE_SECONDS = float(os.environ.get("MARTLET_SINGING_RECEIVE_SECONDS", "300"))
 
@@ -131,17 +143,28 @@ def voice_matches_choice() -> list[str]:
     return matches
 
 
+def music_models_choice() -> list[str]:
+    value = os.environ.get("SINGING_MUSIC_MODELS", "standard").replace(" ", "")
+    if value not in MUSIC_MODEL_CHOICES:
+        raise SystemExit("SINGING_MUSIC_MODELS must be standard or standard-xl.")
+    return list(MUSIC_MODEL_CHOICES[value])
+
+
 def provision(fixture: bool) -> None:
     artifacts: list[dict[str, Any]] = []
     matches = voice_matches_choice()
+    music_models = music_models_choice()
     if fixture:
         _log("FIXTURE - NOT AI: provisioning the deterministic tone engine (no model, no GPU).")
         engine = "fixture"
+        # The fixture makes every music model, so plumbing checks can ask for each.
+        music_models = list(pins.MUSIC_MODELS)
         artifacts.append({"artifact_id": "fixture-tone-song", "bytes": 0, "license_id": "fixture-only",
                           "revision": "0" * 40, "sha256": "0" * 64})
     else:
         engine = "song"
-        groups = {"core"} | ({"vevosing"} if "vevosing" in matches else set())
+        groups = ({"core"} | ({"vevosing"} if "vevosing" in matches else set())
+                  | ({"xl"} if "ace-step-v15-xl" in music_models else set()))
         for artifact_id, url, revision, size, sha256, license_id, local in pins.files(groups):
             _log(f"Model file {artifact_id} ({license_id})")
             _download(url, MODELS / local, size, sha256)
@@ -162,9 +185,11 @@ def provision(fixture: bool) -> None:
     MODELS.mkdir(parents=True, exist_ok=True)
     temporary = CONFIG.with_name(CONFIG.name + ".partial")
     temporary.write_text(json.dumps({"device": DEVICE, "engine": engine, "models": str(MODELS), "voice_matches": matches,
-                                     "worker": identity}, indent=2, sort_keys=True), encoding="utf-8")
+                                     "music_models": music_models, "worker": identity}, indent=2, sort_keys=True),
+                         encoding="utf-8")
     temporary.replace(CONFIG)
-    _log(f"Worker configuration written ({engine} engine on {DEVICE}; voice matches: {', '.join(matches)}).")
+    _log(f"Worker configuration written ({engine} engine on {DEVICE}; voice matches: {', '.join(matches)}; "
+         f"music models: {', '.join(music_models)}).")
 
 
 # ------------------------------------------------------------------ jobs and the worker process
@@ -175,11 +200,12 @@ class Job:
         self.job_id = job_id
         self.request = request
         self.kind: str = request.get("kind", "song")
-        # A match job waits for its vocals (input.pcm) before it queues.
-        self.state = "receiving" if self.kind == "match" else "queued"
+        # A match or separate job waits for its input (input.pcm) before it queues.
+        self.state = "receiving" if self.kind in RECEIVING_KINDS else "queued"
         self.stage = "queued"
         self.fraction = 0.0
         self.input_frames = int(request.get("input_frames") or 0)
+        self.input_channels = int(request.get("input_channels") or 1)
         self.received_frames = 0
         self.error: dict[str, str] | None = None
         self.meta: dict[str, Any] | None = None
@@ -226,6 +252,7 @@ class Service:
                 "state": state, "ready": config is not None, "engine": config["engine"] if config else None,
                 "worker": config["worker"] if config else None, "error": self.error,
                 "qualities": ["fast", "high_quality"], "voice_matches": config.get("voice_matches", []) if config else [],
+                "music_models": _music_models(config) if config else [],
                 "kinds": list(KINDS),
                 "queue": len(self.waiting), "running": self.running, "worker_running": self._running(),
                 "worker_pid": self.process.pid if self._running() else None, "restarts": self.restarts,
@@ -245,9 +272,12 @@ class Service:
             request = _validate(body)
         except ValueError as error:
             return 200, {"error": {"code": "request.invalid", "summary": str(error)}}
-        if request["kind"] != "music" and request["voice_match"] not in config.get("voice_matches", ["soulx"]):
+        if request["kind"] in ("song", "match") and request["voice_match"] not in config.get("voice_matches", ["soulx"]):
             return 200, {"error": {"code": "singing.voice_match_unavailable",
                                    "summary": "VevoSing is not set up on this computer."}}
+        if request["kind"] in ("song", "music") and request["model"] not in _music_models(config):
+            return 200, {"error": {"code": "singing.model_unavailable",
+                                   "summary": "ACE-Step 1.5 XL is not set up on this computer."}}
         reference = request.pop("reference_audio", None)
         with self.lock:
             receiving = sum(1 for j in self.jobs.values() if j.state == "receiving")
@@ -267,7 +297,8 @@ class Service:
             return 200, self._job_view(job)
 
     def receive(self, job_id: str, offset: int | None, data: bytes) -> dict[str, Any]:
-        """Appends a page of a match job's vocals; with the last page the job joins the waiting queue."""
+        """Appends a page of a match job's vocals or a separate job's song; with the last page the job joins the waiting
+        queue."""
 
         def invalid(summary: str) -> dict[str, Any]:
             return {"error": {"code": "request.invalid", "summary": summary}}
@@ -276,16 +307,18 @@ class Service:
             job = self.jobs.get(job_id)
             if job is None:
                 return self.view(job_id)
-            if job.kind != "match" or job.state != "receiving":
+            if job.kind not in RECEIVING_KINDS or job.state != "receiving":
                 return invalid(job.error["summary"] if job.state == "failed" and job.error else
-                               "This job is not waiting for vocals.")
+                               "This job is not waiting for audio.")
             if offset != job.received_frames:
                 return invalid(f"offset must be {job.received_frames}, the frames already received.")
-            if not 2 <= len(data) <= PAGE_BYTES or len(data) % 2:
-                return invalid(f"Send 2 to {PAGE_BYTES} bytes of 16-bit PCM (an even number).")
-            frames = len(data) // 2
+            block = 2 * job.input_channels
+            if not block <= len(data) <= PAGE_BYTES or len(data) % block:
+                return invalid(f"Send {block} to {PAGE_BYTES} bytes of 16-bit PCM in whole frames of {job.input_channels} "
+                               f"channel{'s' if job.input_channels > 1 else ''} ({block} bytes each).")
+            frames = len(data) // block
             if job.received_frames + frames > job.input_frames:
-                return invalid(f"The vocals are longer than input_frames ({job.input_frames}).")
+                return invalid(f"The audio is longer than input_frames ({job.input_frames}).")
             with (job.directory / "input.pcm").open("ab") as stream:
                 stream.write(data)
             job.received_frames += frames
@@ -305,9 +338,11 @@ class Service:
     def _job_view(self, job: Job) -> dict[str, Any]:
         view: dict[str, Any] = {"job_id": job.job_id, "kind": job.kind, "state": job.state, "stage": job.stage,
                                 "fraction": round(job.fraction, 3)}
-        if job.kind == "match":
+        if job.kind in RECEIVING_KINDS:
             view["input_frames"] = job.input_frames
             view["received_frames"] = job.received_frames
+        if job.kind == "separate":
+            view["input_channels"] = job.input_channels
         if job.job_id in self.waiting:
             view["queue_position"] = self.waiting.index(job.job_id) + (1 if self.running else 0)
         if job.error:
@@ -484,7 +519,8 @@ class Service:
     def _expire(self) -> None:
         now = time.monotonic()
         for job in [j for j in self.jobs.values() if j.state == "receiving" and now - j.created > RECEIVE_SECONDS]:
-            self._finish(job, "failed", {"code": "request.invalid", "summary": "The vocals did not arrive in time."})
+            self._finish(job, "failed", {"code": "request.invalid", "summary": "The vocals did not arrive in time."
+                                         if job.kind == "match" else "The song did not arrive in time."})
         finished = sorted((j for j in self.jobs.values() if j.state in TERMINAL), key=lambda j: j.finished or 0)
         for index, job in enumerate(finished):
             if now - (job.finished or now) > KEEP_SECONDS or index < len(finished) - MAX_KEPT:
@@ -498,13 +534,18 @@ def _gpu() -> dict[str, int] | None:
     return card_memory()
 
 
+def _music_models(config: dict[str, Any]) -> list[str]:
+    """The music models set up (a configuration written before XL existed had the standard one only)."""
+    return list(config.get("music_models", [pins.MUSIC_MODELS[0]]))
+
+
 def _validate(body: dict[str, Any]) -> dict[str, Any]:
     """The checked request of a job; song (the default kind) is checked as before kinds existed."""
     kind = body.get("kind")
     if kind is None:
         kind = "song"
     if kind not in KINDS:
-        raise ValueError("kind must be song, music or match.")
+        raise ValueError("kind must be song, music, match or separate.")
 
     def text(name: str, maximum: int, newlines: bool = False) -> str:
         value = body.get(name)
@@ -523,10 +564,24 @@ def _validate(body: dict[str, Any]) -> dict[str, Any]:
         return value
 
     request: dict[str, Any] = {"kind": kind}
+    if kind == "separate":
+        request.update({"lyrics": text("lyrics", 4096, newlines=True), "language": text("language", 2),
+                        "input_frames": integer("input_frames", 1, MAX_INPUT_FRAMES),
+                        "input_channels": integer("input_channels", 1, 2),
+                        "bpm": integer("bpm", 40, 240, required=False), "key": body.get("key")})
+        if request["key"] is not None and (not isinstance(request["key"], str) or len(request["key"]) > 16):
+            raise ValueError("The key is invalid.")
+        return request
     if kind != "match":
         request.update({"lyrics": text("lyrics", 4096, newlines=True), "style": text("style", 512),
                         "duration_seconds": integer("duration_seconds", 15, 180), "language": text("language", 2),
                         "quality": body.get("quality")})
+        model = body.get("model")
+        if model is None:
+            model = pins.MUSIC_MODELS[0]
+        if model not in pins.MUSIC_MODELS:
+            raise ValueError("model must be ace-step-v15 or ace-step-v15-xl.")
+        request["model"] = model
     if kind != "music":
         request.update({"voice_match": body.get("voice_match"), "voice_id": text("voice_id", 128)})
     if kind != "match":
@@ -625,7 +680,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json(404, {"error": {"code": "not_found", "summary": "No such path."}})
 
     def _input(self, job_id: str, query: dict[str, list[str]]) -> None:
-        """A page of a match job's vocals: raw PCM, not JSON."""
+        """A page of a match or separate job's input: raw PCM, not JSON."""
         try:
             number = int(query.get("offset", [""])[0])
         except ValueError:
@@ -641,7 +696,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 self.close_connection = True
             self._json(200, {"error": {"code": "request.invalid",
-                                       "summary": f"Send 2 to {PAGE_BYTES} bytes of 16-bit PCM (an even number)."}})
+                                       "summary": f"Send at most {PAGE_BYTES} bytes of 16-bit PCM in whole frames."}})
             return
         data = self.rfile.read(length) if length else b""
         self._json(200, SERVICE.receive(job_id, offset, data))

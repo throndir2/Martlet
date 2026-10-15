@@ -304,7 +304,8 @@ internal sealed partial class McpServer
             "bpm (default 90; 0 for none) and key (default \"G major\"; empty for none) are sent as Martlet's own model writes " +
             "them; without either the host's music planner runs first. quality defaults to high_quality, as songs do. With split " +
             "true the song is made as the desktop's two pools make it: a music job, then a voice match job on its vocals (sent in " +
-            "pages), put together on this PC; the report adds matchJobId and matchHost. " +
+            "pages), put together on this PC, and then its music mix sent back as a cloud song is (a separate job: separated and timed); " +
+            "the report adds matchJobId, matchHost and separated. quality \"xl\" asks for ACE-Step 1.5 XL. " +
             "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
         {
             endpoint = new { type = "string", maxLength = 64 },
@@ -312,7 +313,7 @@ internal sealed partial class McpServer
             host = new { type = "string", maxLength = 64 },
             voiceId = new { type = "string", minLength = 8, maxLength = 128 },
             seconds = new { type = "integer", minimum = 15, maximum = 180 },
-            quality = new { type = "string", @enum = new[] { "fast", "high_quality" } },
+            quality = new { type = "string", @enum = new[] { "fast", "high_quality", "xl" } },
             voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing" } },
             saveDirectory = new { type = "string", maxLength = 260 },
             voiceRecording = new { type = "string", maxLength = 260 },
@@ -322,6 +323,14 @@ internal sealed partial class McpServer
             split = new { type = "boolean" }
         },
             async (arguments, cancellation) => await SingingCheckAsync(arguments, cancellation)),
+        Tool("singing_cloud_check", "Run Singing's cloud clients against simulated providers in this process (FIXTURE - NOT AI: no real " +
+            "provider is called and nothing costs money): ElevenLabs Music (a music_v1 composition plan of the lyric sections, raw 48 kHz PCM), " +
+            "ElevenLabs' Voice Changer (an Instant Voice Clone made once and found again by name, then speech-to-speech as MP3), Mureka (its " +
+            "vocal clone, generate, poll, lyric line times, a FLAC song), fal.ai MiniMax Music and ACE-Step (the queue and each model's " +
+            "fields), a rate limit as singing.busy and a refused key as singing.unavailable, and a cloud song put together without a host " +
+            "(not separated, lines spread over the singing). Checks each request's address, key header and fields, and decodes the answers " +
+            "(an MP3 Windows encodes and decodes here). Returns ok and steps with name, passed and detail. In-process; reads nothing.", new { },
+            async (_, cancellation) => await SingingCloudCheck.RunAsync(cancellation)),
         Tool("singing_pool_check", "Rehearse the two singing pools (SingingPool through WorkQueue, what the desktop's SongClient runs: " +
             "a song's music on the singing pool, then its voice match on the voice match pool) with simulated singing computers, NOT " +
             "real hosts or models: the order (the computer Martlet sings on first, then the shared plan's singers, fewest jobs first, " +
@@ -969,7 +978,7 @@ internal sealed partial class McpServer
         if (seconds is < 15 or > 180) throw new ArgumentException("seconds must be 15 to 180.");
         var quality = OptionalString(arguments, "quality") ?? "high_quality";
         var voiceMatch = OptionalString(arguments, "voiceMatch") ?? "soulx";
-        if (quality is not ("fast" or "high_quality")) throw new ArgumentException("quality must be fast or high_quality.");
+        if (quality is not ("fast" or "high_quality" or "xl")) throw new ArgumentException("quality must be fast, high_quality or xl.");
         if (voiceMatch is not ("soulx" or "vevosing")) throw new ArgumentException("voiceMatch must be soulx or vevosing.");
         string[] command = ["singing-check", endpoint, seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), quality, voiceMatch];
         var save = OptionalString(arguments, "saveDirectory") is { Length: > 0 } folder ? folder : null;

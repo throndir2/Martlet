@@ -113,6 +113,11 @@ class HostTests(unittest.TestCase):
         body.update(overrides)
         return self.post("/jobs", body)
 
+    def separate(self, frames: int, channels: int, **overrides) -> dict:
+        body = {"kind": "separate", "lyrics": LYRICS, "language": "en", "input_frames": frames, "input_channels": channels}
+        body.update(overrides)
+        return self.post("/jobs", body)
+
     def send(self, job_id: str, offset: int, pcm: bytes) -> dict:
         request = urllib.request.Request(f"http://127.0.0.1:{self.port}/jobs/{job_id}/input?offset={offset}", data=pcm,
                                          headers={"Content-Type": "application/octet-stream"}, method="POST")
@@ -136,8 +141,106 @@ class HostTests(unittest.TestCase):
             offset += len(page) // (2 * channels)
 
     def test_status_lists_the_kinds(self) -> None:
-        self.assertEqual(self.get("/status")["kinds"], ["song", "music", "match"])
+        status = self.get("/status")
+        self.assertEqual(status["kinds"], ["song", "music", "match", "separate"])
+        self.assertEqual(status["music_models"], ["ace-step-v15", "ace-step-v15-xl"])
         self.assertEqual(self.post("/jobs", {"kind": "remix"})["error"]["code"], "request.invalid")
+
+    def test_music_job_asks_for_a_music_model(self) -> None:
+        self.assertEqual(self.music(model="ace-step-v2")["error"]["code"], "request.invalid")
+        self.assertEqual(self.start(model=7)["error"]["code"], "request.invalid")
+        xl = self.music(model="ace-step-v15-xl")
+        standard = self.music(model=None)
+        view = self.wait(xl["job_id"])
+        self.assertEqual(view["state"], "completed")
+        self.assertEqual(view["result"]["engine"]["model"], "ace-step-v15-xl")
+        self.assertEqual(view["result"]["engine"]["generator"], "FIXTURE - NOT AI tone song")
+        self.assertEqual(self.wait(standard["job_id"])["result"]["engine"]["model"], "ace-step-v15")
+
+    def test_a_music_model_that_is_not_set_up_is_refused(self) -> None:
+        # The running service reads its configuration for every request: drop XL from it, as "standard" provisions.
+        config = Path(self.root.name) / "models" / "worker-config.json"
+        original = config.read_bytes()
+        try:
+            changed = json.loads(original)
+            changed["music_models"] = ["ace-step-v15"]
+            config.write_text(json.dumps(changed), encoding="utf-8")
+            self.assertEqual(self.get("/status")["music_models"], ["ace-step-v15"])
+            refused = self.music(model="ace-step-v15-xl")
+            self.assertEqual(refused["error"], {"code": "singing.model_unavailable",
+                                                "summary": "ACE-Step 1.5 XL is not set up on this computer."})
+            self.assertEqual(self.start(model="ace-step-v15-xl")["error"]["code"], "singing.model_unavailable")
+            del changed["music_models"]
+            config.write_text(json.dumps(changed), encoding="utf-8")
+            self.assertEqual(self.get("/status")["music_models"], ["ace-step-v15"])
+        finally:
+            config.write_bytes(original)
+        self.assertEqual(self.get("/status")["music_models"], ["ace-step-v15", "ace-step-v15-xl"])
+
+    def test_separate_job_receives_a_stereo_song_and_returns_separated_tracks(self) -> None:
+        frames = 96_000
+        samples = []
+        for n in range(frames):
+            samples.append(int(8000 * math.sin(2 * math.pi * 220 * n / 48_000)))
+            samples.append(int(-4000 * math.sin(2 * math.pi * 330 * n / 48_000)) + 7)
+        pcm = struct.pack(f"<{2 * frames}h", *samples)
+        self.assertEqual(self.separate(frames, 3)["error"]["code"], "request.invalid")
+        self.assertEqual(self.separate(0, 2)["error"]["code"], "request.invalid")
+        self.assertEqual(self.separate(frames, 2, lyrics="")["error"]["code"], "request.invalid")
+        self.assertEqual(self.separate(frames, 2, bpm=500)["error"]["code"], "request.invalid")
+        started = self.separate(frames, 2, bpm=90, key="A minor", voice_match="vevosing", model="nonsense")
+        job_id = started["job_id"]
+        self.assertEqual((started["kind"], started["state"], started["stage"]), ("separate", "receiving", "queued"))
+        self.assertEqual((started["input_frames"], started["received_frames"], started["input_channels"]), (frames, 0, 2))
+        self.assertEqual(self.send(job_id, 0, pcm[:6])["error"]["code"], "request.invalid")
+        self.assertEqual(self.send(job_id, 0, pcm[:2])["error"]["code"], "request.invalid")
+        self.assertEqual(self.send(job_id, 0, pcm + b"\0" * 4)["error"]["code"], "request.invalid")
+        self.assertEqual(self.get(f"/jobs/{job_id}")["received_frames"], 0)
+        first = self.send(job_id, 0, pcm[:4 * 40_000])
+        self.assertEqual((first["state"], first["received_frames"]), ("receiving", 40_000))
+        self.assertEqual(self.send(job_id, 0, pcm[4 * 40_000:])["error"]["code"], "request.invalid")
+        second = self.send(job_id, 40_000, pcm[4 * 40_000:])
+        self.assertEqual(second["received_frames"], frames)
+        self.assertIn(second["state"], ("queued", "running", "completed"))
+        view = self.wait(job_id)
+        self.assertEqual(view["state"], "completed")
+        self.assertEqual(view["kind"], "separate")
+        result = view["result"]
+        self.assertEqual(result["engine"], {"generator": None, "separator": "FIXTURE - NOT AI", "converter": None,
+                                            "quality": None, "voice_match": None, "model": None, "fixture": True})
+        self.assertEqual(result["frames"], frames)
+        self.assertEqual((result["bpm"], result["key"], result["beats_per_bar"]), (90, "A minor", 4))
+        self.assertEqual(result["beats"][:2], [0.0, round(60 / 90, 6)])
+        self.assertEqual([line["section"] for line in result["lyrics"]], [s for s, _ in audio.lyric_lines(LYRICS)])
+        self.assertLessEqual(result["lyrics"][-1]["end"], 0.9 * frames / 48_000)
+        self.assertTrue(all(0 <= w["line"] < len(result["lyrics"]) and w["end"] > w["start"] for w in result["words"]))
+        self.assertNotIn("matching_voice", [t["stage"] for t in result["timings"]])
+        tracks = {}
+        for track, channels in audio.TRACKS.items():
+            data, sent_channels, total = self.track(job_id, track)
+            self.assertEqual((sent_channels, total, len(data) // (2 * channels)), (channels, frames, frames))
+            tracks[track] = struct.unpack(f"<{frames * channels}h", data)
+        self.assertEqual(tracks["mix"], tuple(samples))
+        for n in range(0, frames, 997):
+            for channel in (0, 1):
+                self.assertLessEqual(abs(tracks["vocals"][n] + tracks["backing"][2 * n + channel]
+                                         - tracks["mix"][2 * n + channel]), 1)
+        self.assertEqual(tracks["vocals"][1000], round((samples[2000] + samples[2001]) / 4))
+
+    def test_separate_job_doubles_a_mono_song(self) -> None:
+        frames = 24_000
+        tone = [int(6000 * math.sin(2 * math.pi * 440 * n / 48_000)) for n in range(frames)]
+        started = self.separate(frames, 1, lyrics="Only one line here\n")
+        self.assertEqual(self.send(started["job_id"], 0, struct.pack(f"<{frames}h", *tone))["received_frames"], frames)
+        view = self.wait(started["job_id"])
+        self.assertEqual(view["state"], "completed")
+        self.assertEqual(len(view["result"]["lyrics"]), 1)
+        self.assertEqual(view["result"]["bpm"], 120)
+        mix, channels, total = self.track(started["job_id"], "mix")
+        self.assertEqual((channels, total), (2, frames))
+        mix = struct.unpack(f"<{2 * frames}h", mix)
+        self.assertEqual(mix[0::2], tuple(tone))
+        self.assertEqual(mix[1::2], tuple(tone))
 
     def test_music_job_makes_separated_tracks_and_timing_without_a_voice(self) -> None:
         self.assertEqual(self.music(quality="best")["error"]["code"], "request.invalid")

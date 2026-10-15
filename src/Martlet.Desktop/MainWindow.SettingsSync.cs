@@ -775,6 +775,8 @@ public partial class MainWindow
             if (DevicesPage.IsVisible) RenderWorkSharing();
             return SharedApply.Done;
         });
+        // The API keys of Singing's cloud providers (Companion › Singing's lists), so every computer that makes a song can use them.
+        yield return new SingingCloudKeys.Section(directory);
     }
 
     private sealed record SharedSpeechDisplay(bool SpeechBubbles, bool Subtitles);

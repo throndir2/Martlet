@@ -62,7 +62,9 @@ Companion › Singing ([Singing](SINGING.md#the-two-singing-pools)).
 | The model that changes the singing into the voice Martlet speaks with (SoulX-Singer or VevoSing) | voice match (`SongVoiceMatch`, `SongVoiceMatchResult`, `SongVoice`) | voice match | "converter" (`SongEngineIdentity.Converter`). Do not use "SVC" in UI text |
 | The list of computers that write songs' music | pool area `PoolAreas.Singing` (title *Song music*) | Companion › Singing, *Music: where Martlet writes songs* | Area ID, lane and host role `singing`; automation IDs `Pool-singing-...` |
 | The list of computers that match songs' voices | pool area `PoolAreas.VoiceMatch` | Companion › Singing, *Voice match: where Martlet matches the singing to its voice* | Area ID and lane `voice-match`; automation IDs `Pool-voice-match-...` |
-| A singing host job | job kind `song` (the whole song), `music` or `match` (`GatewaySongKinds`) | (not shown) | |
+| A singing host job | job kind `song` (the whole song), `music`, `match` or `separate` (a cloud song separated and timed, `GatewaySongKinds`) | (not shown) | |
+| The model that writes a song's music on a singing computer | music model (`SongMusicModel`: ACE-Step 1.5 or ACE-Step 1.5 XL) | Music model | Pool member setting `model`; host choice `SINGING_MUSIC_MODELS` |
+| A cloud provider in a singing list (ElevenLabs, Mureka, fal.ai) | Singing cloud member (`SingingCloud`, `SingingCloudClient`) | A cloud provider | Keys: `SingingKeys`, `singing-keys.json`, shared section `singing-keys` |
 
 ## Summaries of the screen and of sounds
 
