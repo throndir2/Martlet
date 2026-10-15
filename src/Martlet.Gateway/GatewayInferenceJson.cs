@@ -722,7 +722,7 @@ internal static class GatewayInferenceJson
         if (start.ContainsKey("model"))
         {
             model = Text(start, "model", 32);
-            GatewayRules.Require(model is GatewaySongModels.Standard or GatewaySongModels.Xl, "request.invalid");
+            GatewayRules.Require(GatewaySongModels.Known(model), "request.invalid");
         }
         var lyrics = Text(start, "lyrics", Martlet.Core.Singing.SongRequest.MaximumLyricsCharacters, allowNewLines: true);
         var style = Text(start, "style", Martlet.Core.Singing.SongRequest.MaximumStyleCharacters);
@@ -764,7 +764,7 @@ internal static class GatewayInferenceJson
         static (string VoiceMatch, string VoiceId) VoiceChoice(IReadOnlyDictionary<string, JsonElement> fields)
         {
             var voiceMatch = Text(fields, "voice_match", 16);
-            GatewayRules.Require(voiceMatch is "soulx" or "vevosing", "request.invalid");
+            GatewayRules.Require(GatewaySongModels.KnownMatch(voiceMatch), "request.invalid");
             var voiceId = Text(fields, "voice_id", 128);
             GatewayRules.Require(voiceId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or ':' or '.'), "request.invalid");
             return (voiceMatch, voiceId);

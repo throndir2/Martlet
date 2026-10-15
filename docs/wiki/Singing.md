@@ -14,7 +14,9 @@ With nothing on in the *Voice match* list, songs keep the music model's own sing
 
 ## More choices
 
-- **ACE-Step 1.5 XL**: a bigger music model with clearer words. Click **Add ACE-Step 1.5 XL here** in a computer's settings (about 20 GB more), then pick it in its **Music model** box.
+- **More music models on your computers**: **ACE-Step 1.5 XL** (clearer words, about 20 GB), **HeartMuLa** (about 22 GB, a 16 GB+ card), **DiffRhythm** (fast, about 9 GB) and **YuE** (strong singing but slow, about 8 GB). Click **Add <model> here** in a computer's settings, then pick it in its **Music model** box.
+- **More voice matches on your computers**: **Vevo2** (about 3 GB) and **Seed-VC** (about 2.5 GB). Click **Add <model> here** in a computer's settings in the *Voice match* list, then pick it in its **Model** box.
+- YuE, Vevo2, VevoSing and DiffRhythm's style model are for personal, non-commercial use only. Seed-VC is GPL-3.0. Martlet has not measured HeartMuLa, DiffRhythm, YuE, Vevo2 or Seed-VC on a real graphics card yet.
 - **Cloud providers**: click **A cloud provider** under a list. The *Music* list takes **ElevenLabs Music**, **Mureka** (it can sing in Martlet's own voice) and **fal.ai** (MiniMax Music or ACE-Step). The *Voice match* list takes **ElevenLabs Voice Changer**. You need your own API key, and each song may cost money. Keys go to your other computers too.
 - A cloud song is separated and timed on one of your singing computers when you have one. Without one, it keeps the provider's singer and the voice is not matched.
 

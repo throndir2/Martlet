@@ -284,6 +284,21 @@ runs. Reading (`ReadingPool`, run in `src\Martlet.Desktop\ScreenReading.cs`), `M
 
 **Docs:** [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area).
 
+## Which models Singing can run on a computer
+
+**What it decides:** the music models and voice matches a singing computer can run, their names on the wire, the role
+choice that adds each one, its download, licence and terms.
+
+**Owner:** `SingingModels` (`src\Martlet.Core\Singing\SingingModels.cs`) for the app, the gateway and MCP;
+`workers\singing\martlet_singing\pins.py` (`MUSIC_MODELS`, `CONVERTER_IDS`, `EXTRA_CHOICES`, the pinned files) for the
+singing host. `deploy\host\roles\singing\role.conf` has the matching choices and terms.
+
+**Tests:** `SingingModelsTests` (Martlet.Core.Tests); `AddedModelTests` (python:singing).
+
+**MCP:** `singing_check` (`model`, `voiceMatch`), `singing_status`.
+
+**Docs:** [Singing](SINGING.md#other-music-and-voice-match-options).
+
 ## What MCP may click and read, and where each tool is
 
 **What it decides:** which controls the MCP `ui_*` tools may click, and which

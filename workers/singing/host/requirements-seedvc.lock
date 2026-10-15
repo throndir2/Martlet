@@ -1,0 +1,5 @@
+# Hash-locked with uv (python 3.11, x86_64 manylinux_2_28) from requirements-seedvc.in against requirements.lock: only the packages
+# this model adds or pins differently; the rest come from the base image. Installed with pip --target into its own folder.
+munch==4.0.0 \
+    --hash=sha256:542cb151461263216a4e37c3fd9afc425feeaf38aaa3025cd2a981fadb422235 \
+    --hash=sha256:71033c45db9fb677a0b7eb517a4ce70ae09258490e419b0e7f00d1e386ecb1b4

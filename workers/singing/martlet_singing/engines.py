@@ -9,8 +9,9 @@ A job has one of four kinds:
   match    the voice match only: reads input.pcm (48 kHz mono signed 16-bit) and writes vocals.pcm, the same length.
   separate a song made elsewhere: reads input.pcm (48 kHz signed 16-bit, input_channels 1 or 2), separates it with Demucs
            and times it like a music job (from its vocals' phrases): mix.pcm, vocals.pcm and backing.pcm, the same length.
-Song and music jobs make their music with the "model" they ask for: ace-step-v15 (turbo, or SFT for high quality) or
-ace-step-v15-xl (ACE-Step 1.5 XL SFT, 50 steps).
+Song and music jobs make their music with the "model" they ask for: ace-step-v15 (turbo, or SFT for high quality),
+ace-step-v15-xl (ACE-Step 1.5 XL SFT, 50 steps), or a model the owner added (heartmula, diffrhythm, yue), which runs in its
+own process (martlet_singing.extras). The voice matches vevo2 and seedvc run there too.
 Tracks are signed 16-bit little-endian PCM in the job directory; the engine returns the job's metadata. Stages run one at
 a time and each releases the graphics card's memory it used before the next starts.
 """
@@ -318,6 +319,8 @@ class SongEngine:
         self.keep_models = os.environ.get("MARTLET_SINGING_KEEP_MODELS", "auto")
         # Set when a song released the music model for lack of system memory: the worker process then ends after the song.
         self.exit_after_song = False
+        # What the last added music model's process reported (martlet_singing.extras).
+        self.extra_summary: dict[str, Any] | None = None
 
     # ---- lifecycle
 
@@ -572,8 +575,14 @@ class SongEngine:
 
     def _music_engine(self, job: dict[str, Any], resident: bool) -> dict[str, Any]:
         """The result's engine block for a job that wrote music (no voice match: a song fills those in)."""
-        plans = self._plans(job)
         model = music_model(job)
+        if model in pins.EXTRA_MUSIC:
+            summary = self.extra_summary or {}
+            return {"generator": pins.EXTRA_MUSIC[model], "separator": pins.SEPARATOR_ID, "converter": None,
+                    "quality": "high_quality", "voice_match": None, "model": model, "fixture": False, "planner": "none",
+                    "lm_backend": None, "dit_resident": False, "dit_warm_after": False, "quantization": None,
+                    "music": {k: summary.get(k) for k in ("load_seconds", "generate_seconds", "peak_vram_mib", "rate")}}
+        plans = self._plans(job)
         xl = model == XL
         return {"generator": pins.XL_GENERATOR_ID if xl else pins.GENERATOR_IDS[job["quality"]],
                 "separator": pins.SEPARATOR_ID, "converter": None, "quality": "high_quality" if xl else job["quality"],
@@ -680,7 +689,9 @@ class SongEngine:
         plans = self._plans(job)
         model = music_model(job)
         if model not in self.music_models:
-            raise SongError("singing.model_unavailable", "ACE-Step 1.5 XL is not set up on this computer.")
+            raise SongError("singing.model_unavailable", f"{pins.NAMES.get(model, model)} is not set up on this computer.")
+        if model in pins.EXTRA_MUSIC:
+            return self._extra_music(job, model, seed, timer, report, canceled)
         # XL has only its SFT model here: always 50 steps, whatever the quality.
         xl = model == XL
         config = pins.ACE_XL_SFT if xl else pins.ACE_SFT if job["quality"] == "high_quality" else pins.ACE_TURBO
@@ -747,6 +758,42 @@ class SongEngine:
         torch.cuda.synchronize() if torch.cuda.is_available() else None
         return mix.astype(np.float32), plan, lrc, sentences
 
+    def _extra_music(self, job: dict[str, Any], model: str, seed: int, timer: Timer, report: Report, canceled: Canceled):
+        """A music model the owner added, in its own process with its own packages. It gives no lyric timestamps: the lines
+        and words are timed from the separated vocals' phrases."""
+        import numpy as np
+        import soundfile
+
+        # The added model needs the card: ACE-Step's music model leaves it (and system memory) first.
+        self.ace.clear()
+        self.dit_resident = False
+        self._free()
+        report("writing_music", 0.05)
+        started = time.perf_counter()
+        directory = directory_for(job)
+        out = directory / "extra-music.wav"
+        runner = _Matcher(model, self.models, self.device, directory, module="martlet_singing.extras")
+        try:
+            summary = runner.ask({"lyrics": job["lyrics"], "style": job["style"], "duration": float(job["duration_seconds"]),
+                                  "seed": int(seed), "language": job["language"], "out": str(out)}, canceled)
+        finally:
+            runner.close()
+        if isinstance(summary.get("error"), dict):
+            raise SongError(summary["error"].get("code", "song.failed"), summary["error"].get("summary", "The music model failed."))
+        samples, rate = soundfile.read(str(out), dtype="float32", always_2d=True)
+        out.unlink(missing_ok=True)
+        mix = samples.T
+        if mix.shape[0] == 1:
+            mix = np.repeat(mix, 2, axis=0)
+        if rate != audio.OUTPUT_RATE:
+            mix = _resample(mix, rate, audio.OUTPUT_RATE)
+        # A song longer than a job's tracks may be (200 s) is cut there.
+        mix = mix[:, : audio.OUTPUT_RATE * 200]
+        self.extra_summary = summary
+        timer.add("writing_music", started)
+        _check(canceled)
+        return mix.astype(np.float32), {}, "", []
+
     # ---- stage 2: Demucs vocals
 
     def _separate(self, mix48):
@@ -795,9 +842,10 @@ class SongEngine:
         import numpy as np
         import soundfile
 
-        if voice_match == "vevosing" and "vevosing" not in self.voice_matches:
-            raise SongError("singing.voice_match_unavailable", "VevoSing is not set up on this computer.")
-        engine = "vevosing" if voice_match == "vevosing" else "soulx"
+        if voice_match != "soulx" and voice_match not in self.voice_matches:
+            raise SongError("singing.voice_match_unavailable", f"{pins.NAMES.get(voice_match, voice_match)} is not set up on this computer.")
+        engine = voice_match if voice_match in pins.CONVERTER_IDS else "soulx"
+        extra = engine in pins.EXTRA_MATCHES
         vocals_path, reference_path, out_path = (directory / "match-vocals.wav", directory / "match-reference.wav",
                                                  directory / "match-out.wav")
         soundfile.write(str(vocals_path), vocals48.mean(axis=0).astype(np.float32), audio.OUTPUT_RATE, subtype="FLOAT")
@@ -807,7 +855,8 @@ class SongEngine:
             self.matcher = None
         warm = self.matcher is not None
         if self.matcher is None:
-            self.matcher = _Matcher(engine, self.models, self.device, directory)
+            self.matcher = _Matcher(engine, self.models, self.device, directory,
+                                    module="martlet_singing.extras" if extra else "martlet_singing.match")
         try:
             summary = self.matcher.ask({"vocals": str(vocals_path), "reference": str(reference_path), "out": str(out_path)},
                                        canceled)
@@ -832,23 +881,28 @@ class SongEngine:
 
 
 class _Matcher:
-    """A running martlet_singing.match process: one JSON line per song in, one out, read without blocking so a cancel or the
-    process dying is noticed (and, on Windows, without a thread blocked on a pipe)."""
+    """A running martlet_singing.match (or martlet_singing.extras) process: one JSON line per song in, one out, read without
+    blocking so a cancel or the process dying is noticed (and, on Windows, without a thread blocked on a pipe). An added
+    model's own packages ($MARTLET_SINGING_EXTRAS/<engine>) come first on its path; a voice match also gets the voice-match
+    Transformers (MARTLET_SINGING_MATCH_SITE)."""
 
-    def __init__(self, engine: str, models: Path, device: str, directory: Path) -> None:
+    def __init__(self, engine: str, models: Path, device: str, directory: Path, module: str = "martlet_singing.match") -> None:
         import subprocess
 
         self.engine = engine
         environment = dict(os.environ)
         paths = [str(Path(__file__).resolve().parent.parent)]
         overlay = os.environ.get("MARTLET_SINGING_MATCH_SITE")
-        if overlay:
+        if overlay and engine in pins.CONVERTER_IDS:
             paths.insert(0, overlay)
+        own = Path(os.environ.get("MARTLET_SINGING_EXTRAS", "/opt/martlet-singing/extras")) / engine
+        if own.is_dir():
+            paths.insert(0, str(own))
         environment["PYTHONPATH"] = os.pathsep.join(paths + [p for p in environment.get("PYTHONPATH", "").split(os.pathsep) if p])
         self.log = (Path(os.environ.get("MARTLET_SINGING_JOBS", str(directory.parent))) / f"match-{engine}.log")
         self.errors = open(self.log, "ab")
         self.process = subprocess.Popen(
-            [os.environ.get("MARTLET_SINGING_MATCH_PYTHON") or sys.executable, "-m", "martlet_singing.match", "--engine", engine,
+            [os.environ.get("MARTLET_SINGING_MATCH_PYTHON") or sys.executable, "-m", module, "--engine", engine,
              "--models", str(models), "--device", device],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.errors, env=environment, cwd=str(directory.parent))
         self.pending = b""

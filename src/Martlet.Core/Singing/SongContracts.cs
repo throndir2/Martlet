@@ -37,13 +37,16 @@ public enum SongQuality
 /// CC-BY-NC-ND-4.0 weights, personal non-commercial use only, set up only when the owner chooses it). Both run on the singing
 /// host role. <see cref="ElevenLabs"/> is ElevenLabs' Voice Changer (a cloud provider, with an instant voice clone of the
 /// voice's recording); <see cref="Mureka"/> means Mureka sang the song in the voice itself (its vocal clone), with no voice
-/// match after.</summary>
+/// match after. <see cref="Vevo2"/> (Amphion's Vevo2) and <see cref="SeedVc"/> (Seed-VC's singing model) are optional voice
+/// matches on the singing host role too (<see cref="SingingModels"/>).</summary>
 public enum SongVoiceMatch
 {
     SoulX,
     VevoSing,
     ElevenLabs,
-    Mureka
+    Mureka,
+    Vevo2,
+    SeedVc
 }
 
 /// <summary>The music model a singing host uses: <see cref="AceStep15"/> (ACE-Step 1.5, turbo or SFT by the quality, the
@@ -52,7 +55,10 @@ public enum SongVoiceMatch
 public enum SongMusicModel
 {
     AceStep15,
-    AceStep15Xl
+    AceStep15Xl,
+    HeartMuLa,
+    DiffRhythm,
+    YuE
 }
 
 /// <summary>One song to make. <see cref="Lyrics"/> use ACE-Step's section tags (<c>[verse]</c>, <c>[chorus]</c>,

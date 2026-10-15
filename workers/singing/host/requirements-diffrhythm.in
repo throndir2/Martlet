@@ -1,0 +1,18 @@
+# DiffRhythm (github.com/ASLP-lab/DiffRhythm, Apache-2.0) runs in its own process with these over the base image's
+# packages: its diffusion transformer, the MuQ-MuLan style encoder and its lyrics front end (espeak-ng through phonemizer).
+x-transformers==2.1.2
+torchdiffeq==0.2.5
+muq==0.1.0
+nnaudio
+easydict
+x-clip
+phonemizer==3.3.0
+inflect==7.5.0
+unidecode==1.3.8
+jieba==0.42.1
+cn2an==0.5.23
+pypinyin==0.53.0
+pykakasi==2.3.0
+py3langid
+onnxruntime
+mutagen==1.47.0

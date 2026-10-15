@@ -143,8 +143,32 @@ class HostTests(unittest.TestCase):
     def test_status_lists_the_kinds(self) -> None:
         status = self.get("/status")
         self.assertEqual(status["kinds"], ["song", "music", "match", "separate"])
-        self.assertEqual(status["music_models"], ["ace-step-v15", "ace-step-v15-xl"])
+        self.assertEqual(status["music_models"], ["ace-step-v15", "ace-step-v15-xl", "heartmula", "diffrhythm", "yue"])
+        self.assertEqual(status["voice_matches"], ["soulx"])
         self.assertEqual(self.post("/jobs", {"kind": "remix"})["error"]["code"], "request.invalid")
+
+    def test_added_models_make_music_and_match_voices(self) -> None:
+        for model in ("heartmula", "diffrhythm", "yue"):
+            view = self.wait(self.music(model=model)["job_id"])
+            self.assertEqual(view["state"], "completed", model)
+            self.assertEqual(view["result"]["engine"]["model"], model)
+        self.assertEqual(self.start(voice_match="vevo2")["error"], {"code": "singing.voice_match_unavailable",
+                                                                    "summary": "Vevo2 is not set up on this computer."})
+        self.assertEqual(self.start(voice_match="rvc")["error"]["code"], "request.invalid")
+        # As SINGING_VEVO2 and SINGING_SEEDVC yes provision them.
+        config = Path(self.root.name) / "models" / "worker-config.json"
+        original = config.read_bytes()
+        try:
+            changed = json.loads(original)
+            changed["voice_matches"] = ["soulx", "vevo2", "seedvc"]
+            config.write_text(json.dumps(changed), encoding="utf-8")
+            self.assertEqual(self.get("/status")["voice_matches"], ["soulx", "vevo2", "seedvc"])
+            for voice_match in ("vevo2", "seedvc"):
+                view = self.wait(self.start(voice_match=voice_match)["job_id"])
+                self.assertEqual(view["state"], "completed", voice_match)
+                self.assertEqual(view["result"]["engine"]["voice_match"], voice_match)
+        finally:
+            config.write_bytes(original)
 
     def test_music_job_asks_for_a_music_model(self) -> None:
         self.assertEqual(self.music(model="ace-step-v2")["error"]["code"], "request.invalid")
@@ -170,12 +194,14 @@ class HostTests(unittest.TestCase):
             self.assertEqual(refused["error"], {"code": "singing.model_unavailable",
                                                 "summary": "ACE-Step 1.5 XL is not set up on this computer."})
             self.assertEqual(self.start(model="ace-step-v15-xl")["error"]["code"], "singing.model_unavailable")
+            self.assertEqual(self.music(model="heartmula")["error"], {"code": "singing.model_unavailable",
+                                                                      "summary": "HeartMuLa is not set up on this computer."})
             del changed["music_models"]
             config.write_text(json.dumps(changed), encoding="utf-8")
             self.assertEqual(self.get("/status")["music_models"], ["ace-step-v15"])
         finally:
             config.write_bytes(original)
-        self.assertEqual(self.get("/status")["music_models"], ["ace-step-v15", "ace-step-v15-xl"])
+        self.assertEqual(self.get("/status")["music_models"], ["ace-step-v15", "ace-step-v15-xl", "heartmula", "diffrhythm", "yue"])
 
     def test_separate_job_receives_a_stereo_song_and_returns_separated_tracks(self) -> None:
         frames = 96_000
@@ -407,6 +433,43 @@ except ImportError:
 
 
 @unittest.skipUnless(HAVE_AUDIO, "numpy and librosa (the image has them)")
+class AddedModelTests(unittest.TestCase):
+    def test_choices_pins_and_image_agree(self) -> None:
+        from martlet_singing import host, pins
+
+        os.environ.update({"SINGING_HEARTMULA": "yes", "SINGING_SEEDVC": "yes"})
+        try:
+            self.assertEqual(host.extras_choice(), ["heartmula", "seedvc"])
+            os.environ["SINGING_YUE"] = "maybe"
+            with self.assertRaises(SystemExit):
+                host.extras_choice()
+        finally:
+            for name in ("SINGING_HEARTMULA", "SINGING_SEEDVC", "SINGING_YUE"):
+                os.environ.pop(name, None)
+        groups = {p.group for p in pins.PINNED_FILES}
+        for name in pins.EXTRA_CHOICES:
+            self.assertIn(name, groups)
+            self.assertTrue(all(p.local.startswith(name + "/") for p in pins.PINNED_FILES if p.group == name), name)
+        dockerfile = (WORKERS / "host" / "Dockerfile").read_text(encoding="utf-8")
+        role = (WORKERS.parent.parent / "deploy" / "host" / "roles" / "singing" / "role.conf").read_text(encoding="utf-8")
+        for name, variable in pins.EXTRA_CHOICES.items():
+            self.assertIn(f"choice={variable}|", role)
+            self.assertIn(f"[{variable}=yes]", role)
+            if name != "vevo2":
+                self.assertIn(f"ARG {variable}=no", dockerfile)
+                self.assertTrue((WORKERS / "host" / f"requirements-{name}.lock").is_file(), name)
+
+    def test_diffrhythm_lyrics_are_timed_in_order(self) -> None:
+        from martlet_singing import extras
+
+        timed = extras.lrc("[verse]\none\ntwo\n[chorus]\nthree", 100).splitlines()
+        self.assertEqual([line[10:] for line in timed], ["one", "two", "three"])
+        starts = [int(line[1:3]) * 60 + float(line[4:9]) for line in timed]
+        self.assertEqual(starts, sorted(starts))
+        self.assertAlmostEqual(starts[0], 8.0)
+        self.assertLess(starts[-1], 92.0)
+
+
 class TimingTests(unittest.TestCase):
     def test_grid_words_and_gate_on_a_click_track(self) -> None:
         from martlet_singing import timing
