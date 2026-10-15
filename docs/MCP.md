@@ -3979,7 +3979,16 @@ chatterbox (...)` without replacing `martlet-host-net`; a `--yes setup` waits
 for it, then removes and recreates the holder and runs its engine; an engine
 left in a replaced holder's namespace stops at once (`... was replaced while
 this ran ... Nothing was changed`) while one in the current namespace
-continues; and the desktop's reader reads that busy line. Finally a native
+continues; and the desktop's reader reads that busy line. After a restart of
+the Docker host, Docker may start the holder before its home address exists;
+that start fails and Docker never tries again, so the gateway and roles stay
+down. So `status` with a holder that failed to start starts it before its
+engine joins the network (`command-starts-stopped-holder`); `update` adds the
+keeper `martlet-host-keeper` (`--restart unless-stopped --network none`,
+command `keep`) once and not again on the next update (`update-adds-keeper`);
+and `keep` starts a holder that isn't running, with Docker Engine's start error
+or without one (as Docker Desktop leaves it), and leaves a running holder alone
+(`keeper-starts-stopped-holder`). Finally a native
 `--yes add` of a fixture role against a fake `docker` whose `compose up` fails
 with exit 17 (as a role image build does when a download times out) stops with
 exit 1 and `Stopped: Building or starting fixture-build failed ... run
@@ -7696,7 +7705,8 @@ fixture came out as expected. It reads no credentials and contacts nothing.
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-shared-logs) shows
 them (optional absolute `dataDirectory`, default the current user's): this PC's
 `desktop`, `avatar-renderer` and `host-runs` with their rotated copies and the
-other computers' lines log sharing collected (`logs\network-logs.json`: other
+other computers' lines log sharing collected (`logs\network-logs.json` and its
+`logs\network-logs.journal`, a week of lines: other
 desktops' parts and every host's `gateway`), merged into one timeline, newest
 first, of `{at, level, source, component, seq, relayedBy, message}` (a stack
 trace or output lines stay in their line's `message`; `relayedBy` names the
@@ -7713,7 +7723,7 @@ it contacts no host.
 existing file is never replaced) and optional `dataDirectory`. It writes the
 same ZIP with the production writer (`LogBundle`): `about.txt` and
 `martlet-logs.txt` with every line once, oldest first, from this PC's logs and
-`network-logs.json`. It returns `path`, `bytes`, `files` (name and size),
+`network-logs.json` (with its journal). It returns `path`, `bytes`, `files` (name and size),
 `lines`, `computers`, `errors` and `warnings` (last 24 hours), `oldest`,
 `newest`, `network` and `about` (the text of `about.txt`). It writes only that
 file and contacts nothing.
@@ -7721,7 +7731,8 @@ file and contacts nothing.
 `logs_share_selftest` (no arguments) rehearses shared logs end to end with the
 production code (`src\Martlet.NodeLinkCheck`, mode `logs`, `LogRehearsal.cs`;
 returns `{exitCode, report}`): two real gateways (`lab-logs-1`, `lab-logs-2`;
-Kestrel, pinned TLS, signed requests, an in-memory `logs.json`) and three
+Kestrel, pinned TLS, signed requests, an in-memory `logs.json` and
+`logs-recent.json`) and three
 simulated desktops (`lab-desktop-a..c`) with real logs folders (`desktop.log`
 in Martlet's format, read with `LocalLogs`), the desktop's paired client
 (`HostLogPeer`) and the real sharing engine (`Martlet.Core.Logs.LogShare`). Its
@@ -7752,9 +7763,14 @@ stops and one missed check logs nothing, the second logs `Host lab-connections
 stopped answering: ...` once, later misses log nothing, and the route status
 says the home address didn't answer (refused); the host comes back and the next
 check logs `Host lab-connections answers again.` once over one new connection;
-a host that misses every other check logs nothing. The report's `log` holds the
-lines. Loopback only; writes nothing. Windows running out of ports
-(`NoBufferSpaceAvailable`) is not simulated; unit tests check its wording.
+a host that misses every other check logs nothing; and the host is paired
+again (a new credential, the old secret deleted as the desktop deletes it): a
+job saved with the old pairing reaches the host through the desktop's choice of
+pairing (`HostPairingChoice`, this PC's current pairing with the same host ID),
+and the step says whether the host still accepts the old credential. The
+report's `log` holds the lines. Loopback only; writes nothing. Windows running
+out of ports (`NoBufferSpaceAvailable`) is not simulated; unit tests check its
+wording.
 
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
@@ -8520,7 +8536,8 @@ disposable data directory, write `logs\desktop.log` (lines like
 `2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
 or `logs\host-runs.log` before launching (other computers' lines come from
 `logs\network-logs.json`: `{"schema_version": 1, "entries": [{"source",
-"component", "seq", "at", "level", "message"}]}`). Home's `HealthOpen-errors-diagnostics`
+"component", "seq", "at", "level", "message"}]}`, lines from the last week only; a
+`logs\network-logs.journal` beside it adds one such line object per text line). Home's `HealthOpen-errors-diagnostics`
 and `HealthOpen-crash-diagnostics` open this page.
 
 `ui_snapshot` reports `selected` (true or false) for controls that are chosen

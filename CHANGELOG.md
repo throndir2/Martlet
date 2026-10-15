@@ -13,6 +13,22 @@ Each release's section here is also its notes on GitHub.
 - Singing has more choices: ACE-Step 1.5 XL on your own computers, and ElevenLabs Music, Mureka and fal.ai as cloud providers for the music, and the ElevenLabs Voice Changer for the voice match. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - Mureka can sing a song in Martlet's own voice. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 
+## [0.80.2] - 2026-10-15
+
+### Changed
+
+- **Every computer keeps a week of logs**: your hosts and the Diagnostics page on each PC now keep every computer's log lines for 7 days (it was the newest few thousand lines, often only a few hours). A PC that was off for days gets the whole week when it comes back. A week is about 20 to 45 MB on each computer. Martlet saves only the new lines each time, and after a restart it no longer reads all the shared lines again. ([#906](https://github.com/throndir2/Martlet/pull/906))
+
+### Fixed
+
+- **Your hosts come back by themselves after their computer restarts**: when Docker started Martlet's host service before the computer had its home address, the service stayed off until you added the host again. Now it starts again by itself as soon as it can, and *Update host* starts it too. Update each host once to get this. When a host's computer is on but its host service isn't running, Martlet now says so instead of *Could not reach the Martlet host over pinned TLS*. ([#905](https://github.com/throndir2/Martlet/pull/905))
+
+## [0.80.1] - 2026-10-15
+
+### Fixed
+
+- **Your computers work together again after you pair a host again**: when you remove a host from your Martlet network and add it back (or pair it again), Thinking, the Thinking pool, Listening and Speaking use the new pairing at once, instead of failing with *the Thinking model's key couldn't be used* while the host still showed as connected. When a host's pairing key is missing, the log now says why and what to do. ([#903](https://github.com/throndir2/Martlet/pull/903))
+
 ## [0.80.0] - 2026-10-14
 
 ### Added

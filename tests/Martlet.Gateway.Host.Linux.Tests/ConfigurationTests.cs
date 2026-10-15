@@ -588,4 +588,26 @@ public sealed class ConfigurationTests
         Assert.Throws<GatewayPersistenceException>(() => dir.WriteApproval(bytes));
         Assert.Null(dir.Read(LinuxControlDirectory.Approval, 8192));
     }
+
+    [Fact]
+    public void Gateway_log_keeps_a_week_in_logs_json_and_its_newest_lines_in_logs_recent_json()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        WriteConfig(fs, Config());
+        using var dir = new LinuxControlDirectory("/srv/martlet/host.json", fs);
+        var storage = new ControlLogStorage(dir);
+        Assert.Null(storage.Load());
+        Assert.Null(storage.LoadRecent());
+
+        // A week of lines is more than the 2 MB a full save once held.
+        var full = Encoding.UTF8.GetBytes("{\"schema_version\":1,\"entries\":[]," + new string(' ', 3 * 1024 * 1024) + "\"next_index\":1}");
+        var recent = Encoding.UTF8.GetBytes("{\"schema_version\":1,\"entries\":[]}");
+        storage.Save(full);
+        Assert.True(storage.SaveRecent(recent));
+        Assert.Equal(full, storage.Load());
+        Assert.Equal(recent, storage.LoadRecent());
+        Assert.Contains("logs-recent.json", fs.Parent.Children.Keys);
+        Assert.Throws<GatewayPersistenceException>(() => storage.SaveRecent(new byte[LinuxControlDirectory.MaximumLogsRecentBytes + 1]));
+        Assert.Equal(recent, storage.LoadRecent());
+    }
 }

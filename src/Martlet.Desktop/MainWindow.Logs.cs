@@ -323,14 +323,20 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Every known line once (this PC's own copy wins), newest first.</summary>
+    /// <summary>Every known line, newest first. This PC's own lines and the other computers' are each kept oldest first, so
+    /// they are merged rather than sorted (a week of lines); the copy never holds this PC's own lines.</summary>
     private List<LogRecord> AllLogs()
     {
-        var seen = new HashSet<(string, long)>();
-        var all = new List<LogRecord>();
-        foreach (var record in localLogs.Concat(NetworkLogLines))
-            if (seen.Add((record.Stream, record.Seq))) all.Add(record);
-        all.Sort((a, b) => b.At != a.At ? b.At.CompareTo(a.At) : b.Seq.CompareTo(a.Seq));
+        var local = localLogs;
+        var network = NetworkLogLines;
+        var all = new List<LogRecord>(local.Count + network.Count);
+        int i = local.Count - 1, j = network.Count - 1;
+        while (i >= 0 || j >= 0)
+        {
+            if (j < 0 || i >= 0 && (local[i].At != network[j].At ? local[i].At > network[j].At : local[i].Seq >= network[j].Seq))
+                all.Add(local[i--]);
+            else all.Add(network[j--]);
+        }
         return all;
     }
 
@@ -362,11 +368,14 @@ public partial class MainWindow
 
     private void RenderLogFilters()
     {
-        var all = localLogs.Concat(NetworkLogLines).ToArray();
+        // Who wrote lines: this PC's own, and each stream ("computer/part") of the other computers' copy.
+        var streams = logShare?.Logs.StreamNames() ?? [];
         var thisPc = ThisPcSources();
-        var sources = all.Select(r => Computer(r.Source, thisPc)).Append(ClusterDevice).Distinct(StringComparer.Ordinal)
+        var sources = localLogs.Select(r => r.Source).Distinct(StringComparer.Ordinal).Concat(streams.Select(s => s[..s.LastIndexOf('/')]))
+            .Select(s => Computer(s, thisPc)).Append(ClusterDevice).Distinct(StringComparer.Ordinal)
             .OrderBy(s => s != ClusterDevice).ThenBy(s => s, StringComparer.Ordinal).ToArray();
-        var parts = LogComponents.Local.Append(LogComponents.Gateway).Concat(all.Select(r => r.Component)).Distinct(StringComparer.Ordinal).ToArray();
+        var parts = LogComponents.Local.Append(LogComponents.Gateway).Concat(localLogs.Select(r => r.Component).Distinct(StringComparer.Ordinal))
+            .Concat(streams.Select(s => s[(s.LastIndexOf('/') + 1)..])).Distinct(StringComparer.Ordinal).ToArray();
         if (!sources.Contains(logSource) && logSource != "all") logSource = "all";
         if (!parts.Contains(logPart) && logPart != "all") logPart = "all";
         FillFilters(LogLevelFilters, "LogLevel-", "Show",

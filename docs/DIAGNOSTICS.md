@@ -67,9 +67,13 @@ carry the lines: every 30 seconds while Martlet runs (companion PCs and PCs set
 up as hosts alike), each desktop:
 
 1. reads each paired host's new lines (every computer's lines that host holds,
-   its own gateway's included) into its own copy of the other computers' lines,
-   `logs\network-logs.json` in Martlet's data folder (the newest 10,000 lines,
-   about 4 MB; this PC's own lines stay in its log files);
+   its own gateway's included) into its own copy of the other computers' lines
+   in Martlet's data folder (a week of lines; this PC's own lines stay in its
+   log files). Each run appends the lines it added to
+   `logs\network-logs.journal`; now and then the whole copy is written again as
+   `logs\network-logs.json` and the journal starts empty. How far it read each
+   host is kept in `logs\network-logs-positions.json`, so after a restart it
+   goes on from there instead of reading the week again;
 2. the first time it reaches a host while Martlet runs, asks for its *marks*
    (the newest sequence number it holds per computer and part);
 3. gives every host the lines it lacks: this PC's own new lines and every other
@@ -77,12 +81,23 @@ up as hosts alike), each desktop:
    host per run (the rest follow on the next run). A host that has nothing yet
    from a computer gets at most that computer's last week.
 
+**Every computer keeps a week of lines.** Each host and each desktop's copy
+keep lines for 7 days after they were written. Caps stop a computer with a wrong
+clock, or a flood of lines, from growing a log without end: at most 250,000
+lines and about 128 MB in memory, oldest dropped first. A household's
+computers write about 430 lines an hour together, and up to about 1,000 while
+Martlet talks a lot (setup output can add a few thousand in an hour). So a
+week is about 72,000 to 170,000 lines: 20 to 45 MB on disk on each host and each
+PC, and about as much memory in each Martlet. A computer that was off for days
+gets the whole week the hosts hold when it comes back.
+
 Every line has a sequence number that only grows per computer and part
 (derived from its time), and each host keeps only lines newer than its mark, so
 a line sent twice, by several desktops or again after a restart is kept once.
-Lines passed on by another desktop record who passed them on. Each host keeps
-the newest 6,000 lines (about 1.8 MB) and saves at most every 30 seconds and
-when it stops. A desktop that reaches only some hosts still reaches every
+Lines passed on by another desktop record who passed them on. Each host saves
+at most every 30 seconds and when it stops: only the lines since its last full
+save go to `logs-recent.json`, and `logs.json` with the whole week is written
+again once those take more than 1 MB. A desktop that reaches only some hosts still reaches every
 computer: another desktop that reaches both passes the lines on. A host that
 stops answering only delays lines; they wait on each computer and reach it when
 it answers again. A host that comes back without its newest lines (a power cut

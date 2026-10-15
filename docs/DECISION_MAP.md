@@ -240,6 +240,26 @@ for `SetupRole.Llm` again in a caller.
 
 **Tests:** `SetupRouteLookupTests` (Martlet.Core.Tests).
 
+## Which pairing a connection to a host uses
+
+**What it decides:** which of this PC's pairings (credential ID, device ID,
+address and pinned key) a connection to a paired host uses for a saved job: a
+Setup route, a Thinking pool member, a list entry or the lip-sync host.
+
+**Owner:** `HostPairingChoice.For`
+(`src\Martlet.Avatar.Hosting\HostPairingChoice.cs`). This PC's current pairing
+with the same host ID (`hosts.json`) wins over the pairing saved with the job,
+because pairing a host again deletes the old secret. The desktop applies it in
+`HostPairingCredential.Connect` (`src\Martlet.Desktop\HostText.cs`), which
+Thinking, the Thinking pool, Listening and Speaking use, and which logs why a
+pairing secret is missing.
+
+**Tests:** `HostPairingChoiceTests` (Martlet.Desktop.Tests).
+
+**MCP:** `host_connections_selftest` (its *paired again* step).
+
+**Docs:** [Your Martlet network](NETWORK.md#how-it-works-for-you).
+
 ## Which member takes a request of an ordered pool
 
 **What it decides:** for an area with an ordered list (Speaking, Listening,

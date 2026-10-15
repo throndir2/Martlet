@@ -19,8 +19,9 @@ internal sealed partial class McpServer
             "started at the same address, and a simulated desktop checking it as the 15-second sync does (a new paired connection per " +
             "check) and logging through the desktop's status tracker. Checks that twelve checks share one kept TCP and TLS connection " +
             "(connections dialed and accepted are counted), that one missed check is not reported, that a host that stops is logged " +
-            "once as stopped answering with the refused address named, and once as answering again when it is back, and that a host " +
-            "missing every other check is never reported. Returns the log lines. Loopback only; writes nothing.", new { },
+            "once as stopped answering with the refused address named, and once as answering again when it is back, that a host " +
+            "missing every other check is never reported, and that after the host is paired again (the old secret deleted) a job " +
+            "saved with the old pairing reaches it with this PC's current pairing. Returns the log lines. Loopback only; writes nothing.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "host-connections")),
         Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
             "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
@@ -225,8 +226,10 @@ internal sealed partial class McpServer
             "a run without a terminal or --yes told to wait (Update hosts now); no stale lock or record remains; the journal " +
             "records it; the desktop's reader reads the busy line. With a " +
             "fake docker CLI it also checks the Docker method: setup does not replace the network holder while an engine session " +
-            "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), and an engine " +
-            "left in a replaced holder's namespace stops at once. A fixture role with two variants (like the stt role's whisper and " +
+            "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), an engine " +
+            "left in a replaced holder's namespace stops at once, any command starts a holder that failed to start after a restart, " +
+            "update adds the keeper (martlet-host-keeper) once, and keep starts a holder that isn't running (with or without " +
+            "Docker's start error) and leaves a running one alone. A fixture role with two variants (like the stt role's whisper and " +
             "Parakeet engines) shows describe listing each variant's own choices, suggestion and GPU option with their condition, an " +
             "add keeping a variant's own choices, GPU option and prepare step, and a switch stopping the previous variant only once " +
             "the chosen one is prepared (also when a failed switch is run again). The real voice-recognition role's files show its " +

@@ -51,7 +51,10 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const string AgentToken = "agent.token", AgentTokenStaging = "agent.staging";
     /// <summary>The gateway's log: its own activity and every computer's lines paired desktops share with it.</summary>
     internal const string Logs = "logs.json", LogsStaging = "logs.staging";
-    internal const int MaximumLogsBytes = 2_097_152;
+    internal const int MaximumLogsBytes = 100 * 1024 * 1024;
+    /// <summary>The gateway log's lines since its last full save (logs.json), rewritten at every save.</summary>
+    internal const string LogsRecent = "logs-recent.json", LogsRecentStaging = "logs-recent.staging";
+    internal const int MaximumLogsRecentBytes = 4 * 1024 * 1024;
     /// <summary>The Martlet network roster this host accepted (not part of the approved configuration).</summary>
     internal const string Network = "network.json", NetworkStaging = "network.staging";
     internal const string Exposure = "exposure.json", ExposureStaging = "exposure.staging";
@@ -141,7 +144,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
+        if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or LogsRecent or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             name != Accounts &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null &&
             AccountSettingsOf(name) is null && CreationAccountOf(name) is null && ConversationRecordOf(name) is null)
@@ -365,6 +368,9 @@ internal sealed class LinuxControlDirectory : IDisposable
         }
         Replace(Logs, LogsStaging, bytes, MaximumLogsBytes);
     }
+
+    /// <summary>Atomically replaces logs-recent.json (0600, service owner).</summary>
+    internal void WriteLogsRecent(byte[] bytes) => ReplaceRecovering(LogsRecent, LogsRecentStaging, bytes, MaximumLogsRecentBytes);
 
     /// <summary>Atomically replaces network.json (0600, service owner).</summary>
     internal void WriteNetwork(byte[] bytes) => ReplaceRecovering(Network, NetworkStaging, bytes, MaximumNetworkBytes);

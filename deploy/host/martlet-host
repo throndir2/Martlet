@@ -77,6 +77,7 @@ ROLES_DIR="${MARTLET_HOST_ROLES_DIR:-${HERE}/roles}"
 MODE="${MARTLET_HOST_MODE:-native}"
 SERVICE="martlet-host-gateway"
 NET="martlet-host-net"
+KEEPER="martlet-host-keeper"
 HOLD_READY="Network holder ready."
 HELPER_IMAGE="busybox:1.36.1"
 DOTNET_SDK="10.0.401"
@@ -1866,6 +1867,39 @@ ensure_holder() {
   done
 }
 
+# Docker method: starts the network holder when it isn't running and waits until it has restarted the gateway and roles in
+# its network, so this command's engine can join that network. The holder publishes the gateway port on the home address
+# only; when this computer starts, Docker may start the holder before that address exists. That start fails and Docker's
+# restart policy never tries again, so the gateway and every role stay down ("cannot join network namespace of a non
+# running container") until something starts the holder: the keeper (ensure_keeper) or any command here.
+start_holder() {
+  [[ "$(docker container inspect -f '{{.State.Running}}' "${NET}" 2>/dev/null || true)" != true ]] || return 0
+  local since waited error
+  since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  note "This host's network holder (${NET}) isn't running; starting it, which starts the gateway and roles again..."
+  if ! docker start "${NET}" >/dev/null 2>&1; then
+    error="$(docker container inspect -f '{{.State.Error}}' "${NET}" 2>/dev/null || true)"
+    fail "${NET} doesn't start${error:+ (${error})}. Check that this computer still has the address the gateway is published on ($(holder_home)), or run setup with its address now."
+  fi
+  for waited in {1..60}; do
+    [[ "$(docker logs --since "${since}" "${NET}" 2>&1 || true)" == *"${HOLD_READY}"* ]] && return 0
+    sleep 2
+  done
+}
+
+# Docker method: the keeper (martlet-host-keeper) starts the network holder again when Docker couldn't start it (see
+# start_holder), so a host comes back by itself after its computer restarts. It has no network of its own, so Docker always
+# starts it; it reaches Docker through the socket. Made by setup and update, again when the image changed.
+ensure_keeper() {
+  local socket_group="$1" current
+  current="$(docker container inspect -f '{{.Config.Image}}' "${KEEPER}" 2>/dev/null || true)"
+  [[ "${current}" != "${IMAGE}" ]] || return 0
+  [[ -z "${current}" ]] || docker rm -f "${KEEPER}" >/dev/null 2>&1 || true
+  docker run -d --name "${KEEPER}" --restart unless-stopped --network none --user 1000:1000 --group-add "${socket_group}" \
+    -v /var/run/docker.sock:/var/run/docker.sock "${IMAGE}" keep >/dev/null ||
+    note "Couldn't start ${KEEPER}. After this computer restarts, run Update host if Martlet can't reach it."
+}
+
 # Docker method launcher: runs with the Docker socket (docker run -u 0 -v /var/run/docker.sock:...).
 # "setup" first creates the network holder (martlet-host-net), which publishes the gateway port on the Docker
 # host's LAN address and owns the loopback shared by the gateway and every role container. Every command then
@@ -1904,6 +1938,8 @@ docker_launch() {
     ensure_holder "${home%:*}" "${home##*:}" "${wide}" "${socket_group}"
   fi
   docker container inspect "${NET}" >/dev/null 2>&1 || fail "Run 'setup' first."
+  start_holder
+  [[ "$1" != setup && "$1" != update ]] || ensure_keeper "${socket_group}"
   local tty=(-i); [[ -t 0 && -t 1 ]] && tty=(-it)
   # A recognizable name (in docker ps, and so the engine can tell itself from other sessions using the gateway state).
   local engine_name; engine_name="martlet-host-$1-$(date -u +%Y%m%d-%H%M%S)-${RANDOM}"
@@ -1930,6 +1966,32 @@ cmd_hold() {
   done < <(docker ps -aq 2>/dev/null || true)
   note "${HOLD_READY}"
   while true; do sleep 3600 & wait $!; done
+}
+
+# The keeper's process (ensure_keeper): every 10 seconds, starts the network holder when it exists but isn't running. Docker
+# Engine records why its start failed (.State.Error); Docker Desktop records nothing when the address isn't there, so any
+# holder that isn't running counts. Martlet never stops the holder (setup replaces it); to keep this host stopped, stop
+# martlet-host-keeper first. The holder then restarts the gateway and roles in its network.
+cmd_keep() {
+  [[ "${MODE}" == docker ]] || fail "keep is only used by the Docker method."
+  trap 'exit 0' TERM INT
+  local state why said=""
+  while true; do
+    state="$(docker container inspect -f '{{.State.Status}}|{{.State.Error}}' "${NET}" 2>/dev/null || true)"
+    if [[ "${state}" == exited\|* || "${state}" == created\|* ]]; then
+      why="${state#*|}"
+      if docker start "${NET}" >/dev/null 2>&1; then
+        if [[ -n "${why}" ]]; then note "Started ${NET} again; Docker couldn't start it: ${why}"
+        else note "Started ${NET} again; it wasn't running."; fi
+        said=""
+      elif [[ "${said}" != "${state}" ]]; then
+        why="$(docker container inspect -f '{{.State.Error}}' "${NET}" 2>/dev/null || true)"
+        note "${NET} doesn't start yet${why:+ (${why})}; trying again every 10 seconds."
+        said="${state}"
+      fi
+    fi
+    sleep 10 & wait $!
+  done
 }
 
 cmd_serve() {
@@ -2899,6 +2961,7 @@ case "${1:-help}" in
   warm) cmd_warm ;;
   config) require_setup; render_config ;;
   hold) cmd_hold ;;
+  keep) cmd_keep ;;
   serve) cmd_serve ;;
   help|-h|--help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//' ;;
   *) fail "Unknown command '$1'. Try: martlet-host help" ;;

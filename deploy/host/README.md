@@ -291,7 +291,15 @@ or over `ssh -t user@host`. How it fits together:
   the gateway and every role container share, so role services still listen on
   `127.0.0.1` only. When it (re)starts, for example after a reboot, it restarts
   the containers that joined it, because Docker does not order restarts of
-  shared-namespace containers. Docker pins each role container to the holder's
+  shared-namespace containers. It publishes on the home address only, so at
+  boot Docker can start it before that address exists; that start fails and
+  Docker's restart policy never tries again. So `setup` and `update` also
+  create **`martlet-host-keeper`**, a tiny container with no network of its own
+  (Docker always starts it) that starts the holder again every 10 seconds while
+  the holder exists but isn't running. Martlet never stops the holder itself; to
+  keep this host stopped, stop `martlet-host-keeper` first. Every
+  `martlet-host` command also starts a holder that isn't running before it
+  runs. Docker pins each role container to the holder's
   container ID, so when `setup` replaces the holder (a new image or address)
   the roles would stay on the old, unreachable network and desktops would get
   `worker.unavailable`. `setup` and `update` recreate any installed role that

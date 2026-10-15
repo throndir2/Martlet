@@ -335,24 +335,8 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         }
     }
 
-    private static Audio2FaceHostConnection Connect(HostSpeechTarget target)
-    {
-        var credentialId = HostPairingCredential.FromGuid(target.CredentialId);
-        using var read = new WindowsCredentialStore().ReadAvatarHostSecret(target.HostId, credentialId);
-        if (read.Error != CredentialError.None || read.Secret is null)
-            throw new HostTextException(ProviderFailureCode.CredentialUnavailable);
-        Audio2FaceHostConnection? connection = null;
-        try
-        {
-            read.Secret.Use(secret => connection = new Audio2FaceHostConnection(new Audio2FaceHostPairing
-            {
-                Origin = target.Origin, HostId = target.HostId, SpkiFingerprint = target.SpkiFingerprint,
-                DeviceId = target.DeviceId, CredentialId = credentialId
-            }, secret));
-        }
-        catch (Audio2FaceHostException) { throw new HostTextException(ProviderFailureCode.CredentialUnavailable); }
-        return connection!;
-    }
+    private static Audio2FaceHostConnection Connect(HostSpeechTarget target) => HostPairingCredential.Connect(
+        HostPairingCredential.Saved(target.Origin, target.HostId, target.SpkiFingerprint, target.DeviceId, target.CredentialId));
 
     private static async Task<T> Guard<T>(Func<Task<T>> call, CancellationToken token)
     {
