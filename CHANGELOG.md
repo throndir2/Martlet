@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-10-14
+
 ### Added
 
 - **See everything Martlet sent to make a reply**: each of Martlet's messages in the talk window now has a *What was sent* link. It opens a window with the whole request, in the order it went to the Thinking model: the instructions (part by part: persona, tools, voice, closing), the conversation history, your message, the notes with it (lorebook entries, remembered facts and more), the context notes, the picture you can open full size, the recording you can play, any tool calls and their results, the tools it could use and the request's settings. Each part has its own color, and a bar shows how much of the request each part takes. ([#899](https://github.com/throndir2/Martlet/pull/899))
