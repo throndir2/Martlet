@@ -7754,6 +7754,18 @@ fields (a text block's text, or a button's accessible name); it does not dump ar
 It returns the first 200 controls; `idPrefix` keeps only those whose automation ID
 starts with it (`TouchZone` for Companion › Touch › Touch zones, below the
 long emotes list).
+`ui_connect` and `ui_snapshot` also return `resources`: how many Window Manager
+(USER) and GDI objects the desktop holds (`windowManagerObjects`,
+`windowManagerPeak`, `gdiObjects`, `gdiPeak`) of what Windows allows one process
+(`windowManagerLimit`, `gdiLimit`, 10,000 each by default), and its windows
+(`windows`, also hidden and message-only ones, on `windowThreads` threads) with the
+ten largest `windowClasses` (`{class, count}`; GUIDs in class names read `*`, as in
+`HwndWrapper[Martlet.Desktop;;*]`). A count that keeps growing is a leak: at the
+limit, timers and windows fail with *The current process has used all of its system
+allowance of handles for Window Manager objects*. The desktop log has the same
+reading as *Window resources: ...* lines (`logs_tail` `contains` `Window resources`):
+a minute after start, then once an hour, when a count grew by 1,000 (with the window
+classes), a warning at 50%, 75% and 90% of a limit, and one after such an error.
 A status text whose details sit in its tooltip (the talk window's `LiveVisionStatus`,
 `LivePcAudio`, `LiveChattiness` and `LiveContext`) also returns them as `help`
 (its accessible help text).

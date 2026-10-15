@@ -55,6 +55,7 @@
     <Compile Include="..\Martlet.Desktop\CameraAddress.cs" Link="Shared\CameraAddress.cs" />
     <!-- active_app_check: the desktop's own reading of the program in front and whether it fills its monitor. -->
     <Compile Include="..\Martlet.Desktop\ActiveApp.cs" Link="Shared\ActiveApp.cs" />
+    <Compile Include="..\Martlet.Desktop\GuiResources.cs" Link="Shared\GuiResources.cs" />
     <!-- active_app_check: the desktop's own rule for what changed since the last look (no look while nothing did). -->
     <Compile Include="..\Martlet.Desktop\LookChange.cs" Link="Shared\LookChange.cs" />
     <!-- screen_digest_check: the desktop's own screen summary over time on fixture frames. -->

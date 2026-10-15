@@ -24,6 +24,15 @@ this page. *Copy shown* copies the shown lines; *Open logs folder* opens this
 PC's folder. The page refreshes every 15 seconds while open; *Refresh* reads
 again and sends nothing.
 
+**Window resources** lines in `desktop.log` show how many Window Manager and
+GDI objects the desktop holds, of the 10,000 of each that Windows allows one
+process. Martlet writes one a minute after it starts and then once an hour. It
+also writes one when a count grew by 1,000 since the last line, and a warning at
+50%, 75% and 90% of a limit. Those lines also list Martlet's windows by class, so
+a leak shows what kind of object grows. At the limit, timers and windows fail
+with *The current process has used all of its system allowance of handles for
+Window Manager objects*; after that error Martlet writes the reading at once.
+
 **Save logs to share** is the easy way to send your logs to someone helping
 you. It saves one ZIP (on the Desktop unless you choose another folder; named
 like `Martlet logs desktop-diva 2026-10-04 0140.zip`) with every line this PC

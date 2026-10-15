@@ -102,6 +102,12 @@ public partial class App : Application
             ErrorLog.Warn("Couldn't move Martlet's working folder out of its program folder; an update may need the whole installer.", ex);
         }
         CrashedLastTime = crashedLastTime && !afterUpdate;
+        // At Windows' limit for window or GDI objects, record what Martlet holds before the error report tries to open a window.
+        DispatcherUnhandledException += (_, e) =>
+        {
+            if (e.Exception is System.ComponentModel.Win32Exception { NativeErrorCode: 1158 or 1816 or 8 })
+                GuiResourceWatch.LogNow("after the error");
+        };
         ErrorLog.AttachDispatcher(this, "Martlet", showReport: (title, heading, report) =>
             ProblemDialog.Show(MainWindow, title, heading, report, () => ErrorLog.OpenFolder()));
         // Failed provider requests record their HTTP status and the provider's own short explanation locally.
@@ -137,6 +143,8 @@ public partial class App : Application
                 return;
             }
         }
+        // How many window and GDI objects Martlet holds goes to the log now and then, so a slow leak shows before Windows' limit.
+        GuiResourceWatch.Start();
         try
         {
             if (store is not null)

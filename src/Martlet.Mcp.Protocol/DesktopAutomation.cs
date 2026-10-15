@@ -46,7 +46,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         if (!MainWindowVisible(windows) && !ProblemShown(windows) && !AccountStartShown(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet desktop window is not visible in this interactive session.");
         processId = pid;
-        return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows) };
+        return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows),
+            resources = Resources(pid) };
     }
 
     internal object Snapshot(bool layout = false, string? idPrefix = null)
@@ -143,7 +144,23 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     entry["textBounds"] = FirstLineBounds(element);
                 }
                 return entry;
-            }).Take(200).ToArray()
+            }).Take(200).ToArray(),
+            resources = Resources(processId)
+        };
+    }
+
+    /// <summary>How many Window Manager and GDI objects the desktop holds of what Windows allows it, and its windows by class
+    /// (the same reading the desktop log's "Window resources" lines use); null when they can't be read.</summary>
+    internal static object? Resources(int? pid)
+    {
+        if (pid is not { } id || Martlet.Mcp.Shared.GuiResources.Read(id) is not { } count) return null;
+        var census = Martlet.Mcp.Shared.GuiResources.Census(id);
+        return new
+        {
+            windowManagerObjects = count.User, windowManagerPeak = count.UserPeak, windowManagerLimit = count.UserQuota,
+            gdiObjects = count.Gdi, gdiPeak = count.GdiPeak, gdiLimit = count.GdiQuota,
+            windows = census.Windows, windowThreads = census.Threads,
+            windowClasses = census.Classes.Take(10).Select(c => new { @class = c.Class, count = c.Count }).ToArray()
         };
     }
 
