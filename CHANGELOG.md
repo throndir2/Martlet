@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.80.1] - 2026-10-15
+
 ### Fixed
 
 - **Your computers work together again after you pair a host again**: when you remove a host from your Martlet network and add it back (or pair it again), Thinking, the Thinking pool, Listening and Speaking use the new pairing at once, instead of failing with *the Thinking model's key couldn't be used* while the host still showed as connected. When a host's pairing key is missing, the log now says why and what to do. ([#903](https://github.com/throndir2/Martlet/pull/903))
