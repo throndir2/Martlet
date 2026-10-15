@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.80.2] - 2026-10-15
+
 ### Changed
 
 - **Every computer keeps a week of logs**: your hosts and the Diagnostics page on each PC now keep every computer's log lines for 7 days (it was the newest few thousand lines, often only a few hours). A PC that was off for days gets the whole week when it comes back. A week is about 20 to 45 MB on each computer. Martlet saves only the new lines each time, and after a restart it no longer reads all the shared lines again. ([#906](https://github.com/throndir2/Martlet/pull/906))
