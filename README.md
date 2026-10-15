@@ -156,13 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.80.2
+## 🆕 What's new in 0.81.0
 
-- 🔄 **Your hosts come back by themselves after their computer restarts**: the host service starts again as soon as it can. Update each host once to get this.
-- 📜 **Every computer keeps a week of logs**: a PC that was off for days gets the whole week of every computer's log lines when it comes back.
-- 🔗 **Your computers work together again after you pair a host again**: Thinking, the Thinking pool, Listening and Speaking use a host's new pairing at once, instead of failing while the host still shows as connected.
-- 🩺 **Clearer help when a pairing key is missing**: the log now says why a host's pairing key couldn't be used and what to do.
-- 🔍 **From 0.80.0, see everything Martlet sent to make a reply**: each of Martlet's messages has a *What was sent* link that shows the whole request, part by part, in color.
+- 🎤 **Singing can use many more music models**: HeartMuLa, DiffRhythm, YuE and ACE-Step 1.5 XL on your own computers, or ElevenLabs Music, Mureka and fal.ai in the cloud.
+- 🗣️ **More ways to match Martlet's voice in a song**: Vevo2 and Seed-VC on your own computers, or the ElevenLabs Voice Changer.
+- 🎶 **Mureka can sing a song in Martlet's own voice.**
+- 📜 **From 0.80.2, every computer keeps a week of logs**, and your hosts come back by themselves after their computer restarts.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

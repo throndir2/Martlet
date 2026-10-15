@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-10-15
+
 ### Added
 
 - Singing can use more models on your own computers: HeartMuLa, DiffRhythm and YuE write the music, and Vevo2 and Seed-VC match the voice. Add each one on a computer from Companion › Singing. ([#909](https://github.com/throndir2/Martlet/pull/909))
