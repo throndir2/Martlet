@@ -38,12 +38,14 @@ public static class UnpromptedSpeech
             : all.Contains(UnpromptedKind.FinishedWork) || all.Length == 0 ? UnpromptedKind.FinishedWork : UnpromptedKind.CheckIn;
     }
 
-    /// <summary>The kind of one background job kind: a due reminder, finished work (not a notice) or a check-in (every other
-    /// notice, so a new kind of notice Martlet decides on itself is a check-in until it says otherwise).</summary>
+    /// <summary>The kind of one background job kind: a due reminder, finished work (not a notice, or research's early finding:
+    /// the user asked for it) or a check-in (every other notice, so a new kind of notice Martlet decides on itself is a check-in
+    /// until it says otherwise).</summary>
     public static UnpromptedKind Of(BackgroundJobKind kind)
     {
         ArgumentNullException.ThrowIfNull(kind);
-        return kind.Name == Reminders.KindName ? UnpromptedKind.Reminder : kind.Notice ? UnpromptedKind.CheckIn : UnpromptedKind.FinishedWork;
+        return kind.Name == Reminders.KindName ? UnpromptedKind.Reminder
+            : kind.Notice && kind.Name != WebResearch.FindingKindName ? UnpromptedKind.CheckIn : UnpromptedKind.FinishedWork;
     }
 
     /// <summary>Whether words said over a remark of <paramref name="kind"/> pause it for the judge (Pause and decide). A screen or

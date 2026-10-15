@@ -97,6 +97,9 @@ public static partial class PromptCatalog
     public const string SongLyrics = "song_lyrics";
     public const string WebResearch = "web_research";
     public const string ResearchStep = "research_step";
+    public const string ResearchFound = "research_found";
+    public const string ResearchFoundNotes = "research_found_notes";
+    public const string ResearchSourceCheck = "research_source_check";
     public const string AppGuides = "app_guides";
     public const string AppGuideNotes = "app_guide_notes";
     public const string AppGuideBrief = "app_guide_brief";
@@ -137,7 +140,7 @@ public static partial class PromptCatalog
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
-            Greeting or SongLyrics or ResearchStep or CheckInDue or DescribePicture or AppGuideOffer;
+            Greeting or SongLyrics or ResearchStep or CheckInDue or DescribePicture or AppGuideOffer or ResearchFound or ResearchSourceCheck;
 
     public static string Default(string id) =>
         Find(id)?.Default ?? throw new ContractException(ErrorCode.InvalidContract, $"Unknown prompt '{id}'.");

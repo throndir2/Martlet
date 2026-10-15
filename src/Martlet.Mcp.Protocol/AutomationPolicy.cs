@@ -784,7 +784,7 @@ internal static class AutomationPolicy
         new("ThinkingPoolRaiseAfterStops", "Companion › Thinking pool › Busy pool", "Shows after how many stops a stopped request becomes more important. Changing it saves thinking-pool.json, so that needs --allow-ui-effects."),
         new("ThinkingPoolRetries", "Companion › Thinking pool › Busy pool", "Shows how many times a failed request is tried again. Changing it saves thinking-pool.json, so that needs --allow-ui-effects."),
         new("ThinkingPoolPriorityStatus", "Companion › Thinking pool › Busy pool", "Shows the choices and how many requests were stopped, made more important and tried again since Martlet started. Counts only."),
-        new("WebResearchStatus", "Companion › Deep thinking › Web research", "Shows whether Martlet may search the web when asked, and why it cannot yet."),
+        new("WebResearchStatus", "Companion › Deep thinking › Web research", "Shows whether Martlet may search the web to look things up, and why it cannot yet."),
         new("WebResearchDisclosure", "Companion › Deep thinking › Web research", "Shows the fixed disclosure of what leaves this PC."),
         // Needs --allow-ui-effects: WebResearchOn (ticking it saves the reply settings).
         new("AppGuidesNow", "Companion › App guides", "Shows the Now line: off, or how many guides and pages and their size, and what Martlet reads up on now."),

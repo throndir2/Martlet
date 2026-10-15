@@ -160,8 +160,16 @@ public static partial class PromptCatalog
             DefaultSingingTagsInstructions, ["silent"]),
         new(WebResearch, ConversationGroup, "Web research",
             "Added to every reply offered research (while Companion › Deep thinking › Web research is on, with Thinking longer, " +
-            "and Deep thinking can think), after the Thinking longer prompt. It stays the same from reply to reply.",
+            "and Deep thinking can think), after the Thinking longer prompt: when to answer from what Martlet knows, when to " +
+            "search a guide or report, when to look one fact up quickly and when to research. It stays the same from reply to reply.",
             DefaultWebResearchInstructions, []),
+        new(ResearchFound, ConversationGroup, "Web research: found it early",
+            "The message of the reply Martlet starts on its own when full or deep research already found what you wanted while it " +
+            "goes on for the report. {findings} says which research, what you wanted, what was found and from which pages.",
+            DefaultResearchFoundInstructions, ["findings"]),
+        new(ResearchFoundNotes, ConversationGroup, "Web research: found it early, with your message",
+            "The same in the notes of your message, when you talk before Martlet told you. {findings} is as above.",
+            DefaultResearchFoundNotesInstructions, ["findings"]),
         new(AppGuides, ConversationGroup, "App guides",
             "Added to every reply offered read_up_on, search_guide, skip_guide and update_guide_brief (while Companion › App guides " +
             "is on and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from reply " +
@@ -418,11 +426,18 @@ public static partial class PromptCatalog
             DefaultSongLyricsInstructions, ["about", "style", "seconds", "lines"]),
         new(ResearchStep, BackgroundGroup, "Web research: each step",
             "The task of each step of a research job: where Deep thinking thinks, the model reads its notes and what is new since " +
-            "its last step, rewrites its notes (NOTES) and answers with SEARCH, READ or the report (TITLE, SUMMARY and REPORT " +
-            "lines), which Martlet reads. {topic} and {find} are what the user wants researched, {notes} the notes so far, " +
-            "{sources} the searches so far, the latest results not read yet and the new pages, {step} and {steps} where it is, " +
-            "and {last} a line asking for the report on the last step.",
-            DefaultResearchStepInstructions, ["topic", "find", "notes", "sources", "step", "steps", "last"]),
+            "its last step, rewrites its notes (NOTES), says what it found once the pages answer it (FOUND, which the watcher takes " +
+            "to tell you early or to end a quick look-up) and answers with SEARCH, READ or the report (TITLE, SUMMARY and REPORT " +
+            "lines), which Martlet reads. {topic} and {find} are what the user wants researched, {depth} how hard to look (a quick " +
+            "look-up, full or deep research), {notes} the notes so far, {sources} the searches so far, the latest results not read " +
+            "yet and the new pages, {step} and {steps} where it is, and {last} a line asking for the report (or, for a quick " +
+            "look-up, the answer) on the last step.",
+            DefaultResearchStepInstructions, ["topic", "find", "depth", "notes", "sources", "step", "steps", "last"]),
+        new(ResearchSourceCheck, BackgroundGroup, "Web research: checking the sources",
+            "The task of each request of a report's source check, after the report is ready: a Thinking pool member reads up to " +
+            "six claims of the report, each with the page it cites and the parts of that page that match it best, and answers " +
+            "SUPPORTED, PARTLY or NOT SUPPORTED for each, which Martlet reads. {claims} are the numbered claims.",
+            DefaultResearchSourceCheckInstructions, ["claims"]),
 
         new(CheckIn, CheckInGroup, "Check-ins: instructions",
             "The instructions of every check-in (Companion › Check-ins): a Thinking pool member gets them with each check, which " +

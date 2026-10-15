@@ -599,8 +599,12 @@ internal sealed partial class McpServer
             "id), the report kept in a temporary Creations library and shown as a page; plus the settings (on by default, off when " +
             "turned off or with Thinking longer off), the address guard, the limits (busy beside a think, Cancel, no hourly limit, " +
             "a failed search, and placement on Deep thinking's places, where research never takes the pool's last free slot, kept " +
-            "for quick jobs) and the budget (an in-memory web and fixture model reading until the production budget of pages runs " +
-            "out: searches, pages, model steps, notes and the largest step's bytes). " +
+            "for quick jobs), the budget (an in-memory web and fixture model reading until the production budget of pages runs " +
+            "out: searches, pages, model steps, notes and the largest step's bytes) and the levels (the depth parameter and the " +
+            "reply's prompt for answering, a quick look-up, full or deep research; each depth's budget and job kind; a quick look-up " +
+            "beside research that ends on the watcher's answer found in a long page's matching parts; the early finding notice " +
+            "while research goes on; and the quiet source check that starts only after the report's result is ready and adds its " +
+            "section to the kept report). " +
             "Loopback only; no real search or model; reads no credentials.", new { },
             async (_, cancellation) => await ResearchCheck.RunAsync(cancellation))
     ];

@@ -104,6 +104,59 @@ model steps, one job at a time, with no time limit and no hourly limit. Each ste
 carries the model's own notes (at most 5,000 characters) instead of every page,
 so the job fits one message however long it runs.
 
+## Levels, the watcher and the source check
+
+[Answer, look up or research](CONVERSATION.md#answer-look-up-or-research) has the
+details. In short:
+
+- **Levels.** The reply's *Web research* prompt is a ladder: answer from what
+  Martlet knows, then `search_guide`, then a quick look-up (`depth` *quick*: 3
+  searches, 9 pages, 4 steps, a `lookup` job that goes before long work), then
+  full research (the budget above), then deep research (about twice that), only
+  when the user asks for an in-depth report.
+- **The watcher** (`ResearchWatcher`). Each step says `FOUND` once the pages
+  answer what the user wants. The watcher takes the first answer that cites a
+  page read: a quick look-up ends there, and full or deep research tells the
+  user at once with a `finding` notice and goes on for the report. It adds no
+  model request.
+- **Page parts.** A long page shows its start and the parts that match what the
+  user wants, not only its start, so an answer deep in a wiki page is found.
+  Pages asked for together are read at once.
+- **The source check** (`SourceCheck`). After the report's result is ready, a
+  quiet `sourcecheck` job checks each cited sentence against the matching parts
+  of its pages, six claims a request, and adds a *Source check* section to the
+  kept report on every computer. The result never waits for it.
+
+### Where the work runs
+
+Every model request of these parts (research steps, the quick look-up and the
+source check) is a Thinking pool request of the `research` kind. So it runs on
+any pool member that does research (Runs on): this PC, a cloud provider or a
+paired computer's Thinking pool role. Only searching and reading pages run in
+the desktop process, through the address guard. The watcher and the levels are
+rules in code and need no model. A self-hosted SearXNG search role on a host is
+the next step (R1, R2).
+
+### A research model on a host
+
+An open model trained only for this work can be a Thinking pool member.
+Tongyi-DeepResearch-30B-A3B (Alibaba, open weights, trained with reinforcement
+learning for long web research) has 30.5 billion parameters, but only about 3.3
+billion are active for each token (a mixture of experts). The Hugging Face GGUF
+files (bartowski) are about 17.6 GB at Q4_0, 16.5 GB at IQ4_XS and 14.1 GB at
+Q3_K_M, read 2026-10-15. So:
+
+- A host with a 24 GB graphics card holds it at Q4 with room for context.
+- A 16 GB card holds Q3, or Q4 with some experts in system memory; because few
+  parameters are active, it stays usable.
+- A computer with no suitable card can run it on the processor with 32 GB of
+  memory or more, slowly.
+- OpenRouter serves it too, as a cloud member.
+
+It is not needed: the levels work with any Thinking pool model. Its own
+search-and-read format is not used; it answers Martlet's text steps like any
+model. Nothing was measured on a real host.
+
 ## Search backends
 
 All backends sit behind one seam, `IWebSearchProvider.SearchAsync(query, count,
@@ -199,17 +252,21 @@ The same change that adds research adds:
    `research(topic, what_to_find)` tool, the loop on Deep thinking with notes
    carried from step to step, the safe fetcher, a built-in search, the `report`
    creation kind, the WebResearch switch (on by default) and `research_check`.
-2. **R1: backends**: `IWebSearchProvider` with SearXNG (URL or host role),
+2. **R0.5: levels, watcher and source check** (done): the `depth` parameter
+   and the answer, look up or research prompt, quick look-ups (`lookup`), the
+   watcher and its early `finding` notice, matching page parts, pages read at
+   once, and the quiet source check that revises the kept report.
+3. **R1: backends**: `IWebSearchProvider` with SearXNG (URL or host role),
    Ollama web search, Tavily, Brave and Exa; fan-out with rank fusion; Doctor
    probes.
-3. **R2: SearXNG host role**: `search` role on Docker and Linux hosts
+4. **R2: SearXNG host role**: `search` role on Docker and Linux hosts
    (`searxng/searxng` and Redis, JSON on, limiter off, paired-only route), added
    like other host roles.
-4. **R3: parallel sub-researchers** when Deep thinking answers several requests
-   at once, with the depth presets above.
-5. **R4: cloud research hand-off**: OpenAI Deep Research in background mode,
+5. **R3: parallel sub-researchers** when Deep thinking answers several requests
+   at once, with the depth presets above. Their steps feed the same watcher.
+6. **R4: cloud research hand-off**: OpenAI Deep Research in background mode,
    opt-in and paid.
-6. **R5: research without a conversation**: start a job from the Creations page
+7. **R5: research without a conversation**: start a job from the Creations page
    or a Research box and follow it in Background tasks.
 
 ## Sources
@@ -239,6 +296,9 @@ Accessed 2026-10-06.
   [smolagents open Deep Research](https://huggingface.co/blog/open-deep-research),
   [Anthropic multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system),
   [Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
+- Research models (accessed 2026-10-15): [Tongyi DeepResearch](https://github.com/Alibaba-NLP/DeepResearch),
+  [its GGUF files](https://huggingface.co/bartowski/Alibaba-NLP_Tongyi-DeepResearch-30B-A3B-GGUF),
+  [Gemini Deep Research overview](https://gemini.google/overview/deep-research/).
 - Extraction and safety: [SmartReader](https://github.com/strumenta/SmartReader),
   [PdfPig](https://uglytoad.github.io/PdfPig/),
   [OWASP LLM prompt injection prevention](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html).

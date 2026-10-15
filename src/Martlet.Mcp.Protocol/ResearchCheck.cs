@@ -33,6 +33,7 @@ internal static class ResearchCheck
     private const string Find = "which toys most cats like and why";
     private const string Summary = "Most cats love wand toys and crinkle balls because they imitate prey (FIXTURE - NOT AI).";
     private const string FixtureNote = "Wand toys let cats stalk and pounce like prey; most play daily [1] (FIXTURE NOTE - NOT AI)";
+    private const string Found = "Most cats like wand toys best, because they move like prey [1] (FIXTURE - NOT AI).";
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
     {
@@ -46,14 +47,16 @@ internal static class ResearchCheck
             var flow = await FlowAsync(fixture, directory, cancellation);
             var limits = await LimitsAsync(cancellation);
             var budget = await BudgetAsync(cancellation);
+            var levels = await LevelsAsync(directory, cancellation);
             return new
             {
-                ok = settings.Ok && guard.Ok && flow.Ok && limits.Ok && budget.Ok,
+                ok = settings.Ok && guard.Ok && flow.Ok && limits.Ok && budget.Ok && levels.Ok,
                 endpoint = fixture.BaseUrl,
                 note = "Fixture search page, web pages and model on 127.0.0.1 with canned answers (NOT AI); the tool texts, job kind, " +
-                    "scheduler, web client, research loop, runtime, adapter and report creation are Martlet's own. No real web search " +
-                    "or model was used.",
-                settings = settings.Report, guard = guard.Report, flow = flow.Report, limits = limits.Report, budget = budget.Report
+                    "scheduler, web client, research loop, watcher, source check, runtime, adapter and report creation are Martlet's own. " +
+                    "No real web search or model was used.",
+                settings = settings.Report, guard = guard.Report, flow = flow.Report, limits = limits.Report, budget = budget.Report,
+                levels = levels.Report
             };
         }
         finally
@@ -184,7 +187,7 @@ internal static class ResearchCheck
             secondStep.Contains("[2] Laser pointers, carefully <", StringComparison.Ordinal) && secondStep.Contains("[3] Crinkle balls <", StringComparison.Ordinal);
         var ok = replied.State == ConversationState.Completed && toolReturnedMs >= 0 && toolReturnedMs < replyMs && runningWhenReplyEnded &&
             job?.State == BackgroundJobState.Succeeded && job.Kind.Offer && job.Kind.TimeLimit is null && job.Kind.MaxPerHour is null &&
-            run is { Searches: 2, Steps: 2 } && run.Pages >= 3 &&
+            run is { Searches: 2, Steps: 2 } && run.Pages >= 3 && run.Watcher.Finding is { Step: 1 } &&
             run.Failures >= 2 && searches.Count == 2 && searches[0] == Topic &&
             steps.Length == 2 && firstStep.Contains("A background task from Martlet", StringComparison.Ordinal) &&
             firstStep.Contains(Find, StringComparison.Ordinal) && firstStep.Contains("Wand toys", StringComparison.Ordinal) &&
@@ -210,7 +213,8 @@ internal static class ResearchCheck
             run = run is null ? null : new
             {
                 searches = run.Searches, pagesRead = run.Pages, unreadable = run.Failures, bytes = run.Bytes, modelSteps = run.Steps,
-                notesCharacters = run.NotesCharacters
+                notesCharacters = run.NotesCharacters,
+                foundEarly = run.Watcher.Finding is { } early ? new { step = early.Step, pages = early.Sources.Count, answer = WebResearch.Spoken(early.Answer) } : null
             },
             searchQueries = searches,
             pagesFetched = fixture.Paths.Where(p => p.StartsWith("/page/", StringComparison.Ordinal)).ToArray(),
@@ -360,6 +364,195 @@ internal static class ResearchCheck
             reportSources = outcome?.Report?.Sources.Count, largestTaskBytes = largest, maxTaskBytes = WebResearch.MaxTaskBytes,
             problem = outcome?.Problem
         });
+    }
+
+    // The levels (docs/CONVERSATION.md, Web research): the tool's depth and the reply's prompt that says when to answer from what
+    // Martlet knows, search a guide or report, look up quickly or research; each depth's budget and job kind (a quick look-up runs
+    // beside research, before it in the Thinking pool's line, on a pool member that may be a paired computer); a quick look-up
+    // that ends on the watcher's answer, found deep in a long page; full research whose early finding is a notice while it goes
+    // on; and the source check, which starts only after the report's result is ready and adds its section to the kept report.
+    private static async Task<(bool Ok, object Report)> LevelsAsync(string directory, CancellationToken cancellation)
+    {
+        using var parameters = JsonDocument.Parse(WebResearch.ParametersJson);
+        var depths = parameters.RootElement.GetProperty("properties").GetProperty("depth").GetProperty("enum").EnumerateArray()
+            .Select(e => e.GetString()).ToArray();
+        var prompt = WebResearch.Instructions(null) ?? "";
+        string[] rungs = ["From what you know", "search_guide", "depth quick", "depth full", "depth deep"];
+        var ladder = rungs.All(rung => prompt.Contains(rung, StringComparison.Ordinal));
+        var parsed = new[] { "quick", "full", "deep", null }.Select(depth =>
+            WebResearch.Parse(JsonSerializer.Serialize(new { topic = "t", what_to_find = "f", depth })).Arguments!.Depth.ToString()).ToArray();
+        var budgets = new[] { ResearchDepth.Quick, ResearchDepth.Full, ResearchDepth.Deep }.Select(depth => (Depth: depth, Limits: WebResearch.BudgetFor(depth)))
+            .ToArray();
+        var lookupPriority = ThinkingDemand.For(ThinkingJobKind.Research, null, WebResearch.LookupKind.PoolPriority).Priority;
+        var researchPriority = ThinkingDemand.For(ThinkingJobKind.Research).Priority;
+
+        // Placed on the Thinking pool's places (here diva, a paired computer, and imouto): a quick look-up starts beside full
+        // research instead of being refused.
+        using var placed = new BackgroundJobs();
+        var hold = new TaskCompletionSource<BackgroundJobOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+        BackgroundPlace[] places = [new("diva", "diva"), new("imouto", "imouto", 1), new("ripley", "ripley", 2)];
+        var research = placed.Start(WebResearch.Kind, "x", (_, token) => hold.Task.WaitAsync(token), places);
+        var lookup = placed.Start(WebResearch.LookupKind, "x", (_, token) => hold.Task.WaitAsync(token), places);
+        var placement = new { research = research.Job?.Place?.Name, lookup = lookup.Job?.Place?.Name, lookupRefused = lookup.Refusal };
+        hold.TrySetResult(BackgroundJobOutcome.Done("done"));
+
+        // A quick look-up: the answer is deep in a long page, so only a step shown the page's matching parts can find it.
+        using var jobs = new BackgroundJobs();
+        var quickTasks = new List<string>();
+        ResearchOutcome? quickOutcome = null;
+        WebResearchRun? quickRun = null;
+        var quick = jobs.Start(WebResearch.LookupKind, "iron ore", async (job, token) =>
+        {
+            quickRun = new WebResearchRun(new GameWeb(), new GameWeb(), (task, _) =>
+            {
+                lock (quickTasks) quickTasks.Add(task);
+                return Task.FromResult(BackgroundJobOutcome.Done(task.Contains("stone pickaxe", StringComparison.Ordinal)
+                    ? "NOTES:\n- Iron ore needs a stone pickaxe [1] (FIXTURE NOTE - NOT AI)\nFOUND: Mine iron ore with a stone pickaxe [1] (FIXTURE - NOT AI).\nSEARCH: more"
+                    : "NOTES:\n- Nothing yet (FIXTURE NOTE - NOT AI)\nSEARCH: iron ore pickaxe"));
+            }, null);
+            quickOutcome = await quickRun.RunAsync(job, new("minecraft iron ore", "how to get iron ore", ResearchDepth.Quick), token);
+            return quickOutcome.Answer is { } answer ? BackgroundJobOutcome.Done(WebResearch.Answered(answer)) : BackgroundJobOutcome.Failed("no answer");
+        }).Job!;
+        await WaitAsync(quick, cancellation);
+
+        // Full research: the first step finds the answer; the watcher's notice is out while the second step still runs.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var steps = 0;
+        BackgroundJob? notice = null;
+        string? key = null;
+        long addedRevision = 0;
+        ResearchReport? report = null;
+        var registry = new CreationRegistry();
+        registry.Register(ResearchReports.Kind);
+        var watcher = new ResearchWatcher();
+        var arguments = new ResearchArguments("minecraft iron ore", "how to get iron ore");
+        var full = jobs.Start(WebResearch.Kind, "iron ore", async (job, token) =>
+        {
+            watcher.Found += finding => notice = jobs.Start(WebResearch.FindingKind, WebResearch.Label(arguments.Topic),
+                (_, _) => Task.FromResult(BackgroundJobOutcome.Done(WebResearch.FindingNote(job.Id, arguments, finding)))).Job;
+            var found = await new WebResearchRun(new GameWeb(), new GameWeb(), async (task, stepToken) =>
+            {
+                if (Interlocked.Increment(ref steps) == 1)
+                    return BackgroundJobOutcome.Done("NOTES:\n- Stone pickaxe [1] (FIXTURE NOTE - NOT AI)\nFOUND: Mine iron ore with a stone pickaxe [1] " +
+                        "(FIXTURE - NOT AI).\nSEARCH: iron ore depth");
+                await gate.Task.WaitAsync(stepToken);
+                return BackgroundJobOutcome.Done("TITLE: Iron ore (FIXTURE - NOT AI)\nSUMMARY: Mine it with a stone pickaxe.\nREPORT:\n" +
+                    "Mine iron ore with a stone pickaxe [1]. Iron ore glows in the dark [1].");
+            }, null, watcher: watcher).RunAsync(job, arguments, token);
+            report = found.Report;
+            if (report is null) return BackgroundJobOutcome.Failed(found.Problem ?? "no report");
+            var added = await CreationStore.AddAsync(directory, ResearchReports.Draft(report, new CreationAuthor { Device = "fixture-device" }), registry,
+                DateTimeOffset.UtcNow, token);
+            (key, addedRevision) = (added.Key, added.Revision);
+            return BackgroundJobOutcome.Done(WebResearch.Ready(report, key));
+        }).Job!;
+        var waited = Stopwatch.StartNew();
+        while (notice is not { Finished: true } && !full.Finished && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(10, cancellation);
+        var noticeBeforeReport = notice is { Finished: true } && !full.Finished;
+        var noticeNotes = notice is null ? "" : BackgroundJobs.ReportNotes(null, [notice]) ?? "";
+        var noticeWaits = notice?.Delivery == BackgroundDeliveryState.Pending;
+        gate.TrySetResult();
+        await WaitAsync(full, cancellation);
+
+        // The source check starts after the report's result is ready (on a pool place, quiet) and never holds it back.
+        var verdicts = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        SourceCheckResult? result = null;
+        var checking = report is null || key is null ? null : jobs.Start(SourceCheck.Kind, WebResearch.Label(report.Title), async (job, token) =>
+        {
+            result = await SourceCheck.RunAsync(report, async (task, stepToken) =>
+            {
+                await verdicts.Task.WaitAsync(stepToken);
+                return BackgroundJobOutcome.Done("1: SUPPORTED\n2: NOT SUPPORTED: the page doesn't say it glows (FIXTURE - NOT AI)");
+            }, null, token, job);
+            var creation = CreationStore.View(directory).Resolve(key)!;
+            var (text, assets) = ResearchReports.Content(SourceCheck.Revised(report.Markdown, result));
+            await CreationStore.ReviseAsync(directory, creation.Id, creation.Summary, text, assets, registry, "fixture-device", DateTimeOffset.UtcNow, token);
+            return BackgroundJobOutcome.Done(SourceCheck.Note(result, report.Title, key));
+        }, [places[0]], wait: true).Job;
+        await Task.Delay(50, cancellation);
+        var resultReadyFirst = full.State == BackgroundJobState.Succeeded && full.Result?.Contains("\"status\":\"ready\"", StringComparison.Ordinal) == true &&
+            checking is { Finished: false };
+        verdicts.TrySetResult();
+        if (checking is not null) await WaitAsync(checking, cancellation);
+        var kept = key is null ? null : CreationStore.View(directory).Resolve(key);
+        var keptText = kept?.Text ?? "";
+        var reportBytes = kept is null ? null : await CreationStore.ReadAssetAsync(directory, kept, "report", cancellation);
+        var section = reportBytes is null ? "" : Encoding.UTF8.GetString(reportBytes);
+
+        var ok = depths.SequenceEqual(["quick", "full", "deep"]) && ladder && parsed.SequenceEqual(["Quick", "Full", "Deep", "Full"]) &&
+            budgets[0].Limits.Pages < budgets[1].Limits.Pages && budgets[2].Limits.Pages > budgets[1].Limits.Pages &&
+            lookupPriority > researchPriority && WebResearch.LookupKind.MaxActive == 2 && !WebResearch.LookupKind.Offer &&
+            placement.research is not null && placement.lookup is not null && placement.lookup != placement.research &&
+            quick.State == BackgroundJobState.Succeeded && quickOutcome?.Answer is { Step: 1, Settled: true } && quickRun is { Steps: 1 } &&
+            quickTasks.Count == 1 && quickTasks[0].Contains(WebResearch.PartsCut.Trim(), StringComparison.Ordinal) &&
+            quick.Result?.Contains("What you found: Mine iron ore with a stone pickaxe", StringComparison.Ordinal) == true &&
+            noticeBeforeReport && noticeWaits && notice?.Kind.Notice == true &&
+            noticeNotes.Contains("already found what the user wanted", StringComparison.Ordinal) &&
+            noticeNotes.Contains("Mine iron ore with a stone pickaxe", StringComparison.Ordinal) && !noticeNotes.Contains("[1]", StringComparison.Ordinal) &&
+            full.State == BackgroundJobState.Succeeded && resultReadyFirst && checking is { State: BackgroundJobState.Succeeded, Quiet: true } &&
+            result is { Supported: 1, NotSupported: 1, Requests: 1 } && kept?.Revision > addedRevision &&
+            section.Contains(SourceCheck.SectionHeading, StringComparison.Ordinal) && keptText.Contains(SourceCheck.SectionHeading, StringComparison.Ordinal) &&
+            section.IndexOf(SourceCheck.SectionHeading, StringComparison.Ordinal) < section.IndexOf("## Sources", StringComparison.Ordinal) &&
+            checking.Result?.Contains("not supported", StringComparison.Ordinal) == true;
+        return (ok, new
+        {
+            ok,
+            tool = new { depths, ladder, parsed },
+            budgets = budgets.Select(b => new { depth = b.Depth.ToString().ToLowerInvariant(), searches = b.Limits.Searches, pages = b.Limits.Pages, steps = b.Limits.Steps }),
+            kinds = new
+            {
+                lookup = new { name = WebResearch.LookupKind.Name, atOnce = WebResearch.LookupKind.MaxActive, offer = WebResearch.LookupKind.Offer,
+                    timeLimit = BackgroundJobs.Duration(WebResearch.LookupKind.TimeLimit!.Value), priority = lookupPriority, researchPriority,
+                    pool = WebResearch.LookupKind.PoolKind?.ToString() },
+                finding = new { name = WebResearch.FindingKind.Name, notice = WebResearch.FindingKind.Notice,
+                    spokenAs = UnpromptedSpeech.Of(WebResearch.FindingKind).ToString() },
+                sourceCheck = new { name = SourceCheck.Kind.Name, quiet = SourceCheck.Kind.Quiet, pool = SourceCheck.Kind.PoolKind?.ToString() }
+            },
+            placement,
+            quick = new
+            {
+                state = quick.State.ToString(), steps = quickRun?.Steps, searches = quickRun?.Searches, pages = quickRun?.Pages,
+                answerStep = quickOutcome?.Answer?.Step, settled = quickOutcome?.Answer?.Settled,
+                pageShownByParts = quickTasks.Count > 0 && quickTasks[0].Contains(WebResearch.PartsCut.Trim(), StringComparison.Ordinal),
+                result = quick.Result
+            },
+            watcher = new
+            {
+                noticeBeforeReport, noticeId = notice?.Id, noticeWaitsForMartlet = noticeWaits, noticeNotes,
+                researchState = full.State.ToString(), steps
+            },
+            sourceCheck = new
+            {
+                resultReadyFirst, id = checking?.Id, state = checking?.State.ToString(), quiet = checking?.Quiet, placedOn = places[0].Name,
+                claims = result?.Claims.Count, supported = result?.Supported, notSupported = result?.NotSupported, requests = result?.Requests,
+                revised = kept?.Revision > addedRevision, sectionInReport = section.Contains(SourceCheck.SectionHeading, StringComparison.Ordinal), note = checking?.Result
+            }
+        });
+    }
+
+    private static async Task WaitAsync(BackgroundJob job, CancellationToken cancellation)
+    {
+        var waited = Stopwatch.StartNew();
+        while (!job.Finished && waited.Elapsed < TimeSpan.FromSeconds(15)) await Task.Delay(10, cancellation);
+    }
+
+    /// <summary>An in-memory web about a game (NOT the internet): every search finds the same three pages, each long, with the
+    /// answer only near the end of the first one.</summary>
+    private sealed class GameWeb : IWebSearch, IWebFetch
+    {
+        public Task<IReadOnlyList<WebSearchResult>> SearchAsync(string query, CancellationToken cancellationToken)
+        {
+            IReadOnlyList<WebSearchResult> found = [.. Enumerable.Range(1, 3).Select(i =>
+                new WebSearchResult($"Game wiki {i} (FIXTURE)", $"https://game.example/{i}", "A fixture snippet (NOT AI)."))];
+            return Task.FromResult(found);
+        }
+
+        public Task<WebPage> FetchAsync(Uri url, CancellationToken cancellationToken)
+        {
+            var filler = string.Join('\n', Enumerable.Range(0, 400).Select(i => $"Line {i} of the fixture wiki about farming and boats (NOT AI)."));
+            var text = url.AbsolutePath == "/1" ? "Fixture wiki: ores.\n" + filler + "\nTo get iron ore, mine it with a stone pickaxe (FIXTURE - NOT AI)." : filler;
+            return Task.FromResult(new WebPage(url.AbsoluteUri, "Game wiki " + url.AbsolutePath.Trim('/'), text, text.Length));
+        }
     }
 
     private static readonly Regex NewPage = new(@"^\[(\d+)\] ", RegexOptions.Multiline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
@@ -549,7 +742,7 @@ internal static class ResearchCheck
                     break;
                 default:
                     var answer = last.Contains("step 1 of", StringComparison.Ordinal)
-                        ? $"NOTES:\n- {FixtureNote}\nSEARCH: laser pointer cats safe\nREAD: {BaseUrl}/page/6"
+                        ? $"NOTES:\n- {FixtureNote}\nFOUND: {Found}\nSEARCH: laser pointer cats safe\nREAD: {BaseUrl}/page/6"
                         : "TITLE: Toys cats like best\nSUMMARY: " + Summary + "\nREPORT:\nMost cats prefer toys that move like prey: wand toys [1] " +
                           "and crinkle balls [3]. Laser pointers are fine if the game ends on a toy they can catch [2].";
                     await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(answer) + "}");

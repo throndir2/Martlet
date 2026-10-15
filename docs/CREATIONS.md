@@ -67,7 +67,12 @@ to `research-reports\<key>.html` in the data folder and opens it in the default
 browser. Every computer that has a report also makes it searchable in memory,
 so `search_guide` finds what it said later (see
 [Finding a report again](CONVERSATION.md#finding-a-report-again)); deleting the
-report drops it.
+report drops it. After a report is kept, its source check
+([Checking the sources](CONVERSATION.md#checking-the-sources)) revises it once
+(`CreationStore.ReviseAsync`: a new summary, text and assets with a newer
+revision; the ID, title, author and creation time stay, and the old asset that
+no creation uses is deleted), so every computer gets the report with its
+*Source check* section.
 
 **Pictures** (`PictureCreations.Kind`, registered by the desktop at startup): one
 asset, `image` (PNG, JPEG or WebP, at most 24 MiB); its text is the description it

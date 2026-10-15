@@ -1357,6 +1357,45 @@ character that it'll look into it, calls `research` in the same reply and keeps
 talking; when it's done (a few minutes to an hour, depending on the topic and the
 model) it brings up what it found (*"...oh, and I found out
 about those cat toys. Wanna see the report?"*) and shows the report on a yes.
+*"How do I get iron ore?"* when Martlet isn't sure: it says it'll check, does a
+quick look-up and comes back in a minute or two with *"Oh, so I found out that
+you mine it with a stone pickaxe."*
+
+### Answer, look up or research
+
+The *Web research* prompt tells the reply how much looking up a question needs.
+It is the same text in every request, so prompt caches keep it:
+
+1. **From what it knows.** When the conversation, the notes or the model's own
+   knowledge answer it well, Martlet answers at once. This is most questions:
+   general knowledge, how things work, advice, opinions and facts that don't
+   change. Nothing is searched.
+2. **A guide or an earlier report.** When an app guide or a research report it
+   wrote may have it, it calls `search_guide` first, which is instant.
+3. **A quick look-up** (`research` with `depth` *quick*). For one fact it
+   doesn't know for sure or that may have changed: a price, a date, a version,
+   opening hours, news, a score, how to get or do something in a game or app,
+   or something niche. It doesn't guess: it says it'll check and calls
+   `research` in the same reply.
+4. **Full research** (`depth` *full*, the default). When the user asks it to
+   look into something, research it, compare options, find several things or
+   decide something that needs many sources, or a quick look-up didn't settle
+   it. It ends with a report.
+5. **Deep research** (`depth` *deep*). Only when the user asks for an in-depth
+   or exhaustive look or a detailed report.
+
+| Depth | Job (`BackgroundJobKind`) | Budget (`WebResearch.BudgetFor`) | Result |
+| --- | --- | --- | --- |
+| Quick | `lookup` (2 at once, 10 minutes, not offered, *Looking up*) | 3 searches, 9 pages, 4 model steps, 8 MB | The answer and its sources, told at once; it ends as soon as the watcher sees the answer |
+| Full | `research` (one at a time, no time limit, offered, *Researching*) | 30 searches, 60 pages, 40 model steps, 25 MB | A report, told early when the watcher sees the answer, then a source check |
+| Deep | `research` | 60 searches, 120 pages, 80 model steps, 50 MB | The same as full |
+
+A quick look-up is a research job on the Thinking pool's research places, at
+the Thinking longer priority (`PoolPriority`), so it goes before long work in the
+line and can run beside full research. Like research, it never takes the
+pool's last free slot when the pool has two or more.
+
+### The research tool and its job
 
 **On by default, with its own switch.** Searching sends the search words to a
 third party, so it is a switch of its own on Companion › Thinking pool › *Web research*
@@ -1374,15 +1413,17 @@ function calling, nowhere for Deep thinking to think).
 
 **The tool.** While it is on, Thinking longer is on, the Thinking route does
 function calling and Deep thinking can think, every reply gets
-`research(topic, what_to_find)` right after `think_longer` and
+`research(topic, what_to_find, depth?)` right after `think_longer` and
 `cancel_thinking`, always worded the same, with the *Web research* prompt
 (Companion › Prompts), so the start of every request stays the same; with it off,
-requests are exactly as before. The prompt has Martlet use it only when the user
-asks to look something up, search for it or research it, and tell them first.
+requests are exactly as before. The prompt has Martlet answer what it knows,
+look up one fact it isn't sure of quickly, research when asked, and tell the
+user first ([Answer, look up or research](#answer-look-up-or-research)).
 The call returns at once (`WebResearch.Started`).
 
 **The job** (`research`: one at a time beside a think or a song, no hourly limit
-and no time limit, `Offer`, *Researching*) runs off the reply path on the thread pool,
+and no time limit, `Offer`, *Researching*; a quick look-up is a `lookup` job, as
+above) runs off the reply path on the thread pool,
 placed like a think on one of Deep thinking's places (`jobs.Start` with
 `ThinkLonger.Places(pool)`: the free place sharing least with the conversation,
 held for the whole job with that place's own runtime and authorization; when
@@ -1391,21 +1432,30 @@ every place is busy it is refused and the model is told what holds them):
 1. Where Deep thinking uses a second model in Ollama on this PC, it first checks
    it fits beside Thinking's and stops if Thinking's gets pushed off the card, as
    a think does.
-2. `WebResearchRun` searches for the topic and reads the top 3 results, then asks
-   the model up to 40 times, each a fresh, bounded background request continuing
+2. `WebResearchRun` searches for the topic and reads the top 3 results at once
+   (pages read together keep the order they were asked for, so their numbers
+   don't depend on which answered first), then asks
+   the model up to 40 times (4 for a quick look-up, 80 for deep research), each a fresh, bounded background request continuing
    the reply's request exactly like a think (`PrepareThink`, Thinking steps on,
    its own runtime and authorization; *Thinking input (Web research)* in the
    log), with the task from Companion › Prompts › *Web research: each step*: what
-   to research, the model's notes so far, the searches so far, the latest results
+   to research and how hard (`{depth}`), the model's notes so far, the searches so far, the latest results
    not read yet and the pages read since the last step as numbered excerpts (up
    to 10,000 characters of a page, 15,000 of new pages and 15,000 of notes; at
    most 40,000 bytes in all, about 13,000 tokens, which fits a paired computer's
    Deep thinking window, and less on a place with a smaller context, never under
-   13,000 bytes; the new pages' excerpts shrink first, then the notes). An excerpt
-   that shows only the start of a page says so.
+   13,000 bytes; the new pages' excerpts shrink first, then the notes). A page
+   longer than its excerpt shows its start (a quarter, at most 1,500 characters)
+   and then the parts with the most words of what the user wants (`WebResearch.Terms`:
+   the topic and what to find out, without common words), each with a line around
+   it, in page order, with `…` between them (`WebResearch.Excerpt`), and says so.
+   When no part matches, the excerpt shows only the start of the page and says so.
    The model answers in text, so it also works where Deep thinking takes no
    tools: first `NOTES:` (all its notes, rewritten with what the new pages add,
    each fact with its page number; at most 15,000 characters are kept), then
+   `FOUND:` once the pages clearly answer what the user wants (the answer in one
+   to three sentences with its page numbers; see
+   [Telling you early](#telling-you-early-the-watcher)), then
    `SEARCH: <query>` (another search, then its best unread results), `READ: <link>`
    (up to 3), or the report (`TITLE`, `SUMMARY`, `REPORT`). A step reads at most
    3 new pages. The notes carry what was read from step to step, so a long job
@@ -1413,29 +1463,86 @@ every place is busy it is refused and the model is told what holds them):
    added to them, and a step without notes adds each new page's title and first
    words. When a step finds nothing new (a repeated search, links that can't be
    read, no more pages left in the budget) the next step is the last, and the
-   last step always asks for the report. A model that fails twice in a row ends
+   last step always asks for the report (for a quick look-up: for its best answer).
+   A model that fails twice in a row ends
    the job; when it took notes, they are kept as the report.
 3. Budget, about what a careful person reads to research something thoroughly
    (`WebResearch.Budget`): 30 searches, 60 pages, 40 model steps and 25 MB
    downloaded; 4 MB and 15 seconds a request, 200,000 characters of text kept a
    page, every result of a search page (up to 80). Once no more pages can be
-   read, the task says so and asks for the report.
+   read, the task says so and asks for the report. A quick look-up and deep
+   research have their own budgets (see the table above).
 4. The report gets its sources listed by Martlet itself (the pages read, as
    numbered links; a page read only in part is marked *only the start of the
    page was read*). A report longer than 400,000 characters ends with a line
    that says where it was cut. It is kept as a `report` creation (see
    [CREATIONS](CREATIONS.md)), which the Creations page shows and every paired
-   Martlet computer gets.
+   Martlet computer gets. Then its sources are checked
+   ([Checking the sources](#checking-the-sources)).
 
 The job's result is the title, the summary and how to show it
 (`perform_creation` with the report's ID), and as an `Offer` kind it is brought
-up to be offered first. On a yes, `perform_creation` writes the report as a
+up to be offered first. When the user already heard the short answer early,
+the result says so, so Martlet doesn't repeat it (and says so if the report
+changes it). On a yes, `perform_creation` writes the report as a
 plain web page in `research-reports` in the data folder and opens it in the
-browser. The talk window's task list shows it as *Research* with its step (*Searching the
+browser. A quick look-up's result is the answer itself (`WebResearch.Answered`:
+what it found without page numbers, and its sources), told at once like
+*"Oh, so I found out that ..."*; when the pages didn't settle it, the result
+says so and Martlet offers full research. The talk window's task list shows it as *Research* (or *Looking up*) with its step (*Searching the
 web*, *Reading pages (2 of at most 60)*, *Thinking it over*, *Writing the
 report*); the desktop log notes each start, step failure and end with counts only
-(`Web research:` searches, pages, bytes, model steps, characters of notes), never the topic, a query,
+(`Web research:` the depth, searches, pages, bytes, model steps, characters of notes and the step that found the answer), never the topic, a query,
 a link or what was read.
+
+### Telling you early (the watcher)
+
+Full and deep research can take a long time, but the fact the user asked for
+is often on one of the first pages. A watcher (`ResearchWatcher`) sees it as
+soon as a step says it, so Martlet can tell the user at once.
+
+- Every step that reads pages also says whether they answer what the user wants
+  (`FOUND`). So the watcher needs no model request of its own, no Thinking pool
+  slot and no wait. Steps of any thread of a job can feed it; it is thread-safe.
+- It takes the first `FOUND` that is a real answer (not *none* or *not yet*)
+  and cites at least one page that was read. It keeps it and raises `Found`
+  once.
+- A quick look-up ends there: its result is the answer.
+- Full or deep research starts a `finding` notice (`WebResearch.FindingKind`:
+  *Found out*) and goes on for the report. Martlet brings the notice up as
+  soon as it is free (Companion › Prompts › *Web research: found it early*), or
+  with the user's next message (*Web research: found it early, with your
+  message*): *"Oh, so I found out that you get iron ore by mining it with a
+  stone pickaxe."* It is the user's own request, so it counts as finished work
+  and never drops for its age like a check-in (`UnpromptedSpeech.Of`).
+- When the report is ready while the notice still waits, the notice is dropped
+  and the report's note brings the answer, so it is never said twice.
+
+### Checking the sources
+
+The report's result never waits for a check. After the report is kept and its
+result is on its way to the conversation, a quiet `sourcecheck` job
+(`SourceCheck.Kind`: one at a time, 30 minutes once it has a place, *Checking
+the sources of*) waits in line for one of the same Thinking pool places, also a
+paired computer's:
+
+1. It takes each sentence of the report that cites pages (at most 24,
+   `SourceCheck.Claims`), with the parts of each cited page that match it best
+   (at most 1,000 characters).
+2. It asks the Thinking pool member about six claims a request (Companion ›
+   Prompts › *Web research: checking the sources*). The answer is one line a
+   claim: `SUPPORTED`, `PARTLY: why` or `NOT SUPPORTED: why`. Claims a request
+   doesn't name stay unchecked; two failed requests in a row end the check.
+3. It adds a *Source check* section before the report's sources: how many
+   claims were checked and how each came out, and every claim its pages don't
+   (fully) support, with why. The kept report is revised on every computer
+   (`CreationStore.ReviseAsync`) and indexed again for `search_guide`.
+4. Its note comes only with the user's next message (`Quiet`): Martlet mentions
+   a claim that isn't supported only when the user asks about the report or it
+   changes what Martlet told them.
+
+The log notes its start and end with counts only (`Source check:` claims,
+requests and how they came out).
 
 **The web client** (`WebAccess`, Martlet's own; no key or account): DuckDuckGo's
 HTML search page (results parsed from its `result__a` links with ads left out and
