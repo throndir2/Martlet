@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- Singing can use more models on your own computers: HeartMuLa, DiffRhythm and YuE write the music, and Vevo2 and Seed-VC match the voice. Add each one on a computer from Companion › Singing. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Singing can use more models on your own computers: HeartMuLa, DiffRhythm and YuE write the music, and Vevo2 and Seed-VC match the voice. Add each one on a computer from Companion › Singing. ([#909](https://github.com/throndir2/Martlet/pull/909))
 - Singing has more choices: ACE-Step 1.5 XL on your own computers, and ElevenLabs Music, Mureka and fal.ai as cloud providers for the music, and the ElevenLabs Voice Changer for the voice match. ([#908](https://github.com/throndir2/Martlet/pull/908))
 - Mureka can sing a song in Martlet's own voice. ([#908](https://github.com/throndir2/Martlet/pull/908))
 
