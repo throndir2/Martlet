@@ -7685,7 +7685,8 @@ fixture came out as expected. It reads no credentials and contacts nothing.
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-shared-logs) shows
 them (optional absolute `dataDirectory`, default the current user's): this PC's
 `desktop`, `avatar-renderer` and `host-runs` with their rotated copies and the
-other computers' lines log sharing collected (`logs\network-logs.json`: other
+other computers' lines log sharing collected (`logs\network-logs.json` and its
+`logs\network-logs.journal`, a week of lines: other
 desktops' parts and every host's `gateway`), merged into one timeline, newest
 first, of `{at, level, source, component, seq, relayedBy, message}` (a stack
 trace or output lines stay in their line's `message`; `relayedBy` names the
@@ -7702,7 +7703,7 @@ it contacts no host.
 existing file is never replaced) and optional `dataDirectory`. It writes the
 same ZIP with the production writer (`LogBundle`): `about.txt` and
 `martlet-logs.txt` with every line once, oldest first, from this PC's logs and
-`network-logs.json`. It returns `path`, `bytes`, `files` (name and size),
+`network-logs.json` (with its journal). It returns `path`, `bytes`, `files` (name and size),
 `lines`, `computers`, `errors` and `warnings` (last 24 hours), `oldest`,
 `newest`, `network` and `about` (the text of `about.txt`). It writes only that
 file and contacts nothing.
@@ -7710,7 +7711,8 @@ file and contacts nothing.
 `logs_share_selftest` (no arguments) rehearses shared logs end to end with the
 production code (`src\Martlet.NodeLinkCheck`, mode `logs`, `LogRehearsal.cs`;
 returns `{exitCode, report}`): two real gateways (`lab-logs-1`, `lab-logs-2`;
-Kestrel, pinned TLS, signed requests, an in-memory `logs.json`) and three
+Kestrel, pinned TLS, signed requests, an in-memory `logs.json` and
+`logs-recent.json`) and three
 simulated desktops (`lab-desktop-a..c`) with real logs folders (`desktop.log`
 in Martlet's format, read with `LocalLogs`), the desktop's paired client
 (`HostLogPeer`) and the real sharing engine (`Martlet.Core.Logs.LogShare`). Its
@@ -8514,7 +8516,8 @@ disposable data directory, write `logs\desktop.log` (lines like
 `2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
 or `logs\host-runs.log` before launching (other computers' lines come from
 `logs\network-logs.json`: `{"schema_version": 1, "entries": [{"source",
-"component", "seq", "at", "level", "message"}]}`). Home's `HealthOpen-errors-diagnostics`
+"component", "seq", "at", "level", "message"}]}`, lines from the last week only; a
+`logs\network-logs.journal` beside it adds one such line object per text line). Home's `HealthOpen-errors-diagnostics`
 and `HealthOpen-crash-diagnostics` open this page.
 
 `ui_snapshot` reports `selected` (true or false) for controls that are chosen

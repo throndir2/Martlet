@@ -6,24 +6,37 @@ using Microsoft.AspNetCore.Http;
 
 namespace Martlet.Gateway;
 
-/// <summary>Where a gateway keeps its log between restarts (logs.json beside host.json on Linux hosts). <see cref="Load"/>
-/// returns null when there is none; either call may throw on storage failure.</summary>
+/// <summary>Where a gateway keeps its log between restarts: logs.json beside host.json on Linux hosts, written in full now and
+/// then, and logs-recent.json with only the lines since then, written every save. <see cref="Load"/> and
+/// <see cref="LoadRecent"/> return null when there is none; any call may throw on storage failure.</summary>
 public interface IGatewayLogStorage
 {
     byte[]? Load();
+
+    /// <summary>Replaces the whole log. The lines since the last full save follow with the next <see cref="SaveRecent"/>.</summary>
     void Save(byte[] bytes);
+
+    byte[]? LoadRecent() => null;
+
+    /// <summary>Replaces the lines since the last full save; false when this storage keeps only full saves (then every save
+    /// is a <see cref="Save"/>).</summary>
+    bool SaveRecent(byte[] bytes) => false;
 }
 
 /// <summary>This host's log: its own activity (requests it served or refused, pairings, starts and stops) and the lines every
 /// paired desktop shares with it, from its own logs and from every other computer of the owner's Martlet network, so each
 /// host holds everyone's logs. Each stream (computer and part) keeps its newest sequence number, so a line delivered twice
-/// or by several desktops is kept once. Bounded to the newest <see cref="MaximumEntries"/> lines and about
-/// <see cref="MaximumStoredBytes"/>; saved at most every <see cref="SaveDelay"/> and when the listener stops. Holds no
-/// secrets or conversation content.</summary>
+/// or by several desktops is kept once. Keeps a week of lines (<see cref="LogRetention"/>) within its caps; saved at most every
+/// <see cref="SaveDelay"/> and when the listener stops, as only the lines since the last full save until those pass
+/// <see cref="RecentSaveBytes"/>, so a save never rewrites a week of lines. Holds no secrets or conversation content.</summary>
 internal sealed class GatewayLogStore
 {
-    internal const int MaximumEntries = 6_000;
-    internal const int MaximumStoredBytes = 1_800_000;
+    internal const int MaximumEntries = LogRetention.MaximumEntries;
+    internal const long MaximumStoredBytes = LogRetention.MaximumBytes;
+    /// <summary>The largest full save; older lines are dropped to stay below it (non-ASCII text can take six bytes a character).</summary>
+    internal const int MaximumSaveBytes = 100 * 1024 * 1024;
+    /// <summary>Once the lines since the last full save take more than this, the next save writes the whole log.</summary>
+    internal const int RecentSaveBytes = 1024 * 1024;
     internal const int MaximumMarks = 512;
     internal static readonly TimeSpan SaveDelay = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan RepeatWindow = TimeSpan.FromMinutes(1);
@@ -45,13 +58,15 @@ internal sealed class GatewayLogStore
     private long nextIndex = 1;
     private long ownSeq;
     private long storedBytes;
+    // The newest store position in the last full save: later lines go to the recent save until it grows too large.
+    private long fullThrough;
     private IGatewayLogStorage? storage;
     private ITimer? saveTimer;
     private bool dirty;
 
     internal sealed record Stored(long Index, LogRecord Record)
     {
-        internal long Size { get; } = Record.Message.Length * 2L + 240;
+        internal long Size { get; } = LogRetention.Size(Record);
     }
 
     internal GatewayLogStore(string hostId, TimeProvider clock)
@@ -65,31 +80,39 @@ internal sealed class GatewayLogStore
     internal void Attach(IGatewayLogStorage value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        Document? saved = null;
+        Document? saved = null, recent = null;
         try { if (value.Load() is { } bytes) saved = JsonSerializer.Deserialize<Document>(bytes, StorageJson); }
         // An unreadable or malformed log starts empty; it is replaced at the next save.
+        catch (Exception) { }
+        try { if (value.LoadRecent() is { } bytes) recent = JsonSerializer.Deserialize<Document>(bytes, StorageJson); }
         catch (Exception) { }
         lock (gate)
         {
             storage = value;
-            if (saved is null) return;
+            if (saved is null && recent is null) return;
             // Lines recorded before the saved log was attached follow it.
             var pending = entries.ToArray();
             entries.Clear();
             storedBytes = 0;
-            foreach (var item in (saved.Entries ?? []).OrderBy(e => e?.Index ?? 0))
+            // The recent save holds the lines after the full save's; a recent save older than the full one adds nothing.
+            foreach (var document in new[] { saved, recent })
             {
-                if (item?.Record is not { } record || item.Index <= 0 || entries.Count > 0 && item.Index <= entries[^1].Index) continue;
-                try { record.Validate(); }
-                catch (ContractException) { continue; }
-                Add(new(item.Index, record));
-                Mark(record.Stream, record.Seq);
+                if (document is null) continue;
+                foreach (var item in (document.Entries ?? []).OrderBy(e => e?.Index ?? 0))
+                {
+                    if (item?.Record is not { } record || item.Index <= 0 || entries.Count > 0 && item.Index <= entries[^1].Index) continue;
+                    try { record.Validate(); }
+                    catch (ContractException) { continue; }
+                    Add(new(item.Index, record));
+                    Mark(record.Stream, record.Seq);
+                }
+                foreach (var mark in document.Marks ?? [])
+                    if (mark is { Seq: > 0 and <= LogRules.MaximumSeq } && LogRules.IsComponent(mark.Component) && !string.IsNullOrEmpty(mark.Source))
+                        Mark(mark.Source + "/" + mark.Component, mark.Seq);
+                nextIndex = Math.Max(nextIndex, Math.Max(document.NextIndex, entries.Count == 0 ? 1 : entries[^1].Index + 1));
+                ownSeq = Math.Max(ownSeq, Math.Clamp(document.OwnSeq, 0, LogRules.MaximumSeq));
+                if (ReferenceEquals(document, saved)) fullThrough = entries.Count == 0 ? 0 : entries[^1].Index;
             }
-            foreach (var mark in saved.Marks ?? [])
-                if (mark is { Seq: > 0 and <= LogRules.MaximumSeq } && LogRules.IsComponent(mark.Component) && !string.IsNullOrEmpty(mark.Source))
-                    Mark(mark.Source + "/" + mark.Component, mark.Seq);
-            nextIndex = Math.Max(saved.NextIndex, entries.Count == 0 ? 1 : entries[^1].Index + 1);
-            ownSeq = Math.Max(ownSeq, Math.Clamp(saved.OwnSeq, 0, LogRules.MaximumSeq));
             foreach (var item in pending) Add(new(nextIndex++, item.Record));
             Trim();
         }
@@ -173,8 +196,10 @@ internal sealed class GatewayLogStore
             var used = 0L;
             var next = after;
             var more = false;
-            foreach (var item in entries)
+            // Store positions only grow, so a page starts where its first line is instead of reading past a week of lines.
+            for (var i = own ? 0 : After(after); i < entries.Count; i++)
             {
+                var item = entries[i];
                 var record = item.Record;
                 if (own ? record.Source != hostId || record.Component != LogComponents.Gateway || record.Seq <= after : item.Index <= after)
                     continue;
@@ -193,13 +218,14 @@ internal sealed class GatewayLogStore
         }
     }
 
-    /// <summary>Writes the log now if it changed since the last save. Never throws.</summary>
+    /// <summary>Writes the log now if it changed since the last save: the lines since the last full save, or, once those take
+    /// more than <see cref="RecentSaveBytes"/> (or the storage keeps only full saves), the whole log. Never throws.</summary>
     internal void Flush()
     {
         lock (saveGate)
         {
-            byte[] bytes;
             IGatewayLogStorage target;
+            byte[]? recent;
             lock (gate)
             {
                 saveTimer?.Dispose();
@@ -207,26 +233,61 @@ internal sealed class GatewayLogStore
                 if (!dirty || storage is null) return;
                 dirty = false;
                 target = storage;
-                while (true)
-                {
-                    bytes = JsonSerializer.SerializeToUtf8Bytes(new Document
-                    {
-                        SchemaVersion = 1, NextIndex = nextIndex, OwnSeq = ownSeq,
-                        Marks = marks.Select(m =>
-                        {
-                            var split = m.Key.LastIndexOf('/');
-                            return new LogMark { Source = m.Key[..split], Component = m.Key[(split + 1)..], Seq = m.Value };
-                        }).ToArray(),
-                        Entries = entries.Select(e => new StoredDocument { Index = e.Index, Record = e.Record }).ToArray()
-                    }, StorageJson);
-                    if (bytes.Length <= MaximumStoredBytes + 200_000 || entries.Count == 0) break;
-                    RemoveOldest(Math.Max(1, entries.Count / 10));
-                }
+                recent = Serialize(After(fullThrough));
+                if (recent.Length > RecentSaveBytes) recent = null;
             }
-            try { target.Save(bytes); }
+            try
+            {
+                if (recent is not null && target.SaveRecent(recent)) return;
+                byte[] bytes;
+                long through;
+                lock (gate)
+                {
+                    while (true)
+                    {
+                        bytes = Serialize(0);
+                        if (bytes.Length <= MaximumSaveBytes || entries.Count == 0) break;
+                        RemoveOldest(Math.Max(1, entries.Count / 10));
+                    }
+                    through = entries.Count == 0 ? nextIndex - 1 : entries[^1].Index;
+                }
+                target.Save(bytes);
+                lock (gate)
+                {
+                    fullThrough = through;
+                    recent = Serialize(After(through));
+                }
+                // Empties the recent save; lines that arrived during the full save stay in it.
+                target.SaveRecent(recent);
+            }
             catch (Exception) { lock (gate) dirty = true; }
         }
     }
+
+    /// <summary>The position in <see cref="entries"/> of the first line after store position <paramref name="index"/>.</summary>
+    private int After(long index)
+    {
+        int low = 0, high = entries.Count;
+        while (low < high)
+        {
+            var middle = (low + high) >>> 1;
+            if (entries[middle].Index <= index) low = middle + 1;
+            else high = middle;
+        }
+        return low;
+    }
+
+    /// <summary>The log from position <paramref name="start"/> in <see cref="entries"/> on, with every mark. Call under the lock.</summary>
+    private byte[] Serialize(int start) => JsonSerializer.SerializeToUtf8Bytes(new Document
+    {
+        SchemaVersion = 1, NextIndex = nextIndex, OwnSeq = ownSeq,
+        Marks = marks.Select(m =>
+        {
+            var split = m.Key.LastIndexOf('/');
+            return new LogMark { Source = m.Key[..split], Component = m.Key[(split + 1)..], Seq = m.Value };
+        }).ToArray(),
+        Entries = entries.Skip(start).Select(e => new StoredDocument { Index = e.Index, Record = e.Record }).ToArray()
+    }, StorageJson);
 
     private void ScheduleSave()
     {
@@ -254,6 +315,13 @@ internal sealed class GatewayLogStore
 
     private void Trim()
     {
+        // A week of lines, by when each was written; then the caps, oldest delivered first.
+        var cutoff = clock.GetUtcNow() - LogRetention.Window;
+        if (entries.Count > 0 && entries.Exists(e => e.Record.At < cutoff))
+        {
+            storedBytes -= entries.Where(e => e.Record.At < cutoff).Sum(e => e.Size);
+            entries.RemoveAll(e => e.Record.At < cutoff);
+        }
         var remove = Math.Max(entries.Count - MaximumEntries, 0);
         var bytes = storedBytes - entries.Take(remove).Sum(e => e.Size);
         while (remove < entries.Count && bytes > MaximumStoredBytes)

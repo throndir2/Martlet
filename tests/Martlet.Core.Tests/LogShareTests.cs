@@ -7,7 +7,13 @@ namespace Martlet.Core.Tests;
 public sealed class LogShareTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 4, 8, 0, 0, TimeSpan.Zero);
+    private static readonly TimeProvider Clock = new FixedClock(Now);
     private readonly string folder = Path.Combine(Path.GetTempPath(), "martlet-log-share-tests-" + Guid.NewGuid().ToString("N"));
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
 
     public void Dispose()
     {
@@ -46,9 +52,13 @@ public sealed class LogShareTests : IDisposable
         {
             Check();
             var page = Entries.Skip((int)after).Take(limit).ToArray();
+            Served += page.Length;
             var next = after + page.Length;
             return Task.FromResult<(IReadOnlyList<LogRecord>, long, bool)>((page, next, next < Entries.Count));
         }
+
+        /// <summary>How many lines desktops have read from this host.</summary>
+        internal int Served { get; private set; }
 
         public Task<(int Accepted, IReadOnlyList<LogMark> Marks)> PushAsync(LogBatch batch, CancellationToken token)
         {
@@ -119,7 +129,7 @@ public sealed class LogShareTests : IDisposable
         Assert.All(new[] { h1, h2 }, h => Assert.Equal(h.Entries.Count, h.Entries.DistinctBy(e => (e.Stream, e.Seq)).Count()));
 
         // The copy survives a restart.
-        var reopened = new LogShare(Path.Combine(folder, "a"), "desktop-a");
+        var reopened = new LogShare(Path.Combine(folder, "a"), "desktop-a", Clock);
         Assert.Equal("loaded", reopened.Logs.LoadState);
         Assert.Equal(a.Logs.Count, reopened.Logs.Count);
     }
@@ -204,28 +214,115 @@ public sealed class LogShareTests : IDisposable
     }
 
     [Fact]
-    public void The_copy_keeps_each_valid_line_once_within_bounds()
+    public void The_copy_keeps_a_week_of_each_valid_line_once_within_bounds()
     {
-        var logs = new NetworkLogs();
+        var logs = new NetworkLogs(Clock);
         var line = Line("gpu-a", LogComponents.Gateway, Now, "started");
         Assert.Equal(1, logs.Add([line, line, line with { Level = "LOUD", Seq = line.Seq + 1 }]));
+        // A week of lines: older ones never come in, and lines leave once they are a week old.
+        var sixDays = Line("desktop-b", LogComponents.Desktop, Now.AddDays(-6), "six days ago");
+        Assert.Equal(0, logs.Add([Line("desktop-b", LogComponents.Desktop, Now.AddDays(-8), "eight days ago")]));
+        Assert.Equal(1, logs.Add([sixDays]));
+        Assert.Equal(1, logs.Add([Line("desktop-b", LogComponents.Desktop, Now.AddDays(2), "two days later")], Now.AddDays(2)));
+        Assert.DoesNotContain(logs.Snapshot(), l => l.Message == "six days ago");
+        Assert.Equal(0, logs.Add([sixDays], Now.AddDays(2)));
+        Assert.Equal(["desktop-b/desktop", "gpu-a/gateway"], logs.StreamNames().Order());
+
+        // The caps hold however many lines a week has; the oldest go first.
         var many = Enumerable.Range(1, NetworkLogs.MaximumEntries + 5)
-            .Select(i => Line("desktop-b", LogComponents.Desktop, Now.AddSeconds(i), $"line {i}")).ToArray();
-        logs.Add(many);
+            .Select(i => Line("desktop-c", LogComponents.Desktop, Now.AddSeconds(i), "x")).ToArray();
+        logs.Add(many, Now.AddDays(2));
         Assert.Equal(NetworkLogs.MaximumEntries, logs.Count);
+        Assert.Equal(many[^1], logs.Snapshot()[^1]);
         Assert.DoesNotContain(logs.Snapshot(), l => l.Message == "started");
         // Lines older than what was dropped to stay in bounds don't come back.
-        Assert.Equal(0, logs.Add([line]));
+        Assert.Equal(0, logs.Add([line], Now.AddDays(2)));
+        Assert.Equal(NetworkLogs.MaximumEntries - 1, logs.CountAfter("desktop-c/desktop", 0, Now.AddDays(-5)));
+    }
 
-        Directory.CreateDirectory(folder);
+    [Fact]
+    public void The_copy_appends_each_run_to_its_journal_and_is_written_in_full_now_and_then()
+    {
+        var path = Path.Combine(folder, NetworkLogs.FileName);
+        var journal = Path.Combine(folder, NetworkLogs.JournalFileName);
+        var logs = new NetworkLogs(Clock);
+        logs.Add([Line("gpu-a", LogComponents.Gateway, Now.AddMinutes(-3), "one"), Line("gpu-a", LogComponents.Gateway, Now.AddMinutes(-2), "two")]);
         logs.Save(folder);
-        var loaded = NetworkLogs.Load(folder);
+        Assert.True(File.Exists(path));
+        Assert.False(File.Exists(journal));
+        var full = File.ReadAllBytes(path);
+
+        // A later run appends only its new lines; the full copy stays as it was.
+        logs.Add([Line("desktop-b", LogComponents.Desktop, Now.AddMinutes(-1), "three")]);
+        logs.Save(folder);
+        Assert.Equal(full, File.ReadAllBytes(path));
+        Assert.Single(File.ReadAllLines(journal));
+        var loaded = NetworkLogs.Load(folder, Clock);
         Assert.Equal("loaded", loaded.LoadState);
-        Assert.Equal(logs.Count, loaded.Count);
-        Assert.Equal(0, loaded.Add([line]));
-        File.WriteAllText(Path.Combine(folder, NetworkLogs.FileName), "{broken");
-        Assert.Equal("unreadable", NetworkLogs.Load(folder).LoadState);
+        Assert.Equal(["one", "two", "three"], loaded.Snapshot().Select(l => l.Message));
+        Assert.Equal(0, loaded.Add([Line("desktop-b", LogComponents.Desktop, Now.AddMinutes(-1), "three")]));
+
+        // A line cut short by a power cut is skipped, and the next save writes the copy in full without it.
+        File.AppendAllText(journal, "{\"source\":\"desk");
+        var cut = NetworkLogs.Load(folder, Clock);
+        Assert.Equal(3, cut.Count);
+        cut.Add([Line("desktop-b", LogComponents.Desktop, Now, "four")]);
+        cut.Save(folder);
+        Assert.False(File.Exists(journal));
+        Assert.Equal(4, NetworkLogs.Load(folder, Clock).Count);
+
+        // Runs append until the journal outgrows its share of the copy; then the copy is written in full and the journal starts
+        // empty.
+        var text = new string('w', 2_000);
+        var grown = NetworkLogs.Load(folder, Clock);
+        full = File.ReadAllBytes(path);
+        for (var run = 0; run < 2; run++)
+        {
+            grown.Add(Enumerable.Range(0, 1_000).Select(i => Line("gpu-b", LogComponents.Gateway, Now.AddSeconds(-run * 1_000 - i), text)).ToArray());
+            grown.Save(folder);
+            Assert.Equal(run == 0, File.Exists(journal));
+            Assert.Equal(run == 0, full.AsSpan().SequenceEqual(File.ReadAllBytes(path)));
+        }
+        Assert.Equal(2_004, NetworkLogs.Load(folder, Clock).Count);
+
+        File.WriteAllText(path, "{broken");
+        var broken = NetworkLogs.Load(folder, Clock);
+        Assert.Equal("unreadable", broken.LoadState);
+        // An unreadable copy is replaced in full at the next save.
+        broken.Add([Line("gpu-a", LogComponents.Gateway, Now, "after")]);
+        broken.Save(folder);
+        Assert.Equal(["after"], NetworkLogs.Load(folder, Clock).Snapshot().Select(l => l.Message));
         Assert.Equal("none", NetworkLogs.Load(Path.Combine(folder, "missing")).LoadState);
+    }
+
+    [Fact]
+    public async Task A_restart_goes_on_reading_each_host_from_where_it_stopped()
+    {
+        var host = new FakeHost("gpu-a");
+        for (var i = 0; i < 2_500; i++) host.Own(Now.AddMinutes(-60).AddMilliseconds(i), $"line {i}");
+        var directory = Path.Combine(folder, "a");
+        var first = new LogShare(directory, "desktop-a", Clock);
+        await first.RunAsync([host], [], send: false, Now, CancellationToken.None);
+        Assert.Equal(2_500, first.Logs.Count);
+        Assert.True(File.Exists(Path.Combine(directory, LogShare.PositionsFileName)));
+
+        // After a restart only the line it read last is read again (to check the host still has it), then the new ones.
+        host.Own(Now.AddMinutes(-1), "after the restart");
+        var before = host.Served;
+        var again = new LogShare(directory, "desktop-a", Clock);
+        var result = await again.RunAsync([host], [], send: false, Now, CancellationToken.None);
+        Assert.Equal(before + 2, host.Served);
+        Assert.Equal(1, result.Received);
+        Assert.Equal(2_501, again.Logs.Count);
+
+        // Without its copy, a desktop reads every host from the start again.
+        File.Delete(Path.Combine(directory, NetworkLogs.FileName));
+        File.Delete(Path.Combine(directory, NetworkLogs.JournalFileName));
+        var fresh = new LogShare(directory, "desktop-a", Clock);
+        before = host.Served;
+        await fresh.RunAsync([host], [], send: false, Now, CancellationToken.None);
+        Assert.True(host.Served - before >= 2_501);
+        Assert.Equal(2_501, fresh.Logs.Count);
     }
 
     [Fact]
