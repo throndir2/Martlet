@@ -113,7 +113,7 @@ internal static class HostConnectionRehearsal
                 $"checks took {times.Min()}-{times.Max()} ms (connections dialed since the start: {Connections()})");
         });
 
-        await Run("The host stops: one missed check is not a change; the second is logged once (refused), later misses add nothing", async () =>
+        await Run("The host stops: one missed check is not a change; the second is logged once (refused, named as a gateway that isn't running), later misses add nothing", async () =>
         {
             await forwarder.StopAsync();
             var checks = new List<string>();
@@ -127,6 +127,7 @@ internal static class HostConnectionRehearsal
             }
             var route = HostRoutes.For(origin);
             var ok = lines[0] == "(no line)" && lines[1].StartsWith($"WARN Host {HostId} stopped answering: ", StringComparison.Ordinal) &&
+                lines[1].Contains("refused the connection: that computer is on, but the Martlet host's gateway isn't running there", StringComparison.Ordinal) &&
                 lines[2] == "(no line)" && lines[3] == "(no line)" && !answers.Answering(HostId) &&
                 route is { Route: "none", Error: { } why } && why.Contains("didn't answer (refused)", StringComparison.Ordinal);
             return (ok, $"checks: {string.Join(", ", checks)}; log: {string.Join(" | ", lines)}; route status: {route?.Route}, {route?.Error}");
