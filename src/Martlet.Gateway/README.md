@@ -783,8 +783,11 @@ and duration) and each refused or failed request (route and device or method
 and path, stable code, HTTP status, summary and trace ID; the same code for the
 same route or method within a minute is counted, not repeated). It never records a
 request body, token, credential, signature, query value or worker exception.
-At most 6,000 lines and about 1.8 MB are kept (oldest dropped first); the log is
-saved at most every 30 seconds and when the listener stops.
+A week of lines is kept (by when each was written), at most 250,000 lines and
+about 128 MB in memory (oldest dropped first). The log is saved at most every
+30 seconds and when the listener stops: each save writes only the lines since
+the last full save (`logs-recent.json` on Linux hosts), and the whole log
+(`logs.json`) is written again once those take more than 1 MB.
 
 Stable remedies are code-owned in `GatewayFailures` and contract-tested. Main
 operator actions are:

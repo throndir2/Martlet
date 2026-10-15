@@ -96,4 +96,72 @@ public sealed class LogsTests
         Assert.Contains(restarted.Read(0, 1000, 1_000_000).Entries, e => e.Source == "gpu-box");
         Assert.Equal(0, restarted.Accept(batch, "desktop-a").Accepted);
     }
+
+    private sealed class RecentStorage : IGatewayLogStorage
+    {
+        internal byte[]? Full { get; private set; }
+        internal byte[]? Recent { get; private set; }
+        internal int FullSaves { get; private set; }
+        public byte[]? Load() => Full;
+        public void Save(byte[] bytes)
+        {
+            Full = bytes;
+            FullSaves++;
+        }
+        public byte[]? LoadRecent() => Recent;
+        public bool SaveRecent(byte[] bytes)
+        {
+            Recent = bytes;
+            return true;
+        }
+    }
+
+    [Fact]
+    public void Host_keeps_a_week_and_saves_only_the_lines_since_its_last_full_save()
+    {
+        var clock = new ManualGatewayClock(new DateTimeOffset(2026, 10, 8, 8, 0, 0, TimeSpan.Zero));
+        var now = clock.GetUtcNow();
+        LogRecord Line(TimeSpan ago, string text, int ordinal = 0) => new()
+        {
+            Source = "desktop-a", Component = LogComponents.Desktop, Seq = LogRules.Seq(now - ago, ordinal), At = now - ago,
+            Level = LogLevels.Info, Message = text
+        };
+        IReadOnlyList<LogRecord> All(GatewayLogStore store) => store.Read(0, 1_000, 100_000_000).Entries;
+        var storage = new RecentStorage();
+        var store = new GatewayLogStore("fixture-host", clock);
+        store.Attach(storage);
+
+        // A line written eight days ago is past the week; six days ago is kept.
+        store.Accept(new LogBatch
+        {
+            SchemaVersion = 1,
+            Entries = [Line(TimeSpan.FromDays(8), "eight days ago"), Line(TimeSpan.FromDays(6), "six days ago"), Line(TimeSpan.FromMinutes(1), "a minute ago")]
+        }, "desktop-a");
+        Assert.Equal(["six days ago", "a minute ago"], All(store).Select(e => e.Message));
+
+        // A save writes only the lines since the last full save, and a restart reads them back.
+        store.Flush();
+        Assert.Null(storage.Full);
+        Assert.NotNull(storage.Recent);
+        var again = new GatewayLogStore("fixture-host", clock);
+        again.Attach(storage);
+        Assert.Equal(["six days ago", "a minute ago"], All(again).Select(e => e.Message));
+        Assert.Equal(0, again.Accept(new LogBatch { SchemaVersion = 1, Entries = [Line(TimeSpan.FromMinutes(1), "a minute ago")] }, "desktop-a").Accepted);
+
+        // Once those lines take more than 1 MB, the whole log is written and the recent save starts again empty.
+        var text = new string('x', 1_200);
+        again.Accept(new LogBatch { SchemaVersion = 1, Entries = Enumerable.Range(0, 1_000).Select(i => Line(TimeSpan.Zero, text, i)).ToArray() }, "desktop-a");
+        again.Flush();
+        Assert.Equal(1, storage.FullSaves);
+        Assert.True(storage.Recent!.Length < 10_000);
+        var third = new GatewayLogStore("fixture-host", clock);
+        third.Attach(storage);
+        Assert.Equal(again.Count, third.Count);
+
+        // Two days later the six-day-old line is past the week.
+        clock.Advance(TimeSpan.FromDays(2));
+        third.Own(LogLevels.Info, "two days later");
+        Assert.DoesNotContain(All(third), e => e.Message == "six days ago");
+        Assert.Contains(All(third), e => e.Message == "a minute ago");
+    }
 }

@@ -263,8 +263,9 @@ internal sealed class ControlHomeAssistantStorage(LinuxControlDirectory director
     }
 }
 
-/// <summary>Keeps the gateway's log in logs.json beside host.json (0600, service owner): its own activity and every
-/// computer's lines the owner's desktops share with it. Not part of the approved configuration.</summary>
+/// <summary>Keeps the gateway's log in logs.json beside host.json (0600, service owner), written in full now and then, and
+/// logs-recent.json with the lines since then: its own activity and every computer's lines the owner's desktops share with it.
+/// Not part of the approved configuration.</summary>
 internal sealed class ControlLogStorage(LinuxControlDirectory directory) : IGatewayLogStorage
 {
     private readonly object gate = new();
@@ -277,6 +278,17 @@ internal sealed class ControlLogStorage(LinuxControlDirectory directory) : IGate
     public void Save(byte[] bytes)
     {
         lock (gate) directory.WriteLogs(bytes);
+    }
+
+    public byte[]? LoadRecent()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.LogsRecent, LinuxControlDirectory.MaximumLogsRecentBytes);
+    }
+
+    public bool SaveRecent(byte[] bytes)
+    {
+        lock (gate) directory.WriteLogsRecent(bytes);
+        return true;
     }
 }
 

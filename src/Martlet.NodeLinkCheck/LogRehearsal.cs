@@ -12,7 +12,7 @@ namespace Martlet.NodeLinkCheck;
 
 /// <summary>
 /// Rehearses shared logs (docs/DIAGNOSTICS.md: every computer's logs on every computer, no log host to choose) end to end on
-/// this PC with the production code: two real gateways (Kestrel, pinned TLS) on 127.0.0.1 with an in-memory logs.json, and
+/// this PC with the production code: two real gateways (Kestrel, pinned TLS) on 127.0.0.1 with an in-memory logs.json and logs-recent.json, and
 /// three simulated desktops, each with a real logs folder (desktop.log written in Martlet's format and read with LocalLogs),
 /// the desktop's paired client (HostLogPeer) and the real sharing engine (Martlet.Core.Logs.LogShare), wired the way the
 /// desktop wires them. Lines are synthetic; nothing leaves loopback and the folder is deleted afterwards.
@@ -225,7 +225,7 @@ internal static class LogRehearsal
             passed = steps.Count(s => s.Ok),
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
-            scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with an in-memory logs.json, and three simulated " +
+            scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with an in-memory logs.json and logs-recent.json, and three simulated " +
                 "desktops with real logs folders using the desktop's paired client (HostLogPeer) and the real sharing engine (LogShare), " +
                 "wired as the desktop wires them, and the real bundle writer (LogBundle). Synthetic lines. Not covered: the desktop " +
                 "window and its 30-second runs, the Linux host's logs.json and real computers on a LAN.",
@@ -301,7 +301,7 @@ internal static class LogRehearsal
         }
     }
 
-    /// <summary>A real gateway on 127.0.0.1 with an in-memory logs.json that survives a restart.</summary>
+    /// <summary>A real gateway on 127.0.0.1 with an in-memory logs.json and logs-recent.json that survive a restart.</summary>
     private sealed class LabHost : IAsyncDisposable, IGatewayLogStorage, IGatewayAuditSink
     {
         private X509Certificate2 certificate = null!;
@@ -311,8 +311,8 @@ internal static class LogRehearsal
         internal string HostId { get; private init; } = "";
         internal string Origin { get; private set; } = "";
 
-        /// <summary>The saved logs.json; setting it stands in for a host that comes back with an older save.</summary>
-        internal byte[]? Saved { get; set; }
+        /// <summary>The saved logs.json and logs-recent.json; setting them stands in for a host that comes back with an older save.</summary>
+        internal (byte[]? Full, byte[]? Recent) Saved { get; set; }
 
         internal static async Task<LabHost> StartAsync(string hostId)
         {
@@ -345,8 +345,14 @@ internal static class LogRehearsal
             listener = null;
         }
 
-        public byte[]? Load() => Saved;
-        public void Save(byte[] bytes) => Saved = (byte[])bytes.Clone();
+        public byte[]? Load() => Saved.Full;
+        public void Save(byte[] bytes) => Saved = Saved with { Full = (byte[])bytes.Clone() };
+        public byte[]? LoadRecent() => Saved.Recent;
+        public bool SaveRecent(byte[] bytes)
+        {
+            Saved = Saved with { Recent = (byte[])bytes.Clone() };
+            return true;
+        }
         public void Record(GatewayAuditEvent gatewayEvent) { }
 
         public async ValueTask DisposeAsync()
