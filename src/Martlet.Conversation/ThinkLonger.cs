@@ -354,7 +354,7 @@ public static class ThinkLonger
                 "the Thinking model didn't finish in time",
             ProviderFailureCode.InputLimit => "the conversation was too long to think about",
             ProviderFailureCode.OutputTokenLimit => "it ran out of room before it wrote anything",
-            ProviderFailureCode.CredentialUnavailable => "the Thinking model's key couldn't be used",
+            ProviderFailureCode.CredentialUnavailable => "the Thinking model's key (or this PC's pairing with its computer) couldn't be used",
             null when answer.Length == 0 && terminal.State == ConversationState.Completed => "it came back empty",
             null => "the Thinking model stopped before it finished",
             _ => "the Thinking model couldn't do it right now"

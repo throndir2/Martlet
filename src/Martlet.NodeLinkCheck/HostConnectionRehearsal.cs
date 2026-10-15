@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Avatar.Hosting;
 using Martlet.Gateway;
 
 namespace Martlet.NodeLinkCheck;
@@ -16,7 +17,8 @@ namespace Martlet.NodeLinkCheck;
 /// 15-second sync does (a new paired connection per check: its routes, then its copy of the plan) and logs through
 /// <see cref="HostAnswers"/> as the desktop does. Checks that the checks share one kept TCP and TLS connection, that a host
 /// missing one check is not reported, that a host that stops is reported once (refused, named as such) and once again when
-/// it is back, and that a host flapping between single misses is never reported. Nothing leaves loopback.
+/// it is back, that a host flapping between single misses is never reported, and that a job saved with an older pairing
+/// reaches the host after it was paired again (<see cref="HostPairingChoice"/>). Nothing leaves loopback.
 /// </summary>
 internal static class HostConnectionRehearsal
 {
@@ -163,6 +165,39 @@ internal static class HostConnectionRehearsal
                 $"checks: {string.Join(", ", outcomes)}; log lines added: {log.Count - count}");
         });
 
+        await Run("The host is paired again: a job saved with the old pairing reaches it with this PC's current pairing", async () =>
+        {
+            // The desktop's Credential Manager as pairing keeps it (KeepPairingAsync): a new pairing writes its secret and deletes
+            // the old one, so a job saved before (the Thinking route, a Thinking pool member) names a secret that is gone.
+            var saved = Remote(pairing);
+            var secrets = new Dictionary<string, string>(StringComparer.Ordinal) { [pairing.CredentialId] = secret };
+            var card = server.Pairing.OpenWindow(new() { DeviceId = "lab-desktop", DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
+            var (again, againSecret) = await Audio2FaceHostClient.PairAsync(gatewayOrigin.CanonicalOrigin, HostId, identity.SpkiFingerprint,
+                "lab-desktop", card.PairingId, card.Token.Reveal(), token);
+            again = again with { Origin = origin };
+            secrets[again.CredentialId] = againSecret;
+            secrets.Remove(pairing.CredentialId);
+            var savedOpens = secrets.ContainsKey(saved.CredentialId);
+            // hosts.json lists this PC's current pairing; the connection uses the desktop's choice of pairing.
+            var used = HostPairingChoice.For(saved, [Remote(again)]);
+            if (!secrets.TryGetValue(used.CredentialId, out var key)) return (false, "the pairing chosen for the saved job has no secret");
+            int routes;
+            using (var connection = new Audio2FaceHostConnection(Pairing(used), key)) routes = (await connection.ReadRoutesAsync(token)).Count;
+            string old;
+            try
+            {
+                using var stale = new Audio2FaceHostConnection(pairing, secret);
+                await stale.ReadRoutesAsync(token);
+                old = "still accepted by the host";
+            }
+            catch (Audio2FaceHostException error) { old = $"refused by the host ({error.Code})"; }
+            pairing = again;
+            secret = againSecret;
+            return (!savedOpens && used.CredentialId == again.CredentialId && used.CredentialId != saved.CredentialId,
+                $"the saved pairing's secret is {(savedOpens ? "still there" : "gone, as on the desktop")}; the job used the current " +
+                $"pairing and the host answered with {routes} route(s); the old credential is {old}");
+        });
+
         var ok = steps.All(s => s.Ok);
         return (ok, new
         {
@@ -179,6 +214,18 @@ internal static class HostConnectionRehearsal
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
+
+    private static AvatarRemoteHost Remote(Audio2FaceHostPairing pairing) => new()
+    {
+        Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint, DeviceId = pairing.DeviceId,
+        CredentialId = pairing.CredentialId
+    };
+
+    private static Audio2FaceHostPairing Pairing(AvatarRemoteHost host) => new()
+    {
+        Origin = host.Origin, HostId = host.HostId, SpkiFingerprint = host.SpkiFingerprint, DeviceId = host.DeviceId,
+        CredentialId = host.CredentialId
+    };
 
     private static int FreePort()
     {

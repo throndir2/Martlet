@@ -63,9 +63,11 @@ internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection,
 
     public void Dispose() => connection.Dispose();
 
-    /// <summary>Opens the saved pairing with its device secret from Windows Credential Manager.</summary>
-    internal static IAvatarHostLink? Open(AvatarRemoteHost host)
+    /// <summary>Opens the saved pairing (this PC's current pairing with that host, <see cref="HostPairingChoice"/>) with its device
+    /// secret from Windows Credential Manager.</summary>
+    internal static IAvatarHostLink? Open(AvatarRemoteHost saved)
     {
+        var host = HostPairingCredential.Current(saved, out _);
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null) return null;
         IAvatarHostLink? link = null;

@@ -1,9 +1,11 @@
 using System.Buffers.Text;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -30,6 +32,66 @@ internal static class HostPairingCredential
     }
 
     internal static string FromGuid(Guid id) => Base64Url.EncodeToString(id.ToByteArray());
+
+    /// <summary>A saved host target as the pairing it names.</summary>
+    internal static AvatarRemoteHost Saved(string origin, string hostId, string spkiFingerprint, string deviceId, Guid credentialId) => new()
+    {
+        Origin = origin, HostId = hostId, SpkiFingerprint = spkiFingerprint, DeviceId = deviceId, CredentialId = FromGuid(credentialId)
+    };
+
+    // The older pairings already said in the log, and the last missing-key line said for each host (said again when it changes).
+    private static readonly ConcurrentDictionary<string, byte> Replaced = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> Missing = new(StringComparer.Ordinal);
+
+    /// <summary>The pairing a connection to <paramref name="saved"/> uses (<see cref="HostPairingChoice"/>): this PC's current
+    /// pairing with the same host (hosts.json, read again only when it changed), else the saved one. <paramref name="paired"/>
+    /// says whether this PC is paired with the host now.</summary>
+    internal static AvatarRemoteHost Current(AvatarRemoteHost saved, out bool paired)
+    {
+        var directory = WorkSharingRoster.Shared.DataDirectory;
+        return Current(saved, directory is null ? [] : WorkSharingRoster.Shared.Hosts(directory), out paired);
+    }
+
+    internal static AvatarRemoteHost Current(AvatarRemoteHost saved, IReadOnlyList<PairedHost> hosts, out bool paired)
+    {
+        var current = HostPairingChoice.For(saved, hosts.Select(h => h.Pairing));
+        paired = hosts.Any(h => h.HostId == saved.HostId);
+        if (current.CredentialId != saved.CredentialId && Replaced.TryAdd(saved.HostId + "/" + saved.CredentialId, 0))
+            ErrorLog.Info($"Martlet host {saved.HostId}: a saved job still names an older pairing of this PC (the host was paired " +
+                "again since), so it uses this PC's current pairing with the host.");
+        return current;
+    }
+
+    /// <summary>Opens a connection to <paramref name="saved"/>'s host with this PC's current pairing (<see cref="Current(AvatarRemoteHost, out bool)"/>)
+    /// and its secret from Windows Credential Manager. A missing secret is <see cref="ProviderFailureCode.CredentialUnavailable"/>,
+    /// said once in the desktop log with why and what to do.</summary>
+    internal static Audio2FaceHostConnection Connect(AvatarRemoteHost saved)
+    {
+        var pairing = Current(saved, out var paired);
+        using var read = new WindowsCredentialStore().ReadAvatarHostSecret(pairing.HostId, pairing.CredentialId);
+        if (read.Error != CredentialError.None || read.Secret is null)
+        {
+            var why = MissingText(pairing.HostId, paired, read.Error == CredentialError.None ? CredentialError.Unavailable : read.Error);
+            if (Missing.TryGetValue(pairing.HostId, out var said) is false || said != why)
+            {
+                Missing[pairing.HostId] = why;
+                ErrorLog.Warn(why);
+            }
+            throw new HostTextException(ProviderFailureCode.CredentialUnavailable);
+        }
+        Audio2FaceHostConnection? connection = null;
+        try { read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(pairing), secret)); }
+        catch (Audio2FaceHostException) { throw new HostTextException(ProviderFailureCode.CredentialUnavailable); }
+        Missing.TryRemove(pairing.HostId, out _);
+        return connection!;
+    }
+
+    /// <summary>The desktop log's line for a host whose pairing secret this PC can't read.</summary>
+    internal static string MissingText(string hostId, bool paired, CredentialError error) => paired
+        ? $"Martlet host {hostId}: this PC's pairing key for it can't be read from Windows Credential Manager ({error}), so jobs " +
+          $"can't run there. Pair {hostId} again (Devices › Add a computer)."
+        : $"Martlet host {hostId}: this PC isn't paired with it now (it was forgotten here or removed from your Martlet network), " +
+          $"so jobs saved for it can't run there. Add {hostId} again (Devices › Add a computer), or choose another computer for them.";
 }
 
 /// <summary>Streams replies from a paired host's Ollama through its pinned gateway, reading the pairing secret from
@@ -134,24 +196,8 @@ internal sealed class HostTextClient : IHostTextClient
     // The hosts found older than whole-conversation requests (HostRoute.TakesWholeConversation), each logged once.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> OlderHosts = new(StringComparer.Ordinal);
 
-    internal static Audio2FaceHostConnection Connect(HostTextTarget target)
-    {
-        var credentialId = HostPairingCredential.FromGuid(target.CredentialId);
-        using var read = new WindowsCredentialStore().ReadAvatarHostSecret(target.HostId, credentialId);
-        if (read.Error != CredentialError.None || read.Secret is null)
-            throw new HostTextException(ProviderFailureCode.CredentialUnavailable);
-        Audio2FaceHostConnection? connection = null;
-        try
-        {
-            read.Secret.Use(secret => connection = new Audio2FaceHostConnection(new Audio2FaceHostPairing
-            {
-                Origin = target.Origin, HostId = target.HostId, SpkiFingerprint = target.SpkiFingerprint,
-                DeviceId = target.DeviceId, CredentialId = credentialId
-            }, secret));
-        }
-        catch (Audio2FaceHostException) { throw new HostTextException(ProviderFailureCode.CredentialUnavailable); }
-        return connection!;
-    }
+    internal static Audio2FaceHostConnection Connect(HostTextTarget target) => HostPairingCredential.Connect(
+        HostPairingCredential.Saved(target.Origin, target.HostId, target.SpkiFingerprint, target.DeviceId, target.CredentialId));
 
     private static async Task<T> Guard<T>(Func<Task<T>> call, CancellationToken token, string? hostId = null)
     {
