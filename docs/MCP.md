@@ -7741,9 +7741,14 @@ stops and one missed check logs nothing, the second logs `Host lab-connections
 stopped answering: ...` once, later misses log nothing, and the route status
 says the home address didn't answer (refused); the host comes back and the next
 check logs `Host lab-connections answers again.` once over one new connection;
-a host that misses every other check logs nothing. The report's `log` holds the
-lines. Loopback only; writes nothing. Windows running out of ports
-(`NoBufferSpaceAvailable`) is not simulated; unit tests check its wording.
+a host that misses every other check logs nothing; and the host is paired
+again (a new credential, the old secret deleted as the desktop deletes it): a
+job saved with the old pairing reaches the host through the desktop's choice of
+pairing (`HostPairingChoice`, this PC's current pairing with the same host ID),
+and the step says whether the host still accepts the old credential. The
+report's `log` holds the lines. Loopback only; writes nothing. Windows running
+out of ports (`NoBufferSpaceAvailable`) is not simulated; unit tests check its
+wording.
 
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).

@@ -19,8 +19,9 @@ internal sealed partial class McpServer
             "started at the same address, and a simulated desktop checking it as the 15-second sync does (a new paired connection per " +
             "check) and logging through the desktop's status tracker. Checks that twelve checks share one kept TCP and TLS connection " +
             "(connections dialed and accepted are counted), that one missed check is not reported, that a host that stops is logged " +
-            "once as stopped answering with the refused address named, and once as answering again when it is back, and that a host " +
-            "missing every other check is never reported. Returns the log lines. Loopback only; writes nothing.", new { },
+            "once as stopped answering with the refused address named, and once as answering again when it is back, that a host " +
+            "missing every other check is never reported, and that after the host is paired again (the old secret deleted) a job " +
+            "saved with the old pairing reaches it with this PC's current pairing. Returns the log lines. Loopback only; writes nothing.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "host-connections")),
         Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
             "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
