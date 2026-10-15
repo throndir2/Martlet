@@ -156,12 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.79.0
+## 🆕 What's new in 0.80.0
 
-- 🎮 **Martlet keeps track of where you are in your game**: a short running note of where you are, what you're doing and how far you seem to be, from what it sees on your screen.
-- 🕹️ **Martlet knows a game in a window, wherever it is installed**: Unity, Unreal and HoYoPlay games count as games even outside Steam or Epic.
-- 👀 **The screen summary sees more of a game**: it looks at up to 6 recent screenshots, so it follows fast action better.
-- 🎵 **Singing's music and voice match each have their own list**: one computer can write the music while another matches Martlet's voice, and songs use High quality by default.
+- 🔍 **See everything Martlet sent to make a reply**: each of Martlet's messages has a *What was sent* link that shows the whole request, part by part, in color.
+- 👥 **The recommended setup sets up recognizing who is talking**: Reconfigure puts Voice recognition on one of your hosts, so your companion PCs stay light.
+- 🗣️ **Martlet notices new people who say only a little**: guests with short remarks now show up in Companion › People, also with *only respond to my voice* on.
+- 🩺 **Martlet keeps an eye on its Windows resources**: its log notes how many window objects it uses and warns long before the Windows limit, to find what makes Martlet stop after a long run.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
