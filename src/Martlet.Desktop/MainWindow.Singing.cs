@@ -41,8 +41,13 @@ public partial class MainWindow
         "a local Thinking model (replies stay prompt, a song gets a little slower), so a second computer's card is best when " +
         "this one is busy.";
 
+    /// <summary>What a Set up adds on a computer: the Singing role, VevoSing, or ACE-Step 1.5 XL.</summary>
+    internal enum SingingAddition { Role, VevoSing, Xl }
+
     private string? singingPendingHost;
     private bool singingPendingVevo;
+    private bool singingPendingXl;
+    private readonly Dictionary<string, string> singingXlFailures = new(StringComparer.Ordinal);
     /// <summary>Why the last setup failed, by computer (a host ID, or <see cref="SingingThisPc"/>): Singing, and VevoSing.</summary>
     private readonly Dictionary<string, string> singingFailures = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> singingVevoFailures = new(StringComparer.Ordinal);
@@ -73,14 +78,15 @@ public partial class MainWindow
         var own = NetworkMap.Hosts(Inputs()).Where(h => !h.Shared).ToArray();
         var readySomewhere = own.Any(h => Offers(h, HostRoles.Singing)) || thisPc is not null && Offers(thisPc, HostRoles.Singing);
         // The voice matches set up on each member that sings, read once from its singing service.
-        var singers = members.Concat(matchers).Select(m => m.Host).DistinctBy(h => h.HostId).Where(h => Offers(h, HostRoles.Singing)).ToArray();
+        var singers = members.Concat(matchers).Select(m => m.Host).OfType<PairedHost>().DistinctBy(h => h.HostId).Where(h => Offers(h, HostRoles.Singing)).ToArray();
         foreach (var host in singers.Where(h => !singingServices.ContainsKey(h.HostId))) ReadSingingServiceAsync(host).Forget();
         string Name(string hostId) => hostId == thisPc?.HostId ? "this PC" : hostId;
-        IReadOnlyList<string> where = listed ? [.. members.Select(m => Name(m.Host.HostId)).Distinct()]
+        string Place(PoolMember member, PairedHost? host, PoolArea area) => host is null ? SingingCloud.Describe(member, area) : Name(host.HostId);
+        IReadOnlyList<string> where = listed ? [.. members.Select(m => Place(m.Member, m.Host, PoolAreas.Singing)).Distinct()]
             : preferences.Host is { } saved ? [Name(saved)] : [];
-        IReadOnlyList<string> matchWhere = [.. matchers.Select(m => Name(m.Host.HostId)).Distinct()];
+        IReadOnlyList<string> matchWhere = [.. matchers.Select(m => Place(m.Member, m.Host, PoolAreas.VoiceMatch)).Distinct()];
         var quality = members.Count > 0 ? SingingPool.Quality(members[0].Member) : SongQuality.HighQuality;
-        var model = matchers.Count > 0 ? SingingPool.VoiceMatch(matchers[0].Member) : SongVoiceMatch.SoulX;
+        var model = matchers.Count == 0 ? SongVoiceMatch.SoulX : matchers[0].Host is null ? SongVoiceMatch.ElevenLabs : SingingPool.VoiceMatch(matchers[0].Member);
 
         // ---------- Now ----------
         var nowText = new TextBlock { Text = SingingNow(preferences, active, where, listed, readySomewhere, matchWhere, matchOff, quality, model),
@@ -129,9 +135,10 @@ public partial class MainWindow
         Area = area,
         Heading = heading,
         Intro = intro,
-        Status = member => SingingMemberStatus(area, member),
-        Settings = member => SingingMemberSettings(area, member),
+        Status = member => member.Kind == PoolMemberKind.Cloud ? SingingCloudStatus(area, member) : SingingMemberStatus(area, member),
+        Settings = member => member.Kind == PoolMemberKind.Cloud ? SingingCloudSettings(area, member) : SingingMemberSettings(area, member),
         CanAdd = host => !host.Shared && HostCan(host.HostId, HostRoles.Singing) is not { Allowed: false },
+        AddCloud = () => SingingCloudAddForm(area),
         Saved = (before, after) =>
         {
             foreach (var added in after.Members.Where(m => before.Find(m.Key) is null))
@@ -156,7 +163,7 @@ public partial class MainWindow
     private string? SingingMemberStatus(PoolArea area, PoolMember member)
     {
         var key = SingingSetupKey(member);
-        if (singingPendingHost == key) return singingPendingVevo ? "adding VevoSing..." : "setting Singing up...";
+        if (singingPendingHost == key) return singingPendingVevo ? "adding VevoSing..." : singingPendingXl ? "adding ACE-Step 1.5 XL..." : "setting Singing up...";
         var host = SingingMemberHost(member);
         var parts = new List<string>();
         SongClient.SingingService? service = null;
@@ -182,9 +189,15 @@ public partial class MainWindow
             parts.Add(model == SongVoiceMatch.VevoSing && service is not null && !service.Has(SongVoiceMatch.VevoSing)
                 ? "VevoSing chosen, but it isn't set up here: SoulX-Singer until you add it" : SingingPool.Name(model));
         }
-        else if (service is { Kinds.Count: > 0 } && !service.Singer.Splits)
-            parts.Add($"{(SingingPool.Quality(member) == SongQuality.Fast ? "fast" : "high quality")}; makes whole songs until Martlet is updated there");
-        else parts.Add(SingingPool.Quality(member) == SongQuality.Fast ? "fast" : "high quality");
+        else
+        {
+            var model = SingingPool.MusicModel(member);
+            var music = model == SongMusicModel.AceStep15Xl
+                ? service is not null && !service.Has(SongMusicModel.AceStep15Xl)
+                    ? "ACE-Step 1.5 XL chosen, but it isn't set up here: ACE-Step 1.5 until you add it" : "ACE-Step 1.5 XL"
+                : SingingPool.Quality(member) == SongQuality.Fast ? "fast" : "high quality";
+            parts.Add(service is { Kinds.Count: > 0 } && !service.Singer.Splits ? music + "; makes whole songs until Martlet is updated there" : music);
+        }
         return string.Join("; ", parts);
     }
 
@@ -204,21 +217,24 @@ public partial class MainWindow
         SongClient.SingingService? service = null;
         var known = ready && singingServices.TryGetValue(host!.HostId, out service);
         var vevo = service?.Has(SongVoiceMatch.VevoSing) == true;
+        var xl = service?.Has(SongMusicModel.AceStep15Xl) == true;
         var match = area == PoolAreas.VoiceMatch;
         var cannot = ready ? null : onThisPc ? ThisPcCannotSing()
             : host is null ? "It isn't paired with this PC."
             : hostChecks.GetValueOrDefault(host.HostId)?.Reachable == false ? "It isn't reachable right now."
             : CannotHand(host.HostId, HostRoles.Singing, "singing");
-        var state = pending ? singingPendingVevo ? "Adding VevoSing here..." : "Setting Singing up here..."
-            : ready ? (service is null ? "Singing is ready here." : vevo ? "Singing is ready here with SoulX-Singer and VevoSing."
-                : "Singing is ready here with SoulX-Singer.")
+        var state = pending ? singingPendingVevo ? "Adding VevoSing here..." : singingPendingXl ? "Adding ACE-Step 1.5 XL here..." : "Setting Singing up here..."
+            : ready ? (service is null ? "Singing is ready here." : (vevo ? "Singing is ready here with SoulX-Singer and VevoSing" : "Singing is ready here with SoulX-Singer") +
+                (xl ? ", and ACE-Step 1.5 XL." : "."))
             : cannot ?? (singingFailures.GetValueOrDefault(key) is { } why ? $"Setting Singing up failed: {why}" : "Singing isn't set up here yet.");
         if (ready && !pending && service is not null && !service.Singer.Splits)
             state += " Its Martlet is too old to make the music and the voice match apart: it makes whole songs until Martlet is updated there.";
         if (match && ready && !pending && singingVevoFailures.GetValueOrDefault(key) is { } vevoFailed) state += $" Adding VevoSing failed: {vevoFailed}";
+        if (!match && ready && !pending && singingXlFailures.GetValueOrDefault(key) is { } xlFailed) state += $" Adding ACE-Step 1.5 XL failed: {xlFailed}";
         var panel = new StackPanel();
         var line = Note(state, new Thickness(0, 0, 0, 4));
-        if (cannot is not null || !pending && (ready ? match && singingVevoFailures.ContainsKey(key) : singingFailures.ContainsKey(key)))
+        if (cannot is not null || !pending && (ready ? match ? singingVevoFailures.ContainsKey(key) : singingXlFailures.ContainsKey(key)
+            : singingFailures.ContainsKey(key)))
             line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(line, id + "State-" + member.Key);
         panel.Children.Add(line);
@@ -226,7 +242,7 @@ public partial class MainWindow
         Button? action = null;
         if (!ready)
         {
-            action = PageButton(pending ? "Setting up..." : "Set up Singing here", () => SetUpSingingAsync(setUpHost, vevosing: false).Forget(),
+            action = PageButton(pending ? "Setting up..." : "Set up Singing here", () => SetUpSingingAsync(setUpHost, SingingAddition.Role).Forget(),
                 primary: true, id: id + "SetUp-" + member.Key);
             action.IsEnabled = !pending && singingPendingHost is null && cannot is null;
             if (cannot is not null)
@@ -238,8 +254,14 @@ public partial class MainWindow
         }
         else if (match && known && !vevo)
         {
-            action = PageButton(pending ? "Adding VevoSing..." : "Add VevoSing here", () => SetUpSingingAsync(setUpHost, vevosing: true).Forget(),
+            action = PageButton(pending ? "Adding VevoSing..." : "Add VevoSing here", () => SetUpSingingAsync(setUpHost, SingingAddition.VevoSing).Forget(),
                 id: id + "AddVevo-" + member.Key);
+            action.IsEnabled = !pending && singingPendingHost is null;
+        }
+        else if (!match && known && !xl)
+        {
+            action = PageButton(pending ? "Adding ACE-Step 1.5 XL..." : "Add ACE-Step 1.5 XL here", () => SetUpSingingAsync(setUpHost, SingingAddition.Xl).Forget(),
+                id: id + "AddXl-" + member.Key);
             action.IsEnabled = !pending && singingPendingHost is null;
         }
         if (action is not null) panel.Children.Add(Row(action));
@@ -273,6 +295,21 @@ public partial class MainWindow
                     $"{member.Name} writes music in {(chosen == SongQuality.HighQuality ? "high" : "fast")} quality.");
             };
             panel.Children.Add(Labeled("Quality here", choice));
+            var models = new ComboBox { MinHeight = 30, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0) };
+            models.Items.Add(new ComboBoxItem { Content = "ACE-Step 1.5 (recommended: fits beside the voice on a 6 GB+ card)", Tag = SongMusicModel.AceStep15 });
+            models.Items.Add(new ComboBoxItem { Content = "ACE-Step 1.5 XL (the highest quality; about 20 GB more, a 12 GB+ card)", Tag = SongMusicModel.AceStep15Xl });
+            models.SelectedIndex = SingingPool.MusicModel(member) == SongMusicModel.AceStep15Xl ? 1 : 0;
+            AutomationProperties.SetName(models, $"Music model on {member.Name}");
+            AutomationProperties.SetAutomationId(models, id + "MusicModel-" + member.Key);
+            models.SelectionChanged += (_, _) =>
+            {
+                if ((models.SelectedItem as ComboBoxItem)?.Tag is not SongMusicModel chosen || chosen == SingingPool.MusicModel(member)) return;
+                SaveSingingMember(area, SingingPool.WithMusicModel(member, chosen), $"{member.Name} writes music with {SingingPool.Name(chosen)}." +
+                    (chosen == SongMusicModel.AceStep15Xl && known && !xl ? " Add ACE-Step 1.5 XL there first; until then it uses ACE-Step 1.5." : ""));
+            };
+            panel.Children.Add(Labeled("Music model here", models));
+            if (SingingPool.MusicModel(member) == SongMusicModel.AceStep15Xl)
+                panel.Children.Add(Note("ACE-Step 1.5 XL always writes in high quality (its SFT model, 50 steps).", new Thickness(0, 4, 0, 0)));
         }
         return panel;
     }
@@ -341,7 +378,7 @@ public partial class MainWindow
         if (listed && where.Count == 0 && !DesktopSongSource.Fixture)
             return $"Off. {OptionalExtras.OffMeans(CompanionTab.Singing)}: no computer in the music list is on." + stays;
         if (!listed && preferences.Off) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Singing)}." + stays;
-        if (!active) return "Not set up yet. Add one of your computers to the music list below and set Singing up there.";
+        if (!active) return "Not set up yet. Add one of your computers to the music list below and set Singing up there, or add a cloud provider.";
         static string Place(IReadOnlyList<string> computers) => computers.Count switch
         {
             0 => "this PC",
@@ -445,11 +482,17 @@ public partial class MainWindow
         "personal, non-commercial use only, and nothing made from them may be shared as a derivative; and OpenAI Whisper medium (MIT). " +
         "Choose it only for your own non-commercial use.";
 
-    /// <summary>Sets the singing role up on <paramref name="host"/> (null: this PC) after one confirmation naming its
-    /// downloads, licences and terms, through the same martlet-host add as every role: a plain Set up installs SoulX-Singer
-    /// only; <paramref name="vevosing"/> adds the VevoSing voice match where Singing already runs (its own confirmation).
-    /// Progress shows in the run window; the card says setting up, ready (with the voice matches there) or failed and why.</summary>
-    private async Task SetUpSingingAsync(PairedHost? host, bool vevosing)
+    /// <summary>What adding ACE-Step 1.5 XL downloads and agrees to (role.conf's XL terms in short).</summary>
+    internal const string XlTerms =
+        "ACE-Step 1.5 XL downloads about 20 GB more: its SFT model (huggingface.co/ACE-Step/acestep-v15-xl-sft, MIT). It is ACE-Step's " +
+        "largest music model: the clearest singing and music, but slower and it needs a 12 GB+ NVIDIA graphics card (16 GB+ is better " +
+        "beside the voice). ACE-Step 1.5 stays set up, and each computer's Music model switches between them.";
+
+    /// <summary>Sets the singing role up on <paramref name="host"/> (null: this PC), or adds VevoSing or ACE-Step 1.5 XL where it
+    /// runs, after one confirmation naming the downloads, licences and terms, through the same martlet-host add as every role. A
+    /// plain Set up installs ACE-Step 1.5 and SoulX-Singer only; an addition keeps what the computer already has. Progress shows in
+    /// the run window; the card says setting up, ready (with what is set up there) or failed and why.</summary>
+    private async Task SetUpSingingAsync(PairedHost? host, SingingAddition addition)
     {
         if (store is null || setupService is null || closing) return;
         // The Singing card follows one setup at a time (what it shows while setting up); everything else goes ahead meanwhile.
@@ -459,15 +502,19 @@ public partial class MainWindow
                 "Its window shows progress; set up the next one when it's done.";
             return;
         }
+        var vevosing = addition == SingingAddition.VevoSing;
+        var xl = addition == SingingAddition.Xl;
         var where = host is null ? "this PC" : host.HostId;
         if (host is null && ThisPcCannotSing() is { } cannot) { ActionText.Text = $"Singing can't run on this PC. {cannot}"; return; }
         var thisPc = ThisPcHost();
-        var confirmed = vevosing
-            ? ConfirmationDialog.Confirm(this,
+        var confirmed = addition switch
+        {
+            SingingAddition.VevoSing => ConfirmationDialog.Confirm(this,
                 $"Add VevoSing to Singing on {where}?\n\nVevoSing is a second voice match: a little closer to the voice and cleaner, but it " +
-                "may drift off-key. SoulX-Singer stays set up, and Voice match switches between them.\n\n" + VevoSingTerms,
-                "Add VevoSing")
-            : ConfirmationDialog.Confirm(this,
+                "may drift off-key. SoulX-Singer stays set up, and each computer's voice match model switches between them.\n\n" + VevoSingTerms,
+                "Add VevoSing"),
+            SingingAddition.Xl => ConfirmationDialog.Confirm(this, $"Add ACE-Step 1.5 XL to Singing on {where}?\n\n" + XlTerms, "Add ACE-Step 1.5 XL"),
+            _ => ConfirmationDialog.Confirm(this,
                 $"Set up Singing on {where}?\n\n" +
                 (host is null && thisPc is null
                     ? machine.DockerInstalled ? "Martlet first sets up its host service in Docker Desktop. "
@@ -475,20 +522,25 @@ public partial class MainWindow
                     : "") +
                 "It needs an NVIDIA graphics card with 6 GB+ and is a large download; Martlet shows the progress. " + SingingGpuNote +
                 "\n\n" + SingingTerms(vevosing: false),
-                "Set up Singing");
+                "Set up Singing")
+        };
         if (!confirmed) return;
+        // An addition keeps what the computer has: its VevoSing when adding XL, its XL when adding VevoSing.
+        var service = (host ?? thisPc) is { } known ? singingServices.GetValueOrDefault(known.HostId) : null;
         var answers = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["choice.SINGING_MODEL"] = "ace-step-v15-soulx-svc",
-            ["choice.SINGING_VOICE_MATCHES"] = vevosing ? "soulx-vevosing" : "soulx"
+            ["choice.SINGING_VOICE_MATCHES"] = vevosing || service?.Has(SongVoiceMatch.VevoSing) == true ? "soulx-vevosing" : "soulx",
+            ["choice.SINGING_MUSIC_MODELS"] = xl || service?.Has(SongMusicModel.AceStep15Xl) == true ? "standard-xl" : "standard"
         };
         var key = host is null || host.HostId == thisPc?.HostId ? SingingThisPc : host.HostId;
-        var failures = vevosing ? singingVevoFailures : singingFailures;
+        var failures = addition switch { SingingAddition.VevoSing => singingVevoFailures, SingingAddition.Xl => singingXlFailures, _ => singingFailures };
         void Failed(string why) => failures[key] = why;
         failures.Remove(key);
         singingPendingHost = key;
         singingPendingVevo = vevosing;
-        var what = vevosing ? "VevoSing" : "Singing";
+        singingPendingXl = xl;
+        var what = addition switch { SingingAddition.VevoSing => "VevoSing", SingingAddition.Xl => "ACE-Step 1.5 XL", _ => "Singing" };
         RenderTab();
         if (host is not null)
         {
@@ -498,13 +550,14 @@ public partial class MainWindow
                 if (closing) return;
                 singingServices.Remove(host.HostId);
                 if (done is null) Failed($"Setting it up on {host.HostId} stopped. Its run window has details.");
-                else if (await WaitForSingingAsync(host, vevosing, lifetime.Token) is { } why)
+                else if (await WaitForSingingAsync(host, addition, lifetime.Token) is { } why)
                     Failed($"Setup finished, but Martlet can't see {what} on {host.HostId} yet ({why}). Check it in a minute.");
                 else
                 {
                     // Setting the role up from the page's main choice uses it: Martlet sings there (and isn't off any more).
-                    if (!vevosing) SaveSinging(p => p with { Off = false, Host = host.HostId }, null);
-                    ActionText.Text = vevosing ? $"VevoSing is ready on {host.HostId}." : $"Singing is ready on {host.HostId}. Ask Martlet to sing you a song.";
+                    if (addition == SingingAddition.Role) SaveSinging(p => p with { Off = false, Host = host.HostId }, null);
+                    ActionText.Text = addition == SingingAddition.Role ? $"Singing is ready on {host.HostId}. Ask Martlet to sing you a song."
+                        : $"{what} is ready on {host.HostId}.";
                 }
             }
             catch (OperationCanceledException) { }
@@ -513,12 +566,13 @@ public partial class MainWindow
             {
                 singingPendingHost = null;
                 singingPendingVevo = false;
+                singingPendingXl = false;
                 if (!closing && openTab is not null) RenderTab();
             }
             return;
         }
         var dataDirectory = store.DataDirectory;
-        var service = setupService;
+        var setup = setupService;
         try
         {
             // Why martlet-host stopped ("Stopped: ..."), for the card when the run fails.
@@ -530,29 +584,35 @@ public partial class MainWindow
                 target = await HostLocal.EngineForChangeAsync(target, HostRoles.Singing, run);
                 var inputs = await HostLocal.DescribeAsync(target, HostRoles.Singing, run.Output, run.Token);
                 var chosen = HostInputDialog.WithGpu(run, "this PC", what, inputs, answers) ?? throw new OperationCanceledException();
-                run.Status(vevosing ? "Adding VevoSing on this PC (about 4.5 GB)..." : "Installing Singing on this PC (a large download)...");
+                run.Status(addition switch
+                {
+                    SingingAddition.VevoSing => "Adding VevoSing on this PC (about 4.5 GB)...",
+                    SingingAddition.Xl => "Adding ACE-Step 1.5 XL on this PC (about 20 GB)...",
+                    _ => "Installing Singing on this PC (a large download)..."
+                });
                 var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Singing], SetupProgress(run, what, why => stopped ??= why),
                     run.Token, answers: chosen);
                 if (exit != 0)
                     throw new InvalidOperationException($"Installing {what} stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
                 run.Status($"Checking {what} on this PC...");
                 singingServices.Remove(pc.HostId);
-                if (await WaitForSingingAsync(pc, vevosing, run.Token) is { } why)
+                if (await WaitForSingingAsync(pc, addition, run.Token) is { } why)
                 {
                     stopped = $"Setup finished, but Martlet can't see {what} yet ({why}). Check this PC in a minute.";
                     throw new InvalidOperationException(stopped);
                 }
-                if (!vevosing) Dispatcher.Invoke(() => SaveSinging(p => p with { Off = false, Host = pc.HostId }, null));
-                return vevosing ? "VevoSing is ready on this PC." : "Singing is ready on this PC. Ask Martlet to sing you a song.";
+                if (addition == SingingAddition.Role) Dispatcher.Invoke(() => SaveSinging(p => p with { Off = false, Host = pc.HostId }, null));
+                return addition == SingingAddition.Role ? "Singing is ready on this PC. Ask Martlet to sing you a song." : $"{what} is ready on this PC.";
             }
 
             string? status;
             if (thisPc is not null)
-                status = await HostRunWindow.RunAsync(this, vevosing ? "Add VevoSing on this PC" : "Set up Singing on this PC", run => Continue(run, thisPc)) ??
+                status = await HostRunWindow.RunAsync(this, addition == SingingAddition.Role ? "Set up Singing on this PC" : $"Add {what} on this PC",
+                    run => Continue(run, thisPc)) ??
                     (stopped is null ? $"{what} wasn't set up. The run window has details." : $"{what} wasn't set up: {stopped}");
             else
             {
-                (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(dataDirectory), service,
+                (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(dataDirectory), setup,
                     text => ActionText.Text = text, lifetime.Token, Continue, "Set up Singing on this PC");
                 await ReadMachineAsync();
             }
@@ -573,10 +633,10 @@ public partial class MainWindow
         {
             singingPendingHost = null;
             singingPendingVevo = false;
+            singingPendingXl = false;
         }
         if (!closing && openTab is not null) RenderTab();
     }
-
     /// <summary>martlet-host's output for the run window, with the singing role's own progress (the image build's steps, the
     /// service starting, each pinned model file's download) as its status line, so the window (and MCP, through
     /// HostRunStatus) shows how far setting up is; <paramref name="stopped"/> gets why martlet-host stopped, if it does.</summary>
@@ -604,9 +664,9 @@ public partial class MainWindow
     private static partial Regex SingingBuildPattern();
 
     /// <summary>After martlet-host added the role, checks <paramref name="host"/> (about a minute) until its gateway offers the
-    /// singing route and its singing service answers set up (with VevoSing, for <paramref name="vevosing"/>). Returns null
-    /// once it does, else what it saw last.</summary>
-    private async Task<string?> WaitForSingingAsync(PairedHost host, bool vevosing, CancellationToken token)
+    /// singing route and its singing service answers set up (with VevoSing or ACE-Step 1.5 XL, for that <paramref name="addition"/>).
+    /// Returns null once it does, else what it saw last.</summary>
+    private async Task<string?> WaitForSingingAsync(PairedHost host, SingingAddition addition, CancellationToken token)
     {
         for (var attempt = 0; ; attempt++)
         {
@@ -620,14 +680,20 @@ public partial class MainWindow
                 {
                     var service = await SongClient.ReadServiceAsync(host.Pairing, token);
                     singingServices[host.HostId] = service;
-                    if (service is { State: not "not_provisioned" } && (!vevosing || service.Has(SongVoiceMatch.VevoSing))) return null;
-                    why = service is null ? "it offers no singing route" : vevosing && !service.Has(SongVoiceMatch.VevoSing)
-                        ? "its singing service doesn't list VevoSing" : $"its singing service is {service.State}";
+                    var added = addition switch
+                    {
+                        SingingAddition.VevoSing => service?.Has(SongVoiceMatch.VevoSing) == true,
+                        SingingAddition.Xl => service?.Has(SongMusicModel.AceStep15Xl) == true,
+                        _ => true
+                    };
+                    if (service is { State: not "not_provisioned" } && added) return null;
+                    why = service is null ? "it offers no singing route" : !added
+                        ? $"its singing service doesn't list {(addition == SingingAddition.Xl ? "ACE-Step 1.5 XL" : "VevoSing")}"
+                        : $"its singing service is {service.State}";
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                 catch (Exception error) when (ClusterSync.IsHostFailure(error) || error is JsonException) { why = error.Message; }
-            }
-            if (attempt >= 12) return why;
+            }            if (attempt >= 12) return why;
             await Task.Delay(TimeSpan.FromSeconds(5), token);
         }
     }

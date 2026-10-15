@@ -21,13 +21,18 @@ AMPHION_COMMIT = "26f6883110181f1dbfe95c70a7c7dbaf4de5f42a"
 ACE_LM = "acestep-5Hz-lm-0.6B"
 ACE_TURBO = "acestep-v15-turbo"
 ACE_SFT = "acestep-v15-sft"
+# ACE-Step 1.5 XL SFT (a 4B music transformer, 50 steps), set up only when the owner chooses SINGING_MUSIC_MODELS standard-xl.
+ACE_XL_SFT = "acestep-v15-xl-sft"
 GENERATOR_IDS = {"fast": "ace-step-v15-turbo", "high_quality": "ace-step-v15-sft"}
+XL_GENERATOR_ID = "ace-step-v15-xl-sft"
+# The music models a song or music job can ask for ("model"); the first is the default.
+MUSIC_MODELS = ("ace-step-v15", "ace-step-v15-xl")
 SEPARATOR_ID = "demucs-htdemucs-ft-vocals"
 CONVERTER_IDS = {"soulx": "soulx-singer-svc", "vevosing": "vevo1.5-fm-singnet7k"}
 
 
 class PinnedFile(NamedTuple):
-    group: str  # "core" (always) or "vevosing" (only when the owner sets VevoSing up)
+    group: str  # "core" (always), "vevosing" (only when the owner sets VevoSing up) or "xl" (only with ACE-Step 1.5 XL)
     repository: str
     revision: str
     path: str
@@ -124,6 +129,26 @@ PINNED_FILES: tuple[PinnedFile, ...] = (
                69_768_280, "850799d78699134b969056183fc9d490c51f8d8154d0ed00fae3e738b6b30af6", "CC-BY-NC-ND-4.0", "vevo/acoustic_modeling/Vocoder/model_1.safetensors"),
     PinnedFile("vevosing", "amphion/Vevo1.5", "f4053ca0d8badb57dffdce44eac97c08b7f6f922", "acoustic_modeling/Vocoder/model_2.safetensors",
                180_693_296, "56130fd13d5fbe828e56d61edb0049d35700db0472a866b8167d1d217d2687f8", "CC-BY-NC-ND-4.0", "vevo/acoustic_modeling/Vocoder/model_2.safetensors"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "apg_guidance.py",
+               8_340, "89ecdc4686e174225d6e6d304939d75892297dc3c19fbb11e04345dc3d4685db", "MIT", "ace-step/acestep-v15-xl-sft/apg_guidance.py"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "config.json",
+               2_525, "174cf8c4afc2c41212546b4dca9afb11e7958f8b1e1a770d7cd009a82d72a6f1", "MIT", "ace-step/acestep-v15-xl-sft/config.json"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "configuration_acestep_v15.py",
+               13_225, "0d66f38eba6a3d1665c9449a1a52724d68354477bc88dcf02389640e3602a0c7", "MIT", "ace-step/acestep-v15-xl-sft/configuration_acestep_v15.py"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "model-00001-of-00004.safetensors",
+               4_986_971_456, "1d304b8a34859cd92c349c71ae6c27d50564844c7f7611d2d32913f67508e5a4", "MIT", "ace-step/acestep-v15-xl-sft/model-00001-of-00004.safetensors"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "model-00002-of-00004.safetensors",
+               4_986_942_776, "94e33648f514fdd00f473f2d2680af959204b58b15f7ab37246ac16d066aac87", "MIT", "ace-step/acestep-v15-xl-sft/model-00002-of-00004.safetensors"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "model-00003-of-00004.safetensors",
+               4_986_942_808, "befe558365f53bc6c44f3f7e521cb2dd026927a817c36aa05ad94fcd80a533a9", "MIT", "ace-step/acestep-v15-xl-sft/model-00003-of-00004.safetensors"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "model-00004-of-00004.safetensors",
+               4_988_483_464, "dfbc77aa26e54d0127892d6e7f3c0868bfc4623aa067867f6595c3b2fb7d31a4", "MIT", "ace-step/acestep-v15-xl-sft/model-00004-of-00004.safetensors"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "model.safetensors.index.json",
+               71_471, "0a0c7e153a7bb6f6061b155739e9502cf83977bb959186d4df688595302a9474", "MIT", "ace-step/acestep-v15-xl-sft/model.safetensors.index.json"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "modeling_acestep_v15_xl_base.py",
+               105_981, "e367811c6d8cd9162e630da86622dd6edc9d5c2b7f605eadd68e69a227c35e88", "MIT", "ace-step/acestep-v15-xl-sft/modeling_acestep_v15_xl_base.py"),
+    PinnedFile("xl", "ACE-Step/acestep-v15-xl-sft", "d06de46b4622f781cf07f4a013a67d591ca52819", "silence_latent.pt",
+               3_841_215, "a778e9dd942f5e8b2c09c55370782d318834432b03dabbcdf70e6ed49ad6358b", "MIT", "ace-step/acestep-v15-xl-sft/silence_latent.pt"),
 )
 
 # Demucs (facebookresearch/demucs, MIT): the vocals specialist of htdemucs_ft (its file name ends with its SHA-256 prefix).

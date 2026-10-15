@@ -1102,21 +1102,40 @@ public sealed class GatewaySongPayload : GatewayInferencePayload
 
 /// <summary>The jobs a song <c>start</c> asks for. <see cref="Song"/>: the whole song (the music, then the voice match), as
 /// one job on one computer. <see cref="Music"/>: only the music with the music model's own singer, separated into vocals
-/// and backing and timed. <see cref="Match"/>: only the voice match of vocals the client sends next (<c>input</c> pages).</summary>
+/// and backing and timed. <see cref="Match"/>: only the voice match of vocals the client sends next (<c>input</c> pages).
+/// <see cref="Separate"/>: a song made elsewhere (a cloud provider), sent next in <c>input</c> pages, separated into vocals
+/// and backing and timed.</summary>
 public static class GatewaySongKinds
 {
     public const string Song = "song";
     public const string Music = "music";
     public const string Match = "match";
+    public const string Separate = "separate";
+}
+
+/// <summary>The music models a <c>song</c> or <c>music</c> start may name (<c>model</c>; without one, <see cref="Standard"/>).</summary>
+public static class GatewaySongModels
+{
+    /// <summary>ACE-Step 1.5 (turbo or SFT, by the quality).</summary>
+    public const string Standard = "ace-step-v15";
+    /// <summary>ACE-Step 1.5 XL (its SFT model, 50 steps), set up only where the owner added it.</summary>
+    public const string Xl = "ace-step-v15-xl";
 }
 
 /// <summary>The job a <c>start</c> asks for (bounds as in <c>Martlet.Core.Singing.SongRequest</c>). A
 /// <see cref="GatewaySongKinds.Music"/> start has no voice (<see cref="VoiceMatch"/>, <see cref="VoiceId"/> and
 /// <see cref="ReferenceAudioSha256"/> are null). A <see cref="GatewaySongKinds.Match"/> start has no lyrics, style, language
-/// or quality (null, duration 0) and says how many 48 kHz mono frames of vocals follow (<see cref="InputFrames"/>).</summary>
+/// or quality (null, duration 0) and says how many 48 kHz mono frames of vocals follow (<see cref="InputFrames"/>). A
+/// <see cref="GatewaySongKinds.Separate"/> start has lyrics and a language (no style, quality or voice) and says how many
+/// 48 kHz frames of <see cref="InputChannels"/> channels follow.</summary>
 public sealed record GatewaySongStart(string Kind, string? Lyrics, string? Style, int DurationSeconds, string? Language, int? Bpm,
     string? Key, long? Seed, string? Quality, string? VoiceMatch, string? VoiceId, string? ReferenceAudioSha256, long InputFrames = 0)
 {
+    /// <summary>The music model a song or music start names (<see cref="GatewaySongModels"/>), or null for the standard one.</summary>
+    public string? Model { get; init; }
+    /// <summary>The channels of a separate job's input (1 or 2); 1 for a voice match job.</summary>
+    public int InputChannels { get; init; } = 1;
+
     public override string ToString() => "Gateway song start (content omitted)";
 }
 

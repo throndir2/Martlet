@@ -10,6 +10,8 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 public sealed partial class Audio2FaceHostConnection
 {
     public const string SongRouteId = "martlet.gateway.song.v1";
+    // Base64 written as is: the default encoder escapes every '+' as \u002B, which can push an input page past the request bound.
+    private static readonly JsonSerializerOptions Relaxed = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     public const string SongPath = "/martlet/v1/inference/song";
     /// <summary>PCM fetched per <c>result</c> request (25 s of 48 kHz stereo; the gateway's page bound).</summary>
     public const int SongPageBytes = 4_800_000;
@@ -36,7 +38,7 @@ public sealed partial class Audio2FaceHostConnection
             ["session_id"] = ids.SessionId, ["turn_id"] = ids.TurnId, ["request_id"] = ids.RequestId, ["epoch"] = 0,
             ["deadline_utc"] = deadline.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
             ["payload"] = payload
-        });
+        }, Relaxed);
         if (body.Length > route.MaximumRequestBytes)
             throw new Audio2FaceHostException("request.too_large", "The song request is too large for the host's singing route.");
         using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + route.Path)
@@ -139,18 +141,7 @@ public sealed partial class Audio2FaceHostConnection
         JsonElement result;
         try
         {
-            // The vocals go in pages, in order; the job starts once the last one is there.
-            var pcm = vocals.Pcm16;
-            for (var offset = 0; offset < pcm.Length; offset += SongInputPageBytes)
-            {
-                var length = Math.Min(SongInputPageBytes, pcm.Length - offset);
-                view = Single(await SongCallAsync(route, new Dictionary<string, object>
-                {
-                    ["operation"] = "input", ["job_id"] = jobId, ["offset_frames"] = offset / 2,
-                    ["pcm_base64"] = Convert.ToBase64String(pcm.Span.Slice(offset, length))
-                }, cancellationToken).ConfigureAwait(false));
-                ThrowIfError(view);
-            }
+            view = await UploadAsync(route, jobId, vocals, view, cancellationToken).ConfigureAwait(false);
             result = await WaitAsync(route, view, jobId, reporter, cancellationToken, pollInterval).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -172,8 +163,74 @@ public sealed partial class Audio2FaceHostConnection
             timings);
     }
 
-    /// <summary>PCM sent per <c>input</c> request of a voice match job (40 s of 48 kHz mono; the gateway's page bound).</summary>
+    /// <summary>
+    /// Separates and times a song made elsewhere (a cloud provider) with the host's singing role (a <c>separate</c> job): starts
+    /// the job with its lyrics, sends <paramref name="mix"/> (48 kHz mono or stereo) in pages, polls it and fetches the mix, the
+    /// separated vocals and backing, the beat grid and the lyric lines and words timed from the vocals' phrases. The result's
+    /// <see cref="SongResult.Engine"/> names only the separator; the caller says what made the music. Cancelling cancels the job.
+    /// </summary>
+    public async Task<SongResult> SeparateAsync(HostRoute route, SongRequest song, SongTrack mix, IProgress<SongProgress>? progress,
+        CancellationToken cancellationToken, TimeSpan? pollInterval = null)
+    {
+        ArgumentNullException.ThrowIfNull(song);
+        ArgumentNullException.ThrowIfNull(mix);
+        if (mix.SampleRate != SongTrack.SampleRateHz || mix.Frames == 0)
+            throw new ArgumentException("The mix must be 48 kHz PCM.", nameof(mix));
+        var start = new Dictionary<string, object>
+        {
+            ["operation"] = "start", ["kind"] = "separate", ["lyrics"] = song.Lyrics, ["language"] = song.Language,
+            ["input_frames"] = mix.Frames, ["input_channels"] = mix.Channels
+        };
+        if (song.Bpm is { } bpm) start["bpm"] = bpm;
+        if (song.Key is { } key) start["key"] = key;
+        var reporter = new Reporter(progress);
+        var (view, jobId) = await StartJobAsync(route, start, null, cancellationToken).ConfigureAwait(false);
+        JsonElement result;
+        try
+        {
+            view = await UploadAsync(route, jobId, mix, view, cancellationToken).ConfigureAwait(false);
+            result = await WaitAsync(route, view, jobId, reporter, cancellationToken, pollInterval).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await CancelJobAsync(route, jobId).ConfigureAwait(false);
+            throw;
+        }
+        var delivering = System.Diagnostics.Stopwatch.StartNew();
+        reporter.Report(new SongProgress(SongStage.Delivering, 0.95));
+        var frames = result.GetProperty("frames").GetInt64();
+        var mixed = await TrackAsync(route, jobId, "mix", 2, frames, cancellationToken).ConfigureAwait(false);
+        var vocals = await TrackAsync(route, jobId, "vocals", 1, frames, cancellationToken).ConfigureAwait(false);
+        var backing = await TrackAsync(route, jobId, "backing", 2, frames, cancellationToken).ConfigureAwait(false);
+        var made = ReadResult(jobId, song, result, mixed, vocals, backing);
+        var timings = made.StageTimings.ToList();
+        timings.Add(new SongStageTiming(SongStage.Delivering, delivering.Elapsed));
+        reporter.Report(new SongProgress(SongStage.Completed, 1));
+        return made with { StageTimings = timings };
+    }
+
+    /// <summary>PCM sent per <c>input</c> request of a voice match or separate job (40 s of 48 kHz mono, 20 s of stereo; the
+    /// gateway's page bound).</summary>
     public const int SongInputPageBytes = 3_840_000;
+
+    // A receiving job's input in pages, in order; the job starts once the last one is there. Returns the job's last view.
+    private async Task<JsonElement> UploadAsync(HostRoute route, string jobId, SongTrack input, JsonElement view, CancellationToken token)
+    {
+        var frameBytes = 2 * input.Channels;
+        var page = SongInputPageBytes / frameBytes * frameBytes;
+        var pcm = input.Pcm16;
+        for (var offset = 0; offset < pcm.Length; offset += page)
+        {
+            var length = Math.Min(page, pcm.Length - offset);
+            view = Single(await SongCallAsync(route, new Dictionary<string, object>
+            {
+                ["operation"] = "input", ["job_id"] = jobId, ["offset_frames"] = offset / frameBytes,
+                ["pcm_base64"] = Convert.ToBase64String(pcm.Span.Slice(offset, length))
+            }, token).ConfigureAwait(false));
+            ThrowIfError(view);
+        }
+        return view;
+    }
 
     private static Dictionary<string, object> MusicStart(SongRequest song)
     {
@@ -182,6 +239,8 @@ public sealed partial class Audio2FaceHostConnection
             ["operation"] = "start", ["lyrics"] = song.Lyrics, ["style"] = song.Style, ["duration_seconds"] = song.DurationSeconds,
             ["language"] = song.Language, ["quality"] = song.Quality == SongQuality.HighQuality ? "high_quality" : "fast"
         };
+        // Only XL is named: an older host knows no model and makes the standard one.
+        if (song.Model == SongMusicModel.AceStep15Xl) start["model"] = "ace-step-v15-xl";
         if (song.Bpm is { } bpm) start["bpm"] = bpm;
         if (song.Key is { } key) start["key"] = key;
         if (song.Seed is { } seed) start["seed"] = seed;
@@ -379,7 +438,7 @@ public sealed partial class Audio2FaceHostConnection
                 engine.GetProperty("separator").GetString() ?? "", engine.GetProperty("converter").GetString() ?? "",
                 engine.GetProperty("quality").GetString() == "high_quality" ? SongQuality.HighQuality : SongQuality.Fast,
                 VoiceMatchOf(engine), engine.GetProperty("fixture").GetBoolean()),
-            Seed = meta.GetProperty("seed").GetInt64(),
+            Seed = meta.TryGetProperty("seed", out var seed) && seed.ValueKind == JsonValueKind.Number ? seed.GetInt64() : 0,
             Bpm = Number("bpm"),
             Key = meta.TryGetProperty("key", out var keyValue) && keyValue.ValueKind == JsonValueKind.String ? keyValue.GetString() : null,
             BeatsPerBar = Number("beats_per_bar") is { } perBar ? (int)perBar : 4,
@@ -443,6 +502,7 @@ public sealed partial class Audio2FaceHostConnection
                 "singing.busy" => SongErrorCodes.Busy,
                 "singing.unavailable" => SongErrorCodes.Unavailable,
                 "singing.voice_match_unavailable" => SongErrorCodes.VoiceMatchUnavailable,
+                "singing.model_unavailable" => SongErrorCodes.ModelUnavailable,
                 "voice.missing" => SongErrorCodes.VoiceMissing,
                 "request.invalid" => SongErrorCodes.RequestInvalid,
                 "song.timeout" => SongErrorCodes.TimedOut,

@@ -34,11 +34,25 @@ public enum SongQuality
 
 /// <summary>How the singing is matched to the voice: <see cref="SoulX"/> is SoulX-Singer-SVC (Apache-2.0, keeps the tune and
 /// words, the default); <see cref="VevoSing"/> is Amphion's Vevo1.5 (a bit closer to the voice, cleaner, may drift off-key;
-/// CC-BY-NC-ND-4.0 weights, personal non-commercial use only, set up only when the owner chooses it).</summary>
+/// CC-BY-NC-ND-4.0 weights, personal non-commercial use only, set up only when the owner chooses it). Both run on the singing
+/// host role. <see cref="ElevenLabs"/> is ElevenLabs' Voice Changer (a cloud provider, with an instant voice clone of the
+/// voice's recording); <see cref="Mureka"/> means Mureka sang the song in the voice itself (its vocal clone), with no voice
+/// match after.</summary>
 public enum SongVoiceMatch
 {
     SoulX,
-    VevoSing
+    VevoSing,
+    ElevenLabs,
+    Mureka
+}
+
+/// <summary>The music model a singing host uses: <see cref="AceStep15"/> (ACE-Step 1.5, turbo or SFT by the quality, the
+/// default) or <see cref="AceStep15Xl"/> (ACE-Step 1.5 XL, its SFT model: the highest quality, about 20 GB more to download and
+/// a 12 GB+ graphics card; set up only where the owner adds it).</summary>
+public enum SongMusicModel
+{
+    AceStep15,
+    AceStep15Xl
 }
 
 /// <summary>One song to make. <see cref="Lyrics"/> use ACE-Step's section tags (<c>[verse]</c>, <c>[chorus]</c>,
@@ -68,6 +82,8 @@ public sealed record SongRequest
     /// <summary>Optional seed for a repeatable song; a random one is chosen (and returned in the result) when null.</summary>
     public long? Seed { get; init; }
     public SongQuality Quality { get; init; } = SongQuality.HighQuality;
+    /// <summary>The music model on a singing host (a pool member's own choice); cloud providers ignore it.</summary>
+    public SongMusicModel Model { get; init; } = SongMusicModel.AceStep15;
     public SongVoiceMatch VoiceMatch { get; init; } = SongVoiceMatch.SoulX;
 
     /// <summary>Throws <see cref="SongException"/> (<c>request.invalid</c>) when a field is outside its bounds.</summary>
@@ -95,7 +111,7 @@ public sealed record SongRequest
             Key.All(c => char.IsAsciiLetterOrDigit(c) || c is ' ' or '#' or '♯' or '♭')),
             "Write the key like C major or F# minor.");
         Require(Seed is null or (>= 0 and <= uint.MaxValue), "The seed must be 0 to 4294967295.");
-        Require(Enum.IsDefined(Quality) && Enum.IsDefined(VoiceMatch), "Choose a quality and a voice match.");
+        Require(Enum.IsDefined(Quality) && Enum.IsDefined(VoiceMatch) && Enum.IsDefined(Model), "Choose a quality and a voice match.");
     }
 }
 
@@ -270,6 +286,8 @@ public static class SongErrorCodes
     public const string VoiceMissing = "voice.missing";
     /// <summary>The voice match chosen is not set up on the singing computer.</summary>
     public const string VoiceMatchUnavailable = "singing.voice_match_unavailable";
+    /// <summary>The music model chosen (ACE-Step 1.5 XL) is not set up on the singing computer.</summary>
+    public const string ModelUnavailable = "singing.model_unavailable";
     /// <summary>A request field is outside its bounds.</summary>
     public const string RequestInvalid = "request.invalid";
     /// <summary>A stage failed on the host (the message says which).</summary>

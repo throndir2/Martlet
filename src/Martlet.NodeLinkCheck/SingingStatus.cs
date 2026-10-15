@@ -71,15 +71,19 @@ internal static class SingingStatus
         var own = OwnHost(dataDirectory);
         var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing);
         var voiceList = PoolSettings.LoadFor(dataDirectory, PoolAreas.VoiceMatch);
-        var members = SingingPool.Members(list, device, saved, own, paired, singers);
+        // A cloud provider takes part when this PC has its key (singing-keys.json; Speaking's ElevenLabs key isn't looked at here).
+        var keys = SingingKeys.Load(dataDirectory);
+        bool Music(PoolMember m) => SingingCloud.WritesMusic(m) && keys.For(m.Provider!) is not null;
+        bool Matches(PoolMember m) => SingingCloud.MatchesVoice(m) && keys.For(m.Provider!) is not null;
+        var members = SingingPool.Members(list, device, saved, own, paired, singers, cloud: Music);
         var matchOff = voiceList is not null && voiceList.NoneOn;
-        var matchers = matchOff ? [] : SingingPool.Members(voiceList ?? list, device, saved, own, paired, singers, PoolAreas.VoiceMatch);
-        var order = members.Select(m => m.HostId).Distinct(StringComparer.Ordinal).ToArray();
-        var matchOrder = matchers.Select(m => m.HostId).Distinct(StringComparer.Ordinal).ToArray();
+        var matchers = matchOff ? [] : SingingPool.Members(voiceList ?? list, device, saved, own, paired, singers, PoolAreas.VoiceMatch, Matches);
+        var order = members.Select(m => m.HostId).OfType<string>().Distinct(StringComparer.Ordinal).ToArray();
+        var matchOrder = matchers.Select(m => m.HostId).OfType<string>().Distinct(StringComparer.Ordinal).ToArray();
         var next = SingingPool.Pick(order, states);
         var nextMatch = SingingPool.Pick(matchOrder, states, match: true);
-        string Verdict(string host, bool match) =>
-            states.TryGetValue(host, out var state) ? SingingPool.Verdict(host, state, match) : "passed over: it didn't answer";
+        string Verdict(string? host, bool match) => host is null ? "a cloud provider: takes a job when the members before it are busy"
+            : states.TryGetValue(host, out var state) ? SingingPool.Verdict(host, state, match) : "passed over: it didn't answer";
         return new
         {
             configured = list is not null, off = list is not null && members.Count == 0, saved, order,
@@ -87,6 +91,8 @@ internal static class SingingStatus
             {
                 position = index + 1, key = m.Member.Key, host = m.HostId, plannedSinger = singers.Any(s => s.HostId == m.HostId),
                 settings = m.Member.Settings, quality = SingingPool.Quality(m.Member) == SongQuality.Fast ? "fast" : "high_quality",
+                cloud = m.HostId is null ? SingingCloud.Describe(m.Member, PoolAreas.Singing) : null,
+                musicModel = m.HostId is null ? null : SingingPool.Name(SingingPool.MusicModel(m.Member)),
                 verdict = Verdict(m.HostId, false)
             }),
             nextSong = next is { } chosen ? new { host = chosen.HostId, ahead = chosen.Ahead, waitsInLine = chosen.Ahead > 0 } : null,
@@ -96,8 +102,9 @@ internal static class SingingStatus
                 members = matchers.Select((m, index) => new
                 {
                     position = index + 1, key = m.Member.Key, host = m.HostId, settings = m.Member.Settings,
-                    model = SingingPool.VoiceMatch(m.Member) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
-                    matchesWith = SingingPool.MatchWith(m.Member, states.GetValueOrDefault(m.HostId)) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+                    model = m.HostId is null ? m.Member.Provider : SingingPool.VoiceMatch(m.Member) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+                    matchesWith = m.HostId is null ? m.Member.Provider
+                        : SingingPool.MatchWith(m.Member, states.GetValueOrDefault(m.HostId)) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
                     verdict = Verdict(m.HostId, true)
                 }),
                 next = nextMatch is { } match ? new { host = match.HostId, ahead = match.Ahead, waitsInLine = match.Ahead > 0 } : null

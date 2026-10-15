@@ -229,6 +229,7 @@ internal static class SingingCheck
         var watch = Stopwatch.StartNew();
         object? before = null, after = null, host_ = null, extra = null, matchHost = null;
         string? matchJob = null;
+        object? separated = null;
         string? voiceName = null;
         SongResult? song = null;
         string? failure = null, problem = null;
@@ -252,7 +253,8 @@ internal static class SingingCheck
                 // As Martlet's own model writes them; without a tempo or key the host's music planner runs first.
                 Bpm = bpm,
                 Key = key,
-                Quality = quality == "high_quality" ? SongQuality.HighQuality : SongQuality.Fast,
+                Quality = quality is "high_quality" or "xl" ? SongQuality.HighQuality : SongQuality.Fast,
+                Model = quality == "xl" ? SongMusicModel.AceStep15Xl : SongMusicModel.AceStep15,
                 VoiceMatch = voiceMatch == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
             };
             before = await StatusAsync(connection, route, token);
@@ -271,6 +273,14 @@ internal static class SingingCheck
                 matchJob = matched.JobId;
                 song = SongVoice.WithVoice(music, matched);
                 matchHost = await JobReportAsync(connection, route, matched.JobId, token);
+                // As a cloud provider's song is finished: its mix sent back in pages to be separated and timed (a separate job).
+                var again = await connection.SeparateAsync(route, request, music.Mix, null, token, TimeSpan.FromMilliseconds(500));
+                separated = new
+                {
+                    jobId = again.JobId, seconds = Math.Round(again.Duration.TotalSeconds, 2), lines = again.LyricTimestamps.Count,
+                    words = again.Words.Count, beats = again.Beats.Count, separator = again.Engine.Separator,
+                    sameLength = again.Mix.Frames == music.Mix.Frames && again.Vocals.Frames == music.Mix.Frames
+                };
             }
             else song = await connection.MakeSongAsync(route, request, recording, progress, token, TimeSpan.FromMilliseconds(500));
             host_ = await JobReportAsync(connection, route, song.JobId, token);
@@ -361,6 +371,7 @@ internal static class SingingCheck
             host = host_,
             matchJobId = matchJob,
             matchHost,
+            separated,
             saved = saveDirectory,
             failure,
             problem,

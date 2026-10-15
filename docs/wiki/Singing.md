@@ -12,6 +12,12 @@ A song has two parts. Each part has its own list of computers on **Companion ›
 
 With nothing on in the *Voice match* list, songs keep the music model's own singer. Songs are made ahead of time, not in real time.
 
+## More choices
+
+- **ACE-Step 1.5 XL**: a bigger music model with clearer words. Click **Add ACE-Step 1.5 XL here** in a computer's settings (about 20 GB more), then pick it in its **Music model** box.
+- **Cloud providers**: click **A cloud provider** under a list. The *Music* list takes **ElevenLabs Music**, **Mureka** (it can sing in Martlet's own voice) and **fal.ai** (MiniMax Music or ACE-Step). The *Voice match* list takes **ElevenLabs Voice Changer**. You need your own API key, and each song may cost money. Keys go to your other computers too.
+- A cloud song is separated and timed on one of your singing computers when you have one. Without one, it keeps the provider's singer and the voice is not matched.
+
 ## Setup
 
 Open **Companion › Singing** (under *Optional extras*). Add your computers to the *Music* list and the *Voice match* list. Each computer's **Settings** show its setup status, **Set up Singing here**, its quality or model, and **Add VevoSing here**. Setup uses the normal host role flow and downloads pinned model files only after you choose it and accept terms. Your other computers follow the same lists.

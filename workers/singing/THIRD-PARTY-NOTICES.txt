@@ -12,6 +12,9 @@ with the SoulX-Singer-SVC model (huggingface.co/Soul-AILab/SoulX-Singer revision
 
 Demucs 4.0.1 (https://github.com/facebookresearch/demucs) and its htdemucs_ft vocals model 04573f0d-f3cf25b2.th, MIT License.
 
+Optional, only when the owner chooses the standard-xl music models: ACE-Step 1.5 XL SFT
+(huggingface.co/ACE-Step/acestep-v15-xl-sft revision d06de46), MIT License.
+
 Optional, only when the owner chooses the VevoSing voice match: Amphion (https://github.com/open-mmlab/Amphion, commit
 26f6883110181f1dbfe95c70a7c7dbaf4de5f42a), MIT License; Vevo1.5 models (huggingface.co/amphion/Vevo1.5 revision f4053ca),
 Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 (personal, non-commercial use only); OpenAI Whisper medium, MIT.

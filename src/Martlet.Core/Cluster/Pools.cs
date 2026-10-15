@@ -233,18 +233,21 @@ public static class PoolAreas
         Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
     };
     /// <summary>Singing's music (docs/SINGING.md): this PC's own host service, a paired computer or one of its cards that runs the
-    /// <c>singing</c> role writes a song's music with the music model's own singer, separates it and times it. Member setting:
-    /// <see cref="Martlet.Core.Singing.SingingPool.QualitySetting"/>. The ID and lane stay "singing": they are saved.</summary>
+    /// <c>singing</c> role writes a song's music with the music model's own singer, separates it and times it; or a cloud
+    /// provider (ElevenLabs Music, Mureka, fal.ai) writes it. Member settings: <see cref="Martlet.Core.Singing.SingingPool.QualitySetting"/>
+    /// and <see cref="PoolSettingKeys.Model"/> (a host's music model). The ID and lane stay "singing": they are saved.</summary>
     public static readonly PoolArea Singing = new()
     {
-        Id = "singing", Title = "Song music", Page = "Companion › Singing", HostRole = "singing", Kinds = Local
+        Id = "singing", Title = "Song music", Page = "Companion › Singing", HostRole = "singing",
+        Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer, PoolMemberKind.Gpu, PoolMemberKind.Cloud]
     };
-    /// <summary>Singing's voice match (docs/SINGING.md): a computer or card that runs the <c>singing</c> role matches a song's
-    /// vocals to the voice Martlet speaks with. Member setting: <see cref="PoolSettingKeys.Model"/> (soulx or vevosing). Required:
-    /// with nothing on, songs keep the music model's own singer.</summary>
+    /// <summary>Singing's voice match (docs/SINGING.md): a computer or card that runs the <c>singing</c> role, or ElevenLabs' Voice
+    /// Changer, matches a song's vocals to the voice Martlet speaks with. Member setting: <see cref="PoolSettingKeys.Model"/>
+    /// (soulx or vevosing on a host). Required: with nothing on, songs keep the music model's own singer.</summary>
     public static readonly PoolArea VoiceMatch = new()
     {
-        Id = "voice-match", Title = "Voice match", Page = "Companion › Singing", HostRole = "singing", Kinds = Local, Required = true,
+        Id = "voice-match", Title = "Voice match", Page = "Companion › Singing", HostRole = "singing",
+        Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer, PoolMemberKind.Gpu, PoolMemberKind.Cloud], Required = true,
         Fallback = "Songs keep the music model's own singer"
     };
     /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.

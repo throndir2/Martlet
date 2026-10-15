@@ -124,7 +124,16 @@ public sealed class SongRelayWorker : ISongGatewayInferenceWorker, IAsyncDisposa
     {
         var start = payload.Start!;
         var body = new JsonObject { ["request_id"] = request.RequestId.ToString("D"), ["kind"] = start.Kind };
-        if (start.Kind != GatewaySongKinds.Match)
+        if (start.Kind == GatewaySongKinds.Separate)
+        {
+            body["lyrics"] = start.Lyrics;
+            body["language"] = start.Language;
+            body["input_frames"] = start.InputFrames;
+            body["input_channels"] = start.InputChannels;
+            if (start.Bpm is { } separateBpm) body["bpm"] = separateBpm;
+            if (start.Key is { } separateKey) body["key"] = separateKey;
+        }
+        else if (start.Kind != GatewaySongKinds.Match)
         {
             body["lyrics"] = start.Lyrics;
             body["style"] = start.Style;
@@ -134,8 +143,9 @@ public sealed class SongRelayWorker : ISongGatewayInferenceWorker, IAsyncDisposa
             if (start.Bpm is { } bpm) body["bpm"] = bpm;
             if (start.Key is { } key) body["key"] = key;
             if (start.Seed is { } seed) body["seed"] = seed;
+            if (start.Model is { } model) body["model"] = model;
         }
-        if (start.Kind != GatewaySongKinds.Music)
+        if (start.Kind is GatewaySongKinds.Song or GatewaySongKinds.Match)
         {
             body["voice_match"] = start.VoiceMatch;
             body["voice_id"] = start.VoiceId;

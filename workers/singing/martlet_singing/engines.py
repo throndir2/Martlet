@@ -1,12 +1,16 @@
 """The song engines the singing worker runs: the real pipeline (ACE-Step 1.5 -> Demucs vocals -> SoulX-Singer-SVC or
 VevoSing -> mix -> lyric and beat timing) and the deterministic FIXTURE - NOT AI tone engine for plumbing checks.
 
-A job has one of three kinds:
-  song   the whole pipeline: writes mix.pcm (48 kHz stereo), vocals.pcm (48 kHz mono, the matched voice) and backing.pcm
-         (48 kHz stereo).
-  music  the music only (ACE-Step, Demucs, beat and lyric timing): mix.pcm, vocals.pcm (the separated vocals, mono) and
-         backing.pcm. The client then sends the vocals to a match job, maybe on another computer.
-  match  the voice match only: reads input.pcm (48 kHz mono signed 16-bit) and writes vocals.pcm, the same length.
+A job has one of four kinds:
+  song     the whole pipeline: writes mix.pcm (48 kHz stereo), vocals.pcm (48 kHz mono, the matched voice) and backing.pcm
+           (48 kHz stereo).
+  music    the music only (ACE-Step, Demucs, beat and lyric timing): mix.pcm, vocals.pcm (the separated vocals, mono) and
+           backing.pcm. The client then sends the vocals to a match job, maybe on another computer.
+  match    the voice match only: reads input.pcm (48 kHz mono signed 16-bit) and writes vocals.pcm, the same length.
+  separate a song made elsewhere: reads input.pcm (48 kHz signed 16-bit, input_channels 1 or 2), separates it with Demucs
+           and times it like a music job (from its vocals' phrases): mix.pcm, vocals.pcm and backing.pcm, the same length.
+Song and music jobs make their music with the "model" they ask for: ace-step-v15 (turbo, or SFT for high quality) or
+ace-step-v15-xl (ACE-Step 1.5 XL SFT, 50 steps).
 Tracks are signed 16-bit little-endian PCM in the job directory; the engine returns the job's metadata. Stages run one at
 a time and each releases the graphics card's memory it used before the next starts.
 """
@@ -32,6 +36,22 @@ FIXTURE_STAGE_SECONDS = float(os.environ.get("MARTLET_SINGING_FIXTURE_STAGE_SECO
 # The voice match's own figures reported in the result's engine.match.
 MATCH_KEYS = ("shift_semitones", "singer_hz", "voice_hz", "load_seconds", "pitch_seconds", "convert_seconds",
               "process_seconds", "peak_vram_mib", "transformers", "warm")
+XL = "ace-step-v15-xl"
+# What a music model needs on the graphics card to stay there for a song (MiB): its weights in full precision (bf16) and
+# with int8 weights, and the room beside them for the text encoder, the decoder and their work (an int8 2B song peaked at
+# 6-7.2 GB with the model on the card). The XL figures are the 2B ones scaled, not measured: XL has 4.99 billion
+# parameters against 2.39 billion (about 2.1 times the weights), and its transformer is 1.25 times as wide (hidden size
+# 2560 against 2048), so its activations take about 1.25 times the room; the text encoder and decoder are the same.
+DIT_CARD_MIB = {"ace-step-v15": {"full": 5_000, "int8": 2_700, "work": 4_500},
+                XL: {"full": 10_400, "int8": 5_600, "work": 5_600}}
+# Below this much free card memory (GB) the music model loads with int8 weights: in full precision a 2B song peaked at
+# 9.6-10.7 GB, int8 at about 5 GB; XL needs about twice that.
+INT8_BELOW_GB = {"ace-step-v15": 11.0, XL: 22.0}
+
+
+def music_model(job: dict[str, Any]) -> str:
+    """The music model a song or music job asked for (ace-step-v15 when it named none)."""
+    return job.get("model") or pins.MUSIC_MODELS[0]
 
 
 class SongError(Exception):
@@ -81,6 +101,11 @@ class FixtureEngine:
             started = time.perf_counter()
             meta = self.match(job, directory)
             timer.add("mixing", started)
+        elif kind == "separate":
+            self._stages(("separating", "mixing", "aligning"), timer, report, canceled)
+            started = time.perf_counter()
+            meta = self.separate(job, directory)
+            timer.add("aligning", started)
         else:
             stages = ("writing_music", "separating", "mixing", "aligning") if kind == "music" else (
                 "writing_music", "separating", "matching_voice", "mixing", "aligning")
@@ -88,6 +113,7 @@ class FixtureEngine:
             started = time.perf_counter()
             meta = self.compose(job, directory)
             timer.add("aligning", started)
+            meta["engine"]["model"] = music_model(job)
             if kind == "music":
                 meta["engine"].update(converter=None, voice_match=None)
         meta["timings"] = timer.as_list()
@@ -126,6 +152,60 @@ class FixtureEngine:
             "engine": {"generator": None, "separator": None, "converter": "FIXTURE - NOT AI", "quality": None,
                        "voice_match": job["voice_match"], "fixture": True},
             "frames": frames,
+        }
+
+    @staticmethod
+    def separate(job: dict[str, Any], directory: Path) -> dict[str, Any]:
+        """FIXTURE - NOT AI "separation" of an uploaded song: the vocals are the input's mono mean at half its level, the
+        backing is the input minus the vocals (each channel) and the mix is the input (mono doubled to stereo). The lines
+        spread evenly over the song's first 90 %, the words evenly within each line, the beats on a straight grid at the
+        job's tempo (or 120)."""
+        rate = audio.OUTPUT_RATE
+        frames = int(job["input_frames"])
+        channels = int(job.get("input_channels") or 1)
+        source = array.array("h")
+        source.frombytes((directory / "input.pcm").read_bytes()[: frames * channels * 2])
+        if sys.byteorder != "little":
+            source.byteswap()
+        if len(source) < frames * channels:
+            source.extend(array.array("h", bytes(2 * (frames * channels - len(source)))))
+        left, right = source[0::channels], source[channels - 1::channels]
+        vocals = array.array("h", (round((a + b) / 4) for a, b in zip(left, right)))
+        mix = array.array("h", bytes(frames * 4))
+        backing = array.array("h", bytes(frames * 4))
+        mix[0::2], mix[1::2] = left, right
+        backing[0::2] = array.array("h", (max(-32768, min(32767, a - v)) for a, v in zip(left, vocals)))
+        backing[1::2] = array.array("h", (max(-32768, min(32767, b - v)) for b, v in zip(right, vocals)))
+        for name, samples in (("mix", mix), ("vocals", vocals), ("backing", backing)):
+            if sys.byteorder != "little":
+                samples.byteswap()
+            (directory / f"{name}.pcm").write_bytes(samples.tobytes())
+
+        duration = frames / rate
+        lines = audio.lyric_lines(job["lyrics"]) or [("", job["lyrics"].strip())]
+        each = duration * 0.9 / len(lines)
+        lyric = []
+        words = []
+        for number, (section, text) in enumerate(lines):
+            start = number * each
+            end = start + each * 0.9
+            lyric.append({"start": round(start, 6), "end": round(end, 6), "text": text, "section": section})
+            parts = text.split()
+            share = (end - start) / len(parts)
+            for n, part in enumerate(parts):
+                words.append({"start": round(start + n * share, 6), "end": round(start + (n + 0.9) * share, 6),
+                              "text": part, "line": number})
+        bpm = int(job.get("bpm") or 120)
+        beat = 60.0 / bpm
+        beats = [round(b * beat, 6) for b in range(int(duration / beat) + 1) if b * beat < duration]
+        return {
+            "engine": {"generator": None, "separator": "FIXTURE - NOT AI", "converter": None, "quality": None,
+                       "voice_match": None, "model": None, "fixture": True},
+            "frames": frames, "seed": None, "bpm": bpm, "planned_bpm": job.get("bpm"), "key": job.get("key"),
+            "beats_per_bar": 4, "beats": beats, "downbeats": beats[::4], "lyrics": lyric, "words": words,
+            "word_timing_source": "fixture", "lyric_timing_source": "fixture", "peak_vram_mib": 0,
+            "word_timing": {"words": len(words), "onsets": 0, "median_onset_offset_ms_raw": None,
+                            "median_onset_offset_ms": None},
         }
 
     @staticmethod
@@ -214,13 +294,15 @@ def _sample(value: float) -> int:
 class SongEngine:
     """ACE-Step 1.5 writes the song; Demucs (htdemucs_ft's vocals model) separates the vocals; SoulX-Singer-SVC (or
     VevoSing) matches them to the voice's recording; the matched vocals go back over the backing. A music job stops after
-    the separation (and timing); a match job only matches uploaded vocals. Models load on first use, stay in system memory
-    between songs and use the graphics card only during their stage."""
+    the separation (and timing); a match job only matches uploaded vocals; a separate job only separates and times an
+    uploaded song. Models load on first use, stay in system memory between songs and use the graphics card only during
+    their stage."""
 
-    def __init__(self, models: Path, device: str, voice_matches: list[str]) -> None:
+    def __init__(self, models: Path, device: str, voice_matches: list[str], music_models: list[str] | None = None) -> None:
         self.models = models
         self.device = device
         self.voice_matches = voice_matches
+        self.music_models = music_models or [pins.MUSIC_MODELS[0]]
         self.ace: dict[str, Any] = {}
         self.demucs: Any = None
         self.matcher: _Matcher | None = None
@@ -279,6 +361,8 @@ class SongEngine:
             return self._run_music(job, directory, report, canceled)
         if kind == "match":
             return self._run_match(job, directory, report, canceled)
+        if kind == "separate":
+            return self._run_separate(job, directory, report, canceled)
         return self._run_song(job, directory, report, canceled)
 
     def _run_song(self, job: dict[str, Any], directory: Path, report: Report, canceled: Canceled) -> dict[str, Any]:
@@ -338,10 +422,7 @@ class SongEngine:
         frames = int(job["input_frames"])
         original = _fit(np.frombuffer((directory / "input.pcm").read_bytes(), dtype="<i2").astype(np.float32) / 32768.0,
                         frames)
-        # A music model left warm on the card by an earlier music job makes room for the voice match as after the music.
-        if self.dit_resident and any(k.startswith("dit:") for k in self.ace) and _card_free_mib() < 3_072:
-            self._park_or_release()
-        self._free()
+        self._make_room_for_input()
         _check(canceled)
         vm = job["voice_match"]
         converted48, matched = self._matching(original[None, :], reference, reference_rate, vm, directory, timer, report,
@@ -360,6 +441,46 @@ class SongEngine:
             "frames": frames, "timings": timer.as_list(), "peak_vram_mib": self._peak_vram(matched),
             "vocal_bleed_db": bleed_db,
         }
+
+    def _run_separate(self, job: dict[str, Any], directory: Path, report: Report, canceled: Canceled) -> dict[str, Any]:
+        """A song made elsewhere (input.pcm, 48 kHz, input_channels 1 or 2; mono is doubled to stereo) separated into its
+        vocals (mono) and backing, with the beat grid (at the job's tempo when it names one) and the lyric and word times
+        from the vocals' phrases, as a music job without ACE-Step's own timestamps. Every track is as long as the input."""
+        import numpy as np
+
+        timer = self._begin()
+        frames = int(job["input_frames"])
+        channels = int(job.get("input_channels") or 1)
+        samples = _fit(np.frombuffer((directory / "input.pcm").read_bytes(), dtype="<i2").astype(np.float32) / 32768.0,
+                       frames * channels)
+        mix48 = np.ascontiguousarray(samples.reshape(frames, channels).T)
+        if channels == 1:
+            mix48 = np.repeat(mix48, 2, axis=0)
+        self._make_room_for_input()
+        _check(canceled)
+        vocals48, backing48 = self._separation(mix48, timer, report, canceled, 0.05)
+
+        report("mixing", 0.85)
+        started = time.perf_counter()
+        # One shared scale keeps backing + vocals equal to the mix.
+        mix48, vocals, backing48 = _peak_limit([mix48, vocals48.mean(axis=0), backing48])
+        _write_pcm(directory / "mix.pcm", mix48)
+        _write_pcm(directory / "vocals.pcm", vocals[None, :])
+        _write_pcm(directory / "backing.pcm", backing48)
+        timer.add("mixing", started)
+
+        alignment = self._align(job, {}, "", [], backing48, vocals, timer, report)
+        engine = {"generator": None, "separator": pins.SEPARATOR_ID, "converter": None, "quality": None,
+                  "voice_match": None, "model": None, "fixture": False}
+        return {"engine": engine, "frames": frames, "seed": None, **alignment, "timings": timer.as_list(),
+                "peak_vram_mib": self._peak_vram()}
+
+    def _make_room_for_input(self) -> None:
+        """A music model left warm on the card by an earlier music job makes room for a match or separate job's work as
+        after the music."""
+        if self.dit_resident and any(k.startswith("dit:") for k in self.ace) and _card_free_mib() < 3_072:
+            self._park_or_release()
+        self._free()
 
     # ---- shared steps
 
@@ -391,15 +512,17 @@ class SongEngine:
         return seed, mix48, plan, lrc_raw, sentences, resident
 
     def _park_or_release(self) -> None:
-        """Moves the music model to system memory when there is plenty, or releases it (and the worker ends after this job)."""
-        if self._keep(8.0):
+        """Moves the music model to system memory when there is plenty, or releases it (and the worker ends after this job).
+        XL's weights are about twice the 2B model's (bf16: about 9.5 GB against 4.8 GB), so parking it needs 5 GB more."""
+        xl = f"dit:{pins.ACE_XL_SFT}" in self.ace
+        if self._keep(13.0 if xl else 8.0):
             self._park_ace()
         else:
             self.ace.clear()
             self.exit_after_song = True
 
-    def _separation(self, mix48, timer: Timer, report: Report, canceled: Canceled):
-        report("separating", 0.45)
+    def _separation(self, mix48, timer: Timer, report: Report, canceled: Canceled, fraction: float = 0.45):
+        report("separating", fraction)
         started = time.perf_counter()
         vocals48, backing48 = self._separate(mix48)
         if not self._keep():
@@ -450,8 +573,11 @@ class SongEngine:
     def _music_engine(self, job: dict[str, Any], resident: bool) -> dict[str, Any]:
         """The result's engine block for a job that wrote music (no voice match: a song fills those in)."""
         plans = self._plans(job)
-        return {"generator": pins.GENERATOR_IDS[job["quality"]], "separator": pins.SEPARATOR_ID, "converter": None,
-                "quality": job["quality"], "voice_match": None, "fixture": False,
+        model = music_model(job)
+        xl = model == XL
+        return {"generator": pins.XL_GENERATOR_ID if xl else pins.GENERATOR_IDS[job["quality"]],
+                "separator": pins.SEPARATOR_ID, "converter": None, "quality": "high_quality" if xl else job["quality"],
+                "voice_match": None, "model": model, "fixture": False,
                 "planner": "lm" if plans else "none", "lm_backend": self.lm_backend if plans else None,
                 "dit_resident": resident, "dit_warm_after": bool(self.ace) and self.dit_resident,
                 "quantization": self.quantized}
@@ -465,10 +591,9 @@ class SongEngine:
 
     # ---- stage 1: ACE-Step
 
-    def _dit_fits(self, dit: Any) -> bool:
+    def _dit_fits(self, dit: Any, model: str) -> bool:
         """Whether the music model can stay on the card for this song: it already is, or the card (nvidia-smi: every
-        process) has room for it plus about 4.5 GB for the text encoder, the decoder and their work (an int8 song peaked at
-        6-7.2 GB with the model staying on the card)."""
+        process) has room for its weights plus the room for the text encoder, the decoder and their work (DIT_CARD_MIB)."""
         try:
             on_card = next(dit.model.parameters()).device.type == "cuda"
         except (AttributeError, StopIteration):
@@ -477,7 +602,8 @@ class SongEngine:
             self.dit_resident = True
             return True
         card = card_memory()
-        needed_mib = (2_700 if self.quantized else 5_000) + 4_500
+        need = DIT_CARD_MIB[model]
+        needed_mib = (need["int8"] if self.quantized else need["full"]) + need["work"]
         self.dit_resident = card is not None and card["total_mib"] - card["used_mib"] >= needed_mib
         return self.dit_resident
 
@@ -494,10 +620,10 @@ class SongEngine:
                     pass
         self.dit_resident = False
 
-    def _quantization(self) -> str | None:
-        """int8 weights for the music model (about half its 4.8 GB) when the graphics card has less than 11 GB free (in full
-        precision a song peaked at 9.6-10.7 GB, int8 at about 5 GB), as on a card the speaking and listening roles share;
-        full precision otherwise. MARTLET_SINGING_QUANTIZATION overrides
+    def _quantization(self, model: str) -> str | None:
+        """int8 weights for the music model (about half its weights: 4.8 GB in bf16 for the 2B model, about 9.5 GB for XL)
+        when the graphics card has less free than INT8_BELOW_GB (11 GB for the 2B model, 22 GB for XL), as on a card the
+        speaking and listening roles share; full precision otherwise. MARTLET_SINGING_QUANTIZATION overrides
         (none, int8_weight_only)."""
         choice = os.environ.get("MARTLET_SINGING_QUANTIZATION", "auto")
         if choice != "auto":
@@ -511,11 +637,10 @@ class SongEngine:
         card = card_memory()
         if card:
             free = min(free, (card["total_mib"] - card["used_mib"]) / 1024)
-        self.quantized = "int8_weight_only" if free < 11.0 else None
+        self.quantized = "int8_weight_only" if free < INT8_BELOW_GB[model] else None
         return self.quantized
 
-    def _ace_handlers(self, quality: str, plans: bool, timer: Timer, report: Report) -> tuple[Any, Any]:
-        config = pins.ACE_SFT if quality == "high_quality" else pins.ACE_TURBO
+    def _ace_handlers(self, model: str, config: str, plans: bool, timer: Timer, report: Report) -> tuple[Any, Any]:
         key = f"dit:{config}"
         if key not in self.ace or (plans and "lm" not in self.ace):
             report("loading", 0.02)
@@ -531,7 +656,7 @@ class SongEngine:
                 dit = AceStepHandler()
                 status, ok = dit.initialize_service(project_root=str(self.models / "ace-step-project"), config_path=config,
                                                     device=self.device, offload_to_cpu=True, offload_dit_to_cpu=True,
-                                                    quantization=self._quantization())
+                                                    quantization=self._quantization(model))
                 if not ok:
                     raise SongError("song.failed", f"The music model could not load: {status}"[:300])
                 self.ace[key] = dit
@@ -553,15 +678,21 @@ class SongEngine:
         import torch
 
         plans = self._plans(job)
-        dit, llm = self._ace_handlers(job["quality"], plans, timer, report)
+        model = music_model(job)
+        if model not in self.music_models:
+            raise SongError("singing.model_unavailable", "ACE-Step 1.5 XL is not set up on this computer.")
+        # XL has only its SFT model here: always 50 steps, whatever the quality.
+        xl = model == XL
+        config = pins.ACE_XL_SFT if xl else pins.ACE_SFT if job["quality"] == "high_quality" else pins.ACE_TURBO
+        dit, llm = self._ace_handlers(model, config, plans, timer, report)
         from acestep.inference import GenerationConfig, GenerationParams, generate_music
 
         started = time.perf_counter()
         report("writing_music", 0.05)
         # The music model stays on the card from the music through the lyric timestamps when the card has room, instead of
         # moving there and back for each (which costs more than the work itself where system memory is short).
-        dit.offload_dit_to_cpu = not self._dit_fits(dit)
-        steps = 50 if job["quality"] == "high_quality" else 8
+        dit.offload_dit_to_cpu = not self._dit_fits(dit, model)
+        steps = 50 if xl or job["quality"] == "high_quality" else 8
         params = GenerationParams(caption=job["style"], lyrics=job["lyrics"], duration=float(job["duration_seconds"]),
                                   vocal_language=job["language"], seed=seed, thinking=plans, use_cot_metas=plans,
                                   use_cot_caption=plans, use_cot_language=plans,
@@ -941,8 +1072,9 @@ def _amphion_path() -> None:
 
 
 def _prepare_ace(models: Path) -> None:
-    """ACE-Step reads its checkpoints from ACESTEP_CHECKPOINTS_DIR; the role provisions the turbo and SFT models, the VAE,
-    the text encoder and the 0.6B planner there. Its 1.7B planner is not used, and nothing may be downloaded at run time."""
+    """ACE-Step reads its checkpoints from ACESTEP_CHECKPOINTS_DIR; the role provisions the turbo and SFT models (and the
+    XL SFT model when chosen), the VAE, the text encoder and the 0.6B planner there. Its 1.7B planner is not used, and
+    nothing may be downloaded at run time."""
     os.environ["ACESTEP_CHECKPOINTS_DIR"] = str(models / "ace-step")
     os.environ["ACESTEP_PROJECT_ROOT"] = str(models / "ace-step-project")
     (models / "ace-step-project").mkdir(parents=True, exist_ok=True)

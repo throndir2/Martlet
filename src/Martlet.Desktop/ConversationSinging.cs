@@ -55,8 +55,8 @@ internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
         var pool = SongClient.Members(dataDirectory);
         return (new SongSetup(SongClient.For(dataDirectory), voice,
             Fixture ? "this PC (FIXTURE - NOT AI)"
-            : pool.Count > 1 ? $"the first free one of {string.Join(", ", pool.Select(m => m.Host.HostId).Distinct())}"
-            : pool.FirstOrDefault().Host?.HostId ?? SingingPreferences.Load(dataDirectory).Host ?? "the singing computer"), null);
+            : pool.Count > 1 ? $"the first free one of {string.Join(", ", pool.Select(m => m.Host?.HostId ?? SingingCloud.Describe(m.Member, Martlet.Core.Cluster.PoolAreas.Singing)).Distinct())}"
+            : pool.FirstOrDefault() is { Member: not null } first ? first.Host?.HostId ?? SingingCloud.Describe(first.Member, Martlet.Core.Cluster.PoolAreas.Singing) : SingingPreferences.Load(dataDirectory).Host ?? "the singing computer"), null);
     }
 
     public override string ToString() => nameof(DesktopSongSource);

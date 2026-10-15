@@ -659,7 +659,8 @@ internal static class GatewayInferenceJson
             }
             case "input":
             {
-                // One page of the vocals a voice match job converts: 48 kHz mono signed 16-bit PCM, in order.
+                // One page of what a voice match job converts (48 kHz mono vocals) or a separate job separates (48 kHz mono or
+                // stereo, interleaved): signed 16-bit PCM, in order; the host checks the page against the job's channels.
                 var fields = Object(element, ["operation", "job_id", "offset_frames", "pcm_base64"], []);
                 var offset = Integer(fields, "offset_frames", 0, GatewayInferenceRoute.SongMaximumFrames - 1);
                 var encoded = Text(fields, "pcm_base64", ((GatewayInferenceRoute.SongMaximumInputPageBytes + 2) / 3) * 4);
@@ -685,7 +686,21 @@ internal static class GatewayInferenceJson
         {
             GatewayRules.Require(kindElement.ValueKind == JsonValueKind.String, "request.invalid");
             kind = kindElement.GetString()!;
-            GatewayRules.Require(kind is GatewaySongKinds.Song or GatewaySongKinds.Music or GatewaySongKinds.Match, "request.invalid");
+            GatewayRules.Require(kind is GatewaySongKinds.Song or GatewaySongKinds.Music or GatewaySongKinds.Match or GatewaySongKinds.Separate,
+                "request.invalid");
+        }
+        if (kind == GatewaySongKinds.Separate)
+        {
+            // A song made elsewhere (a cloud provider): its mix follows in input pages, to be separated and timed here.
+            var separate = Object(element, ["operation", "kind", "lyrics", "language", "input_frames", "input_channels"], ["bpm", "key"]);
+            var separateLyrics = Text(separate, "lyrics", Martlet.Core.Singing.SongRequest.MaximumLyricsCharacters, allowNewLines: true);
+            var separateLanguage = Text(separate, "language", 2);
+            GatewayRules.Require(separateLanguage.All(char.IsAsciiLetterLower), "request.invalid");
+            var separateFrames = Integer(separate, "input_frames", 1, GatewayInferenceRoute.SongMaximumFrames);
+            var channels = checked((int)Integer(separate, "input_channels", 1, 2));
+            var (separateBpm, separateKey) = Tempo(separate);
+            return new(GatewaySongOperation.Start, start: new GatewaySongStart(kind, separateLyrics, null, 0, separateLanguage, separateBpm,
+                separateKey, null, null, null, null, null, separateFrames) { InputChannels = channels });
         }
         if (kind == GatewaySongKinds.Match)
         {
@@ -699,10 +714,16 @@ internal static class GatewayInferenceJson
         }
 
         var start = kind == GatewaySongKinds.Music
-            ? Object(element, ["operation", "kind", "lyrics", "style", "duration_seconds", "language", "quality"], ["bpm", "key", "seed"])
+            ? Object(element, ["operation", "kind", "lyrics", "style", "duration_seconds", "language", "quality"], ["bpm", "key", "seed", "model"])
             : Object(element,
                 ["operation", "lyrics", "style", "duration_seconds", "language", "quality", "voice_match", "voice_id"],
-                ["kind", "bpm", "key", "seed", "reference_audio_base64"]);
+                ["kind", "bpm", "key", "seed", "reference_audio_base64", "model"]);
+        string? model = null;
+        if (start.ContainsKey("model"))
+        {
+            model = Text(start, "model", 32);
+            GatewayRules.Require(model is GatewaySongModels.Standard or GatewaySongModels.Xl, "request.invalid");
+        }
         var lyrics = Text(start, "lyrics", Martlet.Core.Singing.SongRequest.MaximumLyricsCharacters, allowNewLines: true);
         var style = Text(start, "style", Martlet.Core.Singing.SongRequest.MaximumStyleCharacters);
         var duration = checked((int)Integer(start, "duration_seconds", Martlet.Core.Singing.SongRequest.MinimumDurationSeconds,
@@ -711,25 +732,34 @@ internal static class GatewayInferenceJson
         GatewayRules.Require(language.Length == 2 && language.All(char.IsAsciiLetterLower), "request.invalid");
         var quality = Text(start, "quality", 16);
         GatewayRules.Require(quality is "fast" or "high_quality", "request.invalid");
-        int? bpm = start.ContainsKey("bpm")
-            ? checked((int)Integer(start, "bpm", Martlet.Core.Singing.SongRequest.MinimumBpm, Martlet.Core.Singing.SongRequest.MaximumBpm))
-            : null;
-        string? key = null;
-        if (start.ContainsKey("key"))
-        {
-            key = Text(start, "key", 16);
-            GatewayRules.Require(key.All(c => char.IsAsciiLetterOrDigit(c) || c is ' ' or '#' or '♯' or '♭'), "request.invalid");
-        }
+        var (bpm, key) = Tempo(start);
         long? seed = start.ContainsKey("seed") ? Integer(start, "seed", 0, uint.MaxValue) : null;
         if (kind == GatewaySongKinds.Music)
             return new(GatewaySongOperation.Start,
-                start: new GatewaySongStart(kind, lyrics, style, duration, language, bpm, key, seed, quality, null, null, null));
+                start: new GatewaySongStart(kind, lyrics, style, duration, language, bpm, key, seed, quality, null, null, null) { Model = model });
 
         var (voiceMatch, voiceId) = VoiceChoice(start);
         var (audioSha256, audio) = Reference(start, voiceId);
         return new(GatewaySongOperation.Start,
-            start: new GatewaySongStart(kind, lyrics, style, duration, language, bpm, key, seed, quality, voiceMatch, voiceId, audioSha256),
+            start: new GatewaySongStart(kind, lyrics, style, duration, language, bpm, key, seed, quality, voiceMatch, voiceId, audioSha256)
+            {
+                Model = model
+            },
             referenceAudio: audio);
+
+        static (int? Bpm, string? Key) Tempo(IReadOnlyDictionary<string, JsonElement> fields)
+        {
+            int? bpm = fields.ContainsKey("bpm")
+                ? checked((int)Integer(fields, "bpm", Martlet.Core.Singing.SongRequest.MinimumBpm, Martlet.Core.Singing.SongRequest.MaximumBpm))
+                : null;
+            string? key = null;
+            if (fields.ContainsKey("key"))
+            {
+                key = Text(fields, "key", 16);
+                GatewayRules.Require(key.All(c => char.IsAsciiLetterOrDigit(c) || c is ' ' or '#' or '♯' or '♭'), "request.invalid");
+            }
+            return (bpm, key);
+        }
 
         static (string VoiceMatch, string VoiceId) VoiceChoice(IReadOnlyDictionary<string, JsonElement> fields)
         {
