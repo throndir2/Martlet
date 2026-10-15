@@ -137,6 +137,36 @@ public static class CreationStore
         Changed?.Invoke(dataDirectory);
     }
 
+    /// <summary>Gives a live creation of a registered kind a new summary, text and assets on every computer (the assets are kept
+    /// here and the next sync shares them; the old ones no creation uses are deleted). Returns the revised creation, or null
+    /// when it is gone. Throws <see cref="ContractException"/> when the kind isn't registered or the assets break its rules.</summary>
+    public static async Task<Creation?> ReviseAsync(string dataDirectory, string id, string? summary, string? text,
+        IReadOnlyList<CreationDraftAsset> assets, CreationRegistry registry, string by, DateTimeOffset now, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(assets);
+        ArgumentNullException.ThrowIfNull(registry);
+        await Gate.WaitAsync(token);
+        Creation? revised;
+        try
+        {
+            var library = View(dataDirectory);
+            if (library.Find(id) is not { Removed: false } creation) return null;
+            var kind = registry.Find(creation.Kind);
+            ContractRules.Require(kind is not null, $"Martlet doesn't know how to keep a {creation.Kind}.");
+            kind!.Check([.. assets.Select(a => (a.Name, a.MediaType, (long)a.Bytes.Length))]);
+            var entries = assets.Select(a => CreationLibrary.Asset(a.Name, a.MediaType, a.Bytes.Span)).ToArray();
+            library = library.Revise(id, summary, text, entries, by, now);
+            foreach (var (asset, draftAsset) in entries.Zip(assets))
+                await PlaceAsync(dataDirectory, asset.Sha256, draftAsset.Bytes, token);
+            library = Commit(dataDirectory, library);
+            DeleteUnused(dataDirectory, library);
+            revised = library.Find(id);
+        }
+        finally { Gate.Release(); }
+        Changed?.Invoke(dataDirectory);
+        return revised;
+    }
+
     /// <summary>Whether this computer holds every asset of <paramref name="creation"/> (by length; the contents were checked
     /// when each was placed).</summary>
     public static bool IsComplete(string dataDirectory, Creation creation) =>

@@ -405,7 +405,8 @@ internal sealed partial class ThinkingPoolPageModel
                 : thinking.StartsWith("On. ", StringComparison.Ordinal) ? thinking[4..] : thinking;
             return ("On, but Martlet can't look things up yet: " + char.ToLowerInvariant(why[0]) + why[1..], true);
         }
-        return ($"On. When you ask, Martlet researches it in the background (up to {WebResearch.Budget.Searches} searches and " +
-            $"{WebResearch.Budget.Pages} pages, no time limit), then offers the report.", false);
+        return ($"On. Martlet checks a fact it doesn't know with a quick look-up (up to {WebResearch.QuickBudget.Pages} pages), and " +
+            $"researches what you ask it to in the background (up to {WebResearch.Budget.Searches} searches and {WebResearch.Budget.Pages} " +
+            "pages, more for in-depth research, no time limit), then offers the report.", false);
     }
 }

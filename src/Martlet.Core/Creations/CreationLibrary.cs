@@ -225,6 +225,20 @@ public sealed record CreationLibrary
         ? Put(new Creation { Id = creation.Id, Removed = true, Revision = NextRevision(now), UpdatedAt = now.ToUniversalTime(), UpdatedBy = by })
         : this;
 
+    /// <summary>Gives a live creation a new summary, text and assets (a research report after Martlet checked its sources); its
+    /// ID, kind, title, author and creation time stay. Every computer gets the new version (the newest revision wins).</summary>
+    public CreationLibrary Revise(string id, string? summary, string? text, IReadOnlyList<CreationAsset> assets, string by, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(assets);
+        if (Find(id) is not { Removed: false } creation) return this;
+        var revised = creation with
+        {
+            Summary = summary, Text = text, Assets = assets, Revision = NextRevision(now), UpdatedAt = now.ToUniversalTime(), UpdatedBy = by
+        };
+        Validate(revised);
+        return Put(revised);
+    }
+
     private CreationLibrary Put(Creation creation) => this with { Creations = Bounded(Creations.Where(c => c.Id != creation.Id).Append(creation)) };
 
     /// <summary>Joins two copies: per creation, the entry with the newest (revision, writer, content) wins.</summary>

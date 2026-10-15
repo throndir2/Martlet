@@ -299,6 +299,26 @@ singing host. `deploy\host\roles\singing\role.conf` has the matching choices and
 
 **Docs:** [Singing](SINGING.md#other-music-and-voice-match-options).
 
+## How much Martlet looks a question up (answer, look up or research)
+
+**What it decides:** when a reply answers from what Martlet knows, searches a guide or report, does a quick look-up, or
+starts full or deep research; each depth's budget and job kind; when the answer counts as found early; and how a
+report's sources are checked after it is ready.
+
+**Owner:** the *Web research* prompt (`PromptCatalog.DefaultWebResearchInstructions`,
+`src\Martlet.Core\Settings\PromptCatalog.Texts.cs`) for when to use each level; `WebResearch` (`Depth`, `BudgetFor`,
+`KindFor`, `LookupKind`, `FindingKind`, `src\Martlet.Conversation\Research\WebResearch.cs`) for the depths, budgets and
+jobs; `ResearchWatcher` (`src\Martlet.Conversation\Research\ResearchWatcher.cs`) for what counts as found;
+`SourceCheck` (`src\Martlet.Conversation\Research\SourceCheck.cs`) for the source check. The desktop's
+`LiveConversationController.Research.cs` only places the jobs on the Thinking pool and keeps the report.
+
+**Tests:** `WebResearchTests` (Martlet.Conversation.Tests); `CreationsTests` (Martlet.Core.Tests) for revising a report.
+
+**MCP:** `research_check` (`levels`, `flow.run.foundEarly`).
+
+**Docs:** [Answer, look up or research](CONVERSATION.md#answer-look-up-or-research),
+[Deep research](DEEP_RESEARCH.md#levels-the-watcher-and-the-source-check).
+
 ## What MCP may click and read, and where each tool is
 
 **What it decides:** which controls the MCP `ui_*` tools may click, and which

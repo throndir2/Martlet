@@ -78,6 +78,16 @@ Companion › Singing ([Singing](SINGING.md#the-two-singing-pools)).
 One Thinking pool job kind, `Digest` (key `digest`, label *Screen and sound
 summaries*), covers both.
 
+## Looking things up on the web
+
+| Concept | Code name | UI name | Kept names |
+| --- | --- | --- | --- |
+| How much looking up a question needs | `ResearchDepth` (`Quick`, `Full`, `Deep`) | quick look-up, research, in-depth research | Tool parameter `depth` (`quick`, `full`, `deep`) |
+| One fact looked up fast, the answer told at once | quick look-up (`WebResearch.LookupKind`) | quick look-up (*Looking up* in the talk window) | Background job kind `lookup` (lookup-1); Thinking pool job key `research` |
+| Searching and reading many pages for a report | research (`WebResearch.Kind`, `WebResearchRun`) | web research (*Researching*) | Background job kind `research` (research-1); Thinking pool job key `research` |
+| What sees the answer in the steps and tells the user early | watcher (`ResearchWatcher`, `ResearchFinding`) | (none; the user hears *I found out that ...*) | Step field `FOUND`; notice kind `finding` (finding-1); prompt keys `research_found`, `research_found_notes` |
+| The check of a report's cited sentences against their pages, after the report is ready | source check (`SourceCheck`) | *Source check* section of the report | Background job kind `sourcecheck` (sourcecheck-1); prompt key `research_source_check` |
+
 ## Thinking pool job keys
 
 A Thinking pool job has a kind (`ThinkingJobKind`). Its key is in kebab-case.

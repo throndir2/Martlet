@@ -127,6 +127,51 @@ public sealed class CreationsTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public async Task ARevisedCreationReachesTheOtherComputerAndItsOldAssetsGo()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "martlet-creations-test-" + Guid.NewGuid().ToString("N"));
+        var a = Path.Combine(root, "a");
+        var b = Path.Combine(root, "b");
+        try
+        {
+            var registry = new CreationRegistry();
+            registry.Register(FixtureCreations.Kind);
+            var made = await CreationStore.AddAsync(a, FixtureCreations.Draft(Author, "Tone", 1.0), registry, Now, CancellationToken.None);
+            Task<byte[]?> From(string sha256, CancellationToken token) => CreationStore.ReadChunkAsync(a, CreationStore.View(a), sha256, token);
+            CreationStore.Commit(b, CreationStore.View(a));
+            await CreationStore.ReconcileAsync(b, From, CancellationToken.None);
+
+            var shorter = FixtureCreations.Draft(Author, "Tone", 0.5, frequencyHz: 660);
+            var revised = await CreationStore.ReviseAsync(a, made.Id, "Checked", "New text", shorter.Assets, registry, "desktop-a",
+                Now.AddMinutes(1), CancellationToken.None);
+            Assert.NotNull(revised);
+            Assert.True(revised.Revision > made.Revision);
+            Assert.Equal((made.Title, made.CreatedAt, "Checked", "New text"), (revised.Title, revised.CreatedAt, revised.Summary, revised.Text));
+            Assert.True(CreationStore.IsComplete(a, revised));
+            var old = made.Assets!.Select(x => x.Sha256).Except(revised.Assets!.Select(x => x.Sha256)).ToArray();
+            Assert.NotEmpty(old);
+            Assert.All(old, sha256 => Assert.False(File.Exists(CreationStore.AssetPath(a, sha256))));
+
+            // The other computer gets the new version (the newest revision wins, whichever copy merges first).
+            CreationStore.Commit(b, CreationStore.View(a));
+            await CreationStore.ReconcileAsync(b, From, CancellationToken.None);
+            var there = CreationStore.View(b).Find(made.Id)!;
+            Assert.Equal(("Checked", revised.Revision), (there.Summary, there.Revision));
+            Assert.True(CreationStore.IsComplete(b, there));
+            Assert.Equal("Checked", CreationLibrary.Merge(CreationStore.View(b), CreationLibrary.Empty.Add(made, Now)).Find(made.Id)!.Summary);
+
+            // A creation that is gone isn't brought back, and an asset its kind refuses is refused.
+            await CreationStore.RemoveAsync(a, made.Id, "desktop-a", Now.AddMinutes(2), CancellationToken.None);
+            Assert.Null(await CreationStore.ReviseAsync(a, made.Id, "Again", null, shorter.Assets, registry, "desktop-a", Now.AddMinutes(3),
+                CancellationToken.None));
+            var kept = await CreationStore.AddAsync(a, FixtureCreations.Draft(Author, "Tone two", 0.5), registry, Now.AddMinutes(4), CancellationToken.None);
+            await Assert.ThrowsAsync<ContractException>(() => CreationStore.ReviseAsync(a, kept.Id, null, null,
+                [new("audio", "text/html", new byte[] { 1 })], registry, "desktop-a", Now.AddMinutes(5), CancellationToken.None));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     private static Creation Entry(string title, bool autoCleanup = false, DateTimeOffset? at = null)
     {
         var asset = CreationLibrary.Asset("audio", "audio/flac", System.Text.Encoding.UTF8.GetBytes(title));

@@ -50,8 +50,12 @@ public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHo
     /// (a body motion: it already played, so there is nothing to say).</summary>
     public bool Quiet { get; init; }
 
+    /// <summary>Its place in the Thinking pool's line when it isn't its <see cref="PoolKind"/>'s own (a quick look-up the user
+    /// waits for goes before long research). Null: the pool kind's priority.</summary>
+    public ThinkingPriority? PoolPriority { get; init; }
+
     internal ThinkingDemand? Demand(IReadOnlyList<BackgroundPlace> pool) =>
-        PoolKind is { } kind ? ThinkingDemand.For(kind, pool) with { SmartFirst = SmartFirst } : null;
+        PoolKind is { } kind ? ThinkingDemand.For(kind, pool, PoolPriority) with { SmartFirst = SmartFirst } : null;
 }
 
 /// <summary>How the conversation is told about a notice kind's jobs: the prompt of the reply Martlet starts on its own

@@ -7230,7 +7230,29 @@ and a fixture model that takes notes and searches again until no more pages can
 be read: on this PC it read all 60 pages in 20 model steps and 20 searches, its
 largest step was 11,701 bytes (`largestTaskBytes`, at most `maxTaskBytes`
 13,000), its notes stayed within 5,000 characters and the report lists all 60
-sources (`reportSources`). Each part has an `ok`.
+sources (`reportSources`). `flow.run.foundEarly`: the first step's `FOUND`
+line, read through the real adapter, is the watcher's finding at step 1, with
+its page numbers left out of `answer`. `levels`: the
+[levels of looking things up](CONVERSATION.md#answer-look-up-or-research):
+`tool` has the `depth` enum (`quick`, `full`, `deep`; none or an unknown word
+reads as `full`) and the reply's prompt has every rung (`ladder`); `budgets`
+per depth (on this PC quick 3 searches, 9 pages, 4 steps; full 30, 60, 40; deep
+60, 120, 80); `kinds`: `lookup` (2 at once, not offered, 10 minutes, Thinking
+pool priority 40 against research's 10), `finding` (a notice spoken as
+finished work, so it never drops for its age) and `sourcecheck` (quiet), all on
+the Thinking pool's research places; `placement`: a quick look-up starts on
+another place beside full research (`research` diva, `lookup` imouto);
+`quick`: a look-up whose answer is only near the end of a long page ends after
+1 step with a settled answer, because the step was shown the page's matching
+parts (`pageShownByParts`), and `result` is what the conversation gets;
+`watcher`: full research's first step finds the answer, and its `finding-1`
+notice is finished and waits for Martlet (`noticeBeforeReport`,
+`noticeWaitsForMartlet`) while the second step still runs; `noticeNotes` is
+the note with the user's next message; `sourceCheck`: the report's result is
+ready before the `sourcecheck-1` job finishes (`resultReadyFirst`), the quiet
+job checks 2 claims in 1 request (1 supported, 1 not supported), revises the
+kept report (`revised`, `sectionInReport`) and its `note` names the claim that
+isn't supported. Each part has an `ok`.
 No real web search or model is used; reads no credentials; the temporary folder
 is deleted.
 

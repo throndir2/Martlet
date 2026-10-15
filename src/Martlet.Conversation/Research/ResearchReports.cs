@@ -34,20 +34,28 @@ public static class ResearchReports
     /// <summary>The creation that keeps <paramref name="report"/>.</summary>
     public static CreationDraft Draft(ResearchReport report, CreationAuthor author)
     {
-        var bytes = Encoding.UTF8.GetBytes(report.Markdown);
-        if (bytes.Length > MaximumReportBytes)
-            bytes = Encoding.UTF8.GetBytes(Fit(report.Markdown, MaximumReportBytes - Encoding.UTF8.GetByteCount(WebResearch.ReportCut)) +
-                WebResearch.ReportCut);
+        var (text, assets) = Content(report.Markdown);
         return new()
         {
             Kind = KindName,
             Title = report.Title,
             Summary = report.Summary,
-            Text = Fit(report.Markdown, CreationLibrary.MaximumTextUtf8Bytes - 16),
+            Text = text,
             Metadata = JsonSerializer.SerializeToElement(new { sources = report.Sources.Count }),
             CreatedBy = author,
-            Assets = [new("report", "text/plain", bytes)]
+            Assets = assets
         };
+    }
+
+    /// <summary>A report's text for the shared list (its start, within the list's limit) and its asset (the whole Markdown, cut
+    /// with <see cref="WebResearch.ReportCut"/> past <see cref="MaximumReportBytes"/>): for a new report and a revised one.</summary>
+    public static (string Text, IReadOnlyList<CreationDraftAsset> Assets) Content(string markdown)
+    {
+        var bytes = Encoding.UTF8.GetBytes(markdown);
+        if (bytes.Length > MaximumReportBytes)
+            bytes = Encoding.UTF8.GetBytes(Fit(markdown, MaximumReportBytes - Encoding.UTF8.GetByteCount(WebResearch.ReportCut)) +
+                WebResearch.ReportCut);
+        return (Fit(markdown, CreationLibrary.MaximumTextUtf8Bytes - 16), [new("report", "text/plain", bytes)]);
     }
 
     private static string Fit(string text, int bytes)

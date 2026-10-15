@@ -125,10 +125,10 @@ internal sealed partial class ThinkingPoolPage(IThinkingPoolPageServices service
         var allow = new CheckBox
         {
             IsChecked = settings.WebResearchOn, IsEnabled = settings.On, Margin = new Thickness(0, 8, 0, 6),
-            Content = new TextBlock { Text = "Let Martlet search the web and read pages when I ask it to look something up", TextWrapping = TextWrapping.Wrap }
+            Content = new TextBlock { Text = "Let Martlet search the web and read pages to look things up", TextWrapping = TextWrapping.Wrap }
         };
         AutomationProperties.SetAutomationId(allow, "WebResearchOn");
-        AutomationProperties.SetName(allow, "Let Martlet search the web when I ask it to look something up");
+        AutomationProperties.SetName(allow, "Let Martlet search the web to look things up");
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
         AutomationProperties.SetAutomationId(status, "WebResearchStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
@@ -140,15 +140,19 @@ internal sealed partial class ThinkingPoolPage(IThinkingPoolPageServices service
         var budget = WebResearch.Budget;
         var disclosure = Note("What leaves this PC: your search words go to DuckDuckGo, and each page Martlet reads sees this PC's " +
             "internet address. What the pages say goes to the Thinking pool member that works on it, with the recent conversation. Martlet only " +
-            $"connects to public websites (never your own network). It researches the way a careful person would: up to {budget.Searches} " +
-            $"searches and {budget.Pages} pages each time you ask, taking notes as it reads, with no time limit, one thing at a time. " +
-            "Cancel in the talk window stops it, and a paid provider may charge for its thinking. The report and its sources are kept " +
-            "in Creations; Martlet offers to show it in your browser.",
+            "connects to public websites (never your own network). It answers what it knows at once. For one fact it doesn't know for " +
+            $"sure (a price, a date, how to get something in a game) it does a quick look-up of up to {WebResearch.QuickBudget.Pages} pages. " +
+            $"When you ask it to research something, it researches the way a careful person would: up to {budget.Searches} searches and " +
+            $"{budget.Pages} pages ({WebResearch.DeepBudget.Pages} when you ask for an in-depth look), taking notes as it reads, with no " +
+            "time limit, one thing at a time. It tells you as soon as it finds what you wanted, then checks the report's sources after " +
+            "the report is ready. Cancel in the talk window stops it, and a paid provider may charge for its thinking. The report and " +
+            "its sources are kept in Creations; Martlet offers to show it in your browser.",
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(disclosure, "WebResearchDisclosure");
         return Card(Heading("Web research"),
-            HelpTip.Explain("Ask Martlet to look something up or research it and it says it'll look into it, searches the web and reads pages " +
-                "in the background while you keep talking, then tells you what it found and offers the full report.", new Thickness(0, 0, 0, 4), "Research", "looking things up"),
+            HelpTip.Explain("Ask Martlet something it doesn't know and it checks it quickly; ask it to research something and it says it'll " +
+                "look into it, searches the web and reads pages in the background while you keep talking, tells you as soon as it finds " +
+                "what you wanted, then offers the full report.", new Thickness(0, 0, 0, 4), "Research", "looking things up"),
             status, allow, disclosure);
     }
 }

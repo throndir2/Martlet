@@ -21,9 +21,11 @@ public static class BackgroundWorkTools
 
     /// <summary>research as a check-in sees it.</summary>
     public const string ResearchDescription =
-        "Starts web research on the last exchange (it can take a while): Martlet researches it on the web as thoroughly as a " +
-        "careful person would, writes a report with sources and offers it when it's done. Only when the user asked to look something up, search for it or research it, or the reply " +
-        "said it would look into it. One at a time.";
+        "Starts web research on the last exchange: depth quick checks one fact the user asked for that the reply couldn't answer " +
+        "for sure (a minute or two); depth full researches it as thoroughly as a careful person would and writes a report with " +
+        "sources (it can take a while); depth deep only when the user asked for an in-depth report. Martlet brings up what it found " +
+        "when it has it. Only when the user asked a question the reply couldn't answer from what it knows, asked to look something " +
+        "up or research it, or the reply said it would look into it.";
 
     public static CheckInToolSet Set { get; } = new(SetId, "Background work",
         "Starts a long think or web research when the last exchange needs one, so the reply doesn't have to. Martlet brings the " +
@@ -52,7 +54,8 @@ public static class BackgroundWorkTools
 
     /// <summary>The reply's guidance while this set takes its tools over: tell the user briefly; the work starts after the reply.</summary>
     public const string ReplyGuidance =
-        "When a request needs real multi-step thinking or long creative work, or the user asks you to look something up on the " +
-        "web, say briefly in character that you'll think it over or look into it and get back to them, and that it may take a " +
-        "while. Martlet starts that work after your reply and a note brings you the result; never make it up.";
+        "When a request needs real multi-step thinking or long creative work, the user asks you to look something up on the web, " +
+        "or they ask for a fact you don't know for sure or that may have changed, say briefly in character that you'll think it " +
+        "over, check or look into it and get back to them. Martlet starts that work after your reply and a note brings you the " +
+        "result; never make it up or guess.";
 }
