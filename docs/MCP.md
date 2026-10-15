@@ -3979,7 +3979,16 @@ chatterbox (...)` without replacing `martlet-host-net`; a `--yes setup` waits
 for it, then removes and recreates the holder and runs its engine; an engine
 left in a replaced holder's namespace stops at once (`... was replaced while
 this ran ... Nothing was changed`) while one in the current namespace
-continues; and the desktop's reader reads that busy line. Finally a native
+continues; and the desktop's reader reads that busy line. After a restart of
+the Docker host, Docker may start the holder before its home address exists;
+that start fails and Docker never tries again, so the gateway and roles stay
+down. So `status` with a holder that failed to start starts it before its
+engine joins the network (`command-starts-stopped-holder`); `update` adds the
+keeper `martlet-host-keeper` (`--restart unless-stopped --network none`,
+command `keep`) once and not again on the next update (`update-adds-keeper`);
+and `keep` starts a holder that isn't running, with Docker Engine's start error
+or without one (as Docker Desktop leaves it), and leaves a running holder alone
+(`keeper-starts-stopped-holder`). Finally a native
 `--yes add` of a fixture role against a fake `docker` whose `compose up` fails
 with exit 17 (as a role image build does when a download times out) stops with
 exit 1 and `Stopped: Building or starting fixture-build failed ... run

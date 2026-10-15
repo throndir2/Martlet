@@ -315,6 +315,20 @@ public static class HostRoutes
         _ => error.Message
     };
 
+    /// <summary>Whether <paramref name="error"/> (or an exception inside it) says the host's computer refused the connection: it
+    /// is on and reachable, but nothing listens on the gateway's port (the gateway isn't running there).</summary>
+    public static bool Refused(Exception? error)
+    {
+        for (var depth = 0; error is not null && depth < 8; depth++, error = error.InnerException)
+            if (error is SocketException { SocketErrorCode: SocketError.ConnectionRefused }) return true;
+        return false;
+    }
+
+    /// <summary>What to tell the owner when the computer at <paramref name="address"/> refused the connection.</summary>
+    public static string RefusedText(string address) =>
+        $"{address} refused the connection: that computer is on, but the Martlet host's gateway isn't running there. " +
+        "After a restart of that computer, Update host (Devices) starts it again.";
+
     /// <summary>The socket error when <paramref name="error"/> (or an exception inside it) says this PC itself ran out of
     /// network resources: Windows had no free connection port or socket buffer (WSAENOBUFS, NoBufferSpaceAvailable) or no
     /// free socket (WSAEMFILE). The host is not at fault then. Null for any other failure.</summary>

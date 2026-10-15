@@ -534,6 +534,8 @@ public static class Audio2FaceHostClient
             throw new Audio2FaceHostException("host.unreachable", route is { Error: { } why, Outside.Count: > 0, ErrorAt: { } at } &&
                 DateTimeOffset.UtcNow - at < TimeSpan.FromMinutes(1)
                 ? why
+                // The computer answered but nothing listens on the port: the gateway isn't running, not a TLS or key problem.
+                : HostRoutes.Refused(error) ? HostRoutes.RefusedText(http.BaseAddress?.Authority ?? "The host")
                 : "Could not reach the Martlet host over pinned TLS. Check the address, that the gateway is running, and the fingerprint.");
         }
     }
