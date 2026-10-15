@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Your hosts come back by themselves after their computer restarts**: when Docker started Martlet's host service before the computer had its home address, the service stayed off until you added the host again. Now it starts again by itself as soon as it can, and *Update host* starts it too. Update each host once to get this. When a host's computer is on but its host service isn't running, Martlet now says so instead of *Could not reach the Martlet host over pinned TLS*. ([#905](https://github.com/throndir2/Martlet/pull/905))
+
 ## [0.80.1] - 2026-10-15
 
 ### Fixed
