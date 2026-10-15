@@ -91,4 +91,20 @@ public sealed class HostAnswersTests
         Assert.DoesNotContain("didn't answer", text, StringComparison.Ordinal);
         Assert.DoesNotContain("outside addresses", text, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void A_refused_connection_is_named_as_a_gateway_that_isnt_running_not_a_tls_problem()
+    {
+        // A computer that restarted with its gateway down answers with a refusal, wrapped by the HTTP handler.
+        Assert.True(HostRoutes.Refused(new HttpRequestException("The connection failed.",
+            new IOException("inner", new SocketException((int)SocketError.ConnectionRefused)))));
+        Assert.False(HostRoutes.Refused(new HttpRequestException("timed out", new SocketException((int)SocketError.TimedOut))));
+        Assert.False(HostRoutes.Refused(null));
+
+        var text = HostRoutes.RefusedText("192.168.0.219:9443");
+        Assert.StartsWith("192.168.0.219:9443 refused the connection: that computer is on, but the Martlet host's gateway isn't running", text,
+            StringComparison.Ordinal);
+        Assert.Contains("Update host (Devices) starts it again", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("TLS", text, StringComparison.Ordinal);
+    }
 }

@@ -94,7 +94,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 41;
+        const int expected = 44;
         if (steps.Count < expected)
         {
             passed = false;
@@ -345,12 +345,19 @@ internal static class HostEngineCheck
         case "$1" in
           info|volume) exit 0 ;;
           ps) [[ -f $S/engine ]] && printf 'e1 martlet-host-add-20261003-021239-9052\n'; exit 0 ;;
-          rm|run) echo "$*" >> $S/calls; [[ "$1 $2" == "rm -f" ]] && printf 'holder-2' > $S/holder; exit 0 ;;
+          rm|run) echo "$*" >> $S/calls; [[ "$*" == "rm -f martlet-host-net"* ]] && printf 'holder-2' > $S/holder
+            [[ "$*" == "run -d --name martlet-host-keeper "* ]] && : > $S/keeper; exit 0 ;;
+          start) echo "$*" >> $S/calls; [[ -f $S/startfails ]] && exit 1; printf true > $S/running; : > $S/error; exit 0 ;;
           logs) echo "Network holder ready."; exit 0 ;;
           container)
             [[ "$2" == inspect ]] || exit 1
             shift 2; fmt=""; [[ "$1" == -f ]] && fmt="$2"
+            [[ "${3:-}" == martlet-host-keeper && ! -f $S/keeper ]] && exit 1
             case "$fmt" in
+              *State.Status*State.Error*) [[ "$(cat $S/running 2>/dev/null || echo true)" == true ]] && st=running || st=exited
+                echo "$st|$(cat $S/error 2>/dev/null)" ;;
+              *State.Running*) cat $S/running 2>/dev/null || echo true; echo ;;
+              *State.Error*) cat $S/error 2>/dev/null; echo ;;
               *martlet.home*) cat $S/label 2>/dev/null; echo ;;
               *PortBindings*Config.Image*) echo "$(cat $S/binding 2>/dev/null || echo 192.168.1.20:9443) $(cat $S/image 2>/dev/null || echo martlet-host:old)" ;;
               *PortBindings*) cat $S/binding 2>/dev/null || echo 192.168.1.20:9443 ;;
@@ -411,6 +418,39 @@ internal static class HostEngineCheck
         [[ $krc == 0 && $src == 0 && $kept == 0 && $crc == 0 && "$home" == *" -p 192.168.1.20:9443:9443 "* ]] && ok=1 || ok=0
         step exposure-keeps-then-clears "$ok" "publishing everywhere: another choice (exit $krc) and setup (exit $src) replaced the holder $kept time(s); --clear-outside (exit $crc): ${home:-holder not replaced}"
         rm -f /tmp/fake/binding /tmp/fake/label /tmp/fake/image
+
+        # After the Docker host restarts, Docker may start the network holder before its home address exists: that start
+        # fails, Docker's restart policy never tries again, and the gateway and roles (in its network) stay down. Any command
+        # starts such a holder before its engine joins the network; setup and update add the keeper (no network of its own,
+        # so Docker always starts it), which starts a holder that isn't running (with Docker Engine's start error, or none as
+        # Docker Desktop leaves it) and leaves a running one alone.
+        boot='driver failed programming external connectivity: listen tcp4 192.168.1.20:9443: bind: cannot assign requested address'
+        : > /tmp/fake/calls; printf false > /tmp/fake/running; printf '%s' "$boot" > /tmp/fake/error
+        D timeout 30 "$E" status </dev/null >/tmp/boot-status.out 2>&1; rc=$?
+        order="$(awk '/^start martlet-host-net/{print "start-holder"} /^run --rm .*--name martlet-host-status-/{print "engine"}' /tmp/fake/calls | tr '\n' ' ')"
+        [[ $rc == 0 && "$order" == "start-holder engine " ]] && has /tmp/boot-status.out "isn't running; starting it" && ok=1 || ok=0
+        step command-starts-stopped-holder "$ok" "status with the holder down after a restart (exit $rc): ${order:-no calls}"
+
+        rm -f /tmp/fake/keeper; : > /tmp/fake/calls
+        D timeout 30 "$E" --yes update </dev/null >/tmp/keeper-update.out 2>&1; rc=$?
+        keeper="$(grep -m1 '^run -d --name martlet-host-keeper ' /tmp/fake/calls || true)"
+        D timeout 30 "$E" --yes update </dev/null >/tmp/keeper-again.out 2>&1
+        again="$(grep -c '^run -d --name martlet-host-keeper ' /tmp/fake/calls || true)"
+        [[ $rc == 0 && "$keeper" == *"--restart unless-stopped --network none "* && "$keeper" == *" keep" && $again == 1 ]] && ok=1 || ok=0
+        step update-adds-keeper "$ok" "update (exit $rc): ${keeper:-no keeper}; keeper runs after a second update: $again"
+
+        : > /tmp/fake/calls; printf false > /tmp/fake/running; printf '%s' "$boot" > /tmp/fake/error
+        D timeout 3 "$E" keep </dev/null >/tmp/keep.out 2>&1
+        engine="$(grep -c '^start martlet-host-net' /tmp/fake/calls || true)"
+        : > /tmp/fake/calls; printf false > /tmp/fake/running; : > /tmp/fake/error
+        D timeout 3 "$E" keep </dev/null >/tmp/keep-desktop.out 2>&1
+        desktop="$(grep -c '^start martlet-host-net' /tmp/fake/calls || true)"
+        : > /tmp/fake/calls
+        D timeout 3 "$E" keep </dev/null >/tmp/keep-running.out 2>&1
+        running="$(grep -c '^start martlet-host-net' /tmp/fake/calls || true)"
+        [[ $engine == 1 && $desktop == 1 && $running == 0 ]] && has /tmp/keep.out "Docker couldn't start it: $boot" &&
+          has /tmp/keep-desktop.out "Started martlet-host-net again; it wasn't running." && ok=1 || ok=0
+        step keeper-starts-stopped-holder "$ok" "holder with Docker Engine's start error: started $engine time(s) ($(head -n1 /tmp/keep.out)); without one (Docker Desktop): $desktop; running: $running"
 
         # A role whose image build fails (a fake docker whose compose up fails like a pip download that timed out) stops
         # with what to do next instead of only Compose's exit code.
