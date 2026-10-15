@@ -335,9 +335,14 @@ Each list can hold more than ACE-Step 1.5 and SoulX-Singer or VevoSing:
 | List | Option | What it is | Where it runs |
 | --- | --- | --- | --- |
 | Music | **ACE-Step 1.5 XL** | ACE-Step's 4B SFT music model (`acestep-v15-xl-sft`, MIT), always 50 steps. Clearer words and richer music than the 2B model. | A singing computer: **Add ACE-Step 1.5 XL here** in the member's settings (about 20 GB more; host choice `SINGING_MUSIC_MODELS=standard-xl`). Then pick it in the member's **Music model** box (`model` setting `ace-step-v15-xl`). It needs 22 GB free on the card for full precision, else int8. A computer without XL uses ACE-Step 1.5. |
+| Music | **HeartMuLa** | HeartMuLa-oss-3B with HeartCodec (Apache-2.0): a song language model. 48 kHz. One of its two models is on the card at a time. | A singing computer: **Add HeartMuLa here** (about 22 GB more; `SINGING_HEARTMULA=yes`), a 16 GB+ card. Music model `heartmula`. |
+| Music | **DiffRhythm** | DiffRhythm 1.2 full (Apache-2.0), its style from the caption through MuQ-MuLan (CC-BY-NC-4.0), lyrics timed by Martlet as LRC (`extras.lrc`). Fast. A song under 96 s is made at 96 s and cut with a fade. | A singing computer: **Add DiffRhythm here** (about 9 GB more, with espeak-ng; `SINGING_DIFFRHYTHM=yes`), an 8 GB+ card. Music model `diffrhythm`. |
+| Music | **YuE** | YuE2-3B with its VAE (CC-BY-NC-4.0). Strong singing, slow; the lyrics set the length. Under 22 GB of card memory it uses fp8 weights and offloads. | A singing computer: **Add YuE here** (about 8 GB more; `SINGING_YUE=yes`), a 16 GB+ card. Music model `yue`. |
 | Music | **ElevenLabs Music** | `music_v1` from a composition plan: each lyric section with its lines, the style, the length. | Cloud (`POST /v1/music`, 48 kHz PCM). |
 | Music | **Mureka** | Mureka's song model (`auto`), lyrics and a style prompt. Its lyric line times are kept. With **Sing in Martlet's voice** on, Mureka sings in a vocal clone made once from the voice Martlet speaks with, and the song skips the voice match. | Cloud (`api.mureka.ai`). |
 | Music | **fal.ai** | MiniMax Music v1.5 (`fal-ai/minimax-music/v1.5`, the default) or ACE-Step (`fal-ai/ace-step`) through fal's queue. | Cloud (`queue.fal.run`). |
+| Voice match | **Vevo2** | Amphion's Vevo2 flow matching (timbre only, CC-BY-NC-ND-4.0), piece by piece between the sung phrases, moved by whole octaves as VevoSing is. | A singing computer: **Add Vevo2 here** (about 3 GB more, and Whisper medium; `SINGING_VEVO2=yes`). Model `vevo2`. |
+| Voice match | **Seed-VC** | Seed-VC's 44.1 kHz singing model with pitch (GPL-3.0, no longer maintained): Whisper small, CAMPPlus, RMVPE and BigVGAN, 30 steps. | A singing computer: **Add Seed-VC here** (about 2.5 GB more; `SINGING_SEEDVC=yes`). Model `seedvc`. |
 | Voice match | **ElevenLabs Voice Changer** | `eleven_multilingual_sts_v2` speech to speech, in an instant voice clone made once from the voice Martlet speaks with. The result is gated to the song's sung phrases and levelled as a computer's is (`SongVoice.Gate`). | Cloud (`/v1/speech-to-speech`). |
 
 **Cloud members.** Add one with **A cloud provider** under a list (`Pool-singing-AddCloud`, `Pool-voice-match-AddCloud`).
@@ -356,12 +361,18 @@ as for a music job. Without one, the song is not separated: the vocals are the m
 (`SongVoice.Unseparated`), the lines are spread over the sung phrases (`SongVoice.SpreadLines`, or Mureka's own line
 times), and the voice match is skipped, because it needs separated vocals.
 
+**How the added host models run.** Each runs in its own process (`martlet_singing.extras`, one song per process), with
+its own packages over the image's (`host/requirements-<name>.lock`, installed only when chosen, in
+`/opt/martlet-singing/extras/<name>`) and its source at a pinned commit (`pins.py`). An added music model gives no lyric
+timestamps: its song is separated by Demucs and timed from the vocals' phrases, as a cloud song is. Every file is pinned by
+size and SHA-256, and nothing is downloaded at run time. **None of these five models has run on a real card in Martlet
+yet**: the fixture checks the plumbing only.
+
 **Not added, and why** (2026-10-15):
 
-- YingMusic-SVC: needs PyTorch 2.4, an OpenVoice checkpoint that is not published, and is derived from GPL Seed-VC.
-- HeartMuLa, DiffRhythm: deferred. Each needs its own large image and models, and neither is measured here yet.
-- YuE and Vevo2: non-commercial weights.
-- Seed-VC: GPL-3.0 and archived. RVC: needs minutes of training audio per voice.
+- YingMusic-SVC: its configuration needs an OpenVoice timbre-shifter checkpoint that is not published, and it pins
+  PyTorch 2.4.
+- RVC: needs minutes of training audio per voice.
 - Suno and Udio: no official public API.
 
 ## Verification
@@ -387,6 +398,11 @@ times), and the voice match is skipped, because it needs separated vocals.
   an unseparated mix and the gated cloud voice match. MCP `singing_cloud_check` drives each cloud provider's client against
   a loopback fake of its API, and `singing_check` with `quality` `xl` and `split` makes an XL music job and a `separate`
   job with the fixture. Real cloud songs (they cost money) and real ACE-Step 1.5 XL and Demucs on a card are **NOT RUN**.
+- `tests/Martlet.Core.Tests/SingingCloudTests.cs` (`SingingModelsTests`) and the Python `AddedModelTests` check the model
+  catalog, the role choices, the pins and the image build agree. MCP `singing_check` with `model` (`heartmula`,
+  `diffrhythm`, `yue`) and `voiceMatch` (`vevo2`, `seedvc`, with `SINGING_VEVO2`/`SINGING_SEEDVC=yes` set for the
+  fixture) makes those jobs through the gateway with the fixture. Building those images and running those models on a card
+  are **NOT RUN**.
 
 ## Singing in conversation
 

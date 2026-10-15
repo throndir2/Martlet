@@ -1,0 +1,4 @@
+# YuE2's own inference package (m-a-p/YuE2-3B's wheel, revision 8f24312, CC-BY-NC-4.0 model card; the package needs only
+# the base image's PyTorch 2.10 and Transformers 4.57.6). Installed with pip --target into its own folder.
+yue2-infer @ https://huggingface.co/m-a-p/YuE2-3B/resolve/8f24312f187763b9854adeec87e437e2b03bbff1/yue2_infer-0.1.5-py3-none-any.whl \
+    --hash=sha256:8801e2c0d969db02df78d2994150b4ccd86077d87c24fdb8509b1f6f31462641

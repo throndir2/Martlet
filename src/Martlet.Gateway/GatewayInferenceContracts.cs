@@ -1120,6 +1120,14 @@ public static class GatewaySongModels
     public const string Standard = "ace-step-v15";
     /// <summary>ACE-Step 1.5 XL (its SFT model, 50 steps), set up only where the owner added it.</summary>
     public const string Xl = "ace-step-v15-xl";
+
+    /// <summary>Every music model a start may name: ACE-Step 1.5 and each one the owner may add
+    /// (<c>Martlet.Core.Singing.SingingModels</c>).</summary>
+    public static bool Known(string model) => model == Standard || Martlet.Core.Singing.SingingModels.Music(model) is not null;
+
+    /// <summary>Every voice match a song or match start may name: SoulX-Singer and each one the owner may add.</summary>
+    public static bool KnownMatch(string voiceMatch) => voiceMatch == "soulx" ||
+        Martlet.Core.Singing.SingingModels.Match(voiceMatch) is { } match && Martlet.Core.Singing.SingingModels.AddOn(match) is not null;
 }
 
 /// <summary>The job a <c>start</c> asks for (bounds as in <c>Martlet.Core.Singing.SongRequest</c>). A

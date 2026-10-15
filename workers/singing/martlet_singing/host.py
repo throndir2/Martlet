@@ -15,14 +15,17 @@ A job has a kind:
   separate a finished song made elsewhere (for example by a cloud music service): the client uploads it (48 kHz, mono or
            stereo: input_channels) like a match job's vocals; Demucs separates it and the beat, lyric and word times come
            from its vocals. Tracks mix, vocals and backing, the same length as the input.
-A song or music job may ask for a music model ("model"): ace-step-v15 (the default) or ace-step-v15-xl (ACE-Step 1.5 XL
-SFT, 50 steps), which is there only when the owner chose SINGING_MUSIC_MODELS standard-xl.
+A song or music job may ask for a music model ("model"): ace-step-v15 (the default), ace-step-v15-xl (ACE-Step 1.5 XL
+SFT, 50 steps; only when the owner chose SINGING_MUSIC_MODELS standard-xl), or heartmula, diffrhythm or yue (each only when
+the owner chose SINGING_HEARTMULA, SINGING_DIFFRHYTHM or SINGING_YUE yes). A song or match job's voice_match is soulx,
+vevosing (SINGING_VOICE_MATCHES soulx-vevosing), vevo2 (SINGING_VEVO2 yes) or seedvc (SINGING_SEEDVC yes).
 
 Commands:
   serve                 listen on 127.0.0.1:$MARTLET_SINGING_PORT (default 50085)
   provision [--fixture] download and verify the pinned model files ($SINGING_VOICE_MATCHES: soulx or soulx-vevosing;
-                        $SINGING_MUSIC_MODELS: standard or standard-xl), then write the worker config (--fixture:
-                        deterministic FIXTURE - NOT AI engine for plumbing checks, with both music models)
+                        $SINGING_MUSIC_MODELS: standard or standard-xl; $SINGING_HEARTMULA, $SINGING_DIFFRHYTHM,
+                        $SINGING_YUE, $SINGING_VEVO2, $SINGING_SEEDVC: yes or no), then write the worker config (--fixture:
+                        deterministic FIXTURE - NOT AI engine for plumbing checks, with every model)
 
 HTTP (127.0.0.1 only; every answer is JSON except track pages):
   GET  /status                         {"state", "ready", "engine", "worker", "qualities", "voice_matches", "music_models",
@@ -150,21 +153,34 @@ def music_models_choice() -> list[str]:
     return list(MUSIC_MODEL_CHOICES[value])
 
 
+def extras_choice() -> list[str]:
+    """The models the owner added (pins.EXTRA_CHOICES: each SINGING_<NAME> is yes or no; missing is no)."""
+    chosen = []
+    for name, variable in pins.EXTRA_CHOICES.items():
+        value = os.environ.get(variable, "no").strip().lower()
+        if value not in ("yes", "no"):
+            raise SystemExit(f"{variable} must be yes or no.")
+        if value == "yes":
+            chosen.append(name)
+    return chosen
+
+
 def provision(fixture: bool) -> None:
     artifacts: list[dict[str, Any]] = []
-    matches = voice_matches_choice()
-    music_models = music_models_choice()
+    extras = extras_choice()
+    matches = voice_matches_choice() + [m for m in pins.EXTRA_MATCHES if m in extras]
+    music_models = music_models_choice() + [m for m in pins.EXTRA_MUSIC if m in extras]
     if fixture:
         _log("FIXTURE - NOT AI: provisioning the deterministic tone engine (no model, no GPU).")
         engine = "fixture"
-        # The fixture makes every music model, so plumbing checks can ask for each.
+        # The fixture makes every music model, so plumbing checks can ask for each; its voice matches are the chosen ones.
         music_models = list(pins.MUSIC_MODELS)
         artifacts.append({"artifact_id": "fixture-tone-song", "bytes": 0, "license_id": "fixture-only",
                           "revision": "0" * 40, "sha256": "0" * 64})
     else:
         engine = "song"
         groups = ({"core"} | ({"vevosing"} if "vevosing" in matches else set())
-                  | ({"xl"} if "ace-step-v15-xl" in music_models else set()))
+                  | ({"xl"} if "ace-step-v15-xl" in music_models else set()) | set(extras))
         for artifact_id, url, revision, size, sha256, license_id, local in pins.files(groups):
             _log(f"Model file {artifact_id} ({license_id})")
             _download(url, MODELS / local, size, sha256)
@@ -175,9 +191,17 @@ def provision(fixture: bool) -> None:
         refs = MODELS / "huggingface/hub/models--openai--whisper-base/refs"
         refs.mkdir(parents=True, exist_ok=True)
         (refs / "main").write_text(whisper_base.revision, encoding="utf-8")
+        # The same for the added models' libraries that load a model by its repository name (DiffRhythm's MuQ-MuLan).
+        for group, folder, revision in pins.HF_CACHE_REFS:
+            if group in groups:
+                (MODELS / folder / "refs").mkdir(parents=True, exist_ok=True)
+                (MODELS / folder / "refs" / "main").write_text(revision, encoding="utf-8")
     identity = {
         "artifacts": artifacts, "engine": engine, "evidence": "synthetic_fixture" if fixture else "live_worker",
-        "sources": {"ace_step": pins.ACE_STEP_COMMIT, "soulx_singer": pins.SOULX_COMMIT, "amphion": pins.AMPHION_COMMIT},
+        "sources": {"ace_step": pins.ACE_STEP_COMMIT, "soulx_singer": pins.SOULX_COMMIT, "amphion": pins.AMPHION_COMMIT,
+                    **({"heartlib": pins.HEARTLIB_COMMIT} if "heartmula" in extras else {}),
+                    **({"diffrhythm": pins.DIFFRHYTHM_COMMIT} if "diffrhythm" in extras else {}),
+                    **({"seed_vc": pins.SEEDVC_COMMIT} if "seedvc" in extras else {})},
         "output_format": {"bits_per_sample": 16, "sample_rate": audio.OUTPUT_RATE,
                           "channels": {"mix": 2, "vocals": 1, "backing": 2}},
         "worker_id": WORKER_ID,
@@ -274,10 +298,10 @@ class Service:
             return 200, {"error": {"code": "request.invalid", "summary": str(error)}}
         if request["kind"] in ("song", "match") and request["voice_match"] not in config.get("voice_matches", ["soulx"]):
             return 200, {"error": {"code": "singing.voice_match_unavailable",
-                                   "summary": "VevoSing is not set up on this computer."}}
+                                   "summary": f"{pins.NAMES.get(request['voice_match'], request['voice_match'])} is not set up on this computer."}}
         if request["kind"] in ("song", "music") and request["model"] not in _music_models(config):
             return 200, {"error": {"code": "singing.model_unavailable",
-                                   "summary": "ACE-Step 1.5 XL is not set up on this computer."}}
+                                   "summary": f"{pins.NAMES.get(request['model'], request['model'])} is not set up on this computer."}}
         reference = request.pop("reference_audio", None)
         with self.lock:
             receiving = sum(1 for j in self.jobs.values() if j.state == "receiving")
@@ -580,7 +604,7 @@ def _validate(body: dict[str, Any]) -> dict[str, Any]:
         if model is None:
             model = pins.MUSIC_MODELS[0]
         if model not in pins.MUSIC_MODELS:
-            raise ValueError("model must be ace-step-v15 or ace-step-v15-xl.")
+            raise ValueError("model must be one of " + ", ".join(pins.MUSIC_MODELS) + ".")
         request["model"] = model
     if kind != "music":
         request.update({"voice_match": body.get("voice_match"), "voice_id": text("voice_id", 128)})
@@ -588,12 +612,12 @@ def _validate(body: dict[str, Any]) -> dict[str, Any]:
         request.update({"bpm": integer("bpm", 40, 240, required=False), "key": body.get("key"),
                         "seed": integer("seed", 0, 2**32 - 1, required=False)})
         if request["quality"] not in ("fast", "high_quality") or (
-                kind == "song" and request["voice_match"] not in ("soulx", "vevosing")):
+                kind == "song" and request["voice_match"] not in pins.CONVERTER_IDS):
             raise ValueError("Choose a quality and a voice match." if kind == "song" else "Choose a quality.")
         if request["key"] is not None and (not isinstance(request["key"], str) or len(request["key"]) > 16):
             raise ValueError("The key is invalid.")
     else:
-        if request["voice_match"] not in ("soulx", "vevosing"):
+        if request["voice_match"] not in pins.CONVERTER_IDS:
             raise ValueError("Choose a voice match.")
         request["input_frames"] = integer("input_frames", 1, MAX_INPUT_FRAMES)
     if kind == "music":

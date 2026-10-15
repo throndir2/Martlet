@@ -1,0 +1,4 @@
+# HeartMuLa (huggingface.co/HeartMuLa, Apache-2.0) runs in its own process with these over the base image's packages
+# (heartlib pins torchtune 0.4.0 and torchao 0.9.0; everything else is the base image's).
+torchtune==0.4.0
+torchao==0.9.0

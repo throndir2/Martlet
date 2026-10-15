@@ -88,7 +88,8 @@ internal static class OptionalExtras
         }
     ];
 
-    /// <summary>Singing's voice match (configuration): SoulX-Singer (set up with Singing) or VevoSing (added on request).</summary>
+    /// <summary>Singing's voice match (configuration): SoulX-Singer (set up with Singing), or VevoSing, Vevo2 or Seed-VC (each added
+    /// on request).</summary>
     internal static IReadOnlyList<PickerOption> VoiceMatches(Martlet.Core.Singing.SongVoiceMatch chosen) =>
     [
         new(nameof(Martlet.Core.Singing.SongVoiceMatch.SoulX), "SoulX-Singer",
@@ -110,7 +111,21 @@ internal static class OptionalExtras
                 new("sound", "Sound", "closer to the voice and cleaner, but it may drift off-key", "Closer to the voice"),
                 new("song", "Song time", "about 1 3/4 minutes for a 30-second song", null),
                 new("license", "License", "CC-BY-NC-ND-4.0: personal, non-commercial use only; share nothing made from it", "Non-commercial"))
-        }
+        },
+        .. new[] { Martlet.Core.Singing.SongVoiceMatch.Vevo2, Martlet.Core.Singing.SongVoiceMatch.SeedVc }.Select(match =>
+        {
+            var addOn = Martlet.Core.Singing.SingingModels.AddOn(match)!;
+            return new PickerOption(match.ToString(), addOn.Name, addOn.About + (addOn.NonCommercial ? " Personal, non-commercial use only." : ""))
+            {
+                InUse = chosen == match,
+                Badge = chosen == match ? "in use" : null,
+                Facts = Facts("", [
+                    new("download", "Download", addOn.Download + " more where it is added", addOn.Download),
+                    new("license", "License", addOn.Licence + (addOn.NonCommercial ? ": personal, non-commercial use only" : ""),
+                        addOn.NonCommercial ? "Non-commercial" : addOn.Licence),
+                    new("evidence", "Evidence", "not measured by Martlet yet", "Not measured")])
+            };
+        })
     ];
 
     // ---------- Reading ----------

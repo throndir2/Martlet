@@ -96,7 +96,7 @@ public sealed partial class Audio2FaceHostConnection
         ArgumentNullException.ThrowIfNull(song);
         song.Validate();
         var start = MusicStart(song);
-        start["voice_match"] = song.VoiceMatch == SongVoiceMatch.VevoSing ? "vevosing" : "soulx";
+        start["voice_match"] = SingingModels.Id(song.VoiceMatch);
         start["voice_id"] = song.VoiceId;
         return await TracksAsync(route, song, start, recording, progress, cancellationToken, pollInterval).ConfigureAwait(false);
     }
@@ -133,7 +133,7 @@ public sealed partial class Audio2FaceHostConnection
             throw new ArgumentException("The vocals must be 48 kHz mono PCM.", nameof(vocals));
         var start = new Dictionary<string, object>
         {
-            ["operation"] = "start", ["kind"] = "match", ["voice_match"] = match == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+            ["operation"] = "start", ["kind"] = "match", ["voice_match"] = SingingModels.Id(match),
             ["voice_id"] = voiceId, ["input_frames"] = vocals.Frames
         };
         var reporter = new Reporter(progress);
@@ -240,7 +240,7 @@ public sealed partial class Audio2FaceHostConnection
             ["language"] = song.Language, ["quality"] = song.Quality == SongQuality.HighQuality ? "high_quality" : "fast"
         };
         // Only XL is named: an older host knows no model and makes the standard one.
-        if (song.Model == SongMusicModel.AceStep15Xl) start["model"] = "ace-step-v15-xl";
+        if (song.Model != SongMusicModel.AceStep15) start["model"] = SingingModels.Id(song.Model);
         if (song.Bpm is { } bpm) start["bpm"] = bpm;
         if (song.Key is { } key) start["key"] = key;
         if (song.Seed is { } seed) start["seed"] = seed;
@@ -455,7 +455,7 @@ public sealed partial class Audio2FaceHostConnection
     // The voice match a job's engine names, or null for music without one.
     private static SongVoiceMatch? VoiceMatchOf(JsonElement engine) =>
         engine.TryGetProperty("voice_match", out var match) && match.ValueKind == JsonValueKind.String
-            ? match.GetString() == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
+            ? SingingModels.Match(match.GetString()) ?? SongVoiceMatch.SoulX
             : null;
 
     private static List<SongStageTiming> Timings(JsonElement meta)

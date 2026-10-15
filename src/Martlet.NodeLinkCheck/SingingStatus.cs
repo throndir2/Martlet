@@ -102,9 +102,9 @@ internal static class SingingStatus
                 members = matchers.Select((m, index) => new
                 {
                     position = index + 1, key = m.Member.Key, host = m.HostId, settings = m.Member.Settings,
-                    model = m.HostId is null ? m.Member.Provider : SingingPool.VoiceMatch(m.Member) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+                    model = m.HostId is null ? m.Member.Provider : SingingModels.Id(SingingPool.VoiceMatch(m.Member)),
                     matchesWith = m.HostId is null ? m.Member.Provider
-                        : SingingPool.MatchWith(m.Member, states.GetValueOrDefault(m.HostId)) == SongVoiceMatch.VevoSing ? "vevosing" : "soulx",
+                        : SingingModels.Id(SingingPool.MatchWith(m.Member, states.GetValueOrDefault(m.HostId))),
                     verdict = Verdict(m.HostId, true)
                 }),
                 next = nextMatch is { } match ? new { host = match.HostId, ahead = match.Ahead, waitsInLine = match.Ahead > 0 } : null

@@ -305,7 +305,8 @@ internal sealed partial class McpServer
             "them; without either the host's music planner runs first. quality defaults to high_quality, as songs do. With split " +
             "true the song is made as the desktop's two pools make it: a music job, then a voice match job on its vocals (sent in " +
             "pages), put together on this PC, and then its music mix sent back as a cloud song is (a separate job: separated and timed); " +
-            "the report adds matchJobId, matchHost and separated. quality \"xl\" asks for ACE-Step 1.5 XL. " +
+            "the report adds matchJobId, matchHost and separated. quality \"xl\" asks for ACE-Step 1.5 XL; model names another music model " +
+            "(heartmula, diffrhythm or yue, set up only where the owner added it). " +
             "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
         {
             endpoint = new { type = "string", maxLength = 64 },
@@ -314,7 +315,8 @@ internal sealed partial class McpServer
             voiceId = new { type = "string", minLength = 8, maxLength = 128 },
             seconds = new { type = "integer", minimum = 15, maximum = 180 },
             quality = new { type = "string", @enum = new[] { "fast", "high_quality", "xl" } },
-            voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing" } },
+            model = new { type = "string", @enum = new[] { "ace-step-v15", "ace-step-v15-xl", "heartmula", "diffrhythm", "yue" } },
+            voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing", "vevo2", "seedvc" } },
             saveDirectory = new { type = "string", maxLength = 260 },
             voiceRecording = new { type = "string", maxLength = 260 },
             voiceTranscript = new { type = "string", maxLength = 4096 },
@@ -979,7 +981,15 @@ internal sealed partial class McpServer
         var quality = OptionalString(arguments, "quality") ?? "high_quality";
         var voiceMatch = OptionalString(arguments, "voiceMatch") ?? "soulx";
         if (quality is not ("fast" or "high_quality" or "xl")) throw new ArgumentException("quality must be fast, high_quality or xl.");
-        if (voiceMatch is not ("soulx" or "vevosing")) throw new ArgumentException("voiceMatch must be soulx or vevosing.");
+        if (voiceMatch is not ("soulx" or "vevosing" or "vevo2" or "seedvc"))
+            throw new ArgumentException("voiceMatch must be soulx, vevosing, vevo2 or seedvc.");
+        if (OptionalString(arguments, "model") is { Length: > 0 } model)
+        {
+            if (Martlet.Core.Singing.SingingModels.Music(model) is null)
+                throw new ArgumentException("model must be ace-step-v15, ace-step-v15-xl, heartmula, diffrhythm or yue.");
+            if (quality == "xl") quality = "high_quality";
+            quality = $"{quality}:{model}";
+        }
         string[] command = ["singing-check", endpoint, seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), quality, voiceMatch];
         var save = OptionalString(arguments, "saveDirectory") is { Length: > 0 } folder ? folder : null;
         if (save is not null && !Path.IsPathFullyQualified(save)) throw new ArgumentException("saveDirectory must be an absolute folder.");

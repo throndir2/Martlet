@@ -19,5 +19,20 @@ Optional, only when the owner chooses the VevoSing voice match: Amphion (https:/
 26f6883110181f1dbfe95c70a7c7dbaf4de5f42a), MIT License; Vevo1.5 models (huggingface.co/amphion/Vevo1.5 revision f4053ca),
 Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 (personal, non-commercial use only); OpenAI Whisper medium, MIT.
 
-PyTorch and the other Python packages pinned in host/requirements.lock and host/requirements-match.lock keep
-their own licenses.
+Optional, only when the owner chooses each one:
+- HeartMuLa: heartlib (https://github.com/HeartMuLa/heartlib, commit 5858ca8f1ffe58d62be7c007ea55f1033c5ca456), Apache
+  License 2.0; HeartMuLa-oss-3B, HeartCodec-oss and HeartMuLaGen (huggingface.co/HeartMuLa), Apache License 2.0.
+- DiffRhythm (https://github.com/ASLP-lab/DiffRhythm, commit 28ad63c0f096fe2ee258bcabbcf081d5d9366afd), Apache License
+  2.0; DiffRhythm-1_2-full (Apache License 2.0); DiffRhythm-vae (Stability AI Community License); MuQ-MuLan-large and
+  MuQ-large-msd-iter (huggingface.co/OpenMuQ), CC-BY-NC-4.0 (non-commercial use only); XLM-RoBERTa base, MIT License;
+  espeak-ng (Debian package), GPL-3.0, run as a separate program.
+- YuE2: yue2_infer 0.1.5 and YuE2-3B and YuE2-Vae (huggingface.co/m-a-p), CC-BY-NC-4.0 (non-commercial use only).
+- Vevo2: Amphion (above), MIT License; Vevo2 models (huggingface.co/RMSnow/Vevo2 revision 2674843), Creative Commons
+  Attribution-NonCommercial-NoDerivatives 4.0; OpenAI Whisper medium, MIT.
+- Seed-VC (https://github.com/Plachtaa/seed-vc, commit 51383efd921027683c89e5348211d93ff12ac2a8), GPL-3.0, with its
+  singing model (huggingface.co/Plachta/Seed-VC), GPL-3.0; RMVPE (huggingface.co/lj1995/VoiceConversionWebUI), MIT;
+  CAMPPlus (huggingface.co/funasr/campplus), Apache License 2.0; BigVGAN v2 (huggingface.co/nvidia), MIT; OpenAI Whisper
+  small, Apache License 2.0.
+
+PyTorch and the other Python packages pinned in host/requirements.lock, host/requirements-match.lock and
+host/requirements-<model>.lock keep their own licenses.

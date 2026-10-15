@@ -71,7 +71,7 @@ public sealed class OptionalExtrasTests
     public void The_voice_matches_compare_their_footprint_and_license()
     {
         var matches = OptionalExtras.VoiceMatches(SongVoiceMatch.VevoSing);
-        Assert.Equal(new[] { "SoulX", "VevoSing" }, matches.Select(m => m.Key));
+        Assert.Equal(new[] { "SoulX", "VevoSing", "Vevo2", "SeedVc" }, matches.Select(m => m.Key));
         Assert.True(matches[1].InUse);
         Assert.Equal("recommended", matches[0].Badge);
         Assert.Contains("non-commercial", Fact(matches[1], "license"));

@@ -36,17 +36,19 @@ public sealed record SingerState(string? State, int Waiting, IReadOnlyList<SongV
             if (status.TryGetProperty("state", out var value) && value.ValueKind == JsonValueKind.String) state = value.GetString();
             if (status.TryGetProperty("queue", out var queue) && queue.ValueKind == JsonValueKind.Number && queue.TryGetInt32(out var count))
                 waiting = Math.Max(0, count);
-            if (status.TryGetProperty("voice_matches", out var list) && list.ValueKind == JsonValueKind.Array &&
-                list.EnumerateArray().Any(m => m.ValueKind == JsonValueKind.String && m.GetString() == "vevosing"))
-                matches.Add(SongVoiceMatch.VevoSing);
+            if (status.TryGetProperty("voice_matches", out var list) && list.ValueKind == JsonValueKind.Array)
+                foreach (var item in list.EnumerateArray())
+                    if (item.ValueKind == JsonValueKind.String && SingingModels.Match(item.GetString()) is { } known && !matches.Contains(known))
+                        matches.Add(known);
             if (status.TryGetProperty("kinds", out var made) && made.ValueKind == JsonValueKind.Array)
                 foreach (var kind in made.EnumerateArray())
                     if (kind.ValueKind == JsonValueKind.String && kind.GetString() is "music" or "match" or "separate" &&
                         !kinds.Contains(kind.GetString()!))
                         kinds.Add(kind.GetString()!);
-            if (status.TryGetProperty("music_models", out var music) && music.ValueKind == JsonValueKind.Array &&
-                music.EnumerateArray().Any(m => m.ValueKind == JsonValueKind.String && m.GetString() == "ace-step-v15-xl"))
-                models.Add(SongMusicModel.AceStep15Xl);
+            if (status.TryGetProperty("music_models", out var music) && music.ValueKind == JsonValueKind.Array)
+                foreach (var item in music.EnumerateArray())
+                    if (item.ValueKind == JsonValueKind.String && SingingModels.Music(item.GetString()) is { } known && !models.Contains(known))
+                        models.Add(known);
         }
         return new(state, waiting, matches) { Kinds = kinds, MusicModels = models };
     }
@@ -84,7 +86,8 @@ public static class SingingPool
     /// <summary>A singing pool member's quality (<see cref="PoolMember.Settings"/>): "high_quality" or "fast"; missing: high quality.</summary>
     public const string QualitySetting = "quality";
 
-    /// <summary>A voice match pool member's model (<see cref="PoolMember.Settings"/>): "soulx" or "vevosing"; missing: SoulX-Singer.</summary>
+    /// <summary>A voice match pool member's model (<see cref="PoolMember.Settings"/>): an add-on's ID (<see cref="SingingModels"/>,
+    /// such as "vevosing"); missing: SoulX-Singer. A music pool member's music model uses the same setting.</summary>
     public const string ModelSetting = PoolSettingKeys.Model;
 
     /// <summary>The quality <paramref name="member"/> writes music in: its own choice, else <see cref="SongQuality.HighQuality"/>.</summary>
@@ -96,32 +99,26 @@ public static class SingingPool
 
     /// <summary>The model <paramref name="member"/> matches voices with: its own choice, else <see cref="SongVoiceMatch.SoulX"/>.</summary>
     public static SongVoiceMatch VoiceMatch(PoolMember member) =>
-        member.Setting(ModelSetting) == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX;
+        SingingModels.Match(member.Setting(ModelSetting)) ?? SongVoiceMatch.SoulX;
 
     /// <summary><paramref name="member"/> with <paramref name="match"/>; SoulX-Singer, the default, is saved as no setting.</summary>
     public static PoolMember WithVoiceMatch(PoolMember member, SongVoiceMatch match) =>
-        member.WithSetting(ModelSetting, match == SongVoiceMatch.VevoSing ? "vevosing" : null);
+        member.WithSetting(ModelSetting, SingingModels.AddOn(match)?.Id);
 
-    /// <summary>The model's name in the app: "SoulX-Singer", "VevoSing", "ElevenLabs Voice Changer" or "Mureka".</summary>
-    public static string Name(SongVoiceMatch match) => match switch
-    {
-        SongVoiceMatch.VevoSing => "VevoSing",
-        SongVoiceMatch.ElevenLabs => "ElevenLabs Voice Changer",
-        SongVoiceMatch.Mureka => "Mureka",
-        _ => "SoulX-Singer"
-    };
+    /// <summary>The model's name in the app: "SoulX-Singer", "VevoSing", "Vevo2", "Seed-VC", "ElevenLabs Voice Changer" or "Mureka".</summary>
+    public static string Name(SongVoiceMatch match) => SingingModels.Name(match);
 
-    /// <summary>A singing pool member's music model (<see cref="PoolMember.Settings"/>, <see cref="ModelSetting"/>):
-    /// "ace-step-v15-xl", or ACE-Step 1.5 without one.</summary>
+    /// <summary>A singing pool member's music model (<see cref="PoolMember.Settings"/>, <see cref="ModelSetting"/>): an add-on's
+    /// ID (such as "ace-step-v15-xl" or "heartmula"), or ACE-Step 1.5 without one.</summary>
     public static SongMusicModel MusicModel(PoolMember member) =>
-        member.Setting(ModelSetting) == "ace-step-v15-xl" ? SongMusicModel.AceStep15Xl : SongMusicModel.AceStep15;
+        SingingModels.Music(member.Setting(ModelSetting)) ?? SongMusicModel.AceStep15;
 
     /// <summary><paramref name="member"/> with <paramref name="model"/>; ACE-Step 1.5, the default, is saved as no setting.</summary>
     public static PoolMember WithMusicModel(PoolMember member, SongMusicModel model) =>
-        member.WithSetting(ModelSetting, model == SongMusicModel.AceStep15Xl ? "ace-step-v15-xl" : null);
+        member.WithSetting(ModelSetting, SingingModels.AddOn(model)?.Id);
 
-    /// <summary>The music model's name in the app: "ACE-Step 1.5" or "ACE-Step 1.5 XL".</summary>
-    public static string Name(SongMusicModel model) => model == SongMusicModel.AceStep15Xl ? "ACE-Step 1.5 XL" : "ACE-Step 1.5";
+    /// <summary>The music model's name in the app, such as "ACE-Step 1.5", "ACE-Step 1.5 XL" or "HeartMuLa".</summary>
+    public static string Name(SongMusicModel model) => SingingModels.Name(model);
 
     /// <summary>The music model a singing pool member uses on a computer in <paramref name="state"/>: its own model when it is set
     /// up there, else ACE-Step 1.5 (always set up where Singing is).</summary>
@@ -178,7 +175,7 @@ public static class SingingPool
     };
 
     /// <summary>Why <paramref name="hostId"/> can't match a song's voice at all now (null <paramref name="state"/>: it doesn't
-    /// offer Singing), or null when it can. A computer without its member's model (VevoSing) matches with SoulX-Singer
+    /// offer Singing), or null when it can. A computer without its member's model (such as VevoSing) matches with SoulX-Singer
     /// (<see cref="MatchWith"/>).</summary>
     public static SongException? MatchRefusal(string hostId, SingerState? state) => MusicRefusal(hostId, state) ?? (state!.Splits ? null
         : new SongException(SongErrorCodes.Unavailable, $"Singing on {hostId} can't match a voice apart yet; update Martlet there."));

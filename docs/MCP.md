@@ -4363,8 +4363,8 @@ runs), sending the voice's recording once when the gateway lacks it. Arguments:
 service with the FIXTURE - NOT AI engine using the `python` on `PATH` or
 `MARTLET_PYTHON`; or a numeric loopback address of a live singing service, for
 example `http://127.0.0.1:50085/`), `seconds` (15-180; default 20 for the fixture,
-30 otherwise), `quality` (`high_quality`, the default as for songs, `fast`, or `xl`: high quality on ACE-Step 1.5 XL, the request's `model` `ace-step-v15-xl`; a service without XL refuses with `singing.model_unavailable`)
-and `voiceMatch` (`soulx` or `vevosing`), `split` (true: make the song as the
+30 otherwise), `quality` (`high_quality`, the default as for songs, `fast`, or `xl`: high quality on ACE-Step 1.5 XL, the request's `model` `ace-step-v15-xl`; a service without XL refuses with `singing.model_unavailable`), `model` (another music model: `heartmula`, `diffrhythm` or `yue`, refused the same way where it is not set up; the fixture makes every music model)
+and `voiceMatch` (`soulx`, `vevosing`, `vevo2` or `seedvc`; the fixture has the added ones only when `SINGING_VEVO2` or `SINGING_SEEDVC` is `yes` in the environment, as the role choice sets it), `split` (true: make the song as the
 desktop's two pools do, a music job with `MakeMusicAsync`, then a voice match
 job on its vocals with `MatchVoiceAsync`, the vocals sent in `input` pages, put
 together on this PC with `SongVoice`; the report adds `matchJobId` and
@@ -9599,7 +9599,10 @@ there; disabled with the reason as help text when the computer can't sing). A
 music member adds `Pool-singing-Quality-<member key>` (*High quality*, the
 default, or *Fast*: that computer's own quality, saved in the list),
 `Pool-singing-MusicModel-<member key>` (*ACE-Step 1.5*, the default, or *ACE-Step 1.5 XL*, saved in the list; where XL
-isn't set up it uses ACE-Step 1.5) and `Pool-singing-AddXl-<member key>` (*Add ACE-Step 1.5 XL here*). Under each list,
+isn't set up it uses ACE-Step 1.5; also *HeartMuLa*, *DiffRhythm* and *YuE*) and one *Add <model> here* button for each music
+model not set up there: `Pool-singing-AddXl-`, `Pool-singing-AddHeartMuLa-`, `Pool-singing-AddDiffRhythm-` and
+`Pool-singing-AddYuE-<member key>` (each needs `--allow-ui-effects`; the voice match list has `Pool-voice-match-AddVevo-`,
+`Pool-voice-match-AddVevo2-` and `Pool-voice-match-AddSeedVc-<member key>`, and its model box offers *Vevo2* and *Seed-VC*). Under each list,
 `Pool-singing-AddCloud` and `Pool-voice-match-AddCloud` (*A cloud provider*, safe clicks) show the Singing cloud form:
 `SingingCloudProvider-<area>`, `SingingCloudModel-<area>`, `SingingCloudKey-<area>` (a password box; never read),
 `SingingCloudKeyStatus-<area>`, `SingingCloudConsent-<area>` (what goes to the provider and that it may cost money),

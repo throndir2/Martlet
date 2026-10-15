@@ -112,3 +112,49 @@ public sealed class SingingCloudTests
 
     private static int Sample(SongTrack track, int index) => BinaryPrimitives.ReadInt16LittleEndian(track.Pcm16.Span[(2 * index)..]);
 }
+
+public sealed class SingingModelsTests
+{
+    [Fact]
+    public void Every_host_model_round_trips_through_its_wire_name_and_pool_setting()
+    {
+        foreach (var model in SingingModels.HostMusic)
+        {
+            Assert.Equal(model, SingingModels.Music(SingingModels.Id(model)));
+            Assert.Equal(model, SingingPool.MusicModel(SingingPool.WithMusicModel(PoolMember.Computer("m1"), model)));
+        }
+        foreach (var match in SingingModels.HostMatches)
+        {
+            Assert.Equal(match, SingingModels.Match(SingingModels.Id(match)));
+            Assert.Equal(match, SingingPool.VoiceMatch(SingingPool.WithVoiceMatch(PoolMember.Computer("m1"), match)));
+        }
+        Assert.Null(SingingModels.Music("suno"));
+        Assert.Equal(SongMusicModel.AceStep15, SingingPool.MusicModel(PoolMember.Computer("m1")));
+        Assert.All(SingingModels.AddOns, a => Assert.False(string.IsNullOrEmpty(a.Terms)));
+    }
+
+    [Fact]
+    public void A_status_lists_the_added_models_and_a_member_uses_its_own_only_where_it_is_set_up()
+    {
+        using var status = System.Text.Json.JsonDocument.Parse(
+            """{"state":"ready","voice_matches":["soulx","vevo2"],"music_models":["ace-step-v15","heartmula","newer-model"]}""");
+        var state = SingerState.Parse(status.RootElement);
+        Assert.Equal([SongVoiceMatch.SoulX, SongVoiceMatch.Vevo2], state.VoiceMatches);
+        Assert.Equal([SongMusicModel.AceStep15, SongMusicModel.HeartMuLa], state.MusicModels);
+        Assert.Equal(SongMusicModel.HeartMuLa, SingingPool.MusicWith(SingingPool.WithMusicModel(PoolMember.Computer("m1"), SongMusicModel.HeartMuLa), state));
+        Assert.Equal(SongMusicModel.AceStep15, SingingPool.MusicWith(SingingPool.WithMusicModel(PoolMember.Computer("m1"), SongMusicModel.YuE), state));
+        Assert.Equal(SongVoiceMatch.SoulX, SingingPool.MatchWith(SingingPool.WithVoiceMatch(PoolMember.Computer("m1"), SongVoiceMatch.SeedVc), state));
+    }
+
+    [Fact]
+    public void Adding_a_model_keeps_what_the_computer_has()
+    {
+        var yue = SingingModels.AddOn(SongMusicModel.YuE)!;
+        var choices = SingingModels.Choices(a => a.Match == SongVoiceMatch.VevoSing, yue);
+        Assert.Equal("yes", choices["SINGING_YUE"]);
+        Assert.Equal("soulx-vevosing", choices["SINGING_VOICE_MATCHES"]);
+        Assert.Equal("standard", choices["SINGING_MUSIC_MODELS"]);
+        Assert.Equal("no", choices["SINGING_SEEDVC"]);
+        Assert.Equal("ace-step-v15-soulx-svc", choices["SINGING_MODEL"]);
+    }
+}

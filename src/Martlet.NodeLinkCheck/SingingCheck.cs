@@ -253,9 +253,12 @@ internal static class SingingCheck
                 // As Martlet's own model writes them; without a tempo or key the host's music planner runs first.
                 Bpm = bpm,
                 Key = key,
-                Quality = quality is "high_quality" or "xl" ? SongQuality.HighQuality : SongQuality.Fast,
-                Model = quality == "xl" ? SongMusicModel.AceStep15Xl : SongMusicModel.AceStep15,
-                VoiceMatch = voiceMatch == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
+                // quality is fast, high_quality, xl (high quality on ACE-Step 1.5 XL) or "<quality>:<music model ID>".
+                Quality = quality.Split(':')[0] is "high_quality" or "xl" ? SongQuality.HighQuality : SongQuality.Fast,
+                Model = quality == "xl" ? SongMusicModel.AceStep15Xl
+                    : quality.Contains(':', StringComparison.Ordinal) ? SingingModels.Music(quality.Split(':')[1]) ?? SongMusicModel.AceStep15
+                    : SongMusicModel.AceStep15,
+                VoiceMatch = SingingModels.Match(voiceMatch) ?? SongVoiceMatch.SoulX
             };
             before = await StatusAsync(connection, route, token);
             var progress = new SynchronousProgress(p => stages.Add(new
