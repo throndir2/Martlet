@@ -72,7 +72,7 @@ if ($problems.Count) {
 if ($CheckOnly) { return }
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ('Martlet.Wiki.' + [guid]::NewGuid().ToString('N'))
-git clone -q "$wikiUrl.git" $work
+git clone -q https://github.com/throndir2/Martlet.wiki.git $work
 if ($LASTEXITCODE -ne 0) { throw "Could not clone the wiki. Create its first page at $wikiUrl, then rerun." }
 try {
     Get-ChildItem $work -Filter *.md | Remove-Item
