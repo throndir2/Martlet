@@ -1,49 +1,82 @@
 # Thinking
 
-Thinking is the model that reads your message and writes Martlet's reply.
+Thinking is the model that reads your message and writes Martlet's reply. Run it free and private on your own PC, on another of your computers, or with a cloud AI you like.
 
 ![Companion Thinking](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/companion.png)
 
 ## Where it runs
 
-Open **Companion › Thinking**.
+Open **Companion › Thinking** and choose under **Where it runs**:
 
-| Place | Notes |
-| --- | --- |
-| **This PC** | **Ollama** (Martlet installs it and downloads a model that fits; any Ollama model works, including your own) or **a model app you already use**: LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner or any OpenAI-compatible server on this PC. Martlet finds them, lists their models and tests one. Private/no per-request cost, but needs local compute. See [Local model apps](https://github.com/throndir2/Martlet/blob/main/docs/LOCAL_MODEL_APPS.md). |
-| **Another computer** | Use a paired host with a stronger GPU or loaded model. |
-| **Cloud provider** | OpenAI, OpenRouter, NVIDIA Build or custom OpenAI-compatible HTTPS endpoint. May cost money and sends text/images to that provider. |
+- **This PC (recommended)**: private, free and with no account. Under **Model app**, choose **Ollama**: Martlet installs it and downloads a model that fits your graphics card. Any Ollama model works, also a Hugging Face GGUF or a model you made. Or choose a model app you already run: Martlet finds **LM Studio**, **llama.cpp**, **KoboldCpp**, **Jan**, **vLLM**, **Lemonade**, **GPT4All** and **Docker Model Runner**.
+- **Another of your computers**: a paired computer with a stronger graphics card thinks for you. See [Multiple Computers](Multiple-Computers).
+- **A cloud provider**: **OpenAI**, **Google Gemini**, **OpenRouter**, **NVIDIA Build** or any OpenAI-compatible service. Your messages leave this PC, and some providers charge. Martlet walks you through a free key for NVIDIA Build or Google Gemini.
 
-## Local Ollama
+**Recommended setup** on Home picks a model that fits all your computers and tells you when a better one is available.
 
-**Test model** starts Ollama if installed, checks the model is downloaded, loads it and asks a short streamed reply. If a model loads slowly, the talk window shows that status.
+## Use a model app you already run
 
-## Your own model app
+1. Start the app's local server. In LM Studio, use **Developer › Start server**.
+2. Open **Companion › Thinking** and choose **This PC (recommended)**.
+3. Under **Model app**, choose your app. For an app on another port, choose **Another app, by its address** and type what the app shows, such as `localhost:5001`.
+4. Choose the model, press **Test model**, then **Use**.
 
-Start the app's local server (LM Studio: Developer › Start server), then choose **This PC › A model app you already use**. Pick the app and model, **Test model**, then **Use**. For an app on another port, choose **Another address on this PC** and type what the app shows, such as `localhost:5001`.
+**Look again** looks for apps again. Martlet looks only on this PC and starts or installs nothing.
 
-## Fallback
+## Choosing and checking a model
 
-**Companion › Thinking › If Thinking fails** saves an optional second destination. It is used once when the main Thinking route fails before text arrives. It receives the same kind of conversation/image data when used; a reply already started is not restarted elsewhere.
+- Martlet's own model list updates every day, so new models show up without a Martlet update. Each model says what it takes in (text, pictures, sound and video), how smart it is and what it needs.
+- **Companion › Thinking** says whether your model hears, sees, takes video and calls tools.
+- **Test model**, **Test tools**, **Test vision** and **Test hearing** check a model before you rely on it.
+- When a service retires your model, Home offers a replacement with a **Use** button.
+- A cloud model hears your voice only when you tick **Let Thinking hear my voice** on **Companion › Listening**.
 
-## Replies settings
+## When Thinking fails or is slow
 
-**Companion › Replies › Thinking steps** is Off by default. **Context size** bounds persona, lore, memory, recent conversation and the reply. Larger context can cost more on paid routes.
+- **If Thinking fails** on **Companion › Thinking** is an optional backup model. It answers once when the main model fails before any words arrive. A good pair is NVIDIA Build first and Google Gemini as the backup.
+- **Backup Thinking** asks a second model when the first one is slow to start. It is off by default. On **Companion › Thinking pool › Backup for slow replies**, tick **Ask a machine in the pool too when a reply is slow to start**. Then tick **Backup for slow replies** on the machines it may use, ideally with the same model. The first one to start gives the reply.
+- Do you play games on a PC? Then while a game runs there, Martlet moves her thinking off that PC's graphics card to another computer. When the game ends, she moves it back.
+
+## Reply settings
+
+**Companion › Replies** sets **Max reply length** (up to 32,768 tokens), **Context size**, **Thinking steps** (off by default, so replies start sooner) and **Short first sentence**. A larger context can cost more on paid providers.
+
+To see everything Martlet sent for a reply, click **What was sent** under that reply in the talk window.
 
 ## Thinking pool
 
-**Companion › Thinking pool** is a shared set of Thinking models for background work: thinking longer, research, screen and sound summaries and other helpers. Each job goes to a free member, so the conversation keeps its own Thinking model at full speed.
+**Companion › Thinking pool** is a list of machines that do Martlet's background work: thinking longer, web research, screen and sound summaries, remembering, check-ins and other helpers. Your conversation keeps its own Thinking model at full speed, and it always comes first: background work waits while you talk.
 
-Your paired computers with a Thinking model join the pool by themselves when Martlet checks them: a computer's **Thinking pool role** joins with its slots, and a computer's Ollama joins when it doesn't already do this PC's Thinking. You don't need to tick anything when a computer comes online or gets a Thinking model. To keep a computer out, untick **In the Thinking pool** on it; tick it again to add it back. A member that goes offline stays in the pool, and its slots come back when it answers again. Ollama on this PC and cloud providers join only when you add them.
+- **Machines**: each graphics card, model in Ollama on this PC or cloud provider is a row with an **On** box and its model. **Add a machine** adds one. Your paired computers with a Thinking model join by themselves. Untick **On** to keep one out.
+- **Several graphics cards**: a computer with two or more NVIDIA graphics cards can run a pool model on each card. Press **Add a model** on the row of the free card.
+- **Smarts**: each machine is **Fast**, **Standard** or **Smart**. Martlet guesses it from the model name, and you can change it.
+- **Quick jobs** and **Long jobs**: keep a machine for quick checks while you talk, or for long thinking and research.
+- **Runs on**: choose where each kind of job runs: any machine, **Prefer smart**, **Smart only** or the machines you pick.
+- **May receive pictures and recordings**: a cloud machine gets screenshots and recordings only when you tick this.
+- **Busy pool**: choose whether more important jobs may stop less important ones, and how often a failed job tries again.
 
-**Thinking longer** lets Martlet start background reasoning on a pool member and bring the result back later.
+Ask Martlet to take her time and she thinks it over in the background while you talk, then brings it up when it's ready. The **Thinking requests** page in the side menu shows every job. Select one to see what it was for, where it ran, how long it took, and what it sent and answered.
+
+## Looking things up
+
+**Web research** on **Companion › Thinking pool** is on by default. Martlet answers what she knows at once. Is she unsure of one fact, like a price, a date or how to get something in a game? Then she does a quick look-up and tells you in a minute or two. For bigger questions, she researches and writes a report. Ask for in-depth research to get a longer one. She tells you as soon as she finds your answer, and she checks the report's sources against their pages. The search words go to DuckDuckGo, and each page she reads sees this PC's internet address. Reports wait in [Creations](Pictures-and-Creations).
 
 ## Check-ins
 
-Small models forget what they left on. **Companion › Check-ins** has the Thinking pool check on Martlet every few minutes, with only the facts each check needs. It turns off emotes a reply left on that no longer fit, takes the character's eyes back to their usual gaze, and reminds Martlet in its next reply when it promised something it never started or when its replies drift out of character. Turn each check-in on or off, choose how often it runs, and add your own (such as "if I've been at it for hours, suggest a break"); each of your own either reminds Martlet in its next reply or has Martlet bring it up on its own. Check-ins run only on pool members, never on your conversation model, so replies never wait for them, and they wait while you talk or are away from the PC.
+Small models forget what they left on and what they promised. **Companion › Check-ins** has the Thinking pool check on Martlet every few minutes or when something happens. Check-ins run only on pool machines, never on your conversation model, so replies never wait for them.
 
-## Tools and vision
+Built-in check-ins turn off emotes that no longer fit and take the eyes back to their usual gaze. They remind Martlet of her promises and her character, and stop her from repeating herself. Others keep her quiet while you talk to someone else, describe your touches and think ahead about what you'll say next. **How I react** changes how she takes your touches when her mood changes. **Welcome back**, **Unanswered question** and **Someone else is here** are off until you turn them on.
 
-Use a model that supports function calling for tools and image input for Vision. If a model rejects tools, Martlet retries without them and stops offering tools to that model for a while.
+**Act on what was said** runs right after each reply. The pool does what you asked or Martlet promised, like calling a Discord friend, setting a reminder or changing a memory. So the reply only says she'll do it, and it starts sooner. If something doesn't work, the talk window says so.
 
-More detail: [Setup](https://github.com/throndir2/Martlet/blob/main/docs/SETUP.md), [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md), [Recommended setups](https://github.com/throndir2/Martlet/blob/main/docs/RECOMMENDED_SETUPS.md), [Voice latency](https://github.com/throndir2/Martlet/blob/main/docs/VOICE_LATENCY.md).
+To write your own check-in:
+
+1. Press **Add a check-in**.
+2. Write its prompt, and choose what it gets to know: your screen, your microphone, what the PC plays, your touches, what was said or who is here.
+3. Choose when it runs: **Every** few minutes, or under **It starts when**, such as when a reply ends or your touches end. It can also wait until you come back, a call starts or ends, a notification shows, a song ends or a script's output changes.
+4. Choose what **Its answer** does: remind Martlet in her next reply, have her bring it up, add to what she knows, or let **Its tools act**.
+5. Under **It may use these tools**, tick tool sets such as reminders, memory, Discord calls, songs and pictures. Tools need a pool model that calls tools.
+
+**Copy as your own** turns a built-in check-in into one you can change freely. **Use built-in settings** puts Martlet's own back.
+
+More detail: [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md), [Local model apps](https://github.com/throndir2/Martlet/blob/main/docs/LOCAL_MODEL_APPS.md), [Hosted Thinking](https://github.com/throndir2/Martlet/blob/main/docs/HOSTED_THINKING.md), [Model catalog](https://github.com/throndir2/Martlet/blob/main/docs/MODEL_CATALOG.md), [Recommended setups](https://github.com/throndir2/Martlet/blob/main/docs/RECOMMENDED_SETUPS.md).

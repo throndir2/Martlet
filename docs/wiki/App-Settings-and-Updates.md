@@ -2,30 +2,85 @@
 
 ![Settings](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/settings.png)
 
-## App updates
+Open **Settings** in the left rail for Martlet's own choices: its look, how it starts and closes, updates and tools. Everything about your companion is on the **Companion** page.
 
-Open **Settings › App updates**. GitHub release checks are on by default at launch and then on the configured interval. Turn off **Check GitHub for new versions automatically** to stop automatic checks, or use **Check for updates now**.
-
-Only normal non-draft, non-prerelease releases with `Martlet-<version>-win-x64.exe` are offered.
-
-## Installing updates
-
-**Update now** downloads the installer, verifies GitHub's SHA-256 asset digest, closes Martlet, runs the installer and starts Martlet again. The installer is unsigned; the digest is integrity, not publisher signature.
-
-**Download and install updates automatically** waits until it will not interrupt a reply, speech, pending question, setup task, host update, backup/restore, download or command.
-
-## Host updates
-
-Paired hosts report their version. **Update host** rebuilds that host's gateway from this version, keeping identity, pairings and roles. This PC's own host service follows Martlet's version automatically.
-
-## Tray, startup and closing
-
-Closing the window can keep Martlet running in the notification area. Right-click the icon to open Martlet, talk, pause/resume, end the conversation, show/hide character, toggle startup/closing choices or exit.
-
-Open **Settings › Startup and closing** for **Start with Windows**, **Start in the notification area**, **Keep running when closed**, startup character/listening/watching choices, and **Greet me once Martlet has warmed up after it starts** (on by default: Martlet says hello on its own once it is ready, fitting the time of day and maybe your last conversation, a reminder coming up or what you have open).
+Pages are short. A small round **?** after a heading or a label has more words: point at it to read them, or click it to keep them open.
 
 ## Appearance
 
-Open **Settings › Appearance**. Palettes include **Pink light**, **Rose dark**, **Character light**, **Character dark** and **Custom**. Choose **Custom** to make your own: start from any palette, then select a part (window background, text, accent and so on) and change its color with a color code, the sliders or one of your character's colors. **Make it easy to read** fixes colors that are hard to read. Windows high contrast overrides decorative colors.
+Choose **Settings › Appearance › Your palette**:
 
-More detail: [Desktop app](https://github.com/throndir2/Martlet/blob/main/docs/DESKTOP_APP.md), [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md), [Troubleshooting](https://github.com/throndir2/Martlet/blob/main/docs/TROUBLESHOOTING.md).
+- **Pink light**: blush, cream and berry. This is the default.
+- **Rose dark**: deep plum and soft rose.
+- **Character light** and **Character dark**: colors from the character you show.
+- **Custom**: your own palette.
+
+To make your own palette:
+
+1. Choose **Custom**.
+2. To begin from another palette, select it in **Start from**, then choose **Use its colors**.
+3. Select a part of Martlet, such as the window background, text or accent.
+4. Type its color code, move the **Hue**, **Saturation** and **Lightness** sliders, or select one of your character's colors.
+5. If Martlet says that something may be hard to read, choose **Make it easy to read**.
+
+Every window and the character change as you edit. Windows high contrast overrides the palette. Your palette is your own: it follows you to every computer where you are signed in.
+
+## Startup and closing
+
+**Settings › Startup and closing** has these choices. They stay on each computer.
+
+- **Keep Martlet running in the notification area when I close its window** (on by default). The character, sync, updates and your other computers keep working.
+- **Start Martlet when I sign in to Windows** (off by default), and **Start in the notification area, without opening the window**.
+- **When Martlet starts, show the character and start listening (and watching, while vision is on)** (off by default).
+- **Greet me once Martlet has warmed up after it starts** (on by default). Once you start talking or listening and Martlet has warmed up, it says hello in character. It can mention the time of day, your last conversation, reminders coming up and the apps you have open. These go to your Thinking model with the greeting. The line under the choice says whether Martlet greeted you.
+
+## The notification area
+
+Click Martlet's icon by the clock to open Martlet. Right-click it to:
+
+- talk to Martlet or show the talk window,
+- start or stop listening and watching,
+- **Pause Martlet** (a reply, listening and watching stop until you resume) or **End the conversation**,
+- show or hide the character, let clicks pass through it, or switch character profiles,
+- change **Keep running when closed** and **Start with Windows**,
+- **Exit Martlet**, which closes it completely.
+
+## App updates
+
+Martlet gets updates from its GitHub releases. Open **Settings › App updates**:
+
+- **Check for updates automatically** is on by default. Martlet checks when it starts, then at the time in **Check every** (every hour by default).
+- **Check for updates now** checks at once. **View release notes** shows what changed.
+
+When Martlet finds a new version, it asks you once. While you are busy, it only says that the update is in Settings. You can also press **Install** *version* **now** in Settings. Then:
+
+1. Martlet downloads the installer and checks it against GitHub's SHA-256 digest.
+2. It installs the new version beside the one you use, in the background. Keep using Martlet; this takes a minute or less.
+3. It asks to restart. Choose **Restart now**: the restart takes a few seconds. Or choose **Later**: Martlet switches to the new version when it exits, and Settings shows **Restart into** *version*.
+
+If Martlet can't install beside itself, it asks to install the usual way. Then it closes, installs and starts again.
+
+**Install updates automatically** (off by default) does all of this by itself. Martlet restarts into the update as soon as it isn't busy. It waits for a reply, for you while you talk, for a question you haven't answered and for setup work or downloads. The status line says what it waits for. After the restart, the character and listening come back if they were on.
+
+Martlet offers only normal releases. The installer is unsigned: the digest shows that the download is intact, not who published it. Your update choices are the same on all your computers.
+
+## Host updates
+
+Your hosts follow Martlet's version.
+
+- The **Devices** map shows **Update available** on an older host. **Update host** keeps its identity, pairings, roles and data.
+- **Update hosts** in **Settings › App updates** updates all of them. **Update paired hosts automatically** keeps them on this PC's version.
+- This PC's own host service always follows this PC's version.
+- **Settings › Your other computers › Let my other paired computers update Martlet here and manage this PC's host service** lets your other computers update this PC.
+
+## Other settings
+
+- **What this PC is for**: **Use as my companion PC**, **Use as a Martlet host** and **Replay the welcome tour**. You can also switch your other computers here. See [Multiple Computers](Multiple-Computers).
+- **Recommended setup preferences**: your answers to the welcome tour's three questions and more. See [First Steps](First-Steps).
+- **Your other computers**: whether they can find this PC and ask to use its hosts, and when Martlet looks for a better setup.
+- **Tools**: **Troubleshooting**, **Backup / restore**, **Prerequisites** and **Hosts**. See [Troubleshooting](Troubleshooting).
+- **Exit Martlet** closes Martlet completely.
+
+The button at the bottom of the left rail shows who uses Martlet now. Click it to switch person, add a person or open your **Account** page. See [Accounts and Household](Accounts-and-Household).
+
+More detail: [Desktop app](https://github.com/throndir2/Martlet/blob/main/docs/DESKTOP_APP.md), [Greeting when Martlet starts](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md#greeting-when-martlet-starts), [UI design](https://github.com/throndir2/Martlet/blob/main/docs/UI_DESIGN.md), [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md).
