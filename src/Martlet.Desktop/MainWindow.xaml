@@ -495,6 +495,25 @@
                                        AutomationProperties.AutomationId="CapacityFits"/>
                         </StackPanel>
                     </Border>
+                    <!-- Cloud providers and servers: every endpoint outside your computers and what each is used for (MainWindow.ExternalEndpoints.cs) -->
+                    <Border x:Name="ExternalEndpointsCard" Style="{DynamicResource CardStyle}" Padding="26,22"
+                            AutomationProperties.AutomationId="ExternalEndpointsCard" AutomationProperties.Name="Cloud providers and servers">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE753;" Foreground="{DynamicResource AccentBrush}"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Cloud providers and servers" FontSize="18" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Text="Everything outside this PC and your own computers that Martlet sends work to, and what it uses each one for."/>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock x:Name="ExternalEndpointsStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="ExternalEndpointsStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="ExternalEndpointsPanel" AutomationProperties.Name="Cloud providers and servers Martlet uses"/>
+                        </StackPanel>
+                    </Border>
                     <!-- Your Martlet network: the owner's computers that trust each other (MainWindow.Network.cs) -->
                     <Border x:Name="NetworkCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Your Martlet network">
                         <StackPanel>
