@@ -216,6 +216,10 @@ public sealed partial class FrontDoorTests
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Contains("Ana&#39;s laptop", html);
         Assert.Contains("<code>gemma4:e4b</code>", html);
+        // gemma4:e4b is rated Fast: the page offers the network model names that fit it.
+        Assert.Contains("<code>martlet@any</code>", html);
+        Assert.Contains("<code>martlet@fast</code>", html);
+        Assert.DoesNotContain("martlet@smart", html);
         Assert.Contains($"https://127.0.0.1:{lab.Port}/v1", html);
         Assert.Contains("1 requests through this address", html);
         Assert.DoesNotContain(lab.Key.Token, html);

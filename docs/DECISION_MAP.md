@@ -348,29 +348,38 @@ jobs; `ResearchWatcher` (`src\Martlet.Conversation\Research\ResearchWatcher.cs`)
 
 **What it decides:** for a request of the [OpenAI-compatible
 endpoint](OPENAI_ENDPOINT.md), whether its key may make it, which host runs it
-(this one, or another host of the network that has the model), how it ranks
-against the owner's work, and the context size it runs with.
+(this one, or another host of the network that has the model), which real
+model a [network model name](OPENAI_ENDPOINT.md#network-model-names) runs on,
+how it ranks against the owner's work, whether and how long it waits for a
+free slot, and the context size it runs with.
 
 **Owner:** `GatewayHttpApplication.RelayOpenAiAsync` and `ListModelsAsync`
 (`src\Martlet.Gateway\GatewayOpenAi.cs`) for the key check, the model list and
 the order (this host's own model first, then the hosts of the roster that list
-the model; a host never sends a request on twice). The rank and the slots are
-`GatewayInferenceRouteRegistry.BeginOutside`
-(`src\Martlet.Gateway\GatewayInferenceOutside.cs`) with the ranks of
-`GatewayInferencePriority.cs`: rank 0 below all of the owner's work, or rank 1
-with the owner's background work for a key with `equal-priority`
-(`GatewayApiKeyStore.EqualPriority`). The context size is
+the model; a host never sends a request on twice), and for where a request
+waits (`WaitHereAsync`; `X-Martlet-Wait` to another host) with the limits of
+`GatewayOpenAiQueue`. Which real models a network model name fits is
+`OpenAiNetworkModels` (`src\Martlet.Core\Access`), with the rating of
+`ThinkingSmartsGuess`. The rank, the slots and the queue are
+`GatewayInferenceRouteRegistry.BeginOutside`, `EnqueueOutside` and
+`WaitOutsideAsync` (`src\Martlet.Gateway\GatewayInferenceOutside.cs`) with the
+ranks of `GatewayInferencePriority.cs`: rank 0 below all of the owner's work,
+or rank 1 with the owner's background work for a key with `equal-priority`
+(`GatewayApiKeyStore.EqualPriority`); the owner's requests never look at the
+queue. The context size is
 `OllamaRelayWorker.OpenAiContextAsync`; the translation to Ollama's own API is
 `OllamaOpenAi` (`src\Martlet.Gateway.Ollama`). The scopes and the key's
 priority text are `ApiKeyScopes` and `OpenAiEndpoint` (`src\Martlet.Core\Access`).
 
 **Shows it:** Share › *Share your language models* (`OpenAiModels`,
 `OpenAiKey-<id>`, `OpenAiStatus`), the host log (*OpenAI-compatible ... request
-from ... finished here* or *sent on to ...*, *Owner first: stopped an
-OpenAI-compatible ... request*), and `GET /martlet/v1/priority` (its running
-requests and preemptions).
+from ... finished here* or *sent on to ...*, *... waits for a free slot*,
+*Owner first: stopped an OpenAI-compatible ... request*), the answer's
+`model`, `X-Martlet-Host` and `X-Martlet-Queued`, and `GET
+/martlet/v1/priority` (its running requests and preemptions).
 
-**Tests:** `OpenAiEndpointTests` (Martlet.Gateway.Tests and Martlet.Core.Tests).
+**Tests:** `OpenAiEndpointTests` (Martlet.Gateway.Tests and Martlet.Core.Tests),
+`OpenAiNetworkModelsTests` (Martlet.Core.Tests).
 
 **MCP:** `openai_selftest`, `openai_endpoint_status`.
 

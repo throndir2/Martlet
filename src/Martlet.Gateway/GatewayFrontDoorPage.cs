@@ -120,6 +120,19 @@ internal sealed partial class GatewayHttpApplication
                 html.Append("<li><code>").Append(E(model)).Append("</code> <span class=\"muted\">(on ").Append(computers)
                     .Append(computers == 1 ? " computer" : " computers").Append(")</span></li>");
             html.Append("</ul>");
+            var network = OpenAiNetworkModels.All.Where(n => OpenAiNetworkModels.Resolving(n, models.Keys).Count > 0).ToArray();
+            if (network.Length > 0)
+            {
+                html.Append("<p>Or let Martlet pick a free model for you:</p><ul>");
+                foreach (var name in network)
+                    html.Append("<li><code>").Append(E(name)).Append("</code> <span class=\"muted\">(").Append(name switch
+                    {
+                        OpenAiNetworkModels.Any => "any model",
+                        OpenAiNetworkModels.Fast => "a fast model",
+                        _ => "a smart model"
+                    }).Append(")</span></li>");
+                html.Append("</ul>");
+            }
         }
         html.Append("</div>");
 
@@ -132,7 +145,8 @@ internal sealed partial class GatewayHttpApplication
         var expires = key.ExpiresAt is { } end ? $"It expires {end:yyyy-MM-dd}." : "It doesn't expire.";
         html.Append("<div class=\"card\"><h2>Your key</h2><ul><li>").Append(E(OpenAiEndpoint.Priority(key))).Append(".</li><li>")
             .Append(E(expires)).Append("</li><li>").Append(FrontDoorRequestsOf(key.Id)).Append(" requests through this address since it started; ")
-            .Append(E(used)).Append(".</li></ul><p class=\"muted\">The owner's own work comes first. When a model is busy, your app ")
-            .Append("gets 429 (try again in a moment) or 503 (the owner needed it). Keep your key private; the owner can revoke it at any time.</p></div>");
+            .Append(E(used)).Append(".</li></ul><p class=\"muted\">The owner's own work comes first. When a model is busy, your request ")
+            .Append("waits for a free one; if it waits too long your app gets 429 (try again in a moment), and 503 when the owner needed ")
+            .Append("the model. Keep your key private; the owner can revoke it at any time.</p></div>");
     }
 }

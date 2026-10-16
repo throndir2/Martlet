@@ -112,9 +112,32 @@ internal static class OpenAiRehearsal
         });
         await Run("A streamed chat for the other host's model is sent on to it with the same key and arrives as server-sent events", async () =>
         {
-            var (status, host, text, done, _) = await App.StreamAsync(front, ana!.Token, Chat(GpuModel, true), token);
+            var (status, host, text, done, _, _) = await App.StreamAsync(front, ana!.Token, Chat(GpuModel, true), token);
             return (status == 200 && host == gpu.HostId && text == FixtureOllama.Reply && done && gpu.Ollama.Chats == 1 && front.Ollama.Chats == 1,
                 $"HTTP {status} from {host}: \"{text}\", [DONE] {done}; chats on the front door {front.Ollama.Chats}, on lab-gpu-box {gpu.Ollama.Chats}");
+        });
+        await Run("GET /v1/models lists the network model names that fit a model (martlet@any, martlet@fast), with the real models each may run on", async () =>
+        {
+            var result = await App.CallAsync(front, ana!.Token, HttpMethod.Get, "/v1/models");
+            var entries = result.Json?.GetProperty("data").EnumerateArray().ToDictionary(m => m.GetProperty("id").GetString()!,
+                m => m.TryGetProperty("martlet_models", out var real) ? real.EnumerateArray().Select(r => r.GetString()!).ToArray() : null) ?? [];
+            var any = entries.GetValueOrDefault(OpenAiNetworkModels.Any) ?? [];
+            var fast = entries.GetValueOrDefault(OpenAiNetworkModels.Fast) ?? [];
+            return (result.Status == 200 && any.Order(StringComparer.Ordinal).SequenceEqual([FrontModel, GpuModel]) && fast.SequenceEqual([FrontModel]) &&
+                    !entries.ContainsKey(OpenAiNetworkModels.Smart),
+                $"HTTP {result.Status}: {string.Join("; ", entries.Where(e => e.Value is not null).Select(e => $"{e.Key} -> {string.Join(", ", e.Value!)}"))}; " +
+                $"martlet@smart listed: {entries.ContainsKey(OpenAiNetworkModels.Smart)}");
+        });
+        await Run("A chat for martlet@fast runs on the front door's Fast model and names it; martlet@smart (no Smart model) and martlet@fast for embeddings are refused clearly", async () =>
+        {
+            var fast = await App.CallAsync(front, ana!.Token, HttpMethod.Post, "/v1/chat/completions", Chat(OpenAiNetworkModels.Fast, false));
+            var smart = await App.CallAsync(front, ana.Token, HttpMethod.Post, "/v1/chat/completions", Chat(OpenAiNetworkModels.Smart, false));
+            var embed = await App.CallAsync(front, ana.Token, HttpMethod.Post, "/v1/embeddings",
+                JsonSerializer.Serialize(new { model = OpenAiNetworkModels.Fast, input = "hello" }));
+            return (fast.Status == 200 && fast.Model == FrontModel && fast.Host == front.HostId && smart.Status == 404 && smart.Code == "model_not_found" &&
+                    embed.Status == 400 && embed.Type == "invalid_request_error",
+                $"martlet@fast: HTTP {fast.Status}, model {fast.Model} from {fast.Host}; martlet@smart: {smart.Status} {smart.Code}; " +
+                $"martlet@fast embeddings: {embed.Status} {embed.Type}");
         });
         await Run("Calls without a key, with a voice-only key or for a model the network lacks are refused in OpenAI's error form", async () =>
         {
@@ -134,9 +157,32 @@ internal static class OpenAiRehearsal
             await front.Ollama.FirstSent.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
             front.Ollama.Hold = false;
             var reply = await desktop.ReplyAsync(front, token);
-            var (status, _, _, _, error) = await shared;
+            var (status, _, _, _, error, _) = await shared;
             return (status == 200 && error == "owner_needs_it" && reply == FixtureOllama.Reply,
                 $"Ana's stream ended with {error ?? "no error"}; the owner's reply: \"{reply}\"");
+        });
+        await Run("While the owner's reply holds the front door's model, martlet@any runs at once on lab-gpu-box's free model, and Ana's requests for the front door's model wait in the queue (her stream gets SSE comments) and run once the reply ends", async () =>
+        {
+            front.Ollama.Hold = true;
+            var reply = desktop.ReplyAsync(front, token);
+            await front.Ollama.FirstSent.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+            front.Ollama.Hold = false;
+            var any = await App.CallAsync(front, ana!.Token, HttpMethod.Post, "/v1/chat/completions", Chat(OpenAiNetworkModels.Any, false));
+            var waiting = App.CallAsync(front, ana.Token, HttpMethod.Post, "/v1/chat/completions", Chat(FrontModel, false));
+            var streamed = App.StreamAsync(front, ana.Token, Chat(FrontModel, true), token);
+            // Past the first SSE comment, which comes 5 seconds into the wait.
+            await Task.Delay(TimeSpan.FromSeconds(7), token);
+            var held = !waiting.IsCompleted && !streamed.IsCompleted;
+            front.Ollama.Release();
+            var owner = await reply;
+            var queued = await waiting;
+            var (status, host, text, done, error, comments) = await streamed;
+            return (any.Status == 200 && any.Model == GpuModel && any.Host == gpu.HostId && held && owner == FixtureOllama.Reply &&
+                    queued.Status == 200 && queued.Host == front.HostId && queued.Queued > 0 &&
+                    status == 200 && comments > 0 && text == FixtureOllama.Reply && done && error is null,
+                $"martlet@any: HTTP {any.Status}, model {any.Model} from {any.Host}; Ana's requests still waiting after 7 s: {held}; " +
+                $"the owner's reply: \"{owner}\"; then Ana's request: HTTP {queued.Status} from {queued.Host} after {queued.Queued} ms in the queue; " +
+                $"her stream: HTTP {status}, {comments} SSE comments, \"{text}\", [DONE] {done}, error {error ?? "none"} (host header {host ?? "none: the stream started while it waited"})");
         });
         await Run("Revoking Ana's key on the desktop stops it on both hosts at the next sync; Ben keeps working", async () =>
         {
@@ -219,7 +265,11 @@ internal static class OpenAiRehearsal
     /// of a host doesn't check the host's own certificate either (nginx proxy_ssl_verify off), so this one pins it.</summary>
     private static class App
     {
-        internal sealed record Result(int Status, JsonElement? Json, string? Type, string? Code, string? Host);
+        internal sealed record Result(int Status, JsonElement? Json, string? Type, string? Code, string? Host, long Queued)
+        {
+            /// <summary>The model the answer names (the real model that ran it).</summary>
+            internal string? Model => Json is { ValueKind: JsonValueKind.Object } root && root.TryGetProperty("model", out var model) ? model.GetString() : null;
+        }
 
         private static HttpClient Client(LabHost host)
         {
@@ -248,13 +298,17 @@ internal static class OpenAiRehearsal
             catch (JsonException) { }
             var error = parsed is { ValueKind: JsonValueKind.Object } root && root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.Object ? e : (JsonElement?)null;
             return new((int)response.StatusCode, parsed, error?.GetProperty("type").GetString(), error?.GetProperty("code").GetString(),
-                response.Headers.TryGetValues("X-Martlet-Host", out var hosts) ? hosts.FirstOrDefault() : null);
+                response.Headers.TryGetValues("X-Martlet-Host", out var hosts) ? hosts.FirstOrDefault() : null, Queued(response));
         }
 
-        /// <summary>Streams a chat to its end: the status, the host that answered, the text, whether [DONE] came, and the code of
-        /// an error event.</summary>
-        internal static async Task<(int Status, string? Host, string Text, bool Done, string? Error)> StreamAsync(LabHost host, string key,
-            string json, CancellationToken token)
+        // How long the request waited for a free slot (X-Martlet-Queued, milliseconds); 0 when it didn't wait.
+        private static long Queued(HttpResponseMessage response) =>
+            response.Headers.TryGetValues("X-Martlet-Queued", out var values) && long.TryParse(values.FirstOrDefault(), out var waited) ? waited : 0;
+
+        /// <summary>Streams a chat to its end: the status, the host that answered, the text, whether [DONE] came, the code of
+        /// an error event, and how many SSE comments (sent while it waited for a free slot) came.</summary>
+        internal static async Task<(int Status, string? Host, string Text, bool Done, string? Error, int Comments)> StreamAsync(LabHost host,
+            string key, string json, CancellationToken token)
         {
             using var http = Client(host);
             using var response = await http.SendAsync(Request(HttpMethod.Post, "/v1/chat/completions", key, json), HttpCompletionOption.ResponseHeadersRead, token);
@@ -262,9 +316,11 @@ internal static class OpenAiRehearsal
             var text = new StringBuilder();
             string? error = null;
             var done = false;
+            var comments = 0;
             using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(token));
             while (await reader.ReadLineAsync(token) is { } line)
             {
+                if (line.StartsWith(':')) { comments++; continue; }
                 if (!line.StartsWith("data: ", StringComparison.Ordinal)) continue;
                 if (line == "data: [DONE]") { done = true; break; }
                 var chunk = JsonDocument.Parse(line[6..]).RootElement;
@@ -272,7 +328,7 @@ internal static class OpenAiRehearsal
                 foreach (var choice in chunk.GetProperty("choices").EnumerateArray())
                     if (choice.GetProperty("delta").TryGetProperty("content", out var piece)) text.Append(piece.GetString());
             }
-            return ((int)response.StatusCode, from, text.ToString(), done, error);
+            return ((int)response.StatusCode, from, text.ToString(), done, error, comments);
         }
 
     }
@@ -357,16 +413,33 @@ internal static class OpenAiRehearsal
     }
 
     /// <summary>Stands in for Ollama's native /api/chat (FIXTURE, NOT AI): a canned reply, streamed in two pieces or whole. With
-    /// <see cref="Hold"/> the second piece waits until the hold ends or the request is dropped.</summary>
+    /// <see cref="Hold"/> the second piece waits until <see cref="Release"/> or the request is dropped; each new hold starts a
+    /// new <see cref="FirstSent"/>.</summary>
     internal sealed class FixtureOllama : HttpMessageHandler
     {
         internal const string Reply = "Hello from the fixture model.";
         private int chats;
-        private readonly TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private bool hold;
+        private TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int Chats => Volatile.Read(ref chats);
         internal JsonElement? LastChat { get; private set; }
-        internal TaskCompletionSource FirstSent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal bool Hold { get; set; }
+        internal TaskCompletionSource FirstSent { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool Hold
+        {
+            get => hold;
+            set
+            {
+                if (value && !hold)
+                {
+                    released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    FirstSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+                hold = value;
+            }
+        }
+
+        /// <summary>Lets the held requests finish.</summary>
+        internal void Release() => released.TrySetResult();
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

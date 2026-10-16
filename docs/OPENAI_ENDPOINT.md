@@ -14,6 +14,7 @@ Words on this page follow the [glossary](GLOSSARY.md#sharing).
 | Question | Answer |
 | --- | --- |
 | What do people get? | The models your hosts run with Ollama (the Thinking and Thinking pool roles), for example `qwen3:8b`. `GET /v1/models` lists them. |
+| Do they have to pick a model? | No. The [network model names](#network-model-names) `martlet@any`, `martlet@fast` and `martlet@smart` run on a free model of that kind on any of your hosts. |
 | What do they never get? | The cloud providers and API keys you set in Martlet, and everything else of Martlet: settings, memories, voices, characters, logs, your network and your other engines. A key with only the `openai` scope can't call any other route. |
 | How do they get in? | With a key you make on **Share › Share your language models › Give someone access**. Martlet shows a text to send them: the address, the key, the models and a first request. |
 | Do my own conversations slow down? | No. Their requests come after yours (below), and they use the context size your own requests use, so a host never loads its model again for them. |
@@ -44,7 +45,9 @@ flowchart LR
    with the same key and the `X-Martlet-Forwarded` header, over TLS pinned to
    that host's key from the roster. That host checks the key again and never
    sends the request on. A host that is busy for its owner gets skipped, and
-   the next host that has the model gets the request.
+   the next host that has the model gets the request. When every host that has
+   the model is busy, the request [waits for a free
+   slot](#when-every-model-is-busy-the-queue).
 7. The answer comes back as the app expects it: one JSON document, or
    server-sent events (`data: {...}` and `data: [DONE]`) when it streams. The
    `X-Martlet-Host` header names the host that answered.
@@ -53,7 +56,7 @@ flowchart LR
 
 | Method and path | What it does |
 | --- | --- |
-| `GET /v1/models` | The models of your network (an API key) or of this host (a paired computer or a friend's computer, signed). |
+| `GET /v1/models` | The models of your network and the [network model names](#network-model-names) that fit them (an API key), or the models of this host (a paired computer or a friend's computer, signed). |
 | `GET /v1/models/{id}` | One model, or 404 `model_not_found`. |
 | `POST /v1/chat/completions` | Chat, with streaming, tools (function calls), JSON mode and JSON schema, pictures as `data:` URLs, recordings as `input_audio`, `reasoning_effort`, `max_tokens`, `temperature`, `top_p`, `stop`, `seed`, `frequency_penalty`, `presence_penalty` and `stream_options.include_usage`. |
 | `POST /v1/completions` | Text completion of one prompt (with `suffix`). |
@@ -62,13 +65,98 @@ flowchart LR
 The key needs the `openai` scope. A key without it gets 403
 `permission_error`. Errors use OpenAI's form,
 `{"error":{"message","type","param","code"}}`, so the apps show them as they
-show OpenAI's own errors. A busy model answers 429 with `Retry-After: 5`, and
-the OpenAI libraries try again by themselves.
+show OpenAI's own errors. A request for a busy model waits for a free slot
+([the queue](#when-every-model-is-busy-the-queue)). When the wait ends without
+one, the answer is 429 with `Retry-After: 5`, and the OpenAI libraries try
+again by themselves.
 
 Limits: one JSON object of at most 32 MB, each top-level name once (so the
 model Martlet checks is the model Ollama runs), `n` of 1, and a request runs at
 most 15 minutes. The host never fetches a web address for a request: send
 pictures as `data:image/...;base64,...`.
+
+### Network model names
+
+Three model names don't name one model. Each one names a kind of model of
+your network. Martlet picks a real model when the request arrives, and a model
+with a free slot now comes first.
+
+| Name | What it runs on |
+| --- | --- |
+| `martlet@any` | Any chat model of your network. On `/v1/embeddings`: any embedding model. |
+| `martlet@fast` | A model that Martlet rates **Fast**. |
+| `martlet@smart` | A model that Martlet rates **Smart**. |
+
+- Martlet rates each model Fast, Standard or Smart from its name, as the
+  Thinking pool does (`ThinkingSmartsGuess`). The parameter count in the name
+  decides: at most 4.5 billion is Fast, 26 billion or more is Smart. A name
+  without a count uses the model family. For example, `gemma4:e4b` is Fast,
+  `qwen3:8b` is Standard and `gemma4:27b` is Smart. A rating that you choose
+  on the Thinking pool page doesn't change these names, because the hosts
+  use only the model name.
+- `GET /v1/models` lists a name (first) only when at least one model of your
+  network fits it. Its entry has `martlet_models`, the real models it can run
+  on, and `martlet_hosts`, their hosts.
+- Martlet tries the models that fit in this order: the front door's own models
+  (the Thinking pool's first), then the models of the other hosts. The first
+  one with a free slot for the key's rank runs the request. When all of them
+  are busy, the request [waits](#when-every-model-is-busy-the-queue).
+- The answer's `model` field names the real model that answered.
+  `X-Martlet-Host` names its host. A host that sends the request on puts the
+  real model's name in the request, so a host of an older version can run it.
+- Embedding models (Martlet knows them by their names, for example
+  `nomic-embed-text`, `mxbai-embed-large` or `bge-m3`) answer only
+  `martlet@any` on `/v1/embeddings`. They never get a chat or a completion.
+  `martlet@fast` and `martlet@smart` on `/v1/embeddings` get 400
+  `invalid_request`.
+- A name that no model of your network fits gets 404 `model_not_found`, with
+  a message that tells why.
+- Each name has an `@`. An Ollama model name can never have an `@`, so a real
+  model can never have one of these names.
+
+### When every model is busy: the queue
+
+When no model that fits has a free slot for the key's rank, the request waits
+in a queue for one, instead of getting 429 at once.
+
+- Each host has one queue. A request that waits holds no slot.
+- A key with `equal-priority` gets a free slot before the keys of the default
+  rank. Requests of the same rank get it in the order they came.
+- Your own requests never wait in the queue and never wait behind it. A slot
+  that your request waits for (after it stopped a shared request) never goes
+  to a request in the queue. While a live turn holds a graphics card, no
+  request in the queue gets a slot on it. Nothing of the queue runs on a
+  reply's path.
+
+| Limit | Value |
+| --- | --- |
+| Requests that wait on one host | 16 |
+| Requests of one key that wait on one host | 4 |
+| Longest wait without `stream` | 45 seconds |
+| Longest wait with `stream: true` | 2 minutes |
+| SSE comments while a stream waits | the first after 5 seconds, then every 10 seconds |
+
+- Why only 45 seconds without `stream`: Cloudflare and many other proxies end
+  a response that hasn't started after about 100 seconds. The answer needs the
+  rest of that time.
+- A streamed request that waits more than 5 seconds starts its answer (HTTP
+  200, `text/event-stream`) and gets SSE comment lines
+  (`: waiting for a free model`). Proxies then keep the connection open, and
+  the OpenAI clients skip comments. Its answer then has no `X-Martlet-Host`
+  header; the `model` field of each chunk names the model.
+- When the wait ends without a slot, or the queue is full, the answer is 429
+  `model_busy` with `Retry-After: 5`. A stream that already started ends with
+  an error event (`model_busy`) and `data: [DONE]`.
+- The answer to a request that waited has the header `X-Martlet-Queued`: how
+  long it waited, in milliseconds.
+- Where a request waits: when the front door has a model that fits, in the
+  front door's queue, and the front door asks the other hosts that have one
+  again every 5 seconds. Otherwise the front door sends the request to a host
+  that has one, with the header `X-Martlet-Wait` (the seconds it may wait),
+  and the request waits in that host's queue. Without that header (a front
+  door of an older version), a host answers 429 at once.
+- Your request still stops a shared request that runs (503
+  `owner_needs_it`). Martlet doesn't put a stopped request back in the queue.
 
 ### Your requests first
 
@@ -78,7 +166,7 @@ key itself stays the same.
 
 | Priority | What happens |
 | --- | --- |
-| **Your Martlet first** (the default) | Their requests rank below all of your work, like a friend's. Any of your requests that needs the same graphics card or slot stops theirs at once (their app gets 503 `owner_needs_it`, or an error event in a stream). While your work uses the card, a new request of theirs gets 429 `model_busy`. |
+| **Your Martlet first** (the default) | Their requests rank below all of your work, like a friend's. Any of your requests that needs the same graphics card or slot stops theirs at once (their app gets 503 `owner_needs_it`, or an error event in a stream). While your work uses the card, a new request of theirs [waits](#when-every-model-is-busy-the-queue), and gets 429 `model_busy` if the wait ends first. |
 | **Same priority as your background work** (scope `equal-priority`) | Their requests rank with your Thinking pool's work: they run beside it and wait only for free slots. Your live conversations still stop them. |
 
 Their requests never stop your work or anybody else's. The owner of each host
@@ -314,8 +402,10 @@ reply = client.chat.completions.create(model="qwen3:8b", messages=[{"role": "use
 print(reply.choices[0].message.content)
 ```
 
-The owner's own work comes first. A request can stop with `owner_needs_it`
-(503) or wait with `model_busy` (429); the OpenAI libraries try again.
+The owner's own work comes first. A request can wait for a free model, stop
+with `owner_needs_it` (503) or end with `model_busy` (429); the OpenAI
+libraries try again. When any model will do, use `martlet@any` (or
+`martlet@fast`, `martlet@smart`): Martlet picks a free one.
 
 ## Friends and the Share page
 
@@ -338,9 +428,10 @@ thinking). A person who wants them in another app asks the owner for a key.
 | Piece | Location |
 | --- | --- |
 | Scopes, key priority, address and proxy text | `Martlet.Core.Access` (`ApiKeyScopes.OpenAi`, `ApiKeyScopes.EqualPriority`, `ApiKeyList.ChangeScopes`, `OpenAiEndpoint`, `OpenAiEndpointSettings` in `openai-endpoint.json`, shared as `openai-endpoint`) |
-| Endpoint and forwarding | `Martlet.Gateway` `GatewayOpenAi.cs` (`/v1` routes, peers from the network roster, pinned forwarding, OpenAI errors) |
+| Endpoint and forwarding | `Martlet.Gateway` `GatewayOpenAi.cs` (`/v1` routes, peers from the network roster, pinned forwarding, network model names, the wait and its limits `GatewayOpenAiQueue`, OpenAI errors) |
+| Network model names | `Martlet.Core.Access` `OpenAiNetworkModels` (the names, which models fit them, the embedding guess) |
 | Front door | `GatewayFrontDoor.cs` (its routes, sign-in and sessions), `GatewayFrontDoorPage.cs` (the web page), `GatewayFrontDoorListener.cs` (its port); `GatewayExposure.FrontDoorPort`; on Linux hosts `exposure.json` `frontDoorPort` (`martlet-host exposure --front-door`), the `host.exposure` node command's `front_door`, and the Docker holder's published port |
-| Rank and slots | `GatewayInferenceOutside.cs` (`GatewayInferenceRouteRegistry.BeginOutside`, `GatewayOutsideJob`), with `GatewayInferencePriority.cs` |
+| Rank, slots and the queue | `GatewayInferenceOutside.cs` (`GatewayInferenceRouteRegistry.BeginOutside`, `EnqueueOutside`, `WaitOutsideAsync`, `GatewayOutsideJob`, `GatewayOutsideWaiter`), with `GatewayInferencePriority.cs` |
 | Translation to Ollama | `Martlet.Gateway.Ollama` `OllamaOpenAi.cs` and `OllamaRelayWorker.OpenAi.cs` (`OpenAiContextAsync`) |
 | Key checks | `GatewayApiKeys.cs` (`AuthenticateOpenAi`, `EqualPriority`) |
 | Desktop client | `Remote/HostOpenAiModels.cs` (`ReadOpenAiModelsAsync`) |
@@ -356,11 +447,21 @@ Checked on the Windows development PC:
   with the owner's context size and the model kept loaded, streams,
   completions and embeddings, duplicate `model` names refused, the owner's
   reply stopping a shared request, the rank of `equal-priority`, the front
-  door sending a model on to another host, and the translation of tools.
-- `OpenAiEndpointTests` in `Martlet.Core.Tests`: key priority changes, the
-  address and two simulated computers sharing the settings.
+  door sending a model on to another host, and the translation of tools. The
+  network model names: the list, a free model first, the real model in the
+  answer, embedding models only for `martlet@any` embeddings, clear refusals,
+  and a name sent on to another host. The queue: a request that waits for the
+  owner's work and runs after it while the owner's reply doesn't wait, the
+  limits (per key, the longest wait, a stream that ends with `model_busy`),
+  SSE comments while a stream waits, `X-Martlet-Wait`, and a request that
+  waits in another host's queue.
+- `OpenAiEndpointTests` and `OpenAiNetworkModelsTests` in
+  `Martlet.Core.Tests`: key priority changes, the address, two simulated
+  computers sharing the settings, and which models each network model name
+  fits.
 - MCP `openai_selftest`: two real gateways joined by real network sync, keys
-  synced by the desktop's client, the front door, refusals, owner first and
+  synced by the desktop's client, the front door, refusals, owner first,
+  the network model names, the queue (with the production limits) and
   revocation.
 - MCP with the desktop on a disposable data folder: the Share page, the
   card, Give someone access, the address, Show proxy setup, and a friend's

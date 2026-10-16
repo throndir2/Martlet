@@ -62,10 +62,17 @@ public sealed class GatewayOpenAiAnswer
 /// <summary>Requests of the OpenAI-compatible endpoint on a route's worker. They share the worker's slots with the owner's
 /// requests and take part in GPU priority (GatewayInferencePriority.cs) with a rank of their own: below all of the owner's work
 /// (rank 0, like a friend's), or with the owner's background work (rank 1) for a key with the <c>equal-priority</c> scope. They
-/// never stop other work; work of a higher rank stops them and turns them away.</summary>
+/// never stop other work; work of a higher rank stops them and turns them away. A request that finds no free slot may wait in
+/// this host's queue (<see cref="EnqueueOutside"/>): it holds no slot while it waits, and gets one only when the owner's work
+/// leaves it free. The owner's requests never look at the queue, so they never wait behind it.</summary>
 public sealed partial class GatewayInferenceRouteRegistry
 {
     private readonly List<GatewayOutsideJob> outsideJobs = [];
+    private readonly List<GatewayOutsideWaiter> outsideWaiting = [];
+    private long outsideOrder;
+    /// <summary>How often a waiting request checks for a free slot when nothing tells it (a hold or the owner's work on
+    /// another route of its graphics card ended).</summary>
+    private static readonly TimeSpan OutsideTick = TimeSpan.FromMilliseconds(250);
 
     /// <summary>The routes whose worker answers the OpenAI-compatible API, with their model; pool routes first, since the owner's
     /// live turns use the live routes.</summary>
@@ -77,9 +84,13 @@ public sealed partial class GatewayInferenceRouteRegistry
     /// <summary>How many OpenAI-compatible requests run on this host now.</summary>
     internal int OutsideRunning { get { lock (gate) return outsideJobs.Count; } }
 
+    /// <summary>How many OpenAI-compatible requests wait for a free slot on this host now.</summary>
+    internal int OutsideWaiting { get { lock (gate) return outsideWaiting.Count; } }
+
     /// <summary>Admits an OpenAI-compatible request of <paramref name="principal"/> on route <paramref name="routeId"/>: it takes
     /// one of the worker's slots until the returned job is disposed. Turned away (job.busy) while every slot is taken, while
-    /// work of a higher rank or a live turn's hold keeps the route's graphics card, or while a slot is kept for the owner.</summary>
+    /// work of a higher rank or a live turn's hold keeps the route's graphics card, while a slot is kept for the owner's request,
+    /// or while requests of the same or a higher rank wait in the queue for this route (they came first).</summary>
     internal GatewayOutsideJob BeginOutside(GatewayPrincipal principal, string routeId, bool equalPriority)
     {
         ArgumentNullException.ThrowIfNull(principal);
@@ -98,13 +109,13 @@ public sealed partial class GatewayInferenceRouteRegistry
             refused = RefuseLocked(registration.Route, principal, now, rank);
             if (refused is null)
             {
-                if (rank == 0 && registration.Admission.ReservedUntil > now)
+                // A slot the owner's request waits for is never given to a shared request, whatever its rank.
+                if (registration.Admission.ReservedUntil > now)
                     throw new GatewayProtocolException("job.busy", OwnerDetail);
-                if (registration.Admission.Active >= registration.Route.MaximumConcurrency)
+                if (registration.Admission.Active >= registration.Route.MaximumConcurrency ||
+                    outsideWaiting.Any(w => w.Rank >= rank && !w.Away && w.Routes.Contains(registration)))
                     throw new GatewayProtocolException("job.busy");
-                registration.Admission.Active++;
-                job = new(this, registration, principal, rank);
-                outsideJobs.Add(job);
+                job = StartOutsideLocked(registration, principal, rank);
             }
         }
         if (refused is not null)
@@ -113,6 +124,143 @@ public sealed partial class GatewayInferenceRouteRegistry
             throw new GatewayProtocolException("job.busy", rank == 0 ? OwnerDetail : PriorityDetail);
         }
         return job!;
+    }
+
+    private GatewayOutsideJob StartOutsideLocked(RouteRegistration registration, GatewayPrincipal principal, int rank)
+    {
+        registration.Admission.Active++;
+        var job = new GatewayOutsideJob(this, registration, principal, rank);
+        outsideJobs.Add(job);
+        return job;
+    }
+
+    // Whether a request of `rank` may take a slot of `registration` now: not while work of a higher rank or a hold keeps one of
+    // its graphics cards, a slot is kept for the owner's request, or every slot is taken. Records nothing.
+    private bool FreeForOutsideLocked(RouteRegistration registration, int rank, DateTimeOffset now) =>
+        !registration.Admission.Quarantined && registration.Admission.ReservedUntil <= now &&
+        registration.Admission.Active < registration.Route.MaximumConcurrency && HolderLocked(registration.Route.Gpus, now, rank) is null;
+
+    /// <summary>Puts an OpenAI-compatible request that found no free slot in this host's queue for the routes
+    /// <paramref name="routeIds"/> (in the order it prefers them). Null when <paramref name="maximum"/> requests already wait
+    /// here, or <paramref name="maximumPerKey"/> of the same key. Wait with <see cref="WaitOutsideAsync"/>; always end with
+    /// <see cref="LeaveOutside"/>.</summary>
+    internal GatewayOutsideWaiter? EnqueueOutside(GatewayPrincipal principal, IReadOnlyList<string> routeIds, bool equalPriority,
+        int maximum, int maximumPerKey)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+        ArgumentNullException.ThrowIfNull(routeIds);
+        var routes = routeIds.Select(id => byId.TryGetValue(id, out var registration) ? registration
+            : throw new GatewayProtocolException("request.invalid")).ToArray();
+        GatewayRules.Require(routes.Length > 0, "request.invalid");
+        lock (gate)
+        {
+            GatewayRules.Require(!closed, "worker.unavailable");
+            if (outsideWaiting.Count >= maximum ||
+                outsideWaiting.Count(w => w.Principal.CredentialId == principal.CredentialId) >= maximumPerKey)
+                return null;
+            var waiter = new GatewayOutsideWaiter(principal, routes, equalPriority ? 1 : 0, ++outsideOrder);
+            outsideWaiting.Add(waiter);
+            return waiter;
+        }
+    }
+
+    /// <summary>Waits until <paramref name="waiter"/> gets a slot (its job, which now holds the slot) or for at most
+    /// <paramref name="within"/> (null; it still waits in the queue). Higher ranks get a free slot first, then requests in the
+    /// order they came. Throws when the key stops working, the caller hangs up or the gateway closes.</summary>
+    internal async Task<GatewayOutsideJob?> WaitOutsideAsync(GatewayOutsideWaiter waiter, TimeSpan within, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(waiter);
+        var started = clock.GetTimestamp();
+        while (true)
+        {
+            List<GatewayOutsideWaiter> granted;
+            GatewayOutsideJob? job = null;
+            Task[] wake;
+            lock (gate)
+            {
+                GatewayRules.Require(!closed, "worker.unavailable");
+                if (waiter.Taken) return null;
+                granted = PumpOutsideLocked(clock.GetUtcNow());
+                if (waiter.Job is { } mine && !waiter.Taken)
+                {
+                    waiter.Taken = true;
+                    job = mine;
+                }
+                wake = [.. waiter.Routes.Select(r => r.Admission.Freed.Task).Distinct(), waiter.Granted.Task];
+            }
+            Grant(granted);
+            if (job is not null) return job;
+            var remaining = within - clock.GetElapsedTime(started);
+            if (remaining <= TimeSpan.Zero) return null;
+            waiter.Principal.WithAuthority(() => true);
+            using var tick = CancellationTokenSource.CreateLinkedTokenSource(token);
+            await Task.WhenAny([.. wake, Task.Delay(remaining < OutsideTick ? remaining : OutsideTick, clock, tick.Token)]).ConfigureAwait(false);
+            await tick.CancelAsync().ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+        }
+    }
+
+    /// <summary>Takes <paramref name="waiter"/> out of the queue. Returns the job it was given in the meantime and nobody took
+    /// yet (dispose it, or run the request with it), else null.</summary>
+    internal GatewayOutsideJob? LeaveOutside(GatewayOutsideWaiter waiter)
+    {
+        ArgumentNullException.ThrowIfNull(waiter);
+        lock (gate)
+        {
+            outsideWaiting.Remove(waiter);
+            if (waiter.Job is null || waiter.Taken) return null;
+            waiter.Taken = true;
+            return waiter.Job;
+        }
+    }
+
+    /// <summary>Keeps <paramref name="waiter"/>'s place in the queue but gives it no slot (and lets later requests take free
+    /// slots) while its handler asks other hosts, until <see cref="StepBack"/>. Returns the job it was given before (take it and
+    /// don't step away), else null.</summary>
+    internal GatewayOutsideJob? StepAway(GatewayOutsideWaiter waiter)
+    {
+        ArgumentNullException.ThrowIfNull(waiter);
+        lock (gate)
+        {
+            if (waiter.Job is { } job && !waiter.Taken)
+            {
+                waiter.Taken = true;
+                return job;
+            }
+            waiter.Away = true;
+            return null;
+        }
+    }
+
+    /// <summary>Lets <paramref name="waiter"/> get a slot again after <see cref="StepAway"/>.</summary>
+    internal void StepBack(GatewayOutsideWaiter waiter)
+    {
+        ArgumentNullException.ThrowIfNull(waiter);
+        lock (gate) waiter.Away = false;
+    }
+
+    // Gives free slots to waiting requests: a higher rank first, then in the order they came; each takes the first of its routes
+    // that is free for its rank. A request whose handler asks other hosts now gets none. Returns the requests given a slot, to
+    // wake outside the lock.
+    private List<GatewayOutsideWaiter> PumpOutsideLocked(DateTimeOffset now)
+    {
+        List<GatewayOutsideWaiter> granted = [];
+        if (outsideWaiting.Count == 0 || closed) return granted;
+        foreach (var waiter in outsideWaiting.Where(w => !w.Away).OrderByDescending(w => w.Rank).ThenBy(w => w.Order).ToArray())
+            foreach (var registration in waiter.Routes)
+            {
+                if (!FreeForOutsideLocked(registration, waiter.Rank, now)) continue;
+                waiter.Job = StartOutsideLocked(registration, waiter.Principal, waiter.Rank);
+                outsideWaiting.Remove(waiter);
+                granted.Add(waiter);
+                break;
+            }
+        return granted;
+    }
+
+    private static void Grant(List<GatewayOutsideWaiter> granted)
+    {
+        foreach (var waiter in granted) waiter.Granted.TrySetResult();
     }
 
     // Stops each OpenAI-compatible request of `jobs` for `by` (its own handler says so in the log).
@@ -131,6 +279,7 @@ public sealed partial class GatewayInferenceRouteRegistry
     private void FinishOutside(GatewayOutsideJob job)
     {
         TaskCompletionSource freed;
+        List<GatewayOutsideWaiter> granted;
         lock (gate)
         {
             if (!outsideJobs.Remove(job)) return;
@@ -138,8 +287,26 @@ public sealed partial class GatewayInferenceRouteRegistry
             admission.Active--;
             freed = admission.Freed;
             admission.Freed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            // The next waiting request gets the slot now, unless it is kept for the owner's request that stopped this job.
+            granted = PumpOutsideLocked(clock.GetUtcNow());
         }
         freed.TrySetResult();
+        Grant(granted);
+    }
+
+    /// <summary>An OpenAI-compatible request waiting in this host's queue for a slot of one of <see cref="Routes"/>. It holds no
+    /// slot until it is given one (<see cref="Job"/>, set under the registry's lock).</summary>
+    internal sealed class GatewayOutsideWaiter(GatewayPrincipal principal, RouteRegistration[] routes, int rank, long order)
+    {
+        internal GatewayPrincipal Principal { get; } = principal;
+        internal RouteRegistration[] Routes { get; } = routes;
+        internal int Rank { get; } = rank;
+        internal long Order { get; } = order;
+        internal GatewayOutsideJob? Job { get; set; }
+        internal bool Taken { get; set; }
+        /// <summary>Its handler asks other hosts now: it keeps its place but gets no slot.</summary>
+        internal bool Away { get; set; }
+        internal TaskCompletionSource Granted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     /// <summary>One OpenAI-compatible request holding a slot of a route's worker. <see cref="Stopped"/> fires when work of a
