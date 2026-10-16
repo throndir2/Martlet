@@ -717,7 +717,7 @@ public partial class MainWindow
         LocalHostServiceStage.DockerNotRunning => "Waiting for Docker Desktop",
         LocalHostServiceStage.NotSetUp => "Not set up yet",
         LocalHostServiceStage.Stopped => "Host service stopped",
-        _ when state.AddressOnThisPc == false => "Address changed",
+        _ when state.AddressOnThisPc == false => HostMoving ? "Moving to the new address" : "Address changed",
         _ when state.Answering != true => "Not answering yet",
         _ => "Host is running"
     };
@@ -772,9 +772,12 @@ public partial class MainWindow
             LocalHostServiceStage.NotSetUp =>
                 ("Not set up yet. Sets up the host service; Windows may ask to allow private-network access.", [SetUp("Set up host service")]),
             LocalHostServiceStage.Stopped => ("Set up, but not running. Start it again; pairings and roles stay.", [SetUp("Start host service")]),
+            _ when state.AddressOnThisPc == false && HostMoving =>
+                ("This PC's network address changed since setup. Martlet is moving the host service to the new address now; " +
+                 "pairings and roles stay, and your other computers find it there by themselves.", []),
             _ when state.AddressOnThisPc == false =>
-                ("This PC's network address changed since setup, so your other computers can't reach the host service. Set it up " +
-                 "again for the new address; pairings and roles stay.", [SetUp("Set up again")]),
+                ("This PC's network address changed since setup, and Martlet couldn't move the host service to the new address by " +
+                 "itself (Background tasks says why). Set it up again for the new address; pairings and roles stay.", [SetUp("Set up again")]),
             _ when state.Answering != true =>
                 ("Running, but not answering on your network yet. It can take a moment after a start; if this lasts, set it up " +
                  "again (pairings and roles stay).", [SetUp("Set up again", primary: false)]),
@@ -951,6 +954,8 @@ public partial class MainWindow
                 (state.Problem is { } problem ? $": {problem}" : "."));
         }
         if (before != thisPcHostVersion) UpdateNearby();
+        // This PC got another address: publish the host service there by itself.
+        FollowThisPcAddress(state);
         // An update that finished by any route (or one that reported busy against Martlet's own run) leaves no stale note.
         HostFoundCurrent(ThisPcHostId, thisPcHostVersion);
         RenderHost();
@@ -978,6 +983,7 @@ public partial class MainWindow
             : "Docker Desktop isn't running yet, so the host service can't run. Start Docker Desktop (step 1).",
         LocalHostServiceStage.NotSetUp => "The host service isn't set up yet. Use Set up host service.",
         LocalHostServiceStage.Stopped => "The host service is set up but stopped. Use Start host service; pairings and roles stay.",
+        _ when state.AddressOnThisPc == false && HostMoving => "This PC's network address changed since setup. Martlet is moving the host service there now; pairings and roles stay.",
         _ when state.AddressOnThisPc == false => "This PC's network address changed since setup. Use Set up again; pairings and roles stay.",
         _ when state.Answering != true => "The host service runs but isn't answering on your network yet. Check again in a moment.",
         _ => "The host service is running and reachable on your network." +

@@ -400,6 +400,7 @@ public partial class MainWindow
         var text = count == 0 ? "No outside addresses." : count == 1 ? "1 outside address." : $"{count} outside addresses.";
         return HostRoutes.For(member.Origin, member.Spki) switch
         {
+            { Route: "home", MovedTo: not null } => text + " Reached at home, at the new address its computer got (Martlet found it by itself).",
             { Route: "home" } => text + " Reached at home.",
             { Route: "outside", Address: { } at } => text + $" Reached from outside home (outside address {Array.IndexOf(member.Addresses?.ToArray() ?? [], at) + 1}).",
             { Error: not null } when count > 0 => text + " Not reachable at home or outside right now (the log names each address tried).",

@@ -270,6 +270,23 @@ build output on a plain NTFS volume (for example `C:` or a non-pooled NVMe
 drive) instead of the DrivePool drive, or update DrivePool and report the
 issue to Covecube.
 
+## A host isn't found after its computer restarted (new address)
+
+When a host's computer gets another address from the router, Martlet finds it
+by itself ([When a computer gets a new address](NETWORK.md#when-a-computer-gets-a-new-address)).
+The desktop log then says *Martlet network: found <host> at <address> on your
+home network*. When it doesn't:
+
+1. Make sure the host's computer and your PC are on the same home network (not
+   a guest Wi-Fi, another router or a VPN).
+2. On the host's computer, let UDP 9444 in from your home network if a
+   firewall runs there (ufw: `sudo ufw allow proto udp from 192.168.1.0/24 to any port 9444`).
+3. On a Windows host PC, keep *Let my other computers find this PC* on
+   (Settings › Your other computers).
+4. Update the host (**Update host** on the Devices page) if it runs a Martlet
+   older than this feature.
+5. Run MCP `hosts_find` to see which hosts answer and from where.
+
 ## Local configuration backup / restore (V07a)
 
 **Configuration backups are NOT support bundles.** The support ZIP described

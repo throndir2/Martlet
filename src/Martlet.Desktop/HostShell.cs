@@ -170,6 +170,18 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
     /// <summary>Removes a remembered sudo password.</summary>
     internal static void ForgetSudo(HostShellTarget target) => new WindowsCredentialStore().DeleteSshSudoSecret(target.Account);
 
+    /// <summary>Keeps a remembered sudo password when the computer's SSH target moved to another address.</summary>
+    internal static void MoveSudo(HostShellTarget from, HostShellTarget to)
+    {
+        if (from.Account == to.Account) return;
+        var store = new WindowsCredentialStore();
+        string? encoded = null;
+        using (var read = store.ReadSshSudoSecret(from.Account)) read.Secret?.Use(value => encoded = value.ToString());
+        if (encoded is null) return;
+        using (var lease = new SecretLease(encoded)) store.WriteSshSudoSecret(to.Account, lease);
+        store.DeleteSshSudoSecret(from.Account);
+    }
+
     // ---------- command text ----------
 
     internal static string Quote(string text) => "'" + text.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
@@ -295,11 +307,12 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
         {
             var key = $"{algorithm} SHA256:{fingerprint}";
             Seen = key;
-            var saved = shell.PinnedHostKey(target);
-            if (saved is null && pinned is not null) saved = pinned;
+            // The key saved with the paired host decides: the computer it runs on may have another address now, one another
+            // computer had before (the key pinned for that address then is stale).
+            var saved = pinned ?? shell.PinnedHostKey(target);
             if (saved is not null)
             {
-                if (saved == key && (pinned is null || pinned == key))
+                if (saved == key)
                 {
                     shell.Pin(target, key);
                     return true;

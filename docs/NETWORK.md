@@ -100,6 +100,71 @@ computer, see [the host guide](../deploy/host/README.md)); they have no web UI
 of their own. Every PC in the network can use a host; the PC that reaches it
 over SSH also manages it.
 
+## When a computer gets a new address
+
+Your router can give a computer another address on your home network when it
+restarts (a new DHCP lease). Martlet finds your hosts again by itself, so you
+don't have to reserve addresses in your router. Nothing is paired again.
+
+A host keeps the address it was paired at as its **name**: its certificate,
+its pairings, its service approval, the roster and every request use that
+name. Only the address that a connection dials changes.
+
+1. **The host follows its computer.**
+   - A native Linux or Mac gateway listens on its computer's current home
+     address when the computer doesn't have the paired address
+     (`GatewayHomeListeners`: private IPv4 addresses of adapters that have a
+     default gateway, on the paired port, with the same TLS key). It checks
+     every 10 seconds and when the addresses change, and stops when the
+     paired address comes back. A gateway that starts before the network is
+     up does the same instead of stopping.
+   - On a Linux Docker engine the keeper (`martlet-host-keeper`) runs in the
+     Docker host's network. When the computer no longer has the address the
+     network holder publishes the gateway on, it publishes it on the address
+     the computer has now. The gateway's configuration and certificate don't
+     change.
+   - On a Windows PC with Docker Desktop, Martlet on that PC sees that its host
+     service is published on an address the PC no longer has (the host
+     dashboard said *Address changed*). It runs `martlet-host home` by itself,
+     hidden, in Background tasks (*Move this host to its new address*), once
+     for each new address. **Set up again** stays as the fallback.
+2. **The host answers when your computers look for it.** A native gateway, the
+   Docker keeper and Martlet on a host PC answer a *find host* question on
+   UDP **9444** (`HostFind`): `{"martlet":"find-host","v":1,"q":<random>}`.
+   The answer is `{"martlet":"host-here","v":1,"q":...,"hosts":["<host ID>"]}`:
+   no addresses (the answer's source is the address), keys or other data. They
+   answer private IPv4 and loopback senders only, at most 40 answers in 10
+   seconds. Martlet on a host PC answers in its Nearby responder, so it
+   answers only while *Let my other computers find this PC* is on. Older
+   Martlet versions ignore the question.
+3. **Your computers find the host.** When a paired host doesn't connect at its
+   saved address within 1.5 seconds (`HostRoutes`), Martlet sends the question
+   to each private subnet's broadcast address, the limited broadcast and
+   loopback (never a subnet scan). It stops at the first answer, after 2
+   seconds at most, and looks again at most every 20 seconds for each host.
+   It uses an address that answered only when the host there shows the TLS key
+   pinned at pairing, for the paired name (`HostRoutes.ProbeAsync`). A
+   computer with another key that answers for the host's ID is never used.
+4. **Your computers keep the new address.** The connection goes to the new
+   address at once, and the desktop keeps it with the pairing (`movedTo` in
+   `hosts.json`), so it dials there first after a restart too. An SSH target
+   that names the old address (`me@192.168.1.20`) moves with it, with a
+   remembered sudo password. SSH runs then check the SSH host key saved with
+   the paired host, so two computers that swap addresses don't cause *SSH
+   identity changed*. When the host answers at its paired address again,
+   Martlet forgets the other address.
+
+A normal connection gets no extra wait: the saved address is dialed first, and
+a look starts only when it doesn't connect. Each computer looks for itself, so
+the shared roster doesn't change.
+
+What you need: the host's computer and your PC on the same home network (the
+broadcast doesn't cross routers or VPNs), and a host firewall that lets UDP
+9444 in from the home network. Native setup asks to open it next to the
+gateway's TCP port when ufw or firewalld is active. A Docker host's firewall
+(ufw) must allow it by hand, because Docker only opens published ports.
+Phones that paired with a host's address don't look for it yet.
+
 ## Trust model
 
 - **Network key.** Each desktop has its own ECDSA P-256 network key in
@@ -1064,12 +1129,13 @@ of every host of your network.
 | Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches), `Remote/HostNetwork.cs` (client calls, pairing by itself) and `Remote/HostRelease.cs` (what an announced release means to this PC) |
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Share page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
-| MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
+| MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`), `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`), `host_move_selftest` (a host whose computer got a new address, `Martlet.NodeLinkCheck move`) and `hosts_find` (one find on the home network); card IDs in [MCP](MCP.md) |
 | Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`, household account logins), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/prove`, `/settings`); `Martlet.Core` `Access/Totp.cs`, `Accounts/AccountAttestation.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs` (`ProveAsync`, `ProveWithPasswordAsync`, `ProveInBrowserAsync`), `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest`, `signin_lab` mode `account` |
 | Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Share › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
 | Share links | `Martlet.Core` `Network/ShareLink.cs` (format, `Verifier`); gateway `GatewaySignIn.cs` (provider `link`, `GatewayShareLink`, `share-link` and `remove-share-link`) and `GatewaySignInHttp.cs` (`/martlet/v1/signin/shared`); desktop `Remote/HostSignIn.cs` (`SignInWithShareLinkAsync`, `ReadSharedHostsAsync`, `HostSignInSettings.Links`), `ShareLinks.cs` (share-links.json, `Plan`), `MainWindow.ShareLinks.cs`, `ShareLinkWindow.cs`, `ShareLinkProtocol.cs` (martlet: links) and `WindowsCredentialStore` (`*ShareLinkSecret`); MCP `network_status` (`shareLinks`) and `signin_selftest` |
 | Router port | `Martlet.Core` `Network/RouterPorts.cs` (UPnP IGD); desktop `RouterPort.cs` (router-port.json), `MainWindow.RouterPort.cs` (renewal), the Outside access dialog in `MainWindow.Outside.cs` and `WindowsFirewall` (`Martlet-Host-Gateway-Outside`); MCP `network_status` (`routerPort`) |
 | Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit), `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`) and `GatewayOverlayListeners.cs` (listening on overlay addresses); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`); Docker holder publishing in `deploy/host/martlet-host` (`ensure_holder`) and `LocalHostService.ParseHolder` |
+| A new home address | `Martlet.Core` `Network/HostFind.cs` (the find question, `HostFindResponder`, `HomeAddresses`); gateway `GatewayHomeListeners.cs` and `GatewayServer.StartAsync` (follow the computer, answer finds); Linux `answer-finds` (`HostApplication.cs`); `deploy/host/martlet-host` (`ensure_keeper`, `follow_home`, `cmd_keep`, `home`); desktop `Remote/HostRoutes.cs` (look, `Moved`, `Remember`), `HostRegistry.Moved` and `HostPairings.KeepMoved` (`HostControl.cs`, `movedTo` in hosts.json), `MainWindow.Outside.cs` (`KeepMovedHost`), `MainWindow.HostMove.cs` (this PC's host service), the Nearby responder (`Nearby.cs`) and `HostShell` (the paired host's SSH key decides); MCP `hosts_find` and `host_move_selftest` (`Martlet.NodeLinkCheck move`) |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
 join it: they use [API keys](API.md), which belong to the network too. A key
@@ -1077,6 +1143,18 @@ made or revoked on any member PC reaches every host the same way as the who
 does what plan, and grants nothing in the network itself.
 
 ## Qualification
+
+Finding a host after its computer got a new address is checked through Martlet
+MCP's `host_move_selftest` (a real gateway on 127.0.0.3 whose certificate names
+the address it was paired at, its real find answer and a desktop's real paired
+connection: found at the new address with the same key, dialed there at once
+next time, another key that answers for the host's ID never used, and back at
+the paired address), `hosts_find` on the real home network, unit tests on
+Windows and Linux (`HostFindTests`, `HomeListenerTests` with a real gateway
+whose home address is gone, `HostMoveTests`, `HostMovedTests`) and the Docker
+keeper and `martlet-host home` on a real Linux Docker engine in Docker (an
+address removed while the holder runs, and an engine restart that loses it).
+A real router giving a real computer a new lease was not part of these checks.
 
 Joining from outside home by signing in is checked through Martlet MCP's
 `signin_selftest` (a real gateway on 127.0.0.1: owner account with a real

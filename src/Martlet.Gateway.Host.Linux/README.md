@@ -202,7 +202,8 @@ Operator-managed disk encryption is separate and is neither detected nor set up.
 | `init` | Foreground TTY, exact default-No confirmation; create only the selected absent state leaf. Display the resulting host ID/SPKI and enter administration with listener stopped. |
 | `admin` | Foreground TTY, exact default-No confirmation; open existing state only. The daemon must be stopped because the same sole-owner lock applies. |
 | `rebind` | Foreground TTY; require the protected prior service receipt as an expected host/pin witness, review the new exact origin and confirm same-key rebind. The old receipt does not approve the new config. |
-| `serve` | Read and recheck protected approval; open only the existing matching identity, start the exact approved listener and wait for cancellation. No stdin or password prompt; no state creation or model authority. |
+| `serve` | Read and recheck protected approval; open only the existing matching identity, start the exact approved listener and wait for cancellation. No stdin or password prompt; no state creation or model authority. With a `privateIp` binding it also follows the computer to a new home address and answers finds on UDP 9444 (see below). |
+| `answer-finds --host-id <id>` | Answer desktops looking for this host on the home network (`find-host` on UDP 9444, [NETWORK](../../docs/NETWORK.md#when-a-computer-gets-a-new-address)) until stopped. Opens no state; the Docker method's keeper runs it in the Docker host's network. Exit 7 when the port is taken. |
 | `health` | Explicit bounded pinned HTTPS observation using the approved nonsecret pin; not a passive command. |
 | `owner-init` | Owner command, no console: create the selected absent state leaf (as `init`) and approve unattended serve of exactly this configuration and identity (as `approve-service`), then close. |
 | `owner-approve` | Owner command, no console: open the existing identity (as `admin`, which also accepts an approval for an earlier config of the same host, UID/GID and pin) and approve unattended serve of exactly this configuration, then close. |
@@ -294,6 +295,16 @@ certificates add **one** selected private-IP SAN; strict loading rejects other
 forms. The listener still binds exactly one selected origin, not every SAN.
 Normal open will not add a missing SAN. Automatic/forced renewal preserves the
 same key/SPKI, admitted SANs, current credentials, revocations and replay state.
+
+A new DHCP address needs no rebind. The approved origin stays the host's name
+(certificate, pairings, approval). When the computer doesn't have the origin's
+address, at start (the bind fails with "address not available") or later,
+`serve` also listens on the computer's current home addresses (private IPv4 on
+an adapter with a default gateway) on the origin's port with the same key
+(`GatewayHomeListeners`), and stops when the origin's address is back. Desktops
+find it there with a `find-host` question and check the pinned key
+([When a computer gets a new address](../../docs/NETWORK.md#when-a-computer-gets-a-new-address)).
+`rebind` stays for a deliberate change of the host's name.
 
 For a changed binding, stop the daemon, retain the protected old receipt,
 deliberately edit config, then run `rebind`. It validates old receipt custody
