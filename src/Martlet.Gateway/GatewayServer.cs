@@ -1,5 +1,7 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Authentication;
+using Martlet.Core.Network;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -242,23 +244,41 @@ public sealed class GatewayServer
         application.SigningCertificate = binding.CertificateSelector ?? (() => binding.Certificate);
         try
         {
-            var listener = await listenerFactory.StartAsync(
-                binding, application.InvokeAsync, cancellationToken).ConfigureAwait(false);
+            // A host listening on its exact home address (not inside a container, whose runtime publishes the port) follows its
+            // computer to another home address and answers desktops looking for it there (docs/NETWORK.md).
+            var follow = listenerFactory is KestrelGatewayListenerFactory && binding.ListenAddress is null &&
+                !IPAddress.IsLoopback(binding.Origin.Address);
+            GatewayListenerHandle listener;
+            var away = false;
+            try { listener = await listenerFactory.StartAsync(binding, application.InvokeAsync, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (follow && AddressMissing(error))
+            {
+                // This computer doesn't have the home address now: GatewayHomeListeners listens where it is.
+                away = true;
+                listener = new GatewayAwayListenerHandle(binding.Origin);
+            }
             application.Logs.Own(Martlet.Core.Logs.LogLevels.Info,
                 $"Gateway {identity.HostId} started on {listener.Origin.CanonicalOrigin}" +
                 (typeof(GatewayServer).Assembly.GetName().Version?.ToString(3) is { } version ? $" (Martlet {version})." : "."));
+            if (away)
+                application.Logs.Own(Martlet.Core.Logs.LogLevels.Warn, $"This computer doesn't have its home address {binding.Origin.Address} " +
+                    "now (the network gave it another one, or isn't connected yet), so the host listens on the address it has.");
             application.LogGpuMap();
-            // A host listening on its exact home address (not inside a container, whose runtime publishes the port) also listens
-            // on its overlay addresses while it has outside addresses (docs/NETWORK.md).
-            var overlay = listenerFactory is KestrelGatewayListenerFactory && binding.ListenAddress is null &&
-                !IPAddress.IsLoopback(binding.Origin.Address)
+            // A host listening on its exact home address also listens on its overlay addresses while it has outside addresses.
+            var overlay = follow
                 ? new GatewayOverlayListeners(binding, application.InvokeAsync, OutsideAddresses, GatewayOverlayListeners.LocalAddresses,
                     (level, message, repeatKey) => application.Logs.Own(level, message, repeatKey))
                 : null;
             this.overlay = overlay;
+            var home = follow
+                ? new GatewayHomeListeners(binding, application.InvokeAsync, !away, GatewayOverlayListeners.LocalAddresses, HostFind.HomeAddresses,
+                    (level, message, repeatKey) => application.Logs.Own(level, message, repeatKey))
+                : null;
+            this.home = home;
+            finds = follow ? AnswerFinds() : null;
             application.OutsideListeners = overlay is null ? static () => [] : () => overlay.Listening;
             application.OutsideAddressesChanged = overlay is null ? null : overlay.Wake;
-            return new InferenceListener(listener, inference, application.Logs, overlay, application.CloseOpenAi);
+            return new InferenceListener(listener, inference, application.Logs, overlay, home, finds, application.CloseOpenAi);
         }
         catch
         {
@@ -269,13 +289,46 @@ public sealed class GatewayServer
     }
 
     private volatile GatewayOverlayListeners? overlay;
+    private volatile GatewayHomeListeners? home;
+    private HostFindResponder? finds;
+
+    /// <summary>The home addresses this host listens on besides its home origin, after its computer got another address.</summary>
+    public IReadOnlyList<string> MovedHomeListeners => home?.Listening ?? [];
+
+    /// <summary>Whether this host answers desktops looking for it on the home network (<see cref="HostFind"/>).</summary>
+    public bool AnswersFinds => finds is not null;
+
+    /// <summary>Whether a listener couldn't start because this computer doesn't have the address (EADDRNOTAVAIL).</summary>
+    internal static bool AddressMissing(Exception? error)
+    {
+        for (var depth = 0; error is not null && depth < 8; depth++, error = error.InnerException)
+            if (error is SocketException { SocketErrorCode: SocketError.AddressNotAvailable }) return true;
+        return false;
+    }
+
+    private HostFindResponder? AnswerFinds()
+    {
+        try
+        {
+            var responder = HostFindResponder.Start(() => [identity.HostId]);
+            application.Logs.Own(Martlet.Core.Logs.LogLevels.Info, $"Answering on UDP {HostFind.Port} when your computers look for this host " +
+                "on the home network (after its address changed).");
+            return responder;
+        }
+        catch (SocketException error)
+        {
+            application.Logs.Own(Martlet.Core.Logs.LogLevels.Warn, $"Couldn't answer on UDP {HostFind.Port} ({error.SocketErrorCode}), so your " +
+                "computers can't find this host by themselves if its address changes.", "find-port");
+            return null;
+        }
+    }
 
     /// <summary>Every outside address of this host: those set on the host itself and those its roster entry lists.</summary>
     private IReadOnlyList<string> OutsideAddresses() => [.. application.Guard.Exposure.OutsideAddresses ?? [], .. application.Network.OwnAddresses];
 
     private sealed class InferenceListener(
         GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference, GatewayLogStore logs,
-        GatewayOverlayListeners? overlay, Action closeOpenAi) : GatewayListenerHandle
+        GatewayOverlayListeners? overlay, GatewayHomeListeners? home, HostFindResponder? finds, Action closeOpenAi) : GatewayListenerHandle
     {
         private int stopping;
         public override GatewayOrigin Origin => listener.Origin;
@@ -284,7 +337,9 @@ public sealed class GatewayServer
             var first = Interlocked.Exchange(ref stopping, 1) == 0;
             if (first) logs.Own(Martlet.Core.Logs.LogLevels.Info, "Gateway stopping.");
             var closing = inference.CloseAsync().AsTask();
+            finds?.Dispose();
             if (overlay is not null) await overlay.DisposeAsync().ConfigureAwait(false);
+            if (home is not null) await home.DisposeAsync().ConfigureAwait(false);
             await listener.DisposeAsync().ConfigureAwait(false);
             await closing.ConfigureAwait(false);
             closeOpenAi();

@@ -6,5 +6,7 @@
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
     <ProjectReference Include="..\Martlet.Avatars\Martlet.Avatars.csproj" />
     <Protobuf Include="Protos\*.proto" ProtoRoot="Protos" GrpcServices="Both" />
+    <InternalsVisibleTo Include="Martlet.Avatar.Audio2Face.Tests" />
+    <InternalsVisibleTo Include="Martlet.NodeLinkCheck" />
   </ItemGroup>
 </Project>

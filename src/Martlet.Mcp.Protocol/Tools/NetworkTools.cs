@@ -307,6 +307,26 @@ internal sealed partial class McpServer
             "PC's own Tailscale address (refused as outside home until sign-in is set up, then answering; it stops listening there " +
             "when the outside address is removed); otherwise that step is reported in notRun. Writes nothing to disk.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "exposure")),
+        Tool("host_move_selftest", "Rehearse a host whose computer got another address on the home network (a restart or a new DHCP " +
+            "lease) end to end with the production code: a real gateway (pinned TLS) on 127.0.0.3 whose certificate also names the " +
+            "address it was paired at (127.0.0.2, where nothing answers now), its real find answer (UDP, HostFind) and a desktop's " +
+            "real paired connection (HostRoutes). Checks that the host answers a find with its host ID only (and not Nearby's find), " +
+            "the desktop finds it at its new address by itself with the same key and pairing and raises the move it keeps with the " +
+            "pairing, dials it there at once next time, the pinned-key probe reaches it there, a computer with another key that " +
+            "answers for the same host ID is never used, and a host back at its paired address is found there again. Loopback only " +
+            "(finds never reach the home network); writes nothing.", new { },
+            async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "move")),
+        Tool("hosts_find", "Ask this PC's home network where Martlet hosts are, as Martlet does when a paired host doesn't answer at " +
+            "its saved address: one find on UDP 9444 to each private subnet's broadcast address, the limited broadcast and loopback " +
+            "(never a subnet scan), answers for `seconds` (default 2, at most 5). Lists each host ID that answered and the private " +
+            "address it answered from. With dataDirectory it also says whether that host is paired there (hosts.json) and whether " +
+            "it answered at its paired address, at the address saved as where it moved to, or somewhere new (Martlet then checks its " +
+            "pinned key there before it uses it). Sends no keys or credentials and changes nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            seconds = new { type = "number" }
+        },
+            async (arguments, cancellation) => await HostsFindAsync(arguments, cancellation)),
         Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +
             "(hosts.json), through each host's own gateway (pinned TLS; the pairing secret from Windows Credential Manager only signs " +
             "the request, never returned): GET /martlet/v1/priority with each route's lane (live or pool) and graphics cards, each " +
@@ -873,7 +893,9 @@ internal sealed partial class McpServer
                 hostId = h.GetProperty("pairing").GetProperty("hostId").GetString(),
                 outsideAddresses = h.TryGetProperty("outsideAddresses", out var outside) && outside.ValueKind == JsonValueKind.Array
                     ? outside.GetArrayLength() : 0,
-                access = IsSharedHost(h) ? "friend" : "member"
+                access = IsSharedHost(h) ? "friend" : "member",
+                // Found at another home address than its paired one (its computer got a new address); the address isn't returned.
+                movedOnHomeNetwork = h.TryGetProperty("movedTo", out var moved) && moved.ValueKind == JsonValueKind.String
             }).ToArray();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
@@ -976,6 +998,59 @@ internal sealed partial class McpServer
         {
             share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts,
             find = new { listensSeconds = 15, queriesSentAtSeconds = new[] { 0, 0.5, 1.5, 3.5, 7.5 }, hostsOfferedAtMost = 64 }
+        };
+    }
+
+    /// <summary>hosts_find: one host find on this PC's home network (<see cref="Martlet.Core.Network.HostFind"/>), with each answer
+    /// compared to the pairings in the given data folder's hosts.json (paired origin and where it moved to). No keys or secrets.</summary>
+    private static async Task<object> HostsFindAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var seconds = arguments.TryGetProperty("seconds", out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var s)
+            ? Math.Clamp(s, 0.5, 5) : 2;
+        var paired = new Dictionary<string, (string Address, string? MovedTo)>(StringComparer.Ordinal);
+        string? pairings = null;
+        if (arguments.TryGetProperty("dataDirectory", out var given) && given.ValueKind == JsonValueKind.String)
+        {
+            pairings = "none";
+            try
+            {
+                var path = Path.Combine(DataDirectory(arguments), "hosts.json");
+                if (File.Exists(path))
+                {
+                    using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+                    foreach (var host in document.RootElement.GetProperty("hosts").EnumerateArray())
+                    {
+                        var pairing = host.GetProperty("pairing");
+                        var origin = new Uri(pairing.GetProperty("origin").GetString()!);
+                        var moved = host.TryGetProperty("movedTo", out var to) && to.ValueKind == JsonValueKind.String ? to.GetString() : null;
+                        paired[pairing.GetProperty("hostId").GetString()!] = (origin.Host, moved?[..moved.LastIndexOf(':')]);
+                    }
+                    pairings = "loaded";
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
+                InvalidOperationException or UriFormatException or ArgumentException)
+            {
+                pairings = "unreadable";
+            }
+        }
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var seen = await Martlet.Core.Network.HostFind.FindAsync(null, TimeSpan.FromSeconds(seconds), cancellation);
+        var answers = seen.Select(sighting =>
+        {
+            var address = sighting.Address.ToString();
+            var where = !paired.TryGetValue(sighting.HostId, out var host) ? (pairings is null ? null : "not paired here")
+                : address == host.Address ? "at its paired address"
+                : address == host.MovedTo ? "at the address saved as where it moved to"
+                : System.Net.IPAddress.IsLoopback(sighting.Address) ? "on this PC (answered over loopback)"
+                : "somewhere new (Martlet checks its pinned key there before it uses it)";
+            return new { hostId = sighting.HostId, address, where };
+        }).ToArray();
+        return new
+        {
+            port = Martlet.Core.Network.HostFind.Port, listenedSeconds = seconds, tookMs = clock.ElapsedMilliseconds,
+            targets = Martlet.Core.Network.HostFind.BroadcastTargets().Select(t => t.ToString()).ToArray(),
+            pairings, answers
         };
     }
 }

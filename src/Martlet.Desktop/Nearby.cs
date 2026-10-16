@@ -256,8 +256,10 @@ internal sealed record NearbyMartlet(IPAddress Address, string Instance, string 
     internal string Where => IPAddress.IsLoopback(Address) ? "this PC" : Address.ToString();
 }
 
-/// <summary>What this desktop answers with while it can share hosts.</summary>
-internal sealed record NearbyOffer(string Name, string Device, string Version, IReadOnlyList<string> Hosts);
+/// <summary>What this desktop answers with while it can share hosts. <paramref name="Here"/>: the hosts whose service runs on this
+/// PC (its host service in Docker Desktop), which it also names when a desktop looks for a host that got a new address
+/// (<see cref="Martlet.Core.Network.HostFind"/>).</summary>
+internal sealed record NearbyOffer(string Name, string Device, string Version, IReadOnlyList<string> Hosts, IReadOnlyList<string>? Here = null);
 
 /// <summary>A one-use pairing code a host showed for the asking desktop: the address the host showed with it and the code.
 /// The code is a secret: never logged or shown.</summary>
@@ -410,6 +412,7 @@ internal sealed class NearbyResponder : IDisposable
     private readonly UdpClient udp;
     private readonly TcpListener tcp;
     private readonly Queue<DateTime> answers = new();
+    private readonly Queue<DateTime> hostAnswers = new();
     private readonly Queue<DateTime> requests = new();
     private int active;
 
@@ -438,6 +441,10 @@ internal sealed class NearbyResponder : IDisposable
 
     internal bool Lan { get; }
 
+    /// <summary>How many times this PC answered a desktop looking for a host that runs here.</summary>
+    internal long HostFinds => Interlocked.Read(ref hostFinds);
+    private long hostFinds;
+
     /// <summary>Binds UDP and TCP <see cref="Nearby.Port"/> (throws <see cref="SocketException"/> when the port is taken) and
     /// starts answering. <paramref name="request"/> runs each accepted request to the end (the owner's decision and sharing).</summary>
     internal static NearbyResponder Start(bool lan, Func<NearbyOffer?> offer, Func<JoinSession, Task> request)
@@ -456,13 +463,19 @@ internal sealed class NearbyResponder : IDisposable
             try { received = await udp.ReceiveAsync(stop.Token); }
             catch (SocketException) { continue; }
             catch (Exception error) when (error is OperationCanceledException or ObjectDisposedException) { return; }
-            if (!Nearby.Allowed(received.RemoteEndPoint.Address) || !Nearby.IsQuery(received.Buffer, out var query)) continue;
-            if (offer() is not { Hosts.Count: > 0 } current || !Within(answers, 40, TimeSpan.FromSeconds(10))) continue;
-            var reply = JsonSerializer.SerializeToUtf8Bytes(new
+            // A desktop looking for a host that got a new address: name the hosts whose service runs on this PC.
+            var reply = Martlet.Core.Network.HostFindResponder.Reply(received.Buffer, received.RemoteEndPoint.Address, offer()?.Here ?? [], hostAnswers);
+            if (reply is null)
             {
-                martlet = "here", v = 1, q = query, instance = Nearby.Instance, name = current.Name, device = current.Device,
-                version = current.Version, hosts = current.Hosts
-            });
+                if (!Nearby.Allowed(received.RemoteEndPoint.Address) || !Nearby.IsQuery(received.Buffer, out var query)) continue;
+                if (offer() is not { Hosts.Count: > 0 } current || !Within(answers, 40, TimeSpan.FromSeconds(10))) continue;
+                reply = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    martlet = "here", v = 1, q = query, instance = Nearby.Instance, name = current.Name, device = current.Device,
+                    version = current.Version, hosts = current.Hosts
+                });
+            }
+            else Interlocked.Increment(ref hostFinds);
             try { await udp.SendAsync(reply, received.RemoteEndPoint, stop.Token); }
             catch (SocketException) { }
             catch (Exception error) when (error is OperationCanceledException or ObjectDisposedException) { return; }

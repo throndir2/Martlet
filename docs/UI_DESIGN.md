@@ -349,8 +349,9 @@ service on this PC:
      engine answers). Installs it with winget in a run window.
   2. *Host service*: done when the gateway runs and answers at an address this
      PC still has. Otherwise *Set up host service*, *Start host service* (set
-     up but stopped) or *Set up again* (this PC's address changed), including
-     the one-time firewall prompt.
+     up but stopped) or, when this PC's address changed, *Moving to the new
+     address* (Martlet runs `martlet-host home` by itself) and *Set up again*
+     only when that didn't work, including the one-time firewall prompt.
   3. *Pair a desktop*: done when a computer is in the host's Martlet network
      (named, for example *Paired with DIVA and this PC*). The main PC finds
      this PC under Add a computer › *Martlet on your network*; *Allow* here
