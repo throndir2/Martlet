@@ -101,6 +101,10 @@ For the Docker commands, see the [host guide](https://github.com/throndir2/Martl
 
 **Update host** keeps the host's identity, pairings, roles and data. **Settings › App updates › Update hosts** updates all your hosts, and **Update paired hosts automatically** keeps them on your PC's version. After the computer restarts, the host service starts again by itself.
 
+## A new address after a restart
+
+You don't need to reserve addresses in your router. When a host's computer gets another address, the host listens there and answers on UDP 9444, and your computers find it there by themselves, check its key and keep using the same pairing. A firewall on the host must let UDP 9444 in from your home network.
+
 To use your hosts from outside your home or share them with a friend, see [Sharing with Friends](Sharing-with-Friends).
 
 More detail: [Host guide](https://github.com/throndir2/Martlet/blob/main/deploy/host/README.md), [Network](https://github.com/throndir2/Martlet/blob/main/docs/NETWORK.md), [Platforms](https://github.com/throndir2/Martlet/blob/main/docs/PLATFORMS.md), [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md), [Troubleshooting](https://github.com/throndir2/Martlet/blob/main/docs/TROUBLESHOOTING.md).

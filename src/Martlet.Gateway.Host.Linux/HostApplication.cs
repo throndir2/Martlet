@@ -465,6 +465,30 @@ internal static class HostApplication
     private static DurableGatewayHost? retainedOwner;
     private static readonly TimeSpan AuthorityCheckInterval = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// <c>answer-finds --host-id &lt;id&gt;</c>: answers desktops that look for this host on the home network
+    /// (<see cref="Martlet.Core.Network.HostFind"/>, UDP 9444) until stopped. The Docker method's keeper runs it in the Docker
+    /// host's network, because the gateway's own container can't hear the home network's broadcasts; a native gateway answers
+    /// by itself. It reads and opens nothing of the host's state: the host ID is no secret.
+    /// </summary>
+    private static async Task<int> AnswerFindsAsync(string hostId, TextWriter output, CancellationToken cancellation)
+    {
+        if (!HostConfiguration.Identifier(hostId)) throw new HostInputException();
+        Martlet.Core.Network.HostFindResponder responder;
+        try { responder = Martlet.Core.Network.HostFindResponder.Start(() => [hostId]); }
+        catch (System.Net.Sockets.SocketException error)
+        {
+            output.WriteLine($"find.port_unavailable: UDP {Martlet.Core.Network.HostFind.Port} can't be used here ({error.SocketErrorCode}).");
+            return 7;
+        }
+        using var answering = responder;
+        output.WriteLine($"Answering on UDP {Martlet.Core.Network.HostFind.Port} for host {hostId} when your computers look for it on the home network.");
+        output.Flush();
+        try { await Task.Delay(Timeout.Infinite, cancellation); }
+        catch (OperationCanceledException) { }
+        return 0;
+    }
+
     /// <summary>Starts the command mailbox with a fresh agent token in agent.token (0600, service owner), which only the host
     /// computer itself can read: the Martlet app there presents it to take this host's commands. Without it the gateway
     /// still serves everything else.</summary>
@@ -487,6 +511,7 @@ internal static class HostApplication
         try
         {
             if (MacHost.Handles(args)) return await MacHost.RunAsync(args, output, cancellation);
+            if (args is ["answer-finds", "--host-id", var answered]) return await AnswerFindsAsync(answered, output, cancellation);
             var options = HostOptions.Parse(args);
             if (options is null) { output.WriteLine(HostOptions.Help); return 0; }
             health = options.Command == "health";

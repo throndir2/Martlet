@@ -29,6 +29,10 @@
 #   martlet-host warm           start the gateway and every installed role that isn't running and load their models
 #                               (role.conf warm=...), so the first request after Docker or the computer started is fast
 #   martlet-host config         print the gateway configuration
+#   martlet-host home           Docker method on Docker Desktop: publish the gateway on this computer's new home address
+#                               (MARTLET_HOST_ADDRESS) after the network gave it another one; Martlet there runs it by itself.
+#                               On a Linux Docker engine the keeper (martlet-host-keeper) does this by itself, and a native
+#                               gateway listens on the new address by itself; the gateway's name, key and pairings stay
 #
 # --yes (or MARTLET_ASSUME_YES=1) before the command runs it without questions: the owner already confirmed it
 # (Martlet desktop shows what will happen and the owner's click, over the owner's own SSH session, is the
@@ -1878,8 +1882,15 @@ start_holder() {
   since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   note "This host's network holder (${NET}) isn't running; starting it, which starts the gateway and roles again..."
   if ! docker start "${NET}" >/dev/null 2>&1; then
-    error="$(docker container inspect -f '{{.State.Error}}' "${NET}" 2>/dev/null || true)"
-    fail "${NET} doesn't start${error:+ (${error})}. Check that this computer still has the address the gateway is published on ($(holder_home)), or run setup with its address now."
+    # The keeper publishes the gateway on this computer's new home address within seconds when the old one is gone.
+    for waited in {1..15}; do
+      sleep 2
+      [[ "$(docker container inspect -f '{{.State.Running}}' "${NET}" 2>/dev/null || true)" != true ]] || break
+    done
+    if [[ "$(docker container inspect -f '{{.State.Running}}' "${NET}" 2>/dev/null || true)" != true ]]; then
+      error="$(docker container inspect -f '{{.State.Error}}' "${NET}" 2>/dev/null || true)"
+      fail "${NET} doesn't start${error:+ (${error})}. Check that this computer still has the address the gateway is published on ($(holder_home)), or run setup with its address now."
+    fi
   fi
   for waited in {1..60}; do
     [[ "$(docker logs --since "${since}" "${NET}" 2>&1 || true)" == *"${HOLD_READY}"* ]] && return 0
@@ -1888,16 +1899,55 @@ start_holder() {
 }
 
 # Docker method: the keeper (martlet-host-keeper) starts the network holder again when Docker couldn't start it (see
-# start_holder), so a host comes back by itself after its computer restarts. It has no network of its own, so Docker always
-# starts it; it reaches Docker through the socket. Made by setup and update, again when the image changed.
+# start_holder), so a host comes back by itself after its computer restarts. It has no published port, so Docker always
+# starts it; it reaches Docker through the socket. On a Linux Docker engine it runs in the Docker host's network: there it
+# also follows the computer to a new home address (follow_home) and answers desktops looking for this host (answer-finds,
+# UDP 9444). Docker Desktop's host network is its own virtual machine, so there it has no network and Martlet on that
+# computer follows the address instead (martlet-host home). Made by setup and update, again when the image or that changed.
 ensure_keeper() {
-  local socket_group="$1" current
-  current="$(docker container inspect -f '{{.Config.Image}}' "${KEEPER}" 2>/dev/null || true)"
-  [[ "${current}" != "${IMAGE}" ]] || return 0
+  local socket_group="$1" current network=host
+  docker_desktop && network=none
+  current="$(docker container inspect -f '{{.Config.Image}} {{.HostConfig.NetworkMode}}' "${KEEPER}" 2>/dev/null || true)"
+  [[ "${current}" != "${IMAGE} ${network}" ]] || return 0
   [[ -z "${current}" ]] || docker rm -f "${KEEPER}" >/dev/null 2>&1 || true
-  docker run -d --name "${KEEPER}" --restart unless-stopped --network none --user 1000:1000 --group-add "${socket_group}" \
-    -v /var/run/docker.sock:/var/run/docker.sock "${IMAGE}" keep >/dev/null ||
+  docker run -d --name "${KEEPER}" --restart unless-stopped --network "${network}" --user 1000:1000 --group-add "${socket_group}" \
+    -v /var/run/docker.sock:/var/run/docker.sock -v martlet-host-config:/var/lib/martlet/config:ro -e MARTLET_HOST_IMAGE="${IMAGE}" \
+    "${IMAGE}" keep >/dev/null ||
     note "Couldn't start ${KEEPER}. After this computer restarts, run Update host if Martlet can't reach it."
+}
+
+# Whether Docker here is Docker Desktop (Windows, Mac or Linux), whose containers run in its own virtual machine.
+docker_desktop() { [[ "$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || true)" == *"Docker Desktop"* ]]; }
+
+# This computer's home address now, seen from the Docker host's network: the private IPv4 it reaches the internet from, or
+# else its first private IPv4 that isn't a container bridge, VPN or other virtual adapter.
+home_address() {
+  local address
+  address="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n 1)"
+  if [[ ! "${address}" =~ ^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)[0-9.]+$ ]]; then
+    address="$(ip -4 -o addr show scope global 2>/dev/null |
+      awk '$2 !~ /^(docker|br-|veth|virbr|cni|flannel|cali|vxlan|tailscale|wg|zt|tun|tap)/ {print $4}' | cut -d/ -f1 |
+      grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' | head -n 1 || true)"
+  fi
+  printf '%s' "${address}"
+}
+
+# Keeper, in the Docker host's network: when this computer no longer has the home address the network holder publishes the
+# gateway on (a restart or a new DHCP lease gave it another one), publish the gateway on the address it has now. Only the
+# holder changes: the gateway's configuration, name (its paired address), key, approval and pairings stay, and desktops
+# find the host at the new address by themselves (docs/NETWORK.md, "When a computer gets a new address").
+follow_home() {
+  local binding current port home
+  binding="$(holder_binding)"
+  # No holder, or one that publishes on every address (outside access): nothing to follow.
+  [[ "${binding}" =~ ^([0-9.]+):([0-9]+)$ ]] || return 0
+  current="${BASH_REMATCH[1]}"; port="${BASH_REMATCH[2]}"
+  ip -4 -o addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | grep -qxF "${current}" && return 0
+  home="$(home_address)"
+  [[ -n "${home}" && "${home}" != "${current}" ]] || return 0
+  note "This computer's home address is ${home} now (it was ${current}), so the gateway is published there; pairings stay."
+  ( ensure_holder "${home}" "${port}" 0 "$(stat -c %g /var/run/docker.sock)" ) ||
+    note "Couldn't publish the gateway on ${home} yet; trying again in 10 seconds."
 }
 
 # Docker method launcher: runs with the Docker socket (docker run -u 0 -v /var/run/docker.sock:...).
@@ -1936,6 +1986,22 @@ docker_launch() {
       esac
     done
     ensure_holder "${home%:*}" "${home##*:}" "${wide}" "${socket_group}"
+  elif [[ "$1" == home ]]; then
+    # Martlet on a Docker Desktop host moves the published gateway to the computer's new home address (there the keeper
+    # can't see the computer's addresses). Only the holder changes; the gateway's name, key and approval stay.
+    local lan="${MARTLET_HOST_ADDRESS:-}" home
+    [[ "${lan}" =~ ^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)[0-9.]+$ ]] ||
+      fail "Add -e MARTLET_HOST_ADDRESS=<this computer's private LAN IPv4>."
+    home="$(holder_home)"
+    [[ -n "${home}" ]] || fail "This host's network holder publishes no address. Run 'setup' first."
+    if [[ "$(holder_binding)" == :* ]]; then
+      note "The gateway is published on every address of this computer (outside access), so it already answers at ${lan}."
+    elif [[ "${home%:*}" == "${lan}" ]]; then
+      note "The gateway is published on ${lan} already."
+    else
+      note "This computer's home address is ${lan} now (it was ${home%:*}), so the gateway is published there; pairings stay."
+      ensure_holder "${lan}" "${home##*:}" 0 "${socket_group}"
+    fi
   fi
   docker container inspect "${NET}" >/dev/null 2>&1 || fail "Run 'setup' first."
   start_holder
@@ -1974,8 +2040,11 @@ cmd_hold() {
 # martlet-host-keeper first. The holder then restarts the gateway and roles in its network.
 cmd_keep() {
   [[ "${MODE}" == docker ]] || fail "keep is only used by the Docker method."
-  trap 'exit 0' TERM INT
-  local state why said=""
+  local state why said="" answering="" answer_started=-60 host_id follow=0
+  trap '[[ -z "${answering}" ]] || kill "${answering}" 2>/dev/null; exit 0' TERM INT
+  # In the Docker host's network (a Linux Docker engine; see ensure_keeper) it also follows a new home address and answers
+  # desktops looking for this host.
+  [[ "$(docker container inspect -f '{{.HostConfig.NetworkMode}}' "${KEEPER}" 2>/dev/null || true)" == host ]] && follow=1
   while true; do
     state="$(docker container inspect -f '{{.State.Status}}|{{.State.Error}}' "${NET}" 2>/dev/null || true)"
     if [[ "${state}" == exited\|* || "${state}" == created\|* ]]; then
@@ -1990,8 +2059,25 @@ cmd_keep() {
         said="${state}"
       fi
     fi
+    if [[ ${follow} == 1 ]]; then
+      follow_home
+      if { [[ -z "${answering}" ]] || ! kill -0 "${answering}" 2>/dev/null; } && (( SECONDS - answer_started >= 60 )); then
+        host_id="$(settings_value host_id 2>/dev/null || true)"
+        if [[ "${host_id}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+          "${DOTNET}" "${GW_APP}/Martlet.Gateway.Host.Linux.dll" answer-finds --host-id "${host_id}" &
+          answering=$!
+          answer_started=${SECONDS}
+        fi
+      fi
+    fi
     sleep 10 & wait $!
   done
+}
+
+# Docker method, inside the network holder's namespace after the launcher moved it (docker_launch): says where it is now.
+cmd_home() {
+  [[ "${MODE}" == docker ]] || fail "home is only used by the Docker method: a native gateway follows its computer's address by itself."
+  note "The gateway is published on $(holder_home) (home address). Your computers find it there by themselves; pairings stay."
 }
 
 cmd_serve() {
@@ -2027,12 +2113,15 @@ cmd_setup() {
   if [[ "${MODE}" == native ]]; then
     local lan; lan="$(settings_value lan_ip | cut -d. -f1-3).0/24"
     if systemctl is-active --quiet ufw 2>/dev/null &&
-       ask "The ufw firewall is active. Allow TCP $(settings_value port) from your private LAN to the gateway?"; then
+       ask "The ufw firewall is active. Allow TCP $(settings_value port) (the gateway) and UDP 9444 (so your computers find it after its address changes) from your private LAN?"; then
       sudo ufw allow proto tcp from "${lan}" to any port "$(settings_value port)"
+      sudo ufw allow proto udp from "${lan}" to any port 9444
     elif systemctl is-active --quiet firewalld 2>/dev/null &&
-       ask "The firewalld firewall is active. Allow TCP $(settings_value port) from your private LAN to the gateway?"; then
+       ask "The firewalld firewall is active. Allow TCP $(settings_value port) (the gateway) and UDP 9444 (so your computers find it after its address changes) from your private LAN?"; then
       local rule="rule family=ipv4 source address=${lan} port port=$(settings_value port) protocol=tcp accept"
+      local find_rule="rule family=ipv4 source address=${lan} port port=9444 protocol=udp accept"
       sudo firewall-cmd --permanent --add-rich-rule="${rule}" && sudo firewall-cmd --add-rich-rule="${rule}"
+      sudo firewall-cmd --permanent --add-rich-rule="${find_rule}" && sudo firewall-cmd --add-rich-rule="${find_rule}"
     fi
     mkdir -p "${HOME}/.local/bin"
     ln -sf "${HERE}/martlet-host" "${HOME}/.local/bin/martlet-host"
@@ -2930,7 +3019,7 @@ cmd_status() {
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
   case "${1:-help}" in
-    setup|roles|describe|add|remove|pair|console|network-reset|exposure|status|config|machine|update|warm) docker_launch "$@" ;;
+    setup|roles|describe|add|remove|pair|console|network-reset|exposure|status|config|machine|update|warm|home) docker_launch "$@" ;;
   esac
 fi
 
@@ -2962,6 +3051,7 @@ case "${1:-help}" in
   config) require_setup; render_config ;;
   hold) cmd_hold ;;
   keep) cmd_keep ;;
+  home) cmd_home ;;
   serve) cmd_serve ;;
   help|-h|--help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//' ;;
   *) fail "Unknown command '$1'. Try: martlet-host help" ;;

@@ -12,6 +12,18 @@ Each release's section here is also its notes on GitHub.
 
 - The guide links in the README now open the Martlet Wiki, which is up to date and has new pages on App guides, Linux and Mac, sharing with friends, and accounts. ([#917](https://github.com/throndir2/Martlet/pull/917))
 
+## [0.83.0] - 2026-10-16
+
+### Added
+
+- Martlet finds your hosts again by itself when their computer gets a new address after a restart, so you don't have to reserve addresses in your router or pair again. It checks each host's key at the new address before it uses it. ([#915](https://github.com/throndir2/Martlet/pull/915))
+- A Windows PC that is a host moves its host service to its new address by itself when its address changes. ([#915](https://github.com/throndir2/Martlet/pull/915))
+
+### Fixed
+
+- Managing a Linux host over SSH keeps working after its address changes, also when two computers swap addresses, instead of stopping with *SSH identity changed*. ([#915](https://github.com/throndir2/Martlet/pull/915))
+- A Linux host no longer stops when it starts before its network is ready or on another address. ([#915](https://github.com/throndir2/Martlet/pull/915))
+
 ## [0.82.0] - 2026-10-15
 
 ### Added

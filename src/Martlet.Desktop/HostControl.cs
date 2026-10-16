@@ -35,6 +35,10 @@ internal sealed record PairedHost
     public string? Access { get; init; }
     /// <summary>Who this PC signed in as on a shared host ("ana@example.net (google)"), for people to see.</summary>
     public string? SignedInAs { get; init; }
+    /// <summary>Where on the home network the host answers now ("192.168.1.37:9443"), when its computer got another address than
+    /// the one it was paired at. The paired origin stays the host's name for TLS, requests and signatures; Martlet finds the
+    /// new address and checks the host's key there by itself (<see cref="HostRoutes.Moved"/>). Null at the paired address.</summary>
+    public string? MovedTo { get; init; }
 
     [JsonIgnore] public string HostId => Pairing.HostId;
     [JsonIgnore] public string Address => new Uri(Pairing.Origin).Host;
@@ -247,9 +251,13 @@ internal static class HostRegistry
         // Saved outside addresses reach the host until the roster (which wins once this PC syncs it) says otherwise.
         foreach (var host in hosts.Where(h => h.OutsideAddresses is { Count: > 0 }))
             HostRoutes.Prime(host.Pairing.Origin, host.HostId, host.OutsideAddresses!, host.Pairing.SpkiFingerprint);
+        // Every host can be looked for on the home network when its address changes; where it was found last is dialed first.
+        foreach (var host in hosts)
+            HostRoutes.Remember(host.Pairing.Origin, host.HostId, host.Pairing.SpkiFingerprint, host.MovedTo);
         for (var i = 0; i < hosts.Count; i++)
             if (hosts[i].Method == HostSetupMethod.OnHost ||
-                thisPcAddress is not null && hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress))
+                thisPcAddress is not null && hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress) &&
+                !(hosts[i].MovedTo is { } moved && IsThisPc(moved[..moved.LastIndexOf(':')], thisPcAddress)))
                 hosts[i] = hosts[i] with { Method = HostSetupMethod.Agent };
         if (assigned is not null && hosts.All(h => h.HostId != assigned.HostId))
             hosts.Add(new()
@@ -298,6 +306,30 @@ internal static class HostRegistry
         if (index >= 0) list[index] = host;
         else list.Add(host);
         return list;
+    }
+
+    /// <summary>The host found at <paramref name="to"/> ("ip:port") on the home network, or back at its paired address (null).
+    /// An SSH target that names the computer by the address it had moves with it (a name such as box.local stays), so
+    /// managing the host over SSH keeps working; the SSH host key saved with the host still has to match there.</summary>
+    internal static PairedHost Moved(PairedHost host, string? to)
+    {
+        var moved = to is null ? null : Martlet.Core.Network.NetworkRoster.NormalizeAddress(to);
+        if (moved is not null && moved == $"{host.Address}:{new Uri(host.Pairing.Origin).Port}") moved = null;
+        if (moved == host.MovedTo) return host;
+        var updated = host with { MovedTo = moved };
+        if (host.SshTarget is { } ssh && TryTarget(ssh) is { } target && System.Net.IPAddress.TryParse(target.Host, out _))
+        {
+            var was = host.MovedTo is { } before ? before[..before.LastIndexOf(':')] : host.Address;
+            var now = moved is null ? host.Address : moved[..moved.LastIndexOf(':')];
+            if (target.Host == was && now != was) updated = updated with { SshTarget = (target with { Host = now }).ToString() };
+        }
+        return updated;
+    }
+
+    private static HostShellTarget? TryTarget(string text)
+    {
+        try { return HostShellTarget.Parse(text); }
+        catch (InvalidOperationException) { return null; }
     }
 }
 
@@ -408,6 +440,23 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         var changed = updated.Where((h, i) => !ReferenceEquals(h, hosts[i])).Select(h => h.HostId).ToArray();
         if (changed.Length > 0) HostRegistry.Save(dataDirectory, updated);
         return changed;
+    }
+
+    /// <summary>Keeps where a host answers now (<see cref="HostRoutes.Moved"/>) with its pairing, and moves an SSH target that
+    /// named its old address (with a remembered sudo password). Returns the updated host, or null when nothing changed.</summary>
+    internal PairedHost? KeepMoved(HostMove move)
+    {
+        var hosts = HostRegistry.Load(dataDirectory);
+        var origin = new Uri(move.Origin).GetLeftPart(UriPartial.Authority);
+        var host = hosts.FirstOrDefault(h => new Uri(h.Pairing.Origin).GetLeftPart(UriPartial.Authority) == origin &&
+            (move.HostId is null || h.HostId == move.HostId));
+        if (host is null) return null;
+        var updated = HostRegistry.Moved(host, move.To);
+        if (updated == host) return null;
+        HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, updated));
+        if (host.SshTarget is { } before && updated.SshTarget is { } after && before != after)
+            HostShell.MoveSudo(HostShellTarget.Parse(before), HostShellTarget.Parse(after));
+        return updated;
     }
 
     /// <summary>Forgets a host here (list, lip-sync assignment and secret). The host itself still lists this device until revoked there.</summary>

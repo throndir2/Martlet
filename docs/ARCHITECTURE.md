@@ -271,7 +271,10 @@ asks it for an ordinary one-use code.
    version and the IDs of the hosts it can share (all it remembers, up to 64):
    no addresses (the answer's
    source is the address), keys or other data. Hosts this PC is already paired
-   with are not offered again.
+   with are not offered again. The same port also answers a *find host*
+   question (`find-host`) for the host service that runs on this PC, so your
+   other computers find it after this PC got a new address
+   ([NETWORK](NETWORK.md#when-a-computer-gets-a-new-address)).
 3. **Asking.** On *Connect* the two computers talk newline-delimited JSON on
    TCP 9444 (at most one request at a time and ten a minute per computer). They
    agree a key with ephemeral ECDH P-256: the asking side first sends

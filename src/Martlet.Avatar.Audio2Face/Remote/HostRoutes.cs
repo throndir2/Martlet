@@ -13,8 +13,13 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 /// <param name="Error">Why the last connection attempt failed, when it did.</param>
 /// <param name="Connections">How many connections this PC opened (or tried to open) to the host since Martlet started.
 /// Requests share kept connections (<see cref="Audio2FaceHostClient.MaximumConnectionsPerHost"/>), so this grows slowly.</param>
+/// <param name="MovedTo">Where on the home network the host answers now ("192.168.1.37:9443") when its computer got another
+/// address than the one it was paired at, or null (<see cref="HostRoutes.Moved"/>).</param>
 public sealed record HostRouteStatus(string Origin, string? HostId, string Route, string? Address, DateTimeOffset? At, string? Error,
-    DateTimeOffset? ErrorAt, IReadOnlyList<string> Outside, long Connections = 0);
+    DateTimeOffset? ErrorAt, IReadOnlyList<string> Outside, long Connections = 0, string? MovedTo = null);
+
+/// <summary>A host found at another address on the home network (<paramref name="To"/>), or back at its paired one (null).</summary>
+public sealed record HostMove(string Origin, string? HostId, string? From, string? To);
 
 /// <summary>
 /// Chooses which address a connection to a host dials. Requests keep the host's home origin (so TLS still checks the host
@@ -22,6 +27,10 @@ public sealed record HostRouteStatus(string Origin, string? HostId, string Route
 /// when that doesn't answer, to one of the host's owner-set outside addresses (<see cref="NetworkMember.Addresses"/>).
 /// The address that worked last is tried first, so the home path never waits on an outside one; while an outside address
 /// is in use the home address is tried alongside it and wins when it answers within a moment (back home).
+/// <para>When the home address doesn't connect within <see cref="HomeConnectWindow"/>, Martlet also asks the home network where
+/// the host is (<see cref="HostFind"/>) and dials the address that answers once the host there shows its pinned key: its
+/// computer got another address after a restart. That address is then dialed instead of the paired one (<see cref="Moved"/>);
+/// the paired origin stays the host's name for TLS, requests and signatures.</para>
 /// </summary>
 public static class HostRoutes
 {
@@ -32,6 +41,23 @@ public static class HostRoutes
     public static readonly TimeSpan HomeHeadStart = TimeSpan.FromMilliseconds(100);
     /// <summary>How long a home address that presented another key (another network's computer at that address) is skipped.</summary>
     public static readonly TimeSpan WrongKeyBackoff = TimeSpan.FromMinutes(5);
+    /// <summary>How long a look for a host on the home network waits for answers (it stops at the first one).</summary>
+    public static readonly TimeSpan FindWindow = TimeSpan.FromSeconds(2);
+    /// <summary>How long after one look for a host the next may start.</summary>
+    public static readonly TimeSpan FindBackoff = TimeSpan.FromSeconds(20);
+    /// <summary>How long the pinned-key check of an address that answered a look may take.</summary>
+    public static readonly TimeSpan FoundProbeTimeout = TimeSpan.FromSeconds(2.5);
+
+    /// <summary>Asks the home network where hosts are (<see cref="HostFind.FindAsync"/>); tests replace it.</summary>
+    internal static Func<IReadOnlyCollection<string>, TimeSpan, CancellationToken, Task<IReadOnlyList<HostSighting>>> Find { get; set; } =
+        (wanted, window, token) => HostFind.FindAsync(wanted, window, token);
+
+    /// <summary>This computer's home addresses, tried when this PC itself answered a look over loopback; tests replace it.</summary>
+    internal static Func<IReadOnlyList<IPAddress>> OwnAddresses { get; set; } = HostFind.HomeAddresses;
+
+    /// <summary>Raised when a host was found at another address on the home network, or back at its paired one, so the desktop
+    /// keeps that address with the pairing. Never raised on the connecting thread's lock.</summary>
+    public static event Action<HostMove>? Moved;
 
     private static readonly ConcurrentDictionary<string, Entry> Entries = new(StringComparer.Ordinal);
     /// <summary>Address-and-key pairs of hosts whose routes are kept apart from other hosts with the same home origin
@@ -86,6 +112,41 @@ public static class HostRoutes
         Set(origin, hostId, outside, spki);
     }
 
+    /// <summary>Remembers a paired host so a connection that can't reach its home address can look for it on the home network:
+    /// its host ID, pinned key and where it was last found (<paramref name="movedTo"/>, "ip:port", or null for its paired
+    /// address). Raises nothing.</summary>
+    public static void Remember(string origin, string hostId, string spki, string? movedTo)
+    {
+        if (Key(origin, spki) is not { } key) return;
+        var entry = Entries.GetOrAdd(key, _ => new Entry(origin));
+        lock (entry)
+        {
+            entry.HostId ??= hostId;
+            entry.Spki = spki;
+            // What this PC found since Martlet started is newer than what it saved.
+            if (!entry.Remembered) entry.SetMoved(movedTo);
+            entry.Remembered = true;
+        }
+    }
+
+    /// <summary>Records that the host at <paramref name="origin"/> answers at <paramref name="address"/> ("ip:port") now, or at
+    /// its paired address again (null), and raises <see cref="Moved"/> when that changed. Used when this PC itself moved its
+    /// own host service to its new address.</summary>
+    public static void Move(string origin, string? spki, string? address)
+    {
+        if (Key(origin, spki) is not { } key) return;
+        var entry = Entries.GetOrAdd(key, _ => new Entry(origin));
+        HostMove? move;
+        lock (entry) move = entry.SetMoved(address);
+        if (move is not null) RaiseMoved(move);
+    }
+
+    private static void RaiseMoved(HostMove move)
+    {
+        try { Moved?.Invoke(move); }
+        catch (Exception) { } // a listener's failure never breaks a connection
+    }
+
     /// <summary>How this PC last reached each host it knows outside addresses for or has connected to.</summary>
     public static IReadOnlyList<HostRouteStatus> Snapshot() =>
         Entries.Values.Select(e => e.Status()).OrderBy(s => s.HostId ?? s.Origin, StringComparer.Ordinal).ToArray();
@@ -100,11 +161,14 @@ public static class HostRoutes
     {
         Entries.Clear();
         Apart.Clear();
+        Find = (wanted, window, token) => HostFind.FindAsync(wanted, window, token);
+        OwnAddresses = HostFind.HomeAddresses;
     }
 
     /// <summary>
     /// Checks one address of a host without a credential: dials <paramref name="address"/> ("name:port"; null for the home
-    /// address), checks the TLS key against <paramref name="spki"/> as a paired connection does, and asks for
+    /// address, or where the host was last found on the home network), checks the TLS key against <paramref name="spki"/> as a
+    /// paired connection does, and asks for
     /// <c>GET /health/live</c>. Returns whether it answered, how long it took and, when not, why ("refused", "no answer in
     /// time", "name not found", "another key", "unexpected answer").
     /// </summary>
@@ -112,6 +176,7 @@ public static class HostRoutes
         TimeSpan timeout, CancellationToken token = default)
     {
         var home = new Uri(origin);
+        address ??= Key(origin, spki) is { } key && Entries.TryGetValue(key, out var known) ? known.MovedAddress : null;
         var endpoint = address is null ? new DnsEndPoint(home.Host.Trim('[', ']'), home.Port) : Parse(NetworkRoster.NormalizeAddress(address) ??
             throw new ArgumentException("Invalid outside address.", nameof(address)));
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -157,18 +222,23 @@ public static class HostRoutes
     internal static void KeyRejected(string origin, string? spki = null)
     {
         if (Key(origin, spki) is not { } key || !Entries.TryGetValue(key, out var entry)) return;
+        HostMove? move = null;
         lock (entry)
         {
             var now = Clock.GetUtcNow();
             if (entry.LastDialed == "home")
             {
+                var dialed = entry.HomeDialAddress;
                 entry.HomeSkippedUntil = now + WrongKeyBackoff;
-                entry.Fail(now, $"The home address {entry.HomeAddress} answered with another key (a different computer there, so " +
-                    (entry.Outside.Length > 0 ? "Martlet uses the host's outside addresses for now)." : "this PC isn't at home)."));
+                // Another computer has the address the host was found at: look for it again instead.
+                move = entry.SetMoved(null, keepSkip: true);
+                entry.Fail(now, $"The home address {dialed} answered with another key (a different computer there, so " +
+                    (entry.Outside.Length > 0 ? "Martlet uses the host's outside addresses for now)." : "Martlet looks for the host on your home network)."));
             }
             else entry.Fail(now, $"The outside address {entry.Address} answered with another key, so Martlet didn't use it. Check " +
                 "that it forwards to this host (and not to another computer or a proxy that ends TLS).");
         }
+        if (move is not null) RaiseMoved(move);
     }
 
     /// <summary>SocketsHttpHandler.ConnectCallback for connections to a host (<paramref name="spki"/>: its pinned key, or null
@@ -181,59 +251,82 @@ public static class HostRoutes
         if (entry is null) return await DialAsync(target, token).ConfigureAwait(false);
         Interlocked.Increment(ref entry.Connections);
         string[] outside;
-        bool preferOutside;
+        bool preferOutside, look;
+        string? moved;
         var now = Clock.GetUtcNow();
         lock (entry)
         {
+            if (spki is not null) entry.Spki = spki;
             outside = entry.Outside;
+            moved = entry.MovedAddress;
             preferOutside = outside.Length > 0 && (entry.Route == "outside" || entry.HomeSkippedUntil > now);
+            look = !preferOutside && entry.CanLook(now);
         }
-        if (outside.Length == 0)
+        if (outside.Length == 0 && !look)
         {
+            var homeAddress = moved ?? entry.HomeAddress;
             try
             {
-                var stream = await DialAsync(target, token).ConfigureAwait(false);
-                entry.Connected("home", entry.HomeAddress, Clock.GetUtcNow());
+                var stream = await DialAsync(moved is null ? target : Parse(moved), token).ConfigureAwait(false);
+                entry.Connected("home", homeAddress, Clock.GetUtcNow());
                 return stream;
             }
             catch (Exception error) when (error is SocketException or OperationCanceledException && !token.IsCancellationRequested)
             {
                 entry.Failed(Clock.GetUtcNow(), Shortage(error) is { } shortage
-                    ? ShortageText(entry.HomeAddress, shortage)
-                    : $"The home address {entry.HomeAddress} didn't answer ({Describe(error)}), and this host " +
+                    ? ShortageText(homeAddress, shortage)
+                    : $"The home address {homeAddress} didn't answer ({Describe(error)}), and this host " +
                     "has no outside addresses (Share › Your Martlet network › Outside addresses).");
                 throw;
             }
         }
-        try { return await ConnectAnyAsync(entry, target, outside, preferOutside, now, token).ConfigureAwait(false); }
+        try { return await ConnectAnyAsync(entry, target, outside, preferOutside, look, now, token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             // The handler's connect timeout (or the caller) gave up first.
-            entry.Failed(Clock.GetUtcNow(), $"Couldn't reach the host at home ({entry.HomeAddress}) or outside ({string.Join(", ", outside)}) in time. " +
-                "Check that this PC is online, the overlay network (Tailscale, ZeroTier, WireGuard) is connected, or the router still forwards the port.");
+            entry.Failed(Clock.GetUtcNow(), outside.Length == 0
+                ? $"Couldn't reach the host at home ({entry.HomeDialAddress}) in time, and Martlet didn't find it elsewhere on your home " +
+                  "network. Check that its computer is on and connected to your home network."
+                : $"Couldn't reach the host at home ({entry.HomeDialAddress}) or outside ({string.Join(", ", outside)}) in time. " +
+                  "Check that this PC is online, the overlay network (Tailscale, ZeroTier, WireGuard) is connected, or the router still forwards the port.");
             throw;
         }
     }
 
-    private static async ValueTask<Stream> ConnectAnyAsync(Entry entry, DnsEndPoint target, string[] outside, bool preferOutside,
+    /// <summary>What the look for a host on the home network reports as its address when nothing answered.</summary>
+    private const string FoundNothing = "elsewhere on your home network";
+
+    private static async ValueTask<Stream> ConnectAnyAsync(Entry entry, DnsEndPoint target, string[] outside, bool preferOutside, bool look,
         DateTimeOffset now, CancellationToken token)
     {
         bool skipHome;
-        lock (entry) skipHome = entry.HomeSkippedUntil > now;
+        string? moved;
+        lock (entry)
+        {
+            skipHome = entry.HomeSkippedUntil > now;
+            moved = entry.MovedAddress;
+        }
+        var homeAddress = moved ?? entry.HomeAddress;
 
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<(Stream? Stream, string Address, Exception? Error)>? home = skipHome ? null : TryAsync(target, entry.HomeAddress, cancel.Token);
+        Task<(Stream? Stream, string Address, Exception? Error)>? home = skipHome ? null
+            : TryAsync(moved is null ? target : Parse(moved), homeAddress, cancel.Token);
         var errors = new List<string>();
+        Exception? homeError = null;
         if (home is not null && !preferOutside)
         {
-            // Home first; outside addresses only when it doesn't connect in time.
+            // Home first; outside addresses (and a look on the home network) only when it doesn't connect in time.
             var first = await Task.WhenAny(home, Task.Delay(HomeConnectWindow, token)).ConfigureAwait(false);
             if (first == home && home.Result.Stream is { } stream)
             {
-                entry.Connected("home", entry.HomeAddress, Clock.GetUtcNow());
+                entry.Connected("home", homeAddress, Clock.GetUtcNow());
                 return stream;
             }
-            if (first == home) errors.Add($"home {entry.HomeAddress}: {Describe(home.Result.Error)}");
+            if (first == home)
+            {
+                homeError = home.Result.Error;
+                errors.Add($"home {homeAddress}: {Describe(homeError)}");
+            }
         }
         else if (home is not null)
         {
@@ -241,13 +334,20 @@ public static class HostRoutes
             var first = await Task.WhenAny(home, Task.Delay(HomeHeadStart, token)).ConfigureAwait(false);
             if (first == home && home.Result.Stream is { } stream)
             {
-                entry.Connected("home", entry.HomeAddress, Clock.GetUtcNow());
+                entry.Connected("home", homeAddress, Clock.GetUtcNow());
                 return stream;
             }
         }
         var pending = outside.Select(a => TryAsync(Parse(a), a, cancel.Token)).ToList();
         if (home is not null && !home.IsCompleted) pending.Add(home);
-        else if (home is { Result.Error: { } homeError } && errors.Count == 0) errors.Add($"home {entry.HomeAddress}: {Describe(homeError)}");
+        else if (home is { Result.Error: { } failure } && errors.Count == 0)
+        {
+            homeError = failure;
+            errors.Add($"home {homeAddress}: {Describe(failure)}");
+        }
+        // The host's computer may have another address on the home network now (a restart, a new DHCP lease).
+        var found = look ? FoundAsync(entry, cancel.Token) : null;
+        if (found is not null) pending.Add(found);
         SocketError? shortage = home is { IsCompleted: true } && home.Result.Error is { } homeFailure ? Shortage(homeFailure) : null;
         while (pending.Count > 0)
         {
@@ -258,18 +358,82 @@ public static class HostRoutes
             {
                 await cancel.CancelAsync().ConfigureAwait(false);
                 foreach (var other in pending) _ = other.ContinueWith(t => t.Result.Stream?.Dispose(), TaskScheduler.Default);
-                entry.Connected(done == home ? "home" : "outside", address, Clock.GetUtcNow());
+                entry.Connected(done == home || done == found ? "home" : "outside", address, Clock.GetUtcNow());
                 return stream;
             }
             shortage ??= Shortage(error);
-            errors.Add($"{(done == home ? "home " : "")}{address}: {Describe(error)}");
+            if (done == home) homeError ??= error;
+            errors.Add(done == found
+                ? address == FoundNothing ? "not found elsewhere on your home network" : $"found at {address}: {Describe(error)}"
+                : $"{(done == home ? "home " : "")}{address}: {Describe(error)}");
         }
         token.ThrowIfCancellationRequested();
         // This PC itself had no free ports or socket buffers: say so, rather than blame the host or the router.
-        entry.Failed(Clock.GetUtcNow(), shortage is { } local ? ShortageText(entry.HomeAddress, local)
-            : "Couldn't reach the host at home or outside: " + string.Join("; ", errors) + ". Check that this " +
-            "PC is online, the overlay network (Tailscale, ZeroTier, WireGuard) is connected, or the router still forwards the port.");
+        entry.Failed(Clock.GetUtcNow(), shortage is { } local ? ShortageText(homeAddress, local)
+            : outside.Length == 0
+                ? "Couldn't reach the host: " + string.Join("; ", errors) + ". Check that its computer is on and connected to your home " +
+                  $"network, and that its firewall lets UDP {HostFind.Port} through so Martlet can find it. It has no outside addresses " +
+                  "(Share › Your Martlet network › Outside addresses)."
+                : "Couldn't reach the host at home or outside: " + string.Join("; ", errors) + ". Check that this " +
+                  "PC is online, the overlay network (Tailscale, ZeroTier, WireGuard) is connected, or the router still forwards the port.");
+        // Without outside addresses the home address's own error says best what happened (for example "refused").
+        if (outside.Length == 0 && homeError is SocketException) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(homeError);
         throw new SocketException((int)(shortage ?? SocketError.HostUnreachable));
+    }
+
+    /// <summary>Looks for the host on the home network (<see cref="LookAsync"/>) and dials the address it was found at.</summary>
+    private static async Task<(Stream? Stream, string Address, Exception? Error)> FoundAsync(Entry entry, CancellationToken token)
+    {
+        string? address;
+        try { address = await LookAsync(entry).WaitAsync(token).ConfigureAwait(false); }
+        catch (OperationCanceledException error) { return (null, FoundNothing, error); }
+        return address is null ? (null, FoundNothing, null) : await TryAsync(Parse(address), address, token).ConfigureAwait(false);
+    }
+
+    /// <summary>One look at a time per host, at most every <see cref="FindBackoff"/>; callers share it.</summary>
+    private static Task<string?> LookAsync(Entry entry)
+    {
+        lock (entry)
+        {
+            if (entry.Looking is { IsCompleted: false } running) return running;
+            entry.LookedAt = Clock.GetUtcNow();
+            return entry.Looking = Task.Run(() => SearchAsync(entry));
+        }
+    }
+
+    /// <summary>Asks the home network where the host is (<see cref="Find"/>) and checks each address that answered with the
+    /// host's pinned key (<see cref="ProbeAsync"/>). Returns the first that passes ("ip:port") and remembers it, or null.</summary>
+    private static async Task<string?> SearchAsync(Entry entry)
+    {
+        string hostId, spki;
+        lock (entry)
+        {
+            if (entry.HostId is null || entry.Spki is null) return null;
+            hostId = entry.HostId;
+            spki = entry.Spki;
+        }
+        IReadOnlyList<HostSighting> seen;
+        try { seen = await Find([hostId], FindWindow, CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception error) when (error is SocketException or ObjectDisposedException or InvalidOperationException or IOException
+            or OperationCanceledException)
+        { return null; }
+        var port = new Uri(entry.Origin).Port;
+        var candidates = new List<string>();
+        foreach (var sighting in seen)
+            // This PC answered for a host it runs itself: that host is published on this PC's home address.
+            foreach (var address in IPAddress.IsLoopback(sighting.Address) ? [.. OwnAddresses(), sighting.Address] : new[] { sighting.Address })
+                if (address.AddressFamily == AddressFamily.InterNetwork && $"{address}:{port}" is var text && !candidates.Contains(text))
+                    candidates.Add(text);
+        foreach (var candidate in candidates)
+        {
+            var (reachable, _, _) = await ProbeAsync(entry.Origin, spki, candidate, FoundProbeTimeout).ConfigureAwait(false);
+            if (!reachable) continue;
+            HostMove? move;
+            lock (entry) move = entry.SetMoved(candidate);
+            if (move is not null) RaiseMoved(move);
+            return candidate;
+        }
+        return null;
     }
 
     private static async Task<(Stream? Stream, string Address, Exception? Error)> TryAsync(DnsEndPoint endpoint, string address,
@@ -370,6 +534,19 @@ public static class HostRoutes
         internal string Origin { get; } = origin;
         internal string HomeAddress { get; } = origin["https://".Length..];
         internal string? HostId { get; set; }
+        /// <summary>The host's pinned key, so a look on the home network can check the host it finds.</summary>
+        internal string? Spki { get; set; }
+        /// <summary>Where on the home network the host answers now ("ip:port"), when that isn't its paired address.</summary>
+        internal string? MovedAddress { get; private set; }
+        internal Task<string?>? Looking { get; set; }
+        internal DateTimeOffset LookedAt { get; set; } = DateTimeOffset.MinValue;
+        /// <summary>Whether the saved pairing told where the host was found last (<see cref="Remember"/>).</summary>
+        internal bool Remembered { get; set; }
+        /// <summary>The home address a connection dials: where the host was found last, or its paired address.</summary>
+        internal string HomeDialAddress
+        {
+            get { lock (this) return MovedAddress ?? HomeAddress; }
+        }
         internal string[] Outside { get; set; } = [];
         internal string Route { get; set; } = "none";
         internal string? Address { get; set; }
@@ -420,7 +597,26 @@ public static class HostRoutes
 
         internal HostRouteStatus Status()
         {
-            lock (this) return new(Origin, HostId, Route, Address, At, Error, ErrorAt, Outside, Interlocked.Read(ref Connections));
+            lock (this) return new(Origin, HostId, Route, Address, At, Error, ErrorAt, Outside, Interlocked.Read(ref Connections), MovedAddress);
+        }
+
+        /// <summary>Whether a connection may look for the host on the home network now: its ID and key are known and no look
+        /// ran within <see cref="FindBackoff"/> (a running one is shared). Call with the lock held.</summary>
+        internal bool CanLook(DateTimeOffset now) =>
+            HostId is not null && Spki is not null && (Looking is { IsCompleted: false } || now - LookedAt >= FindBackoff);
+
+        /// <summary>Sets where the host answers now (null or its paired address: back home). Returns the change, or null when
+        /// nothing changed. A new address is no longer skipped for the key another computer showed at the old one. Call with the
+        /// lock held.</summary>
+        internal HostMove? SetMoved(string? address, bool keepSkip = false)
+        {
+            var normalized = address is null ? null : NetworkRoster.NormalizeAddress(address);
+            if (normalized == HomeAddress) normalized = null;
+            if (normalized == MovedAddress) return null;
+            var move = new HostMove(Origin, HostId, MovedAddress, normalized);
+            MovedAddress = normalized;
+            if (!keepSkip) HomeSkippedUntil = default;
+            return move;
         }
     }
 }

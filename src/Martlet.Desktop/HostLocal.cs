@@ -453,11 +453,9 @@ internal static partial class HostLocal
         HostSetupCommands.Validate(target, HostAction.Status);
         var setup = engine.Count > 0 && engine[0] == "setup";
         var args = new List<string> { "run", "--rm", "-i", "--log-driver", "none", "-u", "0", "-v", HostSetupCommands.DockerSocket };
-        if (setup)
-        {
-            args.AddRange(["-e", "MARTLET_HOST_ADDRESS=" + target.Address]);
-            if (target.HostId is { } id) args.AddRange(["-e", "MARTLET_HOST_ID=" + id]);
-        }
+        // Setup publishes the gateway on this PC's address; home moves it there after the address changed.
+        if (setup || engine is ["home"]) args.AddRange(["-e", "MARTLET_HOST_ADDRESS=" + target.Address]);
+        if (setup && target.HostId is { } id) args.AddRange(["-e", "MARTLET_HOST_ID=" + id]);
         if (!waitForOtherChanges) args.AddRange(["-e", "MARTLET_LOCK_WAIT=0"]);
         args.Add(HostSetupCommands.Image(target));
         args.Add("--yes");
