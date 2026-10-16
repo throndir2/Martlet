@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-10-16
+
 ### Added
 
 - Apps can ask for `martlet@any`, `martlet@fast` or `martlet@smart` instead of a model name. Martlet runs the request on a free model of that kind on any of your hosts, and the answer names the model that answered. ([#921](https://github.com/throndir2/Martlet/pull/921))
