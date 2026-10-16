@@ -563,6 +563,13 @@ rest from Windows. **Add this computer** in Martlet hosts:
    DSM, QNAP) often puts Docker on the PATH of a login shell only; Martlet then
    finds it there (`HostCheckout.DockerPath`). Type the SSH port after the
    computer when it isn't 22, for example `admin@192.168.1.9:9222`.
+   Martlet sets up a NAS (TerraMaster, Synology, QNAP, Unraid or TrueNAS,
+   found by `HostCheckout.NasProbe`) only in Docker, also when it has systemd,
+   and installs nothing into the NAS system. Install Docker with the NAS's own
+   app first: **Docker Engine** in the TOS App Center, **Container Manager** in
+   Synology's Package Center, **Container Station** in QNAP's App Center,
+   Docker in Unraid's settings or Apps in TrueNAS. Without it, Martlet stops
+   and names that app.
 4. Runs `setup` and `pair`, then reads the machine report, streaming every line
    into a run window with **Cancel**. The host then appears on the Devices map.
    A computer that can't reach the internet gets what setup needs from this PC

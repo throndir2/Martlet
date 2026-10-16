@@ -34,6 +34,7 @@ For another Windows PC, choose **Use as a Martlet host** there. It then shows un
 
 Martlet runs the host in Docker when the computer has it, and otherwise installs it natively. The host pairs by itself and shows on the Devices map. You never sign in to the Linux computer yourself.
 
+- On a NAS (TerraMaster, Synology, QNAP, Unraid or TrueNAS), install Docker with the NAS's own app first: **Docker Engine** in the TOS App Center, **Container Manager** in Synology's Package Center or **Container Station** in QNAP's App Center. Martlet sets up a NAS only in Docker and installs nothing into the NAS system, so a NAS update can't break the host. Without Docker, Martlet stops and tells you which app to install.
 - Martlet shows the computer's SSH key the first time and trusts only that key after. After you reinstall the computer, choose **Reset SSH trust**.
 - A computer without internet gets the files it needs from your PC. Martlet cannot send Docker images or models yet.
 - **Prepare a Linux computer** (on the map's **Add a computer** card) and **Prepare this computer** (on a host) get an Ubuntu computer ready: updates, Docker, the NVIDIA driver and container toolkit, no sleep, a virtual display, graphics card power limits, tools and Wake-on-LAN. Tick what you want and choose **Run selected**.

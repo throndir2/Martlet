@@ -254,7 +254,9 @@ internal sealed partial class McpServer
             "there is no git. Checks that an SSH command's plain shell finds no Docker but HostCheckout.DockerPath does; that without " +
             "git the host image is built from GitHub's source archive (main's when the release tag has none), unpacked into a " +
             "temporary folder that is removed afterwards, and then the engine runs; that an image already there builds nothing; and " +
-            "that a failed download builds nothing and runs no engine. FIXTURE docker and curl stand in for Docker and GitHub. " +
+            "that a failed download builds nothing and runs no engine. It also runs HostCheckout.NasProbe: a plain Linux is no NAS, and " +
+            "the marker of TerraMaster, Synology, QNAP, Unraid and TrueNAS each names that NAS (Martlet sets up a NAS only in Docker). " +
+            "FIXTURE docker and curl stand in for Docker and GitHub. " +
             "Returns notRun when Docker or the image is missing.", new { },
             async (_, cancellation) => await HostDockerShellCheck.RunAsync(cancellation)),
         Tool("host_update_check", "Rehearse how Martlet coordinates its own host service updates, with the desktop's production " +

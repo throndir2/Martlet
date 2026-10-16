@@ -193,6 +193,21 @@ public sealed class HostSetupCommandsTests
         Assert.Contains("64-bit Intel, AMD or ARM", HostRemote.Blocker(HostSetupMethod.SshNative, probe with { Architecture = "armv7l" }, "me@pi"));
         Assert.True(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true }));
         Assert.False(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true, DockerAccess = true }));
+        // A NAS (TerraMaster TOS 6 says Ubuntu 22.04 and has systemd) is set up only in Docker: Martlet never installs into its system.
+        var nas = probe with { OperatingSystem = "Ubuntu 22.04.3 LTS", Nas = "TerraMaster" };
+        Assert.Equal(HostSetupMethod.SshDocker, HostRemote.Choose(nas));
+        Assert.Equal(HostSetupMethod.SshDocker, HostRemote.Choose(nas with { Docker = true, DockerAccess = true }));
+        Assert.Equal(HostSetupMethod.SshDocker, HostRemote.Choose(nas with { Docker = true, Sudo = "none" }));
+        var noDocker = HostRemote.Blocker(HostRemote.Choose(nas), nas, "admin@nas:9222");
+        Assert.Contains("admin@nas:9222 is a TerraMaster NAS, and Docker is not installed there", noDocker);
+        Assert.Contains("Install Docker Engine from the App Center in TOS", noDocker);
+        Assert.DoesNotContain("systemd", noDocker);
+        Assert.Contains("Container Manager", HostRemote.Blocker(HostSetupMethod.SshDocker, nas with { Nas = "Synology" }, "me@ds"));
+        Assert.Contains("Container Station", HostRemote.Blocker(HostSetupMethod.SshDocker, nas with { Nas = "QNAP" }, "me@ts"));
+        Assert.Contains("administrator account", HostRemote.Blocker(HostSetupMethod.SshDocker, nas with { Docker = true, Sudo = "none" }, "me@nas"));
+        Assert.Null(HostRemote.Blocker(HostSetupMethod.SshDocker, nas with { Docker = true, DockerAccess = true }, "me@nas"));
+        Assert.Contains("probe.nas=%s", HostRemote.ProbeScript);
+        Assert.Contains(Martlet.Core.Nodes.HostCheckout.NasProbe, HostRemote.ProbeScript);
 
         // A computer without internet access: Martlet sends a native host what setup and update need, and says plainly what it can't send.
         Assert.Null(HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Setup, "me@gpu"));
