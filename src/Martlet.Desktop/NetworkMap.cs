@@ -712,11 +712,11 @@ internal static class NetworkMap
             var standing = computer.Standing switch
             {
                 ComputerStanding.Asking => $"Asks to join your Martlet network through {computer.Through} (check number {computer.CheckNumber}). " +
-                    "Allow it under Your Martlet network below.",
+                    "Allow it on the Share page, under Your Martlet network.",
                 ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network." + where,
                 ComputerStanding.Friend => $"A friend's computer: it signed in to {computer.Through ?? "your host"} as a friend and uses only its " +
                     "engines (thinking, listening, speaking, lip-sync, reading). It never joins your Martlet network; your own work comes " +
-                    "first. Stop sharing under Friends below." + where,
+                    "first. Stop sharing on the Share page, under Friends." + where,
                 _ => "In your Martlet network." + where
             };
             // What it is, as it said itself; a computer on an older Martlet hasn't said, so it shows as the Martlet app. A host PC
@@ -833,7 +833,7 @@ internal static class NetworkMap
                 draft.Subtitle = "Shared by a friend";
                 draft.Facts.Add(new("Shared with this PC", "By a friend: its engines only, for this PC only"));
                 draft.Notes.Add("A friend shares this host with this PC. It never joins your Martlet network, your other computers don't " +
-                    "use it, and its owner's own work comes first. Devices › Hosts shared with this PC lists it.");
+                    "use it, and its owner's own work comes first. Share › Hosts shared with this PC lists it.");
             }
 
         // Its details are just the ways to add one, each a whole clickable card (nothing there only looks like a button).

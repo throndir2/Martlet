@@ -19,7 +19,14 @@ public static class ApiKeyScopes
     public const string Perception = "perception";
     /// <summary>Send hosts commands: update Martlet, add or remove a role, show status; cancel commands.</summary>
     public const string Manage = "manage";
-    public static readonly IReadOnlyList<string> All = [Read, Voice, Perception, Manage];
+    /// <summary>Use the hosts' language models through the OpenAI-compatible endpoint (<c>/v1/models</c>,
+    /// <c>/v1/chat/completions</c>, <c>/v1/completions</c>, <c>/v1/embeddings</c>; docs/OPENAI_ENDPOINT.md).</summary>
+    public const string OpenAi = "openai";
+    /// <summary>Not a permission but a rank: the key's OpenAI-compatible requests run at the same rank as your own Martlet's
+    /// background work (the Thinking pool) instead of below all of your work. Your live turns still come first.</summary>
+    public const string EqualPriority = "equal-priority";
+    /// <summary>What a key may do, as the create dialog lists it.</summary>
+    public static readonly IReadOnlyList<string> All = [Read, Voice, Perception, Manage, OpenAi];
 
     public static string Title(string scope) => scope switch
     {
@@ -27,6 +34,8 @@ public static class ApiKeyScopes
         Voice => "Use thinking, listening, speaking and lip-sync",
         Perception => "Use screen understanding",
         Manage => "Update hosts and change their roles",
+        OpenAi => "Use your hosts' language models (OpenAI-compatible endpoint)",
+        EqualPriority => "Same priority as your own background work",
         _ => scope
     };
 }
@@ -177,6 +186,22 @@ public sealed record ApiKeyList
         var at = now.ToUniversalTime();
         var revoked = key with { Revoked = true, Verifier = null, Revision = NextRevision(now), UpdatedAt = at, UpdatedBy = by };
         return this with { Keys = Sorted(Keys.Where(k => k.Id != id).Append(revoked)) };
+    }
+
+    /// <summary>Gives the live key <paramref name="id"/> new scopes (for example its OpenAI-compatible priority) everywhere
+    /// this list reaches. The secret stays the same, so the app that uses the key keeps working.</summary>
+    public ApiKeyList ChangeScopes(string id, IEnumerable<string> scopes, string by, DateTimeOffset now)
+    {
+        var key = Find(id) ?? throw new ContractException(ErrorCode.InvalidContract, "No such API key.");
+        ContractRules.Require(!key.Revoked, "That API key was revoked.");
+        var chosen = scopes.Distinct(StringComparer.Ordinal).OrderBy(s => s, StringComparer.Ordinal).ToArray();
+        ContractRules.Require(chosen.Length > 0, "Choose what the key may do.");
+        if (chosen.SequenceEqual(key.Scopes, StringComparer.Ordinal)) return this;
+        var at = now.ToUniversalTime();
+        var changed = key with { Scopes = chosen, Revision = NextRevision(now), UpdatedAt = at, UpdatedBy = by };
+        var list = this with { Keys = Sorted(Keys.Where(k => k.Id != id).Append(changed)) };
+        list.Validate();
+        return list;
     }
 
     /// <summary>Finds the live key <paramref name="token"/> names and checks its secret in constant time.</summary>

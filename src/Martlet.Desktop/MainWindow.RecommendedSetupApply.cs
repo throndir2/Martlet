@@ -174,7 +174,7 @@ public partial class MainWindow
         {
             configuringShown = signature;
             configuringMachines = machines;
-            if (DevicesPage.IsVisible) RenderMap();
+            RenderDevicePages();
         }
         UpdateTray();
     }

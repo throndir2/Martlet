@@ -497,7 +497,7 @@ public partial class MainWindow : ThemedWindow
             if (!closing)
             {
                 RenderHome();
-                if (DevicesPage.IsVisible) RenderMap();
+                RenderDevicePages();
             }
         }
     }

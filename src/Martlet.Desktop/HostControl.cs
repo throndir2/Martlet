@@ -363,7 +363,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
             throw new InvalidOperationException(shared
                 ? $"{pairing.HostId} is already one of your own hosts on this PC, so Martlet can't keep a friend's host with the same name here."
                 : $"{pairing.HostId} is a host a friend shares with this PC, so Martlet can't pair your own host with the same name here. " +
-                  "Forget the shared one under Devices › Hosts shared with this PC first.");
+                  "Forget the shared one under Share › Hosts shared with this PC first.");
         var ssh = !shared && method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
         var host = new PairedHost
         {

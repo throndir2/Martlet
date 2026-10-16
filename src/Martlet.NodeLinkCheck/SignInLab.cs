@@ -113,7 +113,7 @@ internal static class SignInLab
         laptop.Keep(laptopPairing, laptopSecret);
 
         // A friend's computer (another identity at the same provider) signs in once: the host refuses it and lists it under
-        // "Signed in but not allowed yet", where the owner can allow it as a friend in the window (or Devices › Friends).
+        // "Signed in but not allowed yet", where the owner can allow it as a friend in the window (or Share › Friends).
         using var friendKey = NetworkKey.Create("lab-friend-pc");
         var friend = new SignInRehearsal.LabDesktop(friendKey, "LAB-FRIEND");
         var friendState = "not signed in";

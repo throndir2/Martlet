@@ -201,7 +201,7 @@ public static class HostRoutes
                 entry.Failed(Clock.GetUtcNow(), Shortage(error) is { } shortage
                     ? ShortageText(entry.HomeAddress, shortage)
                     : $"The home address {entry.HomeAddress} didn't answer ({Describe(error)}), and this host " +
-                    "has no outside addresses (Devices › your Martlet network › Outside addresses).");
+                    "has no outside addresses (Share › Your Martlet network › Outside addresses).");
                 throw;
             }
         }

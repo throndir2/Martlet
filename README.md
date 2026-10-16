@@ -468,7 +468,8 @@ heavy work.
 - Each job (voice, listening, lip-sync, reading, seeing, hearing, pictures and singing) has a list of machines in order. When one is busy or offline, the next one takes over.
 - **Keep Martlet the same on all my computers** brings your settings, voices, characters, memories and creations to every PC.
 - Hosts run on Windows (with Docker Desktop), on Linux (set up over SSH from Martlet), on Macs and on ARM64 computers such as a Raspberry Pi 5.
-- **Share your hosts with friends**, and sign in from outside your home.
+- **Share your hosts with friends**, and sign in from outside your home. The **Share** page has your network, friends, keys and the hosts shared with you in one place.
+- **Share your language models** with anyone you give a key: their apps use your hosts' models through an OpenAI-compatible API, your own conversations come first, and your cloud models and keys are never shared.
 - Update every host from your companion PC.
 
 </details>

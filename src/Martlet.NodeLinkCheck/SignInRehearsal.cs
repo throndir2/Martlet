@@ -243,7 +243,7 @@ internal static class SignInRehearsal
         {
             var settings = await home.ChangeAsync(host.HostId, HostSignInAccess.AllowChange("authentik", "lab-user-42", "Ana", friend: true), token);
             var saved = System.Text.Encoding.UTF8.GetString(host.SignInBytes ?? []);
-            // The desktop's client reads the access back too (Sign-in from outside and Devices › Friends show it).
+            // The desktop's client reads the access back too (Sign-in from outside and Share › Friends show it).
             var friendRead = settings.Allowed.FirstOrDefault(a => a.Subject == "lab-user-42") is { Friend: true };
             return (friendRead && saved.Contains("\"access\": \"friend\"", StringComparison.Ordinal),
                 $"allowed: {string.Join(", ", settings.Allowed.Select(a => $"{a.Label ?? a.Subject} ({a.Access})"))}; kept as a friend in signin.json: " +

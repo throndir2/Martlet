@@ -140,3 +140,16 @@ is *Thinking pool*. The desktop class that holds the pool's job board is
 `DesktopThinkingPool` (`src\Martlet.Desktop\DesktopThinkingPool.cs`). Its name
 is different from the domain file `src\Martlet.Conversation\ThinkingPool.cs`,
 which has the pool's rules (`ThinkingJobBoard`).
+
+## Sharing
+
+| Concept | Code name | UI name | Do not use for it |
+| --- | --- | --- | --- |
+| The page with what you share and what is shared with you | Share page (`SharePage`, `NavShare`) | Share | "Devices" for its cards |
+| The OpenAI-compatible API every host serves at `/v1` for other people's apps | OpenAI-compatible endpoint (`GatewayOpenAi.cs`, `OpenAiEndpoint`) | Share your language models; the OpenAI-compatible endpoint | "endpoint" alone (that is a server Martlet uses, above) |
+| The host a reverse proxy sends those requests to | front door (`OpenAiEndpointSettings.FrontDoorHostId`) | the host your proxy sends to | "gateway" in UI text |
+| The https address people put in their app | public address (`OpenAiEndpointSettings.PublicAddress`) | Address to give people | |
+| A request of the endpoint on a host's own model | outside job (`GatewayOutsideJob`, `BeginOutside`) | their requests | "friend" (a friend's computer is another thing) |
+| How such a request ranks against your work | priority (scope `equal-priority`) | Your Martlet first; Same priority as your background work | |
+
+See [Share your language models](OPENAI_ENDPOINT.md).

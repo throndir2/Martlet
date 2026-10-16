@@ -82,7 +82,7 @@ public partial class MainWindow
         if (events.Count == 0 || closing) return;
         ActionText.Text = string.Join(" ", events);
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
     }
 
     /// <summary>Saves Deep thinking's new model when its host route serves another one now (deep-thinking.json).</summary>

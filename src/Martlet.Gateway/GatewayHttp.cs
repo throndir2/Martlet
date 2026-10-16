@@ -212,6 +212,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeLogsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
+            if (Martlet.Core.Access.OpenAiEndpoint.IsPath(rawTarget!))
+            {
+                await InvokeOpenAiAsync(context, rawTarget!, traceId).ConfigureAwait(false);
+                return;
+            }
 
             if (context.Request.Method == HttpMethods.Post &&
                 rawTarget == "/martlet/v1/inference/cancel")

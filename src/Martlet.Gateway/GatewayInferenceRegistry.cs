@@ -30,6 +30,7 @@ public sealed partial class GatewayInferenceRouteRegistry
             closed = true;
             jobs = activeJobs.Values.ToArray();
             retirement = idle.Task;
+            foreach (var outside in outsideJobs) outside.Stop();
         }
         foreach (var job in jobs)
         {
@@ -175,13 +176,17 @@ public sealed partial class GatewayInferenceRouteRegistry
                     throw new GatewayProtocolException("job.busy", OwnerDetail);
                 if (registration.Admission.Active >= registration.Route.MaximumConcurrency)
                 {
-                    // The owner's request takes a friend's slot on this same worker: that job stops and this request waits.
+                    // The owner's request takes a friend's slot on this same worker: that job stops and this request waits. An
+                    // OpenAI-compatible request of a lower rank there stops the same way.
                     var lower = activeJobs.Values
                         .Where(running => ReferenceEquals(running.Registration, registration) && Rank(running) < rank).ToArray();
-                    if (lower.Length == 0)
+                    var lowerOutside = outsideJobs
+                        .Where(outside => ReferenceEquals(outside.Registration, registration) && outside.Rank < rank).ToArray();
+                    if (lower.Length == 0 && lowerOutside.Length == 0)
                         throw new GatewayProtocolException("job.busy");
                     by = $"a {GatewayGpus.RouteName(registration.Route)} request from {principal.Caller}";
                     preempted = MarkPreemptedLocked(lower, by, now);
+                    PreemptOutsideLocked(lowerOutside, by, now);
                     registration.Admission.ReservedUntil = now + SlotWait;
                     freed = registration.Admission.Freed.Task;
                 }
@@ -206,7 +211,7 @@ public sealed partial class GatewayInferenceRouteRegistry
                     activeJobs.Add(request.RequestId, job);
                     // A request stops lower-ranked work running on its graphics cards: a live request the pool's and friends',
                     // the owner's pool request friends'. Nothing else running, nothing to stop (the common case costs nothing).
-                    if (rank > 0 && activeJobs.Count > 1)
+                    if (rank > 0 && (activeJobs.Count > 1 || outsideJobs.Count > 0))
                     {
                         by = $"a {GatewayGpus.RouteName(registration.Route)} request from {principal.Caller}";
                         preempted = PreemptLocked(registration.Route.Gpus, by, now, rank);

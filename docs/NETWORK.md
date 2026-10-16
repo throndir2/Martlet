@@ -18,7 +18,7 @@ other computers.
 | --- | --- |
 | Pair your first host (Add a computer: this PC with Docker Desktop, a Linux computer over SSH, or a typed code) | This PC starts your network and adds the host to it |
 | Pair another host on any member PC | It joins the network; every other member pairs with it by itself within a minute |
-| Install Martlet on another PC and choose it under Add a computer › *Martlet on your network* on that PC (or pair it with any one host of the network by code or SSH). On a new PC, Home offers this first: *Connect to your other computers* | Both screens show a six-digit check number. **Allow** it on the computer with the hosts (*Martlet on your network*, or **Devices › Your Martlet network** for a PC that paired another way; **Turn down** refuses). Allowing it from *Martlet on your network* also lets it into the network, with no second Allow. Then the new PC pairs with every host by itself, including hosts added later. Nothing needs to be set up on the new PC first: it pairs, then follows [who does what](CLUSTER.md) and your shared settings, so its jobs go to your hosts |
+| Install Martlet on another PC and choose it under Add a computer › *Martlet on your network* on that PC (or pair it with any one host of the network by code or SSH). On a new PC, Home offers this first: *Connect to your other computers* | Both screens show a six-digit check number. **Allow** it on the computer with the hosts (*Martlet on your network*, or **Share › Your Martlet network** for a PC that paired another way; **Turn down** refuses). Allowing it from *Martlet on your network* also lets it into the network, with no second Allow. Then the new PC pairs with every host by itself, including hosts added later. Nothing needs to be set up on the new PC first: it pairs, then follows [who does what](CLUSTER.md) and your shared settings, so its jobs go to your hosts |
 | Pair your main PC with a member PC's own host service (*Pair your main PC* on a host PC, or this PC's host service on a companion) | It joins the network by itself: the pairing code (or Allow) showed only on that member PC, so the owner already approved it there and no second Allow is asked. It then pairs with every host by itself |
 | **Remove from network** on another PC | Every host revokes it; it forgets the network's hosts. To come back it asks again (with a new key) |
 | **Remove from network** on a host | It stops trusting the network's PCs and they forget it. Pair it again with Add a computer to bring it back: the jobs and Thinking pool members that used it work again with the new pairing |
@@ -51,7 +51,7 @@ are in the network yet. Each host reports the computers paired with it and when
 each last used it (*active now* within two minutes, otherwise the time; a host
 that restarted knows only from the next request). The Devices page shows them on
 each host (*Computers using it*, or *Used by* on this PC's own host service),
-and **Your Martlet network** lists members with where they were last active and
+and **Your Martlet network** (on the Share page) lists members with where they were last active and
 computers that use a host but are not members. A host PC's Home lists the
 computers paired with its host service under *Pair your main PC*.
 
@@ -248,6 +248,9 @@ before: remove it from the network and every host revokes it.
    Only plain TCP passthrough (Cloudflare Spectrum or a TCP tunnel, nginx
    `stream`) keeps the pin; if you use one, the host can't see the real source
    address, so set *treat every connection as outside home* on it.
+   The [OpenAI-compatible endpoint](OPENAI_ENDPOINT.md) is the exception: it
+   needs only API keys, never the pinned key, so a reverse proxy with a real
+   certificate is how you share your language models with other apps.
 
 **Several hosts.** Each host the laptop should use from outside needs its own
 outside address (its own forwarded port, or its overlay address). The simplest
@@ -644,8 +647,8 @@ host.
   reads it back. The PC where you saved the provider also keeps a copy in
   Windows Credential Manager (`Martlet/v3/signin-provider/<id>`), only to add
   the provider to a host that misses it.
-- **New hosts.** When Devices › Friends reads your hosts' sign-in settings (the
-  Devices page shows, **Check now**, at most every two minutes) and after a
+- **New hosts.** When Share › Friends reads your hosts' sign-in settings (the
+  Share page shows, **Check now**, at most every two minutes) and after a
   network sync pairs this PC with a new host, your PC adds the household's
   providers to the hosts that miss them: the configuration most hosts have,
   with the kept secret when the provider needs one (Discord, or a confidential
@@ -807,10 +810,10 @@ website.
 
 | You do | Where |
 | --- | --- |
-| Make a link: type your friend's name and choose **All my hosts, also the ones I add later**, or clear it and choose hosts | **Devices › Friends › Make a share link** |
+| Make a link: type your friend's name and choose **All my hosts, also the ones I add later**, or clear it and choose hosts | **Share › Friends › Make a share link** |
 | Send the link (`martlet://share/...`) to your friend in a private message | **Copy link** in the window that shows it, or **Copy link** on the friend's row later |
-| Your friend clicks the link, or pastes it | Their Martlet: the link opens Martlet, or **Devices › Hosts shared with this PC › Accept a share link** (or **Add a computer › Join with an invite**) |
-| See who uses what | **Devices › Friends**: the friend shows as *Ana (share link)* with the hosts that keep the link and their computers |
+| Your friend clicks the link, or pastes it | Their Martlet: the link opens Martlet, or **Share › Hosts shared with this PC › Accept a share link** (or **Add a computer › Join with an invite**) |
+| See who uses what | **Share › Friends**: the friend shows as *Ana (share link)* with the hosts that keep the link and their computers |
 | Share one more host, or one less (a link that names its hosts) | **Share** *host* or **Stop sharing** *host* on the friend's row |
 | Stop the link | **Stop link** on the friend's row: every host removes it and revokes their computers at once |
 
@@ -834,8 +837,8 @@ How it works:
   never go to a host for a friend; your friend's Martlet uses its own keys for
   anything online.
 - **All hosts, also later ones.** A link for all hosts covers every host of your
-  Martlet network. Each time **Devices › Friends** reads your hosts (when the
-  Devices page shows, at most every two minutes, or on **Check now**), your PC
+  Martlet network. Each time **Share › Friends** reads your hosts (when the
+  Share page shows, at most every two minutes, or on **Check now**), your PC
   adds the link to hosts that miss it, so a host you add later gets it too. Your
   friend's Martlet asks a host it already uses which hosts the link covers now
   (`GET /martlet/v1/signin/shared`, from the network roster: host ID, name, home
@@ -940,10 +943,10 @@ allow them.
 | Set up a sign-in provider on each host you share (one your friend has an account with) | At home: **Devices › Add a computer** with the host selected › **Sign-in from outside** › *Sign-in providers* ([above](#signing-in-with-your-identity-provider-or-google)) |
 | Give your friend that host's invite and a way to reach it | **Sign-in from outside** › **Make invite**, and an [outside address](#reaching-your-network-from-outside-home). An overlay network is simplest: Tailscale, for example, can share one machine with another person's tailnet |
 | Your friend signs in once. The host refuses them until you share it with them, and lists them | On your friend's Martlet: **Devices › Add a computer › Join with an invite**: paste the invite, **Connect**, choose the provider and **Sign in** |
-| Share the host with them | **Devices › Friends** lists them as asking: **Share** *host*. Or **Sign-in from outside** › **Allow the newest as a friend**, or type their provider ID and subject under *Allowed sign-ins* and choose *A friend*. On a Linux host: `martlet-host owner-signin-allow --config ... --provider <id> --subject <subject> --label <name> --access friend` |
-| Your friend signs in again | Their Martlet keeps the host under **Devices › Hosts shared with this PC** ([below](#on-your-friends-martlet)) |
-| See who uses what | **Devices › Friends**: each person, the hosts shared with them and their computers there. *Your Martlet network* and the Devices map show their computers as a friend's computer |
-| Stop sharing | **Devices › Friends** › **Stop sharing** *host*, or **Remove** in **Sign-in from outside** (`martlet-host owner-signin-disallow`): the host revokes their computer at once |
+| Share the host with them | **Share › Friends** lists them as asking: **Share** *host*. Or **Sign-in from outside** › **Allow the newest as a friend**, or type their provider ID and subject under *Allowed sign-ins* and choose *A friend*. On a Linux host: `martlet-host owner-signin-allow --config ... --provider <id> --subject <subject> --label <name> --access friend` |
+| Your friend signs in again | Their Martlet keeps the host under **Share › Hosts shared with this PC** ([below](#on-your-friends-martlet)) |
+| See who uses what | **Share › Friends**: each person, the hosts shared with them and their computers there. *Your Martlet network* and the Devices map show their computers as a friend's computer |
+| Stop sharing | **Share › Friends** › **Stop sharing** *host*, or **Remove** in **Sign-in from outside** (`martlet-host owner-signin-disallow`): the host revokes their computer at once |
 | Make an identity one of your own computers instead, or the other way round | **Sign-in from outside** › **Make one of my computers** or **Make a friend**. The host revokes the computers it signed in with the old access, and they sign in again to get the new one. Your own computers among them also leave your network on your computers' next sync, so they lose every host |
 
 What a friend's computer gets on a shared host:
@@ -983,14 +986,14 @@ What a friend's computer gets on a shared host:
   and the host log names their requests (*request from friend
   &lt;device&gt;*). In the app, *Your Martlet network* and the Devices map show
   them as a friend's computer (never as one of yours, and never as a computer
-  to let in), and **Devices › Friends** lists each person.
+  to let in), and **Share › Friends** lists each person.
 - **Taking access away.** Removing the friend's identity revokes their computer
   on that host at once (from a member desktop) or within 5 seconds
   (`martlet-host` editing `signin.json` while the host runs). A running request
   of theirs stops too. Nothing is recorded for your network: they never joined it.
 
-**Devices › Friends** reads the sign-in settings of each of your hosts (only
-while the Devices page shows, at most every two minutes, or on **Check now**;
+**Share › Friends** reads the sign-in settings of each of your hosts (only
+while the Share page shows, at most every two minutes, or on **Check now**;
 never on a reply's path, so it adds no conversation latency). It lists each
 person who is a friend on one of your hosts or who signed in to one and waits:
 the hosts shared with them, their computers there, and **Share** or **Stop
@@ -1009,7 +1012,7 @@ pairing as a host shared with that PC (`access` `friend` with the pairing in
 `hosts.json`). It never adopts it into its own Martlet network and never asks
 to join through it.
 
-- **Devices › Hosts shared with this PC** lists each one: who they signed in
+- **Share › Hosts shared with this PC** lists each one: who they signed in
   as, the engines it offers that PC (its capabilities, read on start, when the
   page shows and on **Check now**), and what that PC uses it for. **Use for
   thinking**, **listening**, **speaking**, **lip-sync** or **reading** hand that
@@ -1043,6 +1046,15 @@ to join through it.
 - **Access taken away.** When you stop sharing, the host answers
   `auth.revoked`, and the card says that its owner stopped sharing it.
 
+## Sharing your language models with other apps
+
+People who don't run Martlet can use the language models your hosts run from
+any app that works with the OpenAI API, with a key you give them on **Share ›
+Share your language models** ([OpenAI-compatible endpoint](OPENAI_ENDPOINT.md)).
+Like a friend, they get the models only and come after your own work. Unlike a
+friend, they need no Martlet and no sign-in, and one address reaches the models
+of every host of your network.
+
 ## Where it lives
 
 | Piece | Location |
@@ -1050,11 +1062,11 @@ to join through it.
 | Roster format and rules | `Martlet.Core.Network` (`NetworkRoster`, `NetworkKey`, `NetworkPairing`) |
 | Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network` (roster, join requests, the computers paired with the host, the Martlet release it runs), `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
 | Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches), `Remote/HostNetwork.cs` (client calls, pairing by itself) and `Remote/HostRelease.cs` (what an announced release means to this PC) |
-| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
+| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Share page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
 | Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`, household account logins), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/prove`, `/settings`); `Martlet.Core` `Access/Totp.cs`, `Accounts/AccountAttestation.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs` (`ProveAsync`, `ProveWithPasswordAsync`, `ProveInBrowserAsync`), `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest`, `signin_lab` mode `account` |
-| Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Devices › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
+| Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Share › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
 | Share links | `Martlet.Core` `Network/ShareLink.cs` (format, `Verifier`); gateway `GatewaySignIn.cs` (provider `link`, `GatewayShareLink`, `share-link` and `remove-share-link`) and `GatewaySignInHttp.cs` (`/martlet/v1/signin/shared`); desktop `Remote/HostSignIn.cs` (`SignInWithShareLinkAsync`, `ReadSharedHostsAsync`, `HostSignInSettings.Links`), `ShareLinks.cs` (share-links.json, `Plan`), `MainWindow.ShareLinks.cs`, `ShareLinkWindow.cs`, `ShareLinkProtocol.cs` (martlet: links) and `WindowsCredentialStore` (`*ShareLinkSecret`); MCP `network_status` (`shareLinks`) and `signin_selftest` |
 | Router port | `Martlet.Core` `Network/RouterPorts.cs` (UPnP IGD); desktop `RouterPort.cs` (router-port.json), `MainWindow.RouterPort.cs` (renewal), the Outside access dialog in `MainWindow.Outside.cs` and `WindowsFirewall` (`Martlet-Host-Gateway-Outside`); MCP `network_status` (`routerPort`) |
 | Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit), `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`) and `GatewayOverlayListeners.cs` (listening on overlay addresses); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`); Docker holder publishing in `deploy/host/martlet-host` (`ensure_holder`) and `LocalHostService.ParseHolder` |
@@ -1105,7 +1117,7 @@ kept with its access, never one of your hosts on the map or in the plan (not
 even after it is forgotten), a friend's computer shown as one, a shared host
 and your own host with the same home address reached apart, a shared host and
 your own pairing never replacing each other under one name, the owner-first
-refusal moving a request on, Devices › Friends' per-person overview;
+refusal moving a request on, Share › Friends' per-person overview;
 `WorkSharingTests`: a live request passes a shared host whose owner needs it at
 once, and background work goes on later; `HostSignInSettingsTests`: a member
 allow sends no `access`, so older hosts take it), and the
@@ -1126,7 +1138,7 @@ Authentik, Authelia, Keycloak, Pocket ID, Google, Discord or Steam (no
 disposable accounts on the development PC), `martlet-host owner-signin-allow
 --access friend` in a real `martlet-host` process (the fixture file system
 stands in), and driving the new windows and cards through UI Automation
-(**Devices › Friends**, **Sign-in from outside**'s access buttons, **Join with
+(**Share › Friends**, **Sign-in from outside**'s access buttons, **Join with
 an invite** as a friend, **Hosts shared with this PC** and a reply through a
 shared host from the talk window): the development PC's Windows session was
 locked, so `ui_connect` couldn't see the desktop window.

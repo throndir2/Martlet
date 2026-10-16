@@ -6,7 +6,7 @@ namespace Martlet.Desktop;
 /// <summary>
 /// Household sign-in providers (docs/NETWORK.md): an admin sets a provider up once in a host's Sign-in from outside, and this PC
 /// saves it on every host of the network. Here, in the background, this PC adds the household's providers to hosts of the network
-/// that miss them: after a network sync brings a host, and whenever Devices › Friends has just read every host's sign-in
+/// that miss them: after a network sync brings a host, and whenever Share › Friends has just read every host's sign-in
 /// settings. A provider that needs a client secret is added only by the PC that kept it. Never on a reply's path, so it adds no
 /// conversation latency. It also keeps the non-secret summary (household-signin.json) MCP network_status shows.
 /// </summary>

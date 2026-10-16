@@ -360,7 +360,7 @@ public static class HostSignInClient
         "signin.invalid" => new Audio2FaceHostException(code,
             "That sign-in didn't work. Check the account name, password and authenticator code; several wrong tries lock sign-in for a while."),
         "signin.not_allowed" => new Audio2FaceHostException(code,
-            "You signed in, but the host doesn't allow that account yet. Its owner allows it in Martlet (Devices › Friends, or the " +
+            "You signed in, but the host doesn't allow that account yet. Its owner allows it in Martlet (Share › Friends, or the " +
             "host's Sign-in from outside), then sign in again here."),
         "signin.device_taken" => new Audio2FaceHostException(code,
             "The host already pairs this PC's device ID another way or with another account, so it refused this sign-in. Sign in " +

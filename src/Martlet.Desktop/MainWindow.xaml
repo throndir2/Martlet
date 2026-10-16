@@ -68,6 +68,9 @@
                                  IsChecked="True" Checked="Nav_Checked" AutomationProperties.AutomationId="NavHome"/>
                     <RadioButton x:Name="NavDevices" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE772;" Content="Devices"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavDevices"/>
+                    <!-- Share: your network, friends, your language models for other people's apps and API keys (SharePage) -->
+                    <RadioButton x:Name="NavShare" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE72D;" Content="Share"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavShare"/>
                     <RadioButton x:Name="NavCompanion" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE76E;" Content="Companion"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavCompanion"/>
                     <RadioButton x:Name="NavConversations" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE8BD;" Content="Conversations"
@@ -514,6 +517,81 @@
                             <StackPanel x:Name="ExternalEndpointsPanel" AutomationProperties.Name="Cloud providers and servers Martlet uses"/>
                         </StackPanel>
                     </Border>
+                    <!-- Sharing work: which computers take a job when the one doing it is busy (MainWindow.WorkSharing.cs, docs/CLUSTER.md) -->
+                    <Border x:Name="WorkSharingCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Sharing work">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE8AB;" Foreground="{DynamicResource AccentBrush}"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Sharing work" FontSize="18" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Text="Each job's page lists the machines that do it, in order: when the first is busy, the next one takes it. The lists are the same on all your computers."/>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock x:Name="WorkSharingStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="WorkSharingStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="WorkSharingJobsPanel" AutomationProperties.Name="Jobs your computers share"/>
+                            <StackPanel x:Name="WorkSharingHostsPanel" AutomationProperties.Name="Computers kept for one companion PC"/>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="RolesCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Settings for all devices">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <Button x:Name="CheckHostsButton" DockPanel.Dock="Right" Content="Check all hosts" Click="CheckHosts_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="CheckHosts"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                    <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE713;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Settings for all devices" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" Text="These apply to every computer at once."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                            <Border Background="{DynamicResource CanvasBrush}" CornerRadius="14" Padding="16,12">
+                                <StackPanel>
+                                    <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
+                                              Content="Keep Martlet the same on all my computers"
+                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, your characters, what it makes (Creations) and Home Assistant travel through your paired hosts. The people Martlet recognizes by voice are always shared with your computers, even while this is off. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
+                                              AutomationProperties.AutomationId="ClusterSync"/>
+                                    <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
+                                               AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <TextBlock x:Name="SettingsSyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,6,0,0"
+                                               AutomationProperties.AutomationId="SettingsSyncStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <TextBlock x:Name="MemorySyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
+                                               Text="Memories: not synced yet."
+                                               AutomationProperties.AutomationId="MemorySyncStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <!-- The household's accounts (MainWindow.Accounts.cs): always shared with your hosts, even while this is off. -->
+                                    <TextBlock x:Name="AccountsSyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
+                                               Text="Accounts: not synced yet."
+                                               AutomationProperties.AutomationId="AccountsSyncStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <TextBlock x:Name="SettingsSyncWaitingText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
+                                               Visibility="Collapsed" AutomationProperties.AutomationId="SettingsSyncWaiting"/>
+                                    <Button x:Name="SettingsSyncClaimButton" Content="Use this PC's settings on all my computers" Margin="24,8,0,0"
+                                            HorizontalAlignment="Left" Click="SettingsSyncClaim_Click"
+                                            ToolTip="If your computers disagree, make every one of them use what this PC has now."
+                                            AutomationProperties.AutomationId="SettingsSyncClaim"/>
+                                </StackPanel>
+                            </Border>
+                            <StackPanel x:Name="UnassignedJobs" AutomationProperties.Name="Jobs nobody does yet"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Share: what you share and what is shared with you: your Martlet network, friends, your language models for other
+                 people's apps, API keys and hosts friends share with this PC (MainWindow.OpenAiEndpoint.cs renders the page) -->
+            <ScrollViewer x:Name="SharePage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="36,30,36,24" MaxWidth="1100">
+                    <StackPanel Margin="0,0,0,18">
+                        <TextBlock Text="Share" Style="{DynamicResource PageTitle}"/>
+                        <TextBlock x:Name="ShareSummary" Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
+                                   Text="Your own computers, the friends you share hosts with, and the people who use your language models."
+                                   AutomationProperties.AutomationId="ShareSummary" AutomationProperties.LiveSetting="Polite"/>
+                    </StackPanel>
                     <!-- Your Martlet network: the owner's computers that trust each other (MainWindow.Network.cs) -->
                     <Border x:Name="NetworkCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Your Martlet network">
                         <StackPanel>
@@ -564,49 +642,32 @@
                             <StackPanel x:Name="FriendsPanel" AutomationProperties.Name="Your friends and the hosts you share with them"/>
                         </StackPanel>
                     </Border>
-                    <!-- Hosts shared with this PC: friends' hosts this PC signed in to as a friend; their engines only (MainWindow.Friends.cs) -->
-                    <Border x:Name="SharedHostsCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Hosts shared with this PC" Visibility="Collapsed">
+                    <!-- Share your language models: an OpenAI-compatible endpoint on your hosts for other people's apps, with keys you give
+                         out (MainWindow.OpenAiEndpoint.cs, docs/OPENAI_ENDPOINT.md) -->
+                    <Border x:Name="OpenAiCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Share your language models">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
-                                    <Button x:Name="AcceptShareLinkButton" Content="Accept a share link" Click="AcceptShareLink_Click" Margin="0,0,8,0"
-                                            AutomationProperties.AutomationId="AcceptShareLink" AutomationProperties.Name="Paste a share link a friend sent"/>
-                                    <Button x:Name="SharedHostsCheckButton" Content="Check now" Click="SharedHostsCheck_Click"
-                                            AutomationProperties.AutomationId="SharedHostsCheck" AutomationProperties.Name="Check the hosts friends share with this PC now"/>
+                                    <Button x:Name="OpenAiGiveAccessButton" Content="Give someone access" Click="OpenAiGiveAccess_Click" Margin="0,0,8,0"
+                                            Style="{DynamicResource PrimaryButton}"
+                                            AutomationProperties.AutomationId="OpenAiGiveAccess" AutomationProperties.Name="Make a key for a person to use your language models"/>
+                                    <Button x:Name="OpenAiCheckButton" Content="Check now" Click="OpenAiCheck_Click"
+                                            AutomationProperties.AutomationId="OpenAiCheck" AutomationProperties.Name="Read which language models your hosts offer now"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
                                     <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
-                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE72D;" Foreground="{DynamicResource AccentBrush}"/>
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE99A;" Foreground="{DynamicResource AccentBrush}"/>
                                     </Border>
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="Hosts shared with this PC" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Share your language models" FontSize="18" FontWeight="SemiBold"/>
                                         <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="Friends' hosts you signed in to as a friend. This PC may use their engines; their owners' own work comes first."/>
+                                                   Text="An OpenAI-compatible endpoint: people use the models your hosts run from any app that works with the OpenAI API, with a key you give them. Your own work comes first. Cloud models and keys you set in Martlet are never shared."/>
                                     </StackPanel>
                                 </StackPanel>
                             </DockPanel>
-                            <TextBlock x:Name="SharedHostsStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                       AutomationProperties.AutomationId="SharedHostsStatus" AutomationProperties.LiveSetting="Polite"/>
-                            <StackPanel x:Name="SharedHostsPanel" AutomationProperties.Name="Hosts friends share with this PC"/>
-                        </StackPanel>
-                    </Border>
-                    <!-- Sharing work: which computers take a job when the one doing it is busy (MainWindow.WorkSharing.cs, docs/CLUSTER.md) -->
-                    <Border x:Name="WorkSharingCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Sharing work">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
-                                    <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE8AB;" Foreground="{DynamicResource AccentBrush}"/>
-                                </Border>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Sharing work" FontSize="18" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                               Text="Each job's page lists the machines that do it, in order: when the first is busy, the next one takes it. The lists are the same on all your computers."/>
-                                </StackPanel>
-                            </StackPanel>
-                            <TextBlock x:Name="WorkSharingStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                       AutomationProperties.AutomationId="WorkSharingStatus" AutomationProperties.LiveSetting="Polite"/>
-                            <StackPanel x:Name="WorkSharingJobsPanel" AutomationProperties.Name="Jobs your computers share"/>
-                            <StackPanel x:Name="WorkSharingHostsPanel" AutomationProperties.Name="Computers kept for one companion PC"/>
+                            <TextBlock x:Name="OpenAiStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="OpenAiStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="OpenAiPanel" AutomationProperties.Name="Your OpenAI-compatible endpoint"/>
                         </StackPanel>
                     </Border>
                     <!-- Apps and API keys: keys that software outside the network uses to call your hosts (MainWindow.ApiKeys.cs, docs/API.md) -->
@@ -631,47 +692,30 @@
                             <StackPanel x:Name="ApiKeysPanel" AutomationProperties.Name="API keys"/>
                         </StackPanel>
                     </Border>
-                    <Border x:Name="RolesCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Settings for all devices">
+                    <!-- Hosts shared with this PC: friends' hosts this PC signed in to as a friend; their engines only (MainWindow.Friends.cs) -->
+                    <Border x:Name="SharedHostsCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Hosts shared with this PC" Visibility="Collapsed">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">
-                                <Button x:Name="CheckHostsButton" DockPanel.Dock="Right" Content="Check all hosts" Click="CheckHosts_Click" VerticalAlignment="Top"
-                                        AutomationProperties.AutomationId="CheckHosts"/>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                    <Button x:Name="AcceptShareLinkButton" Content="Accept a share link" Click="AcceptShareLink_Click" Margin="0,0,8,0"
+                                            AutomationProperties.AutomationId="AcceptShareLink" AutomationProperties.Name="Paste a share link a friend sent"/>
+                                    <Button x:Name="SharedHostsCheckButton" Content="Check now" Click="SharedHostsCheck_Click"
+                                            AutomationProperties.AutomationId="SharedHostsCheck" AutomationProperties.Name="Check the hosts friends share with this PC now"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
                                     <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
-                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE713;" Foreground="{DynamicResource AccentBrush}"/>
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE72D;" Foreground="{DynamicResource AccentBrush}"/>
                                     </Border>
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="Settings for all devices" FontSize="18" FontWeight="SemiBold"/>
-                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" Text="These apply to every computer at once."/>
+                                        <TextBlock Text="Hosts shared with this PC" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="Friends' hosts you signed in to as a friend. This PC may use their engines; their owners' own work comes first."/>
                                     </StackPanel>
                                 </StackPanel>
                             </DockPanel>
-                            <Border Background="{DynamicResource CanvasBrush}" CornerRadius="14" Padding="16,12">
-                                <StackPanel>
-                                    <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
-                                              Content="Keep Martlet the same on all my computers"
-                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, your characters, what it makes (Creations) and Home Assistant travel through your paired hosts. The people Martlet recognizes by voice are always shared with your computers, even while this is off. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
-                                              AutomationProperties.AutomationId="ClusterSync"/>
-                                    <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
-                                               AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
-                                    <TextBlock x:Name="SettingsSyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,6,0,0"
-                                               AutomationProperties.AutomationId="SettingsSyncStatus" AutomationProperties.LiveSetting="Polite"/>
-                                    <TextBlock x:Name="MemorySyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
-                                               Text="Memories: not synced yet."
-                                               AutomationProperties.AutomationId="MemorySyncStatus" AutomationProperties.LiveSetting="Polite"/>
-                                    <!-- The household's accounts (MainWindow.Accounts.cs): always shared with your hosts, even while this is off. -->
-                                    <TextBlock x:Name="AccountsSyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
-                                               Text="Accounts: not synced yet."
-                                               AutomationProperties.AutomationId="AccountsSyncStatus" AutomationProperties.LiveSetting="Polite"/>
-                                    <TextBlock x:Name="SettingsSyncWaitingText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
-                                               Visibility="Collapsed" AutomationProperties.AutomationId="SettingsSyncWaiting"/>
-                                    <Button x:Name="SettingsSyncClaimButton" Content="Use this PC's settings on all my computers" Margin="24,8,0,0"
-                                            HorizontalAlignment="Left" Click="SettingsSyncClaim_Click"
-                                            ToolTip="If your computers disagree, make every one of them use what this PC has now."
-                                            AutomationProperties.AutomationId="SettingsSyncClaim"/>
-                                </StackPanel>
-                            </Border>
-                            <StackPanel x:Name="UnassignedJobs" AutomationProperties.Name="Jobs nobody does yet"/>
+                            <TextBlock x:Name="SharedHostsStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="SharedHostsStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="SharedHostsPanel" AutomationProperties.Name="Hosts friends share with this PC"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

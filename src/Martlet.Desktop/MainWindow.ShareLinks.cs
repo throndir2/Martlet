@@ -9,7 +9,7 @@ using Martlet.Core.Network;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Sharing with a link (docs/NETWORK.md, "Sharing with a link"). On your side, Devices › Friends › Make a share link makes one
+/// Sharing with a link (docs/NETWORK.md, "Sharing with a link"). On your side, Share › Friends › Make a share link makes one
 /// link for a friend that covers the hosts you choose, or all of your hosts (also those you add later): the link's verifier goes
 /// to each host, its secret stays in Windows Credential Manager so you can copy the link again, and each time the Friends card
 /// reads your hosts it adds the link to hosts that miss it. On a friend's side, clicking the link (martlet://share/...) or pasting
@@ -138,7 +138,7 @@ public partial class MainWindow
             warnings.Add("Not in the link yet: " + string.Join("; ", problems.Select(p => $"{p.Key} {p.Value}")) + ".");
         new ShareLinkWindow($"Share link for {made.Name}",
             $"It shares {(made.AllHosts ? "all of your hosts, also the ones you add later" : string.Join(", ", made.Hosts!))}. Send it to " +
-            $"{made.Name} in a private message. They click it, or paste it into their Martlet (Devices › Hosts shared with this PC › Accept a " +
+            $"{made.Name} in a private message. They click it, or paste it into their Martlet (Share › Hosts shared with this PC › Accept a " +
             "share link). Their Martlet finds hosts you add later by itself.", link.Url(), warnings.Count > 0 ? string.Join(" ", warnings) : null)
         { Owner = this }.ShowDialog();
     }
@@ -337,7 +337,7 @@ public partial class MainWindow
         ShareLink link;
         try { link = ShareLink.Parse(text); }
         catch (ContractException error) { ActionText.Text = error.Message; return; }
-        Navigate(NavDevices);
+        Navigate(NavShare);
         var names = string.Join(", ", link.Hosts.Select(h => h.Label is { } label ? $"{label} ({h.HostId})" : h.HostId));
         if (!ConfirmationDialog.Confirm(this,
                 $"{link.From ?? "A friend"} shares {(link.Hosts.Count == 1 ? "a host" : $"{link.Hosts.Count} hosts")} with you{(link.Label is { } name ? $" (as {name})" : "")}: " +
@@ -399,7 +399,7 @@ public partial class MainWindow
                 ActionText.Text = kept.Count == 0
                     ? $"Couldn't sign in with the share link: {string.Join("; ", problems)}."
                     : $"{string.Join(", ", kept)} {(kept.Count == 1 ? "is" : "are")} shared with this PC by {link.From ?? "a friend"}. Choose " +
-                      (kept.Count == 1 ? "it" : "them") + " for a job under Devices › Hosts shared with this PC." +
+                      (kept.Count == 1 ? "it" : "them") + " for a job under Share › Hosts shared with this PC." +
                       (problems.Count > 0 ? $" Not yet: {string.Join("; ", problems)}." : "");
         }
         catch (OperationCanceledException) { }

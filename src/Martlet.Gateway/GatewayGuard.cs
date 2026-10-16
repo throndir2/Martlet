@@ -190,6 +190,9 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
         Martlet.Core.Network.NetworkPairing.Path => "join",
         _ when rawTarget.StartsWith("/martlet/v1/signin/", StringComparison.Ordinal) ||
                rawTarget == "/martlet/v1/signin" => "signin",
+        // The OpenAI-compatible endpoint: API keys only, counted apart so a proxy in front of it (one address for everyone)
+        // never locks your own computers out.
+        _ when Martlet.Core.Access.OpenAiEndpoint.IsPath(rawTarget) => "openai",
         _ => "credential"
     };
 
@@ -276,7 +279,7 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
     {
         lock (gate)
         {
-            if (routeClass != "credential")
+            if (routeClass is not ("credential" or "openai"))
             {
                 var budget = budgets.GetValueOrDefault(address);
                 if (now - budget.Start >= TimeSpan.FromMinutes(1)) budget = (now, 0);
@@ -434,6 +437,7 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
         "pair" or "pair-code" => "Pairing",
         "join" => "Network pairing",
         "signin" => "Sign-in",
+        "openai" => "OpenAI-compatible endpoint authentication",
         _ => "Authentication"
     };
 

@@ -734,6 +734,21 @@ public partial class MainWindow
                 return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
             return Task.FromResult(shared.Save(directory) ? SharedApply.Done : SharedApply.Waiting("It couldn't be saved on this PC."));
         });
+        // Share › Share your language models: the address people use and the host the proxy sends it to (openai-endpoint.json),
+        // the same on all computers, so every one of them gives people the same address.
+        yield return new DelegateSection(Martlet.Core.Access.OpenAiEndpointSettings.SharedKey, "Language models address", _ =>
+        {
+            var path = Path.Combine(directory, Martlet.Core.Access.OpenAiEndpointSettings.FileName);
+            var saved = Martlet.Core.Access.OpenAiEndpointSettings.Load(directory);
+            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
+        }, (setting, _) =>
+        {
+            if (Martlet.Core.Access.OpenAiEndpointSettings.Parse(setting.Value) is not { } shared)
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
+            if (SharePage.IsVisible) RenderOpenAi();
+            return Task.FromResult(SharedApply.Done);
+        });
         // The recommendation preferences (Recommended setup's Your preferences, Settings): the reply quality, online services,
         // hearing, the host card share and the two model choices are the same on all computers; each computer's games answer
         // travels in the same document, by its device ID.

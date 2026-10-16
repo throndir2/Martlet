@@ -67,6 +67,13 @@ if (args is ["api"])
     Console.WriteLine(JsonSerializer.Serialize(apiReport));
     return apiOk ? 0 : 1;
 }
+// With "openai" it rehearses the OpenAI-compatible endpoint across a Martlet network (OpenAiRehearsal) and prints its report.
+if (args is ["openai"])
+{
+    var (openAiOk, openAiReport) = await Martlet.NodeLinkCheck.OpenAiRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(openAiReport));
+    return openAiOk ? 0 : 1;
+}
 // With "deep-thinking" it rehearses the Deep thinking host role beside Thinking's (DeepThinkingRehearsal) and prints its report.
 if (args is ["deep-thinking"])
 {

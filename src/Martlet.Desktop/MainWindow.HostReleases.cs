@@ -60,6 +60,6 @@ public partial class MainWindow
         }
         if (!shown) return;
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
     }
 }

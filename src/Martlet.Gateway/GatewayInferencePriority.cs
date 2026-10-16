@@ -119,6 +119,9 @@ public sealed partial class GatewayInferenceRouteRegistry
         foreach (var running in activeJobs.Values)
             if (Rank(running) > rank && GatewayGpus.Overlap(running.Registration.Route.Gpus, devices))
                 return $"a {GatewayGpus.RouteName(running.Registration.Route)} request";
+        foreach (var outside in outsideJobs)
+            if (outside.Rank > rank && GatewayGpus.Overlap(outside.Registration.Route.Gpus, devices))
+                return $"an OpenAI-compatible request on {GatewayGpus.RouteName(outside.Registration.Route)}";
         foreach (var hold in holds.Values)
             if (hold.Until > now && GatewayGpus.Overlap(hold.Gpus, devices))
                 return $"a live turn of {hold.Holder}";
@@ -126,10 +129,10 @@ public sealed partial class GatewayInferenceRouteRegistry
     }
 
     // Records a request on `route` turned away because higher-ranked work or a hold keeps its cards, and returns the log line;
-    // null when it may run (the owner's live requests always may).
-    private string? RefuseLocked(GatewayInferenceRoute route, GatewayPrincipal principal, DateTimeOffset now)
+    // null when it may run (the owner's live requests always may). `rank` overrides the principal's (an OpenAI-compatible request).
+    private string? RefuseLocked(GatewayInferenceRoute route, GatewayPrincipal principal, DateTimeOffset now, int? rankOf = null)
     {
-        var rank = Rank(principal, route);
+        var rank = rankOf ?? Rank(principal, route);
         if (rank >= LiveRank || HolderLocked(route.Gpus, now, rank) is not { } holder) return null;
         refusalCount++;
         Remember(refusals, new(now, route.RouteId, route.Gpus.ToArray(), holder));
@@ -141,10 +144,14 @@ public sealed partial class GatewayInferenceRouteRegistry
     }
 
     // Marks each running job of a lower rank than `rank` that shares a card of `devices` as preempted and returns them, to stop
-    // outside the lock.
-    private List<GatewayInferenceJob> PreemptLocked(IReadOnlyList<string> devices, string by, DateTimeOffset now, int rank) =>
-        MarkPreemptedLocked(activeJobs.Values.Where(running => Rank(running) < rank &&
+    // outside the lock. OpenAI-compatible requests of a lower rank there stop at once (their cancellation runs asynchronously).
+    private List<GatewayInferenceJob> PreemptLocked(IReadOnlyList<string> devices, string by, DateTimeOffset now, int rank)
+    {
+        PreemptOutsideLocked(outsideJobs.Where(outside => outside.Rank < rank &&
+            GatewayGpus.Overlap(outside.Registration.Route.Gpus, devices)), by, now);
+        return MarkPreemptedLocked(activeJobs.Values.Where(running => Rank(running) < rank &&
             GatewayGpus.Overlap(running.Registration.Route.Gpus, devices)), by, now);
+    }
 
     private List<GatewayInferenceJob> MarkPreemptedLocked(IEnumerable<GatewayInferenceJob> jobs, string by, DateTimeOffset now)
     {
@@ -197,7 +204,8 @@ public sealed partial class GatewayInferenceRouteRegistry
             var live = holds.Where(h => h.Value.Until > now).ToArray();
             // A friend's request never holds a card; it counts with the pool work any of the owner's requests stops.
             var owners = activeJobs.Values.Where(j => j.Principal.Access != GatewayAccess.Friend).Select(j => j.Registration.Route).ToArray();
-            var running = activeJobs.Values.Select(j => j.Registration.Route).ToArray();
+            var running = activeJobs.Values.Select(j => j.Registration.Route)
+                .Concat(outsideJobs.Select(o => o.Registration.Route)).ToArray();
             var routes = byId.Values.Select(r => r.Route).OrderBy(r => r.RouteId, StringComparer.Ordinal).ToArray();
             var devices = routes.SelectMany(r => r.Gpus).Concat(live.SelectMany(h => h.Value.Gpus))
                 .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();

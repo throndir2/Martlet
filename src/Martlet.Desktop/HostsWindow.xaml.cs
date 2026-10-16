@@ -301,7 +301,7 @@ public partial class HostsWindow : ThemedWindow
 
     private void ShowHosts(IReadOnlyList<PairedHost> hosts)
     {
-        // Hosts friends share with this PC are not yours to set up: Devices › Hosts shared with this PC lists them.
+        // Hosts friends share with this PC are not yours to set up: Share › Hosts shared with this PC lists them.
         hosts = hosts.Where(h => !h.Shared).ToList();
         hostList = hosts;
         showingHosts = true;
@@ -848,7 +848,7 @@ public partial class HostsWindow : ThemedWindow
                         "a friend's host with the same name here. Ask your friend for an invite to a host with another name.");
                 await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.Agent, null, null, lifetime.Token, outside,
                     HostSignInAccess.Friend, who.ToString());
-                StatusText.Text = $"{pairing.HostId} is shared with this PC by a friend. Choose it for a job under Devices › Hosts shared with this PC.";
+                StatusText.Text = $"{pairing.HostId} is shared with this PC by a friend. Choose it for a job under Share › Hosts shared with this PC.";
                 return;
             }
             var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null, outsideAddresses: outside);

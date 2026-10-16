@@ -1024,6 +1024,9 @@ public sealed record GatewayPrincipal
         (Authority ?? throw new GatewayProtocolException("auth.invalid")).WithAuthority(this, operation);
     /// <summary>The API key this principal presented; null for a paired device's signed request.</summary>
     internal Martlet.Core.Access.ApiKey? Key { get; init; }
+    /// <summary>The API key scope this principal was admitted with when it isn't its role's: <c>openai</c> for the
+    /// OpenAI-compatible endpoint (GatewayOpenAi.cs). Null for every other request.</summary>
+    internal string? Scope { get; init; }
     /// <summary>Who made the request, for logs: the device ID (marked when it is a friend's) or the API key's name.</summary>
     internal string Caller => Key is { } key ? $"API key \"{key.Name}\"" : Access == GatewayAccess.Friend ? $"friend {DeviceId}" : DeviceId;
     /// <summary>What the credential may use here; a friend's reaches only the routes that admit friends.</summary>

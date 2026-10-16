@@ -133,8 +133,40 @@ internal sealed class GatewayApiKeyStore(string hostId, TimeProvider clock) : IG
         };
     }
 
-    /// <summary>Runs <paramref name="operation"/> while the principal's key is still live and still allows its role, so
-    /// revoking a key (or its expiry) stops work it started.</summary>
+    /// <summary>Checks a key presented to the OpenAI-compatible endpoint (scope <c>openai</c>) and returns its principal. The
+    /// token comes from the Authorization header as OpenAI clients send it.</summary>
+    internal GatewayPrincipal AuthenticateOpenAi(string token)
+    {
+        var now = clock.GetUtcNow();
+        ApiKey key;
+        lock (gate)
+        {
+            var (match, refusal) = list.Match(token, now);
+            key = refusal switch
+            {
+                ApiKeyRefusal.None => match!,
+                ApiKeyRefusal.Revoked => throw new GatewayProtocolException("key.revoked"),
+                ApiKeyRefusal.Expired => throw new GatewayProtocolException("key.expired"),
+                _ => throw new GatewayProtocolException("key.invalid")
+            };
+        }
+        GatewayRules.Require(key.Allows(ApiKeyScopes.OpenAi), "key.scope");
+        used[key.Id] = now;
+        return new()
+        {
+            HostId = hostId,
+            CredentialId = key.Id,
+            DeviceId = "api-key-" + key.Id,
+            Role = GatewayRole.Voice,
+            CredentialLifetime = new PairedDeviceLifetime(),
+            Authority = this,
+            Key = key,
+            Scope = ApiKeyScopes.OpenAi
+        };
+    }
+
+    /// <summary>Runs <paramref name="operation"/> while the principal's key is still live and still allows its role (or the
+    /// scope it was admitted with), so revoking a key (or its expiry) stops work it started.</summary>
     public T WithAuthority<T>(GatewayPrincipal principal, Func<T> operation)
     {
         lock (gate)
@@ -144,9 +176,16 @@ internal sealed class GatewayApiKeyStore(string hostId, TimeProvider clock) : IG
             GatewayRules.Require(!key.Revoked, "key.revoked");
             GatewayRules.Require(!key.Expired(clock.GetUtcNow()), "key.expired");
             GatewayRules.Require(principal.Key?.Verifier == key.Verifier, "key.invalid");
-            GatewayRules.Require(key.Allows(GatewayRequestSigner.RoleText(principal.Role)), "key.scope");
+            GatewayRules.Require(key.Allows(principal.Scope ?? GatewayRequestSigner.RoleText(principal.Role)), "key.scope");
             return operation();
         }
+    }
+
+    /// <summary>Whether the principal's key ranks its OpenAI-compatible requests with the owner's background work (scope
+    /// <c>equal-priority</c>), read from the key list as it is now.</summary>
+    internal bool EqualPriority(GatewayPrincipal principal)
+    {
+        lock (gate) return list.Find(principal.CredentialId) is { Revoked: false } key && key.Allows(ApiKeyScopes.EqualPriority);
     }
 }
 

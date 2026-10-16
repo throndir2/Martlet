@@ -126,6 +126,14 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and loads the roster saved there.</summary>
     public void AttachNetworkStorage(IGatewayNetworkStorage storage) => application.Network.Attach(storage);
 
+    /// <summary>For tests: the other hosts this host's OpenAI-compatible endpoint sends requests on to (instead of its roster's),
+    /// given as host ID, home origin and TLS key fingerprint.</summary>
+    internal void UseOpenAiPeers(Func<IReadOnlyList<(string HostId, string Origin, string Spki)>> peers) =>
+        application.OpenAiPeers = () => peers().Select(p => new GatewayOpenAiPeer(p.HostId, p.Origin, p.Spki)).ToArray();
+
+    /// <summary>For tests: this host's copy of the network's API keys.</summary>
+    internal Martlet.Core.Access.ApiKeyList MergeApiKeys(Martlet.Core.Access.ApiKeyList keys) => application.ApiKeys.Merge(keys);
+
     /// <summary>This host's network state: "unbound", "bound" or "removed", and the ID of its network (null when unbound).</summary>
     public (string State, string? NetworkId) NetworkState => (application.Network.State, application.Network.Roster?.NetworkId);
 
@@ -250,7 +258,7 @@ public sealed class GatewayServer
             this.overlay = overlay;
             application.OutsideListeners = overlay is null ? static () => [] : () => overlay.Listening;
             application.OutsideAddressesChanged = overlay is null ? null : overlay.Wake;
-            return new InferenceListener(listener, inference, application.Logs, overlay);
+            return new InferenceListener(listener, inference, application.Logs, overlay, application.CloseOpenAi);
         }
         catch
         {
@@ -267,7 +275,7 @@ public sealed class GatewayServer
 
     private sealed class InferenceListener(
         GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference, GatewayLogStore logs,
-        GatewayOverlayListeners? overlay) : GatewayListenerHandle
+        GatewayOverlayListeners? overlay, Action closeOpenAi) : GatewayListenerHandle
     {
         private int stopping;
         public override GatewayOrigin Origin => listener.Origin;
@@ -279,6 +287,7 @@ public sealed class GatewayServer
             if (overlay is not null) await overlay.DisposeAsync().ConfigureAwait(false);
             await listener.DisposeAsync().ConfigureAwait(false);
             await closing.ConfigureAwait(false);
+            closeOpenAi();
             if (first) logs.Flush();
         }
     }

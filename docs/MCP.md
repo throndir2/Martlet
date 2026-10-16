@@ -2382,7 +2382,7 @@ the next sync), `ignored` (network hosts forgotten here) and `removedFrom`;
 `pairedHosts`, each pairing in `hosts.json` with how many outside addresses are
 kept with it and its `access` (`member` for your own hosts, `friend` for a host
 a friend shares with this PC: its engines only, never in this PC's network);
-and `friends`, what **Devices › Friends** last read from each of your hosts
+and `friends`, what **Share › Friends** last read from each of your hosts
 (`friends.json`: `checkedAt`, and per host `hostId`, `read`, `problem`, each
 friend's `label`, `provider` and `computers`, and how many are `asking`), or
 null before it read anything. `householdSignIn` is the household's sign-in
@@ -2494,6 +2494,20 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `id`, `name`, `scopes`, `createdBy`, `createdAt`, `expiresAt`, `revoked`,
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
+
+`openai_endpoint_status` reads Share › *Share your language models* (the
+[OpenAI-compatible endpoint](OPENAI_ENDPOINT.md)) from a data directory
+(optional absolute `dataDirectory`): `settings` (`state` of
+`openai-endpoint.json`, `publicAddress`, `frontDoorHostId`, and the
+`frontDoor` host with its `frontDoorOrigin` from the network roster),
+`paths` (`/v1/models` and the POST paths), each key with the `openai` scope
+(`id`, `name`, `scopes`, `priority`: `your-martlet-first` or
+`equal-to-background-work`, `createdBy`, `createdAt`, `expiresAt`,
+`revoked`, `expired`, `updatedBy`), `models` (what the Share page last read,
+`openai-models.json`: each host's models or problem, and the models of hosts
+friends share with this PC) and `proxy` (the `nginx` and `caddy` text *Show
+proxy setup* gives for the front door). It never returns a key or its verifier
+and contacts nothing.
 
 `mac_host_check` (no arguments) checks the Mac host ([macOS](MACOS.md#host)) as
 far as a Windows PC can. In the `mcr.microsoft.com/dotnet/sdk:10.0.401` image
@@ -2654,7 +2668,7 @@ issuer.
 `signin_lab` (`action` `start`, `status` or `stop`; `mode` `owner`, the
 default, or `friend` with `start`; `dataDirectory` filled in by the script)
 runs a live sign-in lab for the desktop on a disposable data directory, so
-**Sign-in from outside**, **Devices › Friends** and **Join with an invite** can
+**Sign-in from outside**, **Share › Friends** and **Join with an invite** can
 be driven against a real host. Mode `owner`: `src\Martlet.NodeLinkCheck` mode
 `signin-lab` (`SignInLab.cs`) starts a gateway on 127.0.0.1 with an owner
 account, an OpenID Connect provider (an issuer in that process), an allowed
@@ -2665,7 +2679,7 @@ its account bindings match its roster entry), a
 simulated laptop signs in and keeps syncing, and a simulated friend's computer
 (`lab-friend-pc`, identity `ana@example.net`, `authentik` subject
 `lab-friend-7`) signs in once and is refused, so it waits under *Signed in but
-not allowed yet* and in **Devices › Friends**; once the owner shares the host
+not allowed yet* and in **Share › Friends**; once the owner shares the host
 with it (as a friend) it signs in again. `status` returns what the lab sees
 (`network`, `laptopMember`, `laptopWasMember`, `laptopRemoved`,
 `laptopCanUseHost`, the laptop's network events, and `friend`: `allowedAs`,
@@ -2721,7 +2735,7 @@ gateways (`lab-host-a`, `lab-host-b`, ECDSA keys, both routed to the lab
 issuer) paired with that desktop (`hosts.json`, secrets in the lab credential
 folder). Before the desktop binds them, the lab's admin desktop sets the
 household provider `authentik` up on `lab-host-a` only, as a public client, so
-the desktop adds it to `lab-host-b` by itself when **Devices › Friends** reads
+the desktop adds it to `lab-host-b` by itself when **Share › Friends** reads
 its hosts. Once both are bound, the lab acts with the desktop's own pairings:
 it gives Sam a Martlet password with an authenticator on both hosts, proves
 Sam on `lab-host-a` and links `lab-user-42` (`me@example.net`) to Sam on every
@@ -2882,7 +2896,7 @@ digits, dots and dashes, anything else becomes `_`. Opening and closing both
 windows are safe clicks; the status lines and lists are safe values. Everything
 else contacts a host or changes it and needs `--allow-ui-effects`.
 
-Sharing hosts with friends on the Devices page (`MainWindow.Friends.cs`):
+Sharing hosts with friends on the Share page (`MainWindow.Friends.cs`):
 **Friends** (`FriendsCard`, shown with paired hosts; status
 `FriendsStatus`, `FriendsCheck` reads each of your hosts' sign-in settings and
 is a safe click; reading them also adds the share links this PC made to hosts
@@ -2932,6 +2946,29 @@ dialog has `HostInput-router` (*Let Martlet open a port on my router*) and the
 safe value `OutsideAccessRouterPort` (router name, port and times, never the
 address). Saving with it needs `--allow-ui-effects`; it changes the router and
 Windows Firewall.
+
+`openai_selftest` (no arguments) rehearses the [OpenAI-compatible
+endpoint](OPENAI_ENDPOINT.md) end to end with the production code. It runs
+`src\Martlet.NodeLinkCheck` (mode `openai`, `OpenAiRehearsal.cs`) and returns
+`{exitCode, report}` like `network_selftest`. Two real gateways
+(`lab-front-door` and `lab-gpu-box`, each with the real Ollama relay over a
+fixture Ollama, NOT AI, and a model of its own) are joined in one Martlet
+network by a simulated desktop's real pairing client and network sync. The
+desktop makes *Ana* (`openai`), *Ben* (`openai` and `equal-priority`) and a
+`voice` key and syncs them to both hosts (verifiers only). A plain HTTPS
+client with `Authorization: Bearer` then checks, at the front door: `GET
+/v1/models` lists both hosts' models, each with the hosts that run it; the desktop's
+signed `ReadOpenAiModelsAsync` reads each host's own models; a chat for the
+front door's model runs there with `num_ctx` and `keep_alive` `-1` in the
+native request; a streamed chat for the other host's model is sent on to it
+(`X-Martlet-Host`) and ends with `data: [DONE]`; no key (401
+`authentication_error`), a `voice` key (403 `permission_error`), an unknown
+model (404 `model_not_found`) and `/martlet/v1/status` with an `openai` key
+(403) are refused; the owner's reply stops Ana's streamed request
+(`owner_needs_it`) and runs; and revoking Ana's key refuses her on both hosts
+while Ben's request still goes through. Loopback only; nothing is written to
+disk or the credential vault. It does not cover a real model, a real reverse
+proxy with a certificate, or a second PC.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
@@ -7900,7 +7937,7 @@ each way (-1 when it can't scroll that way) and which part of its content shows
 its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 `--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavThinkingRequests`, `NavDiagnostics` or `NavSettings` first (for example
+`NavDevices`, `NavShare`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavThinkingRequests`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). Many pages keep their longer
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
@@ -8231,12 +8268,43 @@ only watches and makes no key or `network.json` (`network_status` then reads
 `state: none`, `key: false`); each change in what the PC sees is logged as a
 `Martlet network: ...` line (`logs_tail` with `contains: "network"`).
 
+The **Share** page (`NavShare`, `SharePage`) holds the cards about what you
+share and what is shared with you: *Your Martlet network*, *Friends*, *Share
+your language models*, *Apps and API keys* and *Hosts shared with this PC*.
+`ShareSummary` (status text) counts the computers in your network, the friends
+you share hosts with, the people with a key to your language models and the
+hosts shared with this PC. The cards keep their IDs from when they were on the
+Devices page.
+
+The **Share your language models** card ([OpenAI-compatible
+endpoint](OPENAI_ENDPOINT.md)) holds `OpenAiStatus` (status text: how many
+models on how many hosts, how many people have a key, hosts that need an
+update, when it was checked), `OpenAiCheck` (passive: reads each host's
+`GET /v1/models` with the signed pairing and keeps `openai-models.json`),
+`OpenAiPublicAddress` (the address to give people; an editable field, never
+returned), `OpenAiFrontDoor` (the host the proxy sends to), `OpenAiSaveAddress`,
+`OpenAiAddressProblem`, `OpenAiAddressStatus`, `OpenAiHomeAddresses` and
+`OpenAiModels` (status text: each model with its hosts), and each key's row
+`OpenAiKey-<key ID>` (status text: name, priority, who made it, last use,
+expiry) with `OpenAiKeyPriority-<key ID>` (*Your Martlet first* or *Same as
+your background work*) and `OpenAiKeyRevoke-<key ID>`. `OpenAiShowProxy`
+(passive) opens `OpenAiProxyDialog` with `OpenAiProxySteps`,
+`OpenAiProxyNginx` and `OpenAiProxyCaddy` (text) and `OpenAiProxyClose`.
+`OpenAiGiveAccess` (passive) opens `OpenAiAccessDialog` with
+`OpenAiAccessName`, `OpenAiAccessPriorityFirst`, `OpenAiAccessPriorityEqual`,
+`OpenAiAccessExpiry`, `OpenAiAccessConfirm` and `OpenAiAccessCancel`
+(passive). Making a key shows `OpenAiInviteDialog`: `OpenAiInviteTitle` and
+`OpenAiInviteNote` are returned as text; `OpenAiInviteText` holds the key and
+is never returned; `OpenAiInviteCopy` writes the clipboard; `OpenAiInviteDone`
+(passive) closes it. Save, Make key, the priority choice, Copy and Revoke
+change data and need `--allow-ui-effects`.
+
 The **Apps and API keys** card ([API](API.md)) holds `ApiKeysStatus` (status
 text: how many keys, and on how many hosts they are or why not), each key's
 row title `ApiKeyRow-<key ID>` (status text: name, what it may do, which
 computer made it, last use, expiry and the ID's first characters) with
 `ApiKeyRevoke-<key ID>`, and `ApiKeyCreate`. Create opens
-`ApiKeyCreateDialog` with `ApiKeyName`, `ApiKeyScope-<read|voice|perception|manage>`
+`ApiKeyCreateDialog` with `ApiKeyName`, `ApiKeyScope-<read|voice|perception|manage|openai>`
 (read is ticked), `ApiKeyExpiry` (*Never*, *In 30 days*, *In 90 days*, *In a
 year*), `ApiKeyCreateConfirm` and `ApiKeyCreateCancel` (passive). Creating
 shows `ApiKeyCreatedDialog`: `ApiKeyCreatedTitle`, `ApiKeyHosts` (the hosts'
