@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-10-16
+
 ### Added
 
 - **Show setup** can set up Nginx Proxy Manager for you. Martlet finds it, signs in once and points your address at the front door. It changes the site that already has the name instead of adding a second one, keeps its certificate, and then checks the address. ([#926](https://github.com/throndir2/Martlet/pull/926))
