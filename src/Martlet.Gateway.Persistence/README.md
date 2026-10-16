@@ -302,11 +302,12 @@ systemd encrypted credentials require separate key provisioning and lifecycle
 integration; neither is silently assumed available at unattended boot.
 
 The initial native candidate is **Linux x86_64 with glibc, persistent local
-ext4**, targeting Ubuntu 24.04. Missing native APIs/metadata or unsupported
-filesystems fail explicitly. ARM64, musl, tmpfs, overlay, NFS/SMB/FUSE,
-container user/mount mappings and arbitrary Docker volumes are not supported
-by this candidate. ext4 identification includes the mount record, not just
-the filesystem magic shared with ext2/ext3. No native acceptance has run here.
+ext4 or btrfs**, targeting Ubuntu 24.04. Missing native APIs/metadata or unsupported
+filesystems fail explicitly. musl, tmpfs, overlay, NFS/SMB/FUSE and
+container user/mount mappings are not supported. ext4 identification includes the
+mount record of the state's own mount ID, which must name the same device; btrfs
+gives each subvolume its own device, so there the mount ID, the filesystem type
+and `rw` in that record identify it. No native acceptance has run here.
 
 | Native boundary | Policy |
 | --- | --- |

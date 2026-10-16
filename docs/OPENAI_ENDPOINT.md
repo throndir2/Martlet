@@ -285,8 +285,24 @@ connects to `127.0.0.1` on the same computer.
 
 ### Nginx Proxy Manager
 
-Point the name at your home (or keep it behind Cloudflare's proxy) and add a
-proxy host:
+Martlet can do this for you. Open the front door and save the address first.
+Then, in **Show setup**, choose **Set it up in Nginx Proxy Manager**:
+
+1. Martlet looks for Nginx Proxy Manager on the front door's computer (port 81)
+   and fills in its address when it finds it.
+2. Type the email and password of your Nginx Proxy Manager account. Martlet
+   uses them once to sign in and doesn't save them.
+3. Martlet tells you what it found and what it will do. A site that already
+   has the name is changed, not added again: Martlet changes only where it
+   sends people and the settings below, and it keeps the site's certificate.
+   For a new site it uses a certificate that already covers the name (such as
+   `*.example.com`), else it asks Let's Encrypt for one. When the site already
+   goes to the front door, it changes nothing.
+4. Choose **Change it** or **Add it**. Martlet then checks the address, like
+   **Check address**.
+
+To do it by hand, point the name at your home (or keep it behind Cloudflare's
+proxy) and add a proxy host:
 
 ```text
 Hosts › Proxy Hosts › Add Proxy Host

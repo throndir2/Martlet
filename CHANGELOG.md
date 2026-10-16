@@ -8,6 +8,15 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Show setup** can set up Nginx Proxy Manager for you. Martlet finds it, signs in once and points your address at the front door. It changes the site that already has the name instead of adding a second one, keeps its certificate, and then checks the address. ([#PR_NUMBER](https://github.com/throndir2/Martlet/pull/PR_NUMBER))
+- Adding a Linux computer over SSH asks less when things are set up already. Martlet uses your own SSH key once instead of asking for a password, trusts a computer that Windows' OpenSSH already trusts, and tells you when a Martlet host is already there. ([#PR_NUMBER](https://github.com/throndir2/Martlet/pull/PR_NUMBER))
+
+### Fixed
+
+- A host on a NAS (TerraMaster or Synology) now starts. Before, setup stopped with "The generated gateway configuration was rejected", because the NAS keeps Docker's data on btrfs. ([#PR_NUMBER](https://github.com/throndir2/Martlet/pull/PR_NUMBER))
+
 ## [0.86.0] - 2026-10-16
 
 ### Added

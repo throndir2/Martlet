@@ -140,6 +140,9 @@ internal sealed class HostInputDialog : ThemedWindow
     private static string Example(string key) => key switch
     {
         "password" => "Your password on that computer",
+        "manager" => "http://192.168.1.20:81",
+        "email" => "you@example.com",
+        "manager-password" => "Your Nginx Proxy Manager password",
         "addresses" => "100.101.102.103:9443, home.example.net:9443",
         "name" => "Ana",
         "from" => "Alex",

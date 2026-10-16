@@ -302,7 +302,13 @@ internal sealed partial class McpServer
             "private path, 401 missing_api_key without a key (what Check address looks for), both hosts' models and a streamed chat " +
             "sent on to the other host, no lockout after wrong keys, sign-in refusing a forged form, another site and a wrong key, the " +
             "signed-in page listing the models, and revocation ending the session. Loopback only; writes nothing to disk.", new { },
-            async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "front-door")),        Tool("outside_path_check", "Reach a host from outside home on real sockets: builds this checkout's Linux gateway in the .NET SDK " +
+            async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "front-door")),
+        Tool("proxy_manager_check", "Check Share › Show setup › Set it up in Nginx Proxy Manager with the production ProxyManager " +
+            "against a FIXTURE Nginx Proxy Manager API in memory (contacts nothing): it finds NPM, refuses a wrong password, plans to " +
+            "change the site that already has the name (not add a second one) and keeps its certificate, changes where it sends people " +
+            "and the settings streaming needs, changes nothing when it is set up already, adds a site with a wildcard certificate that " +
+            "covers the name, asks Let's Encrypt when only an expired certificate covers it, and sends the password only to sign in.",
+            new { }, async (_, cancellation) => await ProxyManagerCheck.RunAsync(cancellation)),        Tool("outside_path_check", "Reach a host from outside home on real sockets: builds this checkout's Linux gateway in the .NET SDK " +
             "image and runs it (owner-init, owner-exposure, owner-pair, serve) in disposable aspnet containers on a Docker network " +
             "numbered from TEST-NET-3, its port published on 127.0.0.1, so every connection reaches it from 203.0.113.1 (an outside " +
             "source). The host's home address answers nothing; the desktop's real pairing client, connection, network sync and " +

@@ -6,11 +6,13 @@ using Martlet.Core.Nodes;
 
 namespace Martlet.Desktop;
 
-/// <summary>What Martlet found on a Linux computer before changing anything there.</summary>
+/// <summary>What Martlet found on a Linux computer before changing anything there. <see cref="Martlet"/>: a Martlet host that is
+/// there already (its gateway's image, such as martlet-host:0.86.0, or "native"), or null.</summary>
 internal sealed record HostProbe(bool Docker, bool DockerAccess, string Sudo, string? OperatingSystem, string? Architecture,
     string? Address, string? Hostname, bool Systemd)
 {
     internal bool SudoNeedsPassword => Sudo == "password";
+    internal string? Martlet { get; init; }
 }
 
 /// <summary>A role's inputs as the host's role.conf declares them (martlet-host describe). <paramref name="SecretWhen"/> and
@@ -78,22 +80,29 @@ internal sealed partial class HostRemote(HostShell shell)
         "printf 'probe.arch=%s\\n' \"$(uname -m)\"; " +
         "printf 'probe.systemd=%s\\n' \"$([ -d /run/systemd/system ] && echo yes || echo no)\"; " +
         "printf 'probe.address=%s\\n' \"$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \\([0-9.]*\\).*/\\1/p')\"; " +
-        "printf 'probe.hostname=%s\\n' \"$(hostname -s 2>/dev/null || hostname)\"";
+        "printf 'probe.hostname=%s\\n' \"$(hostname -s 2>/dev/null || hostname)\"; " +
+        "printf 'probe.martlet=%s\\n' \"$(docker inspect -f '{{.Config.Image}}' martlet-host-gateway 2>/dev/null || " +
+        "{ [ -x ~/Martlet/deploy/host/martlet-host ] && echo native; })\"";
 
     /// <summary>Connects (asking for the password and host key trust the first time) and reads what the computer has.</summary>
-    internal async Task<(HostProbe Probe, string HostKey)> ProbeAsync(HostShellTarget target, string? pinnedHostKey, CancellationToken token)
+    internal async Task<(HostProbe Probe, string HostKey)> ProbeAsync(HostShellTarget target, string? pinnedHostKey, CancellationToken token,
+        IProgress<string>? output = null)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         var sink = new LineSink(line =>
         {
             var split = line.IndexOf('=');
             if (line.StartsWith("probe.", StringComparison.Ordinal) && split > 0) values[line[6..split]] = line[(split + 1)..].Trim();
+            else output?.Report(line);
         });
         var result = await shell.RunAsync(target, new() { Command = ProbeScript, PinnedHostKey = pinnedHostKey }, sink, token);
         string? Value(string key) => values.TryGetValue(key, out var value) && value.Length > 0 ? value : null;
         var address = Value("address");
         return (new HostProbe(Value("docker") == "yes", Value("docker_access") == "yes", Value("sudo") ?? "none", Value("os"),
-            Value("arch"), HostSetupCommands.IsPrivate(address) ? address : null, Value("hostname"), Value("systemd") == "yes"), result.HostKey);
+            Value("arch"), HostSetupCommands.IsPrivate(address) ? address : null, Value("hostname"), Value("systemd") == "yes")
+        {
+            Martlet = Value("martlet")
+        }, result.HostKey);
     }
 
     /// <summary>Whether a martlet-host run needs sudo: Docker hosts only when this account cannot use Docker directly;
