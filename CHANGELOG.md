@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Every box you type in now shows a dimmed example while it is empty, such as *https://martlet.example.com/v1* for the address to give people, so you can see what goes there. ([#923](https://github.com/throndir2/Martlet/pull/923))
+
 ## [0.85.0] - 2026-10-16
 
 ### Added
