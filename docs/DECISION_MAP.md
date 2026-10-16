@@ -319,6 +319,38 @@ jobs; `ResearchWatcher` (`src\Martlet.Conversation\Research\ResearchWatcher.cs`)
 **Docs:** [Answer, look up or research](CONVERSATION.md#answer-look-up-or-research),
 [Deep research](DEEP_RESEARCH.md#levels-the-watcher-and-the-source-check).
 
+## Which host runs an OpenAI-compatible request, and how it ranks
+
+**What it decides:** for a request of the [OpenAI-compatible
+endpoint](OPENAI_ENDPOINT.md), whether its key may make it, which host runs it
+(this one, or another host of the network that has the model), how it ranks
+against the owner's work, and the context size it runs with.
+
+**Owner:** `GatewayHttpApplication.RelayOpenAiAsync` and `ListModelsAsync`
+(`src\Martlet.Gateway\GatewayOpenAi.cs`) for the key check, the model list and
+the order (this host's own model first, then the hosts of the roster that list
+the model; a host never sends a request on twice). The rank and the slots are
+`GatewayInferenceRouteRegistry.BeginOutside`
+(`src\Martlet.Gateway\GatewayInferenceOutside.cs`) with the ranks of
+`GatewayInferencePriority.cs`: rank 0 below all of the owner's work, or rank 1
+with the owner's background work for a key with `equal-priority`
+(`GatewayApiKeyStore.EqualPriority`). The context size is
+`OllamaRelayWorker.OpenAiContextAsync`; the translation to Ollama's own API is
+`OllamaOpenAi` (`src\Martlet.Gateway.Ollama`). The scopes and the key's
+priority text are `ApiKeyScopes` and `OpenAiEndpoint` (`src\Martlet.Core\Access`).
+
+**Shows it:** Share › *Share your language models* (`OpenAiModels`,
+`OpenAiKey-<id>`, `OpenAiStatus`), the host log (*OpenAI-compatible ... request
+from ... finished here* or *sent on to ...*, *Owner first: stopped an
+OpenAI-compatible ... request*), and `GET /martlet/v1/priority` (its running
+requests and preemptions).
+
+**Tests:** `OpenAiEndpointTests` (Martlet.Gateway.Tests and Martlet.Core.Tests).
+
+**MCP:** `openai_selftest`, `openai_endpoint_status`.
+
+**Docs:** [OPENAI_ENDPOINT.md](OPENAI_ENDPOINT.md).
+
 ## What MCP may click and read, and where each tool is
 
 **What it decides:** which controls the MCP `ui_*` tools may click, and which

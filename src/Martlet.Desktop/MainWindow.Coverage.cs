@@ -109,7 +109,7 @@ public partial class MainWindow
         if (closing || answers == ownLipSyncAnswers) return;
         ownLipSyncAnswers = answers;
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         if (openTab == CompanionTab.LipSync && CompanionPage.IsVisible) RenderTab();
     }
 
@@ -170,7 +170,7 @@ public partial class MainWindow
         EvaluateCoverage();
         if (coverageSignature == before) return;
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
     }
 
     /// <summary>The "What isn't working" card. On Devices (<paramref name="showNode"/> names the map node doing a job) it is
@@ -334,7 +334,7 @@ public partial class MainWindow
             }
             else LaunchOnHost(host, role.Remove);
             RenderHome();
-            if (DevicesPage.IsVisible) RenderMap();
+            RenderDevicePages();
             return;
         }
         var situation = JobSituations().First(s => s.Job == job);
@@ -365,6 +365,6 @@ public partial class MainWindow
         }
         LaunchOnHost(host, role.Remove);
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
     }
 }

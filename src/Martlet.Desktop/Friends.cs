@@ -28,7 +28,7 @@ internal sealed record FriendView(string Provider, string Subject, string? Label
     public string Way => IsLink ? "share link" : Provider;
 }
 
-/// <summary>Devices › Friends: the people your hosts are shared with, built from each host's sign-in settings (read by a member
+/// <summary>Share › Friends: the people your hosts are shared with, built from each host's sign-in settings (read by a member
 /// desktop over its signed connection; never a secret). A person is an identity allowed as a friend on any host, or one that
 /// signed in to a host and isn't allowed yet, unless it is one of your own computers' sign-ins somewhere (allowed as a member):
 /// those belong to that host's Sign-in from outside. Nothing here is cached for use; <see cref="SaveSummary"/> keeps a

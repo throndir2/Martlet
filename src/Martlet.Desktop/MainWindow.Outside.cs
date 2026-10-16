@@ -128,7 +128,7 @@ public partial class MainWindow
         {
             if (blocked is not null)
             {
-                ActionText.Text = $"{host.HostId} needs sign-in set up before it can be reached from outside. Make a share link (Devices › Friends), " +
+                ActionText.Text = $"{host.HostId} needs sign-in set up before it can be reached from outside. Make a share link (Share › Friends), " +
                     "or set up sign-in, first.";
                 return;
             }

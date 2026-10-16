@@ -107,7 +107,7 @@ public partial class MainWindow
             ? $"{name} stays a {what} PC."
             : $"Asked {name} to become a {what} PC. It switches within a minute while Martlet runs there, or when Martlet starts there " +
               "next. Martlet says here when it has.";
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         if (SettingsPage.IsVisible) RenderOtherRoles();
         await SyncSettingsAsync();
     }
@@ -157,7 +157,7 @@ public partial class MainWindow
         otherRolesShown = signature;
         OtherRolesPanel.Children.Clear();
         OtherRolesText.Text = computers.Count == 0
-            ? "Your other computers show here once they are in your Martlet network (Devices, Your Martlet network)."
+            ? "Your other computers show here once they are in your Martlet network (Share, Your Martlet network)."
             : !clusterEnabled
             ? "Turn on Keep Martlet the same on all my computers (Devices, Settings for all devices) to switch them from here: the switch " +
               "travels with the shared settings."

@@ -943,7 +943,7 @@ public partial class MainWindow
             {
                 UpdateHostsButton.IsEnabled = true;
                 RenderHome();
-                if (DevicesPage.IsVisible) RenderMap();
+                RenderDevicePages();
             }
         }
         if (closing || automatic && updated + failed + asked + busy == 0) return;
@@ -1018,7 +1018,7 @@ public partial class MainWindow
             ? $"Updating to Martlet {Version}. If something else is changing that host, this waits for it to finish first..."
             : $"Updating to Martlet {Version}...";
         hostUpdates.Note(id, waiting);
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         var result = HostUpdateResult.Failed;
         var name = id == ThisPcHostId ? "this PC's host service" : id;
         BackgroundTask? task = null;

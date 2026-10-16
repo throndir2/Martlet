@@ -172,7 +172,7 @@ internal static class SignInAccountLab
                         problems = linked.Results.Where(r => !r.Saved).Select(r => $"{r.HostId}: {r.Problem}").ToArray()
                     };
                     events.Add($"linked {linked.Identity} to Sam on {string.Join(" and ", linked.Results.Where(r => r.Saved).Select(r => r.HostId))}");
-                    phase = $"waiting for the desktop to add {Provider} to {HostB} (Devices › Friends' read)";
+                    phase = $"waiting for the desktop to add {Provider} to {HostB} (Share › Friends' read)";
                 }
                 if (link is not null && roster is not null && providerProve is null && on.Contains(HostB))
                 {

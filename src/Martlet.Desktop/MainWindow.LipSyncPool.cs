@@ -297,7 +297,7 @@ public partial class MainWindow
         if (closing) return;
         UpdateCharacterButton();
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         CheckOwnLipSyncAsync().Forget();
     }
 }

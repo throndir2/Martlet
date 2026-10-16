@@ -98,7 +98,7 @@ public partial class MainWindow
         ShowClusterStatus();
         ShowSettingsStatus();
         ShowMemorySyncStatus();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         RefreshCoverage();
     }
 
@@ -317,7 +317,7 @@ public partial class MainWindow
                 if (followed || signature != clusterSignature)
                 {
                     clusterSignature = signature;
-                    if (DevicesPage.IsVisible) RenderMap();
+                    RenderDevicePages();
                     // A host PC's Home asks for the roles of the jobs your computers give it.
                     if (host) RenderHost();
                 }

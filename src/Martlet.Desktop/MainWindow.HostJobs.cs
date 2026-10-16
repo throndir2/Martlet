@@ -320,7 +320,7 @@ public partial class MainWindow
             if (!closing)
             {
                 RenderHome();
-                if (DevicesPage.IsVisible) RenderMap();
+                RenderDevicePages();
             }
         }
     }
@@ -466,7 +466,7 @@ public partial class MainWindow
                 if (!closing)
                 {
                     RenderHome();
-                    if (DevicesPage.IsVisible) RenderMap();
+                    RenderDevicePages();
                 }
             }
             return;

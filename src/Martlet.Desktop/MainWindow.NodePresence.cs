@@ -112,7 +112,7 @@ public partial class MainWindow
         {
             presenceShown = shown;
             RenderHealth();
-            if (DevicesPage.IsVisible) RenderMap();
+            RenderDevicePages();
         }
         if (state != presenceState) WritePresenceReport(hosts);
         return changes;

@@ -134,7 +134,7 @@ public partial class MainWindow
         RenderHost();
         if (Role != DeviceRole.Companion) return;
         RenderHealth();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
     });
 
     /// <summary>Whether a run worked on Docker Desktop when the shared setup steps last changed.</summary>
@@ -162,7 +162,7 @@ public partial class MainWindow
             System.ComponentModel.Win32Exception) { }
         if (closing) return;
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         // Reading's model pills turn off the NVIDIA-only model once this PC's graphics cards are known.
         if (openTab == CompanionTab.Reading && !tabEdited) RenderTab();
         if (HostsHere) CheckThisPcHostAsync().Forget();
@@ -195,10 +195,11 @@ public partial class MainWindow
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomePage is null || DevicesPage is null || CompanionPage is null || ConversationsPage is null || CreationsPage is null ||
+        if (HomePage is null || DevicesPage is null || SharePage is null || CompanionPage is null || ConversationsPage is null || CreationsPage is null ||
             TasksPage is null || ThinkingRequestsPage is null || DiagnosticsPage is null || SettingsPage is null) return;
         if (sender is RadioButton { IsChecked: false }) return;
         FrameworkElement page = ReferenceEquals(sender, NavDevices) ? DevicesPage
+            : ReferenceEquals(sender, NavShare) ? SharePage
             : ReferenceEquals(sender, NavCompanion) ? CompanionPage
             : ReferenceEquals(sender, NavConversations) ? ConversationsPage
             : ReferenceEquals(sender, NavCreations) ? CreationsPage
@@ -208,11 +209,12 @@ public partial class MainWindow
             : ReferenceEquals(sender, NavSettings) ? SettingsPage
             : HomePage;
         openTab = null;
-        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, ConversationsPage, CreationsPage, TasksPage, ThinkingRequestsPage, DiagnosticsPage, SettingsPage })
+        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, SharePage, CompanionPage, ConversationsPage, CreationsPage, TasksPage, ThinkingRequestsPage, DiagnosticsPage, SettingsPage })
             candidate.Visibility = ReferenceEquals(candidate, page) ? Visibility.Visible : Visibility.Collapsed;
         if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
+        if (ReferenceEquals(page, SharePage)) RenderShare();
         if (ReferenceEquals(page, ConversationsPage)) ConversationsPage.EnterAsync().Forget();
         if (ReferenceEquals(page, CreationsPage)) RenderCreations();
         if (ReferenceEquals(page, TasksPage)) EnterTasks();
@@ -279,7 +281,7 @@ public partial class MainWindow
             if (previous == DeviceRole.Host) ResumeCompanionAsync().Forget();
         }
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         QueueNetworkSync();
         QueueClusterSync();
         // Your other computers' Devices maps learn what this PC is now with the next settings sync.
@@ -490,7 +492,7 @@ public partial class MainWindow
         ObserveLocalJobs();
         UpdateNearby();
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         CheckOwnLipSyncAsync().Forget();
         CheckLocalServicesAsync().Forget();
         // A companion PC paired with its own host service reads it as the host dashboard does, once its pairings are known.
@@ -961,7 +963,7 @@ public partial class MainWindow
                 CheckHostsAsync([own]).Forget();
             RefreshCoverage();
             RenderHealth();
-            if (DevicesPage.IsVisible) RenderMap();
+            RenderDevicePages();
         }
     }
 
@@ -1170,10 +1172,7 @@ public partial class MainWindow
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
         RenderNetworkCapacity(nodes);
-        RenderNetwork();
-        RenderFriends();
-        RenderSharedHosts();
-        RefreshFriendsWhenShown();
+        RenderShare();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         mapNodes = nodes;
         DevicesSummary.Text = DeviceOverview.Summary(nodes);
@@ -1514,7 +1513,7 @@ public partial class MainWindow
             {
                 UpdateCharacterButton();
                 RenderHome();
-                if (DevicesPage.IsVisible) RenderMap();
+                RenderDevicePages();
                 CheckOwnLipSyncAsync().Forget();
             }
         }
@@ -1548,7 +1547,7 @@ public partial class MainWindow
             return;
         }
         foreach (var host in hosts) hostChecks[host.HostId] = new(null, "Checking...");
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         (string Id, HostCheck Check)[] results;
         try { results = await Task.WhenAll(hosts.Select(async h => (h.HostId, await HostControl.CheckAsync(h.Pairing, HardwareStore, lifetime.Token)))); }
         catch (OperationCanceledException) { return; }
@@ -1572,7 +1571,7 @@ public partial class MainWindow
                   $"{results.Count(r => r.Check.Offers?.ContainsKey(role.Kind) == true)} running {role.Name}")) + ".") +
             string.Concat(joined.Select(line => " " + line));
         RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
+        RenderDevicePages();
         QueueClusterSync();
     }
 

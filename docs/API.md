@@ -7,7 +7,7 @@ paired, signed connections ([Martlet network](NETWORK.md)). Anything else
 
 ## Making and revoking keys
 
-**Devices › Apps and API keys › Create API key**: name the key after the app
+**Share › Apps and API keys › Create API key**: name the key after the app
 that uses it, choose what it may do and when it expires (never, 30 days, 90
 days or a year). The key is shown **once**, with your hosts' addresses, their
 key pins and an example request; copy it into the app's secret settings.
@@ -55,6 +55,7 @@ so an app can check its key.
 | `read` (See status and logs) | `GET /martlet/v1/status`, `GET /martlet/v1/machine` (hardware), `GET /martlet/v1/cluster` (who does what), `GET /martlet/v1/logs?after=N[&limit=L]`, `GET /martlet/v1/commands`, `GET /martlet/v1/commands/{id}` |
 | `voice` (Use thinking, listening, speaking and lip-sync) | `POST /martlet/v1/inference/ollama-chat`, `/f5-synthesis`, `/transcription`, `/audio2face`, and `POST /martlet/v1/inference/cancel` for its own requests |
 | `perception` (Use screen understanding) | `POST /martlet/v1/inference/perception/ocr`, `/perception/vlm` and cancel, on hosts that run them |
+| `openai` (Use your hosts' language models) | `GET /v1/models`, `GET /v1/models/{id}`, `POST /v1/chat/completions`, `/v1/completions` and `/v1/embeddings`: the [OpenAI-compatible endpoint](OPENAI_ENDPOINT.md), on the models the hosts run themselves. With `equal-priority` too, its requests rank with your own background work instead of below all of your work |
 | `manage` (Update hosts and change their roles) | `POST /martlet/v1/commands` (`martlet.update`, `host.status`, `host.describe-role`, `host.add-role`, `host.remove-role`, `host.exposure`), `POST /martlet/v1/commands/{id}/cancel`, and reading commands |
 
 A key can **never** pair devices, read or change your Martlet network, read
@@ -168,7 +169,7 @@ Keys belong to your Martlet network, like the [shared who does what](CLUSTER.md)
 | Key list, format and merge rules | `Martlet.Core.Access` (`ApiKeyList`, `ApiKeyToken`, `ApiKeyScopes`) |
 | Host side | `Martlet.Gateway` `GatewayApiKeys.cs` (store, bearer checks, `/martlet/v1/api-keys`); scopes per endpoint in `GatewayHttp.cs`, `GatewayCommands.cs`, `GatewayLogs.cs`, `GatewayCluster.cs`, `GatewayInferenceHttp.cs`; `api-keys.json` on Linux hosts (`ControlApiKeyStorage`) |
 | Desktop client | `Martlet.Avatar.Audio2Face` `Remote/HostApiKeys.cs` |
-| Desktop UI and sync | `MainWindow.ApiKeys.cs`, `ApiKeyDialogs.cs`; the **Apps and API keys** card on Devices |
+| Desktop UI and sync | `MainWindow.ApiKeys.cs`, `ApiKeyDialogs.cs`; the **Apps and API keys** card on Share |
 | MCP | `api_keys_status` (this PC's list, never a key) and `api_selftest` (`Martlet.NodeLinkCheck api`); card IDs in [MCP](MCP.md) |
 
 ## Qualification
@@ -189,6 +190,8 @@ paired hosts (it needs a real pairing secret in Windows Credential Manager),
 `api-keys.json` on a native or Docker Linux host, a real model, Home Assistant
 or another real integration, and two physical PCs on a real LAN.
 
-Not built yet: simpler or OpenAI-compatible endpoints over the same keys, and
-an API on the desktop itself (for example asking the companion to say
-something).
+The OpenAI-compatible endpoint over the same keys has its own page:
+[Share your language models](OPENAI_ENDPOINT.md) (MCP `openai_selftest`).
+
+Not built yet: an API on the desktop itself (for example asking the companion
+to say something).

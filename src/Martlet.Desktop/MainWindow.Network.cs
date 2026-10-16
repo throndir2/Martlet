@@ -17,7 +17,7 @@ namespace Martlet.Desktop;
 /// The owner's Martlet network (docs/NETWORK.md). Every 20 seconds while Martlet runs (and right after a pairing or a
 /// change here) this PC syncs with its paired hosts through <see cref="NetworkSyncEngine"/>: the first host it pairs starts
 /// a network, hosts it pairs later join it, its other computers ask to join and a member allows them, and every member
-/// pairs with every host of the network by itself. The Devices page lists the network's computers, the requests to join
+/// pairs with every host of the network by itself. The Share page lists the network's computers, the requests to join
 /// (with their check numbers) and Remove from network.
 /// </summary>
 public partial class MainWindow
@@ -117,7 +117,7 @@ public partial class MainWindow
             foreach (var id in sharedNames.Where(id => result.State.Roster?.Host(id) is { Removed: false }))
                 if (networkSameNames.Add(id))
                     ErrorLog.Warn($"Martlet network: your host {id} has the same name as a host a friend shares with this PC, so this PC " +
-                        "doesn't pair it. Forget the shared one under Devices › Hosts shared with this PC to use yours.");
+                        "doesn't pair it. Forget the shared one under Share › Hosts shared with this PC to use yours.");
             if (closing) return;
             networkProblem = null;
             foreach (var (pairing, secret) in result.Paired)
@@ -227,7 +227,7 @@ public partial class MainWindow
             {
                 ErrorLog.Info($"Martlet network: {fresh.DeviceId} ({fresh.DisplayName}) asks to join (check number {fresh.CheckNumber}).");
                 messages.Add($"{fresh.DisplayName} wants to join your Martlet network (check number {fresh.CheckNumber}). Allow it " +
-                    (Role == DeviceRole.Host ? "on Home, or " : "") + "under Devices, Your Martlet network.");
+                    (Role == DeviceRole.Host ? "on Home, or " : "") + "under Share, Your Martlet network.");
             }
             if (messages.Count > 0) ActionText.Text = string.Join(" ", messages);
         }
@@ -634,7 +634,7 @@ public partial class MainWindow
                 (networkCheckedAt is { } at ? $"; checked {at:t}." : ".");
         }
         if (networkState.Waiting is { } wait)
-            return $"Waiting to join: on one of your other computers open Devices and allow {NetworkIdentity.DeviceId(homeHosts)} under Your Martlet network. " +
+            return $"Waiting to join: on one of your other computers open Share and allow {NetworkIdentity.DeviceId(homeHosts)} under Your Martlet network. " +
                 $"Check that it shows {wait.CheckNumber}. (Asked through {wait.HostId}.)";
         if (homeHosts.Count == 0)
             return "Not in a network yet. Add a computer: the first host you pair starts your Martlet network, and your other computers can join it.";

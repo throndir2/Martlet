@@ -15,7 +15,7 @@ using Martlet.Core.Settings;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Sharing hosts with friends (docs/NETWORK.md). On your side, the Devices page's Friends card reads the sign-in settings of
+/// Sharing hosts with friends (docs/NETWORK.md). On your side, the Share page's Friends card reads the sign-in settings of
 /// each of your hosts (only when the page shows, at most every two minutes, or on Check now; never on a reply's path) and lists
 /// each person with the hosts shared with them, with Share and Stop sharing per host. On a friend's side, Hosts shared with this
 /// PC lists the hosts this PC signed in to as a friend: what they offer this PC, which jobs this PC uses them for, and Check and
@@ -50,10 +50,10 @@ public partial class MainWindow
         if (sharedHosts.Count > 0 && sharedHostsCheckedAt is null) CheckSharedHostsAsync().Forget();
     }
 
-    /// <summary>Called whenever the Devices page draws: reads again what is stale, in the background.</summary>
+    /// <summary>Called whenever the Share page draws: reads again what is stale, in the background.</summary>
     private void RefreshFriendsWhenShown()
     {
-        if (!DevicesPage.IsVisible || closing) return;
+        if (!SharePage.IsVisible || closing) return;
         if (homeHosts.Count > 0 && (friendsCheckedAt is not { } read || DateTimeOffset.Now - read > FriendsStale))
             ReadFriendsAsync().Forget();
         if (sharedHosts.Count > 0 && (sharedHostsCheckedAt is not { } checkedAt || DateTimeOffset.Now - checkedAt > SharedHostsStale))
@@ -286,7 +286,7 @@ public partial class MainWindow
             if (!closing)
             {
                 RenderSharedHosts();
-                if (DevicesPage.IsVisible) RenderMap();
+                RenderDevicePages();
             }
         }
     }
@@ -364,6 +364,7 @@ public partial class MainWindow
             _ => $"Not reachable right now ({check.Text})."
         };
         var detail = $"Shared by a friend{(host.SignedInAs is { } who ? $"; you signed in as {who}" : "")}. {state} " +
+            (SharedHostModelsText(host.HostId) is { } models ? models + " " : "") +
             (uses.Count > 0 ? $"This PC uses it for {string.Join(", ", uses)}." : "This PC doesn't use it for anything yet.") +
             (host.OutsideAddresses is { Count: > 0 } outside ? $" Reached at {outside.Count} outside address{(outside.Count == 1 ? "" : "es")} from the invite." : "");
         row.Children.Add(NetworkRowText("SharedHost-" + host.HostId, host.HostId, detail));

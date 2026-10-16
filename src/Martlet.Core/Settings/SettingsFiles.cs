@@ -59,6 +59,8 @@ public static class SettingsFiles
         new(ModelAbilities.FileName, SettingsFileScope.Shared, "model-abilities", "Martlet.Core.Settings.ModelAbilities"),
         new(WorkSharingSettings.FileName, SettingsFileScope.Shared, WorkSharingSettings.SharedKey, "Martlet.Core.Cluster.WorkSharingSettings"),
         new(MotionSettings.FileName, SettingsFileScope.Shared, MotionSettings.SharedKey, "Martlet.Core.Motion.MotionSettings"),
+        new(Access.OpenAiEndpointSettings.FileName, SettingsFileScope.Shared, Access.OpenAiEndpointSettings.SharedKey,
+            "Martlet.Core.Access.OpenAiEndpointSettings"),
         new(RecommendationPreferences.FileName, SettingsFileScope.Shared, RecommendationPreferences.SharedKey,
             "Martlet.Core.Planning.RecommendationPreferences"),
         new(PoolSettings.FileName, SettingsFileScope.Shared, PoolSettings.SharedKey, "Martlet.Core.Cluster.PoolSettings"),

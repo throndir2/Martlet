@@ -434,7 +434,7 @@ don't redo everything, and tell the network what this PC can do.*
   [Martlet network](NETWORK.md) with no second Allow, so it also pairs with
   every host added later, on any member. Pairing with any one host of the
   network (a code or SSH) works too: it asks to join and a member allows it
-  under Devices › Your Martlet network. Its setup and cloud keys come from the
+  under Share › Your Martlet network. Its setup and cloud keys come from the
   [shared settings](CLUSTER.md#one-martlet-on-every-computer) on its first
   sync; who-does-what sync is on by default. Not yet: combining setups.
 
@@ -535,7 +535,7 @@ offer machines that work.*
 - **Clicks**: 2.
 - **Edge cases**: removing the only machine that can run a job moves the job
   to its fallback (cloud if configured, else *not set*) and Home says so.
-- **Today**: Devices › Your Martlet network › **Remove from network** (one
+- **Today**: Share › Your Martlet network › **Remove from network** (one
   confirmation) for any other desktop or host: hosts revoke a removed desktop,
   which forgets the network's hosts; a removed host stops trusting the
   network's desktops and they forget it. Not yet: *Leave network* on the

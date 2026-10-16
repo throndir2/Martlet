@@ -217,6 +217,7 @@ public partial class MainWindow
               (homeHosts.Count == 0 ? "Pair a host first: keys work on your hosts." : apiKeysSync ?? "Checking your hosts...");
         ApiKeysPanel.Children.Clear();
         foreach (var key in shown) ApiKeysPanel.Children.Add(ApiKeyRow(key, now));
+        if (SharePage.IsVisible) RenderOpenAi();
     }
 
     private FrameworkElement ApiKeyRow(ApiKey key, DateTimeOffset now)

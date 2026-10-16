@@ -14,7 +14,7 @@ namespace Martlet.Gateway.Ollama;
 /// configuration is the host owner's standing permission for paired <c>voice</c> devices to send bounded
 /// conversation text to the one model the owner installed; nothing else on the host is reachable through it.
 /// </summary>
-public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDisposable
+public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IGatewayOpenAiRelay, IAsyncDisposable
 {
     public const string DefaultDestinationId = "ollama-host";
     public const string DefaultWorkerId = "ollama-relay";
@@ -226,7 +226,10 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             writer.WriteNumber("num_predict", payload.MaximumOutputTokens);
             var sampling = payload.Sampling;
             // The client's context size replaces the relay's VRAM-friendly default; older clients never send one.
-            writer.WriteNumber("num_ctx", sampling.ContextTokens ?? Math.Min(payload.MaximumContextTokens, MaximumContextTokens));
+            var context = sampling.ContextTokens ?? Math.Min(payload.MaximumContextTokens, MaximumContextTokens);
+            // OpenAI-compatible requests use the same context size, so they never make Ollama load the model again.
+            Volatile.Write(ref ownerContext, context);
+            writer.WriteNumber("num_ctx", context);
             if (sampling.TopP is { } topP) writer.WriteNumber("top_p", topP);
             if (sampling.TopK is { } topK) writer.WriteNumber("top_k", topK);
             if (sampling.MinP is { } minP) writer.WriteNumber("min_p", minP);

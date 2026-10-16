@@ -41,6 +41,7 @@ internal static class AutomationPolicy
         new("SupportClear", "Troubleshooting", "Clear preview: only clears the support files preview."),
         new("NavHome", "Navigation rail", "Only opens the Home page."),
         new("NavDevices", "Navigation rail", "Only opens the Devices page."),
+        new("NavShare", "Navigation rail", "Only opens the Share page (your network, friends, your language models, API keys and hosts shared with this PC)."),
         new("NavCompanion", "Navigation rail", "Only opens the Companion page."),
         new("NavConversations", "Navigation rail", "Only opens the Conversations page."),
         new("NavCreations", "Navigation rail", "Only opens the Creations page."),
@@ -165,8 +166,8 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: the portal and invite buttons (open the browser), Save, Forget, Reconnect, the on/off box and every choice.
         new("MessagingPairCancel", "Companion › Messaging", "Cancel: only withdraws the pairing code shown; sends and saves nothing."),
         // Needs --allow-ui-effects: Connect, Pair a chat, Open BotFather, Open in Telegram, Remove, Disconnect and the two check boxes.
-        new("ApiKeyCreateCancel", "Devices › Apps and API keys", "Cancel: only closes the create dialog without making a key."),
-        new("ApiKeyCreatedDone", "Devices › Apps and API keys", "Done: only closes the dialog that showed a new key once."),
+        new("ApiKeyCreateCancel", "Share › Apps and API keys", "Cancel: only closes the create dialog without making a key."),
+        new("ApiKeyCreatedDone", "Share › Apps and API keys", "Done: only closes the dialog that showed a new key once."),
         // Needs --allow-ui-effects: Create API key, Create key, Copy (the clipboard) and Revoke.
         new("OpenCompanion", "Companion", "Only opens the Personality window. The window saves each change on its own (edits need --allow-ui-effects)."),
         new("OpenAvatar", "Companion", "Only opens the Character window (the character itself does not show). The window saves each change on its own (edits need --allow-ui-effects)."),
@@ -194,8 +195,8 @@ internal static class AutomationPolicy
         new("ProblemClose", "Problem dialog", "Close: only closes the problem dialog."),
         // Needs --allow-ui-effects: Open logs folder (Explorer) and every Copy button (the clipboard).
         new("OutsideAccessSetUpSignIn", "Outside access dialog", "'Set up sign-in first': only opens the sign-in window for that host; changes nothing by itself."),
-        new("FriendsMakeShareLink", "Devices › Friends", "Make a share link: only opens the form; nothing is made until Make link (HostInputOk)."),
-        new("AcceptShareLink", "Devices › Hosts shared with this PC", "Accept a share link: only opens the paste form; nothing signs in until Continue and the confirmation."),
+        new("FriendsMakeShareLink", "Share › Friends", "Make a share link: only opens the form; nothing is made until Make link (HostInputOk)."),
+        new("AcceptShareLink", "Share › Hosts shared with this PC", "Accept a share link: only opens the paste form; nothing signs in until Continue and the confirmation."),
         new("ShareLinkClose", "Share link window", "Close: only closes the share link window."),
         // Needs --allow-ui-effects: ShareLinkCopy-<key> (shows the link), ShareLinkCopy (the clipboard) and ShareLinkStop-<key> (removes the link from every host).
         new("CharacterModelAddCancel", "Add a character", "Cancel: only closes the dialog."),
@@ -243,7 +244,15 @@ internal static class AutomationPolicy
         new("UnlockOther", "Unlock window", "Choose another account: only closes the Unlock window for the account picker."),
         new("ProveClose", "Prove window", "Close: only closes the Prove window."),
         // Needs --allow-ui-effects: everything else on the Account page, Unlock and Prove windows (password, Windows login link, PIN, Windows Hello, Encrypt, Remember, Lock now, Sign out, Merge, Unlock, Sign in).
-        new("FriendsCheck", "Devices › Friends", "Check now: only reads each of your hosts' sign-in settings (never a secret) and keeps the non-secret summary in friends.json."),
+        new("FriendsCheck", "Share › Friends", "Check now: only reads each of your hosts' sign-in settings (never a secret) and keeps the non-secret summary in friends.json."),
+        new("OpenAiCheck", "Share › Share your language models", "Check now: only reads the language models each host offers (GET /v1/models, signed; never a key) and keeps the non-secret summary in openai-models.json."),
+        new("OpenAiShowProxy", "Share › Share your language models", "Show proxy setup: only opens a window with the steps and the Nginx and Caddy text to copy; changes nothing."),
+        new("OpenAiProxyClose", "Share › Show proxy setup", "Close: only closes the proxy setup window."),
+        new("OpenAiGiveAccess", "Share › Share your language models", "Give someone access: only opens the form; no key is made until Make key (OpenAiAccessConfirm)."),
+        new("OpenAiAccessCancel", "Share › Give someone access", "Cancel: only closes the form without making a key."),
+        new("OpenAiInviteDone", "Share › Ready to send", "Done: only closes the window that showed a new key once."),
+        // Needs --allow-ui-effects: OpenAiSaveAddress (saves the shared address), OpenAiAccessConfirm (makes a key), OpenAiInviteCopy (puts the key on the clipboard),
+        // OpenAiKeyPriority-<id> (changes a key's priority on every host) and OpenAiKeyRevoke-<id> (revokes a key).
         // Needs --allow-ui-effects: FriendShare-<host>-<key> and FriendStop-<host>-<key> (they change who may use a host).
         // Needs --allow-ui-effects: SharedHostsCheck, SharedHostCheck-<host>, SharedHostUse-<host>-<job> and SharedHostForget-<host> (Hosts shared with this PC).
         new("LocalServersScan", "Companion › Thinking › This PC", "A model app you already use › Look again: only asks this PC's loopback ports which model apps answer (GET of their model lists); saves, prompts and starts nothing."),
@@ -378,8 +387,8 @@ internal static class AutomationPolicy
         // Never returned: AccountPasswordUser, AccountAuthenticatorSecret and AccountRecoveryCodes (secrets or personal text).
         new("AccountProviderLogins", "Account page", "Shows the linked provider logins: provider names and the labels the hosts list, such as 'Linked: Authentik (lab) as me@example.net.'. Never a secret."),
         // Needs --allow-ui-effects: AccountLinkProvider-<id>, AccountUnlinkLogin-<key> and the Prove window's ProveMethod-<id> (they sign in or change things).
-        new("FriendsStatus", "Devices › Friends", "Shows how many hosts you share with how many friends and who asked, such as 'You share 1 host with 1 friend. ... Checked 14:02.'. Counts and fixed wording."),
-        new("SharedHostsStatus", "Devices › Friends", "Shows how many hosts friends share with this PC or, with none, how to accept a share link. Counts and fixed wording."),
+        new("FriendsStatus", "Share › Friends", "Shows how many hosts you share with how many friends and who asked, such as 'You share 1 host with 1 friend. ... Checked 14:02.'. Counts and fixed wording."),
+        new("SharedHostsStatus", "Share › Friends", "Shows how many hosts friends share with this PC or, with none, how to accept a share link. Counts and fixed wording."),
         new("DiscordVoiceStatus", "Companion › Discord", "Shows where Martlet is in Discord voice, counts of speakers heard, utterances transcribed and replies spoken, whether DAVE is on, whether libdave loaded, and the last problem. Never what was said."),
         new("LiveStatus", "Talk window", "Shows the status line of the talk window."),
         new("LiveMic", "Talk window", "Shows the microphone button; its name is the action, such as 'Stop listening'."),
@@ -849,7 +858,19 @@ internal static class AutomationPolicy
         new("DockerState", "Devices", "Shows the state of Docker Desktop."),
         new("RolesSummaryText", "Devices", "Shows the summary of the host roles."),
         new("HostRunPairAddress", "Run window", "Shows the address in the pairing panel."),
-        new("NetworkStatus", "Devices", "Shows the status of the network."),
+        new("NetworkStatus", "Share", "Shows the status of the network."),
+        new("ShareSummary", "Share", "Shows how many computers are in your network, how many friends you share hosts with, how many people have a key to your language models and how many hosts are shared with this PC. Counts only."),
+        new("OpenAiStatus", "Share › Share your language models", "Shows how many language models your hosts offer, how many people have a key, hosts that need an update and when it was checked. Counts, host IDs and fixed wording."),
+        new("OpenAiAddressStatus", "Share › Share your language models", "Shows the address people use and the host the proxy sends it to, or that no address is set. Never a key."),
+        new("OpenAiAddressProblem", "Share › Share your language models", "Shows why a typed address can't be saved. Fixed wording."),
+        new("OpenAiHomeAddresses", "Share › Share your language models", "Shows each host's home address of the endpoint. Addresses and host IDs only."),
+        new("OpenAiModels", "Share › Share your language models", "Shows the language models your hosts offer, each with its hosts, such as qwen3:8b (gpu-box). Model names and host IDs only."),
+        new("OpenAiInviteTitle", "Share › Ready to send", "Shows the window's title with the person's name. Never the key."),
+        new("OpenAiInviteNote", "Share › Ready to send", "Shows what to do with the text and whether it uses a home address. Fixed wording; never the key."),
+        new("OpenAiProxySteps", "Share › Show proxy setup", "Shows the steps to give your language models an address. Names, host IDs and home addresses only."),
+        new("OpenAiProxyNginx", "Share › Show proxy setup", "Shows the Nginx configuration for the front door. Names and home addresses only; no key."),
+        new("OpenAiProxyCaddy", "Share › Show proxy setup", "Shows the Caddy configuration for the front door. Names and home addresses only; no key."),
+        // Never returned: OpenAiInviteText (it holds the new key) and OpenAiPublicAddress (an editable field).
         new("HostRunPairNote", "Run window", "Shows the fixed note on how long the pairing code works. Never the code."),
         new("HostRunPairCopy", "Run window", "Shows the Copy code button's label: Copy code, then Copied or Couldn't copy. Never the code. Clicking it puts the code on the clipboard, so that needs --allow-ui-effects."),
         // Never returned: HostRunPairCode (the pairing code).
@@ -925,10 +946,10 @@ internal static class AutomationPolicy
         new("LiveToolApprovalTitle", "Talk window", "Shows a waiting tool call's heading, such as 'Run this command?'. Never the command or arguments."),
         new("LiveToolApprovalText", "Talk window", "Shows a waiting tool call's question: which shell or server, and the seconds left. Never the command or arguments."),
         // Never returned: LiveToolApprovalArguments (the command or arguments).
-        new("ApiKeysStatus", "Devices › Apps and API keys", "Shows how many keys there are and how many hosts have them. Never a key."),
-        new("ApiKeyCreatedTitle", "Devices › Apps and API keys", "Shows the created dialog's title. Never the key."),
-        new("ApiKeyHosts", "Devices › Apps and API keys", "Shows the host addresses with their public key pins. Never the key."),
-        new("ApiKeyExample", "Devices › Apps and API keys", "Shows the example request. It names $MARTLET_API_KEY, never the key."),
+        new("ApiKeysStatus", "Share › Apps and API keys", "Shows how many keys there are and how many hosts have them. Never a key."),
+        new("ApiKeyCreatedTitle", "Share › Apps and API keys", "Shows the created dialog's title. Never the key."),
+        new("ApiKeyHosts", "Share › Apps and API keys", "Shows the host addresses with their public key pins. Never the key."),
+        new("ApiKeyExample", "Share › Apps and API keys", "Shows the example request. It names $MARTLET_API_KEY, never the key."),
         // Never returned: ApiKeyValue (the API key).
         new("WorkSharingStatus", "Devices › Sharing work", "Shows how many of this PC's requests other computers took per job since start, the last computer, the busy count and the wait. Job names and host IDs only."),
         new("BackgroundStatus", "Settings › Startup and closing", "Shows what closing does and whether Windows starts Martlet."),
@@ -1119,14 +1140,15 @@ internal static class AutomationPolicy
         new("NetworkJoin-", "Your Martlet network", "A request to join, such as NetworkJoin-desktop-b: DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ..."),
         new("NetworkPaired-", "Your Martlet network", "A computer that uses a host of this PC but is not in the network, such as NetworkPaired-desktop-c: DESKTOP-C (desktop-c). Uses gpu-pc; active now."),
         new("OtherRole-", "Settings › Your other computers", "Another computer of yours, such as OtherRole-desktop-imouto: IMOUTO (desktop-imouto). Companion PC that also runs a host service (imouto-host)."),
-        new("ApiKeyRow-", "Devices › Apps and API keys", "An API key's line, such as ApiKeyRow-AbC...: Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf. Never the key or its verifier."),
+        new("ApiKeyRow-", "Share › Apps and API keys", "An API key's line, such as ApiKeyRow-AbC...: Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf. Never the key or its verifier."),
+        new("OpenAiKey-", "Share › Share your language models", "A person's key, such as OpenAiKey-AbC...: Ana. Your Martlet first: any request of yours stops theirs. Made on desktop-a ... ID AbCdEf. Never the key or its verifier."),
         new("SmartHomeFound-", "Companion › Smart home", "A Home Assistant that Martlet found, such as SmartHomeFound-0: Home: and its address and version (Home Assistant 2026.9.4)."),
         new("SmartHomeHost-", "Companion › Smart home", "A paired host's Home Assistant line, such as SmartHomeHost-gpu-pc: gpu-pc: can run Home Assistant."),
         // MainWindow.Friends.cs
         new("NetworkFriend-", "Your Martlet network", "A friend's computer, such as NetworkFriend-friend-pc: FRIEND-PC (friend-pc). A friend's computer. Names, providers, subjects, device and host IDs only."),
-        new("Friend-", "Devices › Friends", "A person, such as Friend-authentik-lab-friend-7: ana@example.net (authentik). Shares gpu-box: their engines only. Names, providers, subjects, device and host IDs only."),
-        new("FriendsHost-", "Devices › Friends", "A host that Martlet could not read, such as FriendsHost-gpu-box. Names, providers, subjects, device and host IDs only."),
-        new("SharedHost-", "Devices › Friends", "A host a friend shares with this PC, such as SharedHost-gpu-box: gpu-box. Shared by a friend; ... Names, providers, subjects, device and host IDs only."),
+        new("Friend-", "Share › Friends", "A person, such as Friend-authentik-lab-friend-7: ana@example.net (authentik). Shares gpu-box: their engines only. Names, providers, subjects, device and host IDs only."),
+        new("FriendsHost-", "Share › Friends", "A host that Martlet could not read, such as FriendsHost-gpu-box. Names, providers, subjects, device and host IDs only."),
+        new("SharedHost-", "Share › Friends", "A host a friend shares with this PC, such as SharedHost-gpu-box: gpu-box. Shared by a friend; ... Names, providers, subjects, device and host IDs only."),
         new("SignInAllowed-", "Sign-in from outside", "An allowed identity, such as SignInAllowed-authentik-lab-user-42: me@example.net (authentik: lab-user-42): a friend. Names, providers, subjects, device and host IDs only."),
         new("SmartHomeDevice-", "Companion › Smart home", "A device that Home Assistant discovered, such as SmartHomeDevice-0: Philips Hue: Hue Bridge."),
         new("SmartHomeUpdate-", "Companion › Smart home", "A waiting Home Assistant update, such as SmartHomeUpdate-0: Update: Home Assistant Core 2026.9.3 → 2026.9.4."),
