@@ -1,34 +1,47 @@
 # Memory
 
-Martlet remembers lasting facts and keeps a searchable conversation history, the same on all your computers.
+Martlet remembers what matters to you and picks up earlier conversations. Everything stays on your own computers, and it is the same on all of them.
 
-## Defaults
+## Turn memory on or off
 
-Memory is **ON by default** for new profiles and most migrated profiles. A current explicit OFF stays off. Configuration restore forces memory off for review.
+Memory is on from the start. Open **Companion › Memory** and press **Manage memory**. In the Memory window, **Remember facts from conversations** turns memory on or off.
 
-Open **Companion › Memory**.
+## How she remembers
 
-## Facts
+After each reply, Martlet keeps the lasting facts from what was said, and she knows whose each fact is. When you talk to her, she recalls the facts that match what you say. She finds them also when you use another form of a word ("cats" finds your cat), and in Spanish, French, German, Portuguese, Italian, Chinese, Japanese and Korean too.
 
-The Memory window lets you turn memory on/off, choose the store location, list facts, add facts, choose retention, inspect provenance, edit/delete facts, purge expired facts and export after preview. **Show replaced facts** also lists facts that stopped being true: when a fact is corrected, Martlet keeps the old version as history with the date it was replaced, and never recalls it. Deleting a fact deletes its old versions too.
+- **Hidden search words**: each fact gets search words (for "The user is vegetarian": diet, food, meat, cooking), so a question in other words still finds it. They are never sent as the fact's text.
+- **Finding by meaning**: a small embedding model also finds facts that say the same thing in other words. It runs in Ollama on this PC's processor. Choose it on **Companion › Memory › Finding by meaning**. It is on by default, and Martlet asks before it downloads the model. Without the model, she finds by words only.
+- **Memory brief**: Martlet writes a short profile of you and the people you talk about, and sends it with the first message of each conversation. See it, change it with **Save my changes**, or press **Write it again** on **Companion › Memory › Memory brief**. Untick **Send a short profile of me with the first message of each conversation** to turn it off.
+- **Tidying**: when you have a [Thinking pool](Thinking#thinking-pool), a free pool member tidies memory in the background. It adds missing search words, merges facts that say the same thing and keeps an outdated fact as history. It never uses the model you talk to.
 
-## Recall and remembering
+Remembering runs in the background, so replies never wait for it. When it uses a paid provider, the extra request can cost money. Screen and camera glances and what your PC plays are never remembered.
 
-For accepted typed, push-to-talk or hands-free turns, Martlet queries a local lexical index and sends matching facts in notes. After a completed reply, the same Thinking model can make one extra text-only request to extract lasting facts. Paid providers may charge for that extra request.
+## The Memory window
 
-Each fact can have hidden search words (for "The user is vegetarian": diet, food, meat, cooking), so a question in other words still finds it. They are never sent as the fact's text. When you have a Thinking pool, a free pool member also tidies memory in the background: it adds missing search words, merges facts that say the same thing and keeps a fact a newer one made outdated as history. It never uses the model you talk to.
+In the Memory window you can:
 
-Screen/camera glances and PC-audio notes are not remembered as facts.
+- **Search** your facts and see where each one came from.
+- **Add fact**: type the **Fact**, choose whom it **Belongs to**, and choose how long to **Keep it**.
+- Change a fact and **Save changes**, or use **Delete selected**, **Delete all shown** or **Delete everything**.
+- **Show replaced facts**: when a fact is corrected, Martlet keeps the old version as history with the date it stopped being true, and never recalls it as current. Deleting a fact deletes its old versions too.
+- **Where memory is stored**: use Martlet's folder or a folder you choose.
+- **Export to a file**: preview the export, then create it on this PC. Martlet never uploads it.
+
+You can also ask Martlet herself what she remembers, or ask her to remember, correct or forget something. Martlet keeps up to 100,000 facts. When memory is full, the talk window says so, so you can choose what to delete.
 
 ## Conversation history
 
-The **Conversations** page in the side menu lets you browse, edit or delete recorded exchanges; **Companion › Memory › Conversation history** turns the record on or off. Optional `search_conversations` lets Martlet search it during replies.
+The **Conversations** page in the side menu lets you read, search, edit and delete every conversation. **Companion › Memory › Conversation history** has two choices:
 
-Your record is the same on every computer where you are signed in. Martlet recalls what you said on any of them, and an edit or a deletion on one computer reaches the others. A deleted message never comes back.
+- **Keep a record of my conversations** (on by default).
+- **Let Martlet search the record on its own** (off by default). It needs a Thinking model that uses tools.
 
-## Sync
+Mention an earlier talk ("remember when...", "what did we talk about yesterday?") and she finds what was said, by your words, the time you name and who said it. Your record is the same on every computer where you are signed in. An edit or a deletion on one computer reaches the others, and a deleted message never comes back. Screen glances and what your PC plays are never recorded.
 
-With **Keep Martlet the same on all my computers** on, memories and your record of conversations sync through paired hosts. Each person's record goes only to the computers where that person is signed in. There is no cloud memory service by default.
+## On all your computers
+
+While **Keep Martlet the same on all my computers** is on, memories and your record of conversations sync through your paired hosts. Each person's memories and record go only to the computers where that person is signed in. There is no cloud memory service. See [Multiple Computers](Multiple-Computers).
 
 ## Sharing memories with your household
 
@@ -38,4 +51,6 @@ When several people use Martlet, each person has their own memories, and the hou
 - Tick **Share new memories about me with the household** to let every character in the household remember new things Martlet learns about you.
 - A character shared together remembers everyone it talks to in its own memories. Your other characters don't see them.
 
-More detail: [Memory](https://github.com/throndir2/Martlet/blob/main/docs/MEMORY.md), [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md), [Cluster](https://github.com/throndir2/Martlet/blob/main/docs/CLUSTER.md).
+See [Accounts and Household](Accounts-and-Household).
+
+More detail: [Memory](https://github.com/throndir2/Martlet/blob/main/docs/MEMORY.md), [Search engine](https://github.com/throndir2/Martlet/blob/main/docs/SEARCH.md), [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md), [Cluster](https://github.com/throndir2/Martlet/blob/main/docs/CLUSTER.md).

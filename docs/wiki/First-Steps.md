@@ -1,58 +1,83 @@
 # First Steps
 
-After installing, Martlet's welcome wizard sets this PC up in a few clicks.
+After you install Martlet, the welcome tour sets up this PC in a few clicks. You confirm every download, install and key before anything changes.
 
-![Home page](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/home.png)
+![Welcome tour](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/welcome.png)
+
+Press **Let's begin**. **Back** returns to the step before, and **Skip for now** closes the tour. To see it again, open **Settings › What this PC is for › Replay the welcome tour**.
 
 ## 1. Start a new Martlet network, or join yours
 
-- **No, this is my first one**: this PC starts your Martlet network. Add your other computers later.
-- **Yes, join my Martlet network**: Martlet looks for your other computers on this network. Press **Join**, then **Allow** on the other computer when both show the same check number.
-- **This PC only lends its power to my other computers**: this PC is a host.
+The tour asks: *Is Martlet already on another of your computers?* Your computers with Martlet form your Martlet network and share the work.
 
-Change it later in **Settings › This PC's role**.
+- **No, this is my first one**: this PC starts a new Martlet network. You can add your other computers later.
+- **Yes, join my Martlet network**: Martlet looks for your other computers on this network. Press **Join**. When both computers show the same check number, press **Allow** on the other computer.
+- **This PC only lends its power to my other computers (host PC)**: this PC becomes a host. See [Setting Up a Host](Setting-Up-a-Host).
 
-## 2. Let Martlet suggest a setup
+Martlet finds a network only through a computer that runs a host with **Let my other computers find this PC and ask to use its hosts** on. If your computer isn't listed, choose **It isn't listed: enter its address and pairing code**. See [Multiple Computers](Multiple-Computers).
 
-Martlet reads this PC's graphics card, memory and processor, then asks whether to **keep everything on my computers** or whether **free online services are fine**. It suggests what runs where, with how much of the graphics card, memory and processor each part uses:
+## 2. See what this PC has
 
-| Job | Typically |
+Martlet reads this PC's graphics card, graphics memory, memory and processor. It reads them on this PC only and sends nothing. Press **Next**.
+
+## 3. Answer three quick questions
+
+Martlet chooses the models, memory and graphics cards for you. It only asks:
+
+1. **Do you play games or use heavy apps on this PC?** With **Yes**, Martlet keeps this PC's graphics card mostly free: it takes only Thinking and the voice. Martlet selects **Yes** when it finds a game library, such as Steam, Epic or GOG.
+2. **May Martlet use free online services?** Choose **Never: everything stays on my computers**, **Only as a backup (recommended): replies stay on my computers**, or **Yes, when they're faster or smarter**. Free services such as NVIDIA Build need a free sign-up, and what you say goes to them.
+3. **What matters more in a conversation?** Choose **Quick replies**, **Balanced (recommended)** or **Smarter replies**. Martlet picks the smartest model whose first word comes in time.
+
+Press **Show my setup**. Martlet saves your answers. Change them later in **Settings › Recommended setup preferences**, or in **Recommended setup** on Home.
+
+## 4. Use the suggested setup
+
+**Here's what fits this PC** shows each part: what does it, where it runs (this PC, another of your computers or online), why, and its share of the graphics memory, memory and processor. A PC that joined your network also uses your other computers. Typical choices:
+
+| Part | Usually |
 | --- | --- |
-| **Thinking** | Gemma 4 E2B in Ollama on the graphics card; with free online services, NVIDIA Build (the wizard walks you through the free key). |
-| **Voice** | Chatterbox Turbo on an NVIDIA graphics card with room, otherwise Chatterbox Nano (on the card when it has room, else on the processor). |
-| **Listening** | Your default microphone with Parakeet on the processor, or Whisper on a card with room to spare. |
-| **Lip-sync** | Audio2Face on a big NVIDIA card, otherwise the mouth follows the voice's loudness. |
+| **Thinking** | A model in Ollama that fits this PC, or one on another of your computers. When you allow online services, NVIDIA Build can think, so the graphics card stays free for the voice. |
+| **Voice** | Chatterbox Turbo on an NVIDIA graphics card with room, otherwise Chatterbox Nano on the card or the processor. |
+| **Listening** | Your default microphone with Parakeet on the processor, or Whisper on the graphics card when it has room. |
+| **Lip-sync** | Audio2Face on an NVIDIA card with room. Otherwise the mouth follows the voice's loudness. |
 
-Press **Use these suggestions** and confirm once; Martlet installs what's needed and leaves you on Home. **Set it all up for me** on Home does the same for anything still missing. The voice gets the graphics card before listening. A PC paired with your other computers uses their setup instead. To choose yourself, use **Set up thinking** or **Get a recommendation**:
+Then:
 
-| Choice | Use it when |
-| --- | --- |
-| **This PC** | You want privacy/no per-request cost and have Ollama or a compatible local model. |
-| **Another of your computers** | You have a paired host with a better GPU or model. |
-| **Cloud provider** | You want hosted models through OpenAI, OpenRouter, NVIDIA Build or another OpenAI-compatible endpoint. |
+1. Press **Use these suggestions**.
+2. If Thinking goes to NVIDIA Build and you have no key yet, follow **Get your free NVIDIA key**. Paste the key, accept the consent and press **Save key and set it all up**. Or choose **Skip the key: set up the rest now**.
+3. Martlet closes the tour on Home and asks one confirmation, **Set it all up for me**. It lists the downloads. If you already run a model app such as LM Studio, **Use models your apps already run** lets Thinking use that model.
+4. Press **Set it up**. Martlet installs what is needed. Thinking and listening come first, so you can talk within minutes. Martlet speaks once the voice is ready. A voice engine on this PC runs in Martlet's host service, which needs Docker Desktop. Docker Desktop shows its own terms first.
 
-Cloud choices may cost money and send text/images to that provider.
+To choose yourself instead, press **Ask me three questions instead** (the setup advisor) or **I'll choose myself** (opens **Companion › Thinking**).
 
-## 3. Optional setup
+## 5. Check Home
 
-- **Companion › Listening** to change the microphone or speech recognizer.
-- **Companion › People** for recognized voices.
-- **Companion › Voice** to change the voice.
-- **Companion › Character** for the desktop character. The pages after it under **How it looks** set its speech bubbles, emotes and motions, eyes and touch.
-- **Companion › Vision** for screen or camera commentary.
+![Home page](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/home.png)
 
-## 4. Start talking and listening
+Home tells you what needs attention and opens the page that fixes it. It never changes settings by itself.
 
-Press **Home › Start listening** to talk hands-free, or **Start talking** to type or use push-to-talk.
+- **Set it all up for me** sets up anything still missing for Thinking, Listening and the voice on a PC that isn't in a Martlet network.
+- **Recommended setup** plans the best use of all your computers. You review the changes before **Reconfigure** applies them. When Martlet finds a better setup later, the button says **A better setup is available**.
+- **Plan a setup from scratch** opens the setup advisor.
+
+## 6. Say hi
+
+1. Press **Start talking** to open the talk window. Type, or talk with push-to-talk.
+2. Or press **Start listening** to talk hands-free.
+3. Press **Show character**. The built-in Hiyori character appears on top of your windows.
+
+The first reply can take a moment while Martlet loads its model. Home and the talk window say what is still warming up. See [Talking to Martlet](Talking-to-Martlet).
 
 ![Talk window](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/talk.png)
 
-## 5. Show the character
+## Next
 
-Press **Show character**. The built-in Live2D Hiyori model appears as a transparent desktop overlay. Add your own Live2D or VRM model later.
+Every part of Martlet is on the **Companion** page. For example:
 
-## 6. Check Home
+- **Companion › Voice** to choose or clone a voice. See [Voices](Voices).
+- **Companion › Listening** for the microphone and speech recognition, and **Companion › People** for the voices Martlet knows. See [Listening and Voice ID](Listening-and-Voice-ID).
+- **Companion › Character** for your own Live2D or VRM character. See [The Character](The-Character).
+- **Companion › Vision** to let Martlet watch your screen. See [Vision](Vision).
+- **Companion › Personality** and **Profiles** to make her your own. See [Personality and Characters](Personality-and-Characters).
 
-Home changes no settings by itself. It shows problems and opens the page that can fix them.
-
-More detail: [README getting started](https://github.com/throndir2/Martlet/blob/main/README.md#-up-and-running-in-minutes), [UI design](https://github.com/throndir2/Martlet/blob/main/docs/UI_DESIGN.md), [Recommended setups](https://github.com/throndir2/Martlet/blob/main/docs/RECOMMENDED_SETUPS.md).
+More detail: [README getting started](https://github.com/throndir2/Martlet/blob/main/README.md#-up-and-running-in-minutes), [Welcome wizard](https://github.com/throndir2/Martlet/blob/main/docs/WELCOME_WIZARD.md), [Recommended setups](https://github.com/throndir2/Martlet/blob/main/docs/RECOMMENDED_SETUPS.md).
