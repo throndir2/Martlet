@@ -315,7 +315,9 @@ before: remove it from the network and every host revokes it.
    address, so set *treat every connection as outside home* on it.
    The [OpenAI-compatible endpoint](OPENAI_ENDPOINT.md) is the exception: it
    needs only API keys, never the pinned key, so a reverse proxy with a real
-   certificate is how you share your language models with other apps.
+   certificate is how you share your language models with other apps. Point
+   it at the host's [front door](OPENAI_ENDPOINT.md#the-front-door), a second
+   port that serves only Martlet's web page and `/v1`, never at port 9443.
 
 **Several hosts.** Each host the laptop should use from outside needs its own
 outside address (its own forwarded port, or its overlay address). The simplest

@@ -72,6 +72,9 @@ internal sealed partial class GatewayHttpApplication
     /// <summary>Called when this host's roster entry may list other outside addresses.</summary>
     internal Action? OutsideAddressesChanged { get; set; }
 
+    /// <summary>Where this host's front door listens ("ip:port"; <see cref="GatewayFrontDoorListener"/>).</summary>
+    internal Func<IReadOnlyList<string>> FrontDoorListeners { get; set; } = static () => [];
+
     internal async Task InvokeAsync(HttpContext context)
     {
         var traceId = TraceId();

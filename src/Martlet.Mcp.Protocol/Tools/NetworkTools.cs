@@ -285,7 +285,15 @@ internal sealed partial class McpServer
             "owner's reply stopping a shared request, and revocation on both hosts. Loopback only; writes nothing to disk or the " +
             "credential vault.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "openai")),
-        Tool("outside_path_check", "Reach a host from outside home on real sockets: builds this checkout's Linux gateway in the .NET SDK " +
+        Tool("front_door_selftest", "Rehearse a host's front door (docs/OPENAI_ENDPOINT.md), its public listener on its own port, end " +
+            "to end with the production code: two real gateways on 127.0.0.1 (pinned TLS, the real Ollama relay over a fixture Ollama " +
+            "each, NOT AI) joined in one Martlet network by a simulated desktop; the first host's front door open on a free port; " +
+            "plain HTTPS clients on that port play a browser and an app behind a proxy. Checks the security audit naming the front " +
+            "door, the public page (Online and sign-in only: no model, host or address, no script, a strict CSP), 404 for every " +
+            "private path, 401 missing_api_key without a key (what Check address looks for), both hosts' models and a streamed chat " +
+            "sent on to the other host, no lockout after wrong keys, sign-in refusing a forged form, another site and a wrong key, the " +
+            "signed-in page listing the models, and revocation ending the session. Loopback only; writes nothing to disk.", new { },
+            async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "front-door")),        Tool("outside_path_check", "Reach a host from outside home on real sockets: builds this checkout's Linux gateway in the .NET SDK " +
             "image and runs it (owner-init, owner-exposure, owner-pair, serve) in disposable aspnet containers on a Docker network " +
             "numbered from TEST-NET-3, its port published on 127.0.0.1, so every connection reaches it from 203.0.113.1 (an outside " +
             "source). The host's home address answers nothing; the desktop's real pairing client, connection, network sync and " +

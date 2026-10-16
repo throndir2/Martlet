@@ -21,6 +21,13 @@ public sealed record HostSecurityAudit(string HostId, bool InternetReachable, bo
     /// <summary>The overlay network addresses ("ip:port") the host listens on besides its home address. Hosts older than
     /// this, and hosts in a container (whose runtime publishes the port), report none.</summary>
     public IReadOnlyList<string> OutsideListeners { get; init; } = [];
+    /// <summary>The front door's port when this host is the front door (docs/OPENAI_ENDPOINT.md); null otherwise and from
+    /// older hosts.</summary>
+    public int? FrontDoorPort { get; init; }
+    /// <summary>Where the front door listens now ("ip:port"): empty when it isn't open.</summary>
+    public IReadOnlyList<string> FrontDoorListeners { get; init; } = [];
+    /// <summary>How many browsers are signed in to the front door's web page now; null when this host isn't the front door.</summary>
+    public int? FrontDoorSessions { get; init; }
 }
 
 public sealed partial class Audio2FaceHostConnection
@@ -56,7 +63,13 @@ public sealed partial class Audio2FaceHostConnection
                     ? blocked.GetString() : null,
                 OutsideAccessPaused = root.TryGetProperty("outside_access_paused", out var paused) && paused.ValueKind == JsonValueKind.True,
                 OutsideListeners = root.TryGetProperty("outside_listeners", out var listeners) && listeners.ValueKind == JsonValueKind.Array
-                    ? listeners.EnumerateArray().Take(16).Select(e => e.GetString() ?? throw new InvalidOperationException()).ToArray() : []
+                    ? listeners.EnumerateArray().Take(16).Select(e => e.GetString() ?? throw new InvalidOperationException()).ToArray() : [],
+                FrontDoorPort = root.TryGetProperty("front_door_port", out var door) && door.ValueKind == JsonValueKind.Number &&
+                    door.TryGetInt32(out var port) && port is > 0 and <= 65535 ? port : null,
+                FrontDoorListeners = root.TryGetProperty("front_door_listeners", out var doors) && doors.ValueKind == JsonValueKind.Array
+                    ? doors.EnumerateArray().Take(8).Select(e => e.GetString() ?? throw new InvalidOperationException()).ToArray() : [],
+                FrontDoorSessions = root.TryGetProperty("front_door_sessions", out var sessions) && sessions.ValueKind == JsonValueKind.Number &&
+                    sessions.TryGetInt32(out var count) ? count : null
             };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)

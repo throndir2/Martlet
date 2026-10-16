@@ -246,12 +246,14 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: everything else on the Account page, Unlock and Prove windows (password, Windows login link, PIN, Windows Hello, Encrypt, Remember, Lock now, Sign out, Merge, Unlock, Sign in).
         new("FriendsCheck", "Share › Friends", "Check now: only reads each of your hosts' sign-in settings (never a secret) and keeps the non-secret summary in friends.json."),
         new("OpenAiCheck", "Share › Share your language models", "Check now: only reads the language models each host offers (GET /v1/models, signed; never a key) and keeps the non-secret summary in openai-models.json."),
-        new("OpenAiShowProxy", "Share › Share your language models", "Show proxy setup: only opens a window with the steps and the Nginx and Caddy text to copy; changes nothing."),
-        new("OpenAiProxyClose", "Share › Show proxy setup", "Close: only closes the proxy setup window."),
+        new("OpenAiShowProxy", "Share › Share your language models", "Show setup: only opens a window with the steps and the Tailscale Funnel, Nginx Proxy Manager, Nginx, Caddy and Cloudflare Tunnel text to copy; changes nothing."),
+        new("OpenAiProxyClose", "Share › Show setup", "Close: only closes the setup window."),
+        new("OpenAiCheckAddress", "Share › Share your language models", "Check address: only sends GET <saved address>/models without a key and shows what answered (OpenAiCheckResult); changes nothing. Disabled until an address is saved."),
         new("OpenAiGiveAccess", "Share › Share your language models", "Give someone access: only opens the form; no key is made until Make key (OpenAiAccessConfirm)."),
         new("OpenAiAccessCancel", "Share › Give someone access", "Cancel: only closes the form without making a key."),
         new("OpenAiInviteDone", "Share › Ready to send", "Done: only closes the window that showed a new key once."),
-        // Needs --allow-ui-effects: OpenAiSaveAddress (saves the shared address), OpenAiAccessConfirm (makes a key), OpenAiInviteCopy (puts the key on the clipboard),
+        // Needs --allow-ui-effects: OpenAiFrontDoorOpen and OpenAiFrontDoorClose (run martlet-host exposure --front-door on a host and restart its gateway),
+        // OpenAiSaveAddress (saves the shared address), OpenAiAccessConfirm (makes a key), OpenAiInviteCopy (puts the key on the clipboard),
         // OpenAiKeyPriority-<id> (changes a key's priority on every host) and OpenAiKeyRevoke-<id> (revokes a key).
         // Needs --allow-ui-effects: FriendShare-<host>-<key> and FriendStop-<host>-<key> (they change who may use a host).
         // Needs --allow-ui-effects: SharedHostsCheck, SharedHostCheck-<host>, SharedHostUse-<host>-<job> and SharedHostForget-<host> (Hosts shared with this PC).
@@ -863,7 +865,9 @@ internal static class AutomationPolicy
         new("NetworkStatus", "Share", "Shows the status of the network."),
         new("ShareSummary", "Share", "Shows how many computers are in your network, how many friends you share hosts with, how many people have a key to your language models and how many hosts are shared with this PC. Counts only."),
         new("OpenAiStatus", "Share › Share your language models", "Shows how many language models your hosts offer, how many people have a key, hosts that need an update and when it was checked. Counts, host IDs and fixed wording."),
-        new("OpenAiAddressStatus", "Share › Share your language models", "Shows the address people use and the host the proxy sends it to, or that no address is set. Never a key."),
+        new("OpenAiAddressStatus", "Share › Share your language models", "Shows the address people use and the front door the proxy sends it to, or that no address is set. Never a key."),
+        new("OpenAiFrontDoorStatus", "Share › Share your language models", "Shows the host and port the front door is open on and where it listens, or that there is none. Host IDs, ports and home addresses only."),
+        new("OpenAiCheckResult", "Share › Share your language models", "Shows what the saved address answered to Check address: works, the gateway's port, the proxy, no certificate or nothing. Addresses and fixed wording."),
         new("OpenAiAddressProblem", "Share › Share your language models", "Shows why a typed address can't be saved. Fixed wording."),
         new("OpenAiHomeAddresses", "Share › Share your language models", "Shows each host's home address of the endpoint. Addresses and host IDs only."),
         new("OpenAiModels", "Share › Share your language models", "Shows the language models your hosts offer, each with its hosts, such as qwen3:8b (gpu-box). Model names and host IDs only."),
@@ -872,6 +876,9 @@ internal static class AutomationPolicy
         new("OpenAiProxySteps", "Share › Show proxy setup", "Shows the steps to give your language models an address. Names, host IDs and home addresses only."),
         new("OpenAiProxyNginx", "Share › Show proxy setup", "Shows the Nginx configuration for the front door. Names and home addresses only; no key."),
         new("OpenAiProxyCaddy", "Share › Show proxy setup", "Shows the Caddy configuration for the front door. Names and home addresses only; no key."),
+        new("OpenAiProxyTailscale", "Share › Show setup", "Shows the Tailscale Funnel command for the front door's computer. A port only."),
+        new("OpenAiProxyManager", "Share › Show setup", "Shows the Nginx Proxy Manager fields for the front door. Names, home addresses and a port only; no key."),
+        new("OpenAiProxyCloudflare", "Share › Show setup", "Shows the Cloudflare Tunnel ingress rule for the front door. Names and home addresses only; no key."),
         // Never returned: OpenAiInviteText (it holds the new key) and OpenAiPublicAddress (an editable field).
         new("HostRunPairNote", "Run window", "Shows the fixed note on how long the pairing code works. Never the code."),
         new("HostRunPairCopy", "Run window", "Shows the Copy code button's label: Copy code, then Copied or Couldn't copy. Never the code. Clicking it puts the code on the clipboard, so that needs --allow-ui-effects."),

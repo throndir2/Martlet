@@ -71,15 +71,27 @@ public sealed class OpenAiEndpointTests
     }
 
     [Fact]
-    public void The_proxy_configs_send_only_v1_to_the_front_door()
+    public void The_setup_texts_send_the_whole_site_to_the_front_door()
     {
-        var nginx = OpenAiEndpoint.NginxConfig("llm.example.com", "https://192.168.1.20:9443");
-        Assert.Contains("location /v1/ {", nginx, StringComparison.Ordinal);
-        Assert.Contains("proxy_pass https://192.168.1.20:9443;", nginx, StringComparison.Ordinal);
+        // The whole site goes to the front door (its own port), which serves only its page and /v1; never the gateway's 9443.
+        var nginx = OpenAiEndpoint.NginxConfig("llm.example.com", "https://192.168.1.20:9445");
+        Assert.Contains("location / {", nginx, StringComparison.Ordinal);
+        Assert.Contains("proxy_pass https://192.168.1.20:9445;", nginx, StringComparison.Ordinal);
+        Assert.Contains("proxy_set_header Host $host;", nginx, StringComparison.Ordinal);
         Assert.Contains("proxy_buffering off;", nginx, StringComparison.Ordinal);
-        Assert.Contains("return 404;", nginx, StringComparison.Ordinal);
-        var caddy = OpenAiEndpoint.CaddyConfig("llm.example.com", "https://192.168.1.20:9443");
-        Assert.Contains("handle /v1/* {", caddy, StringComparison.Ordinal);
+        Assert.DoesNotContain("9443", nginx, StringComparison.Ordinal);
+        var caddy = OpenAiEndpoint.CaddyConfig("llm.example.com", "https://192.168.1.20:9445");
+        Assert.Contains("reverse_proxy https://192.168.1.20:9445", caddy, StringComparison.Ordinal);
+        Assert.Contains("flush_interval -1", caddy, StringComparison.Ordinal);
+        var manager = OpenAiEndpoint.ProxyManagerSteps("llm.example.com", "192.168.1.20", 9445);
+        Assert.Contains("Forward Hostname / IP:  192.168.1.20", manager, StringComparison.Ordinal);
+        Assert.Contains("Forward Port:           9445", manager, StringComparison.Ordinal);
+        Assert.Contains("proxy_buffering off;", manager, StringComparison.Ordinal);
+        Assert.Equal("tailscale funnel --bg https+insecure://127.0.0.1:9445", OpenAiEndpoint.TailscaleCommand(9445));
+        var tunnel = OpenAiEndpoint.CloudflareTunnelConfig("llm.example.com", "https://192.168.1.20:9445");
+        Assert.Contains("hostname: llm.example.com", tunnel, StringComparison.Ordinal);
+        Assert.Contains("noTLSVerify: true", tunnel, StringComparison.Ordinal);
+        Assert.Contains("service: http_status:404", tunnel, StringComparison.Ordinal);
         var invite = OpenAiEndpoint.Invite("Ana", "https://llm.example.com/v1", "martlet_x", ["qwen3:8b"]);
         Assert.Contains("Base URL: https://llm.example.com/v1", invite, StringComparison.Ordinal);
         Assert.Contains("\"model\":\"qwen3:8b\"", invite, StringComparison.Ordinal);

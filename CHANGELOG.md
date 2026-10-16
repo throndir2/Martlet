@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- A host can open a front door: a second port that shares only your language models and a simple web page, ready for Tailscale Funnel, Nginx Proxy Manager, Nginx, Caddy or a Cloudflare Tunnel. People sign in to the page with their key to see their models and how to connect. ([#919](https://github.com/throndir2/Martlet/pull/919))
+- Share › Share your language models gets Check address, which tells you whether your public address reaches the front door, and Show setup with the exact steps for each way to expose it. ([#919](https://github.com/throndir2/Martlet/pull/919))
 ### Fixed
 
 - The guide links in the README now open the Martlet Wiki, which is up to date and has new pages on App guides, Linux and Mac, sharing with friends, and accounts. ([#917](https://github.com/throndir2/Martlet/pull/917))
