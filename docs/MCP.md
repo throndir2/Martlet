@@ -6111,6 +6111,21 @@ Listening and Thinking, `tries` (the production `PoolRouting.Hosts` for that
 device; null without a route on a computer). Host and device IDs, provider and
 model names only; never a key.
 
+`external_endpoints_status` shows Devices › **Cloud providers and servers**
+(optional absolute `dataDirectory`, default the current user's) with the
+production `ExternalEndpoints`: `settings` and `mcpJson` (`none`, `loaded`,
+`unreadable` or `invalid`), `summary` (the card's status line) and `endpoints`,
+one for each cloud provider or server on your network that a saved choice sends
+work to: the Thinking, Listening and Speaking routes and *If Thinking fails* in
+`settings.json`, external Thinking pool members in `thinking-pool.json` (read
+without migrating or saving it), address and cloud members of every pool list
+in `pools.json` and `pools-local.json`, and HTTP MCP servers in `mcp.json`.
+Each has `id`, `name`, `kind` (`cloud` or `server`), `address` (scheme, host and
+port only; null for a cloud provider whose address Martlet doesn't know),
+`text` (the card's line) and `uses` (`purpose`, `page`, `model` or the MCP
+server's name, `on`). This PC (loopback) and paired computers are left out.
+Never a key; read-only.
+
 `work_sharing_check` rehearses the production planner and queue (`WorkQueue`)
 on the four-computer example (machines 1 and 3 companions with Chatterbox,
 machine 2 a companion with Deep thinking and no voice, machine 4 lip-sync and
@@ -8085,7 +8100,18 @@ thinking model (Gemma 4 12B) here.*). The **What your computers can run** card
 `CapacityTotals` (*Totals across 2 computers: 32 GB graphics memory, 80 GB
 memory, ...*) and `CapacityFits` (*Your computers could also run 2 more Thinking
 models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).*). All are
-read-only.
+read-only. The **Cloud providers and servers** card (`ExternalEndpointsCard`,
+`MainWindow.ExternalEndpoints.cs`) lists every endpoint outside this PC and the
+paired computers that a saved choice sends work to, from the production
+`ExternalEndpoints` (the same as `external_endpoints_status`; a host PC leaves
+out its saved Thinking, Listening and Speaking routes and the fallback).
+`ExternalEndpointsStatus` returns the count (*2 cloud providers and 1 server on
+your network. Each line says what Martlet uses it for.*, or *None. Martlet sends
+work only to this PC and your own computers.*), and one
+`ExternalEndpoint-<host[-port]>` per endpoint returns its name and line
+(*OpenRouter. Cloud provider at https://openrouter.ai. Used for Thinking
+(google/gemma-4-26b-a4b-it); Thinking pool (x-ai/grok-4.3, turned off).*).
+Addresses are scheme, host and port only; never a path or a key.
 
 `SelectedDevice` and `SelectedDeviceHealth`
 return the selected device's name and status. When a paired host is older
@@ -10658,7 +10684,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `long_talk_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `voices_people`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `memory_brief_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `voices_people`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `external_endpoints_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `memory_brief_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

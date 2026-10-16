@@ -1170,6 +1170,7 @@ public partial class MainWindow
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
         RenderNetworkCapacity(nodes);
+        RenderExternalEndpoints();
         RenderNetwork();
         RenderFriends();
         RenderSharedHosts();
