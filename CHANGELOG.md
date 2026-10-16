@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-10-16
+
 ### Added
 
 - Martlet keeps a callback list of the things worth bringing back from your conversation: what you're in the middle of, running jokes and things you said. It calls back to them later, like a friend who remembers what you said an hour ago. ([#928](https://github.com/throndir2/Martlet/pull/928))
