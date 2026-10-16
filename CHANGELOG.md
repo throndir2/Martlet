@@ -8,6 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Apps can ask for `martlet@any`, `martlet@fast` or `martlet@smart` instead of a model name. Martlet runs the request on a free model of that kind on any of your hosts, and the answer names the model that answered. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+
+### Changed
+
+- When your models are busy, a shared request now waits for a free one (up to 45 seconds, or 2 minutes when it streams) instead of being turned away at once. Your own conversations still come first and never wait for it. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+
 ## [0.83.0] - 2026-10-16
 
 ### Added

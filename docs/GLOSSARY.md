@@ -150,6 +150,8 @@ which has the pool's rules (`ThinkingJobBoard`).
 | The host a reverse proxy sends those requests to | front door (`OpenAiEndpointSettings.FrontDoorHostId`) | the host your proxy sends to | "gateway" in UI text |
 | The https address people put in their app | public address (`OpenAiEndpointSettings.PublicAddress`) | Address to give people | |
 | A request of the endpoint on a host's own model | outside job (`GatewayOutsideJob`, `BeginOutside`) | their requests | "friend" (a friend's computer is another thing) |
+| A model name that names a kind of model of the network, not one model | network model name (`OpenAiNetworkModels`: `martlet@any`, `martlet@fast`, `martlet@smart`) | the model names `martlet@any`, `martlet@fast`, `martlet@smart` | "alias", "virtual model" |
+| Where such a request waits for a free slot | the queue (`GatewayOutsideWaiter`, `EnqueueOutside`, `GatewayOpenAiQueue`) | waits for a free model | "retry" (the app's own try again after 429 is another thing) |
 | How such a request ranks against your work | priority (scope `equal-priority`) | Your Martlet first; Same priority as your background work | |
 
 See [Share your language models](OPENAI_ENDPOINT.md).

@@ -169,13 +169,14 @@ public sealed class OpenAiEndpointTests
             return Host.Client.SendAsync(request).AsTask();
         }
 
-        internal Task<HttpResponseMessage> PostAsync(string path, string? key, object body)
+        internal Task<HttpResponseMessage> PostAsync(string path, string? key, object body, params (string Name, string Value)[] headers)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, Host.Origin.CanonicalOrigin + path)
             {
                 Content = new StringContent(body as string ?? JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
             };
             if (key is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            foreach (var (name, value) in headers) request.Headers.Add(name, value);
             return Host.Client.SendAsync(request).AsTask();
         }
 
@@ -268,7 +269,8 @@ public sealed class OpenAiEndpointTests
         var models = await JsonAsync(await lab.GetAsync("/v1/models", lab.Shared.Token), HttpStatusCode.OK);
         Assert.Equal("list", models.GetProperty("object").GetString());
         var ids = models.GetProperty("data").EnumerateArray().Select(m => m.GetProperty("id").GetString()!).ToArray();
-        Assert.Equal(["gemma4:e4b", "qwen3:8b"], ids);
+        // The network model names that fit a model come first: gemma4:e4b is rated Fast, nothing Smart.
+        Assert.Equal(["martlet@any", "martlet@fast", "gemma4:e4b", "qwen3:8b"], ids);
         var one = await JsonAsync(await lab.GetAsync("/v1/models/qwen3%3A8b", lab.Shared.Token), HttpStatusCode.OK);
         Assert.Equal("model", one.GetProperty("object").GetString());
         Assert.Equal(["fixture-host"], one.GetProperty("martlet_hosts").EnumerateArray().Select(h => h.GetString()!));
@@ -423,17 +425,234 @@ public sealed class OpenAiEndpointTests
         Assert.Equal(HttpStatusCode.OK, think.StatusCode);
         await lab.Deep.FirstSent.Task.WaitAsync(Wait);
 
-        // The owner's think (pool work) uses card A: a key of rank "your Martlet first" is turned away from the other model on it.
-        using var refused = await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b"));
-        var busy = await ErrorAsync(refused, HttpStatusCode.TooManyRequests, "rate_limit_error");
-        Assert.Equal("model_busy", busy.GetProperty("code").GetString());
-        Assert.Equal("5", refused.Headers.RetryAfter?.ToString());
+        // The owner's think (pool work) uses card A: a request of a key of rank "your Martlet first" for the other model on it
+        // waits in the queue instead of being turned away, and holds no slot while it waits.
+        var waiting = lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b"));
+        await Task.Delay(500);
+        Assert.False(waiting.IsCompleted);
         Assert.Empty(lab.Conversation.Bodies("/api/chat"));
 
-        // A key with equal priority runs beside the owner's background work.
+        // A key with equal priority runs beside the owner's background work at once.
         var answer = await JsonAsync(await lab.PostAsync("/v1/chat/completions", lab.Equal.Token, Chat("gemma4:e4b")), HttpStatusCode.OK);
         Assert.Equal("Hello from the conversation model.", answer.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString());
+        Assert.False(waiting.IsCompleted);
+
+        // The owner's reply never waits behind the waiting request: it runs at once (its live turn stops the think).
+        Assert.Equal("Hello from the conversation model.", await lab.ReplyAsync().WaitAsync(Wait));
+
+        // With the owner's work done, the waiting request runs and says how long it waited.
+        using var queued = await waiting.WaitAsync(Wait);
+        var late = await JsonAsync(queued, HttpStatusCode.OK);
+        Assert.Equal("gemma4:e4b", late.GetProperty("model").GetString());
+        Assert.True(long.Parse(queued.Headers.GetValues("X-Martlet-Queued").Single(), CultureInfo.InvariantCulture) > 0);
+        // Equal priority's request, the owner's reply (streamed), then the request that waited.
+        Assert.Equal([false, true, false], lab.Conversation.Bodies("/api/chat").Select(b => b.GetProperty("stream").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task A_wait_is_bounded_in_time_and_places_and_a_forwarded_request_waits_only_when_asked()
+    {
+        await using var lab = await Lab.StartAsync(conversationGpus: [CardA], deepGpus: [CardA]);
+        lab.Host.Server.UseOpenAiQueue(new()
+        {
+            WholeWait = TimeSpan.FromSeconds(1), StreamWait = TimeSpan.FromSeconds(1), WaitingPerKey = 1,
+            KeepAliveAfter = TimeSpan.FromMilliseconds(200), KeepAliveEvery = TimeSpan.FromMilliseconds(200)
+        });
+        lab.Deep.Held = true;
+        using var think = await lab.ThinkAsync();
+        await lab.Deep.FirstSent.Task.WaitAsync(Wait);
+
+        // A key has one place in the queue here: one request waits, the other is turned away at once.
+        var one = lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b"));
+        var two = lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b"));
+        var first = await Task.WhenAny(one, two).WaitAsync(Wait);
+        using var fullResponse = await first;
+        var full = await ErrorAsync(fullResponse, HttpStatusCode.TooManyRequests, "rate_limit_error");
+        Assert.Contains("already wait", full.GetProperty("message").GetString(), StringComparison.Ordinal);
+        using var waitedResponse = await (first == one ? two : one).WaitAsync(Wait);
+        var waited = await ErrorAsync(waitedResponse, HttpStatusCode.TooManyRequests, "rate_limit_error");
+        Assert.Equal("model_busy", waited.GetProperty("code").GetString());
+        Assert.Contains("waiting 1 seconds", waited.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Equal("5", waitedResponse.Headers.RetryAfter?.ToString());
+
+        // A stream that waits too long started with comments, so it ends with an error event and [DONE].
+        using var streamed = await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b", stream: true));
+        Assert.Equal(HttpStatusCode.OK, streamed.StatusCode);
+        var (comments, _, error, done) = await ReadStreamAsync(streamed);
+        Assert.True(comments > 0);
+        Assert.Equal("model_busy", error);
+        Assert.True(done);
+
+        // A host a front door sent the request to answers busy at once, unless the front door says how long it may wait.
+        using var now = await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b"), (OpenAiEndpoint.ForwardedHeader, "front-door"));
+        var busy = await ErrorAsync(now, HttpStatusCode.TooManyRequests, "rate_limit_error");
+        Assert.DoesNotContain("waiting", busy.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Equal("owner", now.Headers.GetValues("X-Martlet-Busy").Single());
+        using var asked = await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b"),
+            (OpenAiEndpoint.ForwardedHeader, "front-door"), ("X-Martlet-Wait", "1"));
+        var late = await ErrorAsync(asked, HttpStatusCode.TooManyRequests, "rate_limit_error");
+        Assert.Contains("waiting 1 seconds", late.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Empty(lab.Conversation.Bodies("/api/chat"));
+    }
+
+    [Fact]
+    public async Task A_streamed_request_gets_keep_alive_comments_while_it_waits_and_then_its_answer()
+    {
+        await using var lab = await Lab.StartAsync(conversationGpus: [CardA], deepGpus: [CardA]);
+        lab.Host.Server.UseOpenAiQueue(new()
+        {
+            KeepAliveAfter = TimeSpan.FromMilliseconds(200), KeepAliveEvery = TimeSpan.FromMilliseconds(200)
+        });
+        lab.Deep.Held = true;
+        using var think = await lab.ThinkAsync();
+        await lab.Deep.FirstSent.Task.WaitAsync(Wait);
+
+        using var streamed = await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("gemma4:e4b", stream: true));
+        Assert.Equal(HttpStatusCode.OK, streamed.StatusCode);
+        Assert.Equal("text/event-stream", streamed.Content.Headers.ContentType?.MediaType);
+        Assert.True(streamed.Headers.Contains("X-Martlet-Queued"));
+        using var reader = new StreamReader(await streamed.Content.ReadAsStreamAsync());
+        var comments = 0;
+        while (comments < 2)
+            if ((await reader.ReadLineAsync().WaitAsync(Wait))!.StartsWith(':')) comments++;
+        Assert.Empty(lab.Conversation.Bodies("/api/chat"));
+
         lab.Deep.Release();
+        var text = new StringBuilder();
+        string? model = null;
+        var done = false;
+        while (await reader.ReadLineAsync().WaitAsync(Wait) is { } line)
+        {
+            if (!line.StartsWith("data: ", StringComparison.Ordinal)) continue;
+            if (line == "data: [DONE]") { done = true; break; }
+            var chunk = JsonDocument.Parse(line[6..]).RootElement;
+            Assert.False(chunk.TryGetProperty("error", out _));
+            model ??= chunk.GetProperty("model").GetString();
+            foreach (var choice in chunk.GetProperty("choices").EnumerateArray())
+                if (choice.GetProperty("delta").TryGetProperty("content", out var piece)) text.Append(piece.GetString());
+        }
+        Assert.True(done);
+        Assert.Equal("Hello from the conversation model.", text.ToString());
+        Assert.Equal("gemma4:e4b", model);
+    }
+
+    [Fact]
+    public async Task Network_model_names_run_on_a_free_model_of_their_rating_and_name_it_in_the_answer()
+    {
+        await using var lab = await Lab.StartAsync(conversationGpus: [CardA], deepGpus: [CardB]);
+        var models = await JsonAsync(await lab.GetAsync("/v1/models", lab.Shared.Token), HttpStatusCode.OK);
+        var entries = models.GetProperty("data").EnumerateArray().ToDictionary(m => m.GetProperty("id").GetString()!);
+        Assert.Equal(["gemma4:e4b", "qwen3:8b"], entries["martlet@any"].GetProperty("martlet_models").EnumerateArray()
+            .Select(m => m.GetString()!).Order(StringComparer.Ordinal));
+        Assert.Equal(["gemma4:e4b"], entries["martlet@fast"].GetProperty("martlet_models").EnumerateArray().Select(m => m.GetString()!));
+        Assert.Equal(["fixture-host"], entries["martlet@fast"].GetProperty("martlet_hosts").EnumerateArray().Select(m => m.GetString()!));
+        Assert.False(entries.ContainsKey("martlet@smart"));
+        var one = await JsonAsync(await lab.GetAsync("/v1/models/martlet%40fast", lab.Shared.Token), HttpStatusCode.OK);
+        Assert.Equal("martlet@fast", one.GetProperty("id").GetString());
+
+        // martlet@any takes the first free model (the pool's first); its answer names the real model.
+        var any = await JsonAsync(await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("martlet@any")), HttpStatusCode.OK);
+        Assert.Equal("qwen3:8b", any.GetProperty("model").GetString());
+        var fast = await JsonAsync(await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("martlet@fast")), HttpStatusCode.OK);
+        Assert.Equal("gemma4:e4b", fast.GetProperty("model").GetString());
+        Assert.Equal("gemma4:e4b", lab.Conversation.Bodies("/api/chat").Single().GetProperty("model").GetString());
+
+        // While the owner's think uses qwen3:8b, martlet@any runs at once on the free gemma4:e4b instead of waiting.
+        lab.Deep.Held = true;
+        using var think = await lab.ThinkAsync();
+        await lab.Deep.FirstSent.Task.WaitAsync(Wait);
+        using var freeResponse = await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("martlet@any"));
+        var free = await JsonAsync(freeResponse, HttpStatusCode.OK);
+        Assert.Equal("gemma4:e4b", free.GetProperty("model").GetString());
+        Assert.False(freeResponse.Headers.Contains("X-Martlet-Queued"));
+        lab.Deep.Release();
+
+        // No model is rated Smart, and the chat names can't make embeddings: both are refused clearly.
+        var smart = await ErrorAsync(await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("martlet@smart")),
+            HttpStatusCode.NotFound, "not_found_error");
+        Assert.Equal("model_not_found", smart.GetProperty("code").GetString());
+        Assert.Contains("rated smart", smart.GetProperty("message").GetString(), StringComparison.Ordinal);
+        await ErrorAsync(await lab.GetAsync("/v1/models/martlet%40smart", lab.Shared.Token), HttpStatusCode.NotFound, "not_found_error");
+        var noEmbedder = await ErrorAsync(await lab.PostAsync("/v1/embeddings", lab.Shared.Token, new { model = "martlet@any", input = "hi" }),
+            HttpStatusCode.NotFound, "not_found_error");
+        Assert.Contains("embedding model", noEmbedder.GetProperty("message").GetString(), StringComparison.Ordinal);
+        var chatName = await ErrorAsync(await lab.PostAsync("/v1/embeddings", lab.Shared.Token, new { model = "martlet@fast", input = "hi" }),
+            HttpStatusCode.BadRequest, "invalid_request_error");
+        Assert.Equal("model", chatName.GetProperty("param").GetString());
+        Assert.Empty(lab.Deep.Bodies("/api/embed"));
+        Assert.Empty(lab.Conversation.Bodies("/api/embed"));
+    }
+
+    [Fact]
+    public async Task Martlet_any_embeds_only_with_an_embedding_model_and_chats_only_with_a_chat_model()
+    {
+        await using var lab = await Lab.StartAsync(deepModel: "nomic-embed-text:latest");
+        var embedding = await JsonAsync(await lab.PostAsync("/v1/embeddings", lab.Shared.Token, new { model = "martlet@any", input = "hello" }),
+            HttpStatusCode.OK);
+        Assert.Equal("nomic-embed-text:latest", embedding.GetProperty("model").GetString());
+        Assert.Equal("nomic-embed-text:latest", lab.Deep.Bodies("/api/embed").Single().GetProperty("model").GetString());
+        // The embedding model's route comes first (the pool's), but a chat never runs on it.
+        var chat = await JsonAsync(await lab.PostAsync("/v1/chat/completions", lab.Shared.Token, Chat("martlet@any")), HttpStatusCode.OK);
+        Assert.Equal("gemma4:e4b", chat.GetProperty("model").GetString());
+        Assert.Empty(lab.Deep.Bodies("/api/chat"));
+    }
+
+    [Fact]
+    public async Task A_network_model_name_runs_on_another_hosts_model_and_waits_in_that_hosts_queue()
+    {
+        await using var front = await Lab.StartAsync("front-door", conversationModel: "alpha:1b", deepModel: "alpha-think:2b");
+        await using var gpu = await Lab.StartAsync("gpu-box", conversationModel: "beta:7b", deepModel: "beta-think:32b", keys: front.Keys);
+        gpu.Share(front.Shared, front.Equal);
+        front.Host.Server.UseOpenAiPeers(() =>
+            [(gpu.Host.Identity.HostId, gpu.Host.Origin.CanonicalOrigin, gpu.Host.Identity.SpkiFingerprint)]);
+
+        var models = await JsonAsync(await front.GetAsync("/v1/models", front.Shared.Token), HttpStatusCode.OK);
+        var entries = models.GetProperty("data").EnumerateArray().ToDictionary(m => m.GetProperty("id").GetString()!);
+        Assert.Equal(["beta-think:32b"], entries["martlet@smart"].GetProperty("martlet_models").EnumerateArray().Select(m => m.GetString()!));
+        Assert.Equal(["gpu-box"], entries["martlet@smart"].GetProperty("martlet_hosts").EnumerateArray().Select(m => m.GetString()!));
+
+        // The front door has no Smart model: it sends the request to the GPU box with the real model's name.
+        using var sent = await front.PostAsync("/v1/chat/completions", front.Shared.Token, Chat("martlet@smart"));
+        var answer = await JsonAsync(sent, HttpStatusCode.OK);
+        Assert.Equal("beta-think:32b", answer.GetProperty("model").GetString());
+        Assert.Equal("gpu-box", sent.Headers.GetValues("X-Martlet-Host").Single());
+        Assert.Equal("beta-think:32b", gpu.Deep.Bodies("/api/chat").Single().GetProperty("model").GetString());
+
+        // While the GPU box's owner thinks on its Smart model, the request waits in the GPU box's queue and runs after.
+        gpu.Deep.Held = true;
+        using var think = await gpu.ThinkAsync();
+        await gpu.Deep.FirstSent.Task.WaitAsync(Wait);
+        var waiting = front.PostAsync("/v1/chat/completions", front.Shared.Token, Chat("martlet@smart"));
+        await Task.Delay(500);
+        Assert.False(waiting.IsCompleted);
+        gpu.Deep.Release();
+        using var queued = await waiting.WaitAsync(Wait);
+        var late = await JsonAsync(queued, HttpStatusCode.OK);
+        Assert.Equal("beta-think:32b", late.GetProperty("model").GetString());
+        Assert.Equal("gpu-box", queued.Headers.GetValues("X-Martlet-Host").Single());
+        Assert.True(long.Parse(queued.Headers.GetValues("X-Martlet-Queued").Single(), CultureInfo.InvariantCulture) > 0);
+        Assert.Empty(front.Deep.Bodies("/api/chat"));
+        Assert.Empty(front.Conversation.Bodies("/api/chat"));
+    }
+
+    /// <summary>Reads a stream to its end: its SSE comments, its text, the code of an error event and whether [DONE] came.</summary>
+    private static async Task<(int Comments, string Text, string? Error, bool Done)> ReadStreamAsync(HttpResponseMessage response)
+    {
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+        int comments = 0;
+        var text = new StringBuilder();
+        string? error = null;
+        while (await reader.ReadLineAsync().WaitAsync(Wait) is { } line)
+        {
+            if (line.StartsWith(':')) { comments++; continue; }
+            if (!line.StartsWith("data: ", StringComparison.Ordinal)) continue;
+            if (line == "data: [DONE]") return (comments, text.ToString(), error, true);
+            var chunk = JsonDocument.Parse(line[6..]).RootElement;
+            if (chunk.TryGetProperty("error", out var failure)) { error = failure.GetProperty("code").GetString(); continue; }
+            foreach (var choice in chunk.GetProperty("choices").EnumerateArray())
+                if (choice.GetProperty("delta").TryGetProperty("content", out var piece)) text.Append(piece.GetString());
+        }
+        return (comments, text.ToString(), error, false);
     }
 
     [Fact]

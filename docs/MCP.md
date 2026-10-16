@@ -2999,10 +2999,21 @@ native request; a streamed chat for the other host's model is sent on to it
 `authentication_error`), a `voice` key (403 `permission_error`), an unknown
 model (404 `model_not_found`) and `/martlet/v1/status` with an `openai` key
 (403) are refused; the owner's reply stops Ana's streamed request
-(`owner_needs_it`) and runs; and revoking Ana's key refuses her on both hosts
-while Ben's request still goes through. Loopback only; nothing is written to
-disk or the credential vault. It does not cover a real model, a real reverse
-proxy with a certificate, or a second PC.
+(`owner_needs_it`) and runs; while the owner's reply holds the front door's
+model, `martlet@any` runs at once on the other host's free model (its
+`model` names it), and two of Ana's requests for the front door's model wait
+in the queue with the production limits (her stream gets an SSE comment after
+5 seconds) and run once the reply ends (`X-Martlet-Queued`); and revoking
+Ana's key refuses her on both hosts while Ben's request still goes through.
+Before the owner-first step it also checks the [network model
+names](OPENAI_ENDPOINT.md#network-model-names): `GET /v1/models` lists
+`martlet@any` (both models) and `martlet@fast` (the front door's `1b` model)
+with their `martlet_models` and no `martlet@smart`; a chat for
+`martlet@fast` runs on the front door's model and its answer names it;
+`martlet@smart` gets 404 `model_not_found` and `martlet@fast` on
+`/v1/embeddings` gets 400 `invalid_request_error`. Loopback only; nothing is
+written to disk or the credential vault. It does not cover a real model, a
+real reverse proxy with a certificate, or a second PC.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways

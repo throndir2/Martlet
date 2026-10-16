@@ -133,6 +133,9 @@ public sealed class GatewayServer
     internal void UseOpenAiPeers(Func<IReadOnlyList<(string HostId, string Origin, string Spki)>> peers) =>
         application.OpenAiPeers = () => peers().Select(p => new GatewayOpenAiPeer(p.HostId, p.Origin, p.Spki)).ToArray();
 
+    /// <summary>For tests: the limits of this host's OpenAI-compatible queue.</summary>
+    internal void UseOpenAiQueue(GatewayOpenAiQueue limits) => application.OpenAiQueue = limits;
+
     /// <summary>For tests: this host's copy of the network's API keys.</summary>
     internal Martlet.Core.Access.ApiKeyList MergeApiKeys(Martlet.Core.Access.ApiKeyList keys) => application.ApiKeys.Merge(keys);
 
