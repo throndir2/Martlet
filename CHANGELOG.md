@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-10-16
+
 ### Added
 
 - You can add a NAS (TerraMaster, Synology or QNAP) as a host over SSH. Martlet finds its Docker, and it builds the host without git. Type the SSH port after the address when it isn't 22, for example `admin@192.168.1.9:9222`. ([#924](https://github.com/throndir2/Martlet/pull/924))

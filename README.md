@@ -156,12 +156,11 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.85.0
+## 🆕 What's new in 0.86.0
 
-- 🎲 **Let Martlet pick the model**: apps can ask for `martlet@any`, `martlet@fast` or `martlet@smart` instead of a model name, and Martlet runs the request on a free model of that kind on any of your hosts. The answer names the model that answered.
-- ⏳ **Busy models make requests wait, not fail**: when your models are busy, a shared request waits for a free one (up to 45 seconds, or 2 minutes when it streams) instead of being turned away at once.
-- 🥇 **Your conversations still come first**: your own requests never wait behind a shared one, and a shared request holds no model while it waits.
-- 🚪 **The front door page shows the new names too**, so the people you share with see which ones they can use.
+- 🗄️ **A NAS can be a host**: add a TerraMaster, Synology or QNAP NAS over SSH. Martlet finds its Docker and builds the host without git, so an always-on NAS can be your front door.
+- 🚪 **Open front door works again**: on the Share page, opening the front door on a host runs as it should.
+- ✏️ **Examples in empty boxes**: every box you type in shows a dimmed example while it is empty, so you can see what goes there.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
