@@ -386,29 +386,32 @@ internal sealed partial class GatewayHttpApplication
         // 2. Wait for a free slot: in this host's queue when it has such a model (asking the other hosts again now and then),
         // else in the queue of another host that has it. A host a front door sent the request to waits only as long as asked.
         var wait = forwarded ? ForwardedWait(context.Request, stream) : stream ? OpenAiQueue.StreamWait : OpenAiQueue.WholeWait;
+        var waitStarted = clock.GetTimestamp();
+        var waited = false;
         if (wait > TimeSpan.Zero)
         {
             if (here.Length > 0)
             {
+                waited = true;
                 if (await WaitHereAsync(request, here, reachable, authorization, wait).ConfigureAwait(false)) return;
             }
             else
             {
-                var waiting = clock.GetTimestamp();
                 foreach (var (peer, real) in reachable)
                 {
-                    var remaining = wait - clock.GetElapsedTime(waiting);
+                    var remaining = wait - clock.GetElapsedTime(waitStarted);
                     if (remaining < TimeSpan.FromSeconds(1)) break;
+                    waited = true;
                     var sent = await ForwardOpenAiAsync(request, peer, real, authorization, remaining, null).ConfigureAwait(false);
                     if (sent is null) return;
                     busy = Busier(busy, sent == "owner" ? "owner" : "busy");
                 }
             }
         }
-        var waited = wait > TimeSpan.Zero ? $" Martlet kept it waiting {wait.TotalSeconds:0} seconds for a free slot." : "";
+        var kept = waited ? $" Martlet kept it waiting {clock.GetElapsedTime(waitStarted).TotalSeconds:0} seconds for a free slot." : "";
         throw new OpenAiFailure(429, busy == "owner"
-            ? $"'{model}' is busy with its owner's own work right now.{waited} Martlet shares it when its owner doesn't need it; try again in a moment."
-            : $"'{model}' is busy right now.{waited} Try again in a moment.", "model_busy", null, 5);
+            ? $"'{model}' is busy with its owner's own work right now.{kept} Martlet shares it when its owner doesn't need it; try again in a moment."
+            : $"'{model}' is busy right now.{kept} Try again in a moment.", "model_busy", null, 5);
     }
 
     private static string Busier(string? busy, string next) => busy == "owner" || next == "owner" ? "owner" : next;
@@ -477,16 +480,29 @@ internal sealed partial class GatewayHttpApplication
                 }
                 if (there.Count > 0 && now >= ask)
                 {
-                    foreach (var (peer, real) in there.ToArray())
+                    // A slot given here first wins; while other hosts are asked, this request takes no slot here.
+                    if (inference.StepAway(waiter) is { } early)
                     {
-                        var sent = await ForwardOpenAiAsync(request, peer, real, authorization, TimeSpan.Zero, () =>
+                        job = early;
+                        break;
+                    }
+                    try
+                    {
+                        foreach (var (peer, real) in there.ToArray())
                         {
-                            // Another host took it: give up the place here (and a slot given in the meantime).
-                            left = true;
-                            inference.LeaveOutside(waiter)?.Dispose();
-                        }).ConfigureAwait(false);
-                        if (sent is null) return true;
-                        if (sent == "down") there.Remove((peer, real));
+                            var sent = await ForwardOpenAiAsync(request, peer, real, authorization, TimeSpan.Zero, () =>
+                            {
+                                // Another host took it: give up the place here.
+                                left = true;
+                                inference.LeaveOutside(waiter)?.Dispose();
+                            }).ConfigureAwait(false);
+                            if (sent is null) return true;
+                            if (sent == "down") there.Remove((peer, real));
+                        }
+                    }
+                    finally
+                    {
+                        if (!left) inference.StepBack(waiter);
                     }
                     ask = clock.GetElapsedTime(since) + limits.PeerRetry;
                 }

@@ -113,7 +113,7 @@ public sealed partial class GatewayInferenceRouteRegistry
                 if (registration.Admission.ReservedUntil > now)
                     throw new GatewayProtocolException("job.busy", OwnerDetail);
                 if (registration.Admission.Active >= registration.Route.MaximumConcurrency ||
-                    outsideWaiting.Any(w => w.Rank >= rank && w.Routes.Contains(registration)))
+                    outsideWaiting.Any(w => w.Rank >= rank && !w.Away && w.Routes.Contains(registration)))
                     throw new GatewayProtocolException("job.busy");
                 job = StartOutsideLocked(registration, principal, rank);
             }
@@ -214,13 +214,39 @@ public sealed partial class GatewayInferenceRouteRegistry
         }
     }
 
+    /// <summary>Keeps <paramref name="waiter"/>'s place in the queue but gives it no slot (and lets later requests take free
+    /// slots) while its handler asks other hosts, until <see cref="StepBack"/>. Returns the job it was given before (take it and
+    /// don't step away), else null.</summary>
+    internal GatewayOutsideJob? StepAway(GatewayOutsideWaiter waiter)
+    {
+        ArgumentNullException.ThrowIfNull(waiter);
+        lock (gate)
+        {
+            if (waiter.Job is { } job && !waiter.Taken)
+            {
+                waiter.Taken = true;
+                return job;
+            }
+            waiter.Away = true;
+            return null;
+        }
+    }
+
+    /// <summary>Lets <paramref name="waiter"/> get a slot again after <see cref="StepAway"/>.</summary>
+    internal void StepBack(GatewayOutsideWaiter waiter)
+    {
+        ArgumentNullException.ThrowIfNull(waiter);
+        lock (gate) waiter.Away = false;
+    }
+
     // Gives free slots to waiting requests: a higher rank first, then in the order they came; each takes the first of its routes
-    // that is free for its rank. Returns the requests given a slot, to wake outside the lock.
+    // that is free for its rank. A request whose handler asks other hosts now gets none. Returns the requests given a slot, to
+    // wake outside the lock.
     private List<GatewayOutsideWaiter> PumpOutsideLocked(DateTimeOffset now)
     {
         List<GatewayOutsideWaiter> granted = [];
         if (outsideWaiting.Count == 0 || closed) return granted;
-        foreach (var waiter in outsideWaiting.OrderByDescending(w => w.Rank).ThenBy(w => w.Order).ToArray())
+        foreach (var waiter in outsideWaiting.Where(w => !w.Away).OrderByDescending(w => w.Rank).ThenBy(w => w.Order).ToArray())
             foreach (var registration in waiter.Routes)
             {
                 if (!FreeForOutsideLocked(registration, waiter.Rank, now)) continue;
@@ -278,6 +304,8 @@ public sealed partial class GatewayInferenceRouteRegistry
         internal long Order { get; } = order;
         internal GatewayOutsideJob? Job { get; set; }
         internal bool Taken { get; set; }
+        /// <summary>Its handler asks other hosts now: it keeps its place but gets no slot.</summary>
+        internal bool Away { get; set; }
         internal TaskCompletionSource Granted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
