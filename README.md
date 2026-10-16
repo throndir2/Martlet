@@ -156,12 +156,12 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.83.0
+## 🆕 What's new in 0.84.0
 
-- 🏠 **Your hosts are found again after a restart**: when a computer gets a new address from your router, Martlet finds it by itself, checks its key and keeps using the same pairing. You don't have to reserve addresses in your router.
-- 🖥️ **A Windows host PC moves its host service** to its new address by itself.
-- 🔑 **Managing a Linux host over SSH keeps working** after its address changes, also when two computers swap addresses.
-- 🚀 **A Linux host starts even when its network is late** or gives it another address at boot.
+- 🚪 **A front door for your language models**: one of your hosts can open a second port that shares only your models and a simple web page, so people you give a key to can use them from anywhere.
+- 🌐 **Easy to put on the internet**: Show setup gives the exact steps for Tailscale Funnel, Nginx Proxy Manager, Nginx, Caddy or a Cloudflare Tunnel, and Check address tells you if your address works.
+- 🔑 **A page for the people you share with**: they sign in with their key to see which models they can use and how to connect their app. Everyone else sees only that your Martlet is online.
+- 📖 **The guide links open the Martlet Wiki**, with new pages on app guides, Linux and Mac, sharing with friends, and accounts.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
