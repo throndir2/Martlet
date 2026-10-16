@@ -554,6 +554,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     // What Martlet said lately (replies, remarks, reactions; never a [pass]), each with when, so what it says on its own can check
     // whether something is worth saying again (SaidLately). In memory only, forgotten with the conversation.
     private readonly SaidLately saidLately = new();
+    // The callback list the Callback list check-in writes after each reply (CallbackList): things worth bringing back later, which
+    // Think ahead and Quiet moments read. In memory only, forgotten with the conversation.
+    private readonly CallbackList callbacks = new();
     // Remembering runs after a reply on its own text-only runtime, one exchange at a time, so it never delays the next turn.
     private readonly Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory;
     private readonly ConversationCredentialSource captureCredentials;
@@ -1225,6 +1228,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         context.Clear();
         saidLately.Clear();
+        callbacks.Clear();
         heardLately.Clear();
         lastKept = null;
         lastCache = null;
@@ -1257,6 +1261,17 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         lock (gate) return saidLately.Recent(now);
     }
+
+    /// <summary>The conversation's callback list for a check-in, oldest first, each with when it came up. In memory only.</summary>
+    internal IReadOnlyList<Callback> RecentCallbacks(DateTimeOffset now) => callbacks.Recent(now);
+
+    /// <summary>The callback list's version: it goes up when the conversation is forgotten.</summary>
+    internal int CallbackVersion => callbacks.Version;
+
+    /// <summary>Writes the callback list again with what the Callback list check-in answered, unless the conversation was
+    /// forgotten since <paramref name="version"/>: then nothing changes and it returns null.</summary>
+    internal IReadOnlyList<Callback>? KeepCallbacks(IReadOnlyList<string> items, int version) =>
+        callbacks.Keep(items, clock.GetLocalNow(), version);
 
     // What a request Martlet makes on its own says in its notes about what it said lately (null: nothing, or the prompt is
     // emptied), and how many things that is.

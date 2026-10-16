@@ -67,9 +67,9 @@ public static partial class CheckIns
 {
     public const string Welcome = "welcome", Unanswered = "unanswered", Others = "others";
     /// <summary>Every fact Martlet offers.</summary>
-    public const CheckInFacts KnownFacts = (CheckInFacts)((1 << 15) - 1);
+    public const CheckInFacts KnownFacts = (CheckInFacts)((1 << 16) - 1);
     /// <summary>Every condition Martlet offers.</summary>
-    public const CheckInConditions KnownConditions = (CheckInConditions)((1 << 19) - 1);
+    public const CheckInConditions KnownConditions = (CheckInConditions)((1 << 20) - 1);
     public const int DefaultFromHour = 8, DefaultUntilHour = 22;
     /// <summary>How many runs an hour a check-in may be held to: no limit, or 1 to 12.</summary>
     public static IReadOnlyList<int> MostPerHourChoices { get; } = [0, 1, 2, 3, 4, 6, 12];
@@ -77,6 +77,8 @@ public static partial class CheckIns
     public static TimeSpan SignalWindow => TimeSpan.FromMinutes(5);
     /// <summary>How long Martlet's question waits for an answer before Unanswered question may follow up.</summary>
     public static TimeSpan UnansweredAfter => TimeSpan.FromMinutes(2);
+    /// <summary>How long the conversation must be quiet before Quiet moments may pick it back up.</summary>
+    public static TimeSpan LullAfter => TimeSpan.FromMinutes(3);
     /// <summary>A question older than this is let go.</summary>
     public static TimeSpan UnansweredWithin => TimeSpan.FromMinutes(30);
     /// <summary>How long a voice Martlet heard counts as here.</summary>
@@ -93,6 +95,7 @@ public static partial class CheckIns
         if (when.HasFlag(CheckInConditions.SomeoneElse) && OthersHere(state).Count == 0) return "Martlet heard nobody else lately";
         var question = when.HasFlag(CheckInConditions.Unanswered) ? LastQuestion(state) : null;
         if (when.HasFlag(CheckInConditions.Unanswered) && question is null) return "Martlet's last remark didn't ask anything";
+        if (when.HasFlag(CheckInConditions.Lull) && state.Callbacks.Count == 0) return "the callback list is empty";
         if (now) return null;
         if (when.HasFlag(CheckInConditions.Between) && !InHours(checkIn.FromHour, checkIn.UntilHour, state.Now.Hour))
             return $"it runs only between {Clock(checkIn.FromHour)} and {Clock(checkIn.UntilHour)}";
@@ -119,6 +122,14 @@ public static partial class CheckIns
             if (asked < UnansweredAfter) return $"it gives you {Reminders.Span(UnansweredAfter)} to answer";
             if (state.Quiet is { } quiet && quiet + TimeSpan.FromSeconds(30) < asked) return "the conversation went on after the question";
             if (state.Away is { } away && away > UnansweredAfter) return "you aren't at the PC";
+        }
+        if (when.HasFlag(CheckInConditions.Lull))
+        {
+            if (state.Quiet is not { } quiet || quiet < LullAfter) return $"it waits for {Reminders.Span(LullAfter)} of quiet";
+            if (quiet > PromiseWindow) return $"the conversation has been quiet for more than {Reminders.Span(PromiseWindow)}";
+            if (state.Away is { } gone && gone > UnansweredAfter) return "you aren't at the PC";
+            if (last is not null && last.At > state.Now - quiet) return "it already picked this quiet spell up";
+            if (LastQuestion(state) is not null) return "Martlet's last remark asked something (Unanswered question follows up on it)";
         }
         return null;
     }

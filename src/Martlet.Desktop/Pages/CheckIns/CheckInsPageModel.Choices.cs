@@ -54,7 +54,11 @@ internal sealed partial class CheckInsPageModel
             $"What always listening heard you say in the last {CheckIns.HeardWindow.TotalMinutes:0} minutes, oldest first, each " +
             "with when, who spoke (Voice ID), other voices, people talking over each other, lines this PC played with it, and " +
             "whether Martlet answered or stayed quiet; then whether Martlet holds back now while you talk to someone else. " +
-            "Placeholder: {heard}.")
+            "Placeholder: {heard}."),
+        (CheckInFacts.Callbacks, "The callback list",
+            $"The few things from this conversation worth bringing back later (at most {CallbackList.MaximumItems}): what you're " +
+            "in the middle of, running jokes, things you said in your own words and facts that fit a tease, each with when it " +
+            "came up. The Callback list check-in writes it after each reply. Placeholder: {callbacks}.")
     ];
 
     internal static readonly (CheckInConditions Condition, string Label, string Help)[] ConditionChoices =
@@ -100,7 +104,11 @@ internal sealed partial class CheckInsPageModel
             "Thinking pool."),
         (CheckInConditions.SomeoneElse, "Someone else spoke",
             $"It waits until Martlet heard a voice that isn't yours in the last {CheckIns.PeopleWindow.TotalMinutes:0} minutes " +
-            "(Voice ID), since it last ran.")
+            "(Voice ID), since it last ran."),
+        (CheckInConditions.Lull, "The conversation went quiet",
+            $"It waits until nothing was said for {CheckIns.LullAfter.TotalMinutes:0} minutes (but not more than " +
+            $"{CheckIns.PromiseWindow.TotalMinutes:0}), you're at the PC, the callback list has something and Martlet's last " +
+            "remark didn't ask you something. It runs once in each quiet spell.")
     ];
 
     // What can start a check-in at once, in the order of its It starts when boxes.
@@ -138,6 +146,7 @@ internal sealed partial class CheckInsPageModel
         (CheckInOutcome.Context, "Adds to what Martlet knows"),
         (CheckInOutcome.Plan, "Thinks ahead for Martlet's next reply"),
         (CheckInOutcome.HoldBack, "Martlet holds back while you talk to someone else"),
+        (CheckInOutcome.Callbacks, "Keeps Martlet's callback list"),
         (CheckInOutcome.EmotesOff, "Turns off the emotes it names"),
         (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual"),
         (CheckInOutcome.Tools, "Its tools act")
@@ -151,6 +160,8 @@ internal sealed partial class CheckInsPageModel
         "then, goes in the notes of your next message, once; it's dropped when another reply ends first. " +
         "Holds back: an ASIDE: line (you talk to someone else) makes Martlet stay quiet while that lasts, unless you talk to " +
         "it; BACK ends it, and so do a few quiet minutes. " +
+        "Keeps the callback list: CALLBACK: lines are the whole new list of things worth bringing back later, which Think ahead " +
+        "and Quiet moments read; KEEP leaves it and NONE empties it. " +
         "Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing. Its tools act: the tools it " +
         "calls (tick at least one set under It may use these tools) are what it does, and its answer only says what it did.";
@@ -158,7 +169,7 @@ internal sealed partial class CheckInsPageModel
     internal const string PlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {adult} (whether " +
         "Adult content is on: an explicit or a non-explicit line, from Companion › Prompts), {conversation}, " +
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
-        "{presence}, {touches}, {activity}, {people}, {away}, {exchange} and {heard}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
+        "{presence}, {touches}, {activity}, {people}, {away}, {exchange}, {heard} and {callbacks}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
     internal const string About = "A check-in is a short question that the Thinking pool answers for Martlet every few " +
         "minutes, with only the facts it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, " +

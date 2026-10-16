@@ -82,16 +82,18 @@ public sealed partial record PromptSettings : IContract
     }
 
     /// <summary>What closes the instructions of a reply to what the user typed or said, the same text every time, so the start
-    /// of every request stays the same and prompt caches keep it: the Short first sentence prompt when the reply is
-    /// <paramref name="spoken"/> and Companion › Replies › Short first sentence is on (<see cref="GenerationSettings.StartsShort"/>),
-    /// then the Reply length prompt last, where models weigh it most. Null when neither is sent. <paramref name="silent"/> is the
-    /// word the model answers to stay quiet.</summary>
+    /// of every request stays the same and prompt caches keep it: the Keep the conversation going prompt, then the Short first
+    /// sentence prompt when the reply is <paramref name="spoken"/> and Companion › Replies › Short first sentence is on
+    /// (<see cref="GenerationSettings.StartsShort"/>), then the Reply length prompt last, where models weigh it most. Null when
+    /// none is sent. <paramref name="silent"/> is the word the model answers to stay quiet.</summary>
     public static string? ReplyClosing(PromptSettings? settings, GenerationSettings? generation, bool spoken, string silent)
     {
+        var moves = Fill(settings, PromptCatalog.ConversationMoves);
         var first = spoken && GenerationSettings.StartsShort(generation)
             ? Fill(settings, PromptCatalog.ShortFirstSentence, ("silent", silent)) : null;
         var length = Fill(settings, PromptCatalog.ReplyLength);
-        return first is null ? length : length is null ? first : first + "\n\n" + length;
+        var parts = new[] { moves, first, length }.Where(part => part is not null).ToArray();
+        return parts.Length == 0 ? null : string.Join("\n\n", parts);
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\{([a-z_]+)\}", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]

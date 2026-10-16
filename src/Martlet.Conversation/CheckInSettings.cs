@@ -171,7 +171,7 @@ public sealed record CheckInSettings
     {
         ContractRules.Require(Enum.IsDefined(outcome),
             "A check-in reminds Martlet, has it bring something up, adds to what it knows, thinks ahead for its next reply, holds " +
-            "it back while you talk to someone else, turns off emotes, moves the eyes or lets its tools act.");
+            "it back while you talk to someone else, keeps its callback list, turns off emotes, moves the eyes or lets its tools act.");
         ContractRules.Require((facts & ~CheckIns.KnownFacts) == 0, "A check-in gets only the facts Martlet offers.");
         ContractRules.Require((conditions & ~CheckIns.KnownConditions) == 0, "A check-in waits only for the conditions Martlet offers.");
         ContractRules.Require(((int)needs & ~(int)(ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio)) == 0,

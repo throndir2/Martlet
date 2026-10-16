@@ -237,8 +237,10 @@ reads the entire conversation again before every reply (on a 12B model, about
   doesn't change from message to message: the persona (with its style when it
   has one), tools, voice tags, the smart home tools prompt, who-is-talking,
   always-listening, what-this-PC-plays, recording and picture prompts as each
-  message needs them, then, for a spoken reply, the *Short first sentence*
-  prompt, and the reply length last. A screen glance has its glance
+  message needs them, then, for a reply to your words, the *Keep the
+  conversation going* prompt ([Keep the conversation going](#keep-the-conversation-going)),
+  then, for a spoken reply, the *Short first sentence* prompt, and the reply
+  length last. A screen glance has its glance
   instructions there instead.
 - **The conversation so far** follows, each earlier message exactly as it was
   sent, with its notes, on a paired host too (its Ollama reuses the start of
@@ -460,7 +462,10 @@ prompt edited with `{remarks}` gets nothing there.
 
 The *Saying the same things* check-in reads the same list
 ([Check-ins](#check-ins)). When Martlet keeps repeating itself, a reminder
-goes in the notes of its next reply, a reply to you included.
+goes in the notes of its next reply, a reply to you included. A callback is
+not a repeat: bringing back something from earlier (a running joke, your own
+words) with a new twist, now and then, is good, and the check-in's prompt
+says so.
 
 Checked locally: `SaidLatelyTests`, `CheckInsTests` and `PromptSettingsTests`,
 the real controller with a fixture Thinking endpoint (`SaidLatelyDesktopTests`:
@@ -468,6 +473,48 @@ a look, a reply to what the PC played and a due reminder carry it with when;
 replies to you and to a touch don't; Refresh context and an emptied prompt
 send nothing), and MCP `said_lately_check`. A real model reading it is **NOT
 RUN**.
+
+## Keep the conversation going
+
+A good conversation partner refers back to what was said. It remembers what
+you said an hour ago, keeps a running joke alive and picks the talk up after a
+pause. A small model does not do this on its own: it sees only the end of the
+conversation and answers each message like an assistant. Martlet gives it
+three kinds of help. None of them adds a request before a reply, so the time
+to Martlet's first word does not grow.
+
+1. **How to talk.** Companion › Prompts › *Keep the conversation going* is in
+   the instructions of every reply to your words, just before *Short first
+   sentence* and *Reply length*: when you just chat, talk like a fun friend,
+   not an assistant; react to your exact words first; then add one thing of
+   its own (a take, a joke, a tease, a playful disagreement or a callback to
+   something said earlier); play along with running jokes; ask at most one
+   question, and not every time. It is the same text in every request, so
+   prompt caches keep it. A reply reads it from the cache after the first
+   one; only the first reply of a conversation reads its about 75 tokens
+   anew. Empty the prompt to send nothing.
+2. **The callback list.** After each reply, the *Callback list* check-in
+   writes the few things worth bringing back later
+   ([Callback list](#callback-list)).
+3. **One move for the next reply.** After each reply, *Think ahead* reads the
+   callback list with the end of the conversation and picks the one move the
+   next reply makes, with the exact words to bring back
+   ([Think ahead](#think-ahead)). When the conversation goes quiet, *Quiet
+   moments* may bring one thing from the list back
+   ([Quiet moments](#quiet-moments)).
+
+Over many conversations, remembering keeps the running jokes that you
+enjoyed, and the memory brief carries them
+([Memory](MEMORY.md#automatic-recall-and-remembering)). *Writing a
+character's personality* (Find a character) ends the personality with a short
+example dialogue: small models copy an example better than they follow a rule.
+
+Checked locally: `PromptSettingsTests`, `CheckInsTests` (the callback list,
+Think ahead, Quiet moments and the repeat check), MCP `check_ins_check` (steps
+*callback list*, *think ahead reads the callback list*, *quiet moments* and
+*prompts keep the conversation going*) and the desktop with `model_lab` and a
+check-ins fixture ([MCP](MCP.md#check-ins)). A real model that follows the
+prompts is **NOT RUN**.
 
 ## The Thinking pool
 
@@ -1888,10 +1935,10 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** The first five, How I react, Talking to someone else,
-Describe touches, Think ahead and Act on what was said are on by default. The
-three that wait for a signal (Welcome back, Unanswered question, Someone else
-is here) are off until you turn them on. The choices are this PC's own
+**Built-in check-ins.** The first five, How I react, Unanswered question,
+Quiet moments, Talking to someone else, Describe touches, Think ahead, Act on
+what was said and Callback list are on by default. Welcome back and Someone
+else is here, which wait for a signal, are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
 own character and runs its own conversation.
 
@@ -1904,11 +1951,13 @@ own character and runs its own conversation.
 | Saying the same things (`repeats`) | 10 min | Does the character keep saying the same things (the same remark, joke, question, opener or topic again and again, or something it said not long ago while nothing new happened)? [What it said lately](#what-you-said-lately), each with when (`10:05 PM (12 min ago)`), and the day and time. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | How I react (`reactions`) | After your touches, at most every 5 min | Did the character's feelings toward you change (it got angry, hurt or shy, or it warmed up)? Its personality, the end of the conversation and [how you touched it lately](#check-in-triggers). | Its [Touch reactions](#how-i-react) tools change how it reacts to your touches for a while. Its answer is only a short line for the log. |
 | Welcome back (`welcome`, off) | 30 min | You came back after 10 minutes or more away: should Martlet welcome you back? How long you were away and what happened meanwhile, what you do now, the personality. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
-| Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| Unanswered question (`unanswered`) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| Quiet moments (`lull`) | 10 min, at most 2 times an hour, 8 AM to 10 PM | The conversation has been quiet for 3 minutes and you're at the PC: pick it back up with one thing from the callback list, or let it be? The personality, the end of the conversation, the [callback list](#callback-list), what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own ([Quiet moments](#quiet-moments)). `OK` changes nothing. |
 | Talking to someone else (`aside`) | At most once a minute, right after always listening hears you | Are you talking to someone else, not to Martlet (someone in the room, a call on this PC, or a phone Martlet can't see)? What it heard you say in the last 10 minutes with who spoke and whether Martlet answered, the end of the conversation, what you do on this PC and the voices heard lately. It may call the [People tools](VOICES.md#people-tools) to look up who the voices are. | An `ASIDE:` line: Martlet [holds back](#talking-to-someone-else) while that lasts. `BACK` ends it. `OK` changes nothing. |
 | Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. It may call the [People tools](VOICES.md#people-tools) to look up who the voices are. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
 | Describe touches (`touches`) | At most once a minute, right after your touches end | What have you been doing to the character, told vividly as the story so far, true to its personality? How you touched it in the last 10 minutes, the end of the conversation, the personality, the emotes it shows and `{adult}` (explicit only while Adult content is on). | A `KNOW:` line goes with the next reply as [background it may draw on](#describe-touches). `OK` changes nothing. |
-| Think ahead (`ahead`) | At most once a minute, right after a reply ends | As the character, before you answer: how is the conversation going, what will you likely say next, and what does it want to say then? Its personality and the end of the conversation. | A `PLAN:` line, the character's [own thoughts ahead](#think-ahead), goes in the notes of the next message, unless another reply ends first. `OK` changes nothing. |
+| Think ahead (`ahead`) | At most once a minute, right after a reply ends | As the character, before you answer: how is the conversation going, what will you likely say next, and which one move does it make then (a callback, a tease, a question, a new topic), with the exact words to bring back? Its personality, the end of the conversation and the [callback list](#callback-list). | A `PLAN:` line, the character's [own thoughts ahead](#think-ahead), goes in the notes of the next message, unless another reply ends first. `OK` changes nothing. |
+| Callback list (`callbacks`) | At most once a minute, right after a reply ends | What from this conversation is worth bringing back later? The callback list now, each with when it came up, and what was said since it last ran. | `CALLBACK:` lines are the whole new [callback list](#callback-list). `KEEP` leaves it, `NONE` empties it. |
 
 **One flow for every check-in.** A built-in check-in is only data: a prompt,
 the facts it gets to know, the conditions it waits for and what its answer
@@ -1941,11 +1990,13 @@ built-in check-in can be recreated, and changed, as your own.
 | How I react | Its personality, the conversation, how you touched the character | A personality is active; it starts when your touches end (any touch trigger) |
 | Welcome back | What happened while you were away, what you are doing, its personality | You came back |
 | Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
+| Quiet moments | Its personality, the conversation, the callback list, what Martlet said in the last hour, what you are doing | The conversation went quiet, not on a call, only between 8 AM and 10 PM, at most 2 times an hour ([below](#quiet-moments)) |
 | Talking to someone else | What Martlet heard you say, the conversation, what you are doing, who is here; the People tools | Something new was said; it starts when you say something ([below](#talking-to-someone-else)) |
 | Someone else is here | Who is here, its personality; the People tools | Someone else spoke |
 | Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
-| Think ahead | Its personality, the conversation | You talked lately, something new was said; it starts when a reply ends ([below](#think-ahead)) |
+| Think ahead | Its personality, the conversation, the callback list | You talked lately, something new was said; it starts when a reply ends ([below](#think-ahead)) |
 | Act on what was said | The latest exchange (or every exchange since it last ran), reminders and background work | Something new was said; it starts when a reply ends ([below](#act-on-what-was-said)) |
+| Callback list | The latest exchange (or every exchange since it last ran), the callback list | Something new was said; it starts when a reply ends ([below](#callback-list)) |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
 check-ins, and the first one that may run starts. Only one runs at a time (a
@@ -1979,6 +2030,7 @@ check-in waits:
   | A song ended (`SongEnded`) | until a song Martlet sang played to its end since it last ran |
   | The script's output changed (`ScriptChanged`) | while it has no script. Its script runs at its pace, and when it prints the same as last time (the same hash), the run ends there without asking the Thinking pool (not for *Check now*) |
   | Someone else spoke (`SomeoneElse`) | until Martlet heard a voice that isn't yours (not linked to the account signed in here) in the last 10 minutes, since it last ran (Voice ID; with no voice linked to your account, two different voices) |
+  | The conversation went quiet (`Lull`) | until nothing was said for 3 minutes (but not more than 30), you used the PC in the last 2 minutes, the callback list has something and Martlet's last remark didn't ask you something; once in each quiet spell (*Check now* waits only for the callback list) |
 
   For a check-in's first run, "since it last ran" means in the last 5 minutes
   (`CheckIns.SignalWindow`). *Check now* skips the waits for a new signal, the
@@ -2088,17 +2140,23 @@ plans what to say next, true to its personality, and no reply waits for it.
    before Act on what was said, because its thoughts are worth something only
    until you answer.
 2. The member gets Companion › Prompts › *Check-in: think ahead*: the
-   personality and the end of the conversation. As the character, it thinks
-   about how the conversation goes (the mood, where it heads, what you seem to
-   want), what you will likely say or ask next, and what it wants to say
-   then: its take, a feeling, a joke, a question or a topic. It answers with
-   one `PLAN:` line in the first person, at most 200 characters, or `OK`.
+   personality, the end of the conversation and the [callback
+   list](#callback-list). As the character, it thinks about how the
+   conversation goes (the mood, where it heads, what you seem to want), what
+   you will likely say or ask next, and the one move it makes then: a
+   callback to something from the list or from earlier, a tease, a playful
+   disagreement, playing along with a joke and taking it one step further,
+   one question, or a new topic when this one runs dry. It names the exact
+   words or thing to bring back, so a small reply model can use them. It
+   answers with one `PLAN:` line in the first person, at most 240 characters,
+   or `OK`.
 3. The thoughts go on the context board as `check-in-ahead` for at most 10
    minutes (`CheckIns.PlanAge`). The next request takes them once, after your
    words, in Companion › Prompts › *Check-in: thoughts ahead for the next
    reply*: *Your own thoughts from just before this message (private; the
-   user may have said something else): ... Use them only where they fit, and
-   never mention them.*
+   user may have said something else): ... If they still fit what the user
+   said, make that move or bring that thing back, briefly and in your own
+   words; otherwise let them go. Never mention them.*
 4. Thoughts are about the message after the exchange they read. When another
    reply ends first, Martlet drops them: it stops a run that still thinks
    (*Check-ins: Think ahead stopped: another reply ended before its thoughts
@@ -2118,6 +2176,61 @@ floor stops it while you talk on shared hardware. With no pool member, it
 waits and replies go on as before. A reply that comes before its thoughts are
 ready simply doesn't get them. Turn it off, change its prompt or copy it as
 your own on its card.
+
+<a id="callback-list"></a>
+**Callback list.** The built-in check-in `callbacks` keeps the few things
+from this conversation worth bringing back later, the way a funny friend
+remembers what you said an hour ago. A small model sees only the end of the
+conversation; the list keeps older things within its reach.
+
+1. A reply ends, and Callback list starts on a Thinking pool member at most
+   once a minute, after Think ahead and Act on what was said, so neither
+   waits for it.
+2. The member gets Companion › Prompts › *Check-in: callback list*: the list
+   now, each item with when it came up (`- 9:37 PM (40 min ago): open - stuck
+   on the final boss`), and what was said since it last ran. It writes the
+   whole list again: at most 8 items, each one short line that starts with
+   its kind: `open` (something you are in the middle of or plan to do),
+   `joke` (a joke or bit you laughed at or played along with), `quote`
+   (something memorable you said, in your own words) or `fact` (something
+   that fits a later tease or question). It drops items that are done or
+   stale. It answers with `CALLBACK:` lines, `KEEP` (no change) or `NONE`
+   (empty the list).
+3. Martlet keeps the list in memory (`Martlet.Conversation.CallbackList`). An
+   item with the same words as before keeps when it first came up; a new one
+   came up now. Each item is at most 160 characters. The list is never saved,
+   logged or shown. Martlet forgets it with the conversation (Refresh context,
+   pause, lock, closing the talk window), and an answer about a conversation
+   forgotten meanwhile changes nothing. A list nobody wrote for two hours is
+   stale.
+4. Think ahead and Quiet moments read it (`{callbacks}`). Your own check-ins
+   can tick *The callback list* (`CheckInFacts.Callbacks`), and one whose
+   answer is *Keeps Martlet's callback list* (`CheckInOutcome.Callbacks`)
+   writes it like the built-in one.
+
+The list never goes into a reply's request itself, so a reply's request and
+the time to its first words stay as they were. `check_ins_status` says how
+many items it has (`desktop.callbacks.count`), never what they are.
+
+<a id="quiet-moments"></a>
+**Quiet moments.** The built-in check-in `lull` lets Martlet pick a quiet
+conversation back up, the way a friend does after a comfortable pause.
+
+1. It waits until nothing was said for 3 minutes (`CheckIns.LullAfter`), but
+   not more than 30, while you used this PC in the last 2 minutes and the
+   callback list has something. It waits while you're on a call, outside 8 AM
+   to 10 PM, and after it ran twice in the last hour. It runs once in each
+   quiet spell. When Martlet's last remark asked you something, it leaves
+   that to Unanswered question.
+2. The member gets Companion › Prompts › *Check-in: quiet moments*: the
+   personality, the end of the conversation, the callback list, what Martlet
+   said lately and what you seem to be doing. It answers with a `SAY:` line
+   that brings back one thing from the list with a fresh question, a tease
+   or a new thought, or `OK` when you seem busy, when Martlet already spoke up
+   and got no answer, or when nothing on the list is worth it.
+3. Martlet says it on its own as soon as it is free, like every `SAY:`.
+
+Turn it off or change it on its card like any built-in check-in.
 
 <a id="talking-to-someone-else"></a>
 **Talking to someone else.** Always listening hears everything you say, also

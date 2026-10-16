@@ -8,6 +8,17 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Martlet keeps a callback list of the things worth bringing back from your conversation: what you're in the middle of, running jokes and things you said. It calls back to them later, like a friend who remembers what you said an hour ago. ([#928](https://github.com/throndir2/Martlet/pull/928))
+- New check-in **Quiet moments**: when your chat goes quiet for a few minutes and you're still at the PC, Martlet may pick it back up with something from earlier. It stays quiet on calls, at night and after twice an hour. ([#928](https://github.com/throndir2/Martlet/pull/928))
+
+### Changed
+
+- Martlet chats more like a fun friend: it reacts to your words, adds a take, a tease or a callback, and plays along with running jokes. Think ahead now picks one such move for the next reply. ([#928](https://github.com/throndir2/Martlet/pull/928))
+- **Unanswered question** is now on by default, so Martlet follows up once, softly, when you didn't answer its question. ([#928](https://github.com/throndir2/Martlet/pull/928))
+- Martlet remembers the running jokes you enjoyed, so they come back in later conversations. A personality written with **Find a character** now ends with a short example dialogue. ([#928](https://github.com/throndir2/Martlet/pull/928))
+
 ## [0.87.0] - 2026-10-16
 
 ### Added
