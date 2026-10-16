@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -180,8 +181,9 @@ internal sealed class OpenAiInviteDialog : ThemedWindow
 /// the front door. Shows text only; changes nothing.</summary>
 internal sealed class OpenAiProxyDialog : ThemedWindow
 {
-    private OpenAiProxyDialog(string serverName, string? hostId, string upstreamHost, int port, bool open)
+    private OpenAiProxyDialog(string serverName, string? hostId, string upstreamHost, int port, bool open, string? publicAddress)
     {
+        var frontDoorOrigin = open ? $"https://{upstreamHost}:{port}" : null;
         SetResourceReference(StyleProperty, "AppWindowStyle");
         Title = "Martlet - Give your front door an address";
         Width = 780;
@@ -214,6 +216,7 @@ internal sealed class OpenAiProxyDialog : ThemedWindow
         root.Children.Add(steps);
         root.Children.Add(Config("Tailscale Funnel (run on the front door's computer)", "OpenAiProxyTailscale", OpenAiEndpoint.TailscaleCommand(port)));
         root.Children.Add(Config("Nginx Proxy Manager", "OpenAiProxyManager", OpenAiEndpoint.ProxyManagerSteps(serverName, upstreamHost, port)));
+        root.Children.Add(ProxyManagerRow(serverName, hostId, upstreamHost, port, open, publicAddress, frontDoorOrigin));
         root.Children.Add(Config("Nginx", "OpenAiProxyNginx", OpenAiEndpoint.NginxConfig(serverName, upstream)));
         root.Children.Add(Config("Caddy", "OpenAiProxyCaddy", OpenAiEndpoint.CaddyConfig(serverName, upstream)));
         root.Children.Add(Config("Cloudflare Tunnel (config.yml)", "OpenAiProxyCloudflare", OpenAiEndpoint.CloudflareTunnelConfig(serverName, upstream)));
@@ -223,6 +226,72 @@ internal sealed class OpenAiProxyDialog : ThemedWindow
         close.Click += (_, _) => DialogResult = true;
         root.Children.Add(close);
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 860 };
+    }
+
+    /// <summary>Set it up in Nginx Proxy Manager: finds NPM on the front door's computer, signs in once (nothing is saved), shows
+    /// what it would change or add, does it after the owner's yes, then checks the address.</summary>
+    private FrameworkElement ProxyManagerRow(string serverName, string? hostId, string upstreamHost, int port, bool open,
+        string? publicAddress, string? frontDoorOrigin)
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var button = new Button
+        {
+            Content = "Set it up in _Nginx Proxy Manager", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 4, 12, 4),
+            IsEnabled = open && publicAddress is not null
+        };
+        AutomationProperties.SetAutomationId(button, "OpenAiProxyManagerSetup");
+        AutomationProperties.SetName(button, "Sign in to Nginx Proxy Manager and point your address at the front door");
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+        status.SetResourceReference(StyleProperty, "Muted");
+        status.Text = !open ? "Open the front door first. Then Martlet can set up Nginx Proxy Manager for you."
+            : publicAddress is null ? "Save the address to give people first. Then Martlet can set up Nginx Proxy Manager for you."
+            : "Martlet signs in to Nginx Proxy Manager once, changes the site for this name if there is one (or adds it), and checks the address.";
+        AutomationProperties.SetAutomationId(status, "OpenAiProxyManagerStatus");
+        button.Click += async (_, _) =>
+        {
+            button.IsEnabled = false;
+            try { status.Text = await SetUpProxyManagerAsync(serverName, hostId ?? upstreamHost, upstreamHost, port, publicAddress!, frontDoorOrigin, status); }
+            catch (Exception error) when (error is InvalidOperationException or HttpRequestException or System.Text.Json.JsonException ||
+                error is TaskCanceledException)
+            {
+                status.Text = error is TaskCanceledException ? "Nginx Proxy Manager didn't answer in time." : error.Message;
+            }
+            finally { button.IsEnabled = true; }
+            ErrorLog.Info("Share: Nginx Proxy Manager: " + status.Text);
+        };
+        stack.Children.Add(button);
+        stack.Children.Add(status);
+        return stack;
+    }
+
+    private async Task<string> SetUpProxyManagerAsync(string serverName, string frontDoor, string upstreamHost, int port, string publicAddress,
+        string? frontDoorOrigin, TextBlock status)
+    {
+        using var http = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5), AllowAutoRedirect = false })
+        {
+            Timeout = TimeSpan.FromSeconds(60)
+        };
+        status.Text = $"Looking for Nginx Proxy Manager on {upstreamHost}...";
+        var found = ProxyManager.Address($"{upstreamHost}:81") is { } near && await ProxyManager.AnswersAsync(http, near, CancellationToken.None)
+            ? near.ToString().TrimEnd('/') : null;
+        var dialog = new HostInputDialog("Nginx Proxy Manager", "Sign in to Nginx Proxy Manager",
+            $"Martlet signs in once to send {serverName} to your front door ({frontDoorOrigin}). It doesn't save the email or password." +
+            (found is null ? "" : $"\n\nMartlet found Nginx Proxy Manager at {found}."), "Sign _in");
+        dialog.AddText("manager", "Nginx Proxy Manager's address", found ?? "", "Its admin page, usually port 81.", maxLength: 200);
+        dialog.AddText("email", "Email", "", maxLength: 200);
+        dialog.AddSecret("manager-password", "Password");
+        if (dialog.Ask(this) is not { } answers) return "Nginx Proxy Manager wasn't changed.";
+        var address = ProxyManager.Address(answers["manager"]) ?? throw new InvalidOperationException("Type Nginx Proxy Manager's address, for example http://192.168.1.20:81.");
+        var manager = new ProxyManager(http, address);
+        status.Text = $"Signing in to Nginx Proxy Manager at {address}...";
+        await manager.SignInAsync(answers["email"], answers["manager-password"], CancellationToken.None);
+        var plan = await manager.PlanAsync(serverName, upstreamHost, port, frontDoor, CancellationToken.None);
+        if (plan.Changes && !ConfirmationDialog.Confirm(this, plan.Text, "Nginx Proxy Manager",
+                yes: plan.Site is null ? "_Add it" : "_Change it", no: "_Cancel", questionId: "ProxyManagerQuestion"))
+            return "Nginx Proxy Manager wasn't changed. " + plan.Text;
+        var done = await manager.ApplyAsync(plan, upstreamHost, port, answers["email"], CancellationToken.None);
+        status.Text = done + " Checking the address...";
+        return done + " " + await FrontDoorCheck.RunAsync(publicAddress, frontDoorOrigin, CancellationToken.None);
     }
 
     private static FrameworkElement Config(string title, string id, string text)
@@ -241,6 +310,6 @@ internal sealed class OpenAiProxyDialog : ThemedWindow
         return stack;
     }
 
-    internal static void Show(Window owner, string serverName, string? hostId, string upstreamHost, int port, bool open) =>
-        new OpenAiProxyDialog(serverName, hostId, upstreamHost, port, open) { Owner = owner }.ShowDialog();
+    internal static void Show(Window owner, string serverName, string? hostId, string upstreamHost, int port, bool open, string? publicAddress) =>
+        new OpenAiProxyDialog(serverName, hostId, upstreamHost, port, open, publicAddress) { Owner = owner }.ShowDialog();
 }

@@ -54,7 +54,8 @@ dotnet /chosen/publish/Martlet.Gateway.Host.Linux.dll serve --config /chosen/pri
 
 An operator-supplied Linux x86_64 or arm64/glibc runtime with compatible .NET 10 and
 `Microsoft.AspNetCore.App` 10 is required. The first native custody candidate
-targets Ubuntu 24.04 and persistent local ext4. The process must use a stable
+targets Ubuntu 24.04 and persistent local ext4 or btrfs (a NAS such as TerraMaster
+or Synology keeps Docker's volumes on btrfs). The process must use a stable
 non-root UID and nonzero GID, matching real/effective UID and real/effective
 GID. Runtime/account/service installation is not performed by these commands.
 
@@ -178,7 +179,7 @@ clients, while Kestrel listens on the container's wildcard address. `published`
 is refused outside a container.
 
 The existing config parent and selected state parent must be current-UID-owned
-0700 directories on admitted ext4; ancestors are root/current-UID-owned, not
+0700 directories on admitted ext4 or btrfs; ancestors are root/current-UID-owned, not
 group/other writable, without ACLs or links. Config/approval must be regular,
 same-UID 0600 files with one link. Descriptor-relative no-follow reads hold
 and recheck ancestor/file identities, permissions, ACLs, mounts, bounded lengths

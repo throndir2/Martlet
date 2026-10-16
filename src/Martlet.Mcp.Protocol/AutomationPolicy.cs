@@ -255,6 +255,7 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: OpenAiFrontDoorOpen and OpenAiFrontDoorClose (run martlet-host exposure --front-door on a host and restart its gateway),
         // OpenAiSaveAddress (saves the shared address), OpenAiAccessConfirm (makes a key), OpenAiInviteCopy (puts the key on the clipboard),
         // OpenAiKeyPriority-<id> (changes a key's priority on every host) and OpenAiKeyRevoke-<id> (revokes a key).
+        // Needs --allow-ui-effects: OpenAiProxyManagerSetup (signs in to Nginx Proxy Manager and, after a yes, changes or adds a site there).
         // Needs --allow-ui-effects: FriendShare-<host>-<key> and FriendStop-<host>-<key> (they change who may use a host).
         // Needs --allow-ui-effects: SharedHostsCheck, SharedHostCheck-<host>, SharedHostUse-<host>-<job> and SharedHostForget-<host> (Hosts shared with this PC).
         new("LocalServersScan", "Companion › Thinking › This PC", "A model app you already use › Look again: only asks this PC's loopback ports which model apps answer (GET of their model lists); saves, prompts and starts nothing."),
@@ -878,6 +879,8 @@ internal static class AutomationPolicy
         new("OpenAiProxyCaddy", "Share › Show proxy setup", "Shows the Caddy configuration for the front door. Names and home addresses only; no key."),
         new("OpenAiProxyTailscale", "Share › Show setup", "Shows the Tailscale Funnel command for the front door's computer. A port only."),
         new("OpenAiProxyManager", "Share › Show setup", "Shows the Nginx Proxy Manager fields for the front door. Names, home addresses and a port only; no key."),
+        new("OpenAiProxyManagerStatus", "Share › Show setup", "Shows what Set it up in Nginx Proxy Manager found, changed or added, and the address check. Names, home addresses and ports only; never the email or password."),
+        new("ProxyManagerQuestion", "Share › Show setup › Nginx Proxy Manager", "Shows what Martlet would change or add in Nginx Proxy Manager, before the owner's yes. Names, home addresses and ports only."),
         new("OpenAiProxyCloudflare", "Share › Show setup", "Shows the Cloudflare Tunnel ingress rule for the front door. Names and home addresses only; no key."),
         // Never returned: OpenAiInviteText (it holds the new key) and OpenAiPublicAddress (an editable field).
         new("HostRunPairNote", "Run window", "Shows the fixed note on how long the pairing code works. Never the code."),

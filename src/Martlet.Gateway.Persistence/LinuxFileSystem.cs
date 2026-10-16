@@ -136,10 +136,18 @@ internal sealed class LinuxFileSystem : ILinuxFileSystem
         return false;
     }
 
+    /// <summary>Admits only a local, persistent, read-write ext4 or btrfs filesystem (a NAS such as TerraMaster or Synology keeps
+    /// Docker's volumes on btrfs), identified by its magic and by the mount record of the descriptor's own mount ID. ext4's
+    /// mount record must also name the descriptor's device; btrfs gives each subvolume its own device, which its mount record
+    /// doesn't show, so there the mount ID alone ties the two.</summary>
     public void VerifyFileSystem(int descriptor)
     {
-        if (FileSystemType(descriptor) != 0xef53)
-            throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
+        var name = FileSystemType(descriptor) switch
+        {
+            0xef53 => "ext4",
+            0x9123683e => "btrfs",
+            _ => throw Error(GatewayPersistenceFailure.UnsupportedPlatform)
+        };
         var identity = Stat(descriptor);
         var text = ReadProc($"{GetProcess()}/mountinfo", 1024 * 1024);
         try
@@ -151,8 +159,8 @@ internal sealed class LinuxFileSystem : ILinuxFileSystem
             if (matching.Length != 1) throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
             var halves = matching[0].Split(" - ", StringSplitOptions.None);
             var fields = halves[0].Split(' ');
-            if (halves.Length != 2 || halves[1].Split(' ')[0] != "ext4" || fields.Length < 6 ||
-                fields[2] != $"{identity.DeviceMajor}:{identity.DeviceMinor}" ||
+            if (halves.Length != 2 || halves[1].Split(' ')[0] != name || fields.Length < 6 ||
+                name == "ext4" && fields[2] != $"{identity.DeviceMajor}:{identity.DeviceMinor}" ||
                 !fields[5].Split(',').Contains("rw"))
                 throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
         }
