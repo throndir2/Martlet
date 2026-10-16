@@ -156,11 +156,12 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.87.0
+## 🆕 What's new in 0.88.0
 
-- 🗄️ **NAS hosts start**: a host on a TerraMaster or Synology NAS now starts, also when the NAS keeps Docker's data on btrfs.
-- 🔑 **Fewer questions when you add a computer**: Martlet uses your own SSH key once instead of asking for a password, and trusts a computer that Windows' OpenSSH already trusts.
-- 🌐 **Nginx Proxy Manager in one click**: Show setup points your address at the front door for you. It changes the site that is already there, keeps its certificate and checks the address.
+- 💬 **Callbacks like a friend**: Martlet keeps a short list of what's worth bringing back (what you're in the middle of, running jokes, things you said) and calls back to it later.
+- 🤫 **Quiet moments**: when your chat goes quiet and you're still at the PC, Martlet may pick it back up with something from earlier. Never on calls or at night.
+- 🎭 **More fun to talk to**: Martlet reacts to your words, adds a take, a tease or a callback, and plays along with running jokes. It remembers the jokes you enjoyed for next time.
+- ❓ **Unanswered question is on**: Martlet follows up once, softly, when you didn't answer its question.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
