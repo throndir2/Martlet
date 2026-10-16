@@ -7,6 +7,7 @@ using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 using Martlet.Home;
 using Martlet.Mcp.Client;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -111,10 +112,13 @@ public partial class MainWindow
             Text = homeAddressDraft ?? (saved.Address.Length > 0 ? saved.Address : HomeAssistantEndpoint.Example)
         };
         AutomationProperties.SetAutomationId(address, "SmartHomeAddress");
+        InputHint.SetText(address, HomeAssistantEndpoint.Example);
         address.TextChanged += (_, _) => homeAddressDraft = address.Text;
         var token = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(token, "Home Assistant long-lived access token");
         AutomationProperties.SetAutomationId(token, "SmartHomeToken");
+        // Once connected, the "Token saved" mark fills the empty box instead.
+        if (!connected) InputHint.SetText(token, "Paste the token from your Home Assistant profile");
         var tokenSavedMark = new TextBlock
         {
             Text = "••••••••  Token saved (type to replace)", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center,
@@ -336,6 +340,10 @@ public partial class MainWindow
         var username = Field("SmartHomeOwnerUser", new string(person.ToLowerInvariant().Where(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-').ToArray()));
         var password = Secret("SmartHomeOwnerPassword", "Owner password");
         var confirm = Secret("SmartHomeOwnerConfirm", "Repeat the owner password");
+        InputHint.SetText(name, "Alex");
+        InputHint.SetText(username, "alex");
+        InputHint.SetText(password, "Choose a password for Home Assistant");
+        InputHint.SetText(confirm, "Type the same password again");
         var control = new CheckBox
         {
             IsChecked = true, Margin = new Thickness(0, 10, 0, 0),

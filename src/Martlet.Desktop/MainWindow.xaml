@@ -1,5 +1,6 @@
 <local:ThemedWindow x:Class="Martlet.Desktop.MainWindow"
         xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet" Width="1240" Height="820" MinWidth="900" MinHeight="580"
@@ -458,7 +459,8 @@
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,6">
                                 <Label Content="_Find" Target="{Binding ElementName=DeviceSearch}" Padding="0,0,8,0" VerticalAlignment="Center"/>
                                 <TextBox x:Name="DeviceSearch" Width="220" MaxLength="100" VerticalAlignment="Center" TextChanged="DeviceSearch_Changed"
-                                         AutomationProperties.AutomationId="DeviceSearch" AutomationProperties.Name="Find a device by name, status or job"/>
+                                         AutomationProperties.AutomationId="DeviceSearch" AutomationProperties.Name="Find a device by name, status or job"
+                                         presentation:InputHint.Text="Search by name, status or job"/>
                             </StackPanel>
                             <WrapPanel x:Name="DeviceFilters" VerticalAlignment="Center" AutomationProperties.Name="Show devices"/>
                         </DockPanel>
@@ -1030,7 +1032,8 @@
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,6">
                             <Label Content="_Search" Target="{Binding ElementName=LogSearch}" Padding="0,0,8,0" VerticalAlignment="Center"/>
                             <TextBox x:Name="LogSearch" Width="220" TextChanged="LogSearch_Changed" MaxLength="200" VerticalAlignment="Center"
-                                     AutomationProperties.AutomationId="LogSearch" AutomationProperties.Name="Show only lines containing"/>
+                                     AutomationProperties.AutomationId="LogSearch" AutomationProperties.Name="Show only lines containing"
+                                     presentation:InputHint.Text="Search the log, e.g. Reply latency"/>
                         </StackPanel>
                         <WrapPanel>
                             <WrapPanel x:Name="LogLevelFilters" Margin="0,0,18,0" AutomationProperties.Name="Show lines of"/>
@@ -1138,7 +1141,8 @@
                                                 <Label Content="Color _code" Target="{Binding ElementName=CustomThemeHex}" Padding="0,0,0,4"/>
                                                 <TextBox x:Name="CustomThemeHex" Width="120" MaxLength="7" TextChanged="CustomThemeHex_Changed"
                                                          LostKeyboardFocus="CustomThemeHex_LostFocus" KeyDown="CustomThemeHex_KeyDown"
-                                                         AutomationProperties.AutomationId="CustomThemeHex" AutomationProperties.Name="Color code, #RRGGBB"/>
+                                                         AutomationProperties.AutomationId="CustomThemeHex" AutomationProperties.Name="Color code, #RRGGBB"
+                                                         presentation:InputHint.Text="#A52D64"/>
                                             </StackPanel>
                                         </StackPanel>
                                         <TextBlock x:Name="CustomThemeHexHint" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
@@ -1510,7 +1514,8 @@
                             <Button Style="{DynamicResource LinkButton}" Content="Open build.nvidia.com" HorizontalAlignment="Left" Margin="0,10,0,0"
                                     Click="WizardKeyOpen_Click" AutomationProperties.AutomationId="WizardKeyOpen"/>
                             <Label Content="_NVIDIA API key (starts with nvapi-)" Target="{Binding ElementName=WizardKeyBox}" Padding="0,14,0,4"/>
-                            <PasswordBox x:Name="WizardKeyBox" AutomationProperties.AutomationId="WizardKey" AutomationProperties.Name="NVIDIA API key"/>
+                            <PasswordBox x:Name="WizardKeyBox" AutomationProperties.AutomationId="WizardKey" AutomationProperties.Name="NVIDIA API key"
+                                         presentation:InputHint.Text="Paste your NVIDIA Build key (nvapi-…)"/>
                             <CheckBox x:Name="WizardKeyConsent" Margin="0,12,0,0" AutomationProperties.AutomationId="WizardKeyConsent">
                                 <TextBlock TextWrapping="Wrap"
                                            Text="Send what I say and Martlet's conversation to NVIDIA Build for Thinking. NVIDIA's terms apply; the free tier has limits."/>

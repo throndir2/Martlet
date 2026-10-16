@@ -6,6 +6,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Conversation;
 using Martlet.Core.Creations;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -117,6 +118,7 @@ public partial class MainWindow
         var name = Compact(new TextBox { Width = 120, MaxLength = MotionTools.MaximumNameCharacters });
         AutomationProperties.SetName(name, "Motion name");
         AutomationProperties.SetAutomationId(name, "CharacterMotionName");
+        InputHint.SetText(name, "cheer");
         var make = Compact(PageButton(motions.Busy ? "Making..." : "Make", () => MakeMotionFromPageAsync(describe.Text, name.Text, status).Forget(),
             id: "CharacterMotionMake"));
         make.IsEnabled = !motions.Busy;

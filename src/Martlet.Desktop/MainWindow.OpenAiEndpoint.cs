@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Access;
 using Martlet.Core.Contracts;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -215,6 +216,7 @@ public partial class MainWindow
         if (openAiAddressBox is null)
         {
             openAiAddressBox = new TextBox { MinWidth = 260, MaxLength = OpenAiEndpointSettings.MaximumAddressLength, VerticalAlignment = VerticalAlignment.Center };
+            InputHint.SetText(openAiAddressBox, "https://llm.example.com/v1");
             AutomationProperties.SetAutomationId(openAiAddressBox, "OpenAiPublicAddress");
             AutomationProperties.SetName(openAiAddressBox, "Address to give people, for example https://llm.example.com/v1");
             openAiFrontDoorChoice = new ComboBox { MinWidth = 160, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };

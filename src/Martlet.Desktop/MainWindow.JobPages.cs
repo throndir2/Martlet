@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -404,6 +405,7 @@ public partial class MainWindow
         var baseUrl = new TextBox { MaxLength = 2048, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
             Text = cloudRoute?.RouteType == SetupRouteType.ChatCompletions ? cloudRoute.Origin : "" };
         AutomationProperties.SetAutomationId(baseUrl, "SetupCloudBaseUrl");
+        InputHint.SetText(baseUrl, "https://llm.example.com/v1");
 
         var model = new ComboBox { MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(model, "Model");
@@ -411,6 +413,7 @@ public partial class MainWindow
         var modelText = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(modelText, "Model ID");
         AutomationProperties.SetAutomationId(modelText, "SetupCloudModelId-" + section);
+        InputHint.SetText(modelText, p.DefaultModel ?? "gemma4:e4b");
         var voice = new ComboBox { ItemsSource = OpenAiSpeechSynthesisCatalog.SupportedVoices, MinHeight = 30, MaxWidth = 420, MinWidth = 300,
             HorizontalAlignment = HorizontalAlignment.Left, SelectedItem = cloudRoute?.VoiceId is { } v && OpenAiSpeechSynthesisCatalog.SupportsVoice(v) ? v : OpenAiSpeechSynthesisCatalog.DefaultVoice };
         AutomationProperties.SetName(voice, "Voice");
@@ -462,10 +465,16 @@ public partial class MainWindow
             model.SelectedItem = catalog.Contains(value, StringComparer.Ordinal) ? value : defaultModel;
         }
         var keySaved = HasKey();
+        // The saved-key mark fills the empty box, so the example shows only while no key is saved.
+        var keyHint = p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? "Paste your NVIDIA Build key (nvapi-…)"
+            : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? "Paste your OpenRouter key (sk-or-v1-…)"
+            : p == CustomCloud ? "Paste the server's key, if it needs one"
+            : $"Paste your {p.Name} API key";
         void RefreshKeyMark()
         {
             using var entered = key.SecurePassword;
             keySavedMark.Visibility = keySaved && entered.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            InputHint.SetText(key, keySaved ? null : keyHint);
         }
         RefreshKeyMark();
         var keyStatus = Note(SetAside() ? $"Your {p.Name} key from before is still saved. Leave this empty to use it again, or paste a new key."

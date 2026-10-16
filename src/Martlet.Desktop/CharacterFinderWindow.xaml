@@ -1,5 +1,6 @@
 <local:ThemedWindow x:Class="Martlet.Desktop.CharacterFinderWindow"
         xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Style="{DynamicResource AppWindowStyle}" Title="Martlet - Find a character"
@@ -22,11 +23,11 @@
                     <Button x:Name="SearchButton" Content="_Search" Click="Search_Click" IsDefault="True" Style="{DynamicResource PrimaryButton}"
                             DockPanel.Dock="Right" MinWidth="100" Margin="8,0,0,0" AutomationProperties.AutomationId="CharacterFinderSearch"/>
                     <TextBox x:Name="QueryText" MaxLength="100" AutomationProperties.AutomationId="CharacterFinderQuery"
-                             AutomationProperties.Name="Who should Martlet be?"/>
+                             AutomationProperties.Name="Who should Martlet be?" presentation:InputHint.Text="Sherlock Holmes, or a cheerful space pirate"/>
                 </DockPanel>
                 <Label Content="_Notes (optional): where they are from, how they talk" Target="{Binding ElementName=NotesText}" Padding="0,10,0,4"/>
                 <TextBox x:Name="NotesText" MaxLength="400" TextWrapping="Wrap" AutomationProperties.AutomationId="CharacterFinderNotes"
-                         AutomationProperties.Name="Notes"/>
+                         AutomationProperties.Name="Notes" presentation:InputHint.Text="From Victorian London, calm, with a dry wit"/>
 
                 <TextBlock Text="VRoid Hub" FontWeight="SemiBold" FontSize="15" Margin="0,16,0,4"/>
                 <DockPanel>
@@ -44,7 +45,8 @@
                 </DockPanel>
                 <TextBox x:Name="PersonalityText" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" MaxHeight="260"
                          VerticalScrollBarVisibility="Auto" MaxLength="100000" AutomationProperties.AutomationId="CharacterFinderPersonality"
-                         AutomationProperties.Name="Personality"/>
+                         AutomationProperties.Name="Personality"
+                         presentation:InputHint.Text="Search and Martlet writes it, or describe how the character thinks, talks and acts."/>
                 <TextBlock x:Name="PersonalityStateText" TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,4,0,0"
                            AutomationProperties.AutomationId="CharacterFinderPersonalityState"/>
 

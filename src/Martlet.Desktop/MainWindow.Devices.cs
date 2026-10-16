@@ -7,6 +7,7 @@ using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -495,6 +496,7 @@ public partial class MainWindow
         var ssh = new TextBox { Text = host.SshTarget ?? "", Margin = new Thickness(0, 0, 0, 8) };
         AutomationProperties.SetName(ssh, "SSH target (user@computer)");
         AutomationProperties.SetAutomationId(ssh, "HostReachSsh");
+        InputHint.SetText(ssh, "me@192.168.1.20");
         void Toggle()
         {
             var usesSsh = method.SelectedItem is ComboBoxItem { Tag: HostSetupMethod.SshDocker or HostSetupMethod.SshNative };

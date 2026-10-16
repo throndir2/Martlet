@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -33,6 +34,7 @@ public partial class MainWindow
         var model = new TextBox { Text = choice.Model, MinWidth = 220, MaxLength = 128, IsEnabled = choice.On, Margin = new Thickness(0, 10, 0, 0) };
         AutomationProperties.SetAutomationId(model, "MeaningSearchModel");
         AutomationProperties.SetName(model, "Embedding model in Ollama");
+        InputHint.SetText(model, MeaningSearchFile.DefaultModel);
         meaningDownload = PageButton("Download", () => DownloadMeaningModelAsync(meaning).Forget(), id: "MeaningSearchDownload");
         meaningDownload.Visibility = meaning.NeedsDownload ? Visibility.Visible : Visibility.Collapsed;
         var check = PageButton("Check again", () => CheckMeaningSearchAsync(meaning).Forget(), id: "MeaningSearchCheck");

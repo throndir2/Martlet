@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -98,6 +99,7 @@ public partial class MainWindow
             var address = new TextBox { MinWidth = 260, Margin = new Thickness(0, 0, 8, 0), Text = LipSyncThisPcEndpoint(member).AbsoluteUri };
             AutomationProperties.SetAutomationId(address, id + "-Endpoint");
             AutomationProperties.SetName(address, "Address of your own Audio2Face service");
+            InputHint.SetText(address, "http://127.0.0.1:52000/");
             var save = PageButton("Save address", () =>
             {
                 Uri endpoint;

@@ -11,6 +11,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Pictures;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
+using Martlet.Presentation;
 using Martlet.Providers.Pictures;
 
 namespace Martlet.Desktop;
@@ -381,6 +382,9 @@ public partial class MainWindow
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, $"{name} API key for pictures");
         AutomationProperties.SetAutomationId(key, $"PicturesKey-{i}");
+        InputHint.SetText(key, member.Provider == PictureMakingPoolMembers.NvidiaBuild ? "Paste your NVIDIA Build key (nvapi-…)"
+            : member.Provider == PictureMakingPoolMembers.OpenRouter ? "Paste your OpenRouter key (sk-or-v1-…)"
+            : $"Paste your {name} API key");
         key.PasswordChanged += (_, _) => tabEdited = true;
         var status = Note(Capitalized(PictureKeyText(member)) + ". Paste a key to save it as its own.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(status, $"PicturesKeyStatus-{i}");
@@ -461,9 +465,12 @@ public partial class MainWindow
         var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = draft.Model };
         AutomationProperties.SetName(model, "Picture model ID");
         AutomationProperties.SetAutomationId(model, "PicturesModel");
+        InputHint.SetText(model, draft.Model);
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, $"{name} API key");
         AutomationProperties.SetAutomationId(key, "PicturesKey");
+        InputHint.SetText(key, provider == PictureMakingPoolMembers.NvidiaBuild ? "Paste your NVIDIA Build key (nvapi-…)"
+            : "Paste your OpenRouter key (sk-or-v1-…)");
         var keyStatus = Note(draft.UsesThinkingKey(thinking) ? $"Leave this empty to use Thinking's {name} key, or paste another key."
             : $"Paste your {name} API key. Martlet saves it in Windows Credential Manager.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "PicturesKeyStatus");

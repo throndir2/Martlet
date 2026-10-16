@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 using Martlet.Providers;
 using Martlet.Providers.Ollama;
 
@@ -131,6 +132,7 @@ internal sealed partial class ThinkingPoolPage
         var baseUrl = new TextBox { MaxLength = 2048, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(baseUrl, "Thinking pool API base URL");
         AutomationProperties.SetAutomationId(baseUrl, "DeepThinkingBaseUrl");
+        InputHint.SetText(baseUrl, "https://llm.example.com/v1");
         var baseUrlPanel = new StackPanel { Children = { new Label { Content = "API base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) }, baseUrl } };
         var modelId = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(modelId, "Thinking pool model ID");
@@ -151,7 +153,12 @@ internal sealed partial class ThinkingPoolPage
             var p = Selected();
             baseUrlPanel.Visibility = p == MainWindow.CustomCloud ? Visibility.Visible : Visibility.Collapsed;
             if (!keepModel) modelId.Text = p.DefaultModel ?? "";
+            InputHint.SetText(modelId, p.DefaultModel ?? "gemma4:e4b");
             keyStatus.Text = model.KeyStatus(p, Url());
+            InputHint.SetText(key, p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? "Paste your NVIDIA Build key (nvapi-…)"
+                : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? "Paste your OpenRouter key (sk-or-v1-…)"
+                : p == MainWindow.CustomCloud ? "Paste the server's key, if it needs one"
+                : $"Paste your {p.Name} API key");
             consentText.Text = ThinkingPoolPageModel.CloudConsent(p);
             consent.IsChecked = false;
         }

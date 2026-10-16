@@ -7903,7 +7903,11 @@ a minute after start, then once an hour, when a count grew by 1,000 (with the wi
 classes), a warning at 50%, 75% and 90% of a limit, and one after such an error.
 A status text whose details sit in its tooltip (the talk window's `LiveVisionStatus`,
 `LivePcAudio`, `LiveChattiness` and `LiveContext`) also returns them as `help`
-(its accessible help text).
+(its accessible help text). A box you type in (`kind` `ControlType.Edit`, also a
+password box) returns its example text as `help`, such as
+*https://llm.example.com/v1* for Share's `OpenAiPublicAddress`: the dimmed text
+the empty box shows (`InputHint`), which is also its accessible help text unless
+the box has help of its own. It never returns what is typed in the box.
 `{"name":"ui_snapshot","arguments":{"layout":true}}` also returns each control's
 screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 `textBounds` of their first line of text (geometry only, never the text), so

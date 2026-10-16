@@ -45,6 +45,7 @@ internal sealed class OpenAiAccessDialog : ThemedWindow
         });
         AutomationProperties.SetAutomationId(name, "OpenAiAccessName");
         AutomationProperties.SetName(name, "Who the key is for");
+        InputHint.SetText(name, "Alex, or Alex's coding app");
         root.Children.Add(new Label { Content = "_Who is it for (a name you recognize)", Target = name, Padding = new Thickness(0, 10, 0, 4) });
         root.Children.Add(name);
         root.Children.Add(new Label { Content = "Their requests", Padding = new Thickness(0, 12, 0, 2) });

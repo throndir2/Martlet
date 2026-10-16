@@ -7,6 +7,7 @@ using Martlet.Avatars;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -126,6 +127,8 @@ public partial class MainWindow
         }
         bubbleOffsetX = Offset("Bubble horizontal offset", "SetupCharacterBubbleOffsetX", prefs.BubbleOffsetX);
         bubbleOffsetY = Offset("Bubble vertical offset", "SetupCharacterBubbleOffsetY", prefs.BubbleOffsetY);
+        InputHint.SetText(bubbleOffsetX, "20");
+        InputHint.SetText(bubbleOffsetY, "-40");
         var offsets = new WrapPanel
         {
             Margin = new Thickness(0, 8, 0, 0),

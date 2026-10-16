@@ -43,6 +43,7 @@ internal sealed class ApiKeyCreateDialog : ThemedWindow
         });
         AutomationProperties.SetAutomationId(name, "ApiKeyName");
         AutomationProperties.SetName(name, "Key name");
+        InputHint.SetText(name, "Home Assistant");
         root.Children.Add(new Label { Content = "_Name (for example the app that uses it)", Target = name, Padding = new Thickness(0, 10, 0, 4) });
         root.Children.Add(name);
         root.Children.Add(new Label { Content = "It may", Padding = new Thickness(0, 12, 0, 2) });

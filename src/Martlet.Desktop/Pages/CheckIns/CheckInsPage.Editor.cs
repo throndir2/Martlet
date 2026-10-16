@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -148,6 +149,7 @@ internal sealed partial class CheckInsPage
         AutomationProperties.SetName(script, "A script it runs first");
         AutomationProperties.SetHelpText(script, "Windows PowerShell runs it hidden in your home folder before each run, " +
             $"for at most {CheckIns.ScriptTimeout.TotalSeconds:0} seconds. What it prints goes to the check-in.");
+        InputHint.SetText(script, "PowerShell, for example: Get-Process | Select-Object -First 5 Name");
         void ShowNeeds()
         {
             // Disable before checking, so a forced tick isn't taken as the owner's choice.

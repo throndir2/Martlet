@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -134,6 +135,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
             AutomationProperties.SetAutomationId(box, "CheckInPrompt-" + id);
             AutomationProperties.SetName(box, checkIn.Name + ": what it asks");
             AutomationProperties.SetHelpText(box, prompt.Help);
+            InputHint.SetText(box, "What this check-in asks the Thinking pool. Left empty, it asks nothing.");
             var state = Note("", new Thickness(0, 2, 0, 0));
             AutomationProperties.SetAutomationId(state, "CheckInPromptState-" + id);
             void ShowState() => state.Text = MainWindow.PromptState(prompt, box.Text, services.Prompts);
@@ -221,6 +223,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         var name = Compact(new TextBox { Text = custom.Name, MaxLength = CheckIns.MaximumNameCharacters, Width = 220 });
         AutomationProperties.SetAutomationId(name, "CheckInName-" + id);
         AutomationProperties.SetName(name, "Check-in name");
+        InputHint.SetText(name, "Break reminder");
         var on = new CheckBox { Content = "On", IsChecked = custom.On, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetAutomationId(on, "CheckInOn-" + id);
         AutomationProperties.SetName(on, "Check-in on");
@@ -236,6 +239,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         AutomationProperties.SetAutomationId(task, "CheckInTask-" + id);
         AutomationProperties.SetName(task, "What it checks");
         AutomationProperties.SetHelpText(task, CheckInsPageModel.PlaceholderHelp);
+        InputHint.SetText(task, "If the user has been at it for hours, suggest a short break");
         var status = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(status, "CheckInStatus-" + id);
         lines.Add(() => status.Text = model.Line(id));

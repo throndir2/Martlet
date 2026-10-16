@@ -7,6 +7,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 using Martlet.F5;
+using Martlet.Presentation;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -59,6 +60,7 @@ public partial class MainWindow
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, "ElevenLabs API key");
         AutomationProperties.SetAutomationId(key, "ElevenLabsKey");
+        InputHint.SetText(key, "Paste your ElevenLabs API key");
         var keyStatus = Note(saved?.CredentialId is not null ? "Your ElevenLabs key is saved. Leave this empty to keep it, or paste a new key."
             : SetupSettings.SetAsideElevenLabsCredentials(homeSettings).Count > 0
                 ? "Your ElevenLabs key from before is still saved. Leave this empty to use it again, or paste a new key."

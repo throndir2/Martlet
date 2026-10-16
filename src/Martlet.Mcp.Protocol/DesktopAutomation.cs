@@ -128,6 +128,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     (element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.CheckBox ||
                         element.Current.ControlType == ControlType.ComboBox || id.StartsWith("Help-", StringComparison.Ordinal)))
                     entry["help"] = help;
+                // A box you type in: its example text (InputHint, dimmed while the box is empty), which it exposes as its help
+                // text, or its own help. Never what is typed in it.
+                else if (element.Current.ControlType == ControlType.Edit && element.Current.HelpText is { Length: > 0 } example)
+                    entry["help"] = example;
                 // A section you open and close (an expander such as "Fold-CheckInMore-emotes"): whether it is open now.
                 if (element.Current.ControlType != ControlType.ComboBox &&
                     element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var section))

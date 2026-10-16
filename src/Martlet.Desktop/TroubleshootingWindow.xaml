@@ -1,5 +1,6 @@
 <local:ThemedWindow x:Class="Martlet.Desktop.TroubleshootingWindow"
         xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -32,9 +33,11 @@
             </WrapPanel>
             <WrapPanel>
                 <Label Content="UTC _from" Target="{Binding ElementName=FromText}" />
-                <TextBox x:Name="FromText" Width="245" TextChanged="Selection_Changed" AutomationProperties.AutomationId="SupportFrom" />
+                <TextBox x:Name="FromText" Width="245" TextChanged="Selection_Changed" AutomationProperties.AutomationId="SupportFrom"
+                         presentation:InputHint.Text="2026-09-13T12:00:00+00:00" />
                 <Label Content="UTC _through" Target="{Binding ElementName=ThroughText}" />
-                <TextBox x:Name="ThroughText" Width="245" TextChanged="Selection_Changed" AutomationProperties.AutomationId="SupportThrough" />
+                <TextBox x:Name="ThroughText" Width="245" TextChanged="Selection_Changed" AutomationProperties.AutomationId="SupportThrough"
+                         presentation:InputHint.Text="2026-09-20T12:00:00+00:00" />
             </WrapPanel>
             <TextBlock Text="Choose a UTC time range for troubleshooting records." TextWrapping="Wrap" />
             <WrapPanel>
@@ -47,7 +50,8 @@
             <TabControl x:Name="PreviewTabs" Height="260" AutomationProperties.AutomationId="SupportPreviewFiles" />
             <TextBox x:Name="OmissionsText" IsReadOnly="True" TextWrapping="Wrap" Height="90" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="What is not included" />
             <Label Content="Save ZIP _to" Target="{Binding ElementName=DestinationText}" />
-            <TextBox x:Name="DestinationText" TextChanged="Destination_Changed" AutomationProperties.AutomationId="SupportDestination" />
+            <TextBox x:Name="DestinationText" TextChanged="Destination_Changed" AutomationProperties.AutomationId="SupportDestination"
+                     presentation:InputHint.Text="C:\Users\Alex\Desktop\Martlet-support.zip" />
             <WrapPanel>
                 <Button x:Name="ChooseButton" Content="Choose _destination..." Click="Choose_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportChooseDestination" />
                 <Button x:Name="ExportButton" Content="Export _ZIP..." Click="Export_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportExport" />

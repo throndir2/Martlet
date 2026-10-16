@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
@@ -232,6 +233,7 @@ internal sealed partial class ThinkingPoolPage
             Text = current, ToolTip = "The model ID at this provider. Press Enter or leave the box to save it." };
         AutomationProperties.SetAutomationId(typed, $"ThinkingPoolModel-{i}");
         AutomationProperties.SetName(typed, $"{name}: model");
+        InputHint.SetText(typed, current.Length > 0 ? current : ChatCompletionsEndpointCatalog.Named(member.Origin)?.DefaultModelId ?? "gemma4:e4b");
         var saved = false;
         void Commit()
         {

@@ -8,6 +8,7 @@ using Martlet.Core.Characters;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.F5;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -213,6 +214,7 @@ public partial class MainWindow
         profileNameBox = new TextBox { Text = name, MaxLength = CharacterProfile.MaximumNameCharacters, MinWidth = 260, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetAutomationId(profileNameBox, "CharacterProfileName");
         AutomationProperties.SetName(profileNameBox, "Profile name");
+        InputHint.SetText(profileNameBox, "Gaming buddy");
 
         ComboBox Choice(string automationId, string accessibleName, IEnumerable<(object? Tag, string Text)> options, object? selected)
         {

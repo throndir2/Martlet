@@ -5,6 +5,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -60,6 +61,7 @@ public partial class MainWindow
                 AutomationProperties.SetAutomationId(box, "Prompt-" + prompt.Id);
                 AutomationProperties.SetName(box, prompt.Title + " prompt");
                 AutomationProperties.SetHelpText(box, help);
+                InputHint.SetText(box, "Type this prompt's text, or choose Use built-in text");
                 void ShowState() => state.Text = PromptState(prompt, box.Text, saved);
                 ShowState();
                 states.Add(ShowState);

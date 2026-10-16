@@ -129,16 +129,30 @@
         </Setter>
     </Style>
     <!-- Text and password boxes apply their own Padding inside PART_ContentHost: a margin from Padding here would add it twice. -->
+    <!-- InputHint.Text (InputHint.cs) shows dimmed in the empty box, so you see what to type there. -->
     <ControlTemplate x:Key="InputTemplate" TargetType="Control">
         <Grid>
             <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="10"
                     BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                <ScrollViewer x:Name="PART_ContentHost"/>
+                <Grid>
+                    <TextBlock x:Name="Hint" Visibility="Collapsed" IsHitTestVisible="False" Focusable="False"
+                               Margin="{TemplateBinding Padding}" Padding="2,0" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource MutedBrush}"
+                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                               Text="{TemplateBinding presentation:InputHint.Text}"/>
+                    <ScrollViewer x:Name="PART_ContentHost"/>
+                </Grid>
             </Border>
             <Border x:Name="FocusRing" BorderBrush="{DynamicResource FocusBrush}" BorderThickness="2"
                     CornerRadius="10" IsHitTestVisible="False" Visibility="Hidden"/>
         </Grid>
         <ControlTemplate.Triggers>
+            <Trigger Property="presentation:InputHint.Shown" Value="True">
+                <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
+            </Trigger>
+            <Trigger Property="TextBoxBase.AcceptsReturn" Value="True">
+                <Setter TargetName="Hint" Property="TextWrapping" Value="Wrap"/>
+            </Trigger>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                 <Setter TargetName="FocusRing" Property="Visibility" Value="Visible"/>
             </Trigger>

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -38,6 +39,7 @@ internal sealed class AddPersonDialog : ThemedWindow
         root.Children.Add(label);
         AutomationProperties.SetName(name, "Name");
         AutomationProperties.SetAutomationId(name, "AddPersonName");
+        InputHint.SetText(name, "Alex");
         name.TextChanged += (_, _) => problem.Visibility = Visibility.Collapsed;
         root.Children.Add(name);
         problem.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");

@@ -7,6 +7,7 @@ using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
+using Martlet.Presentation;
 using Martlet.Providers;
 using Martlet.Providers.Ollama;
 
@@ -252,6 +253,7 @@ public partial class MainWindow
             key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 360, HorizontalAlignment = HorizontalAlignment.Left };
             AutomationProperties.SetAutomationId(key, $"{SenseId(kind)}Key-{i}");
             AutomationProperties.SetName(key, $"The API key for {member.Name}");
+            InputHint.SetText(key, member.Kind == PoolMemberKind.Cloud ? "Paste the provider's API key" : "Paste the server's key, if it needs one");
             panel.Children.Add(new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) });
             panel.Children.Add(key);
             panel.Children.Add(Note(keys.For(area.Id, member.Key) is not null ? "A key is saved on this PC. Paste a new one to replace it."
@@ -377,6 +379,7 @@ public partial class MainWindow
         var baseUrl = new TextBox { MaxLength = 256, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(baseUrl, $"The {word} model's API base URL");
         AutomationProperties.SetAutomationId(baseUrl, id + "BaseUrl");
+        InputHint.SetText(baseUrl, "https://llm.example.com/v1");
         var baseUrlPanel = new StackPanel
         {
             Children = { new Label { Content = "API base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) }, baseUrl }
@@ -400,11 +403,16 @@ public partial class MainWindow
             var p = Selected();
             baseUrlPanel.Visibility = p == CustomCloud ? Visibility.Visible : Visibility.Collapsed;
             model.Text = p.DefaultModel ?? "";
+            InputHint.SetText(model, p.DefaultModel ?? "gemma4:e4b");
             var url = Url();
             keyStatus.Text = thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin == url
                 ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
                 : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager on this PC."
                 : "Add a key only if your server needs one.";
+            InputHint.SetText(key, p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? "Paste your NVIDIA Build key (nvapi-…)"
+                : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? "Paste your OpenRouter key (sk-or-v1-…)"
+                : p.NeedsKey && p != CustomCloud && !OnThisPc(url) ? $"Paste your {p.Name} API key"
+                : "Paste the server's key, if it needs one");
             consentText.Text = SenseConsent(kind, p.Name, url.Length > 0 && OnThisPc(url));
             consent.IsChecked = false;
         }
