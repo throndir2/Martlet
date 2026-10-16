@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- The guide links in the README now open the Martlet Wiki, which is up to date and has new pages on App guides, Linux and Mac, sharing with friends, and accounts. ([#917](https://github.com/throndir2/Martlet/pull/917))
+
 ## [0.83.0] - 2026-10-16
 
 ### Added

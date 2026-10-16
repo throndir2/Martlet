@@ -152,7 +152,7 @@ talk, hear the replies and see your character on top of your windows.
   **System Settings > Privacy & Security > Open Anyway**.
 
 Linux computers and Macs can also be hosts that lend their power to your
-other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-part-of-the-release-build).
+other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/Linux-and-Mac).
 
 </details>
 
@@ -200,7 +200,7 @@ everything in it, and links to its guides.
 ### 💬 Talk naturally
 
 Talk hands-free, hold a key or type. She answers out loud within moments,
-waits until you have finished and stops when you talk over her.
+waits until you have finished and, if you like, stops when you talk over her.
 
 <details>
 <summary>Everything in <b>Talk naturally</b></summary>
@@ -211,11 +211,11 @@ waits until you have finished and stops when you talk over her.
 - She starts on her reply in the short pause after you speak, so it's ready the moment your turn ends.
 - Replies are spoken sentence by sentence and start with a few quick words, so her voice starts before the whole reply is written.
 - When a reply is slow to start, she says a quick "Mm," or "Hmm..." in her own voice, so you're never left in silence.
-- Talk over her and she pauses at once. Words meant for her stop the reply; a "yeah", a laugh or the TV lets her carry on where she stopped.
+- Turn on **Let me interrupt Martlet by talking**, and she pauses at once when you talk over her. Words meant for her stop the reply; a "yeah", a laugh or the TV lets her carry on where she stopped.
 - When you cut her off, she remembers only what she actually said aloud.
 - **Voice ID** knows your voice and ignores other people talking. **People** learns the voices in your home and the names they go by.
 - She treats voices around you as context, and answers someone in your call or room who clearly talks to her.
-- Speech recognition runs inside Martlet with Parakeet (up to 25 languages), or uses Whisper, OpenAI or Windows speech. If the computer that listens goes away, Parakeet on this PC takes over.
+- Speech recognition runs inside Martlet with Parakeet (up to 25 languages), or uses Whisper or OpenAI. If the computer that listens goes away, Parakeet on this PC takes over.
 - Press **Stop** or Esc to stop a reply at any time.
 
 </details>
@@ -231,7 +231,7 @@ can laugh, sigh and whisper.
 <summary>Everything in <b>Any voice you like</b></summary>
 
 - Seven voice engines run on your own computers: **Chatterbox Turbo**, **Chatterbox Original**, **Chatterbox Nano**, **F5-TTS**, **XTTS-v2**, **GPT-SoVITS** and **Dia**.
-- Or use **Windows** voices, **OpenAI** voices or **ElevenLabs**, which copies one of your saved voices and can whisper or sound happy, sad or angry.
+- Or use **OpenAI** voices or **ElevenLabs**, which copies one of your saved voices and can whisper or sound happy, sad or angry.
 - **Clone a voice** from one or more recordings. Most audio and video files work, and Martlet writes the transcript for you. No training is needed.
 - **Record your own voice**: read four short lines out loud, and Martlet makes a voice from yours.
 - Six starter voices are ready to use, led by the natural, cheerful **Jenny (Dioco)** and two cute, bubbly voices.
@@ -313,7 +313,7 @@ plays and reads up on the games you play.
 
 </details>
 
-📖 [Vision](https://github.com/throndir2/Martlet/wiki/Vision) · [Listening › Audio model](https://github.com/throndir2/Martlet/wiki/Listening-and-Voice-ID#audio-model)
+📖 [Vision](https://github.com/throndir2/Martlet/wiki/Vision) · [App Guides](https://github.com/throndir2/Martlet/wiki/App-Guides) · [Listening › Audio model](https://github.com/throndir2/Martlet/wiki/Listening-and-Voice-ID#audio-model)
 
 ### 🧠 Remembers you
 
@@ -474,7 +474,7 @@ heavy work.
 
 </details>
 
-📖 [Multiple Computers](https://github.com/throndir2/Martlet/wiki/Multiple-Computers) · [Setting Up a Host](https://github.com/throndir2/Martlet/wiki/Setting-Up-a-Host)
+📖 [Multiple Computers](https://github.com/throndir2/Martlet/wiki/Multiple-Computers) · [Setting Up a Host](https://github.com/throndir2/Martlet/wiki/Setting-Up-a-Host) · [Sharing with Friends](https://github.com/throndir2/Martlet/wiki/Sharing-with-Friends)
 
 ### 🏡 Made for the whole household
 
@@ -493,7 +493,7 @@ settings, on every computer.
 
 </details>
 
-📖 [Personality and Characters › Sharing](https://github.com/throndir2/Martlet/wiki/Personality-and-Characters#sharing-a-character-with-your-household) · [Memory › Household](https://github.com/throndir2/Martlet/wiki/Memory#sharing-memories-with-your-household) · [Accounts](docs/ACCOUNTS.md)
+📖 [Personality and Characters › Sharing](https://github.com/throndir2/Martlet/wiki/Personality-and-Characters#sharing-a-character-with-your-household) · [Memory › Household](https://github.com/throndir2/Martlet/wiki/Memory#sharing-memories-with-your-household) · [Accounts and Household](https://github.com/throndir2/Martlet/wiki/Accounts-and-Household)
 
 ### 🤖 Your AI assistant can set her up
 
@@ -511,7 +511,7 @@ repository.
 
 - A friendly welcome tour, and **Set it all up for me** on Home for anything still missing.
 - **Home** tells you what needs attention and opens the page that fixes it.
-- Updates install in the background, and Martlet restarts into them in about a second.
+- Updates install in the background, and Martlet restarts into them in a few seconds.
 - She lives quietly in your notification area and can start with Windows.
 - Themes: Pink light, Rose dark, light and dark in your character's colors, and **Custom**, which also fixes colors that are hard to read.
 - Short pages, with a **?** next to anything that needs more words.
