@@ -287,7 +287,15 @@ docker run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock martlet-ho
 ```
 
 The same commands work against a remote Docker host with `docker -H ssh://user@host`
-or over `ssh -t user@host`. How it fits together:
+or over `ssh -t user@host`. A Docker host without git (most NAS systems) can't
+build from the git URL; build from GitHub's source archive instead:
+
+```sh
+mkdir /tmp/martlet && curl -fsSL https://github.com/throndir2/Martlet/archive/refs/heads/main.tar.gz | tar -xzf - -C /tmp/martlet --strip-components=1
+docker build -t martlet-host -f /tmp/martlet/deploy/host/Dockerfile /tmp/martlet && rm -rf /tmp/martlet
+```
+
+How it fits together:
 
 - `setup` creates **`martlet-host-net`**, a small long-lived container that
   publishes `ADDRESS:9443` on the Docker host and owns the network namespace that
@@ -544,11 +552,17 @@ rest from Windows. **Add this computer** in Martlet hosts:
    any later change is refused (**Reset SSH trust** forgets it after a reinstall).
 3. Checks the computer: Docker present (the one prerequisite; if it is missing
    Martlet says so and stops), whether this account can use Docker directly,
-   sudo, OS, architecture and its LAN address.
+   sudo, OS, architecture and its LAN address. A NAS (TerraMaster TOS, Synology
+   DSM, QNAP) often puts Docker on the PATH of a login shell only; Martlet then
+   finds it there (`HostCheckout.DockerPath`). Type the SSH port after the
+   computer when it isn't 22, for example `admin@192.168.1.9:9222`.
 4. Runs `setup` and `pair`, then reads the machine report, streaming every line
    into a run window with **Cancel**. The host then appears on the Devices map.
    A computer that can't reach the internet gets what setup needs from this PC
-   ([Computers without internet](#computers-without-internet)).
+   ([Computers without internet](#computers-without-internet)). A Docker host
+   without git (most NAS systems) builds the host image from GitHub's source
+   archive of this Martlet version (main's when the tag has none) instead of
+   the git repository; the unpacked source is removed after the build.
 
 Afterwards the map's per-host actions (add a role, change its settings, remove it, show status) run the
 same way. Adding a role first runs `describe <role>` there and shows its

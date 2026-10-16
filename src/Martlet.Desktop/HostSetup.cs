@@ -76,9 +76,13 @@ internal static partial class HostSetupCommands
         _ => throw new ArgumentOutOfRangeException(nameof(action))
     };
 
-    /// <summary>One word of martlet-host exposure: an option, yes or no, or an outside address in its canonical form.</summary>
+    /// <summary>One word of martlet-host exposure: an option, yes or no, an outside address in its canonical form, or the
+    /// front door's port (1024 to 65535) or off.</summary>
     private static bool ExposureToken(string token) =>
-        token is "--outside" or "--clear-outside" or "--allow-pairing-outside-home" or "--treat-all-as-outside" or "yes" or "no" ||
+        token is "--outside" or "--clear-outside" or "--allow-pairing-outside-home" or "--treat-all-as-outside" or "--front-door" or
+            "yes" or "no" or "off" ||
+        int.TryParse(token, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var port) &&
+            port is >= 1024 and <= 65535 && token == port.ToString(System.Globalization.CultureInfo.InvariantCulture) ||
         Martlet.Core.Network.NetworkRoster.NormalizeAddress(token) == token;
 
     internal static void Validate(HostSetupTarget target, HostAction action)
@@ -108,10 +112,8 @@ internal static partial class HostSetupCommands
     private static string DockerShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes, int lockWaitSeconds = 0)
     {
         var image = Image(target);
-        var build = $"$D build -t {image} -f deploy/host/Dockerfile {Repository}#";
         var run = mode switch { ShellMode.Console => " -it", ShellMode.Runner => " -i --log-driver none", _ => "" };
-        return $"D=docker; docker info >/dev/null 2>&1 || D='{(mode == ShellMode.Batch ? "sudo -n docker" : "sudo docker")}'; " +
-            $"($D image inspect {image} >/dev/null 2>&1 || {build}v{target.Version} || {build}main) && " +
+        return HostCheckout.Docker(mode == ShellMode.Batch) + $"({HostCheckout.DockerImage("$D", image, target.Version)}) && " +
             $"$D run --rm{run} -u 0 -v {DockerSocket}{Environment(target, setup)}{LockWait(lockWaitSeconds)} {image} {(assumeYes ? "--yes " : "")}{engine}";
     }
 

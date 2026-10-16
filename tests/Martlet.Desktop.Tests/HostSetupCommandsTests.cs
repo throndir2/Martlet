@@ -101,6 +101,36 @@ public sealed class HostSetupCommandsTests
     }
 
     [Fact]
+    public void Docker_hosts_find_docker_on_the_login_path_and_build_without_git()
+    {
+        var remote = HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshDocker), "setup", true);
+        Assert.StartsWith(Martlet.Core.Nodes.HostCheckout.DockerPath + "D=docker; docker info >/dev/null 2>&1 || D='sudo '$(command -v docker || echo docker); ", remote);
+        Assert.Contains("($D image inspect martlet-host:1.2.3 >/dev/null 2>&1 || { command -v git >/dev/null 2>&1 && " +
+            "{ $D build -t martlet-host:1.2.3 -f deploy/host/Dockerfile https://github.com/throndir2/Martlet.git#v1.2.3 || " +
+            "$D build -t martlet-host:1.2.3 -f deploy/host/Dockerfile https://github.com/throndir2/Martlet.git#main; }; } || ", remote);
+        Assert.Contains("{ curl -fsSL https://github.com/throndir2/Martlet/archive/refs/tags/v1.2.3.tar.gz || " +
+            "curl -fsSL https://github.com/throndir2/Martlet/archive/refs/heads/main.tar.gz; } | tar -xzf - -C $S --strip-components=1 && " +
+            "$D build -t martlet-host:1.2.3 -f $S/deploy/host/Dockerfile $S; R=$?; rm -rf $S; [ $R = 0 ]; }; }) && $D run --rm -i", remote);
+        // The same text goes to ssh.exe in double quotes on a Windows command line.
+        Assert.DoesNotContain('"', remote);
+        Assert.DoesNotContain('%', remote);
+    }
+
+    [Fact]
+    public void Front_door_runs_martlet_host_exposure_on_every_kind_of_host()
+    {
+        var open = HostAction.Exposure(Martlet.Core.Nodes.NodeCommandRules.FrontDoorArguments(9445));
+        Assert.Equal("exposure --front-door 9445", HostSetupCommands.Engine(open));
+        Assert.Equal("exposure --front-door off", HostSetupCommands.Engine(HostAction.Exposure(Martlet.Core.Nodes.NodeCommandRules.FrontDoorArguments(null))));
+        Assert.EndsWith("--yes exposure --front-door 9445",
+            HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshDocker), HostSetupCommands.Engine(open), false));
+        Assert.EndsWith("martlet-host:1.2.3 exposure --front-door 9445\r\nexit /b %errorlevel%\r\n",
+            HostSetupCommands.UnattendedScript(Target(HostSetupMethod.ThisPcDocker), open));
+        foreach (var bad in new[] { "80", "09445", "9445;id", "on" })
+            Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(open with { Options = ["--front-door", bad] }));
+    }
+
+    [Fact]
     public void Runner_wraps_commands_for_sh_and_keeps_sudo_passwords_off_the_command_line()
     {
         Assert.Equal("'it'\\''s'", HostShell.Quote("it's"));
@@ -468,7 +498,7 @@ public sealed class HostSetupCommandsTests
         var remote = HostSetupCommands.UnattendedScript(Target(HostSetupMethod.SshDocker), HostAction.Update)
             .Split("\r\n").Single(l => l.StartsWith("ssh ", StringComparison.Ordinal));
         Assert.StartsWith("ssh -T -o BatchMode=yes -o ConnectTimeout=15 me@192.168.1.20 \"", remote);
-        Assert.Contains("D='sudo -n docker'", remote);
+        Assert.Contains("D='sudo -n '$(command -v docker || echo docker)", remote);
         Assert.EndsWith("$D run --rm -u 0 -v /var/run/docker.sock:/var/run/docker.sock martlet-host:1.2.3 update\"", remote);
         Assert.Equal(2, remote.Count(c => c == '"'));
         var local = HostSetupCommands.UnattendedScript(Target(HostSetupMethod.ThisPcDocker), HostAction.Update);

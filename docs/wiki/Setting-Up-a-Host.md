@@ -26,8 +26,8 @@ For another Windows PC, choose **Use as a Martlet host** there. It then shows un
 
 ## Linux over SSH
 
-1. Make sure the Linux computer has an SSH server. It can be x86_64 or ARM64, with systemd (Ubuntu, Debian, Fedora, openSUSE, Arch, Raspberry Pi OS and others).
-2. Open **Devices › Add a computer**. Under **A Linux computer over SSH**, type `user@computer` in **SSH target**.
+1. Make sure the Linux computer has an SSH server. It can be x86_64 or ARM64, with systemd (Ubuntu, Debian, Fedora, openSUSE, Arch, Raspberry Pi OS and others), or a NAS with Docker (TerraMaster, Synology, QNAP).
+2. Open **Devices › Add a computer**. Under **A Linux computer over SSH**, type `user@computer` in **SSH target**. When SSH doesn't use port 22, add the port, for example `admin@192.168.1.9:9222`.
 3. Choose **Set up over SSH**.
 4. Type the account password once. Martlet adds its own SSH key and uses only the key after that.
 5. When a step needs `sudo`, type the sudo password. Martlet can remember it in Windows Credential Manager.

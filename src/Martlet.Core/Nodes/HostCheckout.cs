@@ -1,6 +1,7 @@
 namespace Martlet.Core.Nodes;
 
-/// <summary>The shell that runs martlet-host on a native Linux host over SSH. The engine runs from the Martlet source in
+/// <summary>The shell that runs martlet-host on a native Linux host over SSH, and the parts that find Docker and build the
+/// host image on a Docker host over SSH. The engine runs from the Martlet source in
 /// ~/Martlet: a git checkout the host clones and updates itself, or, on a computer without internet access, a copy Martlet
 /// unpacked there from files this PC sent (<see cref="HostSupply"/>; the engine then gets MARTLET_SUPPLY and builds from
 /// those files). The text is POSIX sh on one line without double quotes or percent signs, so it also fits the Windows
@@ -17,6 +18,33 @@ public static class HostCheckout
         "if command -v bash >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then " +
         "timeout 8 bash -c 'exec 3<>/dev/tcp/github.com/443' >/dev/null 2>&1 && echo internet=yes || echo internet=no; " +
         "else echo internet=unknown; fi";
+
+    /// <summary>Puts a Docker that only a login shell finds on PATH. A NAS (TerraMaster TOS, Synology DSM, QNAP) adds its
+    /// Docker to PATH in /etc/profile, which the plain shell of an SSH command doesn't read.</summary>
+    public const string DockerPath =
+        "command -v docker >/dev/null 2>&1 || PATH=$PATH:$(sh -lc 'echo $PATH' </dev/null 2>/dev/null | tail -n 1); ";
+
+    /// <summary>Sets $D to the docker command of a Docker host: docker, or sudo with Docker's full path (sudo's own PATH
+    /// may not have a NAS's Docker) when this account can't use Docker directly. <paramref name="batch"/>: sudo never
+    /// asks for a password (-n).</summary>
+    public static string Docker(bool batch) =>
+        DockerPath + $"D=docker; docker info >/dev/null 2>&1 || D='{(batch ? "sudo -n" : "sudo")} '$(command -v docker || echo docker); ";
+
+    /// <summary>Builds <paramref name="image"/> on a Docker host when it isn't there yet, from this desktop's release tag
+    /// (falling back to main): from the git repository when the host has git, otherwise (a NAS rarely has git) from GitHub's
+    /// source archive, unpacked into a temporary folder that is removed afterwards. <paramref name="docker"/> is the docker
+    /// command (<c>$D</c>; see <see cref="Docker"/>).</summary>
+    public static string DockerImage(string docker, string image, string version)
+    {
+        var build = $"{docker} build -t {image} -f deploy/host/Dockerfile {Repository}#";
+        var archive = Repository[..^".git".Length] + "/archive/refs/";
+        return $"{docker} image inspect {image} >/dev/null 2>&1 || " +
+            $"{{ command -v git >/dev/null 2>&1 && {{ {build}v{version} || {build}main; }}; }} || " +
+            $"{{ echo 'Building the host from the source archive of Martlet {version}.'; S=$(mktemp -d) && " +
+            $"{{ {{ curl -fsSL {archive}tags/v{version}.tar.gz || curl -fsSL {archive}heads/main.tar.gz; }} | " +
+            $"tar -xzf - -C $S --strip-components=1 && {docker} build -t {image} -f $S/deploy/host/Dockerfile $S; " +
+            "R=$?; rm -rf $S; [ $R = 0 ]; }; }";
+    }
 
     /// <summary>Makes sure git and a git checkout in ~/Martlet exist. A copy that came from this PC (or anything else that
     /// isn't a checkout) moves to ~/.cache/martlet/source.previous.</summary>
