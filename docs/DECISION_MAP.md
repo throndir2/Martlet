@@ -400,7 +400,9 @@ classes). Whether a host has a front door, and on which port, is
 (`HostExposure`, `exposure.json`) and the `host.exposure` node command
 (`NodeCommandRules`). The setup texts are `OpenAiEndpoint` (`ExposeHelp`,
 `ProxyManagerSteps`, `NginxConfig`, `CaddyConfig`, `CloudflareTunnelConfig`,
-`TailscaleCommand`).
+`TailscaleCommand`). What *Set it up in Nginx Proxy Manager* changes there (the
+site that has the name, its forward address and settings, which certificate)
+is `ProxyManager` (`src\Martlet.Core\Access\ProxyManager.cs`).
 
 **Shows it:** Share › *Share your language models* › *Front door*
 (`OpenAiFrontDoorStatus`), *Check address* (`OpenAiCheckResult`), *Show

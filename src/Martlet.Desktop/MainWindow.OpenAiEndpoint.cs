@@ -311,7 +311,8 @@ public partial class MainWindow
         var port = door?.Port ?? OpenAiEndpoint.DefaultFrontDoorPort;
         var chosen = (frontDoorHostChoice?.SelectedItem as ComboBoxItem)?.Tag as string ?? settings.FrontDoorHostId;
         var host = door?.Host ?? FriendsHosts().FirstOrDefault(h => h.HostId == chosen);
-        OpenAiProxyDialog.Show(this, name, host?.HostId, host is null ? "<front door address>" : new Uri(host.Pairing.Origin).Host, port, door is not null);
+        OpenAiProxyDialog.Show(this, name, host?.HostId, host is null ? "<front door address>" : new Uri(host.Pairing.Origin).Host, port, door is not null,
+            settings.PublicAddress);
     }
     private FrameworkElement OpenAiKeyRow(ApiKey key, DateTimeOffset now)
     {

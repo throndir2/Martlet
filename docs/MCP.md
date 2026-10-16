@@ -4174,6 +4174,19 @@ Martlet's SSH runner itself, and roles or Docker hosts without internet access
 (Martlet stops with an explanation). Without Docker or the image it returns
 `exitCode` 2 and `notRun` (it never pulls).
 
+`proxy_manager_check` (no arguments) checks Share › Show setup › *Set it up in
+Nginx Proxy Manager* with the production `ProxyManager` against a FIXTURE Nginx
+Proxy Manager API in memory (it contacts nothing). It returns `{exitCode,
+report: {passed, total, steps: [{name, ok, detail}]}, notCovered}`. Steps:
+`finds-nginx-proxy-manager`; `wrong-password-refused`;
+`plans-to-change-the-site-that-is-there` (the site that has the name, not a
+second one, with its certificate); `changes-it-and-keeps-its-certificate`;
+`set-up-already-changes-nothing`; `adds-a-site-with-a-certificate-that-covers-it`
+(a wildcard certificate); `asks-lets-encrypt-when-no-certificate-covers-it` (only
+an expired one covers it); and `password-only-in-sign-in`. In the desktop,
+`OpenAiProxyManagerSetup` needs `--allow-ui-effects`; `OpenAiProxyManagerStatus`
+and `ProxyManagerQuestion` are readable.
+
 `host_docker_shell_check` (no arguments) checks the shell Martlet runs on a
 [Docker host over SSH](../deploy/host/README.md#docker-any-docker-host-including-windows)
 when the computer is shaped like a NAS (TerraMaster TOS, Synology DSM, QNAP):

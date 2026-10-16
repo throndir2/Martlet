@@ -348,7 +348,8 @@ How it fits together:
   mode `published`: it listens on the container's wildcard address while its
   certificate and clients use the host's LAN origin.
 - State lives in Docker volumes `martlet-host-config` and `martlet-host-private`
-  (0700, uid 1000, ext4 in Docker's data root); role files are copied into
+  (0700, uid 1000, ext4 or btrfs in Docker's data root; a NAS such as
+  TerraMaster or Synology uses btrfs); role files are copied into
   per-role named volumes, so nothing is bind-mounted from the host filesystem.
 - GPU roles need Docker's NVIDIA support on that host (NVIDIA Container Toolkit
   on Linux, WSL 2 GPU support in Docker Desktop).
@@ -545,11 +546,17 @@ hardware it reported.
 The goal: put Docker on a Linux computer, give Martlet its SSH login, and do the
 rest from Windows. **Add this computer** in Martlet hosts:
 
-1. Connects with Martlet's own SSH key. The first time it asks for the account
-   password once (masked, never stored), appends Martlet's public key to
-   `~/.ssh/authorized_keys`, and from then on signs in with the key only.
+1. Connects with Martlet's own SSH key. The first time, when your own SSH key
+   (`id_ed25519`, `id_ecdsa` or `id_rsa` in `%USERPROFILE%\.ssh`, without a
+   passphrase) already signs in there, Martlet uses it once to append its own
+   public key to `~/.ssh/authorized_keys` (it never copies or keeps your key).
+   Otherwise it asks for the account password once (masked, never stored) to
+   do the same. From then on it signs in with its own key only.
 2. Shows the computer's SSH host key fingerprint on first contact and pins it;
    any later change is refused (**Reset SSH trust** forgets it after a reinstall).
+   When your OpenSSH `known_hosts` already lists that exact key for the
+   computer (plain or hashed names, `[host]:port` for another port), Martlet
+   trusts it without asking and says so in the run window.
 3. Checks the computer: Docker present (the one prerequisite; if it is missing
    Martlet says so and stops), whether this account can use Docker directly,
    sudo, OS, architecture and its LAN address. A NAS (TerraMaster TOS, Synology

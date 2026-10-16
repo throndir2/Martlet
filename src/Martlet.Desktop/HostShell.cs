@@ -122,7 +122,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
         CancellationToken token) => Task.Run(async () =>
     {
         var key = await LoadKeyAsync(token);
-        var (client, hostKey) = await ConnectAsync(target, key, command.PinnedHostKey, token);
+        var (client, hostKey) = await ConnectAsync(target, key, command.PinnedHostKey, output, token);
         using (client)
         {
             string? sudo = null;
@@ -223,13 +223,14 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
     // ---------- connection ----------
 
     private async Task<(SshClient Client, string HostKey)> ConnectAsync(HostShellTarget target, (PrivateKeyFile File, string Public) key,
-        string? pinned, CancellationToken token)
+        string? pinned, IProgress<string>? output, CancellationToken token)
     {
         var trust = new HostKeyCheck(this, prompts, target, pinned);
         var client = Client(trust, new PrivateKeyAuthenticationMethod(target.User, key.File), target);
         try
         {
             await client.ConnectAsync(token);
+            trust.Report(output, target);
             return (client, trust.Seen!);
         }
         catch (SshAuthenticationException) { client.Dispose(); }
@@ -238,9 +239,45 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
             client.Dispose();
             throw trust.Explain(error, target);
         }
+        trust.Report(output, target);
 
-        // First contact: the account password, once, to install Martlet's key. It is not kept.
-        for (var attempt = 0; ; attempt++)
+        async Task InstallAsync(SshClient signedIn)
+        {
+            using var install = signedIn.CreateCommand("sh -c " + Quote(
+                "umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && " +
+                $"(grep -qxF {Quote(key.Public)} ~/.ssh/authorized_keys || printf '%s\\n' {Quote(key.Public)} >> ~/.ssh/authorized_keys)"));
+            await install.ExecuteAsync(token);
+            if (install.ExitStatus != 0)
+                throw new HostShellException($"Martlet could not set up SSH access on {target}: {install.Error.Trim()}");
+        }
+
+        // First contact, when this Windows user's own SSH key already signs in there: use it once to add Martlet's key.
+        var own = OwnerSsh.Keys();
+        var installed = false;
+        try
+        {
+            if (own.Count > 0)
+            {
+                using var mine = Client(trust, new PrivateKeyAuthenticationMethod(target.User, own.Select(k => k.Key).ToArray()), target);
+                try
+                {
+                    await mine.ConnectAsync(token);
+                    await InstallAsync(mine);
+                    installed = true;
+                    output?.Report($"Signed in to {target} once with your own SSH key ({string.Join(", ", own.Select(k => k.Name))} in " +
+                        $"{OwnerSsh.Folder}) to add Martlet's key. Martlet doesn't copy or keep your key.");
+                }
+                catch (SshAuthenticationException) { }
+                catch (Exception error) when (error is not (OperationCanceledException or HostShellException)) { throw trust.Explain(error, target); }
+            }
+        }
+        finally
+        {
+            foreach (var (_, file) in own) file.Dispose();
+        }
+
+        // Otherwise the account password, once, to install Martlet's key. It is not kept.
+        for (var attempt = 0; !installed; attempt++)
         {
             var password = prompts.LoginPassword(target, attempt > 0) ?? throw new OperationCanceledException(token);
             var keyboard = new KeyboardInteractiveAuthenticationMethod(target.User);
@@ -256,12 +293,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                 throw new HostShellException($"{target} did not accept that password. Enable password sign-in or add Martlet's SSH key, then try again.", error);
             }
             catch (Exception error) when (error is not OperationCanceledException) { throw trust.Explain(error, target); }
-            using var install = first.CreateCommand("sh -c " + Quote(
-                "umask 077; mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && " +
-                $"(grep -qxF {Quote(key.Public)} ~/.ssh/authorized_keys || printf '%s\\n' {Quote(key.Public)} >> ~/.ssh/authorized_keys)"));
-            await install.ExecuteAsync(token);
-            if (install.ExitStatus != 0)
-                throw new HostShellException($"Martlet could not set up SSH access on {target}: {install.Error.Trim()}");
+            await InstallAsync(first);
             break;
         }
 
@@ -292,18 +324,20 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
             Timeout = TimeSpan.FromSeconds(20)
         })
         { KeepAliveInterval = TimeSpan.FromSeconds(30) };
-        client.HostKeyReceived += (_, e) => e.CanTrust = trust.Check(e.HostKeyName, e.FingerPrintSHA256);
+        client.HostKeyReceived += (_, e) => e.CanTrust = trust.Check(e.HostKeyName, e.FingerPrintSHA256, e.HostKey);
         return client;
     }
 
-    /// <summary>Pins the host key on first use and refuses a changed one.</summary>
+    /// <summary>Pins the host key on first use and refuses a changed one. A key the owner's OpenSSH known_hosts already lists
+    /// for the computer is trusted without asking.</summary>
     private sealed class HostKeyCheck(HostShell shell, IHostShellPrompts prompts, HostShellTarget target, string? pinned)
     {
         internal string? Seen;
         private string? mismatch;
         private bool declined;
+        private bool fromKnownHosts;
 
-        internal bool Check(string algorithm, string fingerprint)
+        internal bool Check(string algorithm, string fingerprint, byte[] hostKey)
         {
             var key = $"{algorithm} SHA256:{fingerprint}";
             Seen = key;
@@ -320,9 +354,18 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                 mismatch = saved;
                 return false;
             }
-            if (!prompts.TrustHostKey(target, key)) { declined = true; return false; }
+            if (OwnerSsh.Trusts(target, hostKey)) fromKnownHosts = true;
+            else if (!prompts.TrustHostKey(target, key)) { declined = true; return false; }
             shell.Pin(target, key);
             return true;
+        }
+
+        /// <summary>Says once that the key came from the owner's known_hosts.</summary>
+        internal void Report(IProgress<string>? output, HostShellTarget target)
+        {
+            if (!fromKnownHosts) return;
+            fromKnownHosts = false;
+            output?.Report($"Trusted {target.Host}'s SSH key ({Seen}) because your OpenSSH known_hosts in {OwnerSsh.Folder} already has it.");
         }
 
         internal Exception Explain(Exception error, HostShellTarget target) =>
