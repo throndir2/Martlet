@@ -58,6 +58,11 @@ public sealed record GatewayExposure
 
     /// <summary>When <see cref="OutsideAddresses"/> were set (null: never set on the host).</summary>
     public DateTimeOffset? OutsideAddressesSetAt { get; init; }
+
+    /// <summary>The front door's port (docs/OPENAI_ENDPOINT.md): this host also listens there, on its own address and on
+    /// loopback, for a reverse proxy or Tailscale Funnel, and serves only Martlet's public web page and the OpenAI-compatible
+    /// API (<see cref="GatewayHttpApplication.InvokeFrontDoorAsync"/>). Null: this host isn't the front door.</summary>
+    public int? FrontDoorPort { get; init; }
 }
 
 /// <summary>One audit entry: an authentication or pairing decision. Nonsecret.</summary>
@@ -306,10 +311,24 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
         var address = Address(context);
         var now = clock.GetUtcNow();
         Add(now, routeClass, address, kind, "failure", code, null);
+        // A reverse proxy brings everyone who uses the OpenAI-compatible endpoint from one address, so a stranger's wrong keys
+        // would lock everyone out. API keys can't be guessed (256 random bits): audited, never locked out by address.
+        if (routeClass is "openai" or "front-door") return;
         var lockout = CountFailure(now, routeClass + "|" + address);
         if (lockout is { } wait)
             log(LogLevels.Warn, $"Locked out {routeClass} requests from {address} ({Describe(kind)}) for {Seconds(wait)} after " +
                 $"repeated failures ({code}).", "guard-locked|" + routeClass + "|" + address);
+    }
+
+    /// <summary>Records what the front door refused or let in (the audit only: the front door never locks out an address,
+    /// since everyone reaches it through one proxy). <paramref name="subject"/> is an API key ID, never a secret.</summary>
+    internal void FrontDoor(HttpContext context, string outcome, string code, string? subject = null)
+    {
+        var address = Address(context);
+        var now = clock.GetUtcNow();
+        Add(now, "front-door", address, GatewaySourceKind.Outside, outcome, code, Clean(subject));
+        if (outcome != "success")
+            log(LogLevels.Info, $"Front door: {code} for {Clean(subject) ?? "a caller"} through {address}.", "front-door|" + code);
     }
 
     /// <summary>Records a successful pairing or join (the device it admitted).</summary>

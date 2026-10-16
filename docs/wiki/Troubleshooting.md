@@ -1,33 +1,78 @@
 # Troubleshooting
 
-Start on **Home**. It lists what needs attention and opens the page that can fix it.
+Start on **Home**. It lists what needs attention and opens the page that fixes it. It never changes settings by itself.
 
-## Martlet cannot reply
+## Martlet can't reply
 
-Check **Companion › Thinking** and **Devices** for missing setup, removed key, retired model, Ollama not running, missing Ollama model, host not answering or Docker Desktop stopped.
+Home says why. Common causes:
 
-## Local Ollama problems
+- Thinking isn't set up. Choose **Set it all up for me**, or **Set up thinking** to open **Companion › Thinking**.
+- The provider retired your model. Home offers a replacement with **Use**.
+- Home offers the fix when a key was removed, Ollama isn't running or the model isn't downloaded, for example **Download** *model*.
+- None of your computers has room for Thinking. Home offers **Get a free key** and **Add your key** for NVIDIA Build, so Martlet can think online. NVIDIA then gets what you say.
+- A host doesn't answer. See [A host doesn't answer](#a-host-doesnt-answer).
 
-Use **Companion › Thinking › This PC › Test model**. It checks Ollama, model download, load, response and common memory errors. Choose a smaller model if GPU memory is overfilled.
+## The first reply is slow
 
-## Character problems
+- **Warming up**: Home and the talk window say what still loads (the model, listening, the character) and for how long. You can type or talk at once. The reply starts when the model is ready.
+- Ollama unloads a model after five idle minutes. Loading it again takes from about 15 seconds to a few minutes.
+- If the model thinks before it answers, set **Thinking steps** to **Off** on **Companion › Replies**. **Off** is the default.
 
-Check **Show character**, WebView2 runtime, **Companion › Character** status and Diagnostics `avatar-renderer.log`. Use **Settings › Tools › Prerequisites** for WebView2.
+## Ollama on this PC doesn't answer
 
-## Audio problems
+1. Open **Companion › Thinking › This PC**.
+2. Choose **Test model**. It starts Ollama, checks the download, loads the model and asks for a short reply. Each step shows in a window, with Ollama's own error text.
+3. If the model doesn't fit in the free graphics memory, choose a smaller model, or close programs that use the graphics card.
 
-Check Windows microphone privacy, selected devices, Listening route and Audio setup. For Windows speech, use **Martlet prerequisites** to check installed speech features.
+The error *Gemma4Assistant requires ctx_other to be set … error loading model: vector* also means that the model doesn't fit in the free graphics memory.
 
-## Docker/WSL problems
+## A game is slow while Martlet runs
 
-Use **Prerequisites (check / install)**. Martlet checks WSL 2, Virtual Machine Platform, Docker Desktop, pending restart and hardware virtualization. If firmware virtualization is off, Martlet can only guide you.
+The **Martlet on this PC** card on Home shows what Martlet keeps in memory now. **Free up this PC** ends the conversation, hides the character and unloads Martlet's models, so the game gets the memory back. Martlet rests until you talk to it again. With **Do you play games or use heavy apps on this PC?** set to **Yes**, **Recommended setup** keeps this PC's graphics card mostly free.
 
-## Diagnostics
+## Martlet forgets the start of a long conversation
 
-Open **Diagnostics** to filter logs, copy lines, open this PC's logs folder or **Save logs to share**. Review before sharing: logs can include local paths, computer names and provider error text.
+Each reply sends as much of the conversation as fits the **Context size** on **Companion › Replies**. Ollama on this PC holds only what its own context length setting allows (often 4,096 tokens). Raise it in the Ollama app's settings, then choose **Check model limit**. A larger context uses more graphics memory. If a cloud model says *context length exceeded*, set a smaller context size.
 
-## Crash or unexpected close
+## A host doesn't answer
 
-Home shows unexpected errors or a previous unexpected close. Open Diagnostics or the logs folder. Native crashes may be summarized from Windows Event Viewer on next launch.
+- The **Devices** map shows which computer stopped answering. Home says so too.
+- If the host's computer is on but its host service isn't running, select the host and choose **Update host**. The host service also starts again by itself after the computer restarts.
+- An older host can lack newer features. **Settings › App updates › Update hosts** updates all of them.
+
+## The character doesn't show
+
+1. Press **Show character** on Home.
+2. Check **Companion › Character** for a problem message.
+3. Open **Settings › Tools › Prerequisites** and install the **WebView2 runtime** if it is missing.
+4. If the character is off screen, choose **Reset character position** on Home.
+
+## Martlet doesn't hear you, or hears itself
+
+- Check that Windows lets desktop apps use the microphone. **Settings › Tools › Prerequisites** opens that Windows setting.
+- Choose your microphone on **Companion › Listening**.
+- If Martlet stops itself while it speaks, turn on **Reduce echo from my speakers** on **Companion › Listening** (on by default), or use headphones.
+
+## Docker Desktop or WSL won't start
+
+Martlet's host service on Windows needs Docker Desktop and WSL 2. **Settings › Tools › Prerequisites** checks WSL 2, Virtual Machine Platform, Docker Desktop, a waiting Windows restart and hardware virtualization.
+
+- When Windows must restart, Martlet asks first, then continues the setup after you sign in.
+- If virtualization is off in the PC's firmware (UEFI or BIOS), Martlet can restart into the firmware settings. Turn on *Intel Virtualization Technology (VT-x)* or *SVM Mode* (AMD) yourself.
+- Don't use Docker Desktop's *Reset to factory defaults* to fix this. It deletes Docker's data and doesn't turn on virtualization.
+
+## Martlet closed or showed an error
+
+- An unexpected error shows once in a window. **Copy** takes the whole report, and **Open logs folder** opens the logs. Martlet keeps running.
+- After a crash, Home says **Martlet closed unexpectedly last time**, with **Open Diagnostics**.
+
+## Get help
+
+1. Open **Diagnostics** in the left rail. It shows the logs of all your computers, with filters and a search box.
+2. Choose **Save logs to share**. It saves one ZIP file and shows it in File Explorer.
+3. Review the file. Logs never hold keys or what you said, but they can hold local paths, computer names and provider error text.
+4. Attach the file to a new [issue](https://github.com/throndir2/Martlet/issues).
+
+**Settings › Tools › Troubleshooting** shows Martlet's own checks on this PC and suggestions. **Settings › Tools › Backup / restore** saves your settings to a file and restores them.
 
 More detail: [Troubleshooting](https://github.com/throndir2/Martlet/blob/main/docs/TROUBLESHOOTING.md), [Diagnostics](https://github.com/throndir2/Martlet/blob/main/docs/DIAGNOSTICS.md), [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md), [Voice latency](https://github.com/throndir2/Martlet/blob/main/docs/VOICE_LATENCY.md).

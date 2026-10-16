@@ -1,45 +1,68 @@
 # Installing Martlet
 
-Martlet is a per-user Windows app. You do not need administrator rights for the normal install.
+Martlet installs for your own Windows user. You don't need administrator rights, and the installer asks no setup questions.
 
-## Requirements
+## What you need
 
-| Requirement | Notes |
+| You need | |
 | --- | --- |
-| Windows | Windows 10 version 2004 or later, or Windows 11. x64 only. |
-| Installer | `Martlet-<version>-win-x64.exe` from the latest GitHub release. |
-| Signature | The installer is **unsigned**. Windows may warn that the publisher is unknown. |
-| .NET runtime | Bundled. You do not install .NET separately. |
+| **Windows** | Windows 10 (version 2004 or later) or Windows 11, 64-bit (x64). |
+| **Windows on Arm** | Windows 11 on Arm PCs, such as Snapdragon X laptops, work through Windows' x64 emulation. Jobs that need an NVIDIA graphics card aren't available there. Windows 10 on Arm can't run Martlet. |
+| **Graphics card** | Optional. Any PC works with a cloud provider. A graphics card runs AI models on your own PC. Picture making, singing, Audio2Face and most cloned voices need an NVIDIA card. |
+| **Internet** | To download models and to use cloud services. |
+| **Cost** | Martlet is free. Cloud providers can charge for use. Martlet walks you through free keys for NVIDIA Build and Google Gemini. |
 
-## Download
+The app runtime (.NET), its audio and speech-recognition parts and the Hiyori sample character are in the installer. You don't install them yourself.
+
+Using Linux or a Mac? See [Linux and Mac](Linux-and-Mac) for the early desktop app.
+
+## Download and install
 
 1. Open [the latest release](https://github.com/throndir2/Martlet/releases/latest).
 2. Download `Martlet-<version>-win-x64.exe`.
-3. Run it.
-4. Read the installer terms.
-5. Leave **Start Martlet and finish setting up** checked if you want to continue.
+3. Run it. If Windows says that it protected your PC, choose **More info**, then **Run anyway**.
+4. Read the license and the release notice, then install.
+5. On the last page, keep **Start Martlet and finish setting up** selected and choose **Finish**.
 
-Unsigned does not mean prototype. It means the release is not code-signed by a publisher certificate; do not claim it is signed.
+Martlet installs to `%LOCALAPPDATA%\Programs\Martlet`. The Start menu gets **Martlet**, **Martlet prerequisites**, **Martlet Doctor** (a status check in a console window), **Read me** and **Uninstall Martlet**.
 
-## First launch
+## About the Windows warning
 
-The installer asks no setup questions and installs no optional prerequisites. The welcome wizard asks:
+The installer isn't code-signed, so Windows can warn that the publisher is unknown. This is normal for Martlet: unsigned releases are its actual, normal releases.
 
-- Whether to **start a new Martlet network** or **join yours** (it finds your other computers on this network), or make this a host PC.
-- Whether to **keep everything on your computers** or use **free online services** too.
+- The release page lists the SHA-256 checksum of each download. A checksum shows that the download is complete and not damaged. It doesn't prove who published it.
+- Download Martlet only from its GitHub releases page.
+- Never turn off Windows security features to install Martlet.
 
-Then it shows what fits this PC, with each part's share of the graphics card, memory and processor, and **Use these suggestions** sets it up after one confirmation. **Ask me three questions instead** and **I'll choose myself** are there too.
+## First start
+
+Martlet opens the welcome tour. It helps you start a new Martlet network or join yours, asks three quick questions and suggests a setup that fits this PC. Continue with [First Steps](First-Steps).
 
 ![Welcome tour](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/welcome.png)
 
 ## Optional prerequisites
 
-Martlet bundles the app runtime, many audio libraries, voice recognition runtime and default character assets. Optional features can need WebView2, Windows speech, Ollama, Docker Desktop + WSL 2, an NVIDIA driver or provider API keys.
+Some features need programs that Martlet doesn't put in its installer:
 
-Use **Settings › Tools › Prerequisites (check / install)** or Start menu **Martlet prerequisites**. Nothing changes until you choose an item.
+- The **WebView2 runtime** shows the character. Windows 11 already has it.
+- **Ollama** runs a Thinking model on this PC.
+- **Windows speech** for your language. The **Test hearing** check speaks its test word with it.
+- An **NVIDIA driver** for jobs on an NVIDIA graphics card.
+- **Docker Desktop with WSL 2** runs Martlet's host service on this PC (voice engines, Whisper, Audio2Face and more).
+
+Martlet downloads each one from its publisher, and only after you choose it. Windows features ask for administrator approval separately. To check them any time, open **Settings › Tools › Prerequisites**, or **Martlet prerequisites** in the Start menu. Nothing changes until you choose an item.
 
 ## Updates
 
-Martlet checks GitHub Releases by default. See [App Settings and Updates](App-Settings-and-Updates) to change that.
+Martlet checks its GitHub releases for updates and installs them in the background when you agree. See [App Settings and Updates](App-Settings-and-Updates).
+
+To update by hand, exit Martlet first (**Exit Martlet** in Settings or in the notification-area menu). Then run the newer installer.
+
+## Uninstall
+
+1. Exit Martlet.
+2. Run **Uninstall Martlet** from the Start menu, or remove Martlet in Windows **Settings › Apps**.
+
+Your settings, memories and other data stay in `%LOCALAPPDATA%\Martlet`. Delete that folder too if you want to remove them.
 
 More detail: [README getting started](https://github.com/throndir2/Martlet/blob/main/README.md#-up-and-running-in-minutes), [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md), [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md).

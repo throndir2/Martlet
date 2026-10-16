@@ -556,8 +556,14 @@ internal static class HostApplication
                 // The host's own account (martlet-host --yes) is the owner's confirmation, as for owner-network-reset.
                 var current = HostExposure.Read(directory);
                 var changed = options.Outside.Count > 0 || options.ClearOutside || options.AllowPairingOutsideHome is not null ||
-                    options.TreatAllAsOutside is not null;
+                    options.TreatAllAsOutside is not null || options.FrontDoor is not null;
                 var blocked = SignInBlocked(directory);
+                if (options.FrontDoor is > 0 and var door && door == config.Binding.Origin.Port)
+                {
+                    output.WriteLine($"front_door.port: port {door} is this host's gateway port. Choose another port for the front door " +
+                        $"(for example {Martlet.Core.Access.OpenAiEndpoint.DefaultFrontDoorPort}). Nothing changed.");
+                    return 2;
+                }
                 if (changed)
                 {
                     var next = current.With(options, DateTimeOffset.UtcNow);
@@ -880,7 +886,7 @@ internal static class HostApplication
         {
             var exposure = HostExposure.Read(directory);
             owner.Exposure = exposure.ToGateway();
-            if (exposure.Outside.Count > 0 || exposure.AllowPairingOutsideHome || exposure.TreatAllAsOutside)
+            if (exposure.Outside.Count > 0 || exposure.AllowPairingOutsideHome || exposure.TreatAllAsOutside || exposure.FrontDoorPort is not null)
             {
                 owner.RecordActivity("INFO", "Reaching this host from outside home: " + exposure.Describe() + ".");
                 output?.WriteLine("Reaching this host from outside home: " + exposure.Describe() + ".");

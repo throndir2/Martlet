@@ -17,12 +17,14 @@
 #   martlet-host console        the gateway console: list paired desktops and revoke one
 #   martlet-host network-reset  leave this host's Martlet network (pairings stay); the next desktop that pairs adds it to its own
 #   martlet-host exposure [--outside <name:port>]... [--clear-outside] [--allow-pairing-outside-home yes|no]
-#                         [--treat-all-as-outside yes|no]
+#                         [--treat-all-as-outside yes|no] [--front-door <port>|off]
 #                               how this host is reached from outside home (docs/NETWORK.md): outside addresses (overlay or
 #                               port forward), typed pairing codes from outside, and treating every connection as outside
 #                               (Docker-published gateways can't see where connections come from); no options prints it.
 #                               With outside addresses the gateway also listens on this host's Tailscale address (native),
-#                               or the Docker method publishes its port on every address of the Docker host
+#                               or the Docker method publishes its port on every address of the Docker host. --front-door opens
+#                               this host's front door: Martlet's web page and the OpenAI-compatible API only, on that port, for
+#                               a reverse proxy or Tailscale Funnel (docs/OPENAI_ENDPOINT.md)
 #   martlet-host status         show the gateway and every installed role
 #   martlet-host machine        report this machine's hardware (GPUs, CPU, memory) to paired desktops
 #   martlet-host update         update the gateway to this engine's Martlet version (keeps identity, pairings and roles)
@@ -1828,8 +1830,22 @@ stranded_text() {
 # Docker method: where the network holder publishes the gateway port: "<lan>:<port>" (the Docker host's home address
 # only), ":<port>" (every address of the Docker host, once the owner set outside addresses) or empty without a holder.
 holder_binding() {
-  docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}}:{{.HostPort}}{{end}}{{end}}' \
-    "${NET}" 2>/dev/null || true
+  local entries port entry
+  entries="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{$p}}={{.HostIp}}:{{.HostPort}} {{end}}{{end}}' \
+    "${NET}" 2>/dev/null || true)"
+  # Only the gateway port's binding: a holder that also publishes the front door names the gateway's port in its label.
+  port="$(docker container inspect -f '{{index .Config.Labels "martlet.home"}}' "${NET}" 2>/dev/null || true)"; port="${port##*:}"
+  for entry in ${entries}; do
+    if [[ ! "${port}" =~ ^[0-9]+$ || "${entry%%=*}" == "${port}/tcp" ]]; then printf '%s' "${entry#*=}"; return 0; fi
+  done
+}
+
+# Docker method: the front door port the network holder publishes (docs/OPENAI_ENDPOINT.md), or empty when it publishes none.
+holder_front() {
+  local front
+  front="$(docker container inspect -f '{{index .Config.Labels "martlet.front-door"}}' "${NET}" 2>/dev/null || true)"
+  [[ "${front}" =~ ^[0-9]{4,5}$ ]] && printf '%s' "${front}"
+  return 0
 }
 
 # Docker method: the holder's home address "<lan>:<port>": its martlet.home label, or what an older holder (without the
@@ -1847,17 +1863,27 @@ holder_home() {
 # overlay address, and Docker Desktop can't publish on an address that comes and goes (the holder would not start while
 # the overlay is off). Replaces the holder, which restarts the gateway and roles in its network, only when the published
 # address or the image changed.
+# <front> is the front door's port (docs/OPENAI_ENDPOINT.md), or empty for none: published on the home address and on this
+# computer's loopback (for a proxy or Tailscale Funnel on the same computer), or on every address with <wide>.
 ensure_holder() {
-  local lan="$1" port="$2" wide="$3" socket_group="$4" publish="$1:$2:$2" want="$1:$2" current waited
-  if [[ "${wide}" == 1 ]]; then publish="${port}:${port}"; want=":${port}"; fi
-  current="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}}:{{.HostPort}}{{end}}{{end}} {{.Config.Image}}' "${NET}" 2>/dev/null || true)"
-  [[ "${current}" != "${want} ${IMAGE}" ]] || return 0
+  local lan="$1" port="$2" wide="$3" socket_group="$4" front="${5:-}" publish=(-p "$1:$2:$2") want="$1:$2" current image waited
+  if [[ "${wide}" == 1 ]]; then publish=(-p "${port}:${port}"); want=":${port}"; fi
+  if [[ -n "${front}" ]]; then
+    [[ "${front}" =~ ^[0-9]{4,5}$ && "${front}" != "${port}" ]] || fail "The front door needs a port of its own (for example 9445)."
+    if [[ "${wide}" == 1 ]]; then publish+=(-p "${front}:${front}")
+    else publish+=(-p "${lan}:${front}:${front}" -p "127.0.0.1:${front}:${front}"); fi
+  fi
+  image="$(docker container inspect -f '{{.Config.Image}}' "${NET}" 2>/dev/null || true)"
+  current=""; [[ -z "${image}" ]] || current="$(holder_binding) $(holder_front) ${image}"
+  [[ "${current}" != "${want} ${front} ${IMAGE}" ]] || return 0
   if [[ -n "${current}" ]]; then
     wait_for_holder_engines
     docker rm -f "${NET}" >/dev/null
   fi
-  docker run -d --name "${NET}" --restart unless-stopped -p "${publish}" --label "martlet.home=${lan}:${port}" --user 1000:1000 \
+  docker run -d --name "${NET}" --restart unless-stopped "${publish[@]}" --label "martlet.home=${lan}:${port}" \
+    --label "martlet.front-door=${front}" --user 1000:1000 \
     --group-add "${socket_group}" -v /var/run/docker.sock:/var/run/docker.sock "${IMAGE}" hold >/dev/null
+  [[ -z "${front}" ]] || note "Front door port ${front} is published by ${NET} too (for your proxy, or Tailscale on this computer)."
   if [[ "${wide}" == 1 ]]; then
     note "Gateway port ${port} is published by ${NET} on every address of this Docker host (home address ${lan}:${port}), so your overlay network reaches it too."
   else
@@ -1946,7 +1972,7 @@ follow_home() {
   home="$(home_address)"
   [[ -n "${home}" && "${home}" != "${current}" ]] || return 0
   note "This computer's home address is ${home} now (it was ${current}), so the gateway is published there; pairings stay."
-  ( ensure_holder "${home}" "${port}" 0 "$(stat -c %g /var/run/docker.sock)" ) ||
+  ( ensure_holder "${home}" "${port}" 0 "$(stat -c %g /var/run/docker.sock)" "$(holder_front)" ) ||
     note "Couldn't publish the gateway on ${home} yet; trying again in 10 seconds."
 }
 
@@ -1969,23 +1995,31 @@ docker_launch() {
       fail "Add -e MARTLET_HOST_ADDRESS=<the Docker host's private LAN IPv4> (and optionally -e MARTLET_HOST_PORT=9443)."
     # A holder that publishes on every address (the owner set outside addresses) keeps doing so.
     [[ "$(holder_binding)" == :* ]] && wide=1
-    ensure_holder "${lan}" "${port}" "${wide}" "${socket_group}"
+    ensure_holder "${lan}" "${port}" "${wide}" "${socket_group}" "$(holder_front)"
     docker volume create martlet-host-config >/dev/null
     docker volume create martlet-host-private >/dev/null
   elif [[ "$1" == exposure && $# -gt 1 ]] && docker container inspect "${NET}" >/dev/null 2>&1; then
     # Outside addresses make the holder publish the gateway on every address of the Docker host, so an overlay network such
     # as Tailscale reaches it on the Docker host's own overlay address; clearing them publishes on the home address only.
-    local home wide arg
+    local home wide arg front previous=""
     home="$(holder_home)"
     [[ -n "${home}" ]] || fail "This host's network holder publishes no address. Run 'setup' first."
     wide=0; [[ "$(holder_binding)" == :* ]] && wide=1
+    front="$(holder_front)"
     for arg in "${@:2}"; do
       case "${arg}" in
         --outside) wide=1 ;;
         --clear-outside) wide=0 ;;
       esac
+      # The front door follows --front-door <port>|off (docs/OPENAI_ENDPOINT.md).
+      if [[ "${previous}" == --front-door ]]; then
+        if [[ "${arg}" == off ]]; then front=""
+        elif [[ "${arg}" =~ ^[0-9]{4,5}$ ]]; then front="${arg}"
+        else fail "--front-door takes a port (for example 9445) or off."; fi
+      fi
+      previous="${arg}"
     done
-    ensure_holder "${home%:*}" "${home##*:}" "${wide}" "${socket_group}"
+    ensure_holder "${home%:*}" "${home##*:}" "${wide}" "${socket_group}" "${front}"
   elif [[ "$1" == home ]]; then
     # Martlet on a Docker Desktop host moves the published gateway to the computer's new home address (there the keeper
     # can't see the computer's addresses). Only the holder changes; the gateway's name, key and approval stay.
@@ -2000,7 +2034,7 @@ docker_launch() {
       note "The gateway is published on ${lan} already."
     else
       note "This computer's home address is ${lan} now (it was ${home%:*}), so the gateway is published there; pairings stay."
-      ensure_holder "${lan}" "${home##*:}" 0 "${socket_group}"
+      ensure_holder "${lan}" "${home##*:}" 0 "${socket_group}" "$(holder_front)"
     fi
   fi
   docker container inspect "${NET}" >/dev/null 2>&1 || fail "Run 'setup' first."

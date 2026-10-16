@@ -93,7 +93,7 @@ public sealed class ExposureTests
         Assert.Equal(3, await HostApplication.RunAsync(["owner-pair", "--config", "/srv/martlet/host.json"], pairing, default, platform)
             .WaitAsync(TimeSpan.FromSeconds(20)));
         Assert.Contains("Reaching this host from outside home: outside addresses: none; pairing codes from outside home: allowed; " +
-            "treat every connection as outside home: yes.", pairing.ToString());
+            "treat every connection as outside home: yes; front door: closed.", pairing.ToString());
         Assert.Contains("pairing.canceled", pairing.ToString());
     }
 
@@ -103,5 +103,52 @@ public sealed class ExposureTests
     [InlineData("--outside")]
     [InlineData("--clear-outside", "--outside", "a.example:1")]
     public void Invalid_owner_exposure_options_are_refused(params string[] options) =>
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(["owner-exposure", "--config", "/srv/martlet/host.json", .. options]));
+
+    [Fact]
+    public async Task Owner_exposure_opens_the_front_door_without_sign_in_and_serve_listens_there()
+    {
+        using var platform = new FixturePlatform();
+        using var output = new StringWriter();
+        platform.Terminal = new() { Interactive = false };
+        Assert.Equal(0, await platform.Run("owner-init", output));
+
+        // The gateway's own port is refused; the front door needs no sign-in (every request carries an API key).
+        using var clash = new StringWriter();
+        Assert.Equal(2, await Run(platform, clash, "--front-door", platform.Origin.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.Contains("front_door.port", clash.ToString());
+        var door = FixturePlatform.FreeOrigin().Port;
+        using var open = new StringWriter();
+        Assert.Equal(0, await Run(platform, open, "--front-door", door.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.Contains($"front door: open on port {door}", open.ToString());
+        Assert.Equal(door, System.Text.Json.JsonDocument.Parse(platform.Fs.Parent.Children["exposure.json"].Bytes).RootElement.GetProperty("frontDoorPort").GetInt32());
+
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var serving = new WatchingWriter("serving:");
+        var run = platform.Run("serve", serving, cancel.Token);
+        await serving.Seen.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(door, platform.Owner!.Exposure.FrontDoorPort);
+        var front = new Martlet.Gateway.GatewayOrigin($"https://127.0.0.1:{door}");
+        using (var client = PinnedGatewayClient.Create(front, platform.Owner.Identity!))
+        {
+            using var live = await client.SendAsync(new HttpRequestMessage(HttpMethod.Get, front.CanonicalOrigin + "/health/live"));
+            Assert.Equal(System.Net.HttpStatusCode.OK, live.StatusCode);
+            using var hidden = await client.SendAsync(new HttpRequestMessage(HttpMethod.Get, front.CanonicalOrigin + "/martlet/v1/status"));
+            Assert.Equal(System.Net.HttpStatusCode.NotFound, hidden.StatusCode);
+        }
+        await cancel.CancelAsync();
+        try { await run.WaitAsync(TimeSpan.FromSeconds(10)); } catch (OperationCanceledException) { }
+
+        using var closed = new StringWriter();
+        Assert.Equal(0, await Run(platform, closed, "--front-door", "off"));
+        Assert.Contains("front door: closed", closed.ToString());
+        Assert.False(System.Text.Json.JsonDocument.Parse(platform.Fs.Parent.Children["exposure.json"].Bytes).RootElement.TryGetProperty("frontDoorPort", out var gone) && gone.ValueKind == System.Text.Json.JsonValueKind.Number);
+    }
+
+    [Theory]
+    [InlineData("--front-door", "80")]
+    [InlineData("--front-door", "on")]
+    [InlineData("--front-door")]
+    public void Invalid_front_door_options_are_refused(params string[] options) =>
         Assert.Throws<HostInputException>(() => HostOptions.Parse(["owner-exposure", "--config", "/srv/martlet/host.json", .. options]));
 }

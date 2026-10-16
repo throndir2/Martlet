@@ -11,10 +11,16 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Apps can ask for `martlet@any`, `martlet@fast` or `martlet@smart` instead of a model name. Martlet runs the request on a free model of that kind on any of your hosts, and the answer names the model that answered. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- A host can open a front door: a second port that shares only your language models and a simple web page, ready for Tailscale Funnel, Nginx Proxy Manager, Nginx, Caddy or a Cloudflare Tunnel. People sign in to the page with their key to see their models and how to connect. ([#919](https://github.com/throndir2/Martlet/pull/919))
+- Share › Share your language models gets Check address, which tells you whether your public address reaches the front door, and Show setup with the exact steps for each way to expose it. ([#919](https://github.com/throndir2/Martlet/pull/919))
 
 ### Changed
 
 - When your models are busy, a shared request now waits for a free one (up to 45 seconds, or 2 minutes when it streams) instead of being turned away at once. Your own conversations still come first and never wait for it. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+
+### Fixed
+
+- The guide links in the README now open the Martlet Wiki, which is up to date and has new pages on App guides, Linux and Mac, sharing with friends, and accounts. ([#917](https://github.com/throndir2/Martlet/pull/917))
 
 ## [0.83.0] - 2026-10-16
 

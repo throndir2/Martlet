@@ -1,44 +1,76 @@
 # Repository Layout
 
+This page tells you where things are in the repository. Before you change a rule, find the file that owns it in the [decision map](https://github.com/throndir2/Martlet/blob/main/docs/DECISION_MAP.md). Use the names in the [glossary](https://github.com/throndir2/Martlet/blob/main/docs/GLOSSARY.md).
+
 ## Root
 
 | Path | Purpose |
 | --- | --- |
-| `README.md` | User-facing overview and docs index. |
-| `CONTRIBUTING.md` | Developer quick start and validation policy. |
-| `AGENTS.md` | Coding-agent rules. |
+| `README.md` | The overview for users. |
+| `CHANGELOG.md` | What changed in each version. Each release takes its notes from it. |
+| `CONTRIBUTING.md` | The developer quick start and the local-only validation policy. |
+| `AGENTS.md` | The rules for coding agents. |
 | `DEVELOPMENT_PLAN.md` | Product scope, decisions and risks. |
-| `Martlet.slnx` | Main solution. |
-| `Directory.Build.props` | Shared build settings and version. |
+| `LICENSE` | The license terms. |
+| `Martlet.slnx` | The main solution for the IDE. |
+| `Directory.Build.props` | Shared build settings and the Martlet `<Version>`. |
+| `Directory.Build.targets`, `Directory.Packages.props`, `NuGet.config` | Shared build steps, central package versions and package sources. |
+| `global.json` | The pinned .NET SDK version. |
+| `.github\workflows\windows-release.yml` | The one workflow: the release build that you start by hand. |
 
-## Main `src\` areas
+## Apps in `src\`
 
-| Area | Purpose |
+| Project | Purpose |
 | --- | --- |
-| `Martlet.Desktop` | WPF desktop app. |
-| `Martlet.Core` | Shared settings/domain logic. |
-| `Martlet.Conversation` | Conversation runtime and background jobs. |
-| `Martlet.Providers` | Provider adapters. |
-| `Martlet.Audio`, `Stt.Windows`, `Sherpa`, `LocalStt`, `VoiceActivity` | Audio, speech and listening foundations. |
-| `Martlet.Memory` | Local fact store and retrieval. |
-| `Martlet.Discord`, `Martlet.Messaging`, `Martlet.Home` | Discord, Telegram/WhatsApp and Home Assistant. |
-| `Martlet.Avatars`, `Martlet.Avatar.*` | Avatar contracts, Live2D/VRM renderer and Audio2Face. |
-| `Martlet.Gateway*` | Host gateway, trust, persistence and role relays. |
-| `Martlet.Host.*`, `Martlet.HostArtifacts` | Host inventory/setup/artifact inspection. |
-| `Martlet.Diagnostics`, `Martlet.Doctor`, `Martlet.Support` | Diagnostics, Doctor CLI and support bundle path. |
-| `Martlet.Updates`, `Martlet.Launcher`, `Martlet.Readiness` | Updates, launcher and readiness protocols. |
-| `Martlet.Mcp`, `Martlet.Mcp.Client`, `Martlet.Mcp.Protocol` | Local MCP server, MCP client and protocol code. |
+| `Martlet.Desktop` | The Windows app (WPF). |
+| `Martlet.Companion` | The early Linux and macOS desktop companion (Avalonia). |
+| `Martlet.Companion.Platform`, `Martlet.Platform.Linux`, `Martlet.Platform.MacOS` | The companion's platform service contracts, and their Linux and macOS versions (hotkey, overlay, keys, screen capture, tray, start at login). |
+| `Martlet.Doctor` | The Doctor command-line tool. |
+| `Martlet.Mcp`, `Martlet.Mcp.Protocol` | Martlet's own MCP server and its tools. |
+| `Martlet.Avatar.RendererHost` | The private character renderer process on Windows (WebView2). |
+| `Martlet.Gateway.Host.Linux` | The host gateway on Linux hosts and on the Mac host. |
+| `Martlet.Gateway.Host` | A local host control tool for Windows. |
 
-## Other directories
+## Libraries in `src\`
+
+| Project | Purpose |
+| --- | --- |
+| `Martlet.Core` | Settings, sync, accounts, the platform catalog and other shared rules. |
+| `Martlet.Conversation` | The conversation, background jobs, the Thinking pool and web research. |
+| `Martlet.Providers` | Cloud and local model providers. |
+| `Martlet.Participation` | When Martlet takes part in a conversation. |
+| `Martlet.Audio`, `Martlet.EchoCancellation`, `Martlet.VoiceActivity` | Audio, echo reduction and voice activity detection. |
+| `Martlet.Stt.Windows`, `Martlet.LocalStt`, `Martlet.Sherpa` | Speech recognition: Windows speech, local whisper and sherpa-onnx (Parakeet, speaker recognition, sound tagging). |
+| `Martlet.Memory` | Remembered facts and retrieval. |
+| `Martlet.Perception` | Screen capture, reading and seeing contracts. |
+| `Martlet.Discord`, `Martlet.Messaging`, `Martlet.Home` | Discord, Telegram and WhatsApp, and Home Assistant. |
+| `Martlet.Avatars`, `Martlet.Avatar.Hosting`, `Martlet.Avatar.Audio2Face` | Character contracts, hosting and Audio2Face lip-sync. |
+| `Martlet.Avatar.Vrm`, `Martlet.Avatar.Live2D` | The VRM and Live2D web packages (npm). |
+| `Martlet.Gateway`, `Martlet.Gateway.Trust`, `Martlet.Gateway.Persistence` | The host gateway, its pairing trust and its saved state. |
+| `Martlet.Gateway.*` (Ollama, Stt, F5, Xtts, GptSovits, Dia, Singing, Pictures, Ocr, Motion, VoiceRecognition, Audio2Face) | The relays from the gateway to each host role. |
+| `Martlet.F5` | The F5 voice worker client and voice presets. |
+| `Martlet.Host.Inventory`, `Martlet.Host.Setup`, `Martlet.HostArtifacts`, `Martlet.ArtifactDoctor` | Host reports, host setup and host artifact checks. |
+| `Martlet.Credentials.Windows` | API keys in Windows Credential Manager. |
+| `Martlet.Diagnostics`, `Martlet.Support` | Diagnostic probes and the local support bundle. |
+| `Martlet.Updates`, `Martlet.Launcher`, `Martlet.Readiness` | Update records, the launcher and the readiness protocol. |
+| `Martlet.Mcp.Client` | The MCP client for the tools Martlet uses while you talk. |
+| `Martlet.NodeLinkCheck` | A test tool that MCP self-tests run between real gateways. |
+| `Martlet.LocalStt.PackageTool` | An offline tool that makes local speech recognition packages. |
+
+## Other folders
 
 | Path | Purpose |
 | --- | --- |
-| `tests\` | xUnit test projects and fixtures. |
-| `workers\` | Audio2Face, Chatterbox, Dia, F5, GPT-SoVITS, XTTS, Parakeet, perception, pictures and singing workers. |
-| `docs\` | User/developer/design docs. |
-| `deploy\host` | `martlet-host` engine, role flow and host roles. |
-| `packaging\windows` | Publish, installer and release scripts. |
-| `contracts\avatars`, `contracts\golden` | Contract schemas/vectors. |
-| `scripts\` | Test, smoke, MCP and utility scripts. |
+| `tests\` | The xUnit test projects (`<Project>.Tests`) and `known-failures.txt`. |
+| `workers\` | Python workers for the host roles: audio2face, chatterbox, dia, f5, gpt-sovits, motion, ocr, parakeet, perception, pictures, singing, voice-recognition and xtts. Each has its tests in `workers\<name>\tests`. |
+| `deploy\host` | The `martlet-host` engine, its `Dockerfile` and the host roles in `deploy\host\roles`. |
+| `deploy\ubuntu` | Ubuntu Compose files, setup and artifacts. |
+| `packaging\windows` | The Windows publish, installer and release scripts. |
+| `packaging\linux`, `packaging\macos` | The Linux (AppImage and .deb) and macOS (.dmg) package scripts. |
+| `contracts\avatars`, `contracts\golden` | Contract schemas and test vectors. |
+| `scripts\` | Developer scripts: `Test-Martlet.ps1`, `Invoke-MartletMcp.ps1`, `Register-MartletMcp.ps1`, `Clean-Martlet.ps1`, `Smoke-Doctor.ps1`, `Get-ReleaseNotes.ps1`, `Publish-Wiki.ps1`, `Update-ModelCatalog.ps1`, `Measure-Footprint.ps1` and others. |
+| `docs\` | Developer and design docs. `docs\DECISION_MAP.md` names the owner of each decision. `docs\GLOSSARY.md` gives one name for each concept. |
+| `docs\wiki` | The source of this wiki. `scripts\Publish-Wiki.ps1` checks the links and publishes it. |
+| `docs\images` | The screenshots for the README and the wiki. |
 
-More detail: [Architecture](https://github.com/throndir2/Martlet/blob/main/docs/ARCHITECTURE.md), [Contributing](https://github.com/throndir2/Martlet/blob/main/CONTRIBUTING.md), [Host guide](https://github.com/throndir2/Martlet/blob/main/deploy/host/README.md), [Packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md).
+More detail: [Architecture](Architecture), [Contributing](https://github.com/throndir2/Martlet/blob/main/CONTRIBUTING.md), [Decision map](https://github.com/throndir2/Martlet/blob/main/docs/DECISION_MAP.md), [Glossary](https://github.com/throndir2/Martlet/blob/main/docs/GLOSSARY.md), [Host guide](https://github.com/throndir2/Martlet/blob/main/deploy/host/README.md), [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md).

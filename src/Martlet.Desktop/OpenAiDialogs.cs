@@ -174,48 +174,54 @@ internal sealed class OpenAiInviteDialog : ThemedWindow
         new OpenAiInviteDialog(issued, baseUrl, publicAddress, models) { Owner = owner }.ShowDialog();
 }
 
-/// <summary>How to give your hosts' language models an address on the internet: a reverse proxy with a real certificate in front
-/// of one host (the front door), with the configuration to paste for Nginx and for Caddy. Shows text only; changes nothing.</summary>
+/// <summary>How to give the front door an https address with a real certificate (docs/OPENAI_ENDPOINT.md): the steps, then the
+/// text to copy for Nginx Proxy Manager, Nginx, Caddy, Cloudflare Tunnel and Tailscale Funnel, filled in with your address and
+/// the front door. Shows text only; changes nothing.</summary>
 internal sealed class OpenAiProxyDialog : ThemedWindow
 {
-    private OpenAiProxyDialog(string serverName, string hostId, string origin)
+    private OpenAiProxyDialog(string serverName, string? hostId, string upstreamHost, int port, bool open)
     {
         SetResourceReference(StyleProperty, "AppWindowStyle");
-        Title = "Martlet - Give your language models an address";
-        Width = 760;
+        Title = "Martlet - Give your front door an address";
+        Width = 780;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
         AutomationProperties.SetAutomationId(this, "OpenAiProxyDialog");
+        var upstream = $"https://{upstreamHost}:{port}";
         var root = new StackPanel { Margin = new Thickness(24) };
-        var heading = new TextBlock { Text = "Give your language models an address", TextWrapping = TextWrapping.Wrap };
+        var heading = new TextBlock { Text = "Give your front door an address", TextWrapping = TextWrapping.Wrap };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
         var steps = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 10),
-            Text = "Apps that use the OpenAI API need an https address with a real certificate. Your hosts use their own certificate, so " +
-                "put a reverse proxy in front of one host. Any host works: it runs the models it has and sends the other models to the " +
-                "host of your network that has them.\n\n" +
-                $"1. Choose a name, for example {serverName}. In your DNS, point it at your home's internet address.\n" +
-                "2. Make your router send port 443 to the computer that runs the proxy (for example your Linux server). If it already does " +
-                "for your other sites, nothing changes.\n" +
-                "3. Get a certificate for the name (certbot, Nginx Proxy Manager or Caddy do it for you).\n" +
-                $"4. Add one of the configurations below to the proxy and reload it. It sends only /v1/ to {hostId} ({origin}) on your " +
-                "home network. Everything else of Martlet stays at home.\n" +
-                $"5. In Martlet, type https://{serverName}/v1 in Address to give people and choose Save.\n\n" +
-                "Each request still needs a key you made. The proxy limits how fast one address can ask; your hosts check every key."
+            Text = (open ? $"Your front door is open on {hostId}, at {upstream} on your home network. "
+                    : $"First open the front door (Share › Share your language models › Front door). These steps assume {upstream}. ") +
+                "Apps need an https address with a real certificate in front of it. Pick one way:\n\n" +
+                "1. Tailscale Funnel (no domain, no router change): install Tailscale on the front door's computer, sign in, and run the " +
+                "command below there. Tailscale prints your address (https://<computer>.<tailnet>.ts.net).\n" +
+                "2. Nginx Proxy Manager, Nginx or Caddy (your own domain): point the name at your home's internet address (or keep it " +
+                "behind Cloudflare's proxy), let your router send port 443 to the proxy's computer, and add the site below.\n" +
+                "3. Cloudflare Tunnel (a domain on Cloudflare, no router change): add the rule below to cloudflared on any computer at home.\n\n" +
+                $"Then type the address (for example https://{serverName}/v1) in Address to give people, choose Save and Check address.\n\n" +
+                "Send everything to the front door: it serves only Martlet's web page and the OpenAI-compatible API, and answers 404 for " +
+                "the rest. Never point a proxy at the gateway's own port (9443). Behind Cloudflare's proxy a reply that doesn't stream " +
+                "must finish within 100 seconds; streamed replies have no such limit."
         };
         AutomationProperties.SetAutomationId(steps, "OpenAiProxySteps");
         root.Children.Add(steps);
-        root.Children.Add(Config("Nginx", "OpenAiProxyNginx", OpenAiEndpoint.NginxConfig(serverName, origin)));
-        root.Children.Add(Config("Caddy", "OpenAiProxyCaddy", OpenAiEndpoint.CaddyConfig(serverName, origin)));
+        root.Children.Add(Config("Tailscale Funnel (run on the front door's computer)", "OpenAiProxyTailscale", OpenAiEndpoint.TailscaleCommand(port)));
+        root.Children.Add(Config("Nginx Proxy Manager", "OpenAiProxyManager", OpenAiEndpoint.ProxyManagerSteps(serverName, upstreamHost, port)));
+        root.Children.Add(Config("Nginx", "OpenAiProxyNginx", OpenAiEndpoint.NginxConfig(serverName, upstream)));
+        root.Children.Add(Config("Caddy", "OpenAiProxyCaddy", OpenAiEndpoint.CaddyConfig(serverName, upstream)));
+        root.Children.Add(Config("Cloudflare Tunnel (config.yml)", "OpenAiProxyCloudflare", OpenAiEndpoint.CloudflareTunnelConfig(serverName, upstream)));
         var close = new Button { Content = "_Close", IsDefault = true, IsCancel = true, MinWidth = 90, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         close.SetResourceReference(StyleProperty, "PrimaryButton");
         AutomationProperties.SetAutomationId(close, "OpenAiProxyClose");
         close.Click += (_, _) => DialogResult = true;
         root.Children.Add(close);
-        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 820 };
+        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 860 };
     }
 
     private static FrameworkElement Config(string title, string id, string text)
@@ -225,15 +231,15 @@ internal sealed class OpenAiProxyDialog : ThemedWindow
         var box = new TextBox
         {
             Text = text, IsReadOnly = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas"),
-            Padding = new Thickness(6, 4, 6, 4), MaxHeight = 260, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Padding = new Thickness(6, 4, 6, 4), MaxHeight = 240, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
         };
         AutomationProperties.SetAutomationId(box, id);
-        AutomationProperties.SetName(box, title + " configuration");
+        AutomationProperties.SetName(box, title);
         stack.Children.Add(box);
         return stack;
     }
 
-    internal static void Show(Window owner, string serverName, string hostId, string origin) =>
-        new OpenAiProxyDialog(serverName, hostId, origin) { Owner = owner }.ShowDialog();
+    internal static void Show(Window owner, string serverName, string? hostId, string upstreamHost, int port, bool open) =>
+        new OpenAiProxyDialog(serverName, hostId, upstreamHost, port, open) { Owner = owner }.ShowDialog();
 }

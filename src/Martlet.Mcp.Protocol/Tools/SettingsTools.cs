@@ -53,11 +53,12 @@ internal sealed partial class McpServer
         },
             arguments => ApiKeysStatus(arguments)),
         Tool("openai_endpoint_status", "Read Share › Share your language models (the OpenAI-compatible endpoint, docs/OPENAI_ENDPOINT.md) " +
-            "from a data directory: the address people use and the host the proxy sends it to (openai-endpoint.json, shared), each " +
-            "key with the openai scope (ID, name, priority, who made it, expiry, revoked or expired; api-keys.json), the models each " +
-            "host offered when the Share page last read them and the models of hosts friends share with this PC (openai-models.json), " +
-            "and the Nginx and Caddy configurations Show proxy setup gives for the front door. Read-only; contacts nothing and never " +
-            "returns a key or its verifier.", new
+            "from a data directory: the address people use (openai-endpoint.json, shared), the front door (the host and port it is " +
+            "open on, where it listens, the upstream a proxy sends to, and the last Check address result), each key with the openai " +
+            "scope (ID, name, priority, who made it, expiry, revoked or expired; api-keys.json), the models each host offered when the " +
+            "Share page last read them and the models of hosts friends share with this PC (openai-models.json), and the texts Show " +
+            "setup gives (the ? help, Tailscale Funnel, Nginx Proxy Manager, Nginx, Caddy, Cloudflare Tunnel). Read-only; contacts " +
+            "nothing and never returns a key or its verifier.", new
         {
             dataDirectory = new { type = "string" }
         },
@@ -258,13 +259,25 @@ internal sealed partial class McpServer
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { }
         var hosts = roster?.ActiveHosts.OrderBy(h => h.Id, StringComparer.Ordinal).ToArray() ?? [];
-        var frontDoor = hosts.FirstOrDefault(h => h.Id == settings.FrontDoorHostId) ?? hosts.FirstOrDefault();
-        var serverName = settings.PublicAddress is { } address && Uri.TryCreate(address, UriKind.Absolute, out var uri) ? uri.Host : "llm.example.com";
-        var origin = frontDoor?.Origin ?? "https://<host address>:9443";
+        // The open front door the Share page last saw (openai-models.json frontDoor); else the chosen host on the default port.
+        JsonElement? open = models is { ValueKind: JsonValueKind.Object } read && read.TryGetProperty("frontDoor", out var seen) &&
+            seen.ValueKind == JsonValueKind.Object ? seen : null;
+        var chosen = hosts.FirstOrDefault(h => h.Id == (open?.GetProperty("hostId").GetString() ?? settings.FrontDoorHostId)) ?? hosts.FirstOrDefault();
+        var port = open?.GetProperty("port").GetInt32() ?? Martlet.Core.Access.OpenAiEndpoint.DefaultFrontDoorPort;
+        var upstreamHost = chosen is not null && Uri.TryCreate(chosen.Origin, UriKind.Absolute, out var home) ? home.Host : "<front door address>";
+        var upstream = $"https://{upstreamHost}:{port}";
+        var serverName = settings.PublicAddress is { } address && Uri.TryCreate(address, UriKind.Absolute, out var uri) ? uri.Host : "martlet.example.com";
         var now = DateTimeOffset.UtcNow;
         return new
         {
-            settings = new { state, publicAddress = settings.PublicAddress, frontDoorHostId = settings.FrontDoorHostId, frontDoor = frontDoor?.Id, frontDoorOrigin = frontDoor?.Origin },
+            settings = new { state, publicAddress = settings.PublicAddress, frontDoorHostId = settings.FrontDoorHostId },
+            frontDoor = new
+            {
+                open = open is not null, hostId = chosen?.Id, port, upstream,
+                listening = open?.GetProperty("listening"),
+                lastAddressCheck = models is { ValueKind: JsonValueKind.Object } m && m.TryGetProperty("addressCheck", out var check) &&
+                    check.ValueKind == JsonValueKind.String ? check.GetString() : null
+            },
             paths = Martlet.Core.Access.OpenAiEndpoint.RelayPaths.Prepend(Martlet.Core.Access.OpenAiEndpoint.ModelsPath),
             keys = keys.Keys.Where(k => k.Allows(Martlet.Core.Access.ApiKeyScopes.OpenAi)).Select(k => new
             {
@@ -274,10 +287,14 @@ internal sealed partial class McpServer
                 expired = !k.Revoked && k.Expired(now), updatedBy = k.UpdatedBy
             }),
             models,
-            proxy = new
+            setup = new
             {
-                nginx = Martlet.Core.Access.OpenAiEndpoint.NginxConfig(serverName, origin),
-                caddy = Martlet.Core.Access.OpenAiEndpoint.CaddyConfig(serverName, origin)
+                help = Martlet.Core.Access.OpenAiEndpoint.ExposeHelp,
+                tailscale = Martlet.Core.Access.OpenAiEndpoint.TailscaleCommand(port),
+                proxyManager = Martlet.Core.Access.OpenAiEndpoint.ProxyManagerSteps(serverName, upstreamHost, port),
+                nginx = Martlet.Core.Access.OpenAiEndpoint.NginxConfig(serverName, upstream),
+                caddy = Martlet.Core.Access.OpenAiEndpoint.CaddyConfig(serverName, upstream),
+                cloudflareTunnel = Martlet.Core.Access.OpenAiEndpoint.CloudflareTunnelConfig(serverName, upstream)
             }
         };
     }

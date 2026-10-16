@@ -30,11 +30,13 @@ internal sealed record HostOptions(string Command, string ConfigPath)
           owner-network-reset  leave this host's Martlet network (removes network.json; pairings stay). Stop the
                          service first; the next desktop that pairs adds the host to its own network.
           owner-exposure ... [--outside <name:port>]... [--clear-outside] [--allow-pairing-outside-home yes|no] (typed codes)
-                         [--treat-all-as-outside yes|no]: how this host is reached from outside home (exposure.json
+                         [--treat-all-as-outside yes|no] [--front-door <port>|off]: how this host is reached from outside home (exposure.json
                          beside host.json; docs/NETWORK.md). Outside addresses (an overlay address such as Tailscale's, or
                          a router port forward) are advertised to member desktops, which sign them into the network; with
-                         any set, the gateway's limits apply to every source. No options prints the current choices.
-                         Restart the service to apply.
+                         any set, the gateway's limits apply to every source. --front-door opens this host's front door
+                         (a public listener on that port with Martlet's web page and the OpenAI-compatible API only, for
+                         a reverse proxy or Tailscale Funnel; docs/OPENAI_ENDPOINT.md). No options prints the current
+                         choices. Restart the service to apply.
         Sign-in from outside home (signin.json; the running service picks changes up by itself):
           owner-signin-status    show the owner account, providers, allowed identities and computers that signed in
                                  (never a secret)
@@ -68,6 +70,8 @@ internal sealed record HostOptions(string Command, string ConfigPath)
     internal bool ClearOutside { get; init; }
     internal bool? AllowPairingOutsideHome { get; init; }
     internal bool? TreatAllAsOutside { get; init; }
+    /// <summary>--front-door: the front door's port, 0 to close it, null to keep it as it is.</summary>
+    internal int? FrontDoor { get; init; }
     internal string? User { get; init; }
     internal string? Provider { get; init; }
     internal string? Subject { get; init; }
@@ -147,12 +151,19 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                     options with { Outside = [.. options.Outside, address] },
                 "--allow-pairing-outside-home" when options.AllowPairingOutsideHome is null => options with { AllowPairingOutsideHome = YesNo(value) },
                 "--treat-all-as-outside" when options.TreatAllAsOutside is null => options with { TreatAllAsOutside = YesNo(value) },
+                "--front-door" when options.FrontDoor is null => options with { FrontDoor = FrontDoorPort(value) },
                 _ => throw new HostInputException()
             };
         }
         if (options.ClearOutside && options.Outside.Count > 0) throw new HostInputException();
         return options;
     }
+
+    // "off" is 0; a port from 1024 to 65535 opens it.
+    private static int FrontDoorPort(string value) =>
+        value == "off" ? 0
+        : int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var port) &&
+          port is >= 1024 and <= 65535 ? port : throw new HostInputException();
 
     private static bool DisplayName(string value) =>
         value.Length is > 0 and <= 64 && value[0] != '-' && value.All(c => c is >= ' ' and <= '~');
