@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-10-16
+
 ### Added
 
 - Martlet finds your hosts again by itself when their computer gets a new address after a restart, so you don't have to reserve addresses in your router or pair again. It checks each host's key at the new address before it uses it. ([#915](https://github.com/throndir2/Martlet/pull/915))
