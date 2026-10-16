@@ -351,6 +351,21 @@ requests and preemptions).
 
 **Docs:** [OPENAI_ENDPOINT.md](OPENAI_ENDPOINT.md).
 
+## Which endpoints are outside your computers, and what each is for
+
+**What it decides:** which cloud providers and servers on your network a saved choice sends work to (never this PC or a
+paired computer), whether each is a cloud provider or a server on your network, its name and address (scheme, host and
+port only), and the list of uses (purpose, page, model, on).
+
+**Owner:** `ExternalEndpoints` (`src\Martlet.Core\Cluster\ExternalEndpoints.cs`). It reads the routes, *If Thinking
+fails*, the Thinking pool, every pool list and the HTTP MCP servers that its caller gives it.
+
+**Shows it:** Devices › *Cloud providers and servers* (`MainWindow.ExternalEndpoints.cs`).
+
+**Tests:** `ExternalEndpointsTests` (Martlet.Core.Tests).
+
+**MCP:** `external_endpoints_status`; `ui_snapshot` (`ExternalEndpointsStatus`, `ExternalEndpoint-<host[-port]>`).
+
 ## What MCP may click and read, and where each tool is
 
 **What it decides:** which controls the MCP `ui_*` tools may click, and which

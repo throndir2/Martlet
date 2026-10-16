@@ -51,6 +51,8 @@ public sealed class AutomationPolicyTests
     [InlineData("CheckInStatus-c1", true)]
     [InlineData("ThinkingRequestInputState", true)]
     [InlineData("ApiKeyRow-AbC", true)]
+    [InlineData("ExternalEndpointsStatus", true)]
+    [InlineData("ExternalEndpoint-openrouter.ai", true)]
     [InlineData("ThinkingPoolRunsOnLabel-touch-zones", true)]
     [InlineData("MessageContextSummary", true)]
     [InlineData("MessageContextSize-instructions", true)]

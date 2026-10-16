@@ -302,6 +302,14 @@ to bottom: the **map**, the **selected device** with what it does, and
   disk; and what else would fit (*Your computers could also run 2 more Deep
   thinking models (Gemma 4 12B) and Voice (Chatterbox Turbo).*). Add a
   computer and this line grows, so you can see what a new machine buys.
+- **Cloud providers and servers** follows it: one line for each endpoint
+  outside this PC and your paired computers that Martlet sends work to (a
+  cloud provider or a server on your network, with its address as scheme,
+  host and port), and everything it is used for, with the model and *turned
+  off* where that applies (*Used for Thinking (gpt-4o-mini); Thinking pool
+  (x-ai/grok-4.3, turned off); Tools (home)*). It reads the Thinking,
+  Listening and Speaking routes, *If Thinking fails*, the Thinking pool, every
+  pool list and the HTTP MCP servers. With none it says so.
 - **Settings for all devices** (companion mode) closes the page: **Check all
   hosts** reads every host's roles (explicit only), and **Keep Martlet the same
   on all my computers** (ON by default; unticking it saves `off`) makes Martlet

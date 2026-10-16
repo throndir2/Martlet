@@ -364,6 +364,17 @@ internal sealed partial class McpServer
             deviceId = new { type = "string" }
         },
             async (arguments, cancellation) => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation)),
+        Tool("external_endpoints_status", "Devices > Cloud providers and servers from a data directory, with the production " +
+            "ExternalEndpoints: every endpoint outside this PC and the paired computers that a saved choice sends work to (the " +
+            "Thinking, Listening and Speaking routes and Thinking's fallback in settings.json, external Thinking pool members in " +
+            "thinking-pool.json, address and cloud members of every pool list in pools.json and pools-local.json, and HTTP MCP " +
+            "servers in mcp.json), each once with its name, kind (cloud or server on your network), scheme-host-port address and its " +
+            "uses (purpose, page, model or MCP server name, on). Names, addresses without paths, models and page names only; never " +
+            "a key. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        },
+            async (arguments, cancellation) => await ExternalEndpointsCheck.StatusAsync(DataDirectory(arguments), cancellation)),
         Tool("work_sharing_check", "Rehearse Sharing work with the production planner (WorkSharing.Order) and queue (WorkQueue) on " +
             "the four-computer example (three companion PCs with host services, machine 2 without a voice, machine 4 for lip-sync " +
             "and pictures) with simulated computers that run one request at a time and turn another away at once, as a host's " +

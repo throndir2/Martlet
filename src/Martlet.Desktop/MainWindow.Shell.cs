@@ -1172,6 +1172,7 @@ public partial class MainWindow
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
         RenderNetworkCapacity(nodes);
+        RenderExternalEndpoints();
         RenderShare();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         mapNodes = nodes;

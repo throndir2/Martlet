@@ -486,6 +486,8 @@ internal static class AutomationPolicy
         new("CapacityCoverage", "Devices resource view", "Shows what runs where, such as 'On your computers: Thinking (gpu-box). Online: ... Not set up: ...'. Hardware and Martlet's own estimates only."),
         new("CapacityTotals", "Devices resource view", "Shows the totals of the network card. Hardware and Martlet's own estimates only."),
         new("CapacityFits", "Devices resource view", "Shows what else fits, such as 'Your computers could also run 2 more Deep thinking models (Gemma 4 12B).'. Hardware and Martlet's own estimates only."),
+        // MainWindow.ExternalEndpoints.cs
+        new("ExternalEndpointsStatus", "Devices › Cloud providers and servers", "Shows how many endpoints outside your computers Martlet sends work to, such as '2 cloud providers and 1 server on your network. Each line says what Martlet uses it for.', or 'None. ...'. Never a key."),
         new("SettingsSyncStatus", "Devices › Settings for all devices", "Shows whether the settings are the same on the paired hosts: how many, when last checked and what was last taken from another computer. Never values or keys."),
         new("SettingsSyncWaiting", "Devices › Settings for all devices", "Shows the settings this PC cannot follow yet, and why. Never values or keys."),
         // Needs --allow-ui-effects: SettingsSyncClaim (makes every computer use the settings of this PC).
@@ -1142,6 +1144,7 @@ internal static class AutomationPolicy
         new("OtherRole-", "Settings › Your other computers", "Another computer of yours, such as OtherRole-desktop-imouto: IMOUTO (desktop-imouto). Companion PC that also runs a host service (imouto-host)."),
         new("ApiKeyRow-", "Share › Apps and API keys", "An API key's line, such as ApiKeyRow-AbC...: Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf. Never the key or its verifier."),
         new("OpenAiKey-", "Share › Share your language models", "A person's key, such as OpenAiKey-AbC...: Ana. Your Martlet first: any request of yours stops theirs. Made on desktop-a ... ID AbCdEf. Never the key or its verifier."),
+        new("ExternalEndpoint-", "Devices › Cloud providers and servers", "An endpoint's line, such as ExternalEndpoint-openrouter.ai: OpenRouter. Cloud provider at https://openrouter.ai. Used for Thinking (google/gemma-4-26b-a4b-it); Picture making (google/gemini-3.1-flash-image, turned off). Names, scheme-host-port addresses, models and MCP server names only; never a key or an address path."),
         new("SmartHomeFound-", "Companion › Smart home", "A Home Assistant that Martlet found, such as SmartHomeFound-0: Home: and its address and version (Home Assistant 2026.9.4)."),
         new("SmartHomeHost-", "Companion › Smart home", "A paired host's Home Assistant line, such as SmartHomeHost-gpu-pc: gpu-pc: can run Home Assistant."),
         // MainWindow.Friends.cs
