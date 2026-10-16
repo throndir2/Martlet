@@ -156,13 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.82.0
+## 🆕 What's new in 0.83.0
 
-- 🤝 **A new Share page** has everything about sharing in one place: your Martlet network, friends, API keys and the hosts friends share with you.
-- 🧠 **Share your language models**: give someone a key, and their apps use the models your hosts run through an OpenAI-compatible API. Your own conversations always come first, and your cloud models and keys are never shared.
-- 🌐 **One address for all your hosts**: the host behind it sends each request to the host that has the model, and Martlet gives you the Nginx or Caddy setup for your own domain.
-- ☁️ **Cloud providers and servers** on Devices lists every online service and server Martlet uses, and what for.
-- 🔎 **Martlet checks a fact it isn't sure of** with a quick look-up instead of guessing, tells you as soon as research finds your answer, and checks a report's sources.
+- 🏠 **Your hosts are found again after a restart**: when a computer gets a new address from your router, Martlet finds it by itself, checks its key and keeps using the same pairing. You don't have to reserve addresses in your router.
+- 🖥️ **A Windows host PC moves its host service** to its new address by itself.
+- 🔑 **Managing a Linux host over SSH keeps working** after its address changes, also when two computers swap addresses.
+- 🚀 **A Linux host starts even when its network is late** or gives it another address at boot.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
