@@ -147,9 +147,12 @@ which has the pool's rules (`ThinkingJobBoard`).
 | --- | --- | --- | --- |
 | The page with what you share and what is shared with you | Share page (`SharePage`, `NavShare`) | Share | "Devices" for its cards |
 | The OpenAI-compatible API every host serves at `/v1` for other people's apps | OpenAI-compatible endpoint (`GatewayOpenAi.cs`, `OpenAiEndpoint`) | Share your language models; the OpenAI-compatible endpoint | "endpoint" alone (that is a server Martlet uses, above) |
-| The host a reverse proxy sends those requests to | front door (`OpenAiEndpointSettings.FrontDoorHostId`) | the host your proxy sends to | "gateway" in UI text |
+| One host's second, public port that serves only Martlet's web page and `/v1`, for a proxy, Tailscale Funnel or a tunnel to send people to | front door (`GatewayExposure.FrontDoorPort`, `GatewayFrontDoor.cs`; `OpenAiEndpointSettings.FrontDoorHostId`) | front door | "gateway" (that is the host's private service on port 9443), "portal" in UI text |
+| The front door's page for people with a key: public status, sign-in, and their models and use | web page (`GatewayFrontDoorPage.cs`) | Martlet's web page | "portal", "dashboard" |
 | The https address people put in their app | public address (`OpenAiEndpointSettings.PublicAddress`) | Address to give people | |
 | A request of the endpoint on a host's own model | outside job (`GatewayOutsideJob`, `BeginOutside`) | their requests | "friend" (a friend's computer is another thing) |
+| A model name that names a kind of model of the network, not one model | network model name (`OpenAiNetworkModels`: `martlet@any`, `martlet@fast`, `martlet@smart`) | the model names `martlet@any`, `martlet@fast`, `martlet@smart` | "alias", "virtual model" |
+| Where such a request waits for a free slot | the queue (`GatewayOutsideWaiter`, `EnqueueOutside`, `GatewayOpenAiQueue`) | waits for a free model | "retry" (the app's own try again after 429 is another thing) |
 | How such a request ranks against your work | priority (scope `equal-priority`) | Your Martlet first; Same priority as your background work | |
 
 See [Share your language models](OPENAI_ENDPOINT.md).
@@ -158,4 +161,4 @@ See [Share your language models](OPENAI_ENDPOINT.md).
 
 | Concept | Code name | UI name | Do not use for it |
 | --- | --- | --- | --- |
-| The dimmed example in an empty box you type in, which shows what to type there | example text (`InputHint.Text`, shown by `InputTemplate` in `Themes\Controls.xaml`; older boxes use `PageKit.WithHint`) | (none: the example itself, such as *https://llm.example.com/v1*) | "placeholder" (a check-in's `{name}` fact is a placeholder), "watermark" |
+| The dimmed example in an empty box you type in, which shows what to type there | example text (`InputHint.Text`, shown by `InputTemplate` in `Themes\Controls.xaml`; older boxes use `PageKit.WithHint`) | (none: the example itself, such as *https://martlet.example.com/v1*) | "placeholder" (a check-in's `{name}` fact is a placeholder), "watermark" |

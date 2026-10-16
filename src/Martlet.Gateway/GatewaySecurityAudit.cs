@@ -27,6 +27,9 @@ internal sealed partial class GatewayHttpApplication
             OutsideAccessPaused = Guard.OutsideAccessPaused,
             AllowPairingOutsideHome = exposure.AllowPairingOutsideHome,
             TreatAllAsOutside = exposure.TreatAllAsOutside,
+            FrontDoorPort = exposure.FrontDoorPort,
+            FrontDoorListeners = FrontDoorListeners(),
+            FrontDoorSessions = exposure.FrontDoorPort is null ? null : FrontDoorSessions.Count,
             Successes = totals.Successes,
             Failures = totals.Failures,
             Throttled = totals.Throttled,
@@ -50,6 +53,12 @@ internal sealed partial class GatewayHttpApplication
         public required bool OutsideAccessPaused { get; init; }
         public required bool AllowPairingOutsideHome { get; init; }
         public required bool TreatAllAsOutside { get; init; }
+        /// <summary>The front door's port (docs/OPENAI_ENDPOINT.md); absent when this host isn't the front door.</summary>
+        public int? FrontDoorPort { get; init; }
+        /// <summary>Where the front door listens now ("ip:port"); empty when it isn't open.</summary>
+        public required IReadOnlyList<string> FrontDoorListeners { get; init; }
+        /// <summary>How many browsers are signed in to the front door's web page now.</summary>
+        public int? FrontDoorSessions { get; init; }
         public required long Successes { get; init; }
         public required long Failures { get; init; }
         public required long Throttled { get; init; }

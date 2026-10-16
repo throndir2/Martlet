@@ -200,12 +200,34 @@ public static class OpenAiEndpoint
         print(reply.choices[0].message.content)
         """;
 
-    /// <summary>An nginx server block that serves <paramref name="serverName"/> with a real certificate and sends only
-    /// /v1/ to <paramref name="upstreamOrigin"/> (a host's https://&lt;home address&gt;:9443). The host's own certificate is
-    /// self-signed, so nginx doesn't check it; keep nginx and the host on your home network.</summary>
+    /// <summary>The front door's port unless the owner chooses another (docs/OPENAI_ENDPOINT.md). UDP 9444 finds moved hosts, so
+    /// the front door stays off that number to avoid confusion.</summary>
+    public const int DefaultFrontDoorPort = 9445;
+
+    /// <summary>The error code an OpenAI client gets from a front door without a key: Check address looks for it to tell that
+    /// an address reaches a Martlet front door.</summary>
+    public const string FrontDoorMissingKey = "missing_api_key";
+
+    /// <summary>The help behind the "?" next to the address (Share › Share your language models): how to give the front door
+    /// an https address with a real certificate, from the simplest way to the most hands-on.</summary>
+    public const string ExposeHelp =
+        "Apps that use the OpenAI API need an https address with a real certificate. Your hosts use their own certificate, so " +
+        "something in front of the front door gives it one. Pick the way that fits you:\n\n" +
+        "• No domain: Tailscale Funnel. Install Tailscale on the front door's computer, then run the command Show setup gives you. " +
+        "Tailscale gives you https://<computer>.<your-tailnet>.ts.net for free.\n" +
+        "• A domain on Cloudflare: Cloudflare Tunnel. No router port; the tunnel runs on any computer at home.\n" +
+        "• Nginx Proxy Manager, Nginx or Caddy: add a site for your name (for example martlet.example.com) that sends everything to " +
+        "the front door's address. Your router sends port 443 to that computer.\n\n" +
+        "Then type the address here and choose Check address. The front door serves only Martlet's web page and the " +
+        "OpenAI-compatible API, and every request needs a key you made. Never point a proxy at the gateway's own port (9443).";
+
+    /// <summary>An nginx server block that serves <paramref name="serverName"/> with a real certificate and sends it to the
+    /// front door (<paramref name="upstreamOrigin"/>, https://&lt;home address&gt;:&lt;front door port&gt;). The front door serves
+    /// only its web page and /v1 and answers 404 for the rest, so the whole site can go to it. Its certificate is the host's own,
+    /// so nginx doesn't check it: keep nginx and the host on your home network.</summary>
     public static string NginxConfig(string serverName, string upstreamOrigin) => $$"""
-        # Martlet OpenAI-compatible endpoint: https://{{serverName}}/v1 -> {{upstreamOrigin}}
-        limit_req_zone $binary_remote_addr zone=martlet_openai:10m rate=10r/s;
+        # Martlet front door: https://{{serverName}} -> {{upstreamOrigin}}
+        limit_req_zone $binary_remote_addr zone=martlet_front_door:10m rate=10r/s;
 
         server {
             listen 443 ssl;
@@ -217,21 +239,18 @@ public static class OpenAiEndpoint
 
             client_max_body_size 32m;
 
-            location /v1/ {
-                limit_req zone=martlet_openai burst=40 nodelay;
+            location / {
+                limit_req zone=martlet_front_door burst=40 nodelay;
                 proxy_pass {{upstreamOrigin}};
                 proxy_ssl_verify off;
                 proxy_ssl_server_name off;
                 proxy_http_version 1.1;
+                proxy_set_header Host $host;
                 proxy_set_header Connection "";
                 proxy_buffering off;
                 proxy_request_buffering off;
                 proxy_read_timeout 900s;
                 proxy_send_timeout 900s;
-            }
-
-            location / {
-                return 404;
             }
         }
         """;
@@ -239,15 +258,46 @@ public static class OpenAiEndpoint
     /// <summary>The same as <see cref="NginxConfig"/> for Caddy, which gets the certificate by itself.</summary>
     public static string CaddyConfig(string serverName, string upstreamOrigin) => $$"""
         {{serverName}} {
-            handle /v1/* {
-                reverse_proxy {{upstreamOrigin}} {
-                    transport http {
-                        tls_insecure_skip_verify
-                    }
-                    flush_interval -1
+            reverse_proxy {{upstreamOrigin}} {
+                transport http {
+                    tls_insecure_skip_verify
                 }
+                flush_interval -1
             }
-            respond 404
         }
+        """;
+
+    /// <summary>Nginx Proxy Manager's fields for a proxy host that sends <paramref name="serverName"/> to the front door.</summary>
+    public static string ProxyManagerSteps(string serverName, string upstreamHost, int port) => $$"""
+        Hosts › Proxy Hosts › Add Proxy Host
+          Domain Names:           {{serverName}}
+          Scheme:                 https
+          Forward Hostname / IP:  {{upstreamHost}}
+          Forward Port:           {{port}}
+          Block Common Exploits:  on
+          Websockets Support:     off
+        SSL tab: your certificate for the name (or Request a new SSL Certificate), Force SSL, HTTP/2 Support.
+        Advanced tab, Custom Nginx Configuration:
+          client_max_body_size 32m;
+          proxy_http_version 1.1;
+          proxy_buffering off;
+          proxy_request_buffering off;
+          proxy_read_timeout 900s;
+          proxy_send_timeout 900s;
+        """;
+
+    /// <summary>The Tailscale Funnel command for the front door's computer: Tailscale gives the front door a public https
+    /// address with a real certificate and sends it to the front door on this computer's loopback.</summary>
+    public static string TailscaleCommand(int port) =>
+        $"tailscale funnel --bg https+insecure://127.0.0.1:{port}";
+
+    /// <summary>A Cloudflare Tunnel ingress rule (cloudflared's config.yml) that sends <paramref name="serverName"/> to the front door.</summary>
+    public static string CloudflareTunnelConfig(string serverName, string upstreamOrigin) => $$"""
+        ingress:
+          - hostname: {{serverName}}
+            service: {{upstreamOrigin}}
+            originRequest:
+              noTLSVerify: true
+          - service: http_status:404
         """;
 }

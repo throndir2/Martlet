@@ -102,11 +102,13 @@ internal sealed class GatewayTestHost : IAsyncDisposable
         IEnumerable<IGatewayWorker>? workers = null,
         IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null,
         ManualGatewayClock? clock = null,
-        string hostId = "fixture-host")
+        string hostId = "fixture-host",
+        GatewayExposure? exposure = null)
     {
         var host = new GatewayTestHost(workers, inferenceWorkers, clock, hostId);
         try
         {
+            if (exposure is not null) host.Server.Exposure = exposure;
             var binding = new GatewayTlsBinding(
                 host.Origin, host.Identity, host.Certificate, host.Clock);
             host.Listener = await host.Server.StartAsync(
@@ -312,7 +314,7 @@ internal sealed class GatewayTestHost : IAsyncDisposable
         }
     }
 
-    private static int ReserveLoopbackPort()
+    internal static int ReserveLoopbackPort()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();

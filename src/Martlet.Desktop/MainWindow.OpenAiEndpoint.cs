@@ -28,7 +28,6 @@ public partial class MainWindow
     private bool openAiBusy;
     private string? openAiLogged;
     private TextBox? openAiAddressBox;
-    private ComboBox? openAiFrontDoorChoice;
     private TextBlock? openAiAddressProblem;
 
     /// <summary>Draws the Share page's cards and reads again what is stale while it shows.</summary>
@@ -90,7 +89,14 @@ public partial class MainWindow
                     using var connection = ClusterSync.Connect(host.Pairing);
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
                     timeout.CancelAfter(TimeSpan.FromSeconds(15));
-                    return (host.HostId, Models: await connection.ReadOpenAiModelsAsync(timeout.Token), Problem: (string?)null);
+                    var models = await connection.ReadOpenAiModelsAsync(timeout.Token);
+                    // Your own hosts' security audits say which one has the front door open (a friend's host never does for you).
+                    if (!host.Shared)
+                    {
+                        try { networkSecurity[host.HostId] = (await connection.ReadSecurityAuditAsync(timeout.Token), DateTimeOffset.UtcNow); }
+                        catch (Exception error) when (ClusterSync.IsHostFailure(error) || error is InvalidOperationException) { }
+                    }
+                    return (host.HostId, Models: models, Problem: (string?)null);
                 }
                 catch (OperationCanceledException) when (!lifetime.IsCancellationRequested)
                 {
@@ -112,11 +118,7 @@ public partial class MainWindow
             foreach (var result in results.Where(r => r.Models is not null && !ownIds.Contains(r.HostId)))
                 sharedHostModels[result.HostId] = result.Models!;
             openAiCheckedAt = DateTimeOffset.Now;
-            try { OpenAiShare.SaveSummary(store.DataDirectory, openAiModels, openAiProblems, sharedHostModels, openAiCheckedAt.Value); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                ErrorLog.Warn("Share: couldn't keep the language model summary for MCP: " + error.Message);
-            }
+            SaveOpenAiSummary();
             var picture = string.Join("; ", openAiModels.OrderBy(p => p.Key, StringComparer.Ordinal)
                 .Select(p => $"{p.Key}: {(p.Value.Count == 0 ? "none" : string.Join(", ", p.Value))}"));
             if (picture != openAiLogged)
@@ -145,11 +147,20 @@ public partial class MainWindow
         .Select(g => (g.Key, (IReadOnlyList<string>)g.Select(m => m.Host).Order(StringComparer.Ordinal).ToArray()))
         .ToArray();
 
-    /// <summary>The host your proxy sends requests to: the one chosen, else the first of your network's hosts.</summary>
-    private PairedHost? OpenAiFrontDoor(OpenAiEndpointSettings settings)
+    /// <summary>Keeps what the Share page last read (models, the front door, the last Check address) in openai-models.json for MCP.</summary>
+    private void SaveOpenAiSummary()
     {
-        var hosts = FriendsHosts();
-        return hosts.FirstOrDefault(h => h.HostId == settings.FrontDoorHostId) ?? hosts.OrderBy(h => h.HostId, StringComparer.Ordinal).FirstOrDefault();
+        if (store is null || openAiCheckedAt is not { } at) return;
+        var door = OpenFrontDoor(OpenAiEndpointSettings.Load(store.DataDirectory));
+        try
+        {
+            OpenAiShare.SaveSummary(store.DataDirectory, openAiModels, openAiProblems, sharedHostModels, at,
+                door is { } open ? new(open.Host.HostId, open.Port, open.Listening, FrontDoorOrigin(open.Host, open.Port)) : null, frontDoorCheck);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn("Share: couldn't keep the language model summary for MCP: " + error.Message);
+        }
     }
 
     private void RenderOpenAi()
@@ -174,21 +185,34 @@ public partial class MainWindow
               (openAiCheckedAt is { } at ? $" Checked {at:t}." : "");
         OpenAiPanel.Children.Clear();
         if (store is null || hosts.Count == 0) return;
-        OpenAiPanel.Children.Add(OpenAiAddressEditor(settings, hosts));
-        var frontDoor = OpenAiFrontDoor(settings);
+        OpenAiPanel.Children.Add(FrontDoorBlock(settings));
+        OpenAiPanel.Children.Add(OpenAiAddressEditor(settings));
+        var frontDoor = OpenFrontDoor(settings);
         var addressStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
         addressStatus.SetResourceReference(StyleProperty, "Muted");
         addressStatus.Text = settings.PublicAddress is { } address
-            ? $"People put {address} in their app as the base URL. Your proxy sends it to {frontDoor?.HostId ?? "your first host"}" +
-              (frontDoor is null ? "." : $" ({frontDoor.Pairing.Origin}), which runs what it has and sends other models to the host that has them.")
-            : "No address yet. People outside your home need one with a real certificate: put a reverse proxy (for example Nginx on your " +
-              "Linux server) in front of one of your hosts. Show proxy setup tells you how.";
+            ? $"People put {address} in their app as the base URL, and open {address[..^OpenAiEndpoint.BasePath.Length]} in a browser to sign " +
+              "in with their key. " + (frontDoor is { } door
+                ? $"Your proxy sends it to the front door on {door.Host.HostId} ({FrontDoorOrigin(door.Host, door.Port)}), which runs what it " +
+                  "has and sends other models to the host that has them."
+                : "Open the front door first, then point your proxy at it.")
+            : "No address yet. People outside your home need an https address with a real certificate in front of the front door. " +
+              "The ? tells you the ways to get one; Show setup gives the exact steps.";
         AutomationProperties.SetAutomationId(addressStatus, "OpenAiAddressStatus");
         OpenAiPanel.Children.Add(addressStatus);
+        if (frontDoorCheck is { } checkedText)
+        {
+            var result = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Text = checkedText,
+                FontWeight = checkedText.StartsWith("Works", StringComparison.Ordinal) ? FontWeights.SemiBold : FontWeights.Normal };
+            AutomationProperties.SetAutomationId(result, "OpenAiCheckResult");
+            OpenAiPanel.Children.Add(result);
+        }
         var home = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
         home.SetResourceReference(StyleProperty, "Muted");
-        home.Text = "At home, apps that can skip certificate checks may also use " +
-            string.Join(", ", hosts.Select(h => $"{h.Pairing.Origin}{OpenAiEndpoint.BasePath} ({h.HostId})")) + ".";
+        home.Text = frontDoor is { } inside
+            ? $"At home, apps that can skip certificate checks may also use {FrontDoorOrigin(inside.Host, inside.Port)}{OpenAiEndpoint.BasePath}."
+            : "At home, apps that can skip certificate checks may also use " +
+              string.Join(", ", hosts.Select(h => $"{h.Pairing.Origin}{OpenAiEndpoint.BasePath} ({h.HostId})")) + ".";
         AutomationProperties.SetAutomationId(home, "OpenAiHomeAddresses");
         OpenAiPanel.Children.Add(home);
 
@@ -211,50 +235,43 @@ public partial class MainWindow
         foreach (var key in keys) OpenAiPanel.Children.Add(OpenAiKeyRow(key, now));
     }
 
-    private FrameworkElement OpenAiAddressEditor(OpenAiEndpointSettings settings, IReadOnlyList<PairedHost> hosts)
+    private FrameworkElement OpenAiAddressEditor(OpenAiEndpointSettings settings)
     {
         if (openAiAddressBox is null)
         {
-            openAiAddressBox = new TextBox { MinWidth = 260, MaxLength = OpenAiEndpointSettings.MaximumAddressLength, VerticalAlignment = VerticalAlignment.Center };
-            InputHint.SetText(openAiAddressBox, "https://llm.example.com/v1");
+            openAiAddressBox = new TextBox { MinWidth = 280, MaxLength = OpenAiEndpointSettings.MaximumAddressLength, VerticalAlignment = VerticalAlignment.Center };
+            InputHint.SetText(openAiAddressBox, "https://martlet.example.com/v1");
             AutomationProperties.SetAutomationId(openAiAddressBox, "OpenAiPublicAddress");
-            AutomationProperties.SetName(openAiAddressBox, "Address to give people, for example https://llm.example.com/v1");
-            openAiFrontDoorChoice = new ComboBox { MinWidth = 160, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-            AutomationProperties.SetAutomationId(openAiFrontDoorChoice, "OpenAiFrontDoor");
-            AutomationProperties.SetName(openAiFrontDoorChoice, "The host your proxy sends requests to");
+            AutomationProperties.SetName(openAiAddressBox, "Address to give people, for example https://martlet.example.com/v1");
             openAiAddressProblem = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 0) };
             openAiAddressProblem.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             AutomationProperties.SetAutomationId(openAiAddressProblem, "OpenAiAddressProblem");
         }
         if (!openAiAddressBox.IsKeyboardFocusWithin) openAiAddressBox.Text = settings.PublicAddress ?? "";
-        if (!openAiFrontDoorChoice!.IsKeyboardFocusWithin)
-        {
-            openAiFrontDoorChoice.Items.Clear();
-            foreach (var host in hosts.OrderBy(h => h.HostId, StringComparer.Ordinal))
-                openAiFrontDoorChoice.Items.Add(new ComboBoxItem { Content = host.HostId, Tag = host.HostId });
-            openAiFrontDoorChoice.SelectedItem = openAiFrontDoorChoice.Items.OfType<ComboBoxItem>()
-                .FirstOrDefault(i => (string)i.Tag == OpenAiFrontDoor(settings)?.HostId);
-        }
-        var stack = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-        stack.Children.Add(new Label { Content = "_Address to give people (your proxy's https address)", Target = openAiAddressBox, Padding = new Thickness(0, 0, 0, 4) });
+        var stack = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var heading = new StackPanel { Orientation = Orientation.Horizontal };
+        heading.Children.Add(new Label { Content = "_Address to give people (https, with a real certificate)", Target = openAiAddressBox, Padding = new Thickness(0, 0, 0, 4) });
+        var help = HelpTip.For("Giving your front door an address", OpenAiEndpoint.ExposeHelp, "OpenAiExpose");
+        help.Margin = new Thickness(8, 0, 0, 4);
+        heading.Children.Add(help);
+        stack.Children.Add(heading);
         var row = new WrapPanel();
         (openAiAddressBox.Parent as Panel)?.Children.Remove(openAiAddressBox);
-        (openAiFrontDoorChoice.Parent as Panel)?.Children.Remove(openAiFrontDoorChoice);
         row.Children.Add(openAiAddressBox);
-        var through = new TextBlock { Text = "sends to", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
-        through.SetResourceReference(StyleProperty, "Muted");
-        row.Children.Add(through);
-        row.Children.Add(openAiFrontDoorChoice);
-        var save = new Button { Content = "Save", Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetAutomationId(save, "OpenAiSaveAddress");
-        AutomationProperties.SetName(save, "Save the address and the host it sends to");
-        save.Click += (_, _) => SaveOpenAiAddress();
-        row.Children.Add(save);
-        var proxy = new Button { Content = "Show proxy setup", Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetAutomationId(proxy, "OpenAiShowProxy");
-        AutomationProperties.SetName(proxy, "Show how to put a reverse proxy with a real certificate in front of your host");
-        proxy.Click += (_, _) => ShowOpenAiProxy();
-        row.Children.Add(proxy);
+        void Add(string label, string id, string name, Action run, bool enabled = true)
+        {
+            var button = new Button { Content = label, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsEnabled = enabled };
+            AutomationProperties.SetAutomationId(button, id);
+            AutomationProperties.SetName(button, name);
+            button.Click += (_, _) => run();
+            row.Children.Add(button);
+        }
+        Add("Save", "OpenAiSaveAddress", "Save the address to give people", SaveOpenAiAddress);
+        Add(frontDoorChecking ? "Checking..." : "Check address", "OpenAiCheckAddress",
+            "Check that the address reaches your front door (sends no key)", () => CheckFrontDoorAddressAsync().Forget(),
+            enabled: settings.PublicAddress is not null && !frontDoorChecking);
+        Add("Show setup", "OpenAiShowProxy", "Show how to give the front door an https address: Nginx Proxy Manager, Nginx, Caddy, Cloudflare Tunnel or Tailscale",
+            ShowOpenAiProxy);
         stack.Children.Add(row);
         (openAiAddressProblem!.Parent as Panel)?.Children.Remove(openAiAddressProblem);
         stack.Children.Add(openAiAddressProblem);
@@ -273,15 +290,15 @@ public partial class MainWindow
             return;
         }
         openAiAddressProblem!.Visibility = Visibility.Collapsed;
-        var chosen = (openAiFrontDoorChoice?.SelectedItem as ComboBoxItem)?.Tag as string;
-        var settings = OpenAiEndpointSettings.Load(store.DataDirectory) with { PublicAddress = address, FrontDoorHostId = chosen };
+        var settings = OpenAiEndpointSettings.Load(store.DataDirectory) with { PublicAddress = address };
         if (!settings.Save(store.DataDirectory))
         {
             ActionText.Text = "Couldn't save the address. Check access to Martlet's data folder.";
             return;
         }
-        ErrorLog.Info($"Share: the OpenAI-compatible endpoint's address is {address ?? "not set"}, sent to {chosen ?? "the first host"}.");
-        ActionText.Text = address is null ? "Removed the address to give people." : $"Saved: people use {address}. Your other computers get it too.";
+        ErrorLog.Info($"Share: the address to give people is {address ?? "not set"}.");
+        ActionText.Text = address is null ? "Removed the address to give people." : $"Saved: people use {address}. Your other computers get it too. Choose Check address to test it.";
+        frontDoorCheck = null;
         QueueSettingsSync();
         RenderOpenAi();
     }
@@ -289,11 +306,13 @@ public partial class MainWindow
     private void ShowOpenAiProxy()
     {
         var settings = OpenAiEndpointSettings.Load(store?.DataDirectory);
-        var frontDoor = OpenAiFrontDoor(settings);
-        var name = settings.PublicAddress is { } address && Uri.TryCreate(address, UriKind.Absolute, out var uri) ? uri.Host : "llm.example.com";
-        OpenAiProxyDialog.Show(this, name, frontDoor?.HostId ?? "your host", frontDoor?.Pairing.Origin ?? "https://<host address>:9443");
+        var door = OpenFrontDoor(settings);
+        var name = settings.PublicAddress is { } address && Uri.TryCreate(address, UriKind.Absolute, out var uri) ? uri.Host : "martlet.example.com";
+        var port = door?.Port ?? OpenAiEndpoint.DefaultFrontDoorPort;
+        var chosen = (frontDoorHostChoice?.SelectedItem as ComboBoxItem)?.Tag as string ?? settings.FrontDoorHostId;
+        var host = door?.Host ?? FriendsHosts().FirstOrDefault(h => h.HostId == chosen);
+        OpenAiProxyDialog.Show(this, name, host?.HostId, host is null ? "<front door address>" : new Uri(host.Pairing.Origin).Host, port, door is not null);
     }
-
     private FrameworkElement OpenAiKeyRow(ApiKey key, DateTimeOffset now)
     {
         var row = NetworkRowFrame();
@@ -372,7 +391,8 @@ public partial class MainWindow
         RenderOpenAi();
         QueueApiKeySync();
         var settings = OpenAiEndpointSettings.Load(store.DataDirectory);
-        var baseUrl = settings.PublicAddress ?? (OpenAiFrontDoor(settings)?.Pairing.Origin is { } origin ? origin + OpenAiEndpoint.BasePath : "https://<your address>/v1");
+        var baseUrl = settings.PublicAddress ?? (OpenFrontDoor(settings) is { } door ? FrontDoorOrigin(door.Host, door.Port) + OpenAiEndpoint.BasePath
+            : FriendsHosts().FirstOrDefault()?.Pairing.Origin is { } origin ? origin + OpenAiEndpoint.BasePath : "https://<your address>/v1");
         OpenAiInviteDialog.Show(this, issued, baseUrl, settings.PublicAddress is not null, OpenAiModelList().Select(m => m.Model).ToArray());
     }
 
@@ -388,8 +408,12 @@ internal static class OpenAiShare
 {
     internal const string SummaryFile = "openai-models.json";
 
+    /// <summary>The open front door: its host, port, where it listens and the address a proxy on the home network sends to.</summary>
+    internal sealed record FrontDoorSummary(string HostId, int Port, IReadOnlyList<string> Listening, string Upstream);
+
     internal static void SaveSummary(string directory, IReadOnlyDictionary<string, IReadOnlyList<string>> models,
-        IReadOnlyDictionary<string, string> problems, IReadOnlyDictionary<string, IReadOnlyList<string>> shared, DateTimeOffset at)
+        IReadOnlyDictionary<string, string> problems, IReadOnlyDictionary<string, IReadOnlyList<string>> shared, DateTimeOffset at,
+        FrontDoorSummary? frontDoor = null, string? addressCheck = null)
     {
         var document = new
         {
@@ -401,7 +425,9 @@ internal static class OpenAiShare
                 models = models.GetValueOrDefault(id) ?? [],
                 problem = problems.GetValueOrDefault(id)
             }).ToArray(),
-            sharedWithThisPc = shared.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new { hostId = p.Key, models = p.Value }).ToArray()
+            sharedWithThisPc = shared.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new { hostId = p.Key, models = p.Value }).ToArray(),
+            frontDoor = frontDoor is null ? null : new { hostId = frontDoor.HostId, port = frontDoor.Port, listening = frontDoor.Listening, upstream = frontDoor.Upstream },
+            addressCheck
         };
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, SummaryFile);

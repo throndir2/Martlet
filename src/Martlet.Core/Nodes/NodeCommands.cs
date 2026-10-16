@@ -22,7 +22,9 @@ public static class NodeCommandKinds
     public const string RemoveRole = "host.remove-role";
     /// <summary>Set how the host service is reached from outside home (<c>martlet-host exposure</c>, which restarts its gateway):
     /// <c>outside</c> (its outside addresses, comma-separated, empty to remove them), <c>pairing_codes_outside</c> and
-    /// <c>treat_all_as_outside</c> (yes or no). See <see cref="NodeCommandRules.ExposureOptions"/>.</summary>
+    /// <c>treat_all_as_outside</c> (yes or no), and optionally <c>front_door</c> (the front door's public port, or off;
+    /// docs/OPENAI_ENDPOINT.md). <c>front_door</c> alone changes only the front door. See
+    /// <see cref="NodeCommandRules.ExposureOptions"/>.</summary>
     public const string Exposure = "host.exposure";
 
     public static readonly IReadOnlyList<string> All = [Update, Status, DescribeRole, AddRole, RemoveRole, Exposure];
@@ -174,15 +176,37 @@ public static partial class NodeCommandRules
                 ContractRules.Require(names.All(n => n == "role" || ChoicePattern().IsMatch(n)), "Adding a role takes only choice.VAR arguments.");
                 break;
             case NodeCommandKinds.Exposure:
-                ContractRules.Require(names.SetEquals(ExposureNames) && secrets.Count == 0 &&
-                    arguments["pairing_codes_outside"] is "yes" or "no" && arguments["treat_all_as_outside"] is "yes" or "no" &&
-                    OutsideList(arguments["outside"]) is not null,
-                    "Outside access takes outside (up to four name:port addresses), pairing_codes_outside and treat_all_as_outside (yes or no).");
+                var outsideNames = names.Where(n => n != FrontDoorName).ToHashSet(StringComparer.Ordinal);
+                ContractRules.Require(secrets.Count == 0 &&
+                    (outsideNames.SetEquals(ExposureNames) && arguments["pairing_codes_outside"] is "yes" or "no" &&
+                        arguments["treat_all_as_outside"] is "yes" or "no" && OutsideList(arguments["outside"]) is not null ||
+                     outsideNames.Count == 0 && names.Contains(FrontDoorName)) &&
+                    (!names.Contains(FrontDoorName) || FrontDoorPort(arguments[FrontDoorName]) is not null),
+                    "Outside access takes outside (up to four name:port addresses), pairing_codes_outside and treat_all_as_outside (yes or no), " +
+                    "and optionally front_door (a port from 1024 to 65535, or off).");
                 break;
         }
     }
 
     private static readonly string[] ExposureNames = ["outside", "pairing_codes_outside", "treat_all_as_outside"];
+    private const string FrontDoorName = "front_door";
+
+    /// <summary>The port of a front_door argument (0: off), or null when it isn't one.</summary>
+    private static int? FrontDoorPort(string text) =>
+        text == "off" ? 0 : int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var port) &&
+            port is >= 1024 and <= 65535 && text == port.ToString(System.Globalization.CultureInfo.InvariantCulture) ? port : null;
+
+    /// <summary>The arguments of a <see cref="NodeCommandKinds.Exposure"/> command that only opens the front door on
+    /// <paramref name="port"/> (null: closes it), keeping the host's outside access as it is.</summary>
+    public static Dictionary<string, string> FrontDoorArguments(int? port)
+    {
+        var arguments = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [FrontDoorName] = port is { } open ? open.ToString(System.Globalization.CultureInfo.InvariantCulture) : "off"
+        };
+        Validate(NodeCommandKinds.Exposure, arguments, new Dictionary<string, string>());
+        return arguments;
+    }
 
     /// <summary>The arguments of a <see cref="NodeCommandKinds.Exposure"/> command: outside addresses (normalized; an invalid
     /// one throws <see cref="ContractException"/>), and whether typed pairing codes work from outside home and every
@@ -206,10 +230,14 @@ public static partial class NodeCommandRules
     {
         Validate(NodeCommandKinds.Exposure, arguments, new Dictionary<string, string>());
         var options = new List<string>();
-        var outside = OutsideList(arguments["outside"])!;
-        if (outside.Length == 0) options.Add("--clear-outside");
-        foreach (var address in outside) options.AddRange(["--outside", address]);
-        options.AddRange(["--allow-pairing-outside-home", arguments["pairing_codes_outside"], "--treat-all-as-outside", arguments["treat_all_as_outside"]]);
+        if (arguments.TryGetValue("outside", out var text))
+        {
+            var outside = OutsideList(text)!;
+            if (outside.Length == 0) options.Add("--clear-outside");
+            foreach (var address in outside) options.AddRange(["--outside", address]);
+            options.AddRange(["--allow-pairing-outside-home", arguments["pairing_codes_outside"], "--treat-all-as-outside", arguments["treat_all_as_outside"]]);
+        }
+        if (arguments.TryGetValue(FrontDoorName, out var door)) options.AddRange(["--front-door", door]);
         return options;
     }
 

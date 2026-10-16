@@ -348,31 +348,71 @@ jobs; `ResearchWatcher` (`src\Martlet.Conversation\Research\ResearchWatcher.cs`)
 
 **What it decides:** for a request of the [OpenAI-compatible
 endpoint](OPENAI_ENDPOINT.md), whether its key may make it, which host runs it
-(this one, or another host of the network that has the model), how it ranks
-against the owner's work, and the context size it runs with.
+(this one, or another host of the network that has the model), which real
+model a [network model name](OPENAI_ENDPOINT.md#network-model-names) runs on,
+how it ranks against the owner's work, whether and how long it waits for a
+free slot, and the context size it runs with.
 
 **Owner:** `GatewayHttpApplication.RelayOpenAiAsync` and `ListModelsAsync`
 (`src\Martlet.Gateway\GatewayOpenAi.cs`) for the key check, the model list and
 the order (this host's own model first, then the hosts of the roster that list
-the model; a host never sends a request on twice). The rank and the slots are
-`GatewayInferenceRouteRegistry.BeginOutside`
-(`src\Martlet.Gateway\GatewayInferenceOutside.cs`) with the ranks of
-`GatewayInferencePriority.cs`: rank 0 below all of the owner's work, or rank 1
-with the owner's background work for a key with `equal-priority`
-(`GatewayApiKeyStore.EqualPriority`). The context size is
+the model; a host never sends a request on twice), and for where a request
+waits (`WaitHereAsync`; `X-Martlet-Wait` to another host) with the limits of
+`GatewayOpenAiQueue`. Which real models a network model name fits is
+`OpenAiNetworkModels` (`src\Martlet.Core\Access`), with the rating of
+`ThinkingSmartsGuess`. The rank, the slots and the queue are
+`GatewayInferenceRouteRegistry.BeginOutside`, `EnqueueOutside` and
+`WaitOutsideAsync` (`src\Martlet.Gateway\GatewayInferenceOutside.cs`) with the
+ranks of `GatewayInferencePriority.cs`: rank 0 below all of the owner's work,
+or rank 1 with the owner's background work for a key with `equal-priority`
+(`GatewayApiKeyStore.EqualPriority`); the owner's requests never look at the
+queue. The context size is
 `OllamaRelayWorker.OpenAiContextAsync`; the translation to Ollama's own API is
 `OllamaOpenAi` (`src\Martlet.Gateway.Ollama`). The scopes and the key's
 priority text are `ApiKeyScopes` and `OpenAiEndpoint` (`src\Martlet.Core\Access`).
 
 **Shows it:** Share › *Share your language models* (`OpenAiModels`,
 `OpenAiKey-<id>`, `OpenAiStatus`), the host log (*OpenAI-compatible ... request
-from ... finished here* or *sent on to ...*, *Owner first: stopped an
-OpenAI-compatible ... request*), and `GET /martlet/v1/priority` (its running
-requests and preemptions).
+from ... finished here* or *sent on to ...*, *... waits for a free slot*,
+*Owner first: stopped an OpenAI-compatible ... request*), the answer's
+`model`, `X-Martlet-Host` and `X-Martlet-Queued`, and `GET
+/martlet/v1/priority` (its running requests and preemptions).
 
-**Tests:** `OpenAiEndpointTests` (Martlet.Gateway.Tests and Martlet.Core.Tests).
+**Tests:** `OpenAiEndpointTests` (Martlet.Gateway.Tests and Martlet.Core.Tests),
+`OpenAiNetworkModelsTests` (Martlet.Core.Tests).
 
 **MCP:** `openai_selftest`, `openai_endpoint_status`.
+
+## What the front door serves and who may sign in to its page
+
+**What it decides:** which paths a host's [front
+door](OPENAI_ENDPOINT.md#the-front-door) (its public port) serves, what its web
+page shows to anyone and to a person signed in with a key, and when a web
+session ends.
+
+**Owner:** `GatewayHttpApplication.InvokeFrontDoorAsync` and
+`GatewayFrontDoorSessions` (`src\Martlet.Gateway\GatewayFrontDoor.cs`) for the
+routes (`/v1`, `/`, `/portal/sign-in`, `/portal/sign-out`, `/health/live`;
+404 for the rest), sign-in and sessions; `GatewayFrontDoorPage.cs` for the
+page; `GatewayGuard` (`Failed` never locks out the `openai` and `front-door`
+classes). Whether a host has a front door, and on which port, is
+`GatewayExposure.FrontDoorPort`, set by `martlet-host exposure --front-door`
+(`HostExposure`, `exposure.json`) and the `host.exposure` node command
+(`NodeCommandRules`). The setup texts are `OpenAiEndpoint` (`ExposeHelp`,
+`ProxyManagerSteps`, `NginxConfig`, `CaddyConfig`, `CloudflareTunnelConfig`,
+`TailscaleCommand`).
+
+**Shows it:** Share › *Share your language models* › *Front door*
+(`OpenAiFrontDoorStatus`), *Check address* (`OpenAiCheckResult`), *Show
+setup*; the host's security audit (`front_door_port`, `front_door_listeners`,
+`front_door_sessions`); the host log (*Front door open on ...*, *Front door:
+... signed in to the web page*).
+
+**Tests:** `FrontDoorTests` (Martlet.Gateway.Tests), `ExposureTests`
+(Martlet.Gateway.Host.Linux.Tests), `NodeCommandExposureTests`
+(Martlet.Core.Tests), `FrontDoorCheckTests` (Martlet.Desktop.Tests).
+
+**MCP:** `front_door_selftest`, `openai_endpoint_status`.
 
 **Docs:** [OPENAI_ENDPOINT.md](OPENAI_ENDPOINT.md).
 

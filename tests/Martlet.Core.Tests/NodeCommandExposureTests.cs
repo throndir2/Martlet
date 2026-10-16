@@ -46,4 +46,34 @@ public sealed class NodeCommandExposureTests
             new Dictionary<string, string> { ["secret.x"] = "y" }));
         NodeCommandRules.Validate(NodeCommandKinds.Exposure, Arguments(""), empty);
     }
+
+    [Fact]
+    public void The_front_door_opens_and_closes_alone_or_with_outside_access()
+    {
+        Assert.Equal(["--front-door", "9445"], NodeCommandRules.ExposureOptions(NodeCommandRules.FrontDoorArguments(9445)));
+        Assert.Equal(["--front-door", "off"], NodeCommandRules.ExposureOptions(NodeCommandRules.FrontDoorArguments(null)));
+        var both = Arguments("");
+        both["front_door"] = "8443";
+        Assert.Equal(["--clear-outside", "--allow-pairing-outside-home", "no", "--treat-all-as-outside", "yes", "--front-door", "8443"],
+            NodeCommandRules.ExposureOptions(both));
+    }
+
+    [Theory]
+    [InlineData("80")]
+    [InlineData("65536")]
+    [InlineData("09445")]
+    [InlineData("+9445")]
+    [InlineData("9445 --config /etc")]
+    [InlineData("on")]
+    [InlineData("")]
+    public void The_front_door_takes_only_a_port_from_1024_or_off(string port)
+    {
+        var empty = new Dictionary<string, string>();
+        Assert.Throws<ContractException>(() => NodeCommandRules.Validate(NodeCommandKinds.Exposure,
+            new Dictionary<string, string> { ["front_door"] = port }, empty));
+        Assert.Throws<ContractException>(() => NodeCommandRules.FrontDoorArguments(80));
+        // Half of the outside trio with a front door is still refused.
+        Assert.Throws<ContractException>(() => NodeCommandRules.Validate(NodeCommandKinds.Exposure,
+            new Dictionary<string, string> { ["front_door"] = "9445", ["outside"] = "" }, empty));
+    }
 }

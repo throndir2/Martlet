@@ -133,6 +133,9 @@ public sealed class GatewayServer
     internal void UseOpenAiPeers(Func<IReadOnlyList<(string HostId, string Origin, string Spki)>> peers) =>
         application.OpenAiPeers = () => peers().Select(p => new GatewayOpenAiPeer(p.HostId, p.Origin, p.Spki)).ToArray();
 
+    /// <summary>For tests: the limits of this host's OpenAI-compatible queue.</summary>
+    internal void UseOpenAiQueue(GatewayOpenAiQueue limits) => application.OpenAiQueue = limits;
+
     /// <summary>For tests: this host's copy of the network's API keys.</summary>
     internal Martlet.Core.Access.ApiKeyList MergeApiKeys(Martlet.Core.Access.ApiKeyList keys) => application.ApiKeys.Merge(keys);
 
@@ -278,7 +281,13 @@ public sealed class GatewayServer
             finds = follow ? AnswerFinds() : null;
             application.OutsideListeners = overlay is null ? static () => [] : () => overlay.Listening;
             application.OutsideAddressesChanged = overlay is null ? null : overlay.Wake;
-            return new InferenceListener(listener, inference, application.Logs, overlay, home, finds, application.CloseOpenAi);
+            var frontDoor = Exposure.FrontDoorPort is { } door
+                ? await GatewayFrontDoorListener.StartAsync(binding, door, application.InvokeFrontDoorAsync,
+                    (level, message) => application.Logs.Own(level, message), cancellationToken).ConfigureAwait(false)
+                : null;
+            this.frontDoor = frontDoor;
+            application.FrontDoorListeners = frontDoor is null ? static () => [] : () => frontDoor.Listening;
+            return new InferenceListener(listener, inference, application.Logs, overlay, home, finds, application.CloseOpenAi, frontDoor);
         }
         catch
         {
@@ -290,6 +299,13 @@ public sealed class GatewayServer
 
     private volatile GatewayOverlayListeners? overlay;
     private volatile GatewayHomeListeners? home;
+    private volatile GatewayFrontDoorListener? frontDoor;
+
+    /// <summary>Where the front door listens ("ip:port"), empty when this host isn't the front door or it couldn't open.</summary>
+    public IReadOnlyList<string> FrontDoorListeners => frontDoor?.Listening ?? [];
+
+    /// <summary>Browsers signed in to the front door's web page now.</summary>
+    public int FrontDoorSessions => application.FrontDoorSessions.Count;
     private HostFindResponder? finds;
 
     /// <summary>The home addresses this host listens on besides its home origin, after its computer got another address.</summary>
@@ -328,7 +344,8 @@ public sealed class GatewayServer
 
     private sealed class InferenceListener(
         GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference, GatewayLogStore logs,
-        GatewayOverlayListeners? overlay, GatewayHomeListeners? home, HostFindResponder? finds, Action closeOpenAi) : GatewayListenerHandle
+        GatewayOverlayListeners? overlay, GatewayHomeListeners? home, HostFindResponder? finds, Action closeOpenAi,
+        GatewayFrontDoorListener? frontDoor) : GatewayListenerHandle
     {
         private int stopping;
         public override GatewayOrigin Origin => listener.Origin;
@@ -338,6 +355,7 @@ public sealed class GatewayServer
             if (first) logs.Own(Martlet.Core.Logs.LogLevels.Info, "Gateway stopping.");
             var closing = inference.CloseAsync().AsTask();
             finds?.Dispose();
+            if (frontDoor is not null) await frontDoor.DisposeAsync().ConfigureAwait(false);
             if (overlay is not null) await overlay.DisposeAsync().ConfigureAwait(false);
             if (home is not null) await home.DisposeAsync().ConfigureAwait(false);
             await listener.DisposeAsync().ConfigureAwait(false);

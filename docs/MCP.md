@@ -2498,16 +2498,19 @@ verifier (Martlet keeps no key) and contacts nothing.
 `openai_endpoint_status` reads Share › *Share your language models* (the
 [OpenAI-compatible endpoint](OPENAI_ENDPOINT.md)) from a data directory
 (optional absolute `dataDirectory`): `settings` (`state` of
-`openai-endpoint.json`, `publicAddress`, `frontDoorHostId`, and the
-`frontDoor` host with its `frontDoorOrigin` from the network roster),
-`paths` (`/v1/models` and the POST paths), each key with the `openai` scope
-(`id`, `name`, `scopes`, `priority`: `your-martlet-first` or
-`equal-to-background-work`, `createdBy`, `createdAt`, `expiresAt`,
-`revoked`, `expired`, `updatedBy`), `models` (what the Share page last read,
-`openai-models.json`: each host's models or problem, and the models of hosts
-friends share with this PC) and `proxy` (the `nginx` and `caddy` text *Show
-proxy setup* gives for the front door). It never returns a key or its verifier
-and contacts nothing.
+`openai-endpoint.json`, `publicAddress` and `frontDoorHostId`), `frontDoor`
+(`open`, the `hostId` and `port` the Share page last saw it open on, where it
+is `listening`, the `upstream` a proxy sends to, and the
+`lastAddressCheck` text of *Check address*), `paths` (`/v1/models` and the
+POST paths), each key with the `openai` scope (`id`, `name`, `scopes`,
+`priority`: `your-martlet-first` or `equal-to-background-work`, `createdBy`,
+`createdAt`, `expiresAt`, `revoked`, `expired`, `updatedBy`), `models` (what
+the Share page last read, `openai-models.json`: each host's models or problem,
+the models of hosts friends share with this PC, the front door and the last
+address check) and `setup` (the `help` text behind the *?* next to the
+address, and the `tailscale`, `proxyManager`, `nginx`, `caddy` and
+`cloudflareTunnel` text *Show setup* gives for the front door). It never
+returns a key or its verifier and contacts nothing.
 
 `mac_host_check` (no arguments) checks the Mac host ([macOS](MACOS.md#host)) as
 far as a Windows PC can. In the `mcr.microsoft.com/dotnet/sdk:10.0.401` image
@@ -2981,6 +2984,27 @@ safe value `OutsideAccessRouterPort` (router name, port and times, never the
 address). Saving with it needs `--allow-ui-effects`; it changes the router and
 Windows Firewall.
 
+`front_door_selftest` (no arguments) rehearses the [front
+door](OPENAI_ENDPOINT.md#the-front-door), a host's public listener on its own
+port, end to end with the production code. It runs `src\Martlet.NodeLinkCheck`
+(mode `front-door`, `FrontDoorRehearsal.cs`) and returns `{exitCode, report}`
+like `network_selftest`. Two real gateways (`lab-front-door` with its front
+door open on a free loopback port, and `lab-gpu-box`, each with the real Ollama
+relay over a fixture Ollama, NOT AI) are joined in one network by a simulated
+desktop, which makes an `openai` key (*Ana*) and a `voice` key on both. Plain
+HTTPS clients on the front door's port only (as a proxy sends them) check: the
+host's security audit names the front door's port and listeners; the public
+page shows *Online* and the sign-in form, with no model, host or address, no
+script and a `default-src 'none'` CSP; every private path (`/martlet/v1/...`,
+`/health/ready`) answers 404, also with a key; `/v1/models` without a key
+answers 401 `missing_api_key` (what *Check address* looks for) and a `voice`
+key 403; Ana's key lists both hosts' models and a streamed chat is sent on to
+`lab-gpu-box`; fifteen wrong keys answer 401 and never lock Ana out; sign-in
+refuses a forged form token, another site's `Origin` and a wrong key, and
+Ana's key gets a session whose page lists both models and the base URL; and
+revoking Ana ends the session and the key at once. Loopback only; it writes
+nothing to disk.
+
 `openai_selftest` (no arguments) rehearses the [OpenAI-compatible
 endpoint](OPENAI_ENDPOINT.md) end to end with the production code. It runs
 `src\Martlet.NodeLinkCheck` (mode `openai`, `OpenAiRehearsal.cs`) and returns
@@ -2999,10 +3023,21 @@ native request; a streamed chat for the other host's model is sent on to it
 `authentication_error`), a `voice` key (403 `permission_error`), an unknown
 model (404 `model_not_found`) and `/martlet/v1/status` with an `openai` key
 (403) are refused; the owner's reply stops Ana's streamed request
-(`owner_needs_it`) and runs; and revoking Ana's key refuses her on both hosts
-while Ben's request still goes through. Loopback only; nothing is written to
-disk or the credential vault. It does not cover a real model, a real reverse
-proxy with a certificate, or a second PC.
+(`owner_needs_it`) and runs; while the owner's reply holds the front door's
+model, `martlet@any` runs at once on the other host's free model (its
+`model` names it), and two of Ana's requests for the front door's model wait
+in the queue with the production limits (her stream gets an SSE comment after
+5 seconds) and run once the reply ends (`X-Martlet-Queued`); and revoking
+Ana's key refuses her on both hosts while Ben's request still goes through.
+Before the owner-first step it also checks the [network model
+names](OPENAI_ENDPOINT.md#network-model-names): `GET /v1/models` lists
+`martlet@any` (both models) and `martlet@fast` (the front door's `1b` model)
+with their `martlet_models` and no `martlet@smart`; a chat for
+`martlet@fast` runs on the front door's model and its answer names it;
+`martlet@smart` gets 404 `model_not_found` and `martlet@fast` on
+`/v1/embeddings` gets 400 `invalid_request_error`. Loopback only; nothing is
+written to disk or the credential vault. It does not cover a real model, a
+real reverse proxy with a certificate, or a second PC.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
@@ -7905,7 +7940,7 @@ A status text whose details sit in its tooltip (the talk window's `LiveVisionSta
 `LivePcAudio`, `LiveChattiness` and `LiveContext`) also returns them as `help`
 (its accessible help text). A box you type in (`kind` `ControlType.Edit`, also a
 password box) returns its example text as `help`, such as
-*https://llm.example.com/v1* for Share's `OpenAiPublicAddress`: the dimmed text
+*https://martlet.example.com/v1* for Share's `OpenAiPublicAddress`: the dimmed text
 the empty box shows (`InputHint`), which is also its accessible help text unless
 the box has help of its own. It never returns what is typed in the box.
 `{"name":"ui_snapshot","arguments":{"layout":true}}` also returns each control's
@@ -8320,14 +8355,23 @@ models on how many hosts, how many people have a key, hosts that need an
 update, when it was checked), `OpenAiCheck` (passive: reads each host's
 `GET /v1/models` with the signed pairing and keeps `openai-models.json`),
 `OpenAiPublicAddress` (the address to give people; an editable field, never
-returned), `OpenAiFrontDoor` (the host the proxy sends to), `OpenAiSaveAddress`,
+returned), `OpenAiSaveAddress`, `OpenAiCheckAddress` (passive: sends `GET
+<address>/models` without a key and shows the answer in `OpenAiCheckResult`),
+`Help-OpenAiExpose` (the *?* with the ways to give the front door an address),
 `OpenAiAddressProblem`, `OpenAiAddressStatus`, `OpenAiHomeAddresses` and
 `OpenAiModels` (status text: each model with its hosts), and each key's row
 `OpenAiKey-<key ID>` (status text: name, priority, who made it, last use,
 expiry) with `OpenAiKeyPriority-<key ID>` (*Your Martlet first* or *Same as
-your background work*) and `OpenAiKeyRevoke-<key ID>`. `OpenAiShowProxy`
-(passive) opens `OpenAiProxyDialog` with `OpenAiProxySteps`,
-`OpenAiProxyNginx` and `OpenAiProxyCaddy` (text) and `OpenAiProxyClose`.
+your background work*) and `OpenAiKeyRevoke-<key ID>`. Above them the *Front
+door* block holds `Help-OpenAiFrontDoor`, `OpenAiFrontDoorStatus` (status
+text: the host and port it is open on and where it listens), and, when this PC
+can run commands on your hosts, `OpenAiFrontDoorHost` (the host),
+`OpenAiFrontDoorPort` (the port, 9445 by default), `OpenAiFrontDoorOpen` and
+`OpenAiFrontDoorClose` (these two run `martlet-host exposure --front-door` on
+the host and need `--allow-ui-effects`). `OpenAiShowProxy` (*Show setup*,
+passive) opens `OpenAiProxyDialog` with `OpenAiProxySteps`,
+`OpenAiProxyTailscale`, `OpenAiProxyManager`, `OpenAiProxyNginx`,
+`OpenAiProxyCaddy` and `OpenAiProxyCloudflare` (text) and `OpenAiProxyClose`.
 `OpenAiGiveAccess` (passive) opens `OpenAiAccessDialog` with
 `OpenAiAccessName`, `OpenAiAccessPriorityFirst`, `OpenAiAccessPriorityEqual`,
 `OpenAiAccessExpiry`, `OpenAiAccessConfirm` and `OpenAiAccessCancel`
