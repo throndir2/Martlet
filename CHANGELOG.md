@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-10-15
+
 ### Added
 
 - A new **Share** page has everything about sharing in one place: your Martlet network, friends, API keys, the hosts friends share with this PC, and your language models. ([#913](https://github.com/throndir2/Martlet/pull/913))
@@ -15,10 +17,10 @@ Each release's section here is also its notes on GitHub.
 - Your own conversations come first: by default any request of yours stops a shared request. You can let a key's requests run beside your background work instead, and change it any time. ([#913](https://github.com/throndir2/Martlet/pull/913))
 - One address reaches the models of all your hosts: the host behind it sends each request to the host that has the model. **Show proxy setup** gives the Nginx or Caddy setup for your own domain. ([#913](https://github.com/throndir2/Martlet/pull/913))
 - Hosts a friend shares with you now list the language models they offer. ([#913](https://github.com/throndir2/Martlet/pull/913))
+- Devices has a new *Cloud providers and servers* card: every online service and server on your network that Martlet uses, and what it uses each one for (Thinking, the Thinking pool, Picture making, Singing, Vision, tools and more). ([#912](https://github.com/throndir2/Martlet/pull/912))
 - Martlet now checks a fact it isn't sure of, like a price, a date or how to get something in a game, with a quick look-up and tells you in a minute or two, instead of guessing. It still answers what it knows at once, and does full research (or in-depth research when you ask) for bigger questions. ([#911](https://github.com/throndir2/Martlet/pull/911))
 - While Martlet researches something, it tells you as soon as it finds what you wanted, then keeps going for the full report. ([#911](https://github.com/throndir2/Martlet/pull/911))
 - After a research report is ready, Martlet checks each claim against the page it cites and adds a *Source check* to the report, without making you wait for it. ([#911](https://github.com/throndir2/Martlet/pull/911))
-- Devices has a new *Cloud providers and servers* card: every online service and server on your network that Martlet uses, and what it uses each one for (Thinking, the Thinking pool, Picture making, Singing, Vision, tools and more). ([#912](https://github.com/throndir2/Martlet/pull/912))
 
 ### Changed
 
