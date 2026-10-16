@@ -70,7 +70,7 @@ internal sealed partial class HostRemote(HostShell shell)
     [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z")]
     private static partial Regex IdentifierPattern();
 
-    private const string ProbeScript =
+    private const string ProbeScript = HostCheckout.DockerPath +
         "printf 'probe.docker=%s\\n' \"$(command -v docker >/dev/null 2>&1 && echo yes || echo no)\"; " +
         "printf 'probe.docker_access=%s\\n' \"$(docker info >/dev/null 2>&1 && echo yes || echo no)\"; " +
         "printf 'probe.sudo=%s\\n' \"$(command -v sudo >/dev/null 2>&1 || { echo none; exit 0; }; sudo -n true 2>/dev/null && echo nopassword || echo password)\"; " +

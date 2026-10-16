@@ -4174,6 +4174,25 @@ Martlet's SSH runner itself, and roles or Docker hosts without internet access
 (Martlet stops with an explanation). Without Docker or the image it returns
 `exitCode` 2 and `notRun` (it never pulls).
 
+`host_docker_shell_check` (no arguments) checks the shell Martlet runs on a
+[Docker host over SSH](../deploy/host/README.md#docker-any-docker-host-including-windows)
+when the computer is shaped like a NAS (TerraMaster TOS, Synology DSM, QNAP):
+Docker is only on the login shell's PATH and there is no git. It joins the
+production `HostCheckout.Docker` and `HostCheckout.DockerImage` text as the
+desktop's Docker method does and runs it with `sh -c` and an SSH command's
+plain PATH in one disposable `ubuntu:24.04` container (`--network none`,
+`--pull never`, removed afterwards). It returns `{exitCode, report: {passed,
+total, image, command, steps: [{name, ok, detail}]}, notCovered}`. Steps:
+`plain-shell-has-no-docker`; `docker-found-on-login-path`
+(`HostCheckout.DockerPath` finds Docker through `/etc/profile.d`);
+`builds-from-source-archive` (without git, the release tag's archive is
+missing, so main's source archive is unpacked into a temporary folder and
+built, then the engine runs); `source-folder-removed`;
+`image-there-builds-nothing`; and `download-fails-stops` (nothing is built and
+no engine runs). FIXTURE `docker` and `curl` stand in for Docker and GitHub.
+Not covered: Martlet's SSH runner, a real NAS and a real image build. Without
+Docker or the image it returns `exitCode` 2 and `notRun` (it never pulls).
+
 `host_update_check` (no arguments) rehearses how one Martlet keeps its own host
 service updates from colliding, with the desktop's production
 `HostUpdateTracker` and `HostEngineBusy` reader, and returns `{exitCode, report:

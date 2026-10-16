@@ -248,6 +248,15 @@ internal sealed partial class McpServer
             cacheDirectory = new { type = "string", maxLength = 260 }
         },
             async (arguments, cancellation) => await HostSupplyCheck.RunAsync(arguments, cancellation)),
+        Tool("host_docker_shell_check", "Check the shell Martlet runs on a Docker host over SSH on a computer shaped like a NAS " +
+            "(TerraMaster, Synology, QNAP): the production HostCheckout text, as the desktop's Docker method joins it, in one disposable " +
+            "ubuntu:24.04 container (no network, never pulled, removed afterwards) where Docker is only on the login shell's PATH and " +
+            "there is no git. Checks that an SSH command's plain shell finds no Docker but HostCheckout.DockerPath does; that without " +
+            "git the host image is built from GitHub's source archive (main's when the release tag has none), unpacked into a " +
+            "temporary folder that is removed afterwards, and then the engine runs; that an image already there builds nothing; and " +
+            "that a failed download builds nothing and runs no engine. FIXTURE docker and curl stand in for Docker and GitHub. " +
+            "Returns notRun when Docker or the image is missing.", new { },
+            async (_, cancellation) => await HostDockerShellCheck.RunAsync(cancellation)),
         Tool("host_update_check", "Rehearse how Martlet coordinates its own host service updates, with the desktop's production " +
             "update tracker and busy reader: an Update host run window claims its host so the automatic pass leaves it to that run " +
             "(no second engine run that finds the host locked by Martlet's own update and reports it busy, for its pairing or as this " +
