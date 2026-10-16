@@ -260,6 +260,31 @@ pairing secret is missing.
 
 **Docs:** [Your Martlet network](NETWORK.md#how-it-works-for-you).
 
+## Which address a connection to a host dials
+
+**What it decides:** which address the TCP connection to a paired host goes
+to: its paired (home) address, where it was found on the home network after its
+computer got a new address, or one of its outside addresses; when Martlet looks
+for the host on the home network; and which address that answered it uses (only
+one where the host shows its pinned key). The paired origin stays the host's
+name for TLS, requests and signatures.
+
+**Owner:** `HostRoutes.ConnectAsync` (`src\Martlet.Avatar.Audio2Face\Remote\HostRoutes.cs`),
+with the find question in `HostFind` (`src\Martlet.Core\Network\HostFind.cs`).
+`HostRegistry.Moved` (`src\Martlet.Desktop\HostControl.cs`) keeps the new
+address with the pairing (`movedTo`) and moves an SSH target that named the old
+one. On a host, `GatewayHomeListeners` (`src\Martlet.Gateway`) and the Docker
+keeper's `follow_home` (`deploy\host\martlet-host`) decide where it listens.
+
+**Tests:** `HostFindTests` (Martlet.Core.Tests), `HostMoveTests`
+(Martlet.Avatar.Audio2Face.Tests), `HomeListenerTests` (Martlet.Gateway.Tests),
+`HostMovedTests` and `HostOutsideAddressTests` (Martlet.Desktop.Tests).
+
+**MCP:** `host_move_selftest`, `hosts_find`, `exposure_selftest` (outside
+addresses).
+
+**Docs:** [When a computer gets a new address](NETWORK.md#when-a-computer-gets-a-new-address).
+
 ## Which member takes a request of an ordered pool
 
 **What it decides:** for an area with an ordered list (Speaking, Listening,

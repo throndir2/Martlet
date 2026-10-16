@@ -58,6 +58,9 @@ remove <role>       turn a role off: stop it and unpublish it (keeps its downloa
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
 update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
 status | config     show the gateway and roles | print the generated host.json
+home                Docker Desktop: publish the gateway on this computer's new home address (MARTLET_HOST_ADDRESS); Martlet
+                    on that computer runs it by itself after the address changed (a Linux Docker engine's keeper and a
+                    native gateway follow the address by themselves)
 ```
 
 `--yes` before any command (or `MARTLET_ASSUME_YES=1`) runs it without questions:
@@ -294,12 +297,26 @@ or over `ssh -t user@host`. How it fits together:
   shared-namespace containers. It publishes on the home address only, so at
   boot Docker can start it before that address exists; that start fails and
   Docker's restart policy never tries again. So `setup` and `update` also
-  create **`martlet-host-keeper`**, a tiny container with no network of its own
+  create **`martlet-host-keeper`**, a tiny container without a published port
   (Docker always starts it) that starts the holder again every 10 seconds while
-  the holder exists but isn't running. Martlet never stops the holder itself; to
+  the holder exists but isn't running. On a Linux Docker engine the keeper runs
+  in the Docker host's network (`--network host`, the config volume read-only):
+  when the computer no longer has the address the holder publishes on (a
+  restart or a new DHCP lease gave it another one), it publishes the gateway on
+  the address the computer has now (`follow_home`), and it answers desktops
+  that look for this host on UDP 9444 (`answer-finds`; see
+  [When a computer gets a new address](../../docs/NETWORK.md#when-a-computer-gets-a-new-address)).
+  The gateway's configuration, certificate, approval and pairings don't change.
+  On Docker Desktop (Windows, Mac) the keeper has no network, because Docker
+  Desktop's host network is its own virtual machine; there Martlet on that
+  computer runs **`martlet-host home`** with `MARTLET_HOST_ADDRESS=<new address>`
+  by itself, which moves only the holder's published port (a holder that
+  publishes on every address for outside access has nothing to move). A
+  firewall on a Docker host (ufw) must let UDP 9444 in from the home network by
+  hand, because Docker opens only published ports. Martlet never stops the holder itself; to
   keep this host stopped, stop `martlet-host-keeper` first. Every
   `martlet-host` command also starts a holder that isn't running before it
-  runs. Docker pins each role container to the holder's
+  runs (after the keeper had up to 30 seconds to move it to a new address). Docker pins each role container to the holder's
   container ID, so when `setup` replaces the holder (a new image or address)
   the roles would stay on the old, unreachable network and desktops would get
   `worker.unavailable`. `setup` and `update` recreate any installed role that
@@ -357,6 +374,10 @@ MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host setup
 private LAN address and port desktops use, creates the host identity, installs a
 systemd user service (`martlet-host-gateway`), optionally enables lingering so it
 runs at boot without a login, and links `martlet-host` into `~/.local/bin`.
+When ufw or firewalld is active it asks to let TCP 9443 (the gateway) and UDP
+9444 (the find answer) in from the private LAN. The native gateway follows its
+computer to a new home address by itself and answers desktops that look for
+it ([When a computer gets a new address](../../docs/NETWORK.md#when-a-computer-gets-a-new-address)).
 Setup first checks for curl, CA certificates and pciutils, which a bare-metal
 minimal install may lack, and installs only the missing ones after a single `yes`.
 Missing Docker, NVIDIA driver (with `ubuntu-drivers-common`, on Ubuntu) or NVIDIA Container

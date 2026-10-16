@@ -2613,6 +2613,40 @@ host stops listening there. Without a Tailscale or a private address that step
 is skipped and the report's `notRun` says why. Not covered: a real internet
 source, a router port forward or another computer on the overlay network.
 
+`host_move_selftest` (no arguments) rehearses a host whose computer got
+another address on the home network ([NETWORK](NETWORK.md#when-a-computer-gets-a-new-address))
+with the production code: one real gateway (`lab-moved-host`, Kestrel, pinned
+TLS) on `127.0.0.3` whose certificate also names the address it was paired at
+(`127.0.0.2`, where nothing answers), its real find answer (`HostFindResponder`
+on UDP, bound to `127.0.0.3`) and a desktop's real paired connection
+(`HostRoutes`). It runs `src\Martlet.NodeLinkCheck` (mode `move`,
+`MoveRehearsal.cs`) and returns `{exitCode, report}` like `network_selftest`.
+Its steps: the desktop pairs; the host answers a find with its host ID only
+(fields `martlet`, `v`, `q`, `hosts`) and doesn't answer Nearby's `find`; with
+the pairing saved at `127.0.0.2` the desktop finds the host at `127.0.0.3`,
+connects with the same key and pairing, and raises the move it keeps with the
+pairing (`HostRoutes.Moved`); a new connection dials the new address at once;
+the pinned-key probe reaches it there; a computer with another key that
+answers for the same host ID is never used (`host.unreachable`, nothing
+moved); and a host back at its paired address is found there and the other
+address forgotten. Finds go to the lab's answer on loopback, never to the home
+network. The report's `notRun` names what needs a real network adapter (the
+gateway following a real DHCP change).
+
+`hosts_find` (`dataDirectory` optional, `seconds` 0.5 to 5, default 2) asks
+this PC's home network where Martlet hosts are, as Martlet does when a paired
+host doesn't answer at its saved address: one `find-host` question on UDP
+9444 to each private subnet's broadcast address, the limited broadcast and
+loopback (never a subnet scan). It returns `port`, `listenedSeconds`, `tookMs`,
+`targets` (the addresses it asked) and `answers` (`hostId`, the private
+`address` the answer came from and, with `dataDirectory`, `where`: *not paired
+here*, *at its paired address*, *at the address saved as where it moved to*,
+*on this PC (answered over loopback)* or *somewhere new*), and `pairings`
+(`loaded`, `none` or `unreadable`). It sends no keys or credentials and
+changes nothing. `network_status`'s `pairedHosts[].movedOnHomeNetwork` says
+whether a pairing keeps a new home address (`movedTo` in hosts.json), without
+the address.
+
 `signin_selftest` (no arguments) rehearses [joining from outside home by
 signing in](NETWORK.md#joining-from-outside-home-by-signing-in) with the
 production code: one real gateway (`lab-signin-host`, Kestrel, pinned TLS, a

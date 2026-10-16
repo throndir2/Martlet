@@ -31,6 +31,13 @@ if (args is ["exposure"])
     Console.WriteLine(JsonSerializer.Serialize(exposureReport));
     return exposureOk ? 0 : 1;
 }
+// With "move" it rehearses a host whose computer got another address on the home network (MoveRehearsal).
+if (args is ["move"])
+{
+    var (moveOk, moveReport) = await Martlet.NodeLinkCheck.MoveRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(moveReport));
+    return moveOk ? 0 : 1;
+}
 // With "signin-lab <data directory> [--mode owner|friend|account] [--sign-in-desktop] [--share-with-friend] [--household|--join-desktop]" it runs a live
 // sign-in lab for the desktop on that data directory (SignInLab): the desktop as the host's owner (the default) or as a friend the
 // host is shared with, or (account) household account sign-in and host attestations, headless (with --household: two hosts paired with

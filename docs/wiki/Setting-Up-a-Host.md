@@ -46,4 +46,8 @@ MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host setup
 
 **Update host** runs `martlet-host update`, keeping identity, pairings, roles and data. Hosts report their Martlet version on the Devices map.
 
+## A new address after a restart
+
+You don't need to reserve addresses in your router. When a host's computer gets another address, the host listens there and answers on UDP 9444, and your computers find it there by themselves, check its key and keep using the same pairing. A firewall on the host must let UDP 9444 in from your home network.
+
 More detail: [Host guide](https://github.com/throndir2/Martlet/blob/main/deploy/host/README.md), [Network](https://github.com/throndir2/Martlet/blob/main/docs/NETWORK.md), [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md), [Troubleshooting](https://github.com/throndir2/Martlet/blob/main/docs/TROUBLESHOOTING.md).
