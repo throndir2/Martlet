@@ -81,7 +81,13 @@ if (args is ["openai"])
     Console.WriteLine(JsonSerializer.Serialize(openAiReport));
     return openAiOk ? 0 : 1;
 }
-// With "deep-thinking" it rehearses the Deep thinking host role beside Thinking's (DeepThinkingRehearsal) and prints its report.
+// With "front-door" it rehearses a host's front door, its public listener (FrontDoorRehearsal), and prints its report.
+if (args is ["front-door"])
+{
+    var (frontDoorOk, frontDoorReport) = await Martlet.NodeLinkCheck.FrontDoorRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(frontDoorReport));
+    return frontDoorOk ? 0 : 1;
+}// With "deep-thinking" it rehearses the Deep thinking host role beside Thinking's (DeepThinkingRehearsal) and prints its report.
 if (args is ["deep-thinking"])
 {
     var (deepOk, deepReport) = await Martlet.NodeLinkCheck.DeepThinkingRehearsal.RunAsync(CancellationToken.None);

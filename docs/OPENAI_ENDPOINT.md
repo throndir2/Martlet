@@ -17,22 +17,22 @@ Words on this page follow the [glossary](GLOSSARY.md#sharing).
 | What do they never get? | The cloud providers and API keys you set in Martlet, and everything else of Martlet: settings, memories, voices, characters, logs, your network and your other engines. A key with only the `openai` scope can't call any other route. |
 | How do they get in? | With a key you make on **Share › Share your language models › Give someone access**. Martlet shows a text to send them: the address, the key, the models and a first request. |
 | Do my own conversations slow down? | No. Their requests come after yours (below), and they use the context size your own requests use, so a host never loads its model again for them. |
-| Which computer answers? | Any host can be the **front door**. It runs a request when it has the model and a free slot. Otherwise it sends the request on, with the same key, to the host of your network that has the model. |
-| Do I need something on the internet? | Yes, one address with a real certificate: a reverse proxy (for example Nginx on your Linux server) in front of one host. Martlet gives you the configuration to paste. |
+| Which computer answers? | The **front door**: one of your hosts with a second, public port that serves only Martlet's web page and `/v1`. It runs a request when it has the model and a free slot. Otherwise it sends the request on, with the same key, to the host of your network that has the model. |
+| Do I need something on the internet? | One https address with a real certificate in front of the front door: Tailscale Funnel (free, no domain), your own reverse proxy (Nginx Proxy Manager, Nginx, Caddy) or a Cloudflare Tunnel. **Show setup** gives the exact steps, and **Check address** tests the address. |
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    App["Their app<br/>(OpenAI API, Bearer key)"] -->|"https://llm.example.com/v1"| Proxy["Your reverse proxy<br/>(real certificate,<br/>only /v1/)"]
-    Proxy -->|"home network<br/>https://host:9443/v1"| Front["Front door host<br/>(any of your hosts)"]
+    App["Their app<br/>(OpenAI API, Bearer key)"] -->|"https://llm.example.com/v1"| Proxy["Your reverse proxy<br/>(real certificate)"]
+    Proxy -->|"home network<br/>https://host:9445"| Front["Front door<br/>(one host's public port:<br/>web page and /v1 only)"]
     Front -->|"has the model:<br/>runs it"| Ollama1["Its own Ollama"]
     Front -->|"doesn't have it:<br/>same key, pinned TLS"| Other["Another host of<br/>your network"]
     Other --> Ollama2["Its own Ollama"]
 ```
 
 1. The app sends `Authorization: Bearer martlet_...` to your public address.
-2. The proxy sends only `/v1/` to the front door host on your home network.
+2. The proxy sends everything to the [front door](#the-front-door), a second port of one host on your home network. It serves only `/v1` and Martlet's web page.
 3. The front door checks the key itself (keys reach every host by the normal
    [API key sync](API.md#how-keys-reach-your-hosts)).
 4. `GET /v1/models` lists the front door's models and the models of every
@@ -105,108 +105,211 @@ language models** lists only these keys, with their priority. **Share › Apps
 and API keys** lists every key. Revoking a key stops its running requests on
 every host that heard about it.
 
-## Give your models an address on the internet
+## The front door
+
+The **front door** is one of your hosts with a second, public port (9445 by
+default). That port serves only:
+
+| Path | What it is |
+| --- | --- |
+| `/v1/...` | The OpenAI-compatible API. Every request needs an API key (`Authorization` header). Without one the answer is 401 `missing_api_key`. |
+| `/` | Martlet's web page (below). |
+| `/portal/sign-in`, `/portal/sign-out` | The web page's sign-in and sign-out forms. |
+| `/health/live` | Says that the front door is up. |
+
+Every other path answers 404. Pairing, sign-in for computers, your network,
+settings, logs and every other route of Martlet are not on that port at all:
+the front door has its own short list of routes and can't reach the others.
+A paired computer's signed request doesn't work there either. The gateway's
+own port (9443) stays at home as before.
+
+Nothing on the front door locks out an internet address after wrong keys.
+Everyone comes through the same proxy, and a key is 256 random bits, so it
+can't be guessed. A wrong key gets 401 each time.
+
+To open it, go to **Share › Share your language models › Front door**, choose
+the host and the port, and choose **Open front door**. Martlet runs
+`martlet-host exposure --front-door <port>` on that host, and its gateway
+restarts for a few seconds. On a host that Martlet can't run commands on, run
+that command on the host itself. Only one host has the front door: opening it
+on another host closes it on the first.
+
+The front door listens on the host's home address and on `127.0.0.1`. A proxy
+on your home network uses the home address. Tailscale Funnel on the same
+computer uses `127.0.0.1`. A Docker host publishes both.
+
+### The web page
+
+People open your address without `/v1` in a browser (for example
+`https://martlet.example.com`).
+
+- **Anyone** sees only that this is a private Martlet, that it is online, and
+  a form to sign in with a key. No model, host, address or count.
+- **Signed in with a key**, a person sees the models that key may use (on how
+  many of your computers), the base URL with curl and Python examples, the
+  key's priority and expiry, and how many requests went through this address.
+
+The page has no scripts and a strict content security policy. The sign-in
+cookie is `HttpOnly`, `Secure` and `SameSite=Strict`, and the forms carry a
+token tied to the browser. A session lasts 8 hours of use (at most 7 days),
+lives only in the host's memory, and ends when you revoke the key.
+
+Friends of your Martlet network don't sign in here: their own Martlet already
+shows them your shared hosts' models on its Share page. The web page is for
+people with a key.
+
+## Give the front door an address
 
 Apps that use the OpenAI API check the server's certificate against the public
 certificate authorities. Your hosts use their own certificate, which Martlet
-pins, so the apps can't reach a host directly. Put one reverse proxy with a
-real certificate in front of one host. Your Linux server (Nahida) with Nginx is
-a good place: it is always on and probably already has a proxy.
+pins, so something with a real certificate goes in front of the front door.
+The **?** next to *Address to give people* lists the ways, and **Show setup**
+gives the exact text for your address and front door. Pick one:
 
-Martlet makes the configuration for you: **Share › Share your language
-models › Show proxy setup**. It fills in your address and the front door's
-home address.
+| Way | You need | Router change |
+| --- | --- | --- |
+| **Tailscale Funnel** | A free Tailscale account on the front door's computer. Tailscale gives you `https://<computer>.<tailnet>.ts.net`. | No |
+| **Nginx Proxy Manager**, **Nginx** or **Caddy** | Your own domain, and a computer at home that runs the proxy. | Port 443 to the proxy |
+| **Cloudflare Tunnel** | A domain on Cloudflare and `cloudflared` on a computer at home. | No |
 
-1. Choose a name, for example `llm.throndir.com`. In your DNS, add an `A`
-   record that points it at your home's internet address (or a `CNAME` to the
-   name your other services use).
-2. Make your router send TCP port 443 to the proxy computer. If it already
-   does for your other sites, nothing changes.
-3. Get a certificate for the name. Use `certbot --nginx -d llm.throndir.com`,
-   or let Nginx Proxy Manager or Caddy get it.
-4. Add the Nginx configuration (below, or from Show proxy setup) to the
-   proxy, test it with `nginx -t` and reload it.
-5. In Martlet, type the address in **Address to give people**, choose the
-   front door host and choose **Save**. Your other computers get the same
-   address.
-6. Give someone access. Send them the text Martlet shows.
+Then:
+
+1. Type the address with `/v1` in **Address to give people**, for example
+   `https://martlet.example.com/v1`, and choose **Save**. Your other computers
+   get the same address.
+2. Choose **Check address**. Martlet asks `<address>/models` without a key.
+   *Works* means the answer came from your front door (401
+   `missing_api_key`). Otherwise Martlet says what answered: Martlet's gateway
+   port, a proxy that can't reach the front door (502), no trusted
+   certificate, or nothing.
+3. Give someone access. Send them the text Martlet shows.
+
+### Tailscale Funnel
+
+On the front door's computer, install Tailscale, sign in, and run:
+
+```text
+tailscale funnel --bg https+insecure://127.0.0.1:9445
+```
+
+Tailscale prints the address. `https+insecure` is safe here because Tailscale
+connects to `127.0.0.1` on the same computer.
+
+### Nginx Proxy Manager
+
+Point the name at your home (or keep it behind Cloudflare's proxy) and add a
+proxy host:
+
+```text
+Hosts › Proxy Hosts › Add Proxy Host
+  Domain Names:           martlet.example.com
+  Scheme:                 https
+  Forward Hostname / IP:  192.168.1.20
+  Forward Port:           9445
+  Block Common Exploits:  on
+  Websockets Support:     off
+SSL tab: your certificate for the name (or Request a new SSL Certificate), Force SSL, HTTP/2 Support.
+Advanced tab, Custom Nginx Configuration:
+  client_max_body_size 32m;
+  proxy_http_version 1.1;
+  proxy_buffering off;
+  proxy_request_buffering off;
+  proxy_read_timeout 900s;
+  proxy_send_timeout 900s;
+```
+
+### Nginx
 
 ```nginx
-# Martlet OpenAI-compatible endpoint: https://llm.throndir.com/v1 -> https://192.168.1.20:9443
-limit_req_zone $binary_remote_addr zone=martlet_openai:10m rate=10r/s;
+# Martlet front door: https://martlet.example.com -> https://192.168.1.20:9445
+limit_req_zone $binary_remote_addr zone=martlet_front_door:10m rate=10r/s;
 
 server {
     listen 443 ssl;
     http2 on;
-    server_name llm.throndir.com;
+    server_name martlet.example.com;
 
-    ssl_certificate     /etc/letsencrypt/live/llm.throndir.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/llm.throndir.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/martlet.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/martlet.example.com/privkey.pem;
 
     client_max_body_size 32m;
 
-    location /v1/ {
-        limit_req zone=martlet_openai burst=40 nodelay;
-        proxy_pass https://192.168.1.20:9443;
+    location / {
+        limit_req zone=martlet_front_door burst=40 nodelay;
+        proxy_pass https://192.168.1.20:9445;
         proxy_ssl_verify off;
         proxy_ssl_server_name off;
         proxy_http_version 1.1;
+        proxy_set_header Host $host;
         proxy_set_header Connection "";
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_read_timeout 900s;
         proxy_send_timeout 900s;
     }
+}
+```
 
-    location / {
-        return 404;
+### Caddy and Cloudflare Tunnel
+
+```text
+martlet.example.com {
+    reverse_proxy https://192.168.1.20:9445 {
+        transport http {
+            tls_insecure_skip_verify
+        }
+        flush_interval -1
     }
 }
 ```
 
+```yaml
+ingress:
+  - hostname: martlet.example.com
+    service: https://192.168.1.20:9445
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404
+```
+
 Notes:
 
-- `proxy_ssl_verify off` is safe only because the proxy and the host are on
-  your home network. The host's certificate is self-signed and Nginx can't pin
-  a key. Never point `proxy_pass` at a host across the internet.
-- `proxy_buffering off` lets streamed answers arrive token by token.
-- The proxy sends only `/v1/`. Pairing, sign-in and everything else of Martlet
-  stay at home.
-- `limit_req` limits how fast one internet address can ask. Every request
-  still needs a key, and a key is 256 random bits, so it can't be guessed.
-- **Nginx Proxy Manager:** add a proxy host for the name with scheme `https`,
-  the front door's home address and port `9443`, a Let's Encrypt certificate,
-  and a custom location `/v1/` with `proxy_buffering off;`.
-- **Caddy:** Show proxy setup also gives a Caddyfile. Caddy gets the
-  certificate by itself.
-- **Cloudflare Tunnel** (no router port): run `cloudflared` on the proxy
-  computer with an ingress rule for the name to
-  `https://<front door>:9443` and `originRequest.noTLSVerify: true`. Martlet
-  doesn't support tunnels for its own computers (they pin the host key), but
-  the OpenAI-compatible endpoint only needs keys, so a tunnel works for it.
-- At home, an app that can skip certificate checks can also use a host
-  directly: `https://<host>:9443/v1` (Share lists each host's address).
+- Send the whole site to the front door. It serves only its page and `/v1`,
+  so the proxy needs no path rules. Never point a proxy at the gateway's own
+  port (9443).
+- Skipping the certificate check (`proxy_ssl_verify off`, `noTLSVerify`) is
+  safe only because the proxy and the front door are on your home network.
+  The host's certificate is its own, and a proxy can't pin it. Never send to
+  a front door across the internet.
+- The proxy must pass the `Host` header (all of the above do), so the web
+  page shows the right base URL and accepts its forms.
+- `proxy_buffering off` (`flush_interval -1`) lets streamed answers arrive
+  token by token.
+- **Behind Cloudflare's proxy** (an orange cloud), an answer that doesn't
+  stream must finish within 100 seconds, or Cloudflare answers 524. Streamed
+  answers have no such limit. Most apps stream.
+- At home, an app that can skip certificate checks can also use
+  `https://<front door>:9445/v1` directly.
 
 ### Which host should be the front door?
 
-Any host works, because each one sends a request it can't run to the host that
-can. Choose a host that is always on. When the proxy runs on a computer that
-is also a Martlet host, use that host. The choice only changes the address in
-the configuration Martlet gives you.
-
+A host that is always on. It runs the models it has and sends the others to
+the host of your network that has them, so it needs no graphics card of its
+own. A host that runs your most used model saves one step for those
+requests.
 ## For people who use your models
 
 The text Martlet makes for them has everything:
 
 ```text
-Base URL: https://llm.throndir.com/v1
+Base URL: https://martlet.example.com/v1
 API key:  martlet_...
 Models:   qwen3:8b, gemma4:e4b
 ```
 
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="https://llm.throndir.com/v1", api_key="martlet_...")
+client = OpenAI(base_url="https://martlet.example.com/v1", api_key="martlet_...")
 reply = client.chat.completions.create(model="qwen3:8b", messages=[{"role": "user", "content": "Hello!"}])
 print(reply.choices[0].message.content)
 ```
@@ -235,13 +338,14 @@ thinking). A person who wants them in another app asks the owner for a key.
 | Piece | Location |
 | --- | --- |
 | Scopes, key priority, address and proxy text | `Martlet.Core.Access` (`ApiKeyScopes.OpenAi`, `ApiKeyScopes.EqualPriority`, `ApiKeyList.ChangeScopes`, `OpenAiEndpoint`, `OpenAiEndpointSettings` in `openai-endpoint.json`, shared as `openai-endpoint`) |
-| Endpoint, front door and forwarding | `Martlet.Gateway` `GatewayOpenAi.cs` (`/v1` routes, peers from the network roster, pinned forwarding, OpenAI errors) |
+| Endpoint and forwarding | `Martlet.Gateway` `GatewayOpenAi.cs` (`/v1` routes, peers from the network roster, pinned forwarding, OpenAI errors) |
+| Front door | `GatewayFrontDoor.cs` (its routes, sign-in and sessions), `GatewayFrontDoorPage.cs` (the web page), `GatewayFrontDoorListener.cs` (its port); `GatewayExposure.FrontDoorPort`; on Linux hosts `exposure.json` `frontDoorPort` (`martlet-host exposure --front-door`), the `host.exposure` node command's `front_door`, and the Docker holder's published port |
 | Rank and slots | `GatewayInferenceOutside.cs` (`GatewayInferenceRouteRegistry.BeginOutside`, `GatewayOutsideJob`), with `GatewayInferencePriority.cs` |
 | Translation to Ollama | `Martlet.Gateway.Ollama` `OllamaOpenAi.cs` and `OllamaRelayWorker.OpenAi.cs` (`OpenAiContextAsync`) |
 | Key checks | `GatewayApiKeys.cs` (`AuthenticateOpenAi`, `EqualPriority`) |
 | Desktop client | `Remote/HostOpenAiModels.cs` (`ReadOpenAiModelsAsync`) |
-| Desktop UI | `MainWindow.OpenAiEndpoint.cs` (the Share page and its card), `OpenAiDialogs.cs`; the Share page in `MainWindow.xaml` (`SharePage`, `NavShare`) |
-| MCP | `openai_endpoint_status`, `openai_selftest` (`Martlet.NodeLinkCheck openai`); IDs in [MCP](MCP.md) |
+| Desktop UI | `MainWindow.OpenAiEndpoint.cs` (the Share page and its card), `MainWindow.FrontDoor.cs` (Front door, Check address), `OpenAiDialogs.cs` (Show setup); the Share page in `MainWindow.xaml` (`SharePage`, `NavShare`) |
+| MCP | `openai_endpoint_status`, `openai_selftest` (`Martlet.NodeLinkCheck openai`), `front_door_selftest` (`Martlet.NodeLinkCheck front-door`); IDs in [MCP](MCP.md) |
 
 ## Qualification
 
@@ -261,7 +365,20 @@ Checked on the Windows development PC:
 - MCP with the desktop on a disposable data folder: the Share page, the
   card, Give someone access, the address, Show proxy setup, and a friend's
   view of a shared host's models (`signin_lab`).
+- `FrontDoorTests` in `Martlet.Gateway.Tests`: only the page, health and
+  `/v1` on the front door's port, 401 `missing_api_key`, no lockout, sign-in
+  and sign-out, refused forms, and revocation ending a session.
+  `ExposureTests` in `Martlet.Gateway.Host.Linux.Tests`: `owner-exposure
+  --front-door` and `serve` listening there. `FrontDoorCheckTests` in
+  `Martlet.Desktop.Tests`: what Check address says for each answer.
+- MCP `front_door_selftest`: two real gateways, the front door on its own
+  port, the public and signed-in page, 404 for private paths, forwarding and
+  revocation.
+- MCP with the desktop: the Front door block, the **?** help, Save, Check
+  address against a real public address behind Nginx Proxy Manager and
+  Cloudflare (it answered 502 before the front door was open), and Show setup.
 
-**NOT RUN:** a real model, a real reverse proxy with a public certificate,
-a real OpenAI client library, Docker or native Linux hosts, and two physical
-PCs on a real network.
+**NOT RUN:** a real model, opening the front door on a real host from the
+desktop, a request through a real proxy to an open front door, Tailscale
+Funnel, Cloudflare Tunnel, a real OpenAI client library, Docker or native
+Linux hosts, and two physical PCs on a real network.

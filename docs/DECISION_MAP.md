@@ -374,6 +374,37 @@ requests and preemptions).
 
 **MCP:** `openai_selftest`, `openai_endpoint_status`.
 
+## What the front door serves and who may sign in to its page
+
+**What it decides:** which paths a host's [front
+door](OPENAI_ENDPOINT.md#the-front-door) (its public port) serves, what its web
+page shows to anyone and to a person signed in with a key, and when a web
+session ends.
+
+**Owner:** `GatewayHttpApplication.InvokeFrontDoorAsync` and
+`GatewayFrontDoorSessions` (`src\Martlet.Gateway\GatewayFrontDoor.cs`) for the
+routes (`/v1`, `/`, `/portal/sign-in`, `/portal/sign-out`, `/health/live`;
+404 for the rest), sign-in and sessions; `GatewayFrontDoorPage.cs` for the
+page; `GatewayGuard` (`Failed` never locks out the `openai` and `front-door`
+classes). Whether a host has a front door, and on which port, is
+`GatewayExposure.FrontDoorPort`, set by `martlet-host exposure --front-door`
+(`HostExposure`, `exposure.json`) and the `host.exposure` node command
+(`NodeCommandRules`). The setup texts are `OpenAiEndpoint` (`ExposeHelp`,
+`ProxyManagerSteps`, `NginxConfig`, `CaddyConfig`, `CloudflareTunnelConfig`,
+`TailscaleCommand`).
+
+**Shows it:** Share › *Share your language models* › *Front door*
+(`OpenAiFrontDoorStatus`), *Check address* (`OpenAiCheckResult`), *Show
+setup*; the host's security audit (`front_door_port`, `front_door_listeners`,
+`front_door_sessions`); the host log (*Front door open on ...*, *Front door:
+... signed in to the web page*).
+
+**Tests:** `FrontDoorTests` (Martlet.Gateway.Tests), `ExposureTests`
+(Martlet.Gateway.Host.Linux.Tests), `NodeCommandExposureTests`
+(Martlet.Core.Tests), `FrontDoorCheckTests` (Martlet.Desktop.Tests).
+
+**MCP:** `front_door_selftest`, `openai_endpoint_status`.
+
 **Docs:** [OPENAI_ENDPOINT.md](OPENAI_ENDPOINT.md).
 
 ## Which endpoints are outside your computers, and what each is for
