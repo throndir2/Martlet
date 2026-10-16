@@ -156,11 +156,11 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.86.0
+## 🆕 What's new in 0.87.0
 
-- 🗄️ **A NAS can be a host**: add a TerraMaster, Synology or QNAP NAS over SSH. Martlet finds its Docker and builds the host without git, so an always-on NAS can be your front door.
-- 🚪 **Open front door works again**: on the Share page, opening the front door on a host runs as it should.
-- ✏️ **Examples in empty boxes**: every box you type in shows a dimmed example while it is empty, so you can see what goes there.
+- 🗄️ **NAS hosts start**: a host on a TerraMaster or Synology NAS now starts, also when the NAS keeps Docker's data on btrfs.
+- 🔑 **Fewer questions when you add a computer**: Martlet uses your own SSH key once instead of asking for a password, and trusts a computer that Windows' OpenSSH already trusts.
+- 🌐 **Nginx Proxy Manager in one click**: Show setup points your address at the front door for you. It changes the site that is already there, keeps its certificate and checks the address.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
