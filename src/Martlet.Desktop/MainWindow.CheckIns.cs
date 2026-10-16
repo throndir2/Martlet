@@ -273,6 +273,8 @@ public partial class MainWindow
         bool acted = false, kept = false;
         string? member = null, gathered = null, scriptHash = null, broken = null;
         var previous = checkInRuns.GetValueOrDefault(checkIn.Id);
+        // The callback list this run may write: an answer about a conversation forgotten meanwhile writes nothing.
+        var callbackVersion = conversation?.CallbackVersion ?? 0;
         // The tools of its chosen sets that this PC runs, for every member the pool tries during this run. Optional sets (lookups
         // such as People) only when a member that calls tools can take it; without one it runs without them.
         var offered = CheckIns.Offered(checkIn, conversation?.ThinkingPool.CanRun(ThinkingJobKind.CheckIn,
@@ -325,7 +327,7 @@ public partial class MainWindow
                 {
                     var verdict = CheckIns.Read(checkIn, done.Text, withInputs);
                     kept = verdict is { Readable: true, Act: false } && used.Count == 0;
-                    (result, acted) = await ActOnCheckInAsync(checkIn, verdict, prompts);
+                    (result, acted) = await ActOnCheckInAsync(checkIn, verdict, prompts, callbackVersion);
                 }
                 if (checkIn.Outcome != CheckInOutcome.Tools && used.Count > 0)
                 {
@@ -461,8 +463,10 @@ public partial class MainWindow
         static string? Joined(List<string> parts) => parts.Count == 0 ? null : string.Join(", ", parts);
     }
 
-    /// <summary>Does what the answer asks for and says what came of it in a few words (never the answer's own text).</summary>
-    private async Task<(string Result, bool Acted)> ActOnCheckInAsync(CheckIn checkIn, CheckInVerdict verdict, PromptSettings? prompts)
+    /// <summary>Does what the answer asks for and says what came of it in a few words (never the answer's own text).
+    /// <paramref name="callbackVersion"/> is the callback list's version when the run started.</summary>
+    private async Task<(string Result, bool Acted)> ActOnCheckInAsync(CheckIn checkIn, CheckInVerdict verdict, PromptSettings? prompts,
+        int callbackVersion = 0)
     {
         if (!verdict.Readable) return ("its answer couldn't be read, so nothing changed", false);
         if (!verdict.Act)
@@ -474,6 +478,7 @@ public partial class MainWindow
                 CheckInOutcome.Tools => "its tools acted",
                 CheckInOutcome.Context => "nothing to add to what Martlet knows",
                 CheckInOutcome.Plan => "nothing worth thinking ahead about",
+                CheckInOutcome.Callbacks => "the callback list stays as it is",
                 CheckInOutcome.HoldBack => checkInAside is { } holding && holding.HoldsAt(DateTimeOffset.Now)
                     ? "nothing changed, so Martlet still holds back" : "you don't seem to be talking to someone else",
                 _ => "nothing to remind Martlet of"
@@ -482,6 +487,13 @@ public partial class MainWindow
         {
             case CheckInOutcome.HoldBack:
                 return ActOnAside(checkIn, verdict, prompts);
+            case CheckInOutcome.Callbacks:
+                return conversation?.KeepCallbacks(verdict.Tags, callbackVersion) switch
+                {
+                    null => ("the conversation was forgotten meanwhile, so the callback list didn't change", false),
+                    { Count: 0 } => ("the callback list is empty now", true),
+                    var kept => ($"the callback list has {kept.Count} {(kept.Count == 1 ? "thing" : "things")} now", true)
+                };
             case CheckInOutcome.EmotesOff:
             {
                 var off = await TurnOffReplyEmotesAsync(tag => verdict.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase));
@@ -548,6 +560,7 @@ public partial class MainWindow
             Screen = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Screen)?.Text,
             Sound = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Sound)?.Text,
             Said = conversation?.RecentSayings(now) ?? [],
+            Callbacks = conversation?.RecentCallbacks(now) ?? [],
             // Read without taking: the next reply still drains these touches as before.
             Touches = conversation?.Touches.History(conversation.TouchNow),
             HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh),
@@ -675,6 +688,8 @@ public partial class MainWindow
             afterExchange = AfterExchangeStatus(),
             // Whether Martlet holds back now while you talk to someone else, and until when (never who or what was said).
             aside = AsideStatus(),
+            // How many things the callback list keeps now (never what they are).
+            callbacks = new { count = conversation?.RecentCallbacks(DateTimeOffset.Now).Count ?? 0, maximum = CallbackList.MaximumItems },
             checkIns = CheckIns.All(checkInSettings).Select(c =>
             {
                 var last = checkInRuns.GetValueOrDefault(c.Id);

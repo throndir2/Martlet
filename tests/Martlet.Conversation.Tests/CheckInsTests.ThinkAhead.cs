@@ -10,8 +10,9 @@ public sealed partial class CheckInsTests
         var ahead = Built(CheckIns.Ahead);
         Assert.Equal((true, 1, CheckInOutcome.Plan, PromptCatalog.CheckInAhead, CheckInTriggers.ExchangeEnded),
             (ahead.On, ahead.EveryMinutes, ahead.Outcome, ahead.PromptId, ahead.Triggers));
-        Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation, ahead.Facts);
-        Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation, CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInAhead)));
+        Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Callbacks, ahead.Facts);
+        Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Callbacks,
+            CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInAhead)));
         Assert.Equal(CheckInConditions.Talked | CheckInConditions.SomethingNew, ahead.Conditions);
 
         Assert.Equal("it waits for a reply to end", CheckIns.Wait(ahead, State(), null));
@@ -42,7 +43,8 @@ public sealed partial class CheckInsTests
 
         var note = CheckIns.Plan(null, read.Text!)!;
         Assert.StartsWith("Your own thoughts from just before this message (private; the user may have said something else): They'll say it's fixed;", note);
-        Assert.Contains("never mention them", note);
+        Assert.Contains("make that move", note);
+        Assert.Contains("Never mention them", note);
         Assert.Null(CheckIns.Plan(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInPlan] = "" } }, "x"));
 
         var board = new ContextBoard();

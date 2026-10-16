@@ -1366,7 +1366,8 @@ lingering emotes still fit, does the gaze a reply chose still fit, did the
 character keep its promises, did it stay in character, does it keep saying the
 same things, the four that wait for a signal (welcome back, an unanswered
 question, a call, someone else here), what to say after the next message
-(think ahead) and the owner's own),
+(think ahead), what is worth bringing back later (the callback list), whether
+to pick a quiet conversation back up (quiet moments) and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
 instructions. A reminder for the next reply, what a check-in adds to what
 Martlet knows, or its thoughts ahead, go in the notes of that one
@@ -1389,12 +1390,12 @@ and the placeholders in `Help-CheckInPrompt-<id>` or `Help-CheckInTask-<id>`):
 `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
 `Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`,
-`Latest`, `Heard`),
+`Latest`, `Heard`, `Callbacks`),
 `CheckInWhen-<id>-<condition>` (when it runs: `CharacterShows`, `EmoteShown`,
 `GazeChosen`, `Talked`, `SomethingNew`, `Persona`, `Replies`, `NewReplies`,
 `Sayings`, `SlowWhenKept`, `CameBack`, `NotOnCall`, `ActivityChanged`,
 `Between`, `Unanswered`, `Attention`, `SongEnded`, `ScriptChanged`,
-`SomeoneElse`), `CheckInTrigger-<id>-<trigger>` (what starts it at once:
+`SomeoneElse`, `Lull`), `CheckInTrigger-<id>-<trigger>` (what starts it at once:
 `TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`,
 `ExchangeEnded`, `Spoke`), its
 hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
@@ -1442,7 +1443,12 @@ with that file too: on a disposable data directory with Thinking on
 Think ahead's run (*thoughts ahead wait for the next reply*), the second
 reply's `LiveTurnInputs` says *Last reply took your words and 1 context
 note.*, and the desktop log says *Context board: the request took 1 note
-(check-in-ahead; ...)*.
+(check-in-ahead; ...)*. Add `CALLBACK:` lines to the file (such as
+`CALLBACK: quote - FIXTURE they said "one more try"`), and the same reply
+fires Callback list after Think ahead and Act on what was said:
+`check_ins_status` shows its run (*the callback list has 2 things now*) and
+`desktop.callbacks.count` 2, and `CheckInStatus-lull` says Quiet moments
+*waits for 3 min of quiet*.
 
 [Talking to someone else](CONVERSATION.md#talking-to-someone-else) is
 checked on the desktop the same way. Launch with a fixture file that holds
@@ -7011,7 +7017,7 @@ and let go (*too_old*) after waiting 10 minutes. `passed` and each step's
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
-*GazeUsual*, *Note*, *Say*, *Context*, *Tools*, *Plan* or *HoldBack*, built-in `prompt`, the owner's `task`, the
+*GazeUsual*, *Note*, *Say*, *Context*, *Tools*, *Plan*, *HoldBack* or *Callbacks*, built-in `prompt`, the owner's `task`, the
 `facts` and `conditions` (such as *Said, Replies* or *CharacterShows,
 EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
 Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
@@ -7032,6 +7038,8 @@ check-ins and calls tools; `handedOff`, each `tool` with its `checkIn` and `set`
 couldn't do, or null), `aside` (whether Martlet [holds
 back](CONVERSATION.md#talking-to-someone-else) now: `holding`, the check-in
 `by`, `since`, `until` and `aboutCharacters`, never who the user talks to),
+`callbacks` (how many things the [callback list](CONVERSATION.md#callback-list)
+keeps now, `count`, and its `maximum`, never what they are),
 `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
@@ -7053,7 +7061,9 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `maximumScriptCharacters`, `maximumScriptOutputCharacters` and
 `scriptTimeoutSeconds` for the owner's inputs, `signalWindowMinutes`,
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
-`mostPerHourChoices` for the signals, `maximumToolRounds` (4),
+`mostPerHourChoices` for the signals, `lullAfterMinutes` (3) for Quiet
+moments, `maximumCallbacks` (8), `maximumCallbackCharacters` (160) and
+`callbackWindowHours` (2) for the callback list, `maximumToolRounds` (4),
 `maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
 (each set's `id`, `name`, `does`, `tools`, `replaces`: the reply tools it
 takes over, such as `manage_memories` for `memory`, and `optional`: its tools
@@ -7156,7 +7166,29 @@ a production context board as `check-in-ahead` for one request only, the next
 exchange drops thoughts that still wait (`CheckIns.DropPlans`), they are gone
 after `CheckIns.PlanAge` (10 minutes), `OK` and `PLAN: nothing to plan` change
 nothing, a `KNOW:` line can't be read, and an emptied *Check-in: thoughts ahead
-for the next reply* prompt posts nothing. Three `signals:` steps check the
+for the next reply* prompt posts nothing. Four steps check [Keep the
+conversation going](CONVERSATION.md#keep-the-conversation-going) with FIXTURE
+exchanges and canned answers: `callback list` (the built-in
+[Callback list](CONVERSATION.md#callback-list) is on, runs at most once a
+minute after each reply, reads `Latest` and `Callbacks`; its message has the
+list with when each item came up, such as *- 9:37 PM (40 min ago): open - ...*,
+what was said and the `CALLBACK:` format; a fixture member's `CALLBACK:` lines
+after a `<think>` block and a header are read on a production job board and
+kept on a production `CallbackList`, where an item already there keeps when it
+came up; a list forgotten meanwhile isn't written; `KEEP` changes nothing,
+`NONE` empties it and chatter can't be read), `think ahead reads the callback
+list` (Think ahead's message has the list and asks for one move; the note
+for the next reply says to make that move), `quiet moments` (the built-in
+[Quiet moments](CONVERSATION.md#quiet-moments) is on, every 10 minutes, at
+most 2 times an hour, and Unanswered question is on; it runs after 5 quiet
+minutes and waits after 1, after 45, with an empty list, with you away, once
+it picked this quiet spell up, while a question waits, on a call and at 10:17
+PM; its message has the list and the `SAY:` format) and `prompts keep the
+conversation going` (*Keep the conversation going* opens the reply's closing
+instructions, the same text every time, and an emptied one sends nothing; the
+repeat check lets callbacks through; remembering keeps running jokes, the
+brief lists them, and *Writing a character's personality* asks for an example
+dialogue). Three `signals:` steps check the
 signal conditions and facts with FIXTURE facts: `signals: when they wait` (each
 condition waits for its signal since the last run and runs on it: you came
 back, a call, a change in what you do, the hours past midnight, an unanswered
@@ -7167,9 +7199,9 @@ script whose output hash didn't change, which *Check now* still asks),
 Talking to someone else and Someone else is here send `{away}`, `{activity}`
 and `{people}` and read `SAY:`, `ASIDE:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
 and read back` (equal hours, a cap of 5 and an unknown condition refused).
-The settings step also checks that the three built-in check-ins that wait for
-a signal (Welcome back, Unanswered question, Someone else is here) are off by
-default. `talking to someone else` checks [Talking to someone
+The settings step also checks that the two built-in check-ins that wait for
+a signal and are off by default (Welcome back, Someone else is here) are off,
+and that the others are on. `talking to someone else` checks [Talking to someone
 else](CONVERSATION.md#talking-to-someone-else) with a FIXTURE one-sided phone
 call and a canned answer: it is on, runs at most once a minute, holds Martlet
 back (`HoldBack`) and starts on `Spoke`; it waits with no trigger and on a

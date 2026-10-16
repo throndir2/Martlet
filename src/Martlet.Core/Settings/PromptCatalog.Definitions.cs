@@ -14,6 +14,11 @@ public static partial class PromptCatalog
         new(ReplyLength, ConversationGroup, "Reply length",
             "Closes the instructions of every reply to what you typed or said, after persona and the other instructions.",
             DefaultReplyLengthInstructions, []),
+        new(ConversationMoves, ConversationGroup, "Keep the conversation going",
+            "Added to every reply to what you typed or said, just before Short first sentence and Reply length: how Martlet keeps " +
+            "a chat going (react to your words, add one thing of its own, call back to earlier things, play along with running " +
+            "jokes). It is the same from reply to reply, so the model's prompt cache keeps it. Empty it to send nothing.",
+            DefaultConversationMovesInstructions, []),
         new(ShortFirstSentence, ConversationGroup, "Short first sentence",
             "Added to every spoken reply just before Reply length while Companion › Replies › Short first sentence is on (the " +
             "default). Martlet's voice says the first sentence as soon as it is written, so a short one lets it start talking " +
@@ -448,8 +453,8 @@ public static partial class PromptCatalog
             "name, {time} the day and time, {adult} whether Adult content is on (Check-in: adult content on or off), " +
             "{conversation} the end of the conversation, {emotes} the lingering emotes with their " +
             "hints and how long each has shown, {example} the first one's tag, {looking}, {usual} and {since} the gaze a reply " +
-            "chose, {persona}, {work}, {screen}, {sound}, {presence}, {said} what it said in the last hour and {replies} its last " +
-            "replies. Check-ins: each check adds the facts ticked that the prompt doesn't name and the answer format (OFF " +
+            "chose, {persona}, {work}, {screen}, {sound}, {presence}, {said} what it said in the last hour, {replies} its last " +
+            "replies and {callbacks} the callback list. Check-ins: each check adds the facts ticked that the prompt doesn't name and the answer format (OFF " +
             "lines or KEEP for this one).",
             DefaultCheckInEmotesInstructions, ["name", "emotes", "conversation"]),
         new(CheckInGaze, CheckInGroup, "Check-in: where the character looks",
@@ -509,9 +514,21 @@ public static partial class PromptCatalog
             DefaultCheckInActionsInstructions, ["name", "exchange", "work"]),
         new(CheckInAhead, CheckInGroup, "Check-in: think ahead",
             "What Think ahead asks right after each reply, while the user hasn't answered yet. {persona} is the active " +
-            "personality and {conversation} the end of the conversation. Check-ins: each check adds the answer format (a PLAN: " +
-            "line with the character's own thoughts ahead, which goes with the next reply, or OK).",
-            DefaultCheckInAheadInstructions, ["name", "persona", "conversation"]),
+            "personality, {conversation} the end of the conversation and {callbacks} the callback list (what Callback list keeps, " +
+            "each with when). Check-ins: each check adds the answer format (a PLAN: line with the character's own thoughts ahead " +
+            "and the one move it makes, which goes with the next reply, or OK).",
+            DefaultCheckInAheadInstructions, ["name", "persona", "conversation", "callbacks"]),
+        new(CheckInCallbacks, CheckInGroup, "Check-in: callback list",
+            "What Callback list asks right after each reply. {callbacks} is the list now (open topics, running jokes, the user's " +
+            "words and facts worth bringing back later, each with when it came up) and {exchange} what was said since it last ran. " +
+            "Check-ins: each check adds the answer format (the whole new list in CALLBACK: lines, KEEP or NONE). Think ahead and " +
+            "Quiet moments read the list.",
+            DefaultCheckInCallbacksInstructions, ["name", "callbacks", "exchange"]),
+        new(CheckInLull, CheckInGroup, "Check-in: quiet moments",
+            "What Quiet moments checks when the conversation has been quiet for a few minutes and the user is still at the PC. " +
+            "{callbacks} is the callback list, {said} what Martlet said lately and {activity} what the user seems to be doing. " +
+            "Check-ins: each check adds the answer format (a SAY: line or OK).",
+            DefaultCheckInLullInstructions, ["name", "persona", "conversation", "callbacks", "said", "activity"]),
         new(CheckInReactions, CheckInGroup, "Check-in: how I react",
             "What How I react checks. {persona} is the active personality, {conversation} the end of the conversation and " +
             "{touches} how the user touched the character lately. It changes nothing itself: the Touch reactions tools it calls " +
@@ -524,7 +541,8 @@ public static partial class PromptCatalog
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
             "or KEEP (move the eyes), a REMIND: line or OK (a reminder for the next reply), a SAY: line or OK (Martlet brings it " +
             "up), a KNOW: line or OK (adds to what Martlet knows), a PLAN: line or OK (thinks ahead for the next reply), an ASIDE: " +
-            "line, BACK or OK (holds Martlet back while you talk to someone else). Emptied, " +
+            "line, BACK or OK (holds Martlet back while you talk to someone else), CALLBACK: lines, KEEP or NONE (keeps the " +
+            "callback list). Emptied, " +
             "each check sends only its prompt and facts, so the " +
             "prompt must then ask for the answer format itself.",
             DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),

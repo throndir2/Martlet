@@ -39,10 +39,11 @@ public sealed partial class CheckInsTests
     {
         var defaults = CheckIns.All(null);
         Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats, CheckIns.Reactions,
-            CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Ahead, CheckIns.Actions],
+            CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Lull, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Ahead,
+            CheckIns.Actions, CheckIns.Callbacks],
             defaults.Select(c => c.Id));
-        // The check-ins that wait for a signal are off until the owner turns them on.
-        Assert.Equal([true, true, true, true, true, true, false, false, true, false, true, true, true], defaults.Select(c => c.On));
+        // Welcome back and Someone else is here wait for a signal and are off until the owner turns them on.
+        Assert.Equal([true, true, true, true, true, true, false, true, true, true, false, true, true, true, true], defaults.Select(c => c.On));
         Assert.Equal(1, defaults.Single(c => c.Id == CheckIns.Emotes).EveryMinutes);
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
         Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
@@ -60,10 +61,10 @@ public sealed partial class CheckInsTests
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);
-        Assert.Equal(14, all.Count);
+        Assert.Equal(16, all.Count);
         Assert.Equal((false, 30), (all[1].On, all[1].EveryMinutes));
-        Assert.True(all[13].Custom);
-        Assert.Equal(CheckInOutcome.Say, all[13].Outcome);
+        Assert.True(all[15].Custom);
+        Assert.Equal(CheckInOutcome.Say, all[15].Outcome);
         Assert.Equal("check-in-promises", CheckIns.Source(CheckIns.Promises));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Character)));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Repeats)));
@@ -582,7 +583,8 @@ public sealed partial class CheckInsTests
     }
 
     public static TheoryData<string> BuiltInIds => [CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats,
-        CheckIns.Reactions, CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches];
+        CheckIns.Reactions, CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Lull,
+        CheckIns.Callbacks];
 
     [Theory]
     [MemberData(nameof(BuiltInIds))]
@@ -935,10 +937,12 @@ public sealed partial class CheckInsTests
             .With(new CustomCheckIn { Id = "c1", Name = "Touches", Task = "Describe them.", Triggers = CheckInTriggers.TouchesEnded | CheckInTriggers.StrokeAcrossZones })
             .With(CheckIns.Gaze, new CheckInChoice(true, 5) { Triggers = CheckInTriggers.IntimateTouch });
         settings.Validate();
-        // Only Describe touches and How I react start on touches by default; Think ahead and Act on what was said after replies.
+        // Only Describe touches and How I react start on touches by default; Think ahead, Act on what was said and Callback list
+        // after replies.
         Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
             : c.Id == CheckIns.Reactions ? CheckIns.ByTouches
-            : c.Id is CheckIns.Actions or CheckIns.Ahead ? CheckInTriggers.ExchangeEnded : c.Id == CheckIns.Aside ? CheckInTriggers.Spoke : CheckInTriggers.None, c.Triggers));
+            : c.Id is CheckIns.Actions or CheckIns.Ahead or CheckIns.Callbacks ? CheckInTriggers.ExchangeEnded
+            : c.Id == CheckIns.Aside ? CheckInTriggers.Spoke : CheckInTriggers.None, c.Triggers));
         Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)64 }).Validate());
         Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)128 }).Validate());
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));

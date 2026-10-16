@@ -29,7 +29,10 @@ public enum CheckInOutcome
     /// <summary>An "ASIDE:" line (the user talks to someone else, not to Martlet: who and how, in a few words) makes Martlet hold
     /// back while that side conversation lasts (<see cref="CheckInAside"/>): every request carries a note to stay quiet ([pass])
     /// unless the user talks to it. "BACK" ends it.</summary>
-    HoldBack = 7
+    HoldBack = 7,
+    /// <summary>The answer's "CALLBACK:" lines become the conversation's callback list (<see cref="CallbackList"/>): the few
+    /// things worth bringing back later, which Think ahead and Quiet moments read. "KEEP" leaves it, "NONE" empties it.</summary>
+    Callbacks = 8
 }
 
 /// <summary>What a check-in gets to know besides the day and time. A fact whose placeholder the prompt names ({conversation},
@@ -75,7 +78,10 @@ public enum CheckInFacts
     /// <summary>What always listening heard the user say lately, each with when, who spoke, the other voices and the sound of this
     /// PC with it, and whether Martlet answered or stayed quiet; and whether Martlet holds back now (<see cref="CheckInState.Heard"/>,
     /// <see cref="CheckInState.Aside"/>).</summary>
-    Heard = 16384
+    Heard = 16384,
+    /// <summary>The conversation's callback list: open topics, running jokes, the user's own words and facts worth bringing back
+    /// later, each with when it came up (<see cref="CheckInState.Callbacks"/>).</summary>
+    Callbacks = 32768
 }
 
 /// <summary>When a check-in runs: each condition chosen must hold, or it waits and says why on its card.</summary>
@@ -123,7 +129,11 @@ public enum CheckInConditions
     /// <summary>What its script printed changed since the last run; when it didn't, the run ends without asking the Thinking pool.</summary>
     ScriptChanged = 131072,
     /// <summary>Martlet heard someone else's voice lately (Voice ID), since the last run.</summary>
-    SomeoneElse = 262144
+    SomeoneElse = 262144,
+    /// <summary>The conversation went quiet: nothing for <see cref="CheckIns.LullAfter"/> (at most
+    /// <see cref="CheckIns.PromiseWindow"/>), the user is at the PC, the callback list has something, Martlet's last remark
+    /// asked nothing, and it didn't run in this quiet spell.</summary>
+    Lull = 524288
 }
 
 /// <summary>What one of the owner's own check-ins hears with each run: nothing, the last seconds of the microphone, or the last
@@ -222,6 +232,8 @@ public sealed partial record CheckInState
     /// <summary>What the character said lately (replies, remarks, reactions; never a [pass]), oldest first, each with when
     /// (<see cref="SaidLately"/>).</summary>
     public IReadOnlyList<Saying> Said { get; init; } = [];
+    /// <summary>The conversation's callback list, oldest first, each with when it came up (<see cref="CallbackList"/>).</summary>
+    public IReadOnlyList<Callback> Callbacks { get; init; } = [];
     /// <summary>Martlet keeps the last seconds of the microphone now (it hears it, and a check-in that is on asks for them).</summary>
     public bool HearsMicrophone { get; init; }
     /// <summary>Martlet keeps the last seconds of what this PC plays now.</summary>
@@ -259,9 +271,9 @@ public sealed partial record CheckInRun(DateTimeOffset At, long Exchanged, strin
     public string? Trigger { get; init; }
 }
 
-/// <summary>What a check-in's answer asks for: <see cref="Act"/> with the emote <see cref="Tags"/> to turn off, or the
-/// <see cref="Text"/> of a reminder or of what to bring up; nothing (KEEP, OK); or nothing because the answer couldn't be read
-/// (<see cref="Readable"/> false).</summary>
+/// <summary>What a check-in's answer asks for: <see cref="Act"/> with the emote <see cref="Tags"/> to turn off (or the items of
+/// the new callback list), or the <see cref="Text"/> of a reminder or of what to bring up; nothing (KEEP, OK); or nothing because
+/// the answer couldn't be read (<see cref="Readable"/> false).</summary>
 public sealed record CheckInVerdict(bool Act, IReadOnlyList<string> Tags, string? Text, bool Readable)
 {
     public static CheckInVerdict Nothing { get; } = new(false, [], null, true);
@@ -297,6 +309,12 @@ public static partial class CheckIns
     /// character (how the conversation goes, what the user will likely say next, what it means to say then), for the next reply
     /// (<see cref="CheckInOutcome.Plan"/>).</summary>
     public const string Ahead = "ahead";
+    /// <summary>Callback list: right after each reply, a pool member writes the conversation's callback list again with what was
+    /// just said (<see cref="CheckInOutcome.Callbacks"/>, <see cref="CallbackList"/>), for Think ahead and Quiet moments.</summary>
+    public const string Callbacks = "callbacks";
+    /// <summary>Quiet moments: when the conversation went quiet for a few minutes and the user is still at the PC, Martlet may
+    /// pick it back up with one thing from the callback list (<see cref="CheckInConditions.Lull"/>, <see cref="CheckInOutcome.Say"/>).</summary>
+    public const string Lull = "lull";
     /// <summary>The background job kind of what a check-in brings up on Martlet's own (checkin-1...).</summary>
     public const string SayKindName = "checkin";
     public const int MaximumCustom = 8, MaximumNameCharacters = 60, MaximumTaskCharacters = PromptSettings.MaximumTextCharacters,
@@ -344,10 +362,10 @@ public static partial class CheckIns
     public const int MaximumToolResultCharacters = 120;
 
     /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Lingering emotes every minute, Saying the same things every 10,
-    /// Staying in character every 15); How I react on, after your touches (at most every 5 minutes); Welcome back, Unanswered
-    /// question and Someone else is here off until the owner turns them on; Talking to someone else on, right after always
+    /// Staying in character every 15); How I react on, after your touches (at most every 5 minutes); Unanswered question and
+    /// Quiet moments on; Welcome back and Someone else is here off until the owner turns them on; Talking to someone else on, right after always
     /// listening hears the user, at most once a minute; Describe touches on, started by touches at
-    /// most once a minute; Think ahead and Act on what was said on, after each reply, at most once a minute. Each is only data (a
+    /// most once a minute; Think ahead, Act on what was said and Callback list on, after each reply, at most once a minute. Each is only data (a
     /// prompt, facts, conditions, triggers, tool sets and an outcome) that the owner can
     /// change on its card or copy as their own.</summary>
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
@@ -397,10 +415,19 @@ public static partial class CheckIns
             Conditions = CheckInConditions.CameBack
         },
         new(Unanswered, "Unanswered question", "When Martlet asked you something, you're at the PC and didn't answer for a few " +
-            "minutes, has it follow up once, softly, or let it go.", CheckInOutcome.Say, false, 5)
+            "minutes, has it follow up once, softly, or let it go.", CheckInOutcome.Say, true, 5)
         {
             PromptId = PromptCatalog.CheckInUnanswered, Facts = CheckInFacts.Conversation | CheckInFacts.Said | CheckInFacts.Activity,
             Conditions = CheckInConditions.Unanswered | CheckInConditions.NotOnCall
+        },
+        new(Lull, "Quiet moments", "When your conversation has been quiet for a few minutes and you're still at the PC, lets " +
+            "Martlet pick it back up the way a friend does: one thing from its callback list (something you said, a running joke, " +
+            "something you're in the middle of) with a fresh question or a tease. Not while you're on a call, not at night and at " +
+            "most twice an hour.", CheckInOutcome.Say, true, 10)
+        {
+            PromptId = PromptCatalog.CheckInLull,
+            Facts = CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Callbacks | CheckInFacts.Said | CheckInFacts.Activity,
+            Conditions = CheckInConditions.Lull | CheckInConditions.NotOnCall | CheckInConditions.Between, MostPerHour = 2
         },
         new(Aside, "Talking to someone else", "Right after always listening hears you, checks whether you're talking to someone " +
             "else and not to Martlet: someone in the room, a call on this PC, or a phone Martlet can't see (it then hears only your " +
@@ -428,10 +455,11 @@ public static partial class CheckIns
             Conditions = CheckInConditions.CharacterShows, Triggers = CheckInTriggers.TouchesEnded
         },
         new(Ahead, "Think ahead", "Right after each reply, while you haven't answered yet, thinks ahead as the character: how " +
-            "the conversation is going, what you'll likely say next and what it wants to say then, true to its personality. Its " +
-            "next reply gets these thoughts and uses them where they fit. No reply waits for it.", CheckInOutcome.Plan, true, 1)
+            "the conversation is going, what you'll likely say next and the one move it makes then (a callback to something " +
+            "from earlier, a tease, a question), true to its personality. Its next reply gets these thoughts and uses them " +
+            "where they fit. No reply waits for it.", CheckInOutcome.Plan, true, 1)
         {
-            PromptId = PromptCatalog.CheckInAhead, Facts = CheckInFacts.Persona | CheckInFacts.Conversation,
+            PromptId = PromptCatalog.CheckInAhead, Facts = CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Callbacks,
             Conditions = CheckInConditions.Talked | CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded
         },
         new(Actions, "Act on what was said", "Right after each reply, reads what you said and what Martlet answered, and does " +
@@ -441,6 +469,14 @@ public static partial class CheckIns
         {
             PromptId = PromptCatalog.CheckInActions, Facts = CheckInFacts.Latest | CheckInFacts.Work,
             Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded, ToolSets = ActionSets
+        },
+        new(Callbacks, "Callback list", "Right after each reply, keeps a short list of what's worth bringing back later: what " +
+            "you're in the middle of, running jokes, things you said in your own words, each with when it came up. Think ahead " +
+            "and Quiet moments use it, so Martlet can call back to something from much earlier. No reply waits for it.",
+            CheckInOutcome.Callbacks, true, 1)
+        {
+            PromptId = PromptCatalog.CheckInCallbacks, Facts = CheckInFacts.Latest | CheckInFacts.Callbacks,
+            Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded
         }
     ];
 
@@ -539,6 +575,7 @@ public static partial class CheckIns
             CheckInOutcome.Context => "Your own check-in: what it describes adds to what Martlet knows in its next reply.",
             CheckInOutcome.Plan => "Your own check-in: what it thinks ahead goes with Martlet's next reply.",
             CheckInOutcome.HoldBack => "Your own check-in: Martlet holds back while it says you talk to someone else.",
+            CheckInOutcome.Callbacks => "Your own check-in: what it lists becomes Martlet's callback list.",
             _ => "Your own check-in: what it says reminds Martlet in its next reply."
         }, custom.Outcome, custom.On, custom.EveryMinutes)
         {
@@ -692,7 +729,8 @@ public static partial class CheckIns
         ("persona", CheckInFacts.Persona), ("work", CheckInFacts.Work), ("screen", CheckInFacts.Screen), ("sound", CheckInFacts.Sound),
         ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies),
         ("touches", CheckInFacts.Touches), ("activity", CheckInFacts.Activity), ("people", CheckInFacts.People),
-        ("away", CheckInFacts.WhileAway), ("exchange", CheckInFacts.Latest), ("heard", CheckInFacts.Heard)
+        ("away", CheckInFacts.WhileAway), ("exchange", CheckInFacts.Latest), ("heard", CheckInFacts.Heard),
+        ("callbacks", CheckInFacts.Callbacks)
     ];
 
     /// <summary>The facts <paramref name="template"/> places itself with their placeholders.</summary>
@@ -721,7 +759,7 @@ public static partial class CheckIns
             ("work", Work(state)), ("screen", Screen(state)), ("sound", Sound(state)), ("presence", Presence(state)),
             ("said", Said(state).Count > 0 ? SaidLately.Lines(Said(state), state.Now) : "(nothing)"),
             ("replies", RepliesText(state)), ("touches", Touches(state)), ("activity", Activity(state)), ("people", People(state)),
-            ("away", Away(state)), ("exchange", Latest(state)), ("heard", Heard(state))
+            ("away", Away(state)), ("exchange", Latest(state)), ("heard", Heard(state)), ("callbacks", CallbackLines(state))
         ]);
         var facts = string.Join("\n\n", new[] { Facts(checkIn.Facts & ~Placed(template), state), Gathered(checkIn, state) }
             .Where(part => part.Length > 0));
@@ -744,6 +782,9 @@ public static partial class CheckIns
                 "ASIDE: and says in a few words who they talk to and how, like: ASIDE: on the phone with their mom\n" +
                 $"If they talk to {who} again, or that other conversation is over, write only: BACK\n" +
                 "If you can't tell, or nothing changed, write only: OK",
+            CheckInOutcome.Callbacks => "If the list doesn't need to change, write only: KEEP\nOtherwise write the whole new list, " +
+                $"at most {CallbackList.MaximumItems} lines, each line starting with CALLBACK: and then the item without its time, " +
+                "like: CALLBACK: quote - they said \"one more try\" about the boss\nIf nothing is worth keeping any more, write only: NONE",
             _ => $"If nothing needs doing now, write only: OK\nOtherwise write one line to {who} that starts with REMIND: and says " +
                 "what to keep in mind or do in its next reply."
         };
@@ -755,7 +796,8 @@ public static partial class CheckIns
 
     /// <summary>Reads a member's answer to <paramref name="checkIn"/> (asked with <paramref name="state"/>, narrowed with
     /// <see cref="Focus"/>). Lingering emotes: the tags of the emotes asked about on "OFF" lines; KEEP is nothing. Where the
-    /// character looks: USUAL or KEEP. The others: the text of a "REMIND:" (or "SAY:", or "KNOW:") line, or OK. The last such line decides,
+    /// character looks: USUAL or KEEP. Callback list: every CALLBACK: line is the new list, NONE empties it, KEEP leaves it. The
+    /// others: the text of a "REMIND:" (or "SAY:", or "KNOW:") line, or OK. The last such line decides,
     /// so thinking written before the answer doesn't count; markdown, bullets, quotes and a reasoning model's &lt;think&gt; block
     /// are skipped. Anything else reads as unreadable, which changes nothing.</summary>
     public static CheckInVerdict Read(CheckIn checkIn, string? answer, CheckInState state)
@@ -804,6 +846,26 @@ public static partial class CheckIns
                     if (Starts(line, "OK") || Starts(line, "KEEP")) return CheckInVerdict.Nothing;
                 }
                 return CheckInVerdict.Unreadable;
+            // The whole new list: every CALLBACK: line; NONE empties it; KEEP (or OK) leaves it.
+            case CheckInOutcome.Callbacks:
+            {
+                var items = new List<string>();
+                bool none = false, keep = false;
+                foreach (var line in lines)
+                {
+                    if (Starts(line, "CALLBACK"))
+                    {
+                        var item = line["CALLBACK".Length..].TrimStart(':', '-', ' ', '\u2013', '\u2014').Trim();
+                        if (item.Length > 0 && !NothingSaid(item) && items.Count < CallbackList.MaximumItems &&
+                            !items.Contains(item, StringComparer.OrdinalIgnoreCase))
+                            items.Add(Clip(item, CallbackList.MaximumCharacters));
+                    }
+                    else if (Starts(line, "NONE")) none = true;
+                    else if (Starts(line, "KEEP") || Starts(line, "OK")) keep = true;
+                }
+                return items.Count > 0 ? new(true, items, null, true) : none ? new(true, [], null, true)
+                    : keep ? CheckInVerdict.Nothing : CheckInVerdict.Unreadable;
+            }
             default:
             {
                 string[] keywords = checkIn.Outcome switch
@@ -940,7 +1002,18 @@ public static partial class CheckIns
         if (facts.HasFlag(CheckInFacts.WhileAway)) parts.Add(Away(state));
         if (facts.HasFlag(CheckInFacts.Latest)) parts.Add(Latest(state));
         if (facts.HasFlag(CheckInFacts.Heard)) parts.Add(Heard(state));
+        if (facts.HasFlag(CheckInFacts.Callbacks))
+            parts.Add(state.Callbacks.Count == 0 ? $"{state.Who}'s callback list is empty."
+                : $"{state.Who}'s callback list (things from earlier worth bringing back), oldest first, each with when it came up:\n" +
+                    CallbackList.Lines(state.Callbacks, state.Now));
         return string.Join("\n\n", parts);
+    }
+
+    /// <summary>The callback list as {callbacks} reads it: one line for each with when it came up, or that it is empty.</summary>
+    public static string CallbackLines(CheckInState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.Callbacks.Count == 0 ? "(empty)" : CallbackList.Lines(state.Callbacks, state.Now);
     }
 
     /// <summary>The newest exchange in full, or every exchange since the check-in last ran (<see cref="CheckInState.Since"/>; at

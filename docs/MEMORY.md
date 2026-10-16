@@ -416,6 +416,13 @@ its cache, and the conversation's own model gets no request. Without such a
 member, the request goes to the conversation's Thinking model as described
 above, but only after the reply finishes speaking and while no other reply runs.
 
+**Running jokes.** Remembering also keeps a running joke or bit that you and
+the character share and that you clearly enjoyed (you laughed, played along or
+brought it back), as one fact such as *The user and Martlet have a running joke
+that Martlet secretly owns the fridge.* The [memory brief](#the-memory-brief)
+lists the running jokes with the rest of the profile, so a later conversation
+can bring them back ([Keep the conversation going](CONVERSATION.md#keep-the-conversation-going)).
+
 <a id="helper-jobs-on-the-thinking-pool"></a>
 **Helper jobs on the Thinking pool.** Remembering, learning the names of the
 people speaking, naming a character's emotes,

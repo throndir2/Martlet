@@ -78,6 +78,8 @@ internal static class CheckInsCheck
         oftenTouches = TouchLedger.OftenTouches, oftenWindowMinutes = TouchLedger.OftenWindow.TotalMinutes,
         signalWindowMinutes = CheckIns.SignalWindow.TotalMinutes, unansweredAfterMinutes = CheckIns.UnansweredAfter.TotalMinutes,
         unansweredWithinMinutes = CheckIns.UnansweredWithin.TotalMinutes, peopleWindowMinutes = CheckIns.PeopleWindow.TotalMinutes,
+        lullAfterMinutes = CheckIns.LullAfter.TotalMinutes, maximumCallbacks = CallbackList.MaximumItems,
+        maximumCallbackCharacters = CallbackList.MaximumCharacters, callbackWindowHours = CallbackList.Window.TotalHours,
         mostPerHourChoices = CheckIns.MostPerHourChoices,
         maximumToolRounds = CheckIns.MaximumToolRounds, maximumToolCalls = CheckIns.MaximumToolCalls,
         maximumToolResultCharacters = CheckIns.MaximumToolResultCharacters,
@@ -213,7 +215,9 @@ internal static class CheckInsCheck
             [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin.",
             [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome.",
             [CheckIns.Ahead] = "PLAN: FIXTURE: They'll probably say the bug is fixed; I'll cheer, then tease them about how long it took.",
-            [CheckIns.Actions] = "OK"
+            [CheckIns.Actions] = "OK",
+            [CheckIns.Lull] = "SAY: FIXTURE: So did that \"one more try\" ever end?",
+            [CheckIns.Callbacks] = "CALLBACK: quote - FIXTURE they said \"one more try\" about the boss\nCALLBACK: open - FIXTURE a bug drives them crazy"
         };
         var places = new BackgroundPlaces();
         BackgroundPlace member = new("endpoint:fixture", "FIXTURE member") { Slots = 2, Model = "fixture-model" };
@@ -366,6 +370,7 @@ internal static class CheckInsCheck
         await ContextAsync(Step, now, facts, cancellation);
         await DescribeTouchesAsync(Step, now, facts, cancellation);
         await ThinkAheadAsync(Step, now, facts, cancellation);
+        await CallbacksAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
         await AsideAsync(Step, now, facts, cancellation);
         await ToolsAsync(Step, facts, cancellation);
@@ -500,6 +505,130 @@ internal static class CheckInsCheck
             });
     }
 
+    /// <summary>11c. The callback list and Quiet moments (FIXTURE exchanges, canned answers, NOT AI): Callback list runs after each
+    /// reply with the list and what was said since it last ran, its CALLBACK: lines are read on a production job board and kept on
+    /// a production <see cref="CallbackList"/> (a thing already on it keeps when it first came up; a list forgotten meanwhile isn't
+    /// written again), Think ahead reads the list and picks one move, Quiet moments waits for a quiet spell with the user at the PC
+    /// and brings one thing back (SAY:), and the reply's prompts keep the conversation going, let callbacks through the repeat
+    /// check and remember running jokes.</summary>
+    private static async Task CallbacksAsync(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts,
+        CancellationToken cancellation)
+    {
+        var keeper = CheckIns.All(null).Single(c => c.Id == CheckIns.Callbacks);
+        var list = new CallbackList();
+        list.Keep(["open - FIXTURE a bug drives them crazy"], now.AddMinutes(-40));
+        var before = list.Recent(now);
+        var state = facts with { Callbacks = before, Since = 3 };
+        var job = CheckIns.Prepare(keeper, CheckIns.Focus(keeper, state), null);
+        BackgroundPlace member = new("endpoint:fixture-callbacks", "FIXTURE member") { Slots = 1, Model = "fixture-model" };
+        const string answer = "<think>The boss quote is worth keeping.</think>\nCALLBACKS:\n" +
+            "- CALLBACK: quote - FIXTURE they said \"one more try\" about the boss\n- CALLBACK: open - FIXTURE a bug drives them crazy";
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done(answer)));
+        var result = job is null ? null : await board.RunAsync(job, cancellation);
+        var verdict = CheckIns.Read(keeper, result?.Text, state);
+        var version = list.Version;
+        var kept = list.Keep(verdict.Tags, now, version) ?? [];
+        var forgotten = new CallbackList();
+        var stale = forgotten.Version;
+        forgotten.Clear();
+        var notWritten = forgotten.Keep(["joke - FIXTURE"], now, stale);
+        var odd = new Dictionary<string, CheckInVerdict>
+        {
+            ["KEEP"] = CheckIns.Read(keeper, "KEEP", state),
+            ["NONE"] = CheckIns.Read(keeper, "NONE", state),
+            ["chatter"] = CheckIns.Read(keeper, "Sure, here is the list you asked for.", state)
+        };
+        var message = job?.Text ?? "";
+        var lines = CallbackList.Lines(kept, now);
+        step("callback list", keeper is { On: true, EveryMinutes: 1, Outcome: CheckInOutcome.Callbacks, Triggers: CheckInTriggers.ExchangeEnded } &&
+            keeper.Facts == (CheckInFacts.Latest | CheckInFacts.Callbacks) && keeper.Conditions == CheckInConditions.SomethingNew &&
+            CheckIns.Wait(keeper, state, null) == "it waits for a reply to end" &&
+            CheckIns.Wait(keeper, state, null, fired: CheckIns.ExchangeTrigger(now.AddSeconds(-1))) is null &&
+            message.Contains("You keep Mira's callback list", StringComparison.Ordinal) &&
+            message.Contains("- 9:37 PM (40 min ago): open - FIXTURE a bug drives them crazy", StringComparison.Ordinal) &&
+            message.Contains("This bug is driving me crazy", StringComparison.Ordinal) && message.Contains("CALLBACK:", StringComparison.Ordinal) &&
+            message.Contains("write only: KEEP", StringComparison.Ordinal) && !message.Contains("{callbacks}", StringComparison.Ordinal) &&
+            !message.Contains("{exchange}", StringComparison.Ordinal) &&
+            verdict is { Act: true, Readable: true } && verdict.Tags.Count == 2 && kept.Count == 2 &&
+            kept[0] is { Text: "open - FIXTURE a bug drives them crazy" } first && first.Since == now.AddMinutes(-40) &&
+            kept[1].Since == now && lines.Contains("(40 min ago): open", StringComparison.Ordinal) &&
+            notWritten is null && forgotten.Count == 0 &&
+            odd["KEEP"] is { Act: false, Readable: true } && odd["NONE"] is { Act: true, Tags.Count: 0 } && odd["chatter"] is { Readable: false },
+            new
+            {
+                message, items = verdict.Tags, kept = lines, forgottenListWritten = notWritten is not null, maximum = CallbackList.MaximumItems,
+                odd = odd.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable, items = v.Value.Tags.Count })
+            });
+
+        // Think ahead reads the list and names one move.
+        var ahead = CheckIns.All(null).Single(c => c.Id == CheckIns.Ahead);
+        var withList = facts with { Callbacks = kept };
+        var plan = CheckIns.Message(ahead, CheckIns.Focus(ahead, withList), null) ?? "";
+        var planNote = CheckIns.Plan(null, "FIXTURE Move: callback.") ?? "";
+        step("think ahead reads the callback list", ahead.Facts.HasFlag(CheckInFacts.Callbacks) &&
+            plan.Contains("callback list", StringComparison.Ordinal) && plan.Contains("FIXTURE they said \"one more try\"", StringComparison.Ordinal) &&
+            plan.Contains("pick the one move", StringComparison.Ordinal) && !plan.Contains("{callbacks}", StringComparison.Ordinal) &&
+            planNote.Contains("make that move", StringComparison.Ordinal),
+            new { message = plan, note = planNote });
+
+        // Quiet moments: one thing from the list after a quiet spell, with the user at the PC, before 10 PM.
+        var lull = CheckIns.All(null).Single(c => c.Id == CheckIns.Lull);
+        var evening = withList with { Now = now.AddHours(-2), Quiet = TimeSpan.FromMinutes(5), Away = TimeSpan.FromSeconds(20) };
+        var asked = evening with { Said = [.. evening.Said, new(evening.Now.AddMinutes(-5), "FIXTURE: So, which boss is next?")] };
+        var waits = new Dictionary<string, string?>
+        {
+            ["quiet 5 min"] = CheckIns.Wait(lull, evening, null),
+            ["quiet 1 min"] = CheckIns.Wait(lull, evening with { Quiet = TimeSpan.FromMinutes(1) }, null),
+            ["quiet 45 min"] = CheckIns.Wait(lull, evening with { Quiet = TimeSpan.FromMinutes(45) }, null),
+            ["empty list"] = CheckIns.Wait(lull, evening with { Callbacks = [] }, null),
+            ["away"] = CheckIns.Wait(lull, evening with { Away = TimeSpan.FromMinutes(5) }, null),
+            ["ran in this quiet spell"] = CheckIns.Wait(lull, evening with { Quiet = TimeSpan.FromMinutes(15) },
+                new(evening.Now.AddMinutes(-12), 4, "nothing to bring up", false)),
+            ["ran before it"] = CheckIns.Wait(lull, evening, new(evening.Now.AddMinutes(-20), 4, "nothing to bring up", false)),
+            ["a question waits"] = CheckIns.Wait(lull, asked, null),
+            ["on a call"] = CheckIns.Wait(lull, evening with { OnCall = true }, null),
+            ["10:17 PM"] = CheckIns.Wait(lull, evening with { Now = now }, null)
+        };
+        var lullMessage = CheckIns.Message(lull, evening, null) ?? "";
+        var lullVerdict = CheckIns.Read(lull, "SAY: FIXTURE: So did that \"one more try\" ever end?", evening);
+        var unanswered = CheckIns.All(null).Single(c => c.Id == CheckIns.Unanswered);
+        step("quiet moments", lull is { On: true, EveryMinutes: 10, Outcome: CheckInOutcome.Say, MostPerHour: 2 } &&
+            lull.Conditions == (CheckInConditions.Lull | CheckInConditions.NotOnCall | CheckInConditions.Between) && unanswered.On &&
+            waits["quiet 5 min"] is null && waits["quiet 1 min"] == "it waits for 3 min of quiet" &&
+            waits["quiet 45 min"]?.StartsWith("the conversation has been quiet for more than", StringComparison.Ordinal) == true &&
+            waits["empty list"] == "the callback list is empty" && waits["away"] == "you aren't at the PC" &&
+            waits["ran in this quiet spell"] == "it already picked this quiet spell up" && waits["ran before it"] is null &&
+            waits["a question waits"]?.StartsWith("Martlet's last remark asked something", StringComparison.Ordinal) == true &&
+            waits["on a call"] == "you're on a call" && waits["10:17 PM"] == "it runs only between 8 AM and 10 PM" &&
+            lullMessage.Contains("pick the conversation back up", StringComparison.Ordinal) &&
+            lullMessage.Contains("FIXTURE they said \"one more try\"", StringComparison.Ordinal) &&
+            lullMessage.Contains("starts with SAY:", StringComparison.Ordinal) && lullVerdict is { Act: true, Text: { } say } &&
+            say.Contains("one more try", StringComparison.Ordinal),
+            new { waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), message = lullMessage, lullVerdict.Text });
+
+        // The reply's own prompts: keep the conversation going (stable, before Short first sentence and Reply length), callbacks
+        // aren't repeats, and running jokes are remembered.
+        var closing = Martlet.Core.Settings.PromptSettings.ReplyClosing(null, null, true, StayQuiet.Marker) ?? "";
+        var emptied = Martlet.Core.Settings.PromptSettings.ReplyClosing(new Martlet.Core.Settings.PromptSettings
+        {
+            Overrides = new Dictionary<string, string> { [PromptCatalog.ConversationMoves] = "" }
+        }, null, true, StayQuiet.Marker) ?? "";
+        var repeats = CheckIns.Message(CheckIns.All(null).Single(c => c.Id == CheckIns.Repeats), facts, null) ?? "";
+        step("prompts keep the conversation going", closing.StartsWith(PromptCatalog.DefaultConversationMovesInstructions, StringComparison.Ordinal) &&
+            closing.EndsWith(PromptCatalog.DefaultReplyLengthInstructions, StringComparison.Ordinal) &&
+            closing == Martlet.Core.Settings.PromptSettings.ReplyClosing(null, null, true, StayQuiet.Marker) &&
+            !emptied.Contains("fun friend", StringComparison.Ordinal) && emptied.Length > 0 &&
+            repeats.Contains("A callback is not a repeat", StringComparison.Ordinal) &&
+            PromptCatalog.DefaultMemoryCaptureInstructions.Contains("running joke", StringComparison.Ordinal) &&
+            PromptCatalog.DefaultMemoryBriefWritingInstructions.Contains("running jokes", StringComparison.Ordinal) &&
+            PromptCatalog.DefaultCharacterWritingInstructions.Contains("example dialogue", StringComparison.Ordinal),
+            new
+            {
+                conversationMoves = PromptCatalog.DefaultConversationMovesInstructions, closingCharacters = closing.Length,
+                movesCharacters = PromptCatalog.DefaultConversationMovesInstructions.Length
+            });
+    }
+
     /// <summary>12. How I react: the built-in check-in that changes how the character reacts to touches, as itself, with the Touch
     /// reactions tools. It waits for touches, then runs on a FIXTURE member that calls the tools (NOT AI) through the production
     /// tool host and Martlet.Avatar.Hosting's CharacterReactionTools, on FIXTURE zones; every change is bounded, and the run
@@ -601,7 +730,7 @@ internal static class CheckInsCheck
                 all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
                 CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
                     : c.Id == CheckIns.Reactions ? CheckIns.ByTouches
-                    : c.Id is CheckIns.Actions or CheckIns.Ahead ? CheckInTriggers.ExchangeEnded
+                    : c.Id is CheckIns.Actions or CheckIns.Ahead or CheckIns.Callbacks ? CheckInTriggers.ExchangeEnded
                     : c.Id == CheckIns.Aside ? CheckInTriggers.Spoke : CheckInTriggers.None)) && refused,
                 new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
         }
@@ -720,8 +849,8 @@ internal static class CheckInsCheck
             CheckIns.HandOffGuidance([], null) is null,
             new { handedOff = handed.Select(h => $"{h.Tool} ({h.SetId})"), guidance });
     }
-    // The built-in check-ins that wait for a signal: off until the owner turns them on.
-    private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Unanswered or CheckIns.Others;
+    // The built-in check-ins that wait for a signal and are off until the owner turns them on.
+    private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Others;
 
     /// <summary>9. Signals (FIXTURE facts, canned answers, NOT AI): each signal condition waits and runs on the production
     /// <see cref="CheckIns.Wait"/>, the new facts are worded as the check reads them, the four signal check-ins ask and read their

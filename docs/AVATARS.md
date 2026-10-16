@@ -73,7 +73,9 @@ name. Type who Martlet should be (for example a character from a game or an
 anime, or a short description), add notes if you like, and press **Search**.
 
 1. Martlet asks your Thinking model to write the personality (Companion ›
-   Prompts › *Writing a character's personality*). It runs as a helper job, on a
+   Prompts › *Writing a character's personality*). The personality ends with a
+   short example dialogue that shows how the character talks, because small
+   models copy an example better than they follow a rule. It runs as a helper job, on a
    free Thinking pool member or after the reply, like naming emotes. You can
    change the text, or write your own.
 2. At the same time Martlet looks for 3D models (VRM) of the character:

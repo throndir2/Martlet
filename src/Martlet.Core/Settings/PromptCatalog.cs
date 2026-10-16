@@ -14,6 +14,7 @@ public static partial class PromptCatalog
 {
     public const string Persona = "persona";
     public const string ReplyLength = "reply_length";
+    public const string ConversationMoves = "conversation_moves";
     public const string ShortFirstSentence = "short_first_sentence";
     public const string Listening = "listening";
     public const string PcAudio = "pc_audio";
@@ -120,6 +121,8 @@ public static partial class PromptCatalog
     public const string CheckInReactions = "check_in_reactions";
     public const string CheckInActions = "check_in_actions";
     public const string CheckInAhead = "check_in_ahead";
+    public const string CheckInCallbacks = "check_in_callbacks";
+    public const string CheckInLull = "check_in_lull";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInContext = "check_in_context";

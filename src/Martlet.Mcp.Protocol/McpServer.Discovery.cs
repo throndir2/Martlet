@@ -213,7 +213,9 @@ internal sealed partial class McpServer
         new("characters", "Make a character from a name, with a look found online", [
             "Ask the owner which character they want (for example a character from a game or an anime, or an original one they describe).",
             "Call character_find_looks with that name. Show the owner the looks: name, creator, source, license and the conditions of use.",
-            "Write the personality yourself: who the character is, how it talks and how it treats the owner (120 to 250 words, \"You are ...\").",
+            "Write the personality yourself: who the character is, how it talks and how it treats the owner (120 to 250 words, \"You are ...\"). " +
+                "End it with a short example dialogue of four to six lines (\"Owner:\" and the character's name) that shows its voice: a quick " +
+                "reaction, playing along with a joke and a callback to something the owner said earlier. Smaller models copy examples better than rules.",
             "Call character_create with name, personality and look: the key of the look the owner chose (vroidhub:<id> or osa:<project>/<avatar>).",
             "A vroidhub: look needs the owner's VRoid Hub account linked in the app (Account › Linked services); vroid_hub_status says whether it is.",
             "Nothing usable found, or the character needs a voice? Call character_find_on_web: it gives web pages and site searches. The owner " +
