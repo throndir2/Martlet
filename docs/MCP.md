@@ -4207,8 +4207,13 @@ total, image, command, steps: [{name, ok, detail}]}, notCovered}`. Steps:
 `builds-from-source-archive` (without git, the release tag's archive is
 missing, so main's source archive is unpacked into a temporary folder and
 built, then the engine runs); `source-folder-removed`;
-`image-there-builds-nothing`; and `download-fails-stops` (nothing is built and
-no engine runs). FIXTURE `docker` and `curl` stand in for Docker and GitHub.
+`image-there-builds-nothing`; `download-fails-stops` (nothing is built and
+no engine runs); `plain-linux-is-no-nas` (the production `HostCheckout.NasProbe`
+finds no NAS in `ubuntu:24.04`); and `nas-found` (it names TerraMaster,
+Synology, QNAP, Unraid and TrueNAS by their markers `/etc/tos`,
+`/etc.defaults/VERSION`, `/etc/config/uLinux.conf`, `/etc/unraid-version` and
+`midclt`, also from an SSH command's plain shell; the desktop then sets up that
+NAS only in Docker). FIXTURE `docker` and `curl` stand in for Docker and GitHub.
 Not covered: Martlet's SSH runner, a real NAS and a real image build. Without
 Docker or the image it returns `exitCode` 2 and `notRun` (it never pulls).
 

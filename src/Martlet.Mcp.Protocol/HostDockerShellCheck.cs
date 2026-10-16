@@ -29,6 +29,7 @@ internal static class HostDockerShellCheck
         var script = new StringBuilder()
             .Append("cat > /fixture-find <<'MARTLET_FIND'\n").Append(HostCheckout.DockerPath).Append("command -v docker\nMARTLET_FIND\n")
             .Append("cat > /fixture-run <<'MARTLET_RUN'\n").Append(command).Append("\nMARTLET_RUN\n")
+            .Append("cat > /fixture-nas <<'MARTLET_NAS'\n").Append(HostCheckout.NasProbe).Append("\nMARTLET_NAS\n")
             .Append(Scenario.Replace("\r\n", "\n"));
         var name = "martlet-docker-shell-check-" + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4));
         int exit;
@@ -53,7 +54,7 @@ internal static class HostDockerShellCheck
             steps.Add(new { name = step, ok = ok == "1", detail });
             passed &= ok == "1";
         }
-        const int expected = 6;
+        const int expected = 8;
         if (steps.Count < expected)
         {
             passed = false;
@@ -134,5 +135,20 @@ internal static class HostDockerShellCheck
         [ $code != 0 ] && ! grep -q '^build' /var/log/fixture/docker && ! echo "$out" | grep -q 'engine ran' &&
           step download-fails-stops 1 "without the archive nothing is built and the engine doesn't run (exit $code)" ||
           step download-fails-stops 0 "exit $code; docker: $(tr '\n' '|' < /var/log/fixture/docker) output: $(echo "$out" | tr '\n' '|')"
+
+        nas=$(plain /fixture-nas)
+        [ -z "$nas" ] && step plain-linux-is-no-nas 1 'ubuntu:24.04 is no NAS, so a Linux computer with systemd can still be set up natively' ||
+          step plain-linux-is-no-nas 0 "found: $nas"
+
+        # The marker of each NAS system, one at a time: TerraMaster TOS, Synology DSM, QNAP QTS, Unraid and TrueNAS (midclt).
+        found=
+        mkdir -p /etc/tos; found="$found $(plain /fixture-nas)"; rm -rf /etc/tos
+        mkdir -p /etc.defaults; touch /etc.defaults/VERSION; found="$found $(plain /fixture-nas)"; rm -rf /etc.defaults
+        mkdir -p /etc/config; touch /etc/config/uLinux.conf; found="$found $(plain /fixture-nas)"; rm -f /etc/config/uLinux.conf
+        touch /etc/unraid-version; found="$found $(plain /fixture-nas)"; rm -f /etc/unraid-version
+        printf '#!/bin/sh\n' > /usr/local/bin/midclt; chmod 755 /usr/local/bin/midclt; found="$found $(plain /fixture-nas)"; rm -f /usr/local/bin/midclt
+        [ "$found" = ' TerraMaster Synology QNAP Unraid TrueNAS' ] &&
+          step nas-found 1 'HostCheckout.NasProbe names each NAS by its marker, also from the plain shell of an SSH command' ||
+          step nas-found 0 "found:$found"
         """;
 }

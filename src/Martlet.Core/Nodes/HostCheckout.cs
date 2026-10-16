@@ -24,6 +24,16 @@ public static class HostCheckout
     public const string DockerPath =
         "command -v docker >/dev/null 2>&1 || PATH=$PATH:$(sh -lc 'echo $PATH' </dev/null 2>/dev/null | tail -n 1); ";
 
+    /// <summary>Prints which NAS this computer is (TerraMaster, Synology, QNAP, Unraid or TrueNAS), or nothing. A NAS can
+    /// name a plain distribution in /etc/os-release and have systemd (TerraMaster TOS 6 says Ubuntu 22.04), so each is
+    /// found by a file or command that only its system has. Martlet sets up a NAS only in Docker.</summary>
+    public const string NasProbe =
+        "if [ -d /etc/tos ] || [ -d /usr/tos ]; then echo TerraMaster; " +
+        "elif [ -f /etc.defaults/VERSION ] || [ -d /usr/syno ]; then echo Synology; " +
+        "elif [ -f /etc/config/uLinux.conf ]; then echo QNAP; " +
+        "elif [ -f /etc/unraid-version ]; then echo Unraid; " +
+        "elif command -v midclt >/dev/null 2>&1; then echo TrueNAS; fi";
+
     /// <summary>Sets $D to the docker command of a Docker host: docker, or sudo with Docker's full path (sudo's own PATH
     /// may not have a NAS's Docker) when this account can't use Docker directly. <paramref name="batch"/>: sudo never
     /// asks for a password (-n).</summary>

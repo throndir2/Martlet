@@ -408,9 +408,10 @@ public partial class HostsWindow : ThemedWindow
         run.Status($"Connecting to {ssh}...");
         var (probe, hostKey) = await remote.ProbeAsync(ssh, pinnedHostKey, run.Token, run.Output);
         var method = existing ?? HostRemote.Choose(probe);
-        run.Output.Report($"{ssh}: connected ({probe.OperatingSystem ?? "unknown system"}). Docker " +
+        run.Output.Report($"{ssh}: connected ({(probe.Nas is { } nas ? $"{nas} NAS, " : "")}{probe.OperatingSystem ?? "unknown system"}). Docker " +
             (probe.Docker ? probe.DockerAccess ? "is ready" : "needs sudo for this account" : "is not installed") +
-            $", so Martlet sets it up {(method == HostSetupMethod.SshDocker ? "in Docker" : "natively")}.");
+            $", so Martlet sets it up {(method == HostSetupMethod.SshDocker ? "in Docker" : "natively")}" +
+            (probe.Nas is null ? "." : ". Martlet sets up a NAS only in Docker and installs nothing into the NAS system."));
         if (probe.Martlet is { } there)
             run.Output.Report($"A Martlet host is already on {ssh} ({(there == "native" ? "without Docker" : there)}). Setup keeps its " +
                 "identity, pairings and roles" + (there == $"martlet-host:{version}" ? "." : $" and brings it to Martlet {version}."));

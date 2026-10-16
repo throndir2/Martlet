@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Martlet sets up a NAS (TerraMaster, Synology, QNAP, Unraid or TrueNAS) only in Docker and never installs anything into the NAS system. When Docker isn't there yet, it tells you which app on the NAS installs it.
+
 ## [0.88.0] - 2026-10-16
 
 ### Added

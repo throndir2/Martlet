@@ -7,12 +7,14 @@ using Martlet.Core.Nodes;
 namespace Martlet.Desktop;
 
 /// <summary>What Martlet found on a Linux computer before changing anything there. <see cref="Martlet"/>: a Martlet host that is
-/// there already (its gateway's image, such as martlet-host:0.86.0, or "native"), or null.</summary>
+/// there already (its gateway's image, such as martlet-host:0.86.0, or "native"), or null. <see cref="Nas"/>: which NAS it is
+/// (<see cref="HostCheckout.NasProbe"/>), or null.</summary>
 internal sealed record HostProbe(bool Docker, bool DockerAccess, string Sudo, string? OperatingSystem, string? Architecture,
     string? Address, string? Hostname, bool Systemd)
 {
     internal bool SudoNeedsPassword => Sudo == "password";
     internal string? Martlet { get; init; }
+    internal string? Nas { get; init; }
 }
 
 /// <summary>A role's inputs as the host's role.conf declares them (martlet-host describe). <paramref name="SecretWhen"/> and
@@ -72,13 +74,14 @@ internal sealed partial class HostRemote(HostShell shell)
     [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z")]
     private static partial Regex IdentifierPattern();
 
-    private const string ProbeScript = HostCheckout.DockerPath +
+    internal const string ProbeScript = HostCheckout.DockerPath +
         "printf 'probe.docker=%s\\n' \"$(command -v docker >/dev/null 2>&1 && echo yes || echo no)\"; " +
         "printf 'probe.docker_access=%s\\n' \"$(docker info >/dev/null 2>&1 && echo yes || echo no)\"; " +
         "printf 'probe.sudo=%s\\n' \"$(command -v sudo >/dev/null 2>&1 || { echo none; exit 0; }; sudo -n true 2>/dev/null && echo nopassword || echo password)\"; " +
         "printf 'probe.os=%s\\n' \"$( (. /etc/os-release 2>/dev/null && printf '%s' \"$PRETTY_NAME\") || uname -s)\"; " +
         "printf 'probe.arch=%s\\n' \"$(uname -m)\"; " +
         "printf 'probe.systemd=%s\\n' \"$([ -d /run/systemd/system ] && echo yes || echo no)\"; " +
+        "printf 'probe.nas=%s\\n' \"$(" + HostCheckout.NasProbe + ")\"; " +
         "printf 'probe.address=%s\\n' \"$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \\([0-9.]*\\).*/\\1/p')\"; " +
         "printf 'probe.hostname=%s\\n' \"$(hostname -s 2>/dev/null || hostname)\"; " +
         "printf 'probe.martlet=%s\\n' \"$(docker inspect -f '{{.Config.Image}}' martlet-host-gateway 2>/dev/null || " +
@@ -101,7 +104,8 @@ internal sealed partial class HostRemote(HostShell shell)
         return (new HostProbe(Value("docker") == "yes", Value("docker_access") == "yes", Value("sudo") ?? "none", Value("os"),
             Value("arch"), HostSetupCommands.IsPrivate(address) ? address : null, Value("hostname"), Value("systemd") == "yes")
         {
-            Martlet = Value("martlet")
+            Martlet = Value("martlet"),
+            Nas = Value("nas")
         }, result.HostKey);
     }
 
@@ -111,27 +115,43 @@ internal sealed partial class HostRemote(HostShell shell)
         method == HostSetupMethod.SshNative ? probe.Sudo != "none" : !probe.DockerAccess && probe.Sudo != "none";
 
     /// <summary>How Martlet sets up a Linux computer: in Docker when it has Docker this account can use (directly or with
-    /// sudo), otherwise natively on any Linux with systemd (any distribution or release). Anything else gets the Docker
-    /// method, whose <see cref="Blocker"/> says what's missing.</summary>
+    /// sudo), otherwise natively on any Linux with systemd (any distribution or release). A NAS always gets the Docker
+    /// method: Martlet installs nothing into a NAS's own system, which the NAS's updates own. Anything else gets the
+    /// Docker method too, whose <see cref="Blocker"/> says what's missing.</summary>
     internal static HostSetupMethod Choose(HostProbe probe) =>
         probe.Docker && (probe.DockerAccess || probe.Sudo != "none") ? HostSetupMethod.SshDocker
-        : probe.Systemd ? HostSetupMethod.SshNative
+        : probe.Systemd && probe.Nas is null ? HostSetupMethod.SshNative
         : HostSetupMethod.SshDocker;
 
     /// <summary>Plain-language reason a computer cannot be set up with this method yet, or null.</summary>
     internal static string? Blocker(HostSetupMethod method, HostProbe probe, string target) => method switch
     {
+        HostSetupMethod.SshDocker when !probe.Docker && probe.Nas is { } nas =>
+            $"{target} is a {nas} NAS, and Docker is not installed there. Martlet sets up a NAS only in Docker and installs " +
+            $"nothing into the NAS system. {NasDocker(nas)}, then try again.",
         HostSetupMethod.SshDocker when !probe.Docker =>
-            $"Docker is not installed on {target}, and it runs {probe.OperatingSystem ?? "an unknown system"}             without systemd " +
-                        "(which Martlet needs to set it up without Docker). Install Docker Engine there, then try again.",
+            $"Docker is not installed on {target}, and it runs {probe.OperatingSystem ?? "an unknown system"} without systemd " +
+            "(which Martlet needs to set it up without Docker). Install Docker Engine there, then try again.",
         HostSetupMethod.SshDocker when !probe.DockerAccess && probe.Sudo == "none" =>
-            $"The account on {target} can't use Docker. Use an account with Docker access or sudo.",
+            $"The account on {target} can't use Docker. Use an account with Docker access or sudo" +
+            (probe.Nas is null ? "." : ", such as the NAS's administrator account."),
         HostSetupMethod.SshNative when !probe.Systemd =>
             $"{target} runs {probe.OperatingSystem ?? "an unknown system"} without systemd, which Martlet needs to run the host " +
             "without Docker. Choose the Docker method instead.",
         _ when probe.Architecture is { } arch && arch is not ("x86_64" or "aarch64" or "arm64") =>
             $"{target} is not a 64-bit Intel, AMD or ARM computer.",
         _ => null
+    };
+
+    /// <summary>How the owner installs Docker on a NAS: with the NAS's own app center or settings, never by Martlet.</summary>
+    internal static string NasDocker(string nas) => nas switch
+    {
+        "TerraMaster" => "Install Docker Engine from the App Center in TOS",
+        "Synology" => "Install Container Manager from Package Center in DSM",
+        "QNAP" => "Install Container Station from the App Center in QTS",
+        "Unraid" => "Turn on Docker in Settings > Docker",
+        "TrueNAS" => "Turn on Apps in TrueNAS (Apps > Configuration > Choose Pool)",
+        _ => "Install Docker from the NAS's app center"
     };
 
     /// <summary>Runs one martlet-host command unattended and streams its output. <paramref name="input"/> carries answers
