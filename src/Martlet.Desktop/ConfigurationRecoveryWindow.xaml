@@ -1,5 +1,6 @@
 <local:ThemedWindow x:Class="Martlet.Desktop.ConfigurationRecoveryWindow"
         xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -13,13 +14,15 @@
             <TextBlock TextWrapping="Wrap" Margin="0,6" Text="Create a local backup of this profile, or restore one you made on this PC. Restoring settings does not restore API keys, permissions or audio tests."/>
             <StackPanel x:Name="Actions">
                 <Label Target="{Binding ElementName=BackupPath}" Content="New _backup file"/>
-                <TextBox x:Name="BackupPath" MaxLength="2048" AutomationProperties.AutomationId="RecoveryBackupPath"/>
+                <TextBox x:Name="BackupPath" MaxLength="2048" AutomationProperties.AutomationId="RecoveryBackupPath"
+                         presentation:InputHint.Text="C:\Backups\Martlet.martlet-config"/>
                 <WrapPanel Margin="0,6">
                     <Button Content="Choose file..." Click="ChooseBackup_Click" Padding="8" AutomationProperties.AutomationId="RecoveryChooseBackup"/>
                     <Button Content="_Create backup..." Click="Backup_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryBackup"/>
                 </WrapPanel>
                 <Label Target="{Binding ElementName=SourcePath}" Content="Backup to _restore"/>
-                <TextBox x:Name="SourcePath" MaxLength="2048" TextChanged="Source_Changed" AutomationProperties.AutomationId="RecoverySourcePath"/>
+                <TextBox x:Name="SourcePath" MaxLength="2048" TextChanged="Source_Changed" AutomationProperties.AutomationId="RecoverySourcePath"
+                         presentation:InputHint.Text="C:\Backups\Martlet.martlet-config"/>
                 <WrapPanel Margin="0,6">
                     <Button Content="Browse..." Click="ChooseSource_Click" Padding="8" AutomationProperties.AutomationId="RecoveryChooseSource"/>
                     <Button Content="_Preview restore" Click="Preview_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryPreview"/>

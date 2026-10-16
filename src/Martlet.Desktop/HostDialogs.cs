@@ -136,6 +136,18 @@ internal sealed class HostInputDialog : ThemedWindow
 
     private readonly Dictionary<string, int> fieldStarts = new(StringComparer.Ordinal);
 
+    /// <summary>The example text in the empty box of field <paramref name="key"/> (the keys the callers use).</summary>
+    private static string Example(string key) => key switch
+    {
+        "password" => "Your password on that computer",
+        "addresses" => "100.101.102.103:9443, home.example.net:9443",
+        "name" => "Ana",
+        "from" => "Alex",
+        "link" => "Paste the link (martlet://share/…)",
+        _ when key.StartsWith("secret.", StringComparison.Ordinal) => "Paste the key or token",
+        _ => ""
+    };
+
     internal void AddSecret(string key, string label, string? hint = null, bool optional = false)
     {
         fieldStarts[key] = fields.Children.Count;
@@ -143,6 +155,7 @@ internal sealed class HostInputDialog : ThemedWindow
         var box = new PasswordBox();
         AutomationProperties.SetName(box, label);
         AutomationProperties.SetAutomationId(box, "HostInput-" + key);
+        InputHint.SetText(box, Example(key));
         fields.Children.Add(box);
         if (hint is not null)
         {
@@ -177,6 +190,7 @@ internal sealed class HostInputDialog : ThemedWindow
         var box = new TextBox { Text = text, MaxLength = maxLength };
         AutomationProperties.SetName(box, label);
         AutomationProperties.SetAutomationId(box, "HostInput-" + key);
+        InputHint.SetText(box, Example(key));
         fields.Children.Add(box);
         if (hint is not null)
         {

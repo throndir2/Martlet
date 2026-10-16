@@ -5,6 +5,7 @@ using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Singing;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -77,6 +78,7 @@ public partial class MainWindow
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, $"{name} API key for Singing");
         AutomationProperties.SetAutomationId(key, id + "CloudKey-" + member.Key);
+        InputHint.SetText(key, $"Paste your {name} API key");
         key.PasswordChanged += (_, _) => tabEdited = true;
         var status = Note(Capitalized(SingingKeyText(provider)) + ". Paste a key to save it for Singing.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(status, id + "CloudKeyStatus-" + member.Key);
@@ -140,9 +142,11 @@ public partial class MainWindow
         var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = SingingCloud.DefaultModel(provider, area) };
         AutomationProperties.SetName(model, $"{name} model for {area.Title}");
         AutomationProperties.SetAutomationId(model, "SingingCloudModel-" + area.Id);
+        InputHint.SetText(model, SingingCloud.DefaultModel(provider, area));
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, $"{name} API key");
         AutomationProperties.SetAutomationId(key, "SingingCloudKey-" + area.Id);
+        InputHint.SetText(key, $"Paste your {name} API key");
         var has = store is not null && SingingCloudKeys.Has(store.DataDirectory, provider);
         var keyStatus = Note(has ? $"Leave this empty to use the {name} key Martlet has ({SingingKeyText(provider)}), or paste another key."
             : $"Paste your {name} API key. Martlet saves it in Windows Credential Manager and gives it to your other computers.", new Thickness(0, 4, 0, 0));

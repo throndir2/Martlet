@@ -5,6 +5,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Core.Settings;
 using Martlet.Core.Creations;
 using Martlet.Discord.Calls;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -54,6 +55,7 @@ public partial class MainWindow
             MaxLength = DiscordCallPreferences.MaximumNameLength, Margin = new Thickness(0, 2, 0, 4) };
         AutomationProperties.SetName(owner, "Your Discord display name");
         AutomationProperties.SetAutomationId(owner, "DiscordCallOwnerName");
+        InputHint.SetText(owner, "Alex");
         owner.LostFocus += (_, _) =>
         {
             var name = owner.Text.Trim();
@@ -220,6 +222,7 @@ public partial class MainWindow
             prompt.TextChanged += (_, _) => callPicturePrompt = prompt.Text;
             AutomationProperties.SetName(prompt, "What to draw for the camera background");
             AutomationProperties.SetAutomationId(prompt, "DiscordCallCameraPrompt");
+            InputHint.SetText(prompt, "A cozy room with warm evening light");
             var draw = PageButton(callPictureDrawing ? "Drawing..." : "Draw it", () => DrawCallPictureAsync(prompt.Text).Forget(), id: "DiscordCallCameraDraw");
             draw.IsEnabled = !callPictureDrawing;
             prompt.KeyDown += (_, e) =>

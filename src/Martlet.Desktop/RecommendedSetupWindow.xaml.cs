@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Planning;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -199,6 +200,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
             AutomationProperties.SetAutomationId(box, $"SetupSecretInput-{i}");
             AutomationProperties.SetName(box, secret.Label);
             AutomationProperties.SetHelpText(box, secret.Prompt);
+            InputHint.SetText(box, "Paste the key or token");
             label.Target = box;
             SecretsPanel.Children.Add(label);
             SecretsPanel.Children.Add(box);

@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
+using Martlet.Presentation;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -72,14 +73,17 @@ public partial class MainWindow
         var baseUrl = new TextBox { MaxLength = 2048, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = saved?.Origin ?? "" };
         AutomationProperties.SetName(baseUrl, "Fallback API base URL");
         AutomationProperties.SetAutomationId(baseUrl, "FallbackBaseUrl");
+        InputHint.SetText(baseUrl, "https://llm.example.com/v1");
         string Url() => p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim();
         var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
             Text = saved is not null && saved.Origin == Url() ? saved.ModelId : p.DefaultModel ?? "" };
         AutomationProperties.SetName(model, "Fallback model ID");
         AutomationProperties.SetAutomationId(model, "FallbackModel");
+        InputHint.SetText(model, p.DefaultModel is { Length: > 0 } suggested ? suggested : "llama-3.1-8b-instruct");
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, "Fallback API key");
         AutomationProperties.SetAutomationId(key, "FallbackKey");
+        InputHint.SetText(key, p.NeedsKey ? $"Paste your {p.Name} API key" : "Only if your server needs a key");
         if (freeKeyFocus && freeKeyPreset == FreeKeyUse.Fallback)
         {
             freeKeyFocus = false;

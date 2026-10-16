@@ -1,5 +1,6 @@
 <local:ThemedWindow x:Class="Martlet.Desktop.MemoryWindow"
         xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -55,7 +56,7 @@
                                     <Label Target="{Binding ElementName=SearchBox}" Content="_Search" Padding="0,0,0,3" />
                                     <TextBox x:Name="SearchBox" Height="35" Padding="8,0" VerticalContentAlignment="Center" TextWrapping="NoWrap" TextChanged="Search_Changed"
                                              AutomationProperties.AutomationId="MemorySearch" AutomationProperties.Name="Search remembered facts"
-                                             ToolTip="Words in a fact or the name of whose it is" />
+                                             ToolTip="Words in a fact or the name of whose it is" presentation:InputHint.Text="Words or a name, e.g. coffee or Alex" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
                                     <Label Target="{Binding ElementName=PersonFilter}" Content="Sho_w" Padding="0,0,0,3" />
@@ -113,7 +114,8 @@
                             <TextBlock x:Name="EditorHeading" Text="New fact" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
                             <Label Target="{Binding ElementName=FactContent}" Content="_Fact" Padding="0,0,0,3" />
                             <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="32768" Height="110"
-                                     VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent" />
+                                     VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent"
+                                     presentation:InputHint.Text="Alex likes green tea and walks the dog every morning." />
                             <Label Target="{Binding ElementName=PersonChoice}" Content="Belongs _to" Padding="0,8,0,3" />
                             <ComboBox x:Name="PersonChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryPerson"
                                       AutomationProperties.Name="Whose fact it is" />
@@ -144,7 +146,8 @@
                             <Button DockPanel.Dock="Right" x:Name="BrowseDirectoryButton" Content="_Browse" Click="BrowseDirectory_Click"
                                     Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseDirectory" />
                             <TextBox x:Name="CustomDirectory" TextChanged="ConfigurationText_Changed" LostKeyboardFocus="CustomDirectory_LostFocus"
-                                     KeyDown="CustomDirectory_KeyDown" AutomationProperties.AutomationId="MemoryCustomDirectory" />
+                                     KeyDown="CustomDirectory_KeyDown" AutomationProperties.AutomationId="MemoryCustomDirectory"
+                                     presentation:InputHint.Text="D:\Martlet\Memory" />
                         </DockPanel>
                         <!-- No Save button: these choices save as soon as they change (a typed folder when you leave the field or press Enter). -->
                         <TextBlock x:Name="ResolvedDirectoryText" Style="{DynamicResource Muted}" Margin="0,5"
@@ -168,7 +171,8 @@
                             <Button DockPanel.Dock="Right" x:Name="BrowseExportButton" Content="B_rowse" Click="BrowseExport_Click"
                                     Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseExport" />
                             <TextBox x:Name="ExportDestination" TextChanged="ExportDestination_Changed"
-                                     AutomationProperties.AutomationId="MemoryExportDestination" />
+                                     AutomationProperties.AutomationId="MemoryExportDestination"
+                                     presentation:InputHint.Text="C:\Backups\martlet-memory.json" />
                         </DockPanel>
                         <CheckBox x:Name="AcceptExport" Margin="0,8,0,4"
                                   Content="Create this local export"

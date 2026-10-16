@@ -11,6 +11,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Voices;
 using Martlet.F5;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -126,6 +127,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
 
         AutomationProperties.SetName(name, "Voice name");
         AutomationProperties.SetAutomationId(name, "OwnVoiceName");
+        InputHint.SetText(name, "My voice");
         root.Children.Add(new Label { Content = "_Name", Target = name, Padding = new Thickness(0, 10, 0, 4) });
         root.Children.Add(name);
 

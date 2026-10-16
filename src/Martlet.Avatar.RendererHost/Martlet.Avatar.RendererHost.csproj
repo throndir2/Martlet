@@ -14,6 +14,8 @@
     <Compile Include="..\Martlet.Desktop\ErrorLog.cs" Link="ErrorLog.cs" />
     <!-- Controls.xaml's read-only text boxes use it for their Copy button. -->
     <Compile Include="..\Martlet.Desktop\CopyText.cs" Link="CopyText.cs" />
+    <!-- Controls.xaml's text boxes show their example text with it. -->
+    <Compile Include="..\Martlet.Desktop\InputHint.cs" Link="InputHint.cs" />
     <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <PackageReference Include="Microsoft.Web.WebView2" />

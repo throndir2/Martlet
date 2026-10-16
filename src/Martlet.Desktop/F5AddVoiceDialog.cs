@@ -8,6 +8,7 @@ using Martlet.Audio.Windows;
 using Martlet.Core.Contracts;
 using Martlet.Core.Voices;
 using Martlet.F5;
+using Martlet.Presentation;
 using Microsoft.Win32;
 
 namespace Martlet.Desktop;
@@ -145,6 +146,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         AutomationProperties.SetName(name, "Voice name");
         AutomationProperties.SetName(basis, "Whose voice it is");
         AutomationProperties.SetAutomationId(name, "F5AddVoiceName");
+        InputHint.SetText(name, "Alex's voice");
         AutomationProperties.SetAutomationId(basis, "F5AddVoiceBasis");
         AutomationProperties.SetAutomationId(error, "F5AddVoiceProblem");
         AutomationProperties.SetAutomationId(rights, "F5VoiceRights");
@@ -212,6 +214,8 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         row.Settle.Tick += (_, _) => PrepareAsync(row).Forget();
         row.FileLabel.Target = row.Path;
         row.WordsLabel.Target = row.Transcript;
+        InputHint.SetText(row.Path, @"C:\Voices\my-voice.wav");
+        InputHint.SetText(row.Transcript, "The exact words in the recording, for example: Hi! It's lovely to meet you.");
         var pick = new DockPanel();
         DockPanel.SetDock(row.Drop, Dock.Right);
         DockPanel.SetDock(row.Play, Dock.Right);

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -260,6 +261,7 @@ public partial class MainWindow
             var tag = Compact(new TextBox { Text = action.Tag ?? "", Width = 120, MaxLength = CharacterActionCatalog.MaximumTagLength });
             AutomationProperties.SetName(tag, $"Tag for {source.Name}");
             AutomationProperties.SetAutomationId(tag, $"CharacterActionTag-{n}");
+            InputHint.SetText(tag, CharacterActions.EnglishTag(source, CharacterActions.Number(catalog.Inventory, source)));
             var cue = Compact(new ComboBox { ItemsSource = cues, SelectedItem = action.Cue ?? NoCue, Width = 120 });
             AutomationProperties.SetName(cue, $"Voice cue for {source.Name}");
             AutomationProperties.SetAutomationId(cue, $"CharacterActionCue-{n}");

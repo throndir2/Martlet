@@ -8,6 +8,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Martlet.Mcp.Client;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -295,6 +296,7 @@ public partial class McpDirectoryWindow : ThemedWindow
             Text = installed?.Name ?? McpConfiguration.UniqueName(ReadConfig(), entry.SuggestedName)
         };
         AutomationProperties.SetAutomationId(nameBox, "McpDirectoryName");
+        InputHint.SetText(nameBox, entry.SuggestedName);
         optionPanel.Children.Add(new Label { Content = "_Name in mcp.json", Target = nameBox, Padding = new Thickness(0, 12, 0, 4) });
         optionPanel.Children.Add(nameBox);
         nameBox.TextChanged += (_, _) => UpdatePreview();
@@ -357,6 +359,7 @@ public partial class McpDirectoryWindow : ThemedWindow
         else if (input.Secret)
         {
             var secret = new PasswordBox { MaxLength = McpInstallOption.MaxValueLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
+            InputHint.SetText(secret, "Paste the key or token, or type ${env:NAME}");
             secret.PasswordChanged += (_, _) => UpdatePreview();
             readers[input.Key] = () => secret.Password;
             field = secret;
@@ -365,6 +368,9 @@ public partial class McpDirectoryWindow : ThemedWindow
         {
             var text = new TextBox { MaxLength = McpInstallOption.MaxValueLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
                 Text = input.Initial ?? "" };
+            InputHint.SetText(text, input.Placeholder is { Length: > 0 } placeholder ? placeholder
+                : input.Default is { Length: > 0 } defaultValue ? defaultValue
+                : input.IsPath ? @"C:\Users\Alex\Documents" : "Type the value, or ${env:NAME}");
             text.TextChanged += (_, _) => UpdatePreview();
             readers[input.Key] = () => text.Text;
             field = text;

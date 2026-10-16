@@ -156,3 +156,9 @@ which has the pool's rules (`ThinkingJobBoard`).
 | How such a request ranks against your work | priority (scope `equal-priority`) | Your Martlet first; Same priority as your background work | |
 
 See [Share your language models](OPENAI_ENDPOINT.md).
+
+## The app's controls
+
+| Concept | Code name | UI name | Do not use for it |
+| --- | --- | --- | --- |
+| The dimmed example in an empty box you type in, which shows what to type there | example text (`InputHint.Text`, shown by `InputTemplate` in `Themes\Controls.xaml`; older boxes use `PageKit.WithHint`) | (none: the example itself, such as *https://martlet.example.com/v1*) | "placeholder" (a check-in's `{name}` fact is a placeholder), "watermark" |

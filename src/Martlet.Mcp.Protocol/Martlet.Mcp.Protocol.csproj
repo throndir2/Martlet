@@ -41,6 +41,7 @@
     <Compile Include="..\Martlet.Desktop\CharacterThemeImages.cs" Link="Theme\CharacterThemeImages.cs" />
     <Compile Include="..\Martlet.Desktop\ThemeSample.cs" Link="Theme\ThemeSample.cs" />
     <Compile Include="..\Martlet.Desktop\CopyText.cs" Link="Theme\CopyText.cs" />
+    <Compile Include="..\Martlet.Desktop\InputHint.cs" Link="Theme\InputHint.cs" />
     <Compile Include="..\Martlet.Desktop\ErrorLog.cs" Link="Theme\ErrorLog.cs" />
     <!-- host_supply_check downloads with the desktop's own client for hosts without internet access. -->
     <Compile Include="..\Martlet.Desktop\HostSupplies.cs" Link="Hosts\HostSupplies.cs" />

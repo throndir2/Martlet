@@ -1,5 +1,6 @@
 <local:ThemedWindow x:Class="Martlet.Desktop.CompanionWindow"
         xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -43,11 +44,12 @@
                                Text="Character cards (PNG, JSON or CHARX) add a persona or update this one. You can also drop a card on this window."/>
                     <Label Target="{Binding ElementName=PersonaName}" Content="Persona na_me" Margin="0,8,0,0"/>
                     <TextBox x:Name="PersonaName" MaxLength="64" TextChanged="Editor_Changed"
-                             AutomationProperties.AutomationId="CompanionName"/>
+                             AutomationProperties.AutomationId="CompanionName" presentation:InputHint.Text="Luna"/>
                     <Label Target="{Binding ElementName=PersonaText}" Content="Persona _instructions"/>
                     <TextBox x:Name="PersonaText" MaxLength="100000" AcceptsReturn="True" TextWrapping="Wrap"
                              Height="220" VerticalScrollBarVisibility="Auto" TextChanged="Editor_Changed"
-                             AutomationProperties.AutomationId="CompanionText"/>
+                             AutomationProperties.AutomationId="CompanionText"
+                             presentation:InputHint.Text="You are Luna, a warm and curious companion. Keep your replies short and kind."/>
                     <WrapPanel Margin="0,8">
                         <Button Content="Import te_xt..." Click="Import_Click" Padding="10,6" Margin="0,0,8,0"
                                 AutomationProperties.AutomationId="CompanionImport"/>

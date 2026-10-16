@@ -13,7 +13,9 @@ obvious next step at every stage, and a living map of the user's computers.
 2. **Say what to do, in plain words.** Headlines say where you are ("Almost
    there"), and the button says what happens next ("Set up thinking").
    Exact legal, cost and data wording stays available, one click away, and is
-   never removed.
+   never removed. Every box you type in shows dimmed example text while it is
+   empty (`InputHint.Text`), such as *https://martlet.example.com/v1*, so you see
+   what goes there and in which form. A password box shows what to paste.
 3. **The companion is the hero.** The animated Martlet mascot, the cream bird
    from the app icon, greets you. The Live2D
    or VRM character is one toggle away on every main surface.

@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -139,6 +140,7 @@ public partial class MainWindow
             Text = localServerAddress ?? (current is not null && found.All(s => s.ChatCompletionsBaseUrl != current.Origin) ? current.Origin : null) ?? "" };
         AutomationProperties.SetName(address, "Address on this PC");
         AutomationProperties.SetAutomationId(address, "LocalServerAddress");
+        InputHint.SetText(address, "http://127.0.0.1:8080/v1");
         var addressPanel = new StackPanel { Children =
         {
             new Label { Content = "_Address on this PC", Target = address, Padding = new Thickness(0, 8, 0, 4) },
@@ -155,6 +157,7 @@ public partial class MainWindow
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, "API key, only if the app asks for one");
         AutomationProperties.SetAutomationId(key, "LocalServerKey");
+        InputHint.SetText(key, "The key you set in the app, if it asks for one");
         var keyStatus = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "LocalServerKeyStatus");
         var hint = Note("", new Thickness(0, 6, 0, 0));

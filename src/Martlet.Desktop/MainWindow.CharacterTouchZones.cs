@@ -10,6 +10,7 @@ using System.Windows.Shapes;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -730,6 +731,7 @@ public partial class MainWindow
             name = Compact(new TextBox { Text = zone.Name, Width = 150, MaxLength = CharacterTouchZones.MaximumLabelLength });
             AutomationProperties.SetName(name, $"Name of {zone.Name}");
             AutomationProperties.SetAutomationId(name, $"TouchZoneName-{number}");
+            InputHint.SetText(name, "Left ear");
             var state = new TextBlock
             {
                 Text = Describe(zone, settings, CharacterTouchTemperaments.Attitude(temperament, zone.Id)),
@@ -833,11 +835,13 @@ public partial class MainWindow
             rest = Compact(new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 48 });
             AutomationProperties.SetName(rest, $"Seconds {zone.Name} rests after a touch");
             AutomationProperties.SetAutomationId(rest, $"TouchZoneCooldown-{number}");
+            InputHint.SetText(rest, "2");
             shown = BoxesText(zone.AllAreas.Select(a => a.Box));
             // Wide enough for four numbers with two decimals, as a drag on the zoomed-in picture writes them.
             box = Compact(new TextBox { Text = shown, MinWidth = 160, MaxWidth = 420 });
             AutomationProperties.SetName(box, $"Box of {zone.Name}: left, top, width, height in percent of the picture, each area after a |");
             AutomationProperties.SetAutomationId(box, $"TouchZoneBox-{number}");
+            InputHint.SetText(box, "40, 10, 20, 15");
             box.ToolTip = follows
                 ? $"Each area of the model's own {zone.Follows}, where it was in the picture. The zone follows them wherever they move; " +
                   "move one onto another part to place the zone there instead."

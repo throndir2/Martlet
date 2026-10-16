@@ -5,6 +5,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Conversation;
 using Martlet.Home;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -119,6 +120,7 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
             Margin = new Thickness(28, 0, 0, 6) };
         AutomationProperties.SetName(address, "Phone or network camera address");
         AutomationProperties.SetAutomationId(address, "VisionAddress");
+        InputHint.SetText(address, "http://192.168.1.20:8080/shot.jpg");
         address.TextChanged += (_, _) =>
         {
             var typed = address.Text.Trim();

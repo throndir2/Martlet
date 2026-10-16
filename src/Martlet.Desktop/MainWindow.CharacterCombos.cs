@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -160,12 +161,14 @@ public partial class MainWindow
             tag = Compact(new TextBox { Text = combo?.Tag ?? "", Width = 120, MaxLength = CharacterActionCatalog.MaximumTagLength });
             AutomationProperties.SetName(tag, $"Tag for combo {n + 1}");
             AutomationProperties.SetAutomationId(tag, $"CharacterComboTag-{n}");
+            InputHint.SetText(tag, "flustered");
             parts = Compact(new TextBox { Text = named.Text, MinWidth = 220, MaxLength = 200 });
             AutomationProperties.SetName(parts, $"Parts of combo {n + 1}");
             AutomationProperties.SetAutomationId(parts, $"CharacterComboParts-{n}");
             const string partsHelp = "The tags of 2 to 6 emotes, motions or gestures, with spaces between, such as blush hearts nod.";
             AutomationProperties.SetHelpText(parts, partsHelp);
             parts.ToolTip = partsHelp;
+            InputHint.SetText(parts, "blush hearts nod");
             use = Compact(new TextBox { Text = combo?.Use ?? "", MinWidth = 150, MaxLength = CharacterActionCatalog.MaximumUseLength });
             AutomationProperties.SetName(use, $"When to use combo {n + 1}");
             AutomationProperties.SetAutomationId(use, $"CharacterComboUse-{n}");

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Messaging;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -77,6 +78,8 @@ public partial class MainWindow
         var token = new PasswordBox { MaxLength = 200, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(token, "Telegram bot token");
         AutomationProperties.SetAutomationId(token, "MessagingTelegramToken");
+        // Once connected, the "Token saved" mark fills the empty box instead.
+        if (!connected) InputHint.SetText(token, "Paste the token from BotFather (123456789:AAH…)");
         var tokenField = SecretField(token, connected, "Token saved (type to replace)");
 
         Button? connect = null;
@@ -125,6 +128,15 @@ public partial class MainWindow
         var phone = Field(draft.PhoneId, "Phone number ID", "MessagingWhatsAppPhoneId");
         var account = Field(draft.AccountId, "WhatsApp Business account ID", "MessagingWhatsAppAccountId");
         var address = Field(draft.Address, "Public address", "MessagingWhatsAppAddress");
+        // Once connected, the "saved" marks fill the empty secret boxes instead.
+        if (!connected)
+        {
+            InputHint.SetText(token, "Paste your Meta access token (EA…)");
+            InputHint.SetText(secret, "Paste the App secret from App settings › Basic");
+        }
+        InputHint.SetText(phone, "106540352242922");
+        InputHint.SetText(account, "102290129340398");
+        InputHint.SetText(address, "https://martlet.example.com");
         void Keep() => whatsAppDraft = (token.Password, secret.Password, phone.Text, account.Text, address.Text);
         token.PasswordChanged += (_, _) => Keep();
         secret.PasswordChanged += (_, _) => Keep();

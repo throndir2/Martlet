@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Discord;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -68,6 +69,8 @@ public partial class MainWindow
         var token = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(token, "Discord bot token");
         AutomationProperties.SetAutomationId(token, "DiscordToken");
+        // Once a token is saved, the "Token saved" mark fills the empty box instead.
+        if (!saved.Configured) InputHint.SetText(token, "Paste the bot token from the Developer Portal");
         var savedMark = new TextBlock
         {
             Text = "••••••••  Token saved (type to replace)", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center,
@@ -352,6 +355,7 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(owner, "DiscordOwnerId");
         AutomationProperties.SetName(owner, "Your Discord user ID");
+        InputHint.SetText(owner, "123456789012345678");
         owner.TextChanged += (_, _) => discordOwnerDraft = owner.Text;
         var saveOwner = PageButton("Save", () => SaveDiscordOwner(owner.Text), id: "DiscordOwnerSave");
 

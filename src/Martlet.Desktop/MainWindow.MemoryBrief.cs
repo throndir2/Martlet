@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -41,6 +42,7 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(box, "MemoryBriefText");
         AutomationProperties.SetName(box, "Memory brief");
+        InputHint.SetText(box, "Alex is a nurse in Leeds and vegetarian. Sam is Alex's sister; they go hiking most weekends.");
         memoryBriefBox = box;
         memoryBriefShown = box.Text;
         Button? save = null, again = null;

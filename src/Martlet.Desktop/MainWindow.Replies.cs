@@ -6,6 +6,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -201,6 +202,8 @@ public partial class MainWindow
                 Text = setting.Read(saved) is { } value ? setting.Format(value) : ""
             };
             AutomationProperties.SetAutomationId(box, setting.Id);
+            // A blank box uses the default; the range beside it says which default on this route and what to type.
+            InputHint.SetText(box, "Default");
             var range = RangeText(setting, route);
             AutomationProperties.SetHelpText(box, range + ". " + setting.Help);
             box.TextChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };

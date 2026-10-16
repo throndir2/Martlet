@@ -168,9 +168,11 @@ public partial class MainWindow
         var addId = new TextBox { Width = 200, MaxLength = 20 };
         AutomationProperties.SetAutomationId(addId, "DiscordFriendAddId");
         AutomationProperties.SetName(addId, "Discord user ID");
+        InputHint.SetText(addId, "123456789012345678");
         var addName = new TextBox { Width = 160, MaxLength = DiscordFriends.MaximumNameLength, Margin = new Thickness(8, 0, 0, 0) };
         AutomationProperties.SetAutomationId(addName, "DiscordFriendAddName");
         AutomationProperties.SetName(addName, "Name");
+        InputHint.SetText(addName, "Sam");
         var add = PageButton("Add", () =>
         {
             if (!ulong.TryParse(addId.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var userId) || userId == 0)

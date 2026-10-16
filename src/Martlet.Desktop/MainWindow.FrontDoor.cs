@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Access;
 using Martlet.Core.Nodes;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -90,6 +91,7 @@ public partial class MainWindow
         frontDoorPortBox ??= new TextBox { Width = 70, MaxLength = 5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         AutomationProperties.SetAutomationId(frontDoorPortBox, "OpenAiFrontDoorPort");
         AutomationProperties.SetName(frontDoorPortBox, "The front door's port");
+        InputHint.SetText(frontDoorPortBox, OpenAiEndpoint.DefaultFrontDoorPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (!frontDoorHostChoice.IsKeyboardFocusWithin)
         {
             var selected = (frontDoorHostChoice.SelectedItem as ComboBoxItem)?.Tag as string ?? open?.Host.HostId ?? settings.FrontDoorHostId;

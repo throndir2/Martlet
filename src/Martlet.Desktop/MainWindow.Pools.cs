@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -192,6 +193,7 @@ public partial class MainWindow
             var address = new TextBox { MinWidth = 260, Margin = new Thickness(0, 0, 8, 0) };
             AutomationProperties.SetAutomationId(address, id + "-Address");
             AutomationProperties.SetName(address, $"Address of a service you run for {area.Title}");
+            InputHint.SetText(address, area.Id == PoolAreas.PictureMaking.Id ? "http://192.168.1.20:8188" : "http://192.168.1.20:11434/v1");
             var addAddress = PageButton("Add address", () =>
             {
                 var text = address.Text.Trim();

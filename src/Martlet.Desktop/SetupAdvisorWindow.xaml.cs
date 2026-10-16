@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Installation;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -175,6 +176,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
             AutomationProperties.SetAutomationId(row.NameBox, $"OtherComputerName{number}");
             AutomationProperties.SetName(row.NameBox, $"Name of computer {number} (optional)");
             row.NameBox.ToolTip = $"Optional name. If left blank, this will be Computer {number}.";
+            InputHint.SetText(row.NameBox, "Optional, e.g. Gaming PC");
             row.GpuBox = new ComboBox { ItemsSource = GpuNames, SelectedIndex = (int)row.Gpu, MinHeight = 30 };
             AutomationProperties.SetAutomationId(row.GpuBox, $"OtherComputerGpu{number}");
             AutomationProperties.SetName(row.GpuBox, $"Graphics card in computer {number}");

@@ -8,6 +8,7 @@ using System.Windows.Media;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -253,6 +254,7 @@ public partial class MainWindow
             var name = Compact(new TextBox { Text = custom.Name, Width = 240, MaxLength = CharacterTouchTemperaments.MaximumNameLength });
             AutomationProperties.SetName(name, "The custom temperament's name");
             AutomationProperties.SetAutomationId(name, "TouchTemperamentName");
+            InputHint.SetText(name, "Shy and playful");
             name.TextChanged += (_, _) => tabEdited = true;
             var rename = Compact(PageButton("Rename", async () =>
             {
@@ -281,6 +283,7 @@ public partial class MainWindow
         var newName = Compact(new TextBox { Width = 240, MaxLength = CharacterTouchTemperaments.MaximumNameLength });
         AutomationProperties.SetName(newName, "Name for a new custom temperament");
         AutomationProperties.SetAutomationId(newName, "TouchTemperamentNewName");
+        InputHint.SetText(newName, "Shy and playful");
         newName.TextChanged += (_, _) => tabEdited = true;
         var copied = builtIn ? "the built-in reactions" : custom is not null ? $"\"{custom.Name}\"" : $"{persona.Name}'s own temperament";
         var create = Compact(PageButton("Create", async () =>
@@ -321,6 +324,7 @@ public partial class MainWindow
         });
         AutomationProperties.SetName(after, "Touches in a row before the reaction escalates");
         AutomationProperties.SetAutomationId(after, "TouchTemperamentAfter");
+        InputHint.SetText(after, "3");
         // Where the character's eyes usually go (Where the character looks › As the personality decides uses it).
         var gazeChoices = new[] { NotDecided }.Concat(CharacterGaze.Modes.Select(m => m.Label)).ToArray();
         var gaze = Compact(new ComboBox
@@ -654,10 +658,10 @@ public partial class MainWindow
 
         private static ComboBox Combo(IReadOnlyList<string> items) => Compact(new ComboBox { ItemsSource = items, ItemTemplate = OneLine });
 
-        private static TextBox SecondsBox(double value) => Compact(new TextBox
+        private static TextBox SecondsBox(double value) => InputHint.With(Compact(new TextBox
         {
             Text = value.ToString("0.#", CultureInfo.CurrentCulture), MaxLength = 4, TextAlignment = TextAlignment.Center
-        });
+        }), 1.5.ToString("0.#", CultureInfo.CurrentCulture));
 
         private static DataTemplate OneLineTemplate()
         {

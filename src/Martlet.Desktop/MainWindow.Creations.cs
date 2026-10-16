@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Creations;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -256,6 +257,7 @@ public partial class MainWindow
         var rename = new TextBox { Text = creation.Title, MaxLength = CreationLibrary.MaximumTitleLength, MinWidth = 260, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetAutomationId(rename, "CreationRenameText");
         AutomationProperties.SetName(rename, "New title");
+        InputHint.SetText(rename, "A new title, such as Rainy day song");
         var renameButton = PageButton("Rename", () => RenameCreationAsync(creation, rename.Text).Forget(), id: "CreationRename");
         var deleteButton = PageButton("Delete", () => DeleteCreationAsync(creation).Forget(), id: "CreationDelete");
         rename.KeyDown += (_, e) =>

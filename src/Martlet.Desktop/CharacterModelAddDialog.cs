@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Characters;
+using Martlet.Presentation;
 using Microsoft.Win32;
 
 namespace Martlet.Desktop;
@@ -62,6 +63,8 @@ internal sealed class CharacterModelAddDialog : ThemedWindow
         AutomationProperties.SetName(name, "Character name");
         AutomationProperties.SetAutomationId(path, "CharacterModelAddPath");
         AutomationProperties.SetAutomationId(name, "CharacterModelAddName");
+        InputHint.SetText(path, @"C:\Models\Hiyori\Hiyori.model3.json");
+        InputHint.SetText(name, "Hiyori");
         AutomationProperties.SetAutomationId(error, "CharacterModelAddProblem");
         root.Children.Add(new Label { Content = "_Model file", Target = path, Padding = new Thickness(0, 10, 0, 4) });
         root.Children.Add(pick);

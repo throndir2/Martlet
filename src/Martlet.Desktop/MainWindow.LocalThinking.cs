@@ -6,6 +6,7 @@ using Martlet.Avatars;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Presentation;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -71,6 +72,7 @@ public partial class MainWindow
             model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = ollamaTyped ?? "" };
             AutomationProperties.SetName(model, "Local model");
             AutomationProperties.SetAutomationId(model, "SetupLocalModel");
+            InputHint.SetText(model, "gemma4:e4b");
             model.TextChanged += (_, _) => { tabEdited = true; ollamaTyped = model.Text; };
             yield return new Label { Content = "Ollama _model", Target = model, Padding = new Thickness(0, 4, 0, 4) };
             yield return model;

@@ -2,6 +2,7 @@
         xmlns:local="clr-namespace:Martlet.Desktop"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         Style="{DynamicResource AppWindowStyle}" Title="Martlet - Sign-in from outside"
         Width="680" MinWidth="520" Height="760" WindowStartupLocation="CenterOwner"
         AutomationProperties.AutomationId="SignInSettingsWindow">
@@ -26,9 +27,11 @@
                         <TextBlock x:Name="OwnerStateText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,10"
                                    AutomationProperties.AutomationId="SignInOwnerState"/>
                         <TextBlock Text="Account name"/>
-                        <TextBox x:Name="OwnerUserText" Margin="0,4,0,8" Text="owner" AutomationProperties.AutomationId="SignInOwnerUser"/>
+                        <TextBox x:Name="OwnerUserText" Margin="0,4,0,8" Text="owner" AutomationProperties.AutomationId="SignInOwnerUser"
+                                 presentation:InputHint.Text="owner"/>
                         <TextBlock Text="Password (12 characters or more)"/>
-                        <PasswordBox x:Name="OwnerPasswordText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInOwnerPassword"/>
+                        <PasswordBox x:Name="OwnerPasswordText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInOwnerPassword"
+                                     presentation:InputHint.Text="A long password only you know"/>
                         <Button x:Name="NewSecretButton" Content="1. Make an _authenticator secret" Click="NewSecret_Click" HorizontalAlignment="Left"
                                 AutomationProperties.AutomationId="SignInTotpNew"/>
                         <StackPanel x:Name="SecretPanel" Visibility="Collapsed" Margin="0,8,0,0">
@@ -39,7 +42,7 @@
                                      AutomationProperties.AutomationId="SignInTotpLink"/>
                             <TextBlock Text="2. The 6-digit code your app shows now"/>
                             <TextBox x:Name="OwnerCodeText" FontFamily="Consolas" FontSize="16" MaxLength="8" Margin="0,4,0,8"
-                                     AutomationProperties.AutomationId="SignInOwnerCode"/>
+                                     AutomationProperties.AutomationId="SignInOwnerCode" presentation:InputHint.Text="123456"/>
                             <Button x:Name="SaveOwnerButton" Content="3. _Save owner account" Click="SaveOwner_Click" Style="{DynamicResource PrimaryButton}"
                                     HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInOwnerSave"/>
                         </StackPanel>
@@ -67,11 +70,11 @@
                                 <ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="2*"/>
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="AllowProviderText" Margin="0,0,6,0" AutomationProperties.AutomationId="SignInAllowProvider"
-                                     AutomationProperties.Name="Provider ID"/>
+                                     AutomationProperties.Name="Provider ID" presentation:InputHint.Text="authentik"/>
                             <TextBox x:Name="AllowSubjectText" Grid.Column="1" Margin="0,0,6,0" AutomationProperties.AutomationId="SignInAllowSubject"
-                                     AutomationProperties.Name="Subject"/>
+                                     AutomationProperties.Name="Subject" presentation:InputHint.Text="110248495921238986420"/>
                             <TextBox x:Name="AllowLabelText" Grid.Column="2" AutomationProperties.AutomationId="SignInAllowLabel"
-                                     AutomationProperties.Name="Label (an email or name)"/>
+                                     AutomationProperties.Name="Label (an email or name)" presentation:InputHint.Text="alex@example.com"/>
                         </Grid>
                         <ComboBox x:Name="AllowAccessBox" Margin="0,8,0,0" AutomationProperties.AutomationId="SignInAllowAccess"
                                   AutomationProperties.Name="What the computers it signs in get">
@@ -109,24 +112,31 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,6,0">
                                 <TextBlock Text="ID (short, like authentik)"/>
-                                <TextBox x:Name="ProviderIdText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderId"/>
+                                <TextBox x:Name="ProviderIdText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderId"
+                                         presentation:InputHint.Text="authentik"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="Name people see"/>
-                                <TextBox x:Name="ProviderNameText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderName"/>
+                                <TextBox x:Name="ProviderNameText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderName"
+                                         presentation:InputHint.Text="Authentik"/>
                             </StackPanel>
                         </Grid>
                         <TextBlock Text="Issuer URL"/>
-                        <TextBox x:Name="ProviderIssuerText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderIssuer"/>
+                        <TextBox x:Name="ProviderIssuerText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderIssuer"
+                                 presentation:InputHint.Text="https://auth.example.net/application/o/martlet/"/>
                         <TextBlock Text="Client ID"/>
-                        <TextBox x:Name="ProviderClientIdText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderClientId"/>
+                        <TextBox x:Name="ProviderClientIdText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderClientId"
+                                 presentation:InputHint.Text="Paste the client ID from the provider"/>
                         <TextBlock Text="Client secret (leave empty to keep the saved one, or for a public client)"/>
-                        <PasswordBox x:Name="ProviderSecretText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderSecret"/>
+                        <PasswordBox x:Name="ProviderSecretText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderSecret"
+                                     presentation:InputHint.Text="Paste the client secret from the provider"/>
                         <TextBlock Text="Scopes"/>
-                        <TextBox x:Name="ProviderScopesText" Text="openid email profile" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderScopes"/>
+                        <TextBox x:Name="ProviderScopesText" Text="openid email profile" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderScopes"
+                                 presentation:InputHint.Text="openid email profile"/>
                         <TextBlock Text="Loopback port (only for providers that need a registered redirect, such as Discord: register http://127.0.0.1:&lt;port&gt;/ there)"
                                    TextWrapping="Wrap"/>
-                        <TextBox x:Name="ProviderPortText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderPort"/>
+                        <TextBox x:Name="ProviderPortText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderPort"
+                                 presentation:InputHint.Text="53682"/>
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Save _provider" Click="SaveProvider_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInProviderSave"/>
                             <Button Content="Remove provider" Click="RemoveProvider_Click" AutomationProperties.AutomationId="SignInProviderRemove"/>
@@ -158,7 +168,8 @@
                         <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
                                    Text="The invite tells a computer away from home where this host answers and which key to expect. It holds no secret; signing in is what lets a computer in. Send it to a friend too, once their account is allowed as a friend. It starts with the outside addresses your network has for this host (Your Martlet network › Outside addresses); set them there so the computer keeps reaching the host after it joins."/>
                         <TextBlock Text="Outside address(es), separated by spaces"/>
-                        <TextBox x:Name="InviteAddressText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInInviteAddress"/>
+                        <TextBox x:Name="InviteAddressText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInInviteAddress"
+                                 presentation:InputHint.Text="home.example.net:9443 203.0.113.7:9443"/>
                         <Button Content="_Make invite" Click="MakeInvite_Click" HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInInviteMake"/>
                         <TextBox x:Name="InviteText" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"
                                  AutomationProperties.AutomationId="SignInInviteText"/>
