@@ -156,12 +156,13 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.81.0
+## 🆕 What's new in 0.82.0
 
-- 🎤 **Singing can use many more music models**: HeartMuLa, DiffRhythm, YuE and ACE-Step 1.5 XL on your own computers, or ElevenLabs Music, Mureka and fal.ai in the cloud.
-- 🗣️ **More ways to match Martlet's voice in a song**: Vevo2 and Seed-VC on your own computers, or the ElevenLabs Voice Changer.
-- 🎶 **Mureka can sing a song in Martlet's own voice.**
-- 📜 **From 0.80.2, every computer keeps a week of logs**, and your hosts come back by themselves after their computer restarts.
+- 🤝 **A new Share page** has everything about sharing in one place: your Martlet network, friends, API keys and the hosts friends share with you.
+- 🧠 **Share your language models**: give someone a key, and their apps use the models your hosts run through an OpenAI-compatible API. Your own conversations always come first, and your cloud models and keys are never shared.
+- 🌐 **One address for all your hosts**: the host behind it sends each request to the host that has the model, and Martlet gives you the Nginx or Caddy setup for your own domain.
+- ☁️ **Cloud providers and servers** on Devices lists every online service and server Martlet uses, and what for.
+- 🔎 **Martlet checks a fact it isn't sure of** with a quick look-up instead of guessing, tells you as soon as research finds your answer, and checks a report's sources.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
