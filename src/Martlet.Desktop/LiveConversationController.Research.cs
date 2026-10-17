@@ -304,7 +304,7 @@ internal sealed partial class LiveConversationController
         if (dataDirectory is null || Creations.Find(ResearchReports.KindName) is null) return null;
         var author = new CreationAuthor
         {
-            Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName,
+            Device = HostSetupCommands.SuggestedDeviceId(), Computer = Martlet.Core.Network.ThisComputer.Name,
             Persona = configured.Persona?.Name is { Length: > 0 } persona ? persona : null
         };
         try

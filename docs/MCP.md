@@ -2385,7 +2385,10 @@ join, each `desktops` and `hosts` entry (`id`, `name`, `removed`, `updatedBy`,
 `changedAt`; hosts also `outsideAddresses`, how many outside addresses the roster
 lists), `adopt` (hosts paired here on purpose, added to the network on
 the next sync), `ignored` (network hosts forgotten here) and `removedFrom`;
-`pairedHosts`, each pairing in `hosts.json` with how many outside addresses are
+`pairedHosts`, each pairing in `hosts.json` with the name its computer goes by
+(`computerName`: the name the host reported in `host-hardware.json`, with
+`computerNameFrom` `report`, else the name its host ID was made from,
+`host-id`: *Nahida-host* gives *Nahida*), how many outside addresses are
 kept with it and its `access` (`member` for your own hosts, `friend` for a host
 a friend shares with this PC: its engines only, never in this PC's network);
 and `friends`, what **Share › Friends** last read from each of your hosts
@@ -2414,7 +2417,10 @@ and `source`): `saved` in `device.json` (one per Windows user, so two Windows
 users on one PC never share one); `pairings` or `legacy` when the desktop hasn't
 saved one yet and keeps the ID its pairings use or an older Martlet's
 `desktop-<pc name>`; or `id` null with `new` when it picks a new
-`desktop-<pc name>-<6 of [a-z0-9]>` on its next start. `windowsLogin` is the
+`desktop-<pc name>-<6 of [a-z0-9]>` on its next start; and `computerName`, the
+name this computer gives itself and shows to your other computers (its host
+name in the case its owner set, such as *Miko*, not the capitalized NetBIOS
+name *MIKO*). `windowsLogin` is the
 Windows login the server runs under: `kind` (`microsoft`, `work` or `local`),
 `hasEmailHint` and `hasSid`, never the e-mail, the name or the SID. It never
 returns keys, signatures or host addresses and contacts nothing.
@@ -8225,9 +8231,13 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. Each `Node-<id>` also returns the device's
 card as text: its name, subtitle, status and what it runs (for example
-`IMOUTO, desktop-imouto · imouto-host. Connected. Runs: Martlet companion, Martlet host, Listening`
-or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking, Lip-sync`),
-so one snapshot shows the whole map. The map fits up to six devices on each
+`Imouto, imouto-host. Connected. Runs: Martlet companion, Martlet host, Listening`,
+`Nahida, Nahida-host. Connected. Runs: Martlet host` for a NAS that runs only a host service,
+or `Diva, diva-host. Connected. Runs: Martlet host PC, Speaking, Lip-sync`),
+so one snapshot shows the whole map. Every computer is named the same way on
+every system ([one device per computer](NETWORK.md#who-is-connected)): the
+name it gives itself, from its Martlet app or its host's machine report, with
+the host ID (or, without a host service, the device ID) as the subtitle. The map fits up to six devices on each
 side of This PC; the rest fold into a `Node-more:computers` (or
 `Node-more:services`) card, *44 more computers* with how many need attention,
 whose click opens the list.

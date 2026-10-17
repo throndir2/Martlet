@@ -698,6 +698,7 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
                 Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus, Text(machine, "cuda"))
             {
                 MartletVersion = version, Platform = Text(machine, "platform"), OsVersion = Text(machine, "os_version"),
+                ComputerName = Martlet.Core.Network.HostIds.CleanComputerName(Text(machine, "computer_name")),
                 Architecture = Text(machine, "architecture"),
                 Features = machine.TryGetProperty("features", out var features) && features.ValueKind == JsonValueKind.Array
                     ? features.EnumerateArray().Take(16).Where(f => f.ValueKind == JsonValueKind.String)

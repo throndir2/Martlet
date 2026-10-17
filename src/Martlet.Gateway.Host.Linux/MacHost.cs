@@ -32,9 +32,10 @@ internal sealed record MacHostLayout(string Home)
     internal string AgentPath(string label) => $"{Agents}/{label}.plist";
 }
 
-/// <summary>What the Mac reported about itself (sysctl and Metal), before it becomes machine.json.</summary>
+/// <summary>What the Mac reported about itself (sysctl and Metal), before it becomes machine.json. <paramref name="ComputerName"/>
+/// is the Mac's own host name (Adas-MacBook-Pro), which desktops show instead of its host ID.</summary>
 internal sealed record MacFacts(string OsVersion, string Kernel, string Processor, bool AppleSilicon, int Threads,
-    ulong MemoryBytes, string? GpuName, ulong? GpuWorkingSetBytes, bool OnBattery);
+    ulong MemoryBytes, string? GpuName, ulong? GpuWorkingSetBytes, bool OnBattery, string? ComputerName = null);
 
 /// <summary>The Mac host: the same protocol-2 gateway as Linux hosts, run by launchd while you are logged in, relaying
 /// to native Ollama (Metal on Apple silicon) and whisper.cpp's server (Metal or CPU) on this Mac's loopback. GPU workers
@@ -130,6 +131,7 @@ internal static class MacHost
         {
             ["collected_at"] = now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
             ["method"] = "native",
+            ["computer_name"] = Martlet.Core.Network.HostIds.CleanComputerName(facts.ComputerName),
             ["platform"] = "macos",
             ["os_version"] = Clean(facts.OsVersion),
             ["architecture"] = facts.AppleSilicon ? "arm64" : "x64",
@@ -232,14 +234,9 @@ internal static class MacHost
         return b.Length == 4 && (b[0] == 10 || b[0] == 172 && b[1] is >= 16 and <= 31 || b[0] == 192 && b[1] == 168);
     }
 
-    internal static string DefaultHostId(string machineName)
-    {
-        var text = new string(machineName.ToLowerInvariant().Where(c => c is not ('\'' or '\u2019'))
-            .Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' ? c : '-')
-            .ToArray()).Trim('-', '.', '_');
-        if (text.Length > 64) text = text[..64];
-        return HostConfiguration.Identifier(text) ? text : "mac-host";
-    }
+    /// <summary>A new Mac host's ID, by the one rule for every computer (<see cref="Martlet.Core.Network.HostIds.ForComputer"/>):
+    /// Adas-MacBook-Pro runs adas-macbook-pro-host. A Mac that hosts already keeps its ID.</summary>
+    internal static string DefaultHostId(string machineName) => Martlet.Core.Network.HostIds.ForComputer(machineName);
 
     internal static async Task<int> RunAsync(string[] args, TextWriter output, CancellationToken cancellation)
     {
@@ -632,7 +629,7 @@ internal static class MacNative
         var (gpu, working) = MetalDevice();
         return new(Text("kern.osproductversion") ?? "unknown", Text("kern.osrelease") ?? "unknown",
             Text("machdep.cpu.brand_string") ?? (arm ? "Apple silicon" : "Intel"), arm, (int)(Integer("hw.logicalcpu") ?? 0),
-            (ulong)(Integer("hw.memsize") ?? 0), gpu, working, OnBattery());
+            (ulong)(Integer("hw.memsize") ?? 0), gpu, working, OnBattery(), Martlet.Core.Network.ThisComputer.Name);
     }
 
     /// <summary>whisper.cpp's server from Homebrew (Apple silicon or Intel prefix) or on PATH.</summary>

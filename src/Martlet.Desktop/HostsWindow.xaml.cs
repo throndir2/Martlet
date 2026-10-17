@@ -174,7 +174,7 @@ public partial class HostsWindow : ThemedWindow
         nearbyRequest = request;
         SetNearbyEnabled(false);
         var device = DeviceIdText.Text.Trim();
-        var name = Environment.MachineName;
+        var name = Martlet.Core.Network.ThisComputer.Name;
         try
         {
             await pairings.CheckCanKeepAsync(request.Token);
@@ -422,7 +422,9 @@ public partial class HostsWindow : ThemedWindow
         if (!HostSetupCommands.IsPrivate(address))
             throw new InvalidOperationException($"Martlet couldn't find {ssh}'s private network address. Enter it under Its private network address.");
         AddressText.Text = address;
-        var target = new HostSetupTarget(method, ssh.ToString(), address, null, version);
+        // Its own name goes with it: a Docker-method host on Docker Desktop can't read it (Docker Desktop names its engine
+        // docker-desktop), and its host ID is made from it by the one rule every host uses.
+        var target = new HostSetupTarget(method, ssh.ToString(), address, null, version, HostSetupCommands.SafeComputerName(probe.Hostname));
         var sudo = HostRemote.NeedsSudo(method, probe);
         run.Status($"Checking whether {ssh} reaches the internet...");
         var supplied = await remote.SupplyIfOfflineAsync(target, HostVerb.Setup, pairings.DataDirectory, hostKey, run.Output, run.Token);
@@ -441,7 +443,7 @@ public partial class HostsWindow : ThemedWindow
                 (reason is null ? ". Check the output for details." : $": {reason}"));
         run.Status($"Pairing this PC with {ssh}...");
         var device = DeviceIdText.Text.Trim();
-        var (pairing, secret, key) = await remote.PairAsync(target, device, Environment.MachineName, sudo, hostKey, run.Output, run.Token);
+        var (pairing, secret, key) = await remote.PairAsync(target, device, Martlet.Core.Network.ThisComputer.Name, sudo, hostKey, run.Output, run.Token);
         var host = await SavePairingAsync(pairing, secret, method, ssh.ToString(), key, run.Token);
         run.Status($"Checking {host.HostId}'s hardware...");
         string check;
@@ -636,7 +638,7 @@ public partial class HostsWindow : ThemedWindow
             HostPairingInput.NormalizeCode(text);
             StatusText.Text = $"Pairing with the host at {new Uri(origin).Authority}...";
             await pairings.CheckCanKeepAsync(lifetime.Token);
-            (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(origin, text, device, Environment.MachineName, lifetime.Token);
+            (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(origin, text, device, Martlet.Core.Network.ThisComputer.Name, lifetime.Token);
         }
         PairingCodeBox.Clear();
         var shown = new Uri(pairing.Origin);
@@ -739,7 +741,7 @@ public partial class HostsWindow : ThemedWindow
                 var exit = await HostLocal.EngineAsync(target, ["setup"], run.Output, run.Token);
                 if (exit != 0) throw new InvalidOperationException($"Setup stopped (exit {exit}). Check the output for details.");
                 run.Status("Pairing this PC with the host...");
-                var (pairing, secret) = await HostLocal.PairAsync(target, deviceId, Environment.MachineName, run.Output, run.Token);
+                var (pairing, secret) = await HostLocal.PairAsync(target, deviceId, Martlet.Core.Network.ThisComputer.Name, run.Output, run.Token);
                 return (await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.ThisPcDocker, null, null, run.Token)).Host;
             }, run.Status, run.Output, run.Token);
             run.Status("Checking this PC's hardware...");

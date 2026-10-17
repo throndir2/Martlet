@@ -100,11 +100,11 @@ public partial class SignInJoinWindow : ThemedWindow
             (Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity) result;
             if (!provider.InBrowser)
                 result = await HostSignInClient.SignInWithPasswordAsync(invite, origin, provider.Id, UserText.Text.Trim(), PasswordText.Password,
-                    CodeText.Text.Trim(), deviceId, Environment.MachineName, lifetime.Token);
+                    CodeText.Text.Trim(), deviceId, Martlet.Core.Network.ThisComputer.Name, lifetime.Token);
             else
             {
                 StatusText.Text = $"Finish signing in with {provider.Name} in your browser, then come back here.";
-                result = await HostSignInClient.SignInInBrowserAsync(invite, origin, provider.Id, deviceId, Environment.MachineName,
+                result = await HostSignInClient.SignInInBrowserAsync(invite, origin, provider.Id, deviceId, Martlet.Core.Network.ThisComputer.Name,
                     SignInBrowser.Open, TimeSpan.FromMinutes(5), lifetime.Token, provider.RedirectPort);
                 Activate();
             }

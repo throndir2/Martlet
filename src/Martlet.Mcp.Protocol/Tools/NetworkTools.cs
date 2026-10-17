@@ -33,7 +33,8 @@ internal sealed partial class McpServer
         Tool("network_status", "Read this PC's Martlet network from a data directory (network.json and whether its network key " +
             "exists): member, waiting for approval (with the check number) or in no network; the network ID; each desktop and host " +
             "in the roster (ID, name, removed, who changed it last); hosts paired on purpose (adopt) and forgotten here (ignored); " +
-            "each paired host in hosts.json with how many outside addresses are kept with its pairing and its access (pairedHosts: " +
+            "each paired host in hosts.json with the name its computer goes by (computerName, from the host's machine report in " +
+            "host-hardware.json or else its host ID; computerNameFrom report or host-id), how many outside addresses are kept with its pairing and its access (pairedHosts: " +
             "\"member\" for your own, \"friend\" for a host a friend shares with this PC, used for its engines only and never in this " +
             "PC's network); and who your hosts are shared with as Share › Friends last read it (friends: per host, each friend's " +
             "label, provider and how many of their computers signed in, and how many asked; friends.json); and the household's sign-in " +
@@ -46,7 +47,8 @@ internal sealed partial class McpServer
             "(routerPort: host, router name, external and internal port, when it was opened and renewed, the last problem; " +
             "router-port.json, never an address). Also this PC's device " +
             "ID (device: id and source, saved in device.json, one per Windows user; source pairings or legacy is the ID the desktop " +
-            "keeps on its next start, new means it picks desktop-<pc name>-<6 characters>) and the Windows login it runs under " +
+            "keeps on its next start, new means it picks desktop-<pc name>-<6 characters>; computerName, the name this computer gives " +
+            "itself and shows to your other computers: its host name in the case its owner set, not the capitalized NetBIOS name) and the Windows login it runs under " +
             "(windowsLogin: kind microsoft, work or local, and whether it has an e-mail hint; never the e-mail, name or SID). " +
             "Read-only; contacts nothing and returns no keys, secrets or addresses.", new
         {
@@ -918,26 +920,36 @@ internal sealed partial class McpServer
     /// desktop will keep from its pairings ("pairings") or an older Martlet's desktop-&lt;pc name&gt; ("legacy"); null with "new"
     /// when the desktop picks a new desktop-&lt;pc name&gt;-&lt;6 of [a-z0-9]&gt; one on its next start.</summary>
     private static object DeviceSummary(string directory) => Martlet.Core.Network.DeviceIds.Peek(directory) is { } choice
-        ? new { id = (string?)choice.Id, source = choice.Source.ToString().ToLowerInvariant() }
-        : new { id = (string?)null, source = "new" };
+        ? new { id = (string?)choice.Id, source = choice.Source.ToString().ToLowerInvariant(), computerName = Martlet.Core.Network.ThisComputer.Name }
+        : new { id = (string?)null, source = "new", computerName = Martlet.Core.Network.ThisComputer.Name };
 
-    /// <summary>hosts.json in short: each paired host's ID, how many outside addresses are kept with its pairing and its access
-    /// ("friend" for a host a friend shares with this PC: its engines only, never in this PC's network; "member" for your own).</summary>
+    /// <summary>hosts.json in short: each paired host's ID, the name its computer goes by (computerName: the name the host reported
+    /// in host-hardware.json, computerNameFrom "report", else the one its host ID was made from, "host-id"), how many outside
+    /// addresses are kept with its pairing and its access ("friend" for a host a friend shares with this PC: its engines only,
+    /// never in this PC's network; "member" for your own).</summary>
     private static object? PairedHostsSummary(string directory)
     {
         try
         {
             var path = Path.Combine(directory, "hosts.json");
             if (!File.Exists(path)) return Array.Empty<object>();
+            var hardware = new Martlet.Core.Installation.HostHardwareStore(directory).Load();
             using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            return document.RootElement.GetProperty("hosts").EnumerateArray().Select(h => new
+            return document.RootElement.GetProperty("hosts").EnumerateArray().Select(h =>
             {
-                hostId = h.GetProperty("pairing").GetProperty("hostId").GetString(),
-                outsideAddresses = h.TryGetProperty("outsideAddresses", out var outside) && outside.ValueKind == JsonValueKind.Array
-                    ? outside.GetArrayLength() : 0,
-                access = IsSharedHost(h) ? "friend" : "member",
-                // Found at another home address than its paired one (its computer got a new address); the address isn't returned.
-                movedOnHomeNetwork = h.TryGetProperty("movedTo", out var moved) && moved.ValueKind == JsonValueKind.String
+                var hostId = h.GetProperty("pairing").GetProperty("hostId").GetString() ?? "";
+                var reported = hardware.FirstOrDefault(r => r.HostId == hostId)?.ComputerName;
+                return new
+                {
+                    hostId,
+                    computerName = Martlet.Core.Network.HostIds.ComputerName(hostId, reported),
+                    computerNameFrom = reported is null ? "host-id" : "report",
+                    outsideAddresses = h.TryGetProperty("outsideAddresses", out var outside) && outside.ValueKind == JsonValueKind.Array
+                        ? outside.GetArrayLength() : 0,
+                    access = IsSharedHost(h) ? "friend" : "member",
+                    // Found at another home address than its paired one (its computer got a new address); the address isn't returned.
+                    movedOnHomeNetwork = h.TryGetProperty("movedTo", out var moved) && moved.ValueKind == JsonValueKind.String
+                };
             }).ToArray();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)

@@ -52,9 +52,10 @@ public sealed class MacHostTests
     [Fact]
     public void Machine_report_says_macos_with_chip_unified_memory_and_working_set()
     {
-        var json = MacHost.MachineJson(M2Pro, new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+        var json = MacHost.MachineJson(M2Pro with { ComputerName = "Adas-MacBook-Pro" }, new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
         var report = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(json));
         Assert.NotNull(report);
+        Assert.Equal("Adas-MacBook-Pro", report.ComputerName);
         Assert.Equal("native", report.Method);
         Assert.Equal("macos", report.Platform);
         Assert.Equal("arm64", report.Architecture);
@@ -69,6 +70,7 @@ public sealed class MacHostTests
 
         var intel = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(MacHost.MachineJson(Intel, DateTimeOffset.UtcNow)));
         Assert.NotNull(intel);
+        Assert.Null(intel.ComputerName);
         Assert.Equal("x64", intel.Architecture);
         Assert.False(intel.UnifiedMemory);
         Assert.Equal(4, intel.GpuWorkingSetGb);
@@ -109,8 +111,9 @@ public sealed class MacHostTests
     [Fact]
     public void Host_id_and_address_defaults()
     {
-        Assert.Equal("adas-macbook-pro", MacHost.DefaultHostId("Ada's MacBook Pro"));
-        Assert.Equal("mac-host", MacHost.DefaultHostId("---"));
+        Assert.Equal("adas-macbook-pro-host", MacHost.DefaultHostId("Ada's MacBook Pro"));
+        Assert.Equal("adas-macbook-pro-host", MacHost.DefaultHostId("Adas-MacBook-Pro"));
+        Assert.Equal("martlet-host", MacHost.DefaultHostId("---"));
         Assert.True(MacHost.PrivateV4(System.Net.IPAddress.Parse("192.168.1.30")));
         Assert.True(MacHost.PrivateV4(System.Net.IPAddress.Parse("172.20.0.4")));
         Assert.False(MacHost.PrivateV4(System.Net.IPAddress.Parse("8.8.8.8")));

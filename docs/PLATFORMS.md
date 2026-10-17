@@ -260,6 +260,7 @@ them count as Linux.
 | Field | Values | Sent by |
 | --- | --- | --- |
 | `method` | `docker`, `native`, `app` (the host runs inside the Martlet app on a Mac, phone or tablet) | every host |
+| `computer_name` | the name the computer gives itself, for example `Nahida` (1 to 63 printable characters; desktops show it instead of the host ID, the same way for every system, and drop a name they can't show) | `martlet-host` and the Mac host |
 | `platform` | `linux`, `windows`, `macos`, `ios`, `android` (what the roles run on) | `martlet-host` sends `linux`; the Mac host sends `macos`; app hosts send their own |
 | `os_version` | for example `26.1`, `14` | app hosts |
 | `architecture` | `x64`, `arm64` | every host |

@@ -196,7 +196,11 @@ container and checks all of the above ([MCP](../../docs/MCP.md#local-mcp-control
 ### What the host tells Martlet
 
 `setup`, `pair`, `add`, `remove` and `machine` collect what the machine is like
-into `machine.json` beside `host.json`: OS and kernel, the platform its roles run
+into `machine.json` beside `host.json`: the name the computer gives itself
+(`computer_name`, such as `Nahida`: natively `hostname -s`; with Docker the
+Docker host's name, or on Docker Desktop, which names its engine
+`docker-desktop`, the name Martlet passed at setup as `MARTLET_COMPUTER_NAME` and
+`setup` keeps in `host.env`), OS and kernel, the platform its roles run
 on (`linux`) and its architecture (`x64` or `arm64`), CPU and thread count,
 memory, container runtime, whether containers can use NVIDIA GPUs, the newest
 CUDA version the NVIDIA driver supports, and each GPU (name, vendor, memory,

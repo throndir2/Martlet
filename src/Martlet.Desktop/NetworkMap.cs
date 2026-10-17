@@ -2,6 +2,7 @@ using System.Net;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
+using Martlet.Core.Network;
 using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
 
@@ -110,7 +111,12 @@ internal enum ComputerStanding { Member, Asking, Outside, Friend }
 /// to become, while it hasn't switched yet.</summary>
 internal sealed record MartletComputer(string DeviceId, string Name, ComputerStanding Standing, string? Activity, bool Active,
     string? CheckNumber = null, string? Through = null, DeviceRole? Role = null, string? HostId = null,
-    DeviceRole? Asked = null, string? AskedBy = null, DateTimeOffset? AskedAt = null);
+    DeviceRole? Asked = null, string? AskedBy = null, DateTimeOffset? AskedAt = null)
+{
+    /// <summary>The host service Martlet runs on it: the one it names, or the one Martlet names after it (DIVA runs diva-host)
+    /// while it hasn't said (an older Martlet).</summary>
+    internal string LikelyHostId => HostId ?? HostSetupCommands.SuggestedHostId(Name);
+}
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -199,6 +205,13 @@ internal static class NetworkMap
         avatar?.LipSync == AvatarLipSync.Loudness ? LipSyncHandler.Loudness
         : avatar?.RemoteHost is not null && avatar.LipSync == AvatarLipSync.Auto ? LipSyncHandler.Host
         : LipSyncHandler.ThisPc;
+
+    /// <summary>The name a host's computer goes by, whatever system it runs: the name the Martlet app on it says (DIVA), else the
+    /// one the host reported for its computer (Nahida), else the one its host ID was made from (<see cref="HostIds.ComputerName"/>).
+    /// The map, Home's presence notices and the recommended setup all name computers this way.</summary>
+    internal static string ComputerName(string hostId, IEnumerable<MartletComputer>? computers, IEnumerable<HostHardware>? hardware) =>
+        computers?.FirstOrDefault(c => c.Standing != ComputerStanding.Friend && c.LikelyHostId == hostId)?.Name ??
+        HostIds.ComputerName(hostId, hardware?.FirstOrDefault(h => h.HostId == hostId)?.ComputerName);
 
     /// <summary>The paired host whose Ollama answers conversations (the LLM route is a gateway Ollama route), or null.</summary>
     internal static string? ThinkingHost(AppSettings? settings) => JobHost(settings, SetupRole.Llm);
@@ -333,6 +346,13 @@ internal static class NetworkMap
             order.Add(created);
             return created;
         }
+        // Every host is a computer: named after it (Nahida, whatever system it runs), with its host ID below (short enough for a
+        // narrow card; its address and the rest are in its details). A host whose name is its host ID (gpu-box) shows its address.
+        Draft HostNode(string hostId, string? address = null)
+        {
+            var title = ComputerName(hostId, inputs.Computers, inputs.HostHardware);
+            return Node("host:" + hostId, NodeKind.Host, title, title == hostId && address is not null ? address : hostId, ComputerGlyph);
+        }
 
         if (inputs.Role == DeviceRole.Host)
         {
@@ -355,7 +375,7 @@ internal static class NetworkMap
             var paired = Hosts(inputs).FirstOrDefault(h => h.HostId == hostId);
             var address = paired?.Address ?? (shared?.Node(hostId)?.Origin is { } origin && Uri.TryCreate(origin, UriKind.Absolute, out var uri) ? uri.Host : null);
             if (address is not null && (address == machine.LanAddress || IsLoopback(address))) return thisPc;
-            var draft = Node("host:" + hostId, NodeKind.Host, hostId, address ?? hostId, ComputerGlyph);
+            var draft = HostNode(hostId, address);
             if (paired is null && draft.Facts.Count == 0)
             {
                 if (shared?.Node(hostId)?.Origin is { } planned) draft.Facts.Add(new("Address", planned));
@@ -403,7 +423,7 @@ internal static class NetworkMap
                     var host = new Uri(gateway.Origin).Host;
                     target = host == machine.LanAddress || IsLoopback(host)
                         ? thisPc
-                        : Node("host:" + gateway.HostId, NodeKind.Host, gateway.HostId, host, ComputerGlyph);
+                        : HostNode(gateway.HostId, host);
                     role = role with { Detail = route.RouteType switch
                     {
                         SetupRouteType.GatewayOllama => "Conversation model: ",
@@ -418,9 +438,15 @@ internal static class NetworkMap
                     }
                     break;
                 case SetupRouteType.ChatCompletions when Uri.TryCreate(route.Origin, UriKind.Absolute, out var endpoint):
-                    if (IsLoopback(endpoint.Host))
+                    // A server on one of your computers shows on that computer, not as a device of its own.
+                    if (IsLoopback(endpoint.Host) || endpoint.Host == machine.LanAddress)
                     {
                         target = thisPc;
+                        role = role with { Detail = "Local server: " + RouteDetail(route) };
+                    }
+                    else if (Hosts(inputs).FirstOrDefault(h => h.Address == endpoint.Host) is { } server)
+                    {
+                        target = HostNode(server.HostId, server.Address);
                         role = role with { Detail = "Local server: " + RouteDetail(route) };
                     }
                     else if (IPAddress.TryParse(endpoint.Host, out var lan) && HostSetupCommands.IsPrivate(lan))
@@ -488,7 +514,7 @@ internal static class NetworkMap
             var host = paired.Address;
             var local = host == machine.LanAddress || IsLoopback(host);
             if (local) ownHostId = paired.HostId;
-            var target = local ? thisPc : Node("host:" + paired.HostId, NodeKind.Host, paired.HostId, host, ComputerGlyph);
+            var target = local ? thisPc : HostNode(paired.HostId, host);
             target.PairedHostId = paired.HostId;
             var check = inputs.HostChecks.GetValueOrDefault(paired.HostId);
             // A host PC reads who does what from the shared plan; a companion PC from what it uses itself.
@@ -571,6 +597,8 @@ internal static class NetworkMap
                 {
                     target.Facts.Insert(0, new("Address", paired.Pairing.Origin));
                 }
+                if (target.Facts.All(f => f.Label != "Host"))
+                    target.Facts.Insert(target.Facts.FindIndex(f => f.Label == "Address") + 1, new("Host", paired.HostId));
                 target.Facts.Add(new("Connection", paired.Reach));
                 AddHardware(target, inputs, paired.HostId);
                 if (check is null) target.Worsen(NodeHealth.Unknown, "Paired, not checked yet");
@@ -724,13 +752,21 @@ internal static class NetworkMap
         }
 
         // Your other Martlet computers, so every one of them shows the same computers: one device per computer. One that runs a
-        // host service is that host's device too (the host it names, or the one Martlet names after the PC: DIVA runs diva-host).
+        // host service is that host's device too: the host it names, or the one Martlet names after the PC (DIVA runs diva-host),
+        // or, while it hasn't said, the host that reports its computer's name.
+        var claimed = new HashSet<string>(StringComparer.Ordinal);
         foreach (var computer in inputs.Computers ?? [])
         {
             var friend = computer.Standing == ComputerStanding.Friend;
-            var hostId = computer.HostId ?? HostSetupCommands.SuggestedHostId(computer.Name);
+            var hostId = computer.LikelyHostId;
             // A friend's computer is never one of your hosts, whatever it is called.
             var hosting = friend ? null : nodes.GetValueOrDefault("host:" + hostId);
+            if (hosting is null && !friend && computer.HostId is null &&
+                inputs.HostHardware?.FirstOrDefault(h => h.ComputerName is { } named &&
+                    named.Equals(computer.Name, StringComparison.OrdinalIgnoreCase) && nodes.ContainsKey("host:" + h.HostId) &&
+                    !claimed.Contains(h.HostId)) is { } same)
+                (hostId, hosting) = (same.HostId, nodes["host:" + same.HostId]);
+            if (hosting is not null) claimed.Add(hostId);
             var node = hosting ?? Node("pc:" + computer.DeviceId, NodeKind.Computer, computer.Name, computer.DeviceId, ThisPcGlyph);
             var where = computer.Activity is { } activity ? " " + activity : "";
             var standing = computer.Standing switch
@@ -761,22 +797,27 @@ internal static class NetworkMap
             if (computer.Standing is not (ComputerStanding.Asking or ComputerStanding.Friend) &&
                 (computer.Role == DeviceRole.Companion || computer.Role is null && hosting is null))
                 node.Roles.AddRange(onEachPc);
-            if (hosting is not null)
-            {
-                hosting.Title = computer.Name;
-                hosting.Subtitle = $"{computer.DeviceId} \u00b7 {hostId}";
-                hosting.Facts.Insert(0, new("Computer", $"{computer.Name} ({computer.DeviceId})"));
-                if (computer.Standing == ComputerStanding.Asking) hosting.Worsen(NodeHealth.Attention, "Asks to join");
-                continue;
-            }
-            node.Facts.Add(new("Device", computer.DeviceId));
-            node.Facts.Add(new("Martlet network", computer.Standing switch
+            var network = new NodeFact("Martlet network", computer.Standing switch
             {
                 ComputerStanding.Member => "Member",
                 ComputerStanding.Asking => $"Asks to join (check number {computer.CheckNumber})",
                 ComputerStanding.Friend => "Never: a friend's computer",
                 _ => "Not a member"
-            }));
+            });
+            if (hosting is not null)
+            {
+                hosting.Title = computer.Name;
+                // Its host ID fits a narrow card; the device ID is in its Computer detail.
+                hosting.Subtitle = hostId;
+                // The host's own report may name the computer too; the Martlet app on it says it with its device ID.
+                hosting.Facts.RemoveAll(f => f.Label == "Computer");
+                hosting.Facts.Insert(0, new("Computer", $"{computer.Name} ({computer.DeviceId})"));
+                hosting.Facts.Add(network);
+                if (computer.Standing == ComputerStanding.Asking) hosting.Worsen(NodeHealth.Attention, "Asks to join");
+                continue;
+            }
+            node.Facts.Add(new("Device", computer.DeviceId));
+            node.Facts.Add(network);
             if (computer.Standing == ComputerStanding.Asking) node.Worsen(NodeHealth.Attention, "Asks to join");
             else if (computer.Standing == ComputerStanding.Outside) node.Worsen(NodeHealth.Unknown, "Not in your network");
             else if (computer.Standing == ComputerStanding.Friend) node.HealthText = computer.Active ? "A friend's, active now" : "A friend's";
@@ -810,7 +851,7 @@ internal static class NetworkMap
                     // A host a friend shares isn't one of your hosts (drawn above): it shows with the lip-sync it does for this PC.
                     if (inputs.SharedHosts?.FirstOrDefault(h => h.HostId == inputs.Avatar.RemoteHost.HostId) is { } friendsLipSync)
                     {
-                        var face = Node("host:" + friendsLipSync.HostId, NodeKind.Host, friendsLipSync.HostId, friendsLipSync.Address, ComputerGlyph);
+                        var face = HostNode(friendsLipSync.HostId, friendsLipSync.Address);
                         face.Roles.Add(new("Lip-sync", "Lip-sync", "Handles lip-sync for this PC.", DeviceComponent.LipSync));
                     }
                     break;
@@ -823,7 +864,7 @@ internal static class NetworkMap
         }
 
         thisPc.Facts.Add(new("Computer", machine.Name));
-        thisPc.Facts.Add(new("Windows", machine.Windows));
+        thisPc.Facts.Add(new("System", machine.Windows));
         if (machine.Processor is { } cpu) thisPc.Facts.Add(new("Processor", $"{cpu} ({machine.Threads} threads)"));
         thisPc.Facts.Add(new("Processor type", machine.ProcessorType.Describe()));
         if (machine.MemoryGb is { } ram) thisPc.Facts.Add(new("Memory", $"{ram:0} GB"));
@@ -875,11 +916,15 @@ internal static class NetworkMap
         return order.Select(draft => draft.Build()).ToArray();
     }
 
-    /// <summary>Adds what the host last reported about itself (saved on pairing and on Check connection).</summary>
+    /// <summary>Adds what the host last reported about itself (saved on pairing and on Check connection), starting with the
+    /// name its computer gives itself.</summary>
     private static void AddHardware(Draft target, NetworkInputs inputs, string hostId)
     {
+        var reported = inputs.HostHardware?.FirstOrDefault(h => h.HostId == hostId);
+        if (reported?.ComputerName is { } computer && target.Facts.All(f => f.Label != "Computer"))
+            target.Facts.Insert(0, new("Computer", computer));
         if (target.Facts.Any(f => f.Label is "Hardware" or "Graphics")) return;
-        if (inputs.HostHardware?.FirstOrDefault(h => h.HostId == hostId) is not { } report)
+        if (reported is not { } report)
         {
             target.Facts.Add(new("Hardware", "Not reported yet. Use Check connection."));
             return;

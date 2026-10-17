@@ -575,6 +575,7 @@ public partial class MainWindow
 
         // Paired computers: not answering or on an older Martlet (when no job problem above already names them).
         var hardware = HardwareStore?.Load() ?? [];
+        var computers = OtherComputers();
         var namedHosts = coverage.Where(c => c.IsProblem && c.HostId is not null).Select(c => c.HostId!).ToHashSet(StringComparer.Ordinal);
         var localHostId = localHost?.HostId;
         var hostsAnswering = 0;
@@ -593,16 +594,17 @@ public partial class MainWindow
             if (outdated) hostsOld++;
             if (reachable == false) hostsDown++;
             if (namedHosts.Contains(id)) continue;
+            var name = NetworkMap.ComputerName(id, computers, hardware);
             HealthFix Show() => new("show", "Show on the map", () => ShowDevice("host:" + id), Passive: true);
             // A host device sync checks waits for the presence notice below (one missed check says nothing).
             if (reachable == false && !PresenceCovers(id))
-                Add("host-" + id, HealthLevel.Warning, $"{id} isn't answering",
+                Add("host-" + id, HealthLevel.Warning, $"{name} isn't answering",
                     "It is not handling any task right now. Check that it is on and on your network.",
-                    [new("check", $"Check {id} now", () => CheckHostsAsync([host]).Forget()), Show()]);
+                    [new("check", $"Check {name} now", () => CheckHostsAsync([host]).Forget()), Show()]);
             else if (outdated)
-                Add("host-update-" + id, HealthLevel.Warning, $"{id} runs an older Martlet",
+                Add("host-update-" + id, HealthLevel.Warning, $"{name} runs an older Martlet",
                     $"It runs {reported ?? "an older version"}. Update it to Martlet {Version}.",
-                    [new("update", $"Update {id}", () => RunNodeAction(NodeAction.UpdateHost, id)), Show()]);
+                    [new("update", $"Update {name}", () => RunNodeAction(NodeAction.UpdateHost, id)), Show()]);
         }
         // Your other computers going away and coming back (MainWindow.NodePresence.cs).
         foreach (var issue in PresenceIssues()) Add(issue.Id, issue.Level, issue.Title, issue.Detail, issue.Fixes);
@@ -744,10 +746,10 @@ public partial class MainWindow
         CoverageFix.UseFallback when job.Job == ClusterJobs.LipSync =>
             job.OwnHost ? "Do lip-sync without the host service" : "Take lip-sync back to this PC",
         CoverageFix.UseFallback => $"Use {job.Fallback} instead",
-        CoverageFix.CheckHost => job.OwnHost ? "Check this PC's host service" : $"Check {job.HostId} now",
+        CoverageFix.CheckHost => job.OwnHost ? "Check this PC's host service" : $"Check {job.HostName} now",
         CoverageFix.RepairHostService => OwnHostRepair()?.Label ?? "Fix this PC's host service",
         CoverageFix.OpenSetup => $"Change {(job.Job == ClusterJobs.Speaking ? "voice" : job.Job)}",
-        CoverageFix.InstallRole => $"Install {HostRoles.Get(ClusterSync.RoleKind(job.Job)).Name} on {(job.OwnHost ? "this PC" : job.HostId)}",
+        CoverageFix.InstallRole => $"Install {HostRoles.Get(ClusterSync.RoleKind(job.Job)).Name} on {(job.OwnHost ? "this PC" : job.HostName)}",
         _ => "Open Devices"
     };
 
