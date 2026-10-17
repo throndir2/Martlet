@@ -156,12 +156,13 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.88.0
+## 🆕 What's new in 0.88.1
 
-- 💬 **Callbacks like a friend**: Martlet keeps a short list of what's worth bringing back (what you're in the middle of, running jokes, things you said) and calls back to it later.
-- 🤫 **Quiet moments**: when your chat goes quiet and you're still at the PC, Martlet may pick it back up with something from earlier. Never on calls or at night.
-- 🎭 **More fun to talk to**: Martlet reacts to your words, adds a take, a tease or a callback, and plays along with running jokes. It remembers the jokes you enjoyed for next time.
-- ❓ **Unanswered question is on**: Martlet follows up once, softly, when you didn't answer its question.
+- 🌐 **One network on every computer**: a host you add on one computer now reaches all your other computers. They find it on your home network and pair with it by themselves.
+- 🔎 **Says when computers differ**: the Share and Devices pages say which computer is missing which host and why.
+- 🗺️ **A Devices map for many computers**: your computers sit all around This PC, cards never overlap, and the list shows each computer on one compact row.
+- 🏷️ **Real computer names**: every computer shows by the name it gives itself, such as Miko or Nahida, on Windows, Linux, a NAS and Mac alike.
+- 🗄️ **NAS hosts in Docker only**: Martlet sets up a NAS only in Docker and tells you which NAS app installs Docker.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
