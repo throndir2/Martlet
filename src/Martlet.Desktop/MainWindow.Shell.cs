@@ -1151,26 +1151,13 @@ public partial class MainWindow
 
     private void MapHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Narrow windows scale the whole map down rather than squeezing devices into each other.
-        var available = MapHost.ActualWidth - 18;
-        if (available <= 0) return;
-        MapCanvas.Width = Math.Max(available, 760);
-        MapCanvas.Height = Math.Max((MapHost.ActualHeight - 18) * MapCanvas.Width / available, 300);
-        LayoutMap();
+        if (e.WidthChanged) LayoutMap();
     }
 
-    /// <summary>The map takes the top of the page, a little under half its height (taller when a side has many devices);
-    /// the selected device's details follow.</summary>
-    private void DevicesPage_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        SizeMap();
-        SizeDeviceList();
-    }
+    /// <summary>The map takes only the height its devices need; the selected device's details follow.</summary>
+    private void DevicesPage_SizeChanged(object sender, SizeChangedEventArgs e) => SizeDeviceList();
 
-    private int mapRows = 1;
-
-    private void SizeMap() =>
-        MapHost.Height = Math.Max(Math.Clamp(DevicesPage.ActualHeight * 0.42, 300, 400), mapRows * 104 + 40);
+    private bool compactMap;
 
     private void RenderMap()
     {
@@ -1201,6 +1188,7 @@ public partial class MainWindow
             return;
         }
         nodes = DeviceOverview.MapNodes(nodes, selectedNode);
+        compactMap = nodes.Count - 1 >= MapLayout.CompactFrom;
         mapGlow = new Ellipse { Width = 210, Height = 210, Opacity = 0.55, IsHitTestVisible = false };
         mapGlow.SetResourceReference(Shape.FillProperty, "GlowBrush");
         MapCanvas.Children.Add(mapGlow);
@@ -1228,9 +1216,6 @@ public partial class MainWindow
             else mapElements.Insert(0, new(node, card, null, null, ring));
             Motion.Enter(card, dy: 0, milliseconds: 360, delay: index++ * 70);
         }
-        var (left, right) = MapSides();
-        mapRows = Math.Max(1, Math.Max(left.Count, right.Count));
-        SizeMap();
         LayoutMap();
         foreach (var element in mapElements)
         {
@@ -1241,62 +1226,62 @@ public partial class MainWindow
         SelectNode(selectedNode, animate: false);
     }
 
-    /// <summary>Cloud services (and a job nobody does yet) sit left of This PC and your computers right; Add a computer
-    /// joins the side with fewer devices.</summary>
-    private (List<MapElement> Left, List<MapElement> Right) MapSides()
-    {
-        var left = mapElements.Where(m => m.Node.Kind is NodeKind.Cloud or NodeKind.Missing).ToList();
-        var right = mapElements.Where(m => m.Node.Kind is NodeKind.Host or NodeKind.Computer).ToList();
-        (left.Count < right.Count ? left : right).AddRange(mapElements.Where(m => m.Node.Kind == NodeKind.Add));
-        return (left, right);
-    }
-
+    /// <summary>The devices around This PC in the order they go clockwise on the map: your computers, Add a computer, then cloud
+    /// services (and a job nobody does yet), so the computers start on the right (or at the top) and the services end on the left.</summary>
+    private List<MapElement> MapOrder() =>
+    [
+        .. mapElements.Where(m => m.Node.Kind is NodeKind.Host or NodeKind.Computer),
+        .. mapElements.Where(m => m.Node.Kind == NodeKind.Add),
+        .. mapElements.Where(m => m.Node.Kind is NodeKind.Cloud or NodeKind.Missing)
+    ];
     private void LayoutMap()
     {
         if (mapElements.Count == 0 || mapGlow is null) return;
-        var (left, right) = MapSides();
-        double width = MapCanvas.Width, height = MapCanvas.Height, cy = height / 2;
-        // This PC moves toward the empty side, so a map with devices on one side only stays balanced.
-        var cx = left.Count == 0 ? width * 0.36 : right.Count == 0 ? width * 0.64 : width / 2;
-        var positions = new Dictionary<string, Point>(StringComparer.Ordinal) { ["this-pc"] = new(cx, cy) };
-        void Place(List<MapElement> side, int direction)
+        // Narrow windows scale the whole map down rather than squeezing devices into each other.
+        var available = MapHost.ActualWidth - 18;
+        if (available <= 0) available = 900;
+        var width = Math.Max(available, 760);
+        var order = MapOrder();
+        Size card = default, hub = default;
+        foreach (var element in mapElements)
         {
-            var reach = Math.Min((direction < 0 ? cx : width - cx) - 112, 380);
-            var spacing = side.Count <= 1 ? 0 : Math.Min(112, (height - 96) / (side.Count - 1));
-            for (var i = 0; i < side.Count; i++)
-            {
-                // A gentle arc: the outer devices of a column lean in toward This PC.
-                var t = side.Count == 1 ? 0 : 2.0 * i / (side.Count - 1) - 1;
-                positions[side[i].Node.Id] = new(cx + direction * (reach - 40 * t * t), cy + t * spacing * (side.Count - 1) / 2);
-            }
+            element.Card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var size = element.Card.DesiredSize;
+            if (element.Node.Kind == NodeKind.ThisPc) hub = size;
+            else card = new(Math.Max(card.Width, size.Width), Math.Max(card.Height, size.Height));
         }
-        Place(left, -1);
-        Place(right, 1);
-        var hubWidth = mapElements.FirstOrDefault(m => m.Node.Kind == NodeKind.ThisPc)?.Card is { } hub ? hub.Width / 2 : 0;
+        var layout = MapLayout.Place(order.Count, width, card, hub);
+        MapCanvas.Width = width;
+        MapCanvas.Height = layout.Height;
+        MapHost.Height = layout.Height * available / width + 18;
+        double cx = width / 2, cy = layout.Height / 2;
+        var positions = new Dictionary<string, Point>(StringComparer.Ordinal) { ["this-pc"] = new(cx, cy) };
+        for (var i = 0; i < order.Count; i++) positions[order[i].Node.Id] = new(cx + layout.Points[i].X, cy + layout.Points[i].Y);
         foreach (var element in mapElements)
         {
             if (!positions.TryGetValue(element.Node.Id, out var point)) continue;
-            element.Card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var size = element.Card.DesiredSize;
             Canvas.SetLeft(element.Card, point.X - size.Width / 2);
             Canvas.SetTop(element.Card, point.Y - size.Height / 2);
             if (element.Track is null && element.Flow is null) continue;
-            // Edge to edge, so a connection never runs through a see-through card.
-            var direction = Math.Sign(point.X - cx);
-            var connector = Connector(new(cx + direction * hubWidth, cy), new(point.X - direction * size.Width / 2, point.Y));
+            // From This PC's edge to the nearest point of the card, so a connection never runs through a see-through card.
+            var end = MapLayout.Nearest(point, size, new(cx, cy));
+            var connector = Connector(MapLayout.Edge(new(cx, cy), hub, end), end);
             if (element.Track is { } track) track.Data = connector;
             if (element.Flow is { } flow) flow.Data = connector;
         }
         Canvas.SetLeft(mapGlow, cx - mapGlow.Width / 2);
         Canvas.SetTop(mapGlow, cy - mapGlow.Height / 2);
+        DevicesSummary.SetValue(AutomationProperties.HelpTextProperty,
+            $"Map: {order.Count} around This PC in {layout.Shape}, " +
+            $"{(compactMap ? "compact" : "full")} cards, {width:0} x {layout.Height:0}.");
     }
 
-    /// <summary>A soft S-curve from This PC to a device.</summary>
+    /// <summary>A straight line from This PC to a device: lines from one center never cross.</summary>
     private static PathGeometry Connector(Point from, Point to)
     {
-        var middle = (from.X + to.X) / 2;
         var figure = new PathFigure { StartPoint = from };
-        figure.Segments.Add(new BezierSegment(new Point(middle, from.Y), new Point(middle, to.Y), to, true));
+        figure.Segments.Add(new LineSegment(to, true));
         return new PathGeometry([figure]);
     }
 
@@ -1312,9 +1297,15 @@ public partial class MainWindow
         if (node.Kind == NodeKind.Add) status.Visibility = Visibility.Collapsed;
         DockPanel.SetDock(status, Dock.Right);
         header.Children.Add(status);
-        var bubble = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(18), Margin = new Thickness(0, 0, 10, 0) };
+        // A map with many devices draws smaller cards: what a device runs takes the place of its subtitle (in its tooltip then).
+        var compact = compactMap && node.Kind != NodeKind.ThisPc && !deviceListShown;
+        var bubbleSize = compact ? 28 : 36;
+        var bubble = new Border
+        {
+            Width = bubbleSize, Height = bubbleSize, CornerRadius = new CornerRadius(bubbleSize / 2), Margin = new Thickness(0, 0, compact ? 8 : 10, 0)
+        };
         bubble.SetResourceReference(Border.BackgroundProperty, node.Kind == NodeKind.ThisPc ? "AccentBrush" : "SoftBrush");
-        var glyph = Glyph(node.Glyph, 17, default);
+        var glyph = Glyph(node.Glyph, compact ? 14 : 17, default);
         glyph.SetResourceReference(TextBlock.ForegroundProperty, node.Kind == NodeKind.ThisPc ? "OnAccentBrush" : "AccentBrush");
         bubble.Child = glyph;
         DockPanel.SetDock(bubble, Dock.Left);
@@ -1323,23 +1314,31 @@ public partial class MainWindow
         names.Children.Add(new TextBlock { Text = node.Title, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis });
         var subtitle = new TextBlock { Text = node.Subtitle, FontSize = 12, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
         subtitle.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-        names.Children.Add(subtitle);
+        if (!compact) names.Children.Add(subtitle);
         header.Children.Add(names);
 
         var content = new StackPanel();
         content.Children.Add(header);
-        var chips = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        Panel chips = compact
+            ? new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, -2, 0, 0) }
+            : new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
         var roles = node.Roles.Where(r => r.Component != DeviceComponent.App).Select(r => r.Chip).Distinct().ToList();
-        foreach (var chip in roles.Take(3).Append(roles.Count > 3 ? $"+{roles.Count - 3}" : null).OfType<string>())
+        var shown = compact ? 2 : 3;
+        foreach (var chip in roles.Take(shown).Append(roles.Count > shown ? $"+{roles.Count - shown}" : null).OfType<string>())
         {
             var border = new Border { Child = new TextBlock { Text = chip, FontSize = 11, TextWrapping = TextWrapping.NoWrap } };
             border.SetResourceReference(StyleProperty, "Chip");
             chips.Children.Add(border);
         }
-        if (chips.Children.Count > 0) content.Children.Add(chips);
+        if (chips.Children.Count > 0) (compact ? names : content).Children.Add(chips);
 
-        var card = new Button { Content = content, Width = node.Kind == NodeKind.ThisPc ? 220 : 204 };
+        var card = new Button { Content = content, Width = node.Kind == NodeKind.ThisPc ? 220 : compact ? 176 : 204 };
         card.SetResourceReference(StyleProperty, "NodeCard");
+        if (compact)
+        {
+            card.Padding = new Thickness(10, 7, 10, 7);
+            if (node.Subtitle.Length > 0) card.ToolTip = node.Subtitle;
+        }
         AutomationProperties.SetAutomationId(card, "Node-" + node.Id);
         AutomationProperties.SetName(card, node.Kind == NodeKind.Add ? $"{node.Title}: {node.Subtitle}"
             : DeviceOverview.IsMore(node.Id) ? $"{node.Title}: {node.HealthText}. Opens the list of every device."

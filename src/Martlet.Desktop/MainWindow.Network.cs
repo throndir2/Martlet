@@ -516,6 +516,7 @@ public partial class MainWindow
             computers.Add(device.Friend
                 ? Computer(device.DeviceId, device.DisplayName, ComputerStanding.Friend, through: string.Join(", ", FriendHosts(device.DeviceId)))
                 : Computer(device.DeviceId, device.DisplayName, ComputerStanding.Outside));
+        computers.AddRange(SimulatedComputers.All);
         return computers;
     }
 

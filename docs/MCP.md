@@ -8255,7 +8255,16 @@ PC, then those needing attention, then by name) with `DeviceFilter-all`,
 its count) and a `DeviceSearch` box (`ui_set_text`, `--allow-ui-effects`).
 `DevicesSummary` returns *53 devices, 2 need attention. Select one to see
 details.* and `DeviceListStatus` *Showing 12 of 53 devices.* (or *No device
-matches "gpu".*). Martlet remembers up to 64 paired hosts.
+matches "gpu".*). `DevicesSummary`'s `help` tells how the map is laid out, for
+example *Map: 14 around This PC in ring (5 above, 2 right, 5 below, 2 left),
+compact cards, 1000 x 296.*: up to six devices stand in a column on each side of
+This PC, more stand in a ring around it, and from nine devices the cards are
+compact. The map shows up to 12 computers and 6 cloud services before it folds
+the rest into a "more" card. To see the map with many computers, set
+`MARTLET_SIMULATE_COMPUTERS` to a number (1 to 60) before Martlet starts: the
+Devices page then shows that many made-up host PCs (SIM-001, SIM-002, ...;
+FIXTURE, nothing is paired or contacted). Martlet remembers up to 64 paired
+hosts.
 
 The selected computer's **Resources** section (`DeviceResources`, for This PC
 and paired hosts) shows how much of the device each job takes, from the

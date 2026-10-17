@@ -6,6 +6,7 @@ namespace Martlet.Desktop;
 internal static class DeviceOverview
 {
     internal const int MapSideLimit = 6;
+    internal const int MapComputerLimit = 12;
     internal const string MorePrefix = "more:";
     internal const string MoreGlyph = "\uE712";
 
@@ -24,28 +25,28 @@ internal static class DeviceOverview
 
     /// <summary>Whether every device fits on the map without folding any into a "more" card.</summary>
     internal static bool FitsMap(IReadOnlyList<NetworkNode> nodes) =>
-        nodes.Count(OnLeft) <= MapSideLimit && nodes.Count(OnRight) <= MapSideLimit;
+        nodes.Count(OnLeft) <= MapSideLimit && nodes.Count(OnRight) <= MapComputerLimit;
 
-    /// <summary>What the map draws: This PC; up to <see cref="MapSideLimit"/> devices a side (the selected one, those needing
+    /// <summary>What the map draws: This PC; up to <see cref="MapSideLimit"/> services and <see cref="MapComputerLimit"/> computers (the selected one, those needing
     /// attention and those doing this PC's jobs first, in their usual order), the rest folded into a "more" card; and Add a
     /// computer while a side has room (or it is selected).</summary>
     internal static IReadOnlyList<NetworkNode> MapNodes(IReadOnlyList<NetworkNode> nodes, string? selected)
     {
-        var left = Fold([.. nodes.Where(OnLeft)], selected, "services", "service", NodeKind.Cloud);
-        var right = Fold([.. nodes.Where(OnRight)], selected, "computers", "computer", NodeKind.Computer);
+        var left = Fold([.. nodes.Where(OnLeft)], MapSideLimit, selected, "services", "service", NodeKind.Cloud);
+        var right = Fold([.. nodes.Where(OnRight)], MapComputerLimit, selected, "computers", "computer", NodeKind.Computer);
         var shown = nodes.Where(n => n.Kind == NodeKind.ThisPc).Concat(left).Concat(right).ToList();
-        if (Math.Min(left.Count, right.Count) < MapSideLimit || selected == "add")
+        if (left.Count < MapSideLimit || right.Count < MapComputerLimit || selected == "add")
             shown.AddRange(nodes.Where(n => n.Kind == NodeKind.Add));
         return shown;
     }
 
-    private static List<NetworkNode> Fold(List<NetworkNode> side, string? selected, string plural, string singular, NodeKind kind)
+    private static List<NetworkNode> Fold(List<NetworkNode> side, int limit, string? selected, string plural, string singular, NodeKind kind)
     {
-        if (side.Count <= MapSideLimit) return side;
+        if (side.Count <= limit) return side;
         var keep = side.Select((node, index) => (node, index))
             .OrderBy(x => x.node.Id == selected ? 0 : x.node.Health == NodeHealth.Attention ? 1
                 : x.node.Roles.Any(r => DeviceComponent.JobRole(r.Component) is not null) ? 2 : 3)
-            .ThenBy(x => x.index).Take(MapSideLimit - 1).Select(x => x.node).ToHashSet();
+            .ThenBy(x => x.index).Take(limit - 1).Select(x => x.node).ToHashSet();
         return [.. side.Where(keep.Contains), More([.. side.Where(n => !keep.Contains(n))], plural, singular, kind)];
     }
 
