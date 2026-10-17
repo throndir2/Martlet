@@ -118,7 +118,8 @@ internal static class RoleLab
                     {
                         var id = (await File.ReadAllTextAsync(adding, token)).Trim();
                         File.Delete(adding);
-                        network.Change(roster => roster.AddHost(companionKey, id, id, $"https://127.0.0.1:{UnusedPort()}",
+                        // A home-network address nothing answers on (not loopback, which the map counts as this PC itself).
+                        network.Change(roster => roster.AddHost(companionKey, id, id, "https://10.255.255.1:9443",
                             "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)), DateTimeOffset.UtcNow));
                         added.Add(id);
                         events.Add($"{CompanionDevice} added {id} to the network; nothing answers for it, as for a host this desktop can't reach");
@@ -202,15 +203,6 @@ internal static class RoleLab
 
     private static object? Ask(SharedSettings? copy, string device) =>
         copy?.Find(Key(SharedSettings.RolePrefix, device)) is { } entry ? new { value = entry.Value, by = entry.UpdatedBy, at = entry.UpdatedAt } : null;
-
-    /// <summary>A loopback port nothing listens on (taken and let go at once).</summary>
-    private static int UnusedPort()
-    {
-        var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        probe.Start();
-        try { return ((System.Net.IPEndPoint)probe.LocalEndpoint).Port; }
-        finally { probe.Stop(); }
-    }
 
     /// <summary>A computer's entry name as the desktop writes it (SharedPc): lowercase letters, digits, dots and hyphens.</summary>
     private static string Key(string prefix, string device)

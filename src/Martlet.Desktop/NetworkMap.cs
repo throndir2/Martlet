@@ -370,10 +370,10 @@ internal static class NetworkMap
         string? Planned(string job) => plan?.For(job) is { HostId: { } id, Off: false } ? id : null;
         // Jobs that run on each companion PC itself (Parakeet, a local server): shown on your other companion PCs too.
         var onEachPc = new List<HostedRole>();
-        Draft HostDraft(string hostId)
+        Draft HostDraft(string hostId, string? origin = null)
         {
             var paired = Hosts(inputs).FirstOrDefault(h => h.HostId == hostId);
-            var address = paired?.Address ?? (shared?.Node(hostId)?.Origin is { } origin && Uri.TryCreate(origin, UriKind.Absolute, out var uri) ? uri.Host : null);
+            var address = paired?.Address ?? ((shared?.Node(hostId)?.Origin ?? origin) is { } known && Uri.TryCreate(known, UriKind.Absolute, out var uri) ? uri.Host : null);
             if (address is not null && (address == machine.LanAddress || IsLoopback(address))) return thisPc;
             var draft = HostNode(hostId, address);
             if (paired is null && draft.Facts.Count == 0)
@@ -732,11 +732,12 @@ internal static class NetworkMap
                 target.Notes.Add("Martlet on that computer runs what you ask here (updates, roles, status) over the paired connection.");
         }
 
-        // Every host of your Martlet network, so every computer draws the same hosts: one this PC isn't paired with yet shows with
-        // why, and a host some of your computers don't know yet says so and why (MainWindow.Network.cs, NetworkReach).
+        // Every host of your Martlet network, so every computer draws the same hosts: one this PC isn't paired with yet shows (named
+        // after its computer, as every host is) with why, and a host some of your computers don't know yet says so and why
+        // (MainWindow.Network.cs, NetworkReach).
         foreach (var host in inputs.NetworkHosts ?? [])
         {
-            var draft = nodes.GetValueOrDefault("host:" + host.HostId) ?? (host.Paired ? null : HostDraft(host.HostId));
+            var draft = nodes.GetValueOrDefault("host:" + host.HostId) ?? (host.Paired ? null : HostDraft(host.HostId, host.Origin));
             if (draft is null || draft == thisPc) continue;
             if (!host.Paired)
             {

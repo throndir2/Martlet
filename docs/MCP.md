@@ -2492,7 +2492,20 @@ host no longer answers it); A pairs that host again by a code and it rejoins
 still pairs 12 hours later on that host's clock (codes have no deadline), stops
 working once used, and five wrong tries close another code so even the right
 one gets `pairing.closed`; A removes B (every host revokes it, B leaves
-and forgets its hosts and needs a new key). Each desktop's state goes through
+and forgets its hosts and needs a new key). Then a host added where the other
+computers can't reach ([NETWORK.md](NETWORK.md#when-a-host-is-added-where-your-other-computers-cant-reach)),
+on three more gateways: MIKO founds a network with `lab-diva-host` and DIVA
+joins; MIKO can't reach `lab-diva-host` any more, and LUMINE joins through it
+(allowed on DIVA), so MIKO never hears of LUMINE; MIKO adds `lab-nahida-host`
+(a NAS) and says plainly who doesn't have it and why (`NetworkReach.Summary`:
+*DIVA isn't paired with lab-nahida-host yet, and this PC couldn't reach
+lab-diva-host to tell it ...*); LUMINE finds the NAS with a real find
+(`HostFindResponder` and `HostFind.FindAsync` on loopback,
+`NetworkHostFinder`), brings its roster because the NAS doesn't count it yet,
+and pairs; MIKO, still cut off, learns LUMINE through the NAS, DIVA learns the
+NAS through `lab-diva-host` and pairs with it, and all three see the same
+computers and hosts; a host of another network (`lab-neighbor-host`) is left
+alone with how to bring it in (`network-reset`). Each desktop's state goes through
 `network.json`'s format between syncs. The report has `ok`, `passed`,
 `total`, `seconds`, the `scope` and each step's `ok` and `detail`. Nothing
 leaves loopback, nothing is written to disk or Windows Credential Manager, and
@@ -2910,6 +2923,25 @@ looks inside them has to match its escaped form. Example (with `-Desktop
 `role_lab status` until `"companionRole":"host"` and `logs_tail` until *LAB-COMPANION
 is a host PC now, as you asked*; `role_lab ask host` and poll `DeviceRoleSummary`
 until *Host PC*.
+
+`role_lab add_host` (`hostId`, default `lab-nas`) shows a host of the network
+the desktop can't reach ([NETWORK.md](NETWORK.md#when-a-host-is-added-where-your-other-computers-cant-reach)):
+once the simulated PC is a member, it signs that host into the network at an
+address nothing answers on (`https://10.255.255.1:9443`, a made-up key), as a
+host added on a computer the desktop can't reach; `status` then lists it in
+`addedHosts` and `networkHosts`. Example, after `"companionMember":true`: call
+`role_lab add_host`, poll `role_lab status` until `lab-nas`, click
+`NetworkCheck`, poll `ui_snapshot` until `reach lab-nas` (an `until` can't
+contain an apostrophe, which the snapshot escapes): `NetworkGap` reads *This PC
+couldn't reach lab-nas on its last check, so it may not have the newest network
+...* and `NetworkMember-host-lab-nas` *... Not paired yet: it didn't answer in
+time at 10.255.255.1:9443.*; then click `NavDevices` and poll until *Not paired
+with this PC yet*: `Node-host:lab-nas` reads *lab-nas, 10.255.255.1. Not paired
+with this PC yet.*, `SelectedDeviceHealth` the same after clicking it, and
+`DevicesSummary` ends with the `NetworkGap` sentence. `-LabCredentials` also
+sets `MARTLET_HOST_FIND_LOOPBACK=1` for the desktop and the server, so their
+finds of hosts on the home network stay on loopback and a lab never pairs with
+your real hosts.
 
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
@@ -8396,15 +8428,24 @@ The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
 (status text: member with how many computers and hosts and how many are reached
 from outside home right now, waiting to join with
 the check number, a host PC in no network that only watches, or in no network),
-`NetworkCheck` (syncs now; it contacts the paired hosts, so it is not a passive
+`NetworkGap` (status text, shown only when your computers don't all see the
+same network yet: which of them aren't paired with a host and why, the hosts
+this PC couldn't reach to tell them, and Martlet hosts on the home network
+outside your network with how to bring them in; `DevicesSummary` on Devices
+ends with the same sentence; see [NETWORK](NETWORK.md#when-a-host-is-added-where-your-other-computers-cant-reach)),
+`NetworkCheck` (syncs now and looks for new hosts on the home network; it contacts the paired hosts, so it is not a passive
 click), each computer's row title `NetworkMember-<desktop|host>-<ID>` (status
 text, for example `lab-gpu. Host, not paired with this PC yet; added on
 desktop-diva. 2 outside addresses. Reached from outside home (outside address 1).`;
 or *Not reachable at home or outside right now*; for a host with outside
 addresses also the guard's totals it reported, *Guard: 3 failed and 1 throttled
-request(s) since it started, 0 address(es) locked out now.*),
+request(s) since it started, 0 address(es) locked out now.*; for a host some of
+your computers aren't paired with, who and why, *DIVA isn't paired with it yet.
+...*),
 and for another computer where it was last active, *Active now
-on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>` and, for hosts,
+on diva-host.*, and when no host here has seen it for 12 hours why that
+matters, *It hasn't used the hosts this PC reaches since then, so a host added
+on MIKO shows here ...*) with `NetworkRemove-<desktop|host>-<ID>` and, for hosts,
 `NetworkOutside-<ID>` (opens the *Outside addresses* dialog, field
 `HostInput-addresses`, saved by `HostInputOk`; it signs the roster, so it needs
 `--allow-ui-effects`), each computer that uses

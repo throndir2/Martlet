@@ -115,6 +115,8 @@ public sealed class NetworkReachTests
             ]));
 
         var nas = nodes.Single(n => n.Id == "host:Nahida-host");
+        Assert.Equal("Nahida", nas.Title);
+        Assert.Equal("Nahida-host", nas.Subtitle);
         Assert.Equal(NodeHealth.Attention, nas.Health);
         Assert.Equal("Not paired with this PC yet", nas.HealthText);
         Assert.Contains(nas.Notes, n => n.Contains("added on MIKO", StringComparison.Ordinal));

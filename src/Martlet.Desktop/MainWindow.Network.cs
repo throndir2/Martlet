@@ -671,7 +671,8 @@ public partial class MainWindow
     private IReadOnlyList<NetworkHostState>? NetworkHostStates() => networkState.Roster is not { } roster ? null
         : roster.ActiveHosts.Where(h => !networkState.Ignored.Contains(h.Id)).Select(h =>
         {
-            var paired = FindHost(h.Id) is not null;
+            // homeHosts, not FindHost: FindHost reads the map's inputs, which include this list.
+            var paired = homeHosts.Any(p => p.HostId == h.Id);
             var reach = networkReach.Hosts.FirstOrDefault(r => r.Host.Id == h.Id);
             // A paired host that didn't answer shows that on its own status; here only who doesn't know it, or why it isn't paired.
             var gap = paired && reach is { Reached: false } ? null
