@@ -481,7 +481,7 @@ internal static class AutomationPolicy
         new("SelectedDeviceHealth", "Devices", "Shows the status of the selected device."),
         new("SelectedDeviceHealthAction", "Devices", "Shows what the status button does, such as 'Update available: Update to Martlet 0.40.0'. A click updates the host, so it needs --allow-ui-effects."),
         new("ClusterStatus", "Devices › Settings for all devices", "Shows the status of Keep Martlet the same on all my computers."),
-        new("DevicesSummary", "Devices", "Shows how many devices there are and how many need attention, such as '53 devices, 2 need attention. Select one to see details.'."),
+        new("DevicesSummary", "Devices", "Shows how many devices there are and how many need attention, such as '53 devices, 2 need attention. Select one to see details.'. Its help tells how the map is laid out, such as 'Map: 14 around This PC in ring (5 above, 2 right, 5 below, 2 left), compact cards, 1000 x 296.'."),
         new("DeviceListStatus", "Devices", "Shows how many devices the list shows, such as 'Showing 12 of 53 devices.', or that no device matches the filter."),
         // MainWindow.DeviceCapacity.cs
         new("DeviceSpecs", "Devices resource view", "Shows the hardware line of the selected device, such as 'NVIDIA GeForce RTX 5090 (32 GB) · 64 GB memory · 32 processor threads'. Hardware and Martlet's own estimates only."),

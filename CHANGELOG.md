@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The Devices map uses its space better: devices stand on both sides of This PC, and with many computers they stand in a ring around it on smaller cards, so up to 12 computers fit in a low map. The connection lines are short and never cross. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - Martlet sets up a NAS (TerraMaster, Synology, QNAP, Unraid or TrueNAS) only in Docker and never installs anything into the NAS system. When Docker isn't there yet, it tells you which app on the NAS installs it. ([#930](https://github.com/throndir2/Martlet/pull/930))
 
 ## [0.88.0] - 2026-10-16

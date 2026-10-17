@@ -27,6 +27,15 @@ public sealed class DeviceOverviewTests
     }
 
     [Fact]
+    public void Twelve_hosts_fit_on_the_map()
+    {
+        var nodes = Network(hosts: 12);
+        Assert.True(DeviceOverview.FitsMap(nodes));
+        Assert.Equal(nodes.Select(n => n.Id), DeviceOverview.MapNodes(nodes, "this-pc").Select(n => n.Id));
+        Assert.False(DeviceOverview.FitsMap(Network(hosts: 13)));
+    }
+
+    [Fact]
     public void Fifty_hosts_fold_into_a_more_card_keeping_attention_jobs_and_the_selection()
     {
         var nodes = Network(hosts: 50);
@@ -37,11 +46,12 @@ public sealed class DeviceOverviewTests
 
         var map = DeviceOverview.MapNodes(nodes, "host:h48");
         var right = map.Where(n => n.Kind is NodeKind.Host or NodeKind.Computer).ToList();
-        Assert.Equal(DeviceOverview.MapSideLimit, right.Count);
-        Assert.Equal(["host:h01", "host:h29", "host:h39", "host:h44", "host:h48"], right.Take(5).Select(n => n.Id));
+        Assert.Equal(DeviceOverview.MapComputerLimit, right.Count);
+        Assert.Equal(["host:h01", "host:h02", "host:h03", "host:h04", "host:h05", "host:h06", "host:h07", "host:h29", "host:h39", "host:h44", "host:h48"],
+            right.Take(11).Select(n => n.Id));
         var more = right[^1];
         Assert.Equal("more:computers", more.Id);
-        Assert.Equal("45 more computers", more.Title);
+        Assert.Equal("39 more computers", more.Title);
         Assert.Equal(NodeHealth.Ready, more.Health);
         // A side with room keeps Add a computer.
         Assert.Contains(map, n => n.Kind == NodeKind.Add);
