@@ -46,7 +46,7 @@ internal static class SimulatedDevices
         if (computers is not { Count: > 0 }) return nodes;
         return [.. nodes.Select(node =>
         {
-            if (!node.Title.StartsWith("SIM-", StringComparison.Ordinal) || !int.TryParse(node.Title[4..], out var i)) return node;
+            if (!node.Title.StartsWith("SIM-", StringComparison.OrdinalIgnoreCase) || !int.TryParse(node.Title[4..], out var i)) return node;
             var jobs = new[] { ("Listens", "Listening", i % 2 == 0), ("Thinks", "Thinking", i % 4 == 1), ("Speaks", "Speaking", i % 4 == 1),
                     ("Lip-sync", "Lip-sync", i % 5 == 0) }
                 .Where(j => j.Item3).Select(j => new HostedRole(j.Item1, j.Item2, "FIXTURE: a made-up job; nothing runs it."));
