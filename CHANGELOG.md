@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.88.1] - 2026-10-17
+
 ### Changed
 
 - Every computer shows by the name it gives itself, such as Miko or Nahida, on Windows, Linux, a NAS and Mac alike. A computer that only runs a host service no longer shows as "Nahida-host", and Home's notices name computers the same way. ([#931](https://github.com/throndir2/Martlet/pull/931))
