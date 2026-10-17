@@ -13,6 +13,11 @@ Each release's section here is also its notes on GitHub.
 - Every computer shows by the name it gives itself, such as Miko or Nahida, on Windows, Linux, a NAS and Mac alike. A computer that only runs a host service no longer shows as "Nahida-host", and Home's notices name computers the same way. ([#931](https://github.com/throndir2/Martlet/pull/931))
 - Martlet sets up a NAS (TerraMaster, Synology, QNAP, Unraid or TrueNAS) only in Docker and never installs anything into the NAS system. When Docker isn't there yet, it tells you which app on the NAS installs it. ([#930](https://github.com/throndir2/Martlet/pull/930))
 
+### Fixed
+
+- A host you add on one computer now reaches all your other computers, even when that computer can't reach the hosts they use: they find it on your home network and pair with it by themselves, and a computer that joined later brings that host up to date. Before, a new host and a new computer could stay unknown to each other. ([#933](https://github.com/throndir2/Martlet/pull/933))
+- When your computers don't see the same network yet, the Share and Devices pages say which computer is missing which host and why, and the map shows every host of your network, also one this PC isn't paired with yet. ([#933](https://github.com/throndir2/Martlet/pull/933))
+
 ## [0.88.0] - 2026-10-16
 
 ### Added
