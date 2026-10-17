@@ -299,6 +299,15 @@ that code on the host (and showing a new one) ends the search.
   SPKI from the roster. A match revokes that device's older credentials here
   and issues one `voice` credential in the usual pairing response (no
   `host_proof`). At most 30 attempts a minute.
+- **A member this host hasn't heard of.** A desktop that joined the network
+  while nobody could tell this host gets `network.denied` and pairs again with
+  its copy of the roster in the optional `roster` field (so this route takes
+  up to 40 KiB + 4 KiB, the other pairing routes 8 KiB). The host accepts the
+  entries signed by desktops it already trusts, exactly as a merge does, checks
+  the proof against the merged roster and keeps that roster once the proof
+  holds. A roster of another network is `network.other`; one whose entry for
+  the device isn't signed by a trusted member leaves it `network.denied`.
+  Gateways older than this refuse the field (`request.invalid`).
 - **Joining.** A paired device that is not a member posts its display name and
   public key to `/martlet/v1/network/join`; the host keeps up to 8 requests for
   an hour (one per device ID, which comes from the caller's credential) with a
@@ -547,7 +556,7 @@ attestation. The owner's requests come first ([owner first](#gpu-priority-live-t
 | `GET /health/live` | None | Exact `{"status":"live"}`; no host ID, version, worker or system data |
 | `POST /martlet/v1/pair` | Locally opened one-use proof | One scoped credential; 8 KiB strict JSON with required fields, duplicate/unknown rejection |
 | `POST /martlet/v1/pair/code` | Proof of a locally opened short code ([short typed codes](#short-typed-codes)) | One scoped credential plus `host_proof`; same 8 KiB strict JSON rules |
-| `POST /martlet/v1/pair/member` | Signature by an active member desktop's network key ([member pairing](#martlet-network-member-pairing)) | One `voice` credential (older credentials of that device revoked); same 8 KiB strict JSON rules |
+| `POST /martlet/v1/pair/member` | Signature by an active member desktop's network key ([member pairing](#martlet-network-member-pairing)) | One `voice` credential (older credentials of that device revoked); strict JSON, 8 KiB, or up to 44 KiB with the optional `roster` a member this host hasn't heard of brings |
 | `GET /martlet/v1/network` | Signed scoped device request, any role | Host ID, `martlet_version` (the Martlet release this host runs, so every computer that syncs the network learns of an update here; desktops older than it ignore it), `state` (`unbound`, `bound`, `removed`), the accepted `roster` (or null), `devices` (the computers paired with this host, at most 16, most recently active first: `device_id`, `display_name`, `paired_at` and `last_seen`, when it last made a signed request since the gateway started, absent before that, and `access` `friend` for a [friend's computer](#friend-access)) and, for an active member desktop, pending `joins` (`device_id`, `display_name`, `key`, `check_number`, `requested_at`). Nonsecret; desktops older than `devices` ignore it |
 | `POST /martlet/v1/network` | Signed device body, any role | Strict schema-1 roster JSON, at most 40 KiB, accepted entry by entry (binding an unbound host); returns the same document as GET and saves `network.json` when a storage is attached |
 | `POST /martlet/v1/network/join` | Signed device body, any role | `display_name` and `key` (ECDSA P-256 SPKI); returns `state` (`pending` or `member`), `network_id` and `check_number` |

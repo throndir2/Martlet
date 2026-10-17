@@ -25,6 +25,9 @@ internal static class RoleLab
     internal const string StatusFile = "role-lab.json";
     internal const string StopFile = "role-lab.stop";
     internal const string AskFile = "role-lab.ask";
+    /// <summary>A host ID: the companion adds a host to the network that nothing answers for (as a host added on a computer this
+    /// desktop can't reach), so the desktop shows a host of the network it isn't paired with, and why.</summary>
+    internal const string HostFile = "role-lab.host";
     internal const string CompanionDevice = "lab-companion";
     internal const string CompanionName = "LAB-COMPANION";
     private const string Companion = "companion", Host = "host";
@@ -90,6 +93,7 @@ internal static class RoleLab
 
             Console.WriteLine(JsonSerializer.Serialize(new { ready = true, hostId = host.HostId, desktop = desktopDevice, companion = CompanionDevice }));
             var events = new List<string>();
+            var added = new List<string>();
             var everMember = false;
             while (!token.IsCancellationRequested && !File.Exists(Path.Combine(dataDirectory, StopFile)))
             {
@@ -105,6 +109,27 @@ internal static class RoleLab
                 }
                 var member = network.State.Roster?.Trusts(companionKey.DeviceId, companionKey.PublicKey) == true;
                 everMember |= member;
+
+                // MCP's add_host: the companion signs a host into the network at an address nothing answers on.
+                var adding = Path.Combine(dataDirectory, HostFile);
+                if (member && File.Exists(adding))
+                {
+                    try
+                    {
+                        var id = (await File.ReadAllTextAsync(adding, token)).Trim();
+                        File.Delete(adding);
+                        // A home-network address nothing answers on (not loopback, which the map counts as this PC itself).
+                        network.Change(roster => roster.AddHost(companionKey, id, id, "https://10.255.255.1:9443",
+                            "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)), DateTimeOffset.UtcNow));
+                        added.Add(id);
+                        events.Add($"{CompanionDevice} added {id} to the network; nothing answers for it, as for a host this desktop can't reach");
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
+                        Martlet.Core.Contracts.ContractException)
+                    {
+                        events.Add("couldn't add the host: " + error.Message);
+                    }
+                }
 
                 // MCP's ask: one word in a file, read once (a file still being written is read on the next round).
                 var ask = Path.Combine(dataDirectory, AskFile);
@@ -152,6 +177,8 @@ internal static class RoleLab
                     desktopAsk = Ask(copy, desktopDevice),
                     companionSays = copy?.Find(Key(SharedSettings.DevicePrefix, CompanionDevice))?.Value,
                     companionAsk = Ask(copy, CompanionDevice),
+                    addedHosts = added.ToArray(),
+                    networkHosts = network.State.Roster?.ActiveHosts.Select(h => h.Id).ToArray(),
                     events = events.TakeLast(16).ToArray(), at = DateTimeOffset.UtcNow
                 };
                 // Written whole and swapped in, so MCP never reads half of it; while MCP reads it, the next round writes it.

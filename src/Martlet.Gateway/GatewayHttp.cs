@@ -9,6 +9,8 @@ namespace Martlet.Gateway;
 internal sealed partial class GatewayHttpApplication
 {
     internal const int MaximumPairingRequestBytes = 8_192;
+    /// <summary>A member pairing with its copy of the roster (<see cref="GatewayMemberPairingProof.Roster"/>).</summary>
+    internal const int MaximumMemberPairingRequestBytes = Martlet.Core.Network.NetworkRoster.MaximumBytes + 4_096;
     internal static readonly TimeSpan PairingBodyDeadline = TimeSpan.FromSeconds(10);
     private static readonly JsonSerializerOptions Json = CreateJson();
     private static readonly string? MartletVersion = typeof(GatewayHttpApplication).Assembly.GetName().Version?.ToString(3);
@@ -127,7 +129,9 @@ internal sealed partial class GatewayHttpApplication
             }
             if (context.Request.Method == HttpMethods.Post && rawTarget == Martlet.Core.Network.NetworkPairing.Path)
             {
-                var proof = await ReadPairingAsync<GatewayMemberPairingProof>(context.Request, context.RequestAborted).ConfigureAwait(false);
+                // A member this host hasn't heard of yet brings its copy of the roster, so this route takes a roster's size.
+                var proof = await ReadPairingAsync<GatewayMemberPairingProof>(context.Request, context.RequestAborted,
+                    MaximumMemberPairingRequestBytes).ConfigureAwait(false);
                 var credential = Network.PairMember(proof, context.RequestAborted);
                 LogMemberPaired(credential);
                 Guard.Succeeded(context, routeClass, "paired", credential.DeviceId);
@@ -371,13 +375,17 @@ internal sealed partial class GatewayHttpApplication
 
     private static async ValueTask<T> ReadPairingAsync<T>(
         HttpRequest request,
-        CancellationToken cancellationToken) where T : class
+        CancellationToken cancellationToken,
+        int maximumBytes = MaximumPairingRequestBytes) where T : class
     {
         GatewayRules.Require(request.ContentType is "application/json" or
             "application/json; charset=utf-8", "request.invalid");
         GatewayRules.Require(!request.Headers.ContainsKey("Content-Encoding") &&
-            request.ContentLength is null or >= 1 and <= MaximumPairingRequestBytes,
-            request.ContentLength > MaximumPairingRequestBytes ? "request.too_large" : "request.invalid");
+            (request.ContentLength is null || request.ContentLength >= 1 && request.ContentLength <= maximumBytes),
+            request.ContentLength > maximumBytes ? "request.too_large" : "request.invalid");
+        if (maximumBytes > MaximumPairingRequestBytes &&
+            request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = maximumBytes;
         using var output = new MemoryStream();
         var buffer = new byte[4096];
         // Anyone may call these routes, so a slow sender can't hold the connection open: the whole body within 10 seconds.
@@ -390,7 +398,7 @@ internal sealed partial class GatewayHttpApplication
                 var read = await request.Body.ReadAsync(buffer, linked.Token).ConfigureAwait(false);
                 if (read == 0)
                     break;
-                if (output.Length + read > MaximumPairingRequestBytes)
+                if (output.Length + read > maximumBytes)
                     throw new GatewayProtocolException("request.too_large");
                 output.Write(buffer, 0, read);
             }

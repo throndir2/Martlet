@@ -507,6 +507,10 @@ internal static class SignInRehearsal
             State = State.WithAdopted(pairing.HostId);
         }
 
+        /// <summary>Changes this desktop's roster (signed by it, as the desktop's own changes are); the next sync shares it.</summary>
+        internal void Change(Func<NetworkRoster, NetworkRoster> change) =>
+            State = State with { Roster = change(State.Roster ?? throw new InvalidOperationException("Not in a network.")) };
+
         internal async Task<NetworkSyncResult> SyncAsync(CancellationToken token)
         {
             var result = await engine.SyncAsync(State, pairings.Values.Select(p => p.Pairing).ToArray(),
