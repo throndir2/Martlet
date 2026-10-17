@@ -1133,7 +1133,8 @@ public partial class MainWindow
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null,
         SimulatedDevices.With(OtherComputers()),
-        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway(), ConfiguringMachines(), sharedHosts);
+        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway(), ConfiguringMachines(), sharedHosts,
+        NetworkHostStates());
 
     /// <summary>The paired computers the owner keeps out of the Thinking pool (unticked), or null.</summary>
     private IReadOnlyCollection<string>? ThinkingPoolLeft() =>
@@ -1205,7 +1206,7 @@ public partial class MainWindow
         RenderShare();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         mapNodes = nodes;
-        DevicesSummary.Text = DeviceOverview.Summary(nodes);
+        DevicesSummary.Text = DeviceOverview.Summary(nodes) + (NetworkGap() is { } gap ? " " + gap : "");
         deviceListShown = deviceListChosen ?? !DeviceOverview.FitsMap(nodes);
         settingDevicesView = true;
         DevicesViewMap.IsChecked = !deviceListShown;

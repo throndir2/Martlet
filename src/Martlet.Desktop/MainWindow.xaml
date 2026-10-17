@@ -615,6 +615,12 @@
                             </DockPanel>
                             <TextBlock x:Name="NetworkStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
                                        AutomationProperties.AutomationId="NetworkStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <!-- What isn't the same on all your computers yet, and why (NetworkReach, MainWindow.Network.cs) -->
+                            <Border x:Name="NetworkGapCard" Visibility="Collapsed" CornerRadius="14" Padding="16,12" Margin="0,10,0,0"
+                                    BorderThickness="1" BorderBrush="{DynamicResource WarningBrush}" Background="{DynamicResource CanvasBrush}">
+                                <TextBlock x:Name="NetworkGapText" TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="NetworkGap" AutomationProperties.LiveSetting="Polite"/>
+                            </Border>
                             <StackPanel x:Name="NetworkJoinsPanel" AutomationProperties.Name="Computers asking to join"/>
                             <StackPanel x:Name="NetworkMembersPanel" AutomationProperties.Name="Computers in your network"/>
                         </StackPanel>

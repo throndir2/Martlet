@@ -206,30 +206,92 @@ public sealed partial class Audio2FaceHostConnection
 }
 
 /// <summary>Pairs this desktop with a host of its Martlet network by itself: no code, no console. The connection is pinned
-/// to the host's fingerprint from the roster, and the request is signed with this PC's network key.</summary>
+/// to the host's fingerprint from the roster (or, for a host found on the home network that the roster doesn't list yet, to
+/// the key it showed first), and the request is signed with this PC's network key.</summary>
 public static class HostNetworkPairing
 {
+    /// <param name="bring">This PC's roster: when the host doesn't count this PC in its network yet (it joined while nobody could
+    /// tell that host), the pairing is tried once more with it, so the host takes the entries its members signed.</param>
     public static async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsMemberAsync(NetworkMember host, string networkId,
-        INetworkSigner signer, string displayName, CancellationToken cancellationToken = default, TimeProvider? clock = null)
+        INetworkSigner signer, string displayName, CancellationToken cancellationToken = default, TimeProvider? clock = null,
+        NetworkRoster? bring = null)
     {
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(signer);
         if (!host.IsHost || host.Removed || host.Origin is null || host.Spki is null)
             throw new Audio2FaceHostException("network.invalid", $"{host.Id} is not an active host of this network.");
         var origin = Audio2FaceHostClient.CanonicalOrigin(host.Origin);
+        using var http = Audio2FaceHostClient.CreateHttpClient(origin, host.Spki);
+        return await PairBringingAsync(http, host.Id, origin, host.Spki, networkId, signer, displayName, cancellationToken, clock, bring)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Pairs by itself with a host found on the home network (<see cref="NetworkHostFinder"/>) that this PC's roster doesn't
+    /// list yet, so its key isn't known: the first connection learns which TLS key answers at <paramref name="origin"/> and
+    /// later ones must show the same key. The signed proof names that key, so it is useless at any other host. The caller keeps
+    /// the pairing only when the host's own network lists the host with that key, signed by a member desktop.
+    /// </summary>
+    public static async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairFoundAsync(string hostId, string origin, string networkId,
+        INetworkSigner signer, string displayName, CancellationToken cancellationToken = default, TimeProvider? clock = null,
+        NetworkRoster? bring = null)
+    {
+        ArgumentNullException.ThrowIfNull(signer);
+        Audio2FaceHostClient.RequireIdentifier(hostId, "host ID");
+        var canonical = Audio2FaceHostClient.CanonicalOrigin(origin);
+        string? seen = null;
+        using var http = Audio2FaceHostClient.CreateHttpClient(canonical, presented =>
+        {
+            seen ??= presented;
+            return presented == seen;
+        }, clock);
+        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            using var probe = new HttpRequestMessage(HttpMethod.Get, canonical + "/health/live");
+            using var live = await Audio2FaceHostClient.Send(http, probe, timeout.Token).ConfigureAwait(false);
+        }
+        if (seen is null) throw new Audio2FaceHostException("host.unreachable", $"The computer at {new Uri(canonical).Authority} did not present a host key.");
+        return await PairBringingAsync(http, hostId, canonical, seen, networkId, signer, displayName, cancellationToken, clock, bring)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Pairs; when the host answers that it doesn't count this PC in the network and <paramref name="bring"/> is set,
+    /// pairs once more with this PC's roster. A host older than that refuses the roster; the first refusal then stands.</summary>
+    private static async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairBringingAsync(HttpClient http, string hostId, string origin,
+        string spki, string networkId, INetworkSigner signer, string displayName, CancellationToken cancellationToken, TimeProvider? clock,
+        NetworkRoster? bring)
+    {
+        try { return await PairAsync(http, hostId, origin, spki, networkId, signer, displayName, cancellationToken, clock, null).ConfigureAwait(false); }
+        catch (Audio2FaceHostException denied) when (denied.Code == "network.denied" && bring?.NetworkId == networkId)
+        {
+            try { return await PairAsync(http, hostId, origin, spki, networkId, signer, displayName, cancellationToken, clock, bring).ConfigureAwait(false); }
+            catch (Audio2FaceHostException older) when (older.Code == "request.invalid") { throw denied; }
+        }
+    }
+
+    private static async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsync(HttpClient http, string hostId, string origin, string spki,
+        string networkId, INetworkSigner signer, string displayName, CancellationToken cancellationToken, TimeProvider? clock, NetworkRoster? bring)
+    {
         var name = NetworkRoster.CleanName(displayName, signer.DeviceId);
         var timestamp = (clock ?? TimeProvider.System).GetUtcNow().ToUnixTimeMilliseconds();
         var nonce = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
         var signature = Base64Url.EncodeToString(signer.Sign(
-            NetworkPairing.ProofBytes(host.Id, host.Spki, networkId, signer.DeviceId, name, timestamp, nonce)));
-        var body = JsonSerializer.SerializeToUtf8Bytes(new
-        {
-            protocol_version = new { major = 2, minor = 0 },
-            network_id = networkId, device_id = signer.DeviceId, display_name = name, timestamp, nonce, signature
-        });
+            NetworkPairing.ProofBytes(hostId, spki, networkId, signer.DeviceId, name, timestamp, nonce)));
+        var body = bring is null
+            ? JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                protocol_version = new { major = 2, minor = 0 },
+                network_id = networkId, device_id = signer.DeviceId, display_name = name, timestamp, nonce, signature
+            })
+            : JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                protocol_version = new { major = 2, minor = 0 },
+                network_id = networkId, device_id = signer.DeviceId, display_name = name, timestamp, nonce, signature,
+                roster = JsonSerializer.Deserialize<JsonElement>(bring.Write())
+            });
         try
         {
-            using var http = Audio2FaceHostClient.CreateHttpClient(origin, host.Spki);
             using var request = new HttpRequestMessage(HttpMethod.Post, origin + NetworkPairing.Path) { Content = Audio2FaceHostClient.JsonContent(body) };
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(10));
@@ -239,21 +301,21 @@ public static class HostNetworkPairing
             var root = document.RootElement;
             var credentialId = root.GetProperty("credential_id").GetString()!;
             var secret = root.GetProperty("credential_secret").GetString()!;
-            if (root.GetProperty("protocol_version").GetProperty("major").GetInt32() != 2 || root.GetProperty("host_id").GetString() != host.Id ||
+            if (root.GetProperty("protocol_version").GetProperty("major").GetInt32() != 2 || root.GetProperty("host_id").GetString() != hostId ||
                 root.GetProperty("device_id").GetString() != signer.DeviceId ||
                 root.GetProperty("lifetime").GetProperty("kind").GetString() != "paired" ||
                 !root.GetProperty("roles").EnumerateArray().Any(role => role.GetString() == "voice") ||
                 !Audio2FaceHostClient.TryBase64Url(credentialId, 16, out _) || !Audio2FaceHostClient.TryBase64Url(secret, 32, out var raw))
-                throw new Audio2FaceHostException("pairing.invalid", $"{host.Id} returned an unexpected pairing.");
+                throw new Audio2FaceHostException("pairing.invalid", $"{hostId} returned an unexpected pairing.");
             CryptographicOperations.ZeroMemory(raw);
             return (new Audio2FaceHostPairing
             {
-                Origin = origin, HostId = host.Id, SpkiFingerprint = host.Spki, DeviceId = signer.DeviceId, CredentialId = credentialId
+                Origin = origin, HostId = hostId, SpkiFingerprint = spki, DeviceId = signer.DeviceId, CredentialId = credentialId
             }, secret);
         }
         catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)
         {
-            throw new Audio2FaceHostException("response.invalid", $"{host.Id}'s pairing response was invalid.");
+            throw new Audio2FaceHostException("response.invalid", $"{hostId}'s pairing response was invalid.");
         }
         finally { CryptographicOperations.ZeroMemory(body); }
     }

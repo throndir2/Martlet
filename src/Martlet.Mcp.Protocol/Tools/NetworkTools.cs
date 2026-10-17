@@ -150,12 +150,17 @@ internal sealed partial class McpServer
             "there; the secret in the lab credential folder of MARTLET_LAB_CREDENTIALS, so run Invoke-MartletMcp.ps1 -LabCredentials), " +
             "and a simulated companion PC (lab-companion) that asks to join the desktop's network once it is bound, syncs the shared " +
             "settings every 2 seconds, says what it is (pc.lab-companion) and follows an ask that it switch (role.lab-companion). " +
-            "\"ask\" with role host or companion: the simulated PC asks the desktop to become that (role.<desktop device>). \"status\": " +
-            "the simulated PC's role and membership, what the host's copy says each computer is and the newest ask about each, and " +
+            "\"ask\" with role host or companion: the simulated PC asks the desktop to become that (role.<desktop device>). \"add_host\" " +
+            "(hostId, default lab-nas): once it is a member, the simulated PC adds a host to the network that nothing answers for, as a " +
+            "host added on a computer the desktop can't reach, so the desktop shows a host of its network it isn't paired with and why " +
+            "(Share › NetworkGap, the map). \"status\": " +
+            "the simulated PC's role and membership, what the host's copy says each computer is and the newest ask about each, the " +
+            "hosts it added (addedHosts) and the network's hosts as it sees them (networkHosts), and " +
             "its events. \"stop\": ends it (it also ends with this server).", new
         {
-            action = new { type = "string", @enum = new[] { "start", "status", "ask", "stop" } },
+            action = new { type = "string", @enum = new[] { "start", "status", "ask", "add_host", "stop" } },
             role = new { type = "string", @enum = new[] { "host", "companion" } },
+            hostId = new { type = "string" },
             dataDirectory = new { type = "string" }
         }, ["action"],
             async (arguments, cancellation) => await RoleLabAsync(arguments, cancellation)),
@@ -530,12 +535,24 @@ internal sealed partial class McpServer
                 File.Move(ask + ".tmp", ask, overwrite: true);
                 return new { asked = role };
             }
+            case "add_host":
+            {
+                if (roleLab is not { HasExited: false }) throw new InvalidOperationException("Start the role lab first.");
+                var hostId = OptionalString(arguments, "hostId") ?? "lab-nas";
+                if (hostId is not { Length: > 0 and <= 64 } || !char.IsAsciiLetterOrDigit(hostId[0]) ||
+                    !hostId.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-'))
+                    throw new ArgumentException("hostId is letters, digits, '.', '_' or '-'.");
+                var adding = Path.Combine(directory, "role-lab.host");
+                await File.WriteAllTextAsync(adding + ".tmp", hostId, cancellation);
+                File.Move(adding + ".tmp", adding, overwrite: true);
+                return new { adding = hostId };
+            }
             case "stop":
                 StopLab(roleLab);
                 roleLab = null;
                 return new { stopped = true };
             default:
-                throw new InvalidOperationException("action is start, status, ask or stop.");
+                throw new InvalidOperationException("action is start, status, ask, add_host or stop.");
         }
     }
 

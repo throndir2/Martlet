@@ -17,7 +17,7 @@ other computers.
 | You do | What happens |
 | --- | --- |
 | Pair your first host (Add a computer: this PC with Docker Desktop, a Linux computer over SSH, or a typed code) | This PC starts your network and adds the host to it |
-| Pair another host on any member PC | It joins the network; every other member pairs with it by itself within a minute |
+| Pair another host on any member PC | It joins the network; every other member pairs with it by itself within a minute. A member that can't hear of it from a host it reaches finds it on your home network ([below](#when-a-host-is-added-where-your-other-computers-cant-reach)) |
 | Install Martlet on another PC and choose it under Add a computer › *Martlet on your network* on that PC (or pair it with any one host of the network by code or SSH). On a new PC, Home offers this first: *Connect to your other computers* | Both screens show a six-digit check number. **Allow** it on the computer with the hosts (*Martlet on your network*, or **Share › Your Martlet network** for a PC that paired another way; **Turn down** refuses). Allowing it from *Martlet on your network* also lets it into the network, with no second Allow. Then the new PC pairs with every host by itself, including hosts added later. Nothing needs to be set up on the new PC first: it pairs, then follows [who does what](CLUSTER.md) and your shared settings, so its jobs go to your hosts |
 | Pair your main PC with a member PC's own host service (*Pair your main PC* on a host PC, or this PC's host service on a companion) | It joins the network by itself: the pairing code (or Allow) showed only on that member PC, so the owner already approved it there and no second Allow is asked. It then pairs with every host by itself |
 | **Remove from network** on another PC | Every host revokes it; it forgets the network's hosts. To come back it asks again (with a new key) |
@@ -200,6 +200,76 @@ gateway's TCP port when ufw or firewalld is active. A Docker host's firewall
 (ufw) must allow it by hand, because Docker only opens published ports.
 Phones that paired with a host's address don't look for it yet.
 
+## When a host is added where your other computers can't reach
+
+Each computer learns the network from the hosts it reaches: it reads their
+copy of the roster and gives them its own. So a change normally reaches every
+member through a host they share. That failed when the computer that made the
+change couldn't reach any host the others use.
+
+For example, MIKO added a NAS (Nahida-host) while it couldn't reach diva-host,
+imouto-host or miku-host. Only MIKO and the NAS knew the NAS. LUMINE had joined
+through those hosts after MIKO last reached them, so MIKO and the NAS didn't
+know LUMINE. Each computer showed another network, and nothing told the owner
+why. Now the network comes together as soon as any path exists:
+
+1. **Members find new hosts on the home network.** About every 2 minutes (at
+   once when Martlet starts, and on **Check now**), a member PC asks the home
+   network which Martlet hosts are there: the same *find host* question as
+   [above](#when-a-computer-gets-a-new-address), for every host (UDP 9444,
+   never a subnet scan). It pairs by itself with each host that answers and
+   that its roster doesn't list, at the gateway's default port 9443 and the
+   ports of your network's hosts (`NetworkHostFinder`).
+2. **It trusts only what your computers signed.** That pairing learns the
+   host's TLS key from the connection, because the roster doesn't have it yet.
+   The signed request names that key, so it is useless anywhere else. The PC
+   then reads the host's roster and takes only entries that desktops it
+   already trusts signed (`NetworkRoster.Accept`). It keeps the host only when
+   that roster lists the host with the key it showed. Otherwise it drops it.
+3. **It brings its roster to a host that doesn't count it yet.** A host
+   refuses a member it hasn't heard of (`network.denied`). The member then
+   pairs again with its own roster (`roster` in the pairing request). The host
+   takes the entries signed by desktops it already trusts, the same rule as
+   every roster merge, and lets the member pair once its proof holds. A host
+   on an older Martlet refuses the roster; update it (**Update host**).
+4. **The others follow.** The member then gives the merged roster to every
+   host it reaches, as on every sync, and the other members get it from
+   there. In the example, LUMINE finds the NAS, pairs with it, and gives it
+   LUMINE's roster. MIKO then learns LUMINE through the NAS, and DIVA learns
+   the NAS through diva-host.
+5. **Hosts that aren't yours stay alone.** A host of another Martlet network
+   refuses the pairing (`network.other`); one in no network says so
+   (`network.unbound`). The PC leaves it alone for 30 minutes and says how to
+   bring it in (`martlet-host network-reset` on it, then **Add a computer**, or
+   **Add a computer** for a host in no network).
+
+Where your computers don't see the same network yet, each one says so and why:
+
+- **Share › Your Martlet network** shows a card above the list
+  (`NetworkGap`): which of your computers aren't paired with a host, which
+  hosts this PC couldn't reach to tell them, and the hosts on your home
+  network that are outside your network. For example: *Your computers don't all
+  see the same network yet: DIVA and LUMINE aren't paired with Nahida-host
+  yet, and this PC couldn't reach diva-host to tell them. Martlet 0.89.0 or
+  newer finds new hosts on your home network by itself; otherwise check that
+  diva-host is on and that this PC reaches it.* A host row says the same about
+  that host (*Not paired yet: it didn't answer in time at
+  192.168.50.200:9443.*). A member that no host here has seen for 12 hours
+  says that a host added on it shows here only when it reaches one of your
+  hosts again, or when this PC finds that host.
+- **Devices** adds the same sentence to its summary. The map draws every host
+  of the network, also one this PC isn't paired with yet (*Not paired with
+  this PC yet*, with why), named like every other computer. A host some of
+  your computers aren't paired with shows *Not on all your computers yet*.
+- **The desktop log** writes the sentence whenever it changes, and each host
+  this PC found (*Found Nahida-host on your home network: MIKO added it ...*).
+
+What you need: Martlet with this change on the computers that find the host,
+the host's UDP 9444 open on the home network (see above), and, for a member
+the host doesn't know yet, a host with this change too. Across routers or
+VPNs, the find doesn't reach; there a change travels only through a host both
+computers reach.
+
 ## Trust model
 
 - **Network key.** Each desktop has its own ECDSA P-256 network key in
@@ -233,7 +303,12 @@ Phones that paired with a host's address don't look for it yet.
   fresh nonce with its network key, over TLS pinned to the fingerprint in the
   roster. The host checks the key against its roster and issues one `voice`
   credential (replacing older ones of that PC). The credential is kept in
-  Windows Credential Manager like any other pairing.
+  Windows Credential Manager like any other pairing. A host the roster doesn't
+  list yet, found on the home network, is paired with the key it showed and
+  kept only when its own roster lists it with that key, signed by a member;
+  a member the host doesn't know yet brings its roster, and the host takes only
+  entries its trusted members signed
+  ([details](#when-a-host-is-added-where-your-other-computers-cant-reach)).
 - **Joining.** Only a PC already paired with a host of the network (with the
   owner's approval on that host, or through *Martlet on your network*) can ask
   to join, and the request names the device ID of that pairing. The check
@@ -299,8 +374,9 @@ Limits, by design for a home network:
 
 - Changes a stolen PC made before you removed it stay; remove anything you
   don't recognize too (everything is listed on the card).
-- A PC learns about changes through its hosts. A PC whose only host is
-  unreachable learns about them when it reaches one.
+- A PC learns about changes through its hosts, and finds hosts of the network
+  it hasn't heard of on the home network. A PC away from home whose hosts are
+  all unreachable learns about changes when it reaches one.
 - At most 64 entries per roster, removed ones included.
 - Not yet: a join code, *Leave network* on the PC itself (see
   [user stories B1-B7](USER_STORIES.md#b-joining-a-network)). Cloud keys and
@@ -1163,10 +1239,10 @@ of every host of your network.
 | --- | --- |
 | Roster format and rules | `Martlet.Core.Network` (`NetworkRoster`, `NetworkKey`, `NetworkPairing`) |
 | Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network` (roster, join requests, the computers paired with the host, the Martlet release it runs), `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
-| Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches), `Remote/HostNetwork.cs` (client calls, pairing by itself) and `Remote/HostRelease.cs` (what an announced release means to this PC) |
+| Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches), `Remote/NetworkFind.cs` (`NetworkHostFinder`: hosts found on the home network; `NetworkReach`: what isn't the same everywhere yet, and why), `Remote/HostNetwork.cs` (client calls, pairing by itself, `PairFoundAsync`, bringing the roster) and `Remote/HostRelease.cs` (what an announced release means to this PC) |
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Share page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
-| MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`), `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`), `host_move_selftest` (a host whose computer got a new address, `Martlet.NodeLinkCheck move`) and `hosts_find` (one find on the home network); card IDs in [MCP](MCP.md) |
+| MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`, with a host added where the other computers can't reach), `role_lab add_host` (a host the desktop can't reach, for the `NetworkGap` card and the map), `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`), `host_move_selftest` (a host whose computer got a new address, `Martlet.NodeLinkCheck move`) and `hosts_find` (one find on the home network); card IDs in [MCP](MCP.md) |
 | Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`, household account logins), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/prove`, `/settings`); `Martlet.Core` `Access/Totp.cs`, `Accounts/AccountAttestation.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs` (`ProveAsync`, `ProveWithPasswordAsync`, `ProveInBrowserAsync`), `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest`, `signin_lab` mode `account` |
 | Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Share › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
 | Share links | `Martlet.Core` `Network/ShareLink.cs` (format, `Verifier`); gateway `GatewaySignIn.cs` (provider `link`, `GatewayShareLink`, `share-link` and `remove-share-link`) and `GatewaySignInHttp.cs` (`/martlet/v1/signin/shared`); desktop `Remote/HostSignIn.cs` (`SignInWithShareLinkAsync`, `ReadSharedHostsAsync`, `HostSignInSettings.Links`), `ShareLinks.cs` (share-links.json, `Plan`), `MainWindow.ShareLinks.cs`, `ShareLinkWindow.cs`, `ShareLinkProtocol.cs` (martlet: links) and `WindowsCredentialStore` (`*ShareLinkSecret`); MCP `network_status` (`shareLinks`) and `signin_selftest` |

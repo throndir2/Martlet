@@ -260,6 +260,32 @@ pairing secret is missing.
 
 **Docs:** [Your Martlet network](NETWORK.md#how-it-works-for-you).
 
+## Which hosts and computers of the network a PC knows
+
+**What it decides:** how a change to the network (a host or a computer added on
+one PC) reaches every other member, including when the PC that made it can't
+reach the hosts the others use; and what each PC says when the network isn't
+the same everywhere yet.
+
+**Owner:** `NetworkSyncEngine.SyncAsync`
+(`src\Martlet.Avatar.Audio2Face\Remote\NetworkSync.cs`): it merges every
+reachable host's roster, looks for hosts of the network that no reachable host
+has heard of on the home network (`NetworkHostFinder`, `NetworkFind.cs`),
+pairs by itself with every host of the roster and brings its roster to a host
+that doesn't count it yet (`HostNetworkPairing`, `HostNetwork.cs`; the host
+side is `GatewayNetworkStore.PairMember`, `src\Martlet.Gateway\GatewayNetwork.cs`).
+What isn't the same yet, and why, is `NetworkReach` (`NetworkFind.cs`); the
+Share page, the Devices summary and the map read it
+(`MainWindow.Network.cs`, `NetworkMap.Build`'s network hosts).
+
+**Tests:** `NetworkReachTests` (Martlet.Desktop.Tests),
+`MemberPairingRosterTests` (Martlet.Gateway.Tests).
+
+**MCP:** `network_selftest` (the MIKO, DIVA, LUMINE and NAS steps),
+`role_lab add_host` with the desktop's `NetworkGap` and `DevicesSummary`.
+
+**Docs:** [When a host is added where your other computers can't reach](NETWORK.md#when-a-host-is-added-where-your-other-computers-cant-reach).
+
 ## Which address a connection to a host dials
 
 **What it decides:** which address the TCP connection to a paired host goes

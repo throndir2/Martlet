@@ -481,7 +481,7 @@ internal static class AutomationPolicy
         new("SelectedDeviceHealth", "Devices", "Shows the status of the selected device."),
         new("SelectedDeviceHealthAction", "Devices", "Shows what the status button does, such as 'Update available: Update to Martlet 0.40.0'. A click updates the host, so it needs --allow-ui-effects."),
         new("ClusterStatus", "Devices › Settings for all devices", "Shows the status of Keep Martlet the same on all my computers."),
-        new("DevicesSummary", "Devices", "Shows how many devices there are and how many need attention, such as '53 devices, 2 need attention. Select one to see details.'."),
+        new("DevicesSummary", "Devices", "Shows how many devices there are and how many need attention, such as '53 devices, 2 need attention. Select one to see details.', followed by what isn't the same on all your computers yet (as NetworkGap on the Share page)."),
         new("DeviceListStatus", "Devices", "Shows how many devices the list shows, such as 'Showing 12 of 53 devices.', or that no device matches the filter."),
         new("DeviceList", "Devices", "The Devices list: its value is the selected device's row, such as 'SIM-012, desktop-sim-012. Asks to join. Runs: Martlet companion'; ui_scroll reads and moves its place."),
         // MainWindow.DeviceCapacity.cs
@@ -865,6 +865,7 @@ internal static class AutomationPolicy
         new("RolesSummaryText", "Devices", "Shows the summary of the host roles."),
         new("HostRunPairAddress", "Run window", "Shows the address in the pairing panel."),
         new("NetworkStatus", "Share", "Shows the status of the network."),
+        new("NetworkGap", "Share", "Shows what isn't the same on all your computers yet and why: which of your computers aren't paired with a host, the hosts this PC couldn't reach to tell them, and Martlet hosts on your home network outside your network with how to bring them in. Host IDs, computer names and fixed wording; empty when every computer sees the same network."),
         new("ShareSummary", "Share", "Shows how many computers are in your network, how many friends you share hosts with, how many people have a key to your language models and how many hosts are shared with this PC. Counts only."),
         new("OpenAiStatus", "Share › Share your language models", "Shows how many language models your hosts offer, how many people have a key, hosts that need an update and when it was checked. Counts, host IDs and fixed wording."),
         new("OpenAiAddressStatus", "Share › Share your language models", "Shows the address people use and the front door the proxy sends it to, or that no address is set. Never a key."),

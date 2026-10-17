@@ -18,6 +18,8 @@ Each release's section here is also its notes on GitHub.
 ### Fixed
 
 - Cards on the Devices map no longer overlap when a computer runs many jobs; before, four computers could already hide each other. ([#934](https://github.com/throndir2/Martlet/pull/934))
+- A host you add on one computer now reaches all your other computers, even when that computer can't reach the hosts they use: they find it on your home network and pair with it by themselves, and a computer that joined later brings that host up to date. Before, a new host and a new computer could stay unknown to each other. ([#933](https://github.com/throndir2/Martlet/pull/933))
+- When your computers don't see the same network yet, the Share and Devices pages say which computer is missing which host and why, and the map shows every host of your network, also one this PC isn't paired with yet. ([#933](https://github.com/throndir2/Martlet/pull/933))
 
 ## [0.88.0] - 2026-10-16
 

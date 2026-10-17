@@ -108,9 +108,10 @@ public sealed record NetworkSyncResult
 /// <item>reads every paired host's network;</item>
 /// <item>outside a network: becomes a member once a member allowed it, asks a bound host to join, or founds a network
 /// when a paired host is in none;</item>
-/// <item>as a member: merges every host's copy, adds paired hosts that are in no network (binding them), forgets hosts
-/// removed from the network, pairs by itself with every member host it isn't paired with, lists pending join requests
-/// and pushes the merged roster to every host whose copy differs.</item>
+/// <item>as a member: merges every host's copy, looks on the home network for hosts of the network that no host it reaches has
+/// heard of (<see cref="NetworkHostFinder"/>), adds paired hosts that are in no network (binding them), forgets hosts
+/// removed from the network, pairs by itself with every member host it isn't paired with (bringing its roster to a host that
+/// doesn't count it yet), lists pending join requests and pushes the merged roster to every host whose copy differs.</item>
 /// </list>
 /// Nothing here shows UI; approvals and removals are explicit calls (<see cref="Approve"/>, <see cref="Remove"/>).
 /// </summary>
@@ -143,7 +144,7 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
     }
 
     public async Task<NetworkSyncResult> SyncAsync(NetworkLocalState state, IReadOnlyList<Audio2FaceHostPairing> paired,
-        Func<Audio2FaceHostPairing, Audio2FaceHostConnection> connect, CancellationToken token)
+        Func<Audio2FaceHostPairing, Audio2FaceHostConnection> connect, CancellationToken token, NetworkHostFinder? finder = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(paired);
@@ -223,6 +224,11 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
 
         foreach (var view in views.Values.Where(v => v.Roster?.NetworkId == roster.NetworkId))
             roster = NetworkRoster.Accept(roster, view.Roster!).Roster;
+        // Hosts of this network that no host this PC reaches has heard of (added on a computer that couldn't reach them), found on
+        // the home network.
+        var found = new List<(Audio2FaceHostPairing Pairing, string Secret)>();
+        if (finder is not null && roster.Trusts(signer.DeviceId, signer.PublicKey) && finder.Due())
+            roster = await FindAsync(finder, roster, state, paired, views, found, events, token);
         HostRoutes.Update(roster);
         NetworkSyncResult Leave(NetworkRoster from, string text)
         {
@@ -293,15 +299,17 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
                 $"{removal.Label ?? removal.Subject} ({removal.Provider}), which is no longer allowed there. Every host revokes it.");
         }
 
-        var added = new List<(Audio2FaceHostPairing Pairing, string Secret)>();
+        var added = new List<(Audio2FaceHostPairing Pairing, string Secret)>(found);
         string? deniedBy = null;
         foreach (var host in roster.ActiveHosts)
         {
-            if (ignored.Contains(host.Id) || forget.Contains(host.Id)) continue;
+            if (ignored.Contains(host.Id) || forget.Contains(host.Id) || found.Any(f => f.Pairing.HostId == host.Id)) continue;
             if (paired.Any(p => p.HostId == host.Id) && !revoked.Contains(host.Id)) continue;
             try
             {
-                var pairing = await HostNetworkPairing.PairAsMemberAsync(host, roster.NetworkId, signer, name, token, time);
+                // This PC's roster goes along when the host doesn't count this PC yet (this PC joined while nobody could tell it).
+                var pairing = await HostNetworkPairing.PairAsMemberAsync(host, roster.NetworkId, signer, name, token, time,
+                    revoked.Contains(host.Id) ? null : roster);
                 added.Add(pairing);
                 notes.Remove(host.Id);
                 events.Add($"Paired with {host.Id} through your Martlet network.");
@@ -313,7 +321,7 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
             }
             catch (Exception error) when (IsHostFailure(error, token))
             {
-                if (!revoked.Contains(host.Id)) notes[host.Id] = "Not paired yet: " + error.Message;
+                if (!revoked.Contains(host.Id)) notes[host.Id] = "Not paired yet: " + PairingProblem(host, error);
             }
         }
         if (deniedBy is not null)
@@ -420,6 +428,94 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
         var roster = state.Roster ?? throw new InvalidOperationException("This PC is not in a Martlet network.");
         return state with { Roster = roster.SetHostAddresses(signer, hostId, addresses, time.GetUtcNow()) };
     }
+
+    /// <summary>
+    /// Looks on the home network for hosts this PC's roster doesn't list (<see cref="NetworkHostFinder"/>) and pairs by itself
+    /// with each, bringing this PC's roster for a host that doesn't count this PC yet. A host is kept, with the network copy it
+    /// brought, only when that copy (accepted entry by entry, signed by desktops this PC trusts) lists the host with the key it
+    /// showed; anything else is dropped and the host is left alone for a while. Kept pairings go to <paramref name="found"/>.
+    /// </summary>
+    private async Task<NetworkRoster> FindAsync(NetworkHostFinder finder, NetworkRoster roster, NetworkLocalState state,
+        IReadOnlyList<Audio2FaceHostPairing> paired, Dictionary<string, HostNetworkView> views,
+        List<(Audio2FaceHostPairing Pairing, string Secret)> found, List<string> events, CancellationToken token)
+    {
+        IReadOnlyList<NetworkHostSighting> sightings;
+        try { sightings = await finder.LookAsync(roster, token); }
+        catch (Exception error) when (error is System.Net.Sockets.SocketException or IOException or InvalidOperationException ||
+            error is OperationCanceledException && !token.IsCancellationRequested)
+        {
+            finder.Done([], [], new Dictionary<string, string>(), error.Message);
+            return roster;
+        }
+        var answered = sightings.Select(s => s.HostId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        var left = new Dictionary<string, string>(StringComparer.Ordinal);
+        var kept = new List<string>();
+        var candidates = sightings
+            .Where(s => roster.Host(s.HostId) is null && paired.All(p => p.HostId != s.HostId) && !state.Ignored.Contains(s.HostId) &&
+                !finder.IsLeftAlone(s.HostId))
+            .GroupBy(s => s.HostId, StringComparer.Ordinal).Take(NetworkHostFinder.MaximumHosts).ToArray();
+        foreach (var candidate in candidates)
+        {
+            string? why = null;
+            var leave = false;
+            foreach (var sighting in candidate.Take(NetworkHostFinder.MaximumOrigins))
+            {
+                try
+                {
+                    var (pairing, secret) = await HostNetworkPairing.PairFoundAsync(sighting.HostId, sighting.Origin, roster.NetworkId, signer,
+                        name, token, time, roster);
+                    using var connection = new Audio2FaceHostConnection(pairing, secret);
+                    var view = await connection.ReadNetworkAsync(token);
+                    var merged = view.Roster?.NetworkId == roster.NetworkId ? NetworkRoster.Accept(roster, view.Roster).Roster : null;
+                    if (merged?.Host(sighting.HostId) is not { Removed: false } entry || entry.Spki != pairing.SpkiFingerprint)
+                    {
+                        why = "it let this PC pair, but your network doesn't list it with the key it showed, so this PC doesn't use it";
+                        leave = true;
+                        break;
+                    }
+                    roster = merged;
+                    views[sighting.HostId] = view;
+                    // The pairing is kept when the host was found at the address the network lists; otherwise this PC pairs with
+                    // it again at that address below.
+                    if (Audio2FaceHostClient.CanonicalOrigin(entry.Origin) == pairing.Origin) found.Add((pairing, secret));
+                    kept.Add(sighting.HostId);
+                    events.Add($"Found {sighting.HostId} on your home network: {roster.Desktop(entry.UpdatedBy)?.Name ?? entry.UpdatedBy} added it to your " +
+                        "Martlet network while no host this PC reaches could hear of it. This PC uses it now and tells your other hosts.");
+                    why = null;
+                    break;
+                }
+                catch (Audio2FaceHostException error) when (error.Code is "network.other" or "network.unbound")
+                {
+                    why = error.Code == "network.other"
+                        ? "it belongs to another Martlet network. To bring it into yours, run martlet-host network-reset on it and pair it again with Add a computer"
+                        : "it is in no Martlet network yet. Pair it with Add a computer to add it to yours";
+                    leave = true;
+                    break;
+                }
+                catch (Audio2FaceHostException error) when (error.Code == "network.denied")
+                {
+                    // Same network, but it doesn't count this PC even with its roster (or is too old to take it): try again on the next look.
+                    why = "it is in your network but doesn't count this PC yet. It may run an older Martlet: update it (Update host) on a " +
+                          "computer that uses it";
+                    break;
+                }
+                catch (Exception error) when (IsHostFailure(error, token)) { why = error.Message; }
+            }
+            if (why is not null) left[candidate.Key] = why;
+            if (leave) finder.Leave(candidate.Key);
+        }
+        finder.Done(answered, kept, left);
+        return roster;
+    }
+
+    /// <summary>Why pairing with a host of the network failed, in a few words.</summary>
+    private static string PairingProblem(NetworkMember host, Exception error) => error switch
+    {
+        OperationCanceledException => $"it didn't answer in time at {(Uri.TryCreate(host.Origin, UriKind.Absolute, out var origin) ? origin.Authority : host.Origin)}.",
+        Audio2FaceHostException { Code: "network.denied" } =>
+            "it doesn't count this PC in your network yet. It may run an older Martlet: update it (Update host) on a computer that uses it.",
+        _ => error.Message
+    };
 
     private static async Task<(Audio2FaceHostPairing Pairing, HostNetworkView? View, string? Note, bool Revoked)> ReadAsync(
         Audio2FaceHostPairing pairing, Func<Audio2FaceHostPairing, Audio2FaceHostConnection> connect, CancellationToken token)

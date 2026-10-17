@@ -36,7 +36,8 @@ param(
     [switch]$KeepDesktop,
     # Keep pairing secrets in a lab-credentials folder inside the data directory instead of Windows Credential Manager, for the
     # desktop and MCP processes this starts (MARTLET_LAB_CREDENTIALS); needed by signin_lab and role_lab. It also gives both a
-    # lab-browser folder (MARTLET_LAB_BROWSER) where the desktop hands a browser sign-in page to signin_lab's simulated browser.
+    # lab-browser folder (MARTLET_LAB_BROWSER) where the desktop hands a browser sign-in page to signin_lab's simulated browser,
+    # and keeps their finds of hosts on the home network on loopback (MARTLET_HOST_FIND_LOOPBACK), so a lab never reaches real hosts.
     [switch]$LabCredentials,
     [switch]$Build,
     [string]$Configuration = 'Release',
@@ -123,7 +124,7 @@ try {
         $start.ArgumentList.Add($data)
         foreach ($argument in $DesktopArguments) { $start.ArgumentList.Add($argument) }
         $start.UseShellExecute = $false
-        if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder; $start.Environment['MARTLET_LAB_BROWSER'] = $labBrowser }
+        if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder; $start.Environment['MARTLET_LAB_BROWSER'] = $labBrowser; $start.Environment['MARTLET_HOST_FIND_LOOPBACK'] = '1' }
         $desktopProcess = [System.Diagnostics.Process]::Start($start)
         $DesktopProcessId = $desktopProcess.Id
     }
@@ -132,7 +133,7 @@ try {
     if ($AllowUiEffects) { $start.ArgumentList.Add('--allow-ui-effects') }
     if ($AllowChanges) { $start.ArgumentList.Add('--allow-changes') }
     $start.UseShellExecute = $false
-    if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder; $start.Environment['MARTLET_LAB_BROWSER'] = $labBrowser }
+    if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder; $start.Environment['MARTLET_LAB_BROWSER'] = $labBrowser; $start.Environment['MARTLET_HOST_FIND_LOOPBACK'] = '1' }
     $start.RedirectStandardInput = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
