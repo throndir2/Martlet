@@ -65,7 +65,7 @@ public partial class MainWindow
             CheckLocalServiceAsync().Forget();
         nearbyHosts = nearbyEnabled ? ShareableHosts() : [];
         nearbyOffer = nearbyHosts.Count == 0 ? null
-            : new(Nearby.Label(Environment.MachineName), ClusterDevice, Version, nearbyHosts.Select(h => h.HostId).Take(Nearby.MaximumHosts).ToArray(),
+            : new(Nearby.Label(Martlet.Core.Network.ThisComputer.Name), ClusterDevice, Version, nearbyHosts.Select(h => h.HostId).Take(Nearby.MaximumHosts).ToArray(),
                 nearbyHosts.Where(h => h.Target.Method == HostSetupMethod.ThisPcDocker).Select(h => h.HostId).ToArray());
         if (nearbyOffer is null) StopNearby();
         else

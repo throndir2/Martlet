@@ -40,6 +40,10 @@ public sealed record HostHardware(
     /// <summary>The Martlet release the host's gateway runs; null for hosts from 0.2.0 and earlier.</summary>
     public string? MartletVersion { get; init; }
 
+    /// <summary>The name the host's computer gives itself (its host name: Nahida), which devices show instead of the host ID;
+    /// null for hosts that don't report it yet (Martlet.Core.Network.HostIds.ComputerName then reads it from the host ID).</summary>
+    public string? ComputerName { get; init; }
+
     /// <summary>The operating system its roles run on (linux, windows, macos, ios, android); null for hosts that predate
     /// platform reporting, which run the Linux host engine.</summary>
     public string? Platform { get; init; }

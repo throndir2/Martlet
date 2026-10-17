@@ -21,6 +21,8 @@ public enum JobDoer
 public sealed record JobHostState
 {
     public required string HostId { get; init; }
+    /// <summary>The name its computer goes by (Nahida), shown instead of the host ID; null: the host ID.</summary>
+    public string? Name { get; init; }
     /// <summary>False when the job's route still points at a host this device no longer has a pairing for.</summary>
     public bool Paired { get; init; } = true;
     /// <summary>Null: not checked since Martlet started (sync off and no Check connection).</summary>
@@ -71,9 +73,10 @@ public enum CoverageState { Ready, Unknown, NotChosen, Limited, Unavailable }
 /// own host service (Docker Desktop first when it needs it).</summary>
 public enum CoverageFix { UseFallback, CheckHost, OpenSetup, OpenDevices, InstallRole, RepairHostService }
 
-/// <summary>A job's coverage. <paramref name="OwnHost"/>: the host doing it is this PC's own host service.</summary>
+/// <summary>A job's coverage. <paramref name="OwnHost"/>: the host doing it is this PC's own host service.
+/// <paramref name="HostName"/>: the name of that host's computer (Nahida), for the fixes' labels.</summary>
 public sealed record JobCoverage(string Job, CoverageState State, string Problem, string Effect, IReadOnlyList<CoverageFix> Fixes,
-    string? HostId = null, string? Fallback = null, bool OwnHost = false)
+    string? HostId = null, string? Fallback = null, bool OwnHost = false, string? HostName = null)
 {
     public string Title => JobCoverageRules.Title(Job);
     public bool IsProblem => State is CoverageState.Limited or CoverageState.Unavailable;
@@ -112,7 +115,7 @@ public static class JobCoverageRules
         var effect = Effect(job.Job);
         JobCoverage Result(CoverageState state, string problem, params CoverageFix[] fixes) =>
             new(job.Job, state, problem, state is CoverageState.Limited or CoverageState.Unavailable ? effect : "", fixes,
-                job.Host?.HostId, job.Fallback, job.Host?.ThisPc == true);
+                job.Host?.HostId, job.Fallback, job.Host?.ThisPc == true, job.Host?.Name ?? job.Host?.HostId);
         CoverageFix[] fallback = job.Fallback is null ? [] : [CoverageFix.UseFallback];
 
         switch (job.Doer)
@@ -134,8 +137,8 @@ public static class JobCoverageRules
             down = CoverageState.Limited;
             effect = $"{standIn} hears you on this device's processor meanwhile.";
         }
-        // This PC's own host service is named as such, never by its host ID as if it were another computer.
-        var name = host.ThisPc ? "This PC's host service" : host.HostId;
+        // This PC's own host service is named as such; another host by its computer's name (Nahida), never by its host ID.
+        var name = host.ThisPc ? "This PC's host service" : host.Name ?? host.HostId;
         if (!host.Paired)
             return Result(down, $"{name} is no longer paired with this device.", [.. fallback, CoverageFix.OpenDevices]);
         string Failover()
@@ -209,7 +212,7 @@ public static class JobCoverageRules
             else lines.Add(BackTo(job));
         }
         if (sharedPlanUsesHost)
-            lines.Add($"Your other computers that keep who does what in sync use {hostId} for {job.Job} too; " +
+            lines.Add($"Your other computers that keep who does what in sync use {(here ? job.Host!.Name : null) ?? hostId} for {job.Job} too; " +
                 (job.Host is { Failover: true, FailoverTarget: not null } ? "failover moves them as well." : "they lose it as well."));
         return lines;
     }

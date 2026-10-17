@@ -329,7 +329,7 @@ public partial class MainWindow
         if (canceledHere)
         {
             canceledByOwner?.Invoke();
-            return new(false, $"Canceled on {Environment.MachineName}: its owner canceled it in Background tasks.");
+            return new(false, $"Canceled on {Martlet.Core.Network.ThisComputer.Name}: its owner canceled it in Background tasks.");
         }
         token.ThrowIfCancellationRequested();
         return outcome;
@@ -338,7 +338,7 @@ public partial class MainWindow
     private async Task<NodeCommandOutcome?> RunNodeCommandAsync(Martlet.Core.Nodes.NodeCommand command, IReadOnlyDictionary<string, string> secrets, bool resumed,
         IProgress<string> output, CancellationToken token)
     {
-        var here = Environment.MachineName;
+        var here = Martlet.Core.Network.ThisComputer.Name;
         ShowNodeAgentStatus($"Running {NodeCommandsRunningText}...");
         if (command.Kind == NodeCommandKinds.Update) return await RunUpdateCommandAsync(command, output, token);
         // Taken but never started here (Martlet exited first, for example to install an update): it simply runs now.
@@ -377,7 +377,7 @@ public partial class MainWindow
     private async Task<NodeCommandOutcome?> RunEngineCommandAsync(Martlet.Core.Nodes.NodeCommand command, IReadOnlyDictionary<string, string> secrets,
         string? role, string[] engine, IProgress<string> output, string by, CancellationToken token)
     {
-        var here = Environment.MachineName;
+        var here = Martlet.Core.Network.ThisComputer.Name;
         await EnsureLocalEngineAsync(output, token);
         var target = await HostLocal.EngineForChangeAsync(ThisPcTarget(), role, output.Report, output, token, by);
         Dictionary<string, string>? answers = null;
@@ -411,7 +411,7 @@ public partial class MainWindow
     /// update), telling the computer that asked what it waits for, or while Martlet restarts into the new version.</summary>
     private async Task<NodeCommandOutcome?> RunUpdateCommandAsync(Martlet.Core.Nodes.NodeCommand command, IProgress<string> output, CancellationToken token)
     {
-        var here = Environment.MachineName;
+        var here = Martlet.Core.Network.ThisComputer.Name;
         var wanted = System.Version.Parse(command.Arguments["version"]);
         NodeCommandOutcome? Wait(string why, string message)
         {
@@ -525,12 +525,12 @@ public partial class MainWindow
     {
         if ((await HostLocal.ProbeEngineAsync(token)).Answered) return;
         if (!MachineInfo.DockerDesktopInstalled())
-            throw new InvalidOperationException($"Docker Desktop isn't installed on {Environment.MachineName}, so its host service can't run.");
+            throw new InvalidOperationException($"Docker Desktop isn't installed on {Martlet.Core.Network.ThisComputer.Name}, so its host service can't run.");
         output.Report("Starting Docker Desktop...");
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(MachineInfo.DockerDesktopPath) { UseShellExecute = true })?.Dispose(); }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
         {
-            throw new InvalidOperationException($"Could not start Docker Desktop on {Environment.MachineName}: {error.Message}");
+            throw new InvalidOperationException($"Could not start Docker Desktop on {Martlet.Core.Network.ThisComputer.Name}: {error.Message}");
         }
         var deadline = DateTimeOffset.UtcNow + DockerStartPatience;
         while (DateTimeOffset.UtcNow < deadline)
@@ -542,6 +542,6 @@ public partial class MainWindow
                 return;
             }
         }
-        throw new InvalidOperationException($"Docker Desktop on {Environment.MachineName} did not start within {DockerStartPatience.TotalMinutes:0} minutes.");
+        throw new InvalidOperationException($"Docker Desktop on {Martlet.Core.Network.ThisComputer.Name} did not start within {DockerStartPatience.TotalMinutes:0} minutes.");
     }
 }

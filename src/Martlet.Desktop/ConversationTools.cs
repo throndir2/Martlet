@@ -607,7 +607,7 @@ internal sealed partial class LiveConversationController
             var writing = SongTools.Kind.TimeLimit!.Value;
             var author = new CreationAuthor
             {
-                Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName, Voice = setup.VoiceId,
+                Device = HostSetupCommands.SuggestedDeviceId(), Computer = Martlet.Core.Network.ThisComputer.Name, Voice = setup.VoiceId,
                 Persona = configured.Persona?.Name is { Length: > 0 } persona ? persona : null
             };
             var start = owner.jobs.Start(SongTools.Kind, label, (job, token) =>
@@ -913,7 +913,7 @@ internal sealed partial class LiveConversationController
             var toldUser = operation is null || !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
             var author = new CreationAuthor
             {
-                Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName,
+                Device = HostSetupCommands.SuggestedDeviceId(), Computer = Martlet.Core.Network.ThisComputer.Name,
                 Persona = configured.Persona?.Name is { Length: > 0 } persona ? persona : null
             };
             var start = owner.jobs.Start(PictureTools.Kind, arguments.About, (job, token) => MakePictureAsync(job, arguments, maker, author, then, token));

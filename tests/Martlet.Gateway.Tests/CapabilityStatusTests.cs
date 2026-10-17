@@ -139,6 +139,27 @@ public sealed class CapabilityStatusTests
     }
 
     [Fact]
+    public void The_computer_name_is_reported_and_one_it_cant_report_well_is_left_out()
+    {
+        // martlet-host collect_machine on a NAS in Docker: the Docker host names the computer (Nahida).
+        const string written =
+            "{\"collected_at\":\"2026-10-17T09:00:00Z\",\"method\":\"docker\",\"computer_name\":\"Nahida\",\"platform\":\"linux\"," +
+            "\"architecture\":\"x64\",\"operating_system\":\"Ubuntu 22.04.3 LTS\",\"kernel\":null,\"processor\":null,\"processor_threads\":4," +
+            "\"memory_gb\":7.6,\"container_runtime\":\"Docker 20.10.23\",\"nvidia_containers\":\"no\",\"cuda\":null,\"gpus\":[],\"features\":[]}\n";
+        Assert.Equal("Nahida", GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written))!.ComputerName);
+
+        // Docker Desktop's engine name, a name too long or with control characters: the report counts, without a name.
+        foreach (var name in new[] { "docker-desktop", new string('a', 64), "bad\\u0007name" })
+        {
+            var report = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("Nahida", name, StringComparison.Ordinal)));
+            Assert.NotNull(report);
+            Assert.Null(report!.ComputerName);
+        }
+        Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("\"computer_name\":\"Nahida\",", "", StringComparison.Ordinal)))!
+            .ComputerName);
+    }
+
+    [Fact]
     public async Task Private_worker_failure_is_redacted_with_an_exact_remedy()
     {
         var worker = new UnavailableWorker(GatewayTestHost.Capabilities(

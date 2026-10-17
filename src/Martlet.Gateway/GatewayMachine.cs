@@ -52,6 +52,9 @@ public sealed record GatewayMachineReport
     public required DateTimeOffset CollectedAt { get; init; }
     /// <summary>How the gateway runs on the host: docker, native, or app (inside the Martlet app on a Mac, phone or tablet).</summary>
     public required string Method { get; init; }
+    /// <summary>The name the computer gives itself (its host name, for example Nahida), so desktops show the computer and not
+    /// its host ID. Absent on older hosts and when the host engine can't tell it (Docker Desktop names its engine docker-desktop).</summary>
+    public string? ComputerName { get; init; }
     public required string OperatingSystem { get; init; }
     public string? Kernel { get; init; }
     public string? Processor { get; init; }
@@ -96,7 +99,10 @@ public sealed record GatewayMachineReport
         try
         {
             var report = JsonSerializer.Deserialize<GatewayMachineReport>(bytes, Json);
-            return report is not null && report.IsValid() ? report : null;
+            // A computer name the host can't report well is left out; the rest of the report still counts.
+            return report is not null && report.IsValid()
+                ? report with { ComputerName = Martlet.Core.Network.HostIds.CleanComputerName(report.ComputerName) }
+                : null;
         }
         catch (JsonException) { return null; }
         catch (NotSupportedException) { return null; }
