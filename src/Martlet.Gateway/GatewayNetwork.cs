@@ -197,7 +197,9 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
     }
 
     /// <summary>Issues a credential to an active member desktop that proves it holds its network key (replacing any older
-    /// credential of that device here).</summary>
+    /// credential of that device here). A member this host hasn't heard of yet (it joined while nobody could tell this host)
+    /// brings its copy of the roster: entries signed by desktops this host already trusts are accepted as in
+    /// <see cref="Merge"/>, and the merged roster is kept once the proof checks out against it.</summary>
     internal IssuedDeviceCredential PairMember(GatewayMemberPairingProof proof, CancellationToken cancellationToken)
     {
         proof.Validate();
@@ -209,9 +211,20 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
             attempts.Enqueue(now);
             GatewayRules.Require(roster is not null && BoundLocked, "network.unbound");
             GatewayRules.Require(proof.NetworkId == roster!.NetworkId, "network.other");
-            GatewayRules.Require(roster.Desktop(proof.DeviceId) is { Removed: false }, "network.denied");
-            var member = roster.Desktop(proof.DeviceId)!;
-            var bytes = NetworkPairing.ProofBytes(identity.HostId, identity.SpkiFingerprint, roster.NetworkId, proof.DeviceId,
+            var known = roster;
+            if (proof.Roster is { } brought && roster.Desktop(proof.DeviceId) is not { Removed: false })
+            {
+                try
+                {
+                    var incoming = NetworkRoster.Parse(JsonSerializer.SerializeToUtf8Bytes(brought));
+                    GatewayRules.Require(incoming.NetworkId == roster.NetworkId, "network.other");
+                    known = NetworkRoster.Accept(roster, incoming).Roster;
+                }
+                catch (ContractException) { throw new GatewayProtocolException("network.invalid"); }
+            }
+            GatewayRules.Require(known.Desktop(proof.DeviceId) is { Removed: false }, "network.denied");
+            var member = known.Desktop(proof.DeviceId)!;
+            var bytes = NetworkPairing.ProofBytes(identity.HostId, identity.SpkiFingerprint, known.NetworkId, proof.DeviceId,
                 proof.DisplayName, proof.Timestamp, proof.Nonce);
             GatewayRules.Require(NetworkKey.Verify(member.Key!, bytes, proof.Signature), "pairing.invalid");
             var at = DateTimeOffset.FromUnixTimeMilliseconds(proof.Timestamp);
@@ -220,6 +233,11 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
             GatewayRules.Require(!nonces.ContainsKey(proof.Nonce), "auth.replay");
             GatewayRules.Require(nonces.Count < MaximumNonces, "auth.rate");
             nonces[proof.Nonce] = now + NetworkPairing.ClockSkew + NetworkPairing.ClockSkew;
+            if (!ReferenceEquals(known, roster))
+            {
+                ApplyLocked(known, proof.DeviceId, cancellationToken);
+                log(LogLevels.Info, $"{proof.DeviceId} brought this host the network's newer roster when it paired (it joined while nobody could tell this host).");
+            }
             credentials.RevokeDevice(proof.DeviceId, cancellationToken);
             var issued = credentials.Issue(proof.DeviceId, NetworkRoster.CleanName(proof.DisplayName, proof.DeviceId),
                 [GatewayRole.Voice], cancellationToken);
@@ -244,11 +262,14 @@ internal sealed record GatewayMemberPairingProof
     public required long Timestamp { get; init; }
     public required string Nonce { get; init; }
     public required string Signature { get; init; }
+    /// <summary>The desktop's copy of the roster, for a host that may not have heard of it yet; older gateways refuse the field.</summary>
+    public JsonElement? Roster { get; init; }
 
     internal void Validate()
     {
         GatewayRules.Require(ProtocolVersion is not null, "request.invalid");
         ProtocolVersion!.Validate();
+        GatewayRules.Require(Roster is null || Roster.Value.ValueKind == JsonValueKind.Object, "request.invalid");
         GatewayRules.Require(Base64Url.TryDecode(NetworkId, 16, out _), "request.invalid");
         GatewayRules.Identifier(DeviceId);
         GatewayRules.Token(DisplayName, 64);

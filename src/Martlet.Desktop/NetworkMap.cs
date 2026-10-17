@@ -87,7 +87,12 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
     IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null,
     IReadOnlyCollection<string>? ThinkingPoolLeft = null, IReadOnlyDictionary<string, TimeSpan>? HostAway = null,
-    IReadOnlyDictionary<string, string>? Configuring = null, IReadOnlyList<PairedHost>? SharedHosts = null);
+    IReadOnlyDictionary<string, string>? Configuring = null, IReadOnlyList<PairedHost>? SharedHosts = null,
+    IReadOnlyList<NetworkHostState>? NetworkHosts = null);
+
+/// <summary>A host of your Martlet network as the network sync sees it (MainWindow.Network.cs): its home origin, whether this PC
+/// is paired with it and, in plain words, what isn't the same on all your computers yet (null when nothing).</summary>
+internal sealed record NetworkHostState(string HostId, string Origin, bool Paired, string? Gap);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -699,6 +704,25 @@ internal static class NetworkMap
                 target.Notes.Add("Martlet on that computer runs what you ask here (updates, roles, status) over the paired connection.");
         }
 
+        // Every host of your Martlet network, so every computer draws the same hosts: one this PC isn't paired with yet shows with
+        // why, and a host some of your computers don't know yet says so and why (MainWindow.Network.cs, NetworkReach).
+        foreach (var host in inputs.NetworkHosts ?? [])
+        {
+            var draft = nodes.GetValueOrDefault("host:" + host.HostId) ?? (host.Paired ? null : HostDraft(host.HostId));
+            if (draft is null || draft == thisPc) continue;
+            if (!host.Paired)
+            {
+                draft.Notes.Remove("Your other computers use this host. It pairs with this PC by itself once it's in your Martlet network.");
+                if (draft.Facts.All(f => f.Label != "Address") && host.Origin.Length > 0) draft.Facts.Insert(0, new("Address", host.Origin));
+                draft.Facts.Add(new("Martlet network", "Member host, not paired with this PC yet"));
+            }
+            if (host.Gap is { } gap)
+            {
+                draft.Notes.Insert(0, gap);
+                draft.Worsen(NodeHealth.Attention, host.Paired ? "Not on all your computers yet" : "Not paired with this PC yet");
+            }
+        }
+
         // Your other Martlet computers, so every one of them shows the same computers: one device per computer. One that runs a
         // host service is that host's device too (the host it names, or the one Martlet names after the PC: DIVA runs diva-host).
         foreach (var computer in inputs.Computers ?? [])
@@ -713,7 +737,8 @@ internal static class NetworkMap
             {
                 ComputerStanding.Asking => $"Asks to join your Martlet network through {computer.Through} (check number {computer.CheckNumber}). " +
                     "Allow it on the Share page, under Your Martlet network.",
-                ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network." + where,
+                ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network, so it doesn't see your other hosts or " +
+                    "computers. To bring it in, update Martlet on it: it then asks to join by itself, and you allow it on the Share page." + where,
                 ComputerStanding.Friend => $"A friend's computer: it signed in to {computer.Through ?? "your host"} as a friend and uses only its " +
                     "engines (thinking, listening, speaking, lip-sync, reading). It never joins your Martlet network; your own work comes " +
                     "first. Stop sharing on the Share page, under Friends." + where,

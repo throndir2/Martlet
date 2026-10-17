@@ -24,6 +24,8 @@ public static partial class HostFind
 {
     /// <summary>The UDP port, shared with Martlet Nearby (the desktop's find of other Martlet desktops).</summary>
     public const int Port = 9444;
+    /// <summary>"1" keeps every find on loopback (Invoke-MartletMcp.ps1 -LabCredentials sets it for lab desktops).</summary>
+    public const string LoopbackOnlyVariable = "MARTLET_HOST_FIND_LOOPBACK";
     /// <summary>The most host IDs one answer lists.</summary>
     public const int MaximumHosts = 64;
     private const int MaximumQueryBytes = 512;
@@ -158,9 +160,11 @@ public static partial class HostFind
         }
     }
 
-    /// <summary>Loopback, the limited broadcast and each up adapter's private subnet broadcast.</summary>
+    /// <summary>Loopback, the limited broadcast and each up adapter's private subnet broadcast; loopback only while
+    /// <see cref="LoopbackOnlyVariable"/> is "1" (a lab desktop, so its finds never reach the owner's real hosts).</summary>
     public static IReadOnlyList<IPAddress> BroadcastTargets()
     {
+        if (Environment.GetEnvironmentVariable(LoopbackOnlyVariable) == "1") return [IPAddress.Loopback];
         var targets = new List<IPAddress> { IPAddress.Loopback, IPAddress.Broadcast };
         try
         {

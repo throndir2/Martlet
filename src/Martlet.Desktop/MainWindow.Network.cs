@@ -42,8 +42,13 @@ public partial class MainWindow
     private string? networkProblem;
     private bool networkBusy;
     private bool networkQueued;
-    /// <summary>Hosts of your network named like a host a friend shares with this PC (logged once each).</summary>
+    /// <summary>Hosts of your network with the same name as a host a friend shares with this PC (logged once each).</summary>
     private readonly HashSet<string> networkSameNames = new(StringComparer.Ordinal);
+    /// <summary>Looks on the home network for hosts of your network that no host this PC reaches has heard of (kept across syncs).</summary>
+    private readonly NetworkHostFinder networkFinder = NetworkHostFinder.HomeNetwork();
+    /// <summary>Where your computers don't see the same network yet, as the last sync could tell.</summary>
+    private NetworkReach networkReach = NetworkReach.None;
+    private string? networkReachLogged;
 
     private void InitializeNetwork()
     {
@@ -100,6 +105,7 @@ public partial class MainWindow
                 networkViews = watched.Views;
                 networkNotes = watched.Notes;
                 networkJoins = [];
+                networkReach = NetworkReach.None;
                 networkCheckedAt = DateTimeOffset.Now;
                 LogNetworkPicture(before);
                 ObserveHostReleases(watched.Views);
@@ -112,7 +118,7 @@ public partial class MainWindow
             {
                 var engine = new NetworkSyncEngine(key, Environment.MachineName);
                 result = await engine.SyncAsync(before with { Ignored = [.. before.Ignored, .. sharedNames] }, pairings, ConnectToHost,
-                    lifetime.Token);
+                    lifetime.Token, networkFinder);
             }
             foreach (var id in sharedNames.Where(id => result.State.Roster?.Host(id) is { Removed: false }))
                 if (networkSameNames.Add(id))
@@ -172,8 +178,14 @@ public partial class MainWindow
             networkNotes = result.Notes;
             networkViews = result.Views;
             networkCheckedAt = DateTimeOffset.Now;
+            networkReach = state.Roster is { } current
+                ? NetworkReach.Of(current, NetworkIdentity.DeviceId(homeHosts),
+                    homeHosts.Select(h => h.HostId).Concat(result.Paired.Select(p => p.Pairing.HostId)).Except(result.Forget).ToArray(),
+                    state.Ignored, result.Views, result.Notes)
+                : NetworkReach.None;
             foreach (var line in result.Events) ErrorLog.Info("Martlet network: " + line);
             LogNetworkPicture(state);
+            LogNetworkReach();
             // A PC that joined by signing in to a household account signs that account in here once it is a member.
             if (state.Roster is not null) SignInJoinedAccountAsync().Forget();
             ObserveHostReleases(result.Views);
@@ -440,6 +452,7 @@ public partial class MainWindow
     private void NetworkCheck_Click(object sender, RoutedEventArgs e)
     {
         NetworkStatusText.Text = "Checking your network...";
+        networkFinder.LookSoon();
         QueueNetworkSync();
     }
 
@@ -528,7 +541,8 @@ public partial class MainWindow
             string.Join(",", networkState.Roster?.ActiveDesktops.Select(d => d.Id + "=" +
                 (settingsNode?.Document.Find(SharedPc.Key(d.Id))?.Value ?? "") + "/" +
                 (settingsNode?.Document.Find(SharedPc.RoleKey(d.Id)) is { } role ? role.Value + role.UpdatedBy : "")) ?? []) + "|" +
-            string.Join(",", networkJoins.Select(j => j.DeviceId));
+            string.Join(",", networkJoins.Select(j => j.DeviceId)) + "|" +
+            string.Join(",", networkState.Roster?.ActiveHosts.Select(h => h.Id) ?? []) + "|" + NetworkGap();
     }
 
     /// <summary>What the host dashboard shows about the network: requests to join and the computers paired with this PC's
@@ -582,6 +596,9 @@ public partial class MainWindow
     private void RenderNetwork()
     {
         NetworkStatusText.Text = NetworkStatusLine();
+        var gap = NetworkGap();
+        NetworkGapText.Text = gap ?? "";
+        NetworkGapCard.Visibility = gap is null ? Visibility.Collapsed : Visibility.Visible;
         NetworkCheckButton.IsEnabled = store is not null;
         NetworkJoinsPanel.Children.Clear();
         foreach (var join in networkJoins) NetworkJoinsPanel.Children.Add(JoinRow(join));
@@ -610,15 +627,55 @@ public partial class MainWindow
         .Select(g => g.OrderByDescending(d => d.Friend).ThenByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).First())
         .OrderBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Where a member computer was last active, from its hosts' reports ("active now on diva-host"), or null.</summary>
+    /// <summary>Where a member computer was last active, from its hosts' reports ("active now on diva-host"), or null. A member no
+    /// host here has seen for a long time also says why it may see another network than this PC.</summary>
     private string? MemberActivity(string deviceId)
     {
         var seen = networkViews.Values.SelectMany(v => v.Devices ?? []).Where(d => d.DeviceId == deviceId)
             .OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).FirstOrDefault();
         if (seen is null) return null;
         var text = Seen(seen.LastSeen, DateTimeOffset.UtcNow);
-        return $"{char.ToUpperInvariant(text[0])}{text[1..]} on {seen.HostId}.";
+        var line = $"{char.ToUpperInvariant(text[0])}{text[1..]} on {seen.HostId}.";
+        return networkState.Roster?.Desktop(deviceId) is { Removed: false } member &&
+            NetworkReach.AwayText(member.Name, seen.LastSeen, DateTimeOffset.UtcNow) is { } away ? line + " " + away : line;
     }
+
+    /// <summary>What isn't the same on all your computers yet, in plain words (docs/NETWORK.md): which of your computers don't
+    /// know a host and why, hosts this PC couldn't reach, and Martlet hosts on your home network outside your network with how to
+    /// bring them in. Null when nothing; the Share page and the Devices page show it.</summary>
+    private string? NetworkGap()
+    {
+        if (networkState.Roster is null) return null;
+        var parts = new List<string>();
+        if (networkReach.Summary(AppVersions.Current) is { } summary) parts.Add(summary);
+        if (networkFinder.Last is { } look) parts.AddRange(look.Sentences());
+        return parts.Count == 0 ? null : string.Join(" ", parts);
+    }
+
+    /// <summary>Writes <see cref="NetworkGap"/> to the desktop log when it changes.</summary>
+    private void LogNetworkReach()
+    {
+        var text = NetworkGap();
+        if (text == networkReachLogged) return;
+        networkReachLogged = text;
+        ErrorLog.Info("Martlet network: " + (text ?? "every computer sees the same network, as far as this PC can tell."));
+    }
+
+    /// <summary>Every active host of your network (except those forgotten here) for the Devices map: whether this PC is paired
+    /// with it and, in plain words, what isn't the same on all your computers yet.</summary>
+    private IReadOnlyList<NetworkHostState>? NetworkHostStates() => networkState.Roster is not { } roster ? null
+        : roster.ActiveHosts.Where(h => !networkState.Ignored.Contains(h.Id)).Select(h =>
+        {
+            var paired = FindHost(h.Id) is not null;
+            var reach = networkReach.Hosts.FirstOrDefault(r => r.Host.Id == h.Id);
+            // A paired host that didn't answer shows that on its own status; here only who doesn't know it, or why it isn't paired.
+            var gap = paired && reach is { Reached: false } ? null
+                : paired ? networkReach.HostText(h.Id, AppVersions.Current)
+                : $"In your Martlet network (added on {roster.Desktop(h.UpdatedBy)?.Name ?? h.UpdatedBy}) but not paired with this PC yet" +
+                  (networkNotes.GetValueOrDefault(h.Id) is { } note ? $": {note.Replace("Not paired yet: ", "", StringComparison.Ordinal).TrimEnd('.')}." : ".") +
+                  " This PC pairs with it by itself as soon as it reaches it.";
+            return new NetworkHostState(h.Id, h.Origin ?? "", paired, gap);
+        }).ToArray();
 
     private string NetworkStatusLine()
     {
@@ -701,7 +758,8 @@ public partial class MainWindow
         {
             var paired = FindHost(member.Id) is not null;
             detail = "Host, " + (paired ? "paired with this PC" : networkState.Ignored.Contains(member.Id) ? "forgotten on this PC (it stays in the network)" : "not paired with this PC yet") +
-                $"; added on {member.UpdatedBy}." + " " + HostRouteText(member) + HostSecurityText(member.Id) + (networkNotes.GetValueOrDefault(member.Id) is { } note ? " " + note : "");
+                $"; added on {member.UpdatedBy}." + " " + HostRouteText(member) + HostSecurityText(member.Id) + (networkNotes.GetValueOrDefault(member.Id) is { } note ? " " + note : "") +
+                (paired && networkReach.HostText(member.Id, AppVersions.Current) is { } reach ? " " + reach : "");
         }
         row.Children.Add(NetworkRowText($"NetworkMember-{member.Kind}-{member.Id}",
             member.IsDesktop && member.Name != member.Id ? $"{member.Name} ({member.Id})" : member.Name, detail));
@@ -721,7 +779,8 @@ public partial class MainWindow
               "It never joins your Martlet network, and your own work goes first. Stop sharing under Friends."
             : $"Uses {string.Join(", ", hosts)}; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}. " + (networkState.Roster is null
                 ? "It is paired with this PC's host service; this PC is in no Martlet network itself."
-                : "Not in your Martlet network, so it isn't paired with your other hosts by itself. It asks to join when it runs Martlet 0.18 or newer; allow it here then.");
+                : "Not in your Martlet network, so it doesn't see your other hosts or computers. To bring it in, update Martlet on it: it " +
+                  "then asks to join by itself and you allow it here. Or, on it, choose Add a computer › Martlet on your network.");
         row.Children.Add(NetworkRowText((device.Friend ? "NetworkFriend-" : "NetworkPaired-") + device.DeviceId,
             device.DisplayName != device.DeviceId ? $"{device.DisplayName} ({device.DeviceId})" : device.DeviceId, detail));
         return NetworkRowCard(row, warning: false);
