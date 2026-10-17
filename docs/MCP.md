@@ -8269,10 +8269,30 @@ or `Diva, diva-host. Connected. Runs: Martlet host PC, Speaking, Lip-sync`),
 so one snapshot shows the whole map. Every computer is named the same way on
 every system ([one device per computer](NETWORK.md#who-is-connected)): the
 name it gives itself, from its Martlet app or its host's machine report, with
-the host ID (or, without a host service, the device ID) as the subtitle. The map fits up to six devices on each
-side of This PC; the rest fold into a `Node-more:computers` (or
-`Node-more:services`) card, *44 more computers* with how many need attention,
-whose click opens the list.
+the host ID (or, without a host service, the device ID) as the subtitle. The
+map places devices in a grid of four columns around This PC: one on each side
+in This PC's row and four in every row above and below, nearest places first,
+cloud services on the left. A narrow map has the two inner columns only, two
+devices in every row above and below This PC, so its cards stay large enough to
+read. Connections run only through the gaps between cards, and cards never
+overlap (with `layout: true`, `ui_snapshot` returns each `Node-<id>`'s screen
+bounds to check it). From 19 devices on, the cards are compact: name, computer
+and status instead of jobs. The map draws up to 33 devices; the rest fold into
+a `Node-more:computers` (or `Node-more:services`, or `Node-more:devices` when
+both fold) card, *89 more computers* with how many need attention, whose click
+opens the list.
+To check the page with many devices without real ones, set
+`MARTLET_SIMULATE_DEVICES` to a number (1-500) before launching the desktop
+(`-Desktop` passes the environment on): Martlet lists that many FIXTURE
+computers, SIM-001, SIM-002 and so on, and contacts none of them. Most are
+members of your Martlet network (every fourth idle); every third is a host PC
+that runs `sim-NNN-host` (pair a host with that ID in the disposable
+`hosts.json`, for example on `192.0.2.x`, to show it as one device with its
+computer); every seventh uses your hosts outside the network and every eleventh
+asks to join. They get made-up jobs (FIXTURE: none runs anywhere), so their
+cards have one or two rows of chips. The desktop log says so at start
+(*Devices: 120 simulated computers from MARTLET_SIMULATE_DEVICES (FIXTURE, not
+real computers)*).
 A device that Martlet changes now (a recommended setup applied from any of
 your computers, a host role this PC changes, a host PC running a role command
 from another computer, this PC following a plan change) shows the status
@@ -8281,8 +8301,16 @@ from another computer, this PC following a plan change) shows the status
 ([Configuring](CLUSTER.md#configuring)).
 `DevicesViewMap` and `DevicesViewList` switch
 between the map and the list (passive); the list shows by itself once the map
-can't fit every device. The list shows every device as a `Node-<id>` card (This
-PC, then those needing attention, then by name) with `DeviceFilter-all`,
+can't fit every device. The list (`DeviceList`, whose value is the selected
+row) shows every device as one compact `Node-<id>` row (status, name, computer,
+status text and up to three jobs) under the headings `DeviceGroup-attention`,
+`DeviceGroup-computers` and `DeviceGroup-cloud` (values such as *Needs
+attention: 2 devices*; This PC first in its group, the others by name; Add a
+computer last). A row's `ui_click` only selects it and shows its details
+(passive). The list is one Tab stop: with a row focused (`ui_click` with
+`focus: true`), `ui_type` `keys` `up` and `down` move the selection. A list drawn
+again (a device changed) keeps its place (`ui_scroll` `DeviceList`). It has
+`DeviceFilter-all`,
 `-attention`, `-hosts`, `-computers` and `-cloud` pills (passive; each returns
 its count) and a `DeviceSearch` box (`ui_set_text`, `--allow-ui-effects`).
 `DevicesSummary` returns *53 devices, 2 need attention. Select one to see
@@ -10884,7 +10912,8 @@ character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). `ui_type` types
 the way a person does, one key at a time: with `id` that text box takes the
 keyboard focus first; without `id` the keys go to the control that has the
 focus. Each character of `text` (at most 100), then each of `keys`
-(`backspace`, `delete`, `left`, `right`, `home`, `end`, `escape`), is a key message posted
+(`backspace`, `delete`, `left`, `right`, `up`, `down`, `home`, `end`, `escape`; `up` and
+`down` move through a list such as the Devices list), is a key message posted
 to that Martlet window only (`window` names one; the main window by default),
 one every `stepMs` (default 50). It returns `focused`, the automation ID of the
 control that has the keyboard focus afterwards. `ui_snapshot` marks that control

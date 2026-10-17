@@ -24,7 +24,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_click");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_scroll");
         var type = tools.Single(tool => tool.GetProperty("name").GetString() == "ui_type").GetProperty("inputSchema").GetProperty("properties");
-        Assert.Equal(["backspace", "delete", "left", "right", "home", "end", "escape"],
+        Assert.Equal(["backspace", "delete", "left", "right", "up", "down", "home", "end", "escape"],
             type.GetProperty("keys").GetProperty("items").GetProperty("enum").EnumerateArray().Select(key => key.GetString()));
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_touch");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_pose");

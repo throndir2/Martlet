@@ -310,11 +310,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
     }
 
     /// <summary>The keys ui_type presses besides characters, with their virtual-key codes (all but Backspace and Escape are
-    /// extended keys).</summary>
+    /// extended keys). Up and Down move through a list, such as the Devices list.</summary>
     internal static readonly IReadOnlyDictionary<string, (int Code, bool Extended)> TypeKeys = new Dictionary<string, (int, bool)>(StringComparer.Ordinal)
     {
         ["backspace"] = (0x08, false), ["delete"] = (0x2E, true), ["left"] = (0x25, true), ["right"] = (0x27, true),
-        ["home"] = (0x24, true), ["end"] = (0x23, true), ["escape"] = (0x1B, false)
+        ["up"] = (0x26, true), ["down"] = (0x28, true), ["home"] = (0x24, true), ["end"] = (0x23, true), ["escape"] = (0x1B, false)
     };
 
     internal const int MaximumTyped = 100, MaximumTypeStepMs = 1000;

@@ -450,10 +450,11 @@
                     <Border x:Name="MapHost" CornerRadius="24" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" Margin="0,0,0,18" Height="380" SizeChanged="MapHost_SizeChanged" ClipToBounds="True">
                         <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="8">
-                            <Canvas x:Name="MapCanvas" Width="900" Height="364" AutomationProperties.Name="Device map"/>
+                            <Canvas x:Name="MapCanvas" Width="1036" Height="364" AutomationProperties.Name="Device map"/>
                         </Viewbox>
                     </Border>
-                    <!-- Every device as a grid of cards, filtered and searched; it scrolls on its own so the details stay close. -->
+                    <!-- Every device as one compact row, grouped, filtered and searched (MainWindow.DeviceList.cs); it scrolls on its
+                         own so the details stay close. One Tab stop: arrow keys and typing a name move through the devices. -->
                     <StackPanel x:Name="DeviceListHost" Visibility="Collapsed" Margin="0,0,0,18">
                         <DockPanel Margin="0,0,0,8">
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,6">
@@ -467,11 +468,12 @@
                         <TextBlock x:Name="DeviceListStatus" Style="{DynamicResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
                                    AutomationProperties.AutomationId="DeviceListStatus" AutomationProperties.LiveSetting="Polite"/>
                         <Border CornerRadius="24" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" Padding="14,14,4,4">
-                            <ScrollViewer x:Name="DeviceListScroll" VerticalScrollBarVisibility="Auto" MaxHeight="420"
-                                          SizeChanged="DeviceListScroll_SizeChanged">
-                                <UniformGrid x:Name="DeviceList" Columns="4" VerticalAlignment="Top" AutomationProperties.Name="Devices"/>
-                            </ScrollViewer>
+                                BorderThickness="1" Padding="10,10,4,10">
+                            <ListBox x:Name="DeviceList" Background="Transparent" BorderThickness="0" Padding="0" MaxHeight="420"
+                                     SelectionMode="Single" SelectionChanged="DeviceList_SelectionChanged"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="False"
+                                     VirtualizingPanel.IsVirtualizing="False" KeyboardNavigation.TabNavigation="Once"
+                                     AutomationProperties.AutomationId="DeviceList" AutomationProperties.Name="Devices"/>
                         </Border>
                     </StackPanel>
                     <StackPanel x:Name="RolesCoverage" AutomationProperties.Name="What isn't working right now"/>
