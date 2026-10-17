@@ -571,6 +571,22 @@ public sealed class HostSetupCommandsTests
     }
 
     [Fact]
+    public void A_new_host_gets_its_computers_name_where_docker_desktop_hides_it()
+    {
+        // Over SSH the computer's own name goes with setup (a Mac's Docker Desktop names its engine docker-desktop).
+        var target = Target(HostSetupMethod.SshDocker) with { ComputerName = "Adas-MacBook-Pro" };
+        Assert.Contains("-e MARTLET_HOST_ADDRESS=192.168.1.20 -e MARTLET_COMPUTER_NAME=Adas-MacBook-Pro martlet-host:1.2.3 --yes setup",
+            HostSetupCommands.RemoteShell(target, "setup", true));
+        // Only setup passes it; martlet-host keeps it in host.env for later reports.
+        Assert.DoesNotContain("MARTLET_COMPUTER_NAME", HostSetupCommands.RemoteShell(target, "status", false));
+        // Only a plain name goes into a command; anything else is left out before it gets there.
+        Assert.Equal("Nahida", HostSetupCommands.SafeComputerName("Nahida"));
+        Assert.Null(HostSetupCommands.SafeComputerName("Ada's MacBook"));
+        Assert.Null(HostSetupCommands.SafeComputerName("x; rm -rf ~"));
+        Assert.Throws<InvalidOperationException>(() => HostSetupCommands.Validate(target with { ComputerName = "a b" }, HostAction.Setup));
+    }
+
+    [Fact]
     public void This_pc_gateway_reads_its_version_and_whether_it_runs()
     {
         Assert.Equal(new Martlet.Core.Nodes.OwnHostReading("0.38.0", true), HostSetupCommands.ParseGateway("true martlet-host:0.38.0\r\n"));

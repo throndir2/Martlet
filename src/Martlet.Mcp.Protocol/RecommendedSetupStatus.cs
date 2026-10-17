@@ -416,7 +416,8 @@ internal static class RecommendedSetupStatus
             var report = hardware.FirstOrDefault(h => h.HostId == host.HostId);
             var reachable = host.Method is "ThisPcDocker" or "Agent" || host.Method is "SshDocker" or "SshNative" && host.SshTarget is { Length: > 0 };
             var away = Away(host.HostId);
-            computers.Add(new(host.HostId, presence?.Hosts.FirstOrDefault(h => h.HostId == host.HostId)?.Name ?? host.HostId, NetworkMachineKind.Host)
+            computers.Add(new(host.HostId, presence?.Hosts.FirstOrDefault(h => h.HostId == host.HostId)?.Name ??
+                Martlet.Core.Network.HostIds.ComputerName(host.HostId, report?.ComputerName), NetworkMachineKind.Host)
             {
                 Hardware = report, HasHostService = true, Reachable = away is null ? null : false, OfflineFor = away,
                 Manageable = reachable && PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost(host.HostId, report))

@@ -22,12 +22,14 @@ public partial class MainWindow
     private IReadOnlyList<JobSituation> JobSituations()
     {
         var hardware = HardwareStore?.Load() ?? [];
-        var jobs = HostJob.All.Select(job => Situation(job, hardware)).ToList();
-        jobs.Add(LipSyncSituation(hardware));
+        var computers = OtherComputers();
+        string Name(string hostId) => NetworkMap.ComputerName(hostId, computers, hardware);
+        var jobs = HostJob.All.Select(job => Situation(job, hardware, Name)).ToList();
+        jobs.Add(LipSyncSituation(hardware, Name));
         return jobs;
     }
 
-    private JobSituation Situation(HostJob job, IReadOnlyList<HostHardware> hardware)
+    private JobSituation Situation(HostJob job, IReadOnlyList<HostHardware> hardware, Func<string, string> hostName)
     {
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == job.Role);
         if (route is null) return new() { Job = job.Job, Doer = JobDoer.NotChosen };
@@ -39,8 +41,8 @@ public partial class MainWindow
             var saved = store is null ? null : JobSavedRoute.Load(store.DataDirectory, job.SavedFile);
             return new()
             {
-                Job = job.Job, Doer = JobDoer.Host, DoerName = gateway.HostId, Enabled = enabled, Reviewed = reviewed,
-                Host = HostState(gateway.HostId, job.Job, job.RouteId, job.Engine, hardware,
+                Job = job.Job, Doer = JobDoer.Host, DoerName = hostName(gateway.HostId), Enabled = enabled, Reviewed = reviewed,
+                Host = HostState(gateway.HostId, job.Job, job.RouteId, job.Engine, hardware, hostName,
                     paired: route.CredentialId is not null && route.GatewayDeviceId is not null),
                 Fallback = saved is null ? null : SavedName(saved), FallbackIsCloud = saved is not null && IsCloud(saved),
                 StandIn = job.Role == SetupRole.Stt && ListeningStandIn(route) is { } standIn ? ParakeetName(standIn) : null
@@ -68,14 +70,14 @@ public partial class MainWindow
         };
     }
 
-    private JobSituation LipSyncSituation(IReadOnlyList<HostHardware> hardware) => NetworkMap.LipSync(homeAvatar) switch
+    private JobSituation LipSyncSituation(IReadOnlyList<HostHardware> hardware, Func<string, string> hostName) => NetworkMap.LipSync(homeAvatar) switch
     {
         LipSyncHandler.Loudness => new() { Job = ClusterJobs.LipSync, Doer = JobDoer.Nobody, DoerName = "Nobody" },
         LipSyncHandler.Host => new()
         {
-            Job = ClusterJobs.LipSync, Doer = JobDoer.Host, DoerName = homeAvatar!.RemoteHost!.HostId,
+            Job = ClusterJobs.LipSync, Doer = JobDoer.Host, DoerName = hostName(homeAvatar!.RemoteHost!.HostId),
             Host = HostState(homeAvatar.RemoteHost.HostId, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId,
-                "Audio2Face", hardware, paired: true),
+                "Audio2Face", hardware, hostName, paired: true),
             Fallback = "this PC"
         },
         _ => new() { Job = ClusterJobs.LipSync, Doer = JobDoer.ThisDevice, DoerName = "This PC" }
@@ -123,7 +125,8 @@ public partial class MainWindow
 
     /// <summary>The freshest thing this PC knows about a host: the background sync check when sync is on, otherwise the
     /// last Check connection. Null reachability means it has not been checked since Martlet started.</summary>
-    private JobHostState HostState(string hostId, string job, string routeId, string engine, IReadOnlyList<HostHardware> hardware, bool paired)
+    private JobHostState HostState(string hostId, string job, string routeId, string engine, IReadOnlyList<HostHardware> hardware,
+        Func<string, string> hostName, bool paired)
     {
         var probe = clusterEnabled ? clusterProbes.GetValueOrDefault(hostId) : null;
         var check = hostChecks.GetValueOrDefault(hostId);
@@ -132,10 +135,11 @@ public partial class MainWindow
         var own = hostId == ThisPcHost()?.HostId;
         return new()
         {
-            HostId = hostId, Paired = paired && (FindHost(hostId) ?? FindSharedHost(hostId)) is not null, Reachable = reachable,
+            HostId = hostId, Name = hostName(hostId), Paired = paired && (FindHost(hostId) ?? FindSharedHost(hostId)) is not null, Reachable = reachable,
             Serves = HostServes(hostId, job, routeId),
             Engine = engine, SyncOn = clusterEnabled, Failover = failover,
-            FailoverTarget = failover ? ClusterSync.FailoverTarget(clusterPlan, job, hostId, clusterProbes.Values, hardware) : null,
+            FailoverTarget = failover && ClusterSync.FailoverTarget(clusterPlan, job, hostId, clusterProbes.Values, hardware) is { } target
+                ? hostName(target) : null,
             ForegroundOnly = PlatformDevice.FromHost(hostId, hardware.FirstOrDefault(h => h.HostId == hostId)).ForegroundOnly,
             ThisPc = own, Trouble = own ? OwnHostTrouble() : null
         };

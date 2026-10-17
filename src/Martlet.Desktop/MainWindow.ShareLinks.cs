@@ -370,7 +370,7 @@ public partial class MainWindow
                 }
                 try
                 {
-                    var (pairing, secret, who) = await HostSignInClient.SignInWithShareLinkAsync(invite, link, device, Environment.MachineName, lifetime.Token);
+                    var (pairing, secret, who) = await HostSignInClient.SignInWithShareLinkAsync(invite, link, device, Martlet.Core.Network.ThisComputer.Name, lifetime.Token);
                     await HostsWindow.KeepPairingAsync(Pairings(), pairing, secret, HostSetupMethod.Agent, null, null, lifetime.Token, invite.Addresses,
                         HostSignInAccess.Friend, $"{link.Label ?? who.Label ?? "a friend"} (share link from {link.From ?? "a friend"})");
                     kept.Add(invite.HostId);

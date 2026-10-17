@@ -110,7 +110,7 @@ public partial class MainWindow
             var sharedNames = sharedHosts.Select(h => h.HostId).Except(before.Ignored, StringComparer.Ordinal).ToArray();
             using (var key = NetworkIdentity.LoadOrCreate(directory, NetworkIdentity.DeviceId(hosts)))
             {
-                var engine = new NetworkSyncEngine(key, Environment.MachineName);
+                var engine = new NetworkSyncEngine(key, Martlet.Core.Network.ThisComputer.Name);
                 result = await engine.SyncAsync(before with { Ignored = [.. before.Ignored, .. sharedNames] }, pairings, ConnectToHost,
                     lifetime.Token);
             }
@@ -334,7 +334,7 @@ public partial class MainWindow
         try
         {
             using var key = NetworkIdentity.LoadOrCreate(store.DataDirectory, NetworkIdentity.DeviceId(homeHosts));
-            var next = change(new NetworkSyncEngine(key, Environment.MachineName), NetworkIdentity.Load(store.DataDirectory));
+            var next = change(new NetworkSyncEngine(key, Martlet.Core.Network.ThisComputer.Name), NetworkIdentity.Load(store.DataDirectory));
             NetworkIdentity.Save(store.DataDirectory, next);
             networkState = next;
             ActionText.Text = done;
@@ -472,13 +472,18 @@ public partial class MainWindow
                 users[hostId] = devices.OrderBy(d => !IsThisDevice(d.DeviceId)).ThenBy(d => d.Friend).ThenBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase)
                     .Select(d => IsThisDevice(d.DeviceId)
                         ? new HostUser("This PC, " + Seen(d.LastSeen, now), true)
-                        : new HostUser((d.DisplayName == d.DeviceId ? d.DeviceId : $"{d.DisplayName} ({d.DeviceId})") +
+                        : new HostUser((d.DisplayName == d.DeviceId ? d.DeviceId : $"{SharedComputerName(d.DeviceId, d.DisplayName)} ({d.DeviceId})") +
                             (d.Friend ? ", a friend's computer (engines only)" : "") + ", " + Seen(d.LastSeen, now), false))
                     .ToArray();
         return users;
     }
 
     private string? networkDevicesShown;
+
+    /// <summary>The name another of your computers gives itself, as it shares it ("Imouto": its host name), else
+    /// <paramref name="fallback"/>: the name it had when it joined the network or paired with a host (an older Martlet's "IMOUTO").</summary>
+    private string SharedComputerName(string deviceId, string fallback) =>
+        settingsNode?.Document.Find(SharedPc.Key(deviceId)) is { } entry && SharedPc.Read(entry.Value)?.ComputerName is { } name ? name : fallback;
 
     /// <summary>The other Martlet computers this PC knows of, for the Devices map, so every computer draws the same picture:
     /// the network's member desktops, computers asking to join it and computers that use one of its hosts outside it, each
@@ -499,7 +504,7 @@ public partial class MainWindow
             if (settingsNode?.Document.Find(SharedPc.RoleKey(id)) is { } ask && ask.UpdatedBy != id &&
                 SharedPc.ReadRole(ask.Value) is { } wanted && wanted != pc?.DeviceRole)
                 asked = (wanted, IsThisDevice(ask.UpdatedBy) ? "this PC" : ComputerName(ask.UpdatedBy), ask.UpdatedAt);
-            return new(id, name, standing, MemberActivity(id), seen is not null && Active(seen, now), check, through, pc?.DeviceRole, pc?.Host,
+            return new(id, pc?.ComputerName ?? name, standing, MemberActivity(id), seen is not null && Active(seen, now), check, through, pc?.DeviceRole, pc?.Host,
                 asked.Role, asked.By, asked.At);
         }
         if (roster is not null)
