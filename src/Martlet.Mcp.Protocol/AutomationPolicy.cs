@@ -271,7 +271,7 @@ internal static class AutomationPolicy
     internal static readonly Entry[] SafeClickPrefixes =
     [
         new("CompanionTab-", "Companion", "A page in the Companion side list, such as CompanionTab-<page>; only shows that page."),
-        new("Node-", "Devices map", "A device node on the map, such as Node-this-pc or Node-host:Nahida-host (Nahida, Nahida-host: each computer by the name it gives itself, with its host ID); only selects that device and shows its details."),
+        new("Node-", "Devices map and list", "A device's card on the map or its row in the list, such as Node-this-pc or Node-host:Nahida-host (Nahida, Nahida-host: each computer by the name it gives itself, with its host ID); only selects that device and shows its details."),
         new("CoverageShow-", "Devices map", "A Show button on the problem card, CoverageShow-<job>; only selects the device that does that job and shows its details."),
         new("Place-", "Where it runs", "A place option in a job's Where it runs list, such as Place-Voice-Computer; only shows that place's choices, which their own buttons commit."),
         new("SpeakingHost-", "Companion › Voice › Voice engine", "A computer pill, such as SpeakingHost-gpu-pc; only shows the engines of that computer."),
@@ -483,6 +483,7 @@ internal static class AutomationPolicy
         new("ClusterStatus", "Devices › Settings for all devices", "Shows the status of Keep Martlet the same on all my computers."),
         new("DevicesSummary", "Devices", "Shows how many devices there are and how many need attention, such as '53 devices, 2 need attention. Select one to see details.'."),
         new("DeviceListStatus", "Devices", "Shows how many devices the list shows, such as 'Showing 12 of 53 devices.', or that no device matches the filter."),
+        new("DeviceList", "Devices", "The Devices list: its value is the selected device's row, such as 'SIM-012, desktop-sim-012. Asks to join. Runs: Martlet companion'; ui_scroll reads and moves its place."),
         // MainWindow.DeviceCapacity.cs
         new("DeviceSpecs", "Devices resource view", "Shows the hardware line of the selected device, such as 'NVIDIA GeForce RTX 5090 (32 GB) · 64 GB memory · 32 processor threads'. Hardware and Martlet's own estimates only."),
         new("DeviceHeadroom", "Devices resource view", "Shows what the selected device has left, such as 'Left free: 15 GB graphics memory, ...'. Hardware and Martlet's own estimates only."),
@@ -1170,7 +1171,8 @@ internal static class AutomationPolicy
         new("HostInputTerms-", "Add a host role", "The terms that follow a variant choice, such as HostInputTerms-A2F_ENGINE."),
         new("PromptState-", "Companion › Prompts", "A prompt's state, such as PromptState-reply_length: Edited. About 82 tokens., with Saving... while it saves. Never the prompt text."),
         new("Copy-", "Any page", "The Copy button of a read-only text box, such as Copy-HostRunOutput: Copy, or Copied for a few seconds after a click. Never the text it copies."),
-        new("Node-", "Devices map", "A device on the Devices map, such as Node-pc:desktop-miko: Miko, desktop-miko. Active now. Runs: Martlet app, Listening."),
+        new("Node-", "Devices map and list", "A device's card on the map or its row in the list, such as Node-pc:desktop-miko: Miko, desktop-miko. Active now. Runs: Martlet app, Listening."),
+        new("DeviceGroup-", "Devices list", "A heading of the Devices list with how many devices it holds, such as DeviceGroup-attention: Needs attention: 2 devices. Keys attention, computers, cloud."),
         new("DeviceFilter-", "Devices", "A filter pill of the Devices list, such as DeviceFilter-attention."),
         new("DeviceResource-", "Devices", "A resource bar of the selected device, such as DeviceResource-vram: Graphics memory: 14 of 32 GB planned (44%), 15 GB free for Martlet. Keys vram, ram, cpu, disk."),
         new("DeviceShare-", "Devices", "A job's share of the selected device, such as DeviceShare-deep-thinking-gemma4-12b: Deep thinking (Gemma 4 12B): 25% graphics memory, 3% memory, 6% processor."),
