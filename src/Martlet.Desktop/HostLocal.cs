@@ -456,6 +456,9 @@ internal static partial class HostLocal
         // Setup publishes the gateway on this PC's address; home moves it there after the address changed.
         if (setup || engine is ["home"]) args.AddRange(["-e", "MARTLET_HOST_ADDRESS=" + target.Address]);
         if (setup && target.HostId is { } id) args.AddRange(["-e", "MARTLET_HOST_ID=" + id]);
+        // Docker Desktop names its engine docker-desktop, so the host's machine report takes this PC's name from Martlet.
+        if ((target.ComputerName ?? HostSetupCommands.SafeComputerName(Martlet.Core.Network.ThisComputer.Name)) is { } name)
+            args.AddRange(["-e", "MARTLET_COMPUTER_NAME=" + name]);
         if (!waitForOtherChanges) args.AddRange(["-e", "MARTLET_LOCK_WAIT=0"]);
         args.Add(HostSetupCommands.Image(target));
         args.Add("--yes");

@@ -15,7 +15,7 @@ internal sealed record GpuInfo(string Name, double? MemoryGb)
 internal sealed record MachineInfo(string Name, string Windows, string? Processor, int Threads, double? MemoryGb,
     IReadOnlyList<GpuInfo> Gpus, string? LanAddress, bool DockerInstalled, bool DockerRunning)
 {
-    internal static MachineInfo Unknown { get; } = new(Environment.MachineName, "Windows", null, Environment.ProcessorCount, null, [], null, false, false);
+    internal static MachineInfo Unknown { get; } = new(Martlet.Core.Network.ThisComputer.Name, "Windows", null, Environment.ProcessorCount, null, [], null, false, false);
 
     /// <summary>This PC's processor type and whether Martlet runs emulated on it (the x64 build on Windows on Arm).</summary>
     internal Martlet.Core.Platforms.MachineArchitecture ProcessorType { get; init; } = Martlet.Core.Platforms.MachineArchitecture.Current;
@@ -55,7 +55,7 @@ internal sealed record MachineInfo(string Name, string Windows, string? Processo
     internal static MachineInfo Read()
     {
         var gpus = ReadGpus();
-        return new(Environment.MachineName, ReadWindows(), ReadProcessor(), Environment.ProcessorCount, ReadMemory(), gpus,
+        return new(Martlet.Core.Network.ThisComputer.Name, ReadWindows(), ReadProcessor(), Environment.ProcessorCount, ReadMemory(), gpus,
             SafeAddress(), DockerDesktopInstalled(), DockerDesktopRunning());
     }
 

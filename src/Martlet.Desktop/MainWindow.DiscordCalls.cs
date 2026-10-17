@@ -327,7 +327,7 @@ public partial class MainWindow
                 PictureClient.FreeLater(maker);
                 ErrorLog.Info($"Pictures: camera background on {result.Where}: {result.Width}x{result.Height} {result.MediaType}, " +
                     $"{result.Image.Length / 1024} KiB, {result.Took.TotalSeconds:0.0} s{(result.Fixture ? ", FIXTURE - NOT AI" : "")}.");
-                var author = new Martlet.Core.Creations.CreationAuthor { Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName };
+                var author = new Martlet.Core.Creations.CreationAuthor { Device = HostSetupCommands.SuggestedDeviceId(), Computer = Martlet.Core.Network.ThisComputer.Name };
                 var about = Martlet.Conversation.PictureTools.Label(text);
                 try
                 {

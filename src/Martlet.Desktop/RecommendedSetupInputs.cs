@@ -509,11 +509,11 @@ internal static class RecommendedSetupInputs
         foreach (var host in NetworkMap.Hosts(inputs).Where(h => h.HostId != ownHostId))
         {
             var id = host.HostId;
-            var member = members.FirstOrDefault(c => (c.HostId ?? HostSetupCommands.SuggestedHostId(c.Name)) == id);
+            var member = members.FirstOrDefault(c => c.LikelyHostId == id);
             var hardware = inputs.HostHardware?.FirstOrDefault(h => h.HostId == id);
             var check = inputs.HostChecks.GetValueOrDefault(id);
             var away = offlineFor?.Invoke(id);
-            computers.Add(new SetupComputer(id, member?.Name ?? id,
+            computers.Add(new SetupComputer(id, member?.Name ?? Martlet.Core.Network.HostIds.ComputerName(id, hardware?.ComputerName),
                 member?.Role == DeviceRole.Companion ? NetworkMachineKind.Companion : NetworkMachineKind.Host)
             {
                 Hardware = hardware,

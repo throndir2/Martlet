@@ -9,6 +9,7 @@ using Martlet.Avatars;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
+using Martlet.Core.Network;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Credentials.Windows;
@@ -510,7 +511,7 @@ public partial class MainWindow
         // PC has its host service yet).
         yield return new DelegateSection(SharedPc.Key(ClusterDevice), "This PC's role", _ =>
             Task.FromResult<SharedLocal?>(new(new SharedPc(Role == DeviceRole.Host ? SharedPc.HostRole : SharedPc.CompanionRole,
-                OwnHostServiceId()).Write(), null, false, DateTimeOffset.UtcNow)),
+                OwnHostServiceId(), ThisComputer.Name).Write(), null, false, DateTimeOffset.UtcNow)),
             (_, _) => Task.FromResult(SharedApply.Done));
         // Whether this PC is a companion or a host PC: this PC records its own choice, and follows it when another computer
         // asks it to switch (Make it a host PC on that computer's Devices map). Its time is the time the PC folder's choice
@@ -934,10 +935,11 @@ public partial class MainWindow
 }
 
 /// <summary>What a computer tells your other computers about itself through the shared settings, under its own key
-/// ("pc.desktop-imouto"): whether it is a companion or a host PC (<see cref="Role"/>) and the host service Martlet runs on it
-/// (<see cref="Host"/>), so every Devices map draws it the same way. Only that computer writes its key, so the newest value is
-/// always its own; Martlet versions without it pass it on unchanged.</summary>
-internal sealed record SharedPc(string Role, string? Host)
+/// ("pc.desktop-imouto"): whether it is a companion or a host PC (<see cref="Role"/>), the host service Martlet runs on it
+/// (<see cref="Host"/>) and the name it gives itself (<see cref="ComputerName"/>, "Imouto": its host name, which may be newer than
+/// the name the network roster or a host kept from when it joined), so every Devices map draws it the same way. Only that
+/// computer writes its key, so the newest value is always its own; Martlet versions without it pass it on unchanged.</summary>
+internal sealed record SharedPc(string Role, string? Host, string? ComputerName = null)
 {
     internal const string Prefix = SharedSettings.DevicePrefix;
     internal const string CompanionRole = "companion";
@@ -1004,7 +1006,7 @@ internal sealed record SharedPc(string Role, string? Host)
         try
         {
             return JsonSerializer.Deserialize<SharedPc>(value, Json) is { Role.Length: > 0 and <= 32 } pc &&
-                (pc.Host is null || pc.Host.Length <= 64) ? pc : null;
+                (pc.Host is null || pc.Host.Length <= 64) ? pc with { ComputerName = HostIds.CleanComputerName(pc.ComputerName) } : null;
         }
         catch (JsonException) { return null; }
     }

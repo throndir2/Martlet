@@ -88,7 +88,7 @@ public partial class MainWindow
         if (watched.Count > 0)
         {
             paired ??= PresenceHosts();
-            Dictionary<string, string>? names = null;
+            Func<string, string>? names = null;
             foreach (var id in watched)
             {
                 if (!paired.Contains(id))
@@ -96,7 +96,7 @@ public partial class MainWindow
                     presenceWatch.Forget(id);
                     continue;
                 }
-                var name = (names ??= PresenceNames()).GetValueOrDefault(id, id);
+                var name = (names ??= HostNames())(id);
                 changes.AddRange(presenceWatch.Observe(id, name, HostPresence.OfflineSince(id), now));
             }
         }
@@ -154,14 +154,13 @@ public partial class MainWindow
         return hosts.Select(h => h.HostId).Where(id => id != own).ToHashSet(StringComparer.Ordinal);
     }
 
-    /// <summary>Each host's computer name, when one of your Martlet computers runs it ("DIVA" for diva-host), as the map
-    /// names it.</summary>
-    private Dictionary<string, string> PresenceNames()
+    /// <summary>Each host's computer name, as the map names it (<see cref="NetworkMap.ComputerName"/>): "Diva" for diva-host,
+    /// "Nahida" for the NAS's Nahida-host, whatever system it runs.</summary>
+    private Func<string, string> HostNames()
     {
-        var names = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var computer in OtherComputers())
-            names.TryAdd(computer.HostId ?? HostSetupCommands.SuggestedHostId(computer.Name), computer.Name);
-        return names;
+        var computers = OtherComputers();
+        var hardware = HardwareStore?.Load() ?? [];
+        return id => NetworkMap.ComputerName(id, computers, hardware);
     }
 
     /// <summary>Home's presence items: "Working with less: gpu-box isn't answering" (a warning, with what it did for you) and

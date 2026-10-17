@@ -124,6 +124,8 @@ see [Thinking job kinds](DECISION_MAP.md#thinking-job-kinds-keys-labels-and-prio
 | A host PC that this PC is paired with | paired computer (`PoolMemberKind.Computer`, `HostId`, key `host:<id>`) | one of your computers, a paired computer | "host" alone |
 | One graphics card of a paired computer | `PoolMemberKind.Gpu`, key `host:<id>#gpu<n>` | graphics card | "GPU" in UI text |
 | The ID of one computer in sync and pairing | device ID (`ClusterDevice`, `NetworkIdentity.ThisDevice`) | (not shown) | |
+| The name a computer gives itself (its host name in the case its owner set: *Miko*, *Nahida*), the same on every system | computer name (`ThisComputer.Name`, `HostHardware.ComputerName`, `SharedPc.ComputerName`, `NetworkMap.ComputerName`) | the device's title on the Devices map and in Home's notices | the NetBIOS name (`Environment.MachineName`, *MIKO*) for anything people see; the host ID as a title |
+| The ID of a computer's host service, made once from the computer name by `HostIds.ForComputer` (`nahida-host`) and never changed | host ID (`HostId`) | the subtitle of a device that runs a host service | the computer's name |
 | A computer in the plan of who does each job, and in the recommended setup's planner | node (`ClusterNode` in `ClusterPlan.Nodes`) | (not shown) | Use "node" only in the plans |
 | An OpenAI-compatible server at an address: a cloud provider or a server on your network | endpoint (`DeepThinkingPlace.Endpoint`; `ThinkingPoolSettings.IsExternal`) | a cloud provider or server | "route" |
 | A service the owner runs at an http or https address, as a pool member | `PoolMemberKind.Address`, key `address:<url>` | address | |

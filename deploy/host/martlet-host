@@ -1356,6 +1356,30 @@ json_opt() { if [[ -n "$1" ]]; then json_text "$1"; else printf 'null'; fi; }
 json_num() { if [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi; }
 json_string_array() { local value first=1; for value in "$@"; do [[ -n "${value}" ]] || continue; [[ ${first} == 1 ]] || printf ','; json_text "${value}"; first=0; done; }
 
+# The one rule for a new host ID (Martlet.Core.Network.HostIds.ForComputer): the computer's name in lowercase, spaces as "-",
+# only letters, digits, '.', '_' and '-', without a leading '-', '_' or '.', at most 58 characters, then "-host"
+# (Nahida: nahida-host). A host that has an ID keeps it (host.env).
+host_id_for() {
+  local id
+  id="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr '[:space:]' '-' | LC_ALL=C tr -cd 'a-z0-9._-' |
+    sed 's/^[-_.]*//' | cut -c1-58)"
+  printf '%s-host' "${id:-martlet}"
+}
+
+# The name this computer gives itself (Nahida), for the machine report: desktops show it instead of the host ID. Natively the
+# host name; in Docker the Docker host's name, except Docker Desktop, which names its engine docker-desktop on every computer:
+# then the name Martlet passed at setup (MARTLET_COMPUTER_NAME, kept in host.env). Empty when nothing names it.
+computer_name() {
+  local name=""
+  if [[ "${MODE}" == docker ]]; then name="$(docker info --format '{{.Name}}' 2>/dev/null </dev/null || true)"
+  else name="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"; fi
+  name="${name%%.*}"
+  [[ "${name,,}" != docker-desktop ]] || name=""
+  [[ -n "${name}" ]] || name="${MARTLET_COMPUTER_NAME:-}"
+  [[ -n "${name}" || ! -f "${CONF}/host.env" ]] || name="$(settings_value computer_name)"
+  printf '%s' "${name}" | LC_ALL=C tr -cd 'A-Za-z0-9._-' | cut -c1-63
+}
+
 host_timezone() {
   local tz=""
   if [[ "${MODE}" == docker ]]; then
@@ -1693,8 +1717,8 @@ collect_machine() {
   case "${arch}" in x86_64|amd64) arch="x64" ;; aarch64|arm64) arch="arm64" ;; *) arch="" ;; esac
   mkdir -p "${GW_CONF_DIR}"; chmod 700 "${GW_CONF_DIR}"
   ( umask 077
-    printf '{"collected_at":"%s","method":"%s","platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s],"features":[%s],"downloads":[%s]}\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_opt "${arch}")" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
+    printf '{"collected_at":"%s","method":"%s","computer_name":%s,"platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s],"features":[%s],"downloads":[%s]}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_opt "$(computer_name)")" "$(json_opt "${arch}")" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
       "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "$(json_opt "${cuda}")" "${joined}" "${features_joined}" \
       "${downloads_joined}" > "${MACHINE_FILE}.tmp" )
   # The same machine as last time keeps its report (and the time it was collected), so the gateway serving it needn't restart;
@@ -1764,11 +1788,13 @@ choose_address() {
     [[ " ${addresses[*]} " == *" ${lan} "* ]] || fail "${lan} is not a private address of this host."
   fi
   [[ "${port}" =~ ^[0-9]{2,5}$ ]] || fail "Invalid port."
-  # The host ID is permanent once the gateway identity exists.
+  # The host ID is permanent once the gateway identity exists; a new one follows the one rule (host_id_for).
+  local name; name="$(computer_name)"
   [[ -f "${CONF}/host.env" ]] && host_id="$(settings_value host_id)"
-  host_id="${host_id:-${MARTLET_HOST_ID:-$(hostname -s | tr -cd 'A-Za-z0-9._-' | cut -c1-48)-host}}"
+  host_id="${host_id:-${MARTLET_HOST_ID:-$(host_id_for "${name}")}}"
   [[ "${host_id}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || fail "Invalid host ID."
-  ( umask 077; printf 'host_id=%s\nlan_ip=%s\nport=%s\n' "${host_id}" "${lan}" "${port}" > "${CONF}/host.env" )
+  ( umask 077; printf 'host_id=%s\nlan_ip=%s\nport=%s\n' "${host_id}" "${lan}" "${port}" > "${CONF}/host.env"
+    [[ -z "${name}" ]] || printf 'computer_name=%s\n' "${name}" >> "${CONF}/host.env" )
 }
 
 # ------------------------------------------------------------------ commands
@@ -1986,7 +2012,7 @@ docker_launch() {
   local socket_group; socket_group="$(stat -c %g /var/run/docker.sock)"
   IMAGE="${MARTLET_HOST_IMAGE:-$(docker container inspect -f '{{.Config.Image}}' "$(hostname)" 2>/dev/null || printf 'martlet-host:latest')}"
   if [[ -z "${MARTLET_HOST_ID:-}" ]]; then
-    MARTLET_HOST_ID="$(docker info --format '{{.Name}}' | tr -cd 'A-Za-z0-9._-' | cut -c1-48)-host"
+    MARTLET_HOST_ID="$(host_id_for "$(computer_name)")"
     export MARTLET_HOST_ID
   fi
   if [[ "$1" == setup ]]; then
@@ -2047,7 +2073,7 @@ docker_launch() {
   exec docker run --rm "${tty[@]}" --name "${engine_name}" --log-driver none --user 1000:1000 --group-add "${socket_group}" --network "container:${NET}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
-    -e MARTLET_ENGINE=inner -e MARTLET_ENGINE_NAME="${engine_name}" -e MARTLET_HOST_IMAGE="${IMAGE}" -e MARTLET_HOST_ID -e MARTLET_ASSUME_YES \
+    -e MARTLET_ENGINE=inner -e MARTLET_ENGINE_NAME="${engine_name}" -e MARTLET_HOST_IMAGE="${IMAGE}" -e MARTLET_HOST_ID -e MARTLET_COMPUTER_NAME -e MARTLET_ASSUME_YES \
     -e MARTLET_LOCK_WAIT -e MARTLET_HOST_ADDRESS -e MARTLET_HOST_PORT "${IMAGE}" "$@"
 }
 

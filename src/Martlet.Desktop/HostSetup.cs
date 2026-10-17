@@ -47,7 +47,11 @@ internal sealed record HostAction(HostVerb Verb, string? Role = null)
     internal string AddVerb => Changing ? "Change" : "Add";
 }
 
-internal sealed record HostSetupTarget(HostSetupMethod Method, string SshTarget, string Address, string? HostId, string Version);
+/// <summary>Where and how a martlet-host command runs. <paramref name="HostId"/> and <paramref name="ComputerName"/> go to a new
+/// host's setup: its host ID (<see cref="HostSetupCommands.SuggestedHostId"/>) and its computer's own name, which a Docker-method
+/// host on Docker Desktop can't read itself (Docker Desktop names its engine docker-desktop). A host that has an ID keeps it.</summary>
+internal sealed record HostSetupTarget(HostSetupMethod Method, string SshTarget, string Address, string? HostId, string Version,
+    string? ComputerName = null);
 
 /// <summary>Builds the exact commands each installation method runs; nothing here executes them.</summary>
 internal static partial class HostSetupCommands
@@ -95,7 +99,14 @@ internal static partial class HostSetupCommands
             throw new InvalidOperationException("Enter the host's private network address.");
         if (target.HostId is { } id && !Regex.IsMatch(id, @"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z"))
             throw new InvalidOperationException("Invalid host ID.");
+        if (target.ComputerName is { } name && SafeComputerName(name) is null)
+            throw new InvalidOperationException("Invalid computer name.");
     }
+
+    /// <summary>A computer name that may go into a host's setup command as is (1 to 63 ASCII letters, digits, '.', '_' or '-'),
+    /// or null.</summary>
+    internal static string? SafeComputerName(string? name) =>
+        name is not null && Regex.IsMatch(name, @"\A[A-Za-z0-9][A-Za-z0-9._-]{0,62}\z") ? name : null;
 
     internal static string Image(HostSetupTarget target) => $"martlet-host:{target.Version}";
 
@@ -156,7 +167,8 @@ internal static partial class HostSetupCommands
     {
         if (!setup) return "";
         var text = $" -e MARTLET_HOST_ADDRESS={target.Address}";
-        return target.HostId is { } id ? text + $" -e MARTLET_HOST_ID={id}" : text;
+        if (target.HostId is { } id) text += $" -e MARTLET_HOST_ID={id}";
+        return target.ComputerName is { } name ? text + $" -e MARTLET_COMPUTER_NAME={name}" : text;
     }
 
     /// <summary>docker run's option that lets the engine wait <paramref name="seconds"/> for another change on the host (empty: the
@@ -385,12 +397,9 @@ internal static partial class HostSetupCommands
         catch (SocketException) { return null; }
     }
 
-    internal static string SuggestedHostId(string name)
-    {
-        var clean = new string(name.ToLowerInvariant().Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.').ToArray())
-            .TrimStart('-', '_', '.');
-        return (clean.Length == 0 ? "martlet" : clean.Length > 58 ? clean[..58] : clean) + "-host";
-    }
+    /// <summary>A new host ID for the computer named <paramref name="name"/>, by the one rule every host uses
+    /// (<see cref="Martlet.Core.Network.HostIds.ForComputer"/>): DIVA runs diva-host.</summary>
+    internal static string SuggestedHostId(string name) => Martlet.Core.Network.HostIds.ForComputer(name);
 
     /// <summary>This Windows user's device ID (<see cref="NetworkIdentity.ThisDevice"/>), which a new pairing uses.</summary>
     internal static string SuggestedDeviceId() => NetworkIdentity.ThisDevice;

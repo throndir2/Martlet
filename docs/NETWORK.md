@@ -58,16 +58,51 @@ computers paired with its host service under *Pair your main PC*.
 The Devices map draws the same computers on every one of them: this PC in the
 middle, every other member of the network (and every computer asking to join or
 using your hosts outside it) as its own device with where it was last active,
-your hosts, and the cloud services your jobs use. Each computer is one device:
-a PC that runs its own host service shows its device ID and its host service
-together (*IMOUTO, desktop-imouto · imouto-host*), named by what it is
-(*Martlet companion* or *Martlet host PC*). Each PC tells the others what it is
+your hosts, and the cloud services your jobs use. Each computer is one device,
+the same way on Windows, Linux (also a NAS) and macOS, and whether it runs the
+Martlet app, a host service or both. Its title is the name the computer gives
+itself: its host name in the case its owner set (*Imouto*, *Nahida*), not the
+capitalized Windows NetBIOS name (*IMOUTO*) or the host ID. Under the title is
+its host ID (*imouto-host*) when it runs a host service, else its device ID;
+both are short enough for a narrow card, and the details list the rest
+(*Computer*: *Imouto (desktop-imouto)*, *Host*, *Address*). A device is named
+by, in this order:
+
+1. The Martlet app on that computer: each PC shares its name in its
+   `pc.<device ID>` entry (below), so a name that changed since it joined the
+   network shows on every computer.
+2. The host's machine report: `martlet-host` (Linux natively or in Docker, a
+   NAS) and the Mac host report the computer's own name as `computer_name`
+   (natively the host name; in Docker the Docker host's name, or the name
+   Martlet passed at setup on Docker Desktop, which names its engine
+   *docker-desktop*).
+3. Before a host reports it (an older host), the name its host ID was made
+   from: *Nahida-host* shows as *Nahida*. A host ID chosen by hand
+   (*gpu-box*) shows as it is.
+
+A PC that runs its own host service shows the two together, named by what it is
+(*Martlet companion* or *Martlet host PC*). A model server on one of your
+computers (LM Studio on Nahida, say) shows on that computer, not as a device of
+its own. Home's notices and the recommended setup name computers the same way
+(*Nahida isn't answering*, *Check Nahida now*).
+
+Every new host ID follows one rule, on every system (`HostIds.ForComputer`, and
+`host_id_for` in `martlet-host`): the computer's name in lowercase, spaces as
+`-`, only letters, digits, `.`, `_` and `-`, then `-host` (*Nahida*:
+`nahida-host`, *Ada's MacBook Pro*: `adas-macbook-pro-host`). A host ID never
+changes once it exists, because pairings, certificates, the shared plan and
+`host-hardware.json` use it: a host set up before keeps its ID (`Nahida-host`).
+
+Each PC tells the others what it is
 through the [shared settings](CLUSTER.md#one-martlet-on-every-computer), under
-its own `pc.<device ID>` entry (its role and the host service Martlet runs on
-it), so a companion PC that also runs a host service still shows the jobs it
+its own `pc.<device ID>` entry (its role, the host service Martlet runs on it
+and its name), so a companion PC that also runs a host service still shows the jobs it
 does itself (Parakeet listening, say) and a host PC shows none. A computer on
 an older Martlet hasn't said, so it shows as *Martlet app* and its host service
-is matched by name (*DIVA* runs `diva-host`). A host PC uses no jobs, so its map shows who does what from the
+is matched by name (*DIVA* runs `diva-host`, or the host whose report names
+the same computer). The Linux and macOS companion app doesn't join the Martlet
+network yet ([platforms](PLATFORMS.md)), so such a computer shows only by its
+host service. A host PC uses no jobs, so its map shows who does what from the
 [shared plan](CLUSTER.md) (a job a host does on that host, a cloud job on its
 cloud service, a job that runs on each companion PC on those PCs) rather than
 the Setup choice it kept from before it became a host. Before this, a host PC's

@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Every computer shows by the name it gives itself, such as Miko or Nahida, on Windows, Linux, a NAS and Mac alike. A computer that only runs a host service no longer shows as "Nahida-host", and Home's notices name computers the same way. ([#931](https://github.com/throndir2/Martlet/pull/931))
 - Martlet sets up a NAS (TerraMaster, Synology, QNAP, Unraid or TrueNAS) only in Docker and never installs anything into the NAS system. When Docker isn't there yet, it tells you which app on the NAS installs it. ([#930](https://github.com/throndir2/Martlet/pull/930))
 
 ## [0.88.0] - 2026-10-16

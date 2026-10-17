@@ -20,9 +20,9 @@ public partial class MainWindow
     /// <summary>What Settings' Your other computers shows now, so it is drawn again only when that changes.</summary>
     private string? otherRolesShown;
 
-    /// <summary>The name a member computer of the Martlet network goes by ("IMOUTO"), or its device ID.</summary>
+    /// <summary>The name a member computer of the Martlet network goes by ("Imouto", as it names itself), or its device ID.</summary>
     private string ComputerName(string deviceId) =>
-        networkState.Roster?.ActiveDesktops.FirstOrDefault(d => d.Id == deviceId)?.Name ?? deviceId;
+        SharedComputerName(deviceId, networkState.Roster?.ActiveDesktops.FirstOrDefault(d => d.Id == deviceId)?.Name ?? deviceId);
 
     /// <summary>The host service Martlet runs on this PC, as your other computers should know it: the one paired here, the one
     /// this PC's host dashboard reads or, on a host PC while Docker Desktop is stopped, the one Martlet saw set up here before.
@@ -35,7 +35,7 @@ public partial class MainWindow
     /// names after it (DIVA runs diva-host). Null when this PC knows none.</summary>
     private string? PairedHostOf(MartletComputer computer)
     {
-        var id = computer.HostId ?? HostSetupCommands.SuggestedHostId(computer.Name);
+        var id = computer.LikelyHostId;
         return homeHosts.Any(h => h.HostId == id) ? id : null;
     }
 

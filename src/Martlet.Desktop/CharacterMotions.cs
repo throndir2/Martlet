@@ -166,7 +166,7 @@ internal sealed class CharacterMotions(string? dataDirectory, Func<string?> crea
             if (creationsFolder() is not { } folder) throw new MotionStudioException("Martlet's data folder isn't available");
             var author = new CreationAuthor
             {
-                Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName,
+                Device = HostSetupCommands.SuggestedDeviceId(), Computer = Martlet.Core.Network.ThisComputer.Name,
                 Persona = CharacterName is { Length: > 0 } persona ? persona : null
             };
             try
