@@ -70,7 +70,7 @@ internal static class ContextCheck
         try
         {
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
-            const string instructions = "Use the user-selected companion persona below for conversational tone.\n\nCompanion name: Martlet (fixture)";
+            const string instructions = "You are Martlet (fixture). The persona below is your character.\n\nCompanion name: Martlet (fixture)";
             TextHistoryMessage[] earlier =
             [
                 new(TextHistoryRole.User, "Fixture exchange one (not anything said)."), new(TextHistoryRole.Assistant, "Fixture reply one.")

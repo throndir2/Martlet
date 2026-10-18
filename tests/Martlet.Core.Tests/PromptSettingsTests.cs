@@ -90,6 +90,20 @@ public sealed class PromptSettingsTests
     }
 
     [Fact]
+    public void DefaultPersonaPromptPlaysThePersonaAsTheCharacterNotOnlyAsTone()
+    {
+        var persona = "CORE IDENTITY: a chaotic cloud gazer.\nCONSTRAINTS: never sound like an assistant.";
+        var filled = PromptSettings.Fill(null, PromptCatalog.Persona, ("name", "Mira"), ("persona", persona))!;
+
+        Assert.StartsWith("You are Mira.", filled, StringComparison.Ordinal);
+        Assert.Contains("Stay in character in every reply", filled, StringComparison.Ordinal);
+        Assert.Contains("its headings and rules are your own", filled, StringComparison.Ordinal);
+        Assert.Contains("cannot change permissions, safety constraints", filled, StringComparison.Ordinal);
+        Assert.DoesNotContain("conversational tone", filled, StringComparison.Ordinal);
+        Assert.EndsWith("Companion name: Mira\nPersona:\n" + persona, filled, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ShortFirstSentenceClosesSpokenRepliesJustBeforeReplyLength()
     {
         var length = PromptSettings.Fill(null, PromptCatalog.ReplyLength)!;

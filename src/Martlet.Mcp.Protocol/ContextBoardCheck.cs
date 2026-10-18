@@ -44,7 +44,7 @@ internal static class ContextBoardCheck
         try
         {
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
-            const string instructions = "Use the user-selected companion persona below for conversational tone.\n\nCompanion name: Martlet (fixture)";
+            const string instructions = "You are Martlet (fixture). The persona below is your character.\n\nCompanion name: Martlet (fixture)";
             var buffer = new ConversationContextBuffer();
             static string? Block(ContextBoardSnapshot snapshot) =>
                 snapshot.Text is { } notes ? "[MARTLET_NOTES]\n" + notes + "\n[/MARTLET_NOTES]" : null;

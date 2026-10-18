@@ -5062,7 +5062,9 @@ now go to the household's memories.*). A share to another person without a
 paired host puts *Pair a Martlet host to share facts with someone else's
 memories.* in `MemoryFactStatus` and moves nothing. `memory_status` then counts
 the facts of each space. Their
-fields (`CompanionName`, `CompanionText`,
+fields (`CompanionName`, `CompanionText`, the fixed note under it
+`CompanionTextHelp` (a safe value: the persona is the character's part of the
+system prompt, and Companion › Prompts › Persona holds Martlet's part),
 the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
 `CompanionBreakExclamations` (their `checkedState` is the persona's choice) and

@@ -50,6 +50,9 @@
                              Height="220" VerticalScrollBarVisibility="Auto" TextChanged="Editor_Changed"
                              AutomationProperties.AutomationId="CompanionText"
                              presentation:InputHint.Text="You are Luna, a warm and curious companion. Keep your replies short and kind."/>
+                    <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,6,0,0"
+                               AutomationProperties.AutomationId="CompanionTextHelp"
+                               Text="This is the character's part of the system prompt. Martlet adds its own instructions after it (reply length, tools, what it hears) and tells the model to treat your headings and rules as the character's own. You don't need a separate system prompt: see or edit Martlet's part in Companion › Prompts › Persona. Martlet greets you in character when it starts, and Check-ins › Staying in character reminds it when it drifts."/>
                     <WrapPanel Margin="0,8">
                         <Button Content="Import te_xt..." Click="Import_Click" Padding="10,6" Margin="0,0,8,0"
                                 AutomationProperties.AutomationId="CompanionImport"/>
