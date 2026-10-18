@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.88.2] - 2026-10-17
+
 ### Changed
 
 - Martlet now tells the model to be your character, not only to borrow its tone: the headings and rules in your personality (such as Core identity or Constraints) count as the character's own, and it stays in character instead of sounding like an assistant. A note under the personality box explains that it is the character's part of the system prompt, and where Martlet's own part is (Companion › Prompts › Persona). ([#936](https://github.com/throndir2/Martlet/pull/936))
