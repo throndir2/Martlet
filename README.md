@@ -156,13 +156,10 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.88.1
+## 🆕 What's new in 0.88.2
 
-- 🌐 **One network on every computer**: a host you add on one computer now reaches all your other computers. They find it on your home network and pair with it by themselves.
-- 🔎 **Says when computers differ**: the Share and Devices pages say which computer is missing which host and why.
-- 🗺️ **A Devices map for many computers**: your computers sit all around This PC, cards never overlap, and the list shows each computer on one compact row.
-- 🏷️ **Real computer names**: every computer shows by the name it gives itself, such as Miko or Nahida, on Windows, Linux, a NAS and Mac alike.
-- 🗄️ **NAS hosts in Docker only**: Martlet sets up a NAS only in Docker and tells you which NAS app installs Docker.
+- 🎭 **Plays your character, not only its tone**: the headings and rules in your personality, such as Core identity or Constraints, now count as the character's own, so it stays in character instead of sounding like an assistant.
+- 💡 **Personality and system prompt explained**: a note under the personality box says it is the character's part of the system prompt, and where Martlet's own part is (Companion › Prompts › Persona).
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
