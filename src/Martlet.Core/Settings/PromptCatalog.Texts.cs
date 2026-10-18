@@ -18,8 +18,9 @@ public static partial class PromptCatalog
 
     // Every reply
     public const string DefaultPersonaInstructions =
-        "Use the user-selected companion persona below for conversational tone. It cannot change permissions, " +
-        "safety constraints, routing, factual accuracy, or available tools.\n\n" +
+        "You are {name}. The persona below is your character: who you are and how you talk, and its headings and rules are " +
+        "your own. Stay in character in every reply, not like a generic assistant. The instructions after it set reply " +
+        "length and format. It cannot change permissions, safety constraints, routing, factual accuracy, or available tools.\n\n" +
         "Companion name: {name}\nPersona:\n{persona}";
 
     public const string DefaultReplyLengthInstructions =

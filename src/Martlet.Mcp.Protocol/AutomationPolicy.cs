@@ -825,6 +825,7 @@ internal static class AutomationPolicy
         new("AvatarStatus", "Character window", "Shows the character status, such as 'Character is showing...' or 'Character hidden. Voice continues.'"),
         new("LorebookTestResult", "Lorebooks › Try it", "Shows which entries a sample message would trigger, by title, lorebook and keyword, and what the budget left out. Never an entry's text."),
         new("CompanionShortEnding", "Companion › Personality", "Shows how short an ending is said with the words before it, such as 'Up to 2 words'."),
+        new("CompanionTextHelp", "Companion › Personality", "Shows Martlet's fixed note under the persona box: the persona is the character's part of the system prompt, and where Martlet's own part is. Fixed text only."),
         // Needs --allow-ui-effects: the Where the voice pauses check boxes (changing any of them saves); they report only checkedState.
         new("FallbackNow", "Companion › Thinking › If Thinking fails", "Shows the saved fallback in words: provider, model and whose key. Never the key."),
         new("FallbackKeyStatus", "Companion › Thinking › If Thinking fails", "Shows what the fallback's key field will do. Never the key."),
