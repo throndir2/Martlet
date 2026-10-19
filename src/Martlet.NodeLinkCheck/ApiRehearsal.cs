@@ -96,17 +96,13 @@ internal static class ApiRehearsal
             var pin = "sha256//" + Convert.ToBase64String(Convert.FromHexString(h1.Identity.SpkiFingerprint["sha256:".Length..]));
             async Task<(int Exit, string Output)> CurlAsync(string pinned)
             {
-                var start = new System.Diagnostics.ProcessStartInfo(curl)
-                {
-                    UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                foreach (var argument in new[] { "-s", "-k", "--pinnedpubkey", pinned, "-H", "Authorization: Bearer " + assistant!.Token,
-                    h1.Origin + "/martlet/v1/version" })
+                var start = new System.Diagnostics.ProcessStartInfo(curl) { CreateNoWindow = true };
+                // The key goes in through curl's standard input (--config -), so other programs cannot see it on the command line.
+                foreach (var argument in new[] { "-s", "-k", "--pinnedpubkey", pinned, "--config", "-", h1.Origin + "/martlet/v1/version" })
                     start.ArgumentList.Add(argument);
-                using var process = System.Diagnostics.Process.Start(start)!;
-                var output = await process.StandardOutput.ReadToEndAsync(token);
-                await process.WaitForExitAsync(token);
-                return (process.ExitCode, output);
+                var result = await Martlet.Core.Processes.ProcessRunner.RunAsync(start, TimeSpan.FromSeconds(30), token,
+                    $"header = \"Authorization: Bearer {assistant!.Token}\"\n");
+                return (result.ExitCode, result.StandardOutput);
             }
             var good = await CurlAsync(pin);
             var bad = await CurlAsync("sha256//" + Convert.ToBase64String(new byte[32]));

@@ -217,6 +217,48 @@ public sealed class AuthorityTests : NativeTest
     }
 
     [Fact]
+    public void Cancellation_before_the_nonce_commit_keeps_the_authority_open()
+    {
+        var clock = new Clock();
+        using var cancellation = new CancellationTokenSource();
+        var armed = false;
+        using var host = new NativeAuthority(Store, clock, create: true, fault: step =>
+        {
+            if (armed && step == StoreStep.StagingFlushed) cancellation.Cancel();
+        });
+        var credential = host.Issue();
+        var request = host.Signed(credential, cancellation.Token);
+        armed = true;
+        Assert.Throws<OperationCanceledException>(() => host.Credentials.Authenticate(request));
+        armed = false;
+        Assert.False(host.Credentials.Closed);
+        Assert.Equal(credential.CredentialId, host.Credentials.Authenticate(host.Signed(credential)).CredentialId);
+        Code("auth.replay", () => host.Credentials.Authenticate(request with { CancellationToken = default }));
+        host.Clean();
+    }
+
+    [Fact]
+    public async Task Concurrent_requests_share_nonce_commits()
+    {
+        using var entered = new ManualResetEventSlim();
+        var first = true;
+        using var host = new NativeAuthority(Store, new Clock(), create: true, fault: step =>
+        {
+            if (step != StoreStep.StagingFlushed || !entered.IsSet || !first) return;
+            first = false;
+            Thread.Sleep(300); // Holds the first nonce commit so the other requests queue behind it.
+        });
+        var credential = host.Issue();
+        var before = host.Credentials.CommitStats.Commits;
+        entered.Set();
+        var principals = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
+            Task.Run(() => host.Credentials.Authenticate(host.Signed(credential)))));
+        Assert.Equal(8, principals.Length);
+        Assert.True(host.Credentials.CommitStats.Commits - before <= 3, $"{host.Credentials.CommitStats.Commits - before} commits");
+        host.Clean();
+    }
+
+    [Fact]
     public void Pairing_invitation_still_expires_and_never_survives_restart()
     {
         var clock = new Clock();

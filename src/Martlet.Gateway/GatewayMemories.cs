@@ -23,18 +23,21 @@ internal sealed class GatewayMemoryStore
     private SharedMemories memories = SharedMemories.Empty;
     private string digest = SharedMemories.Empty.Digest();
     private IGatewayMemoryStorage? storage;
+    private GatewayStoreHealth health = new();
+    private string storeName = "memories";
 
     internal SharedMemories Current { get { lock (gate) return memories; } }
 
     internal string Digest { get { lock (gate) return digest; } }
 
-    internal void Attach(IGatewayMemoryStorage value)
+    internal void Attach(IGatewayMemoryStorage value, GatewayStoreHealth? storeHealth = null, string? name = null)
     {
+        if (storeHealth is not null) health = storeHealth;
+        if (name is not null) storeName = name;
         ArgumentNullException.ThrowIfNull(value);
         SharedMemories? saved = null;
-        try { if (value.Load() is { } bytes) saved = SharedMemories.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try(storeName, "load", () => { if (value.Load() is { } bytes) saved = SharedMemories.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -72,12 +75,7 @@ internal sealed class GatewayMemoryStore
         digest = nextDigest;
         if (!save || storage is null) return;
         byte[]? bytes = null;
-        try
-        {
-            bytes = next.Write();
-            storage.Save(bytes);
-        }
-        catch (Exception) { }
+        try { health.Try(storeName, "save", () => storage.Save(bytes = next.Write())); }
         finally { if (bytes is not null) CryptographicOperations.ZeroMemory(bytes); }
     }
 }

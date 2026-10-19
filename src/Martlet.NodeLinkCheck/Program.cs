@@ -254,12 +254,10 @@ async Task LiveAsync(string code, string container)
     const string tokenPath = "/var/lib/martlet/config/gateway/agent.token";
     async Task<string?> ReadAsync(string path)
     {
-        var start = new System.Diagnostics.ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        var start = new System.Diagnostics.ProcessStartInfo("docker");
         foreach (var argument in new[] { "exec", container, "cat", path }) start.ArgumentList.Add(argument);
-        using var process = System.Diagnostics.Process.Start(start)!;
-        var text = await process.StandardOutput.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        return process.ExitCode == 0 ? text.Trim() : null;
+        var result = await Martlet.Core.Processes.ProcessRunner.RunAsync(start, TimeSpan.FromSeconds(30));
+        return result.ExitCode == 0 ? result.StandardOutput.Trim() : null;
     }
     var (pairing, pairingSecret) = await HostPairingCode.Parse(code).PairAsync("check-live");
     Step("pair-live", true, $"paired as check-live with {pairing.HostId} at {pairing.Origin}");

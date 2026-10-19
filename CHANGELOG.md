@@ -19,6 +19,11 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- Many requests to a host at the same time no longer wait for each other's disk saves one by one. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- When a host can't save or load API keys, accounts, memories, conversations or other shared data, it now says so in its log and security audit instead of losing the change without a sign. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- A device on the home network sending false pairing proofs can no longer stop your own desktops from pairing with a host, and a failed re-pair no longer removes a desktop's working pairing. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- Host setup on a Mac, Mac screen capture and the Linux desktop check can no longer hang when a tool writes a lot of output. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - Smart home no longer sends requests such as "why don't you unlock the front door" or "how about opening the garage" to Home Assistant as if they were questions. Like other requests for locks, doors, garages, gates, alarms and valves, they are blocked unless you allow them, and then need your click. If Home Assistant still operates one of them without your click, Martlet shows it as a safety problem. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
 - Martlet checks the cloudflared it downloads for WhatsApp against the size and SHA-256 that GitHub publishes, and runs its copy only while it still matches. The WhatsApp page shows the cloudflared version. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
 - Telegram and WhatsApp keep answering after a short network problem, a failed reply or a failed "typing" sign, instead of stopping and showing Off. WhatsApp moves to a free port when another program took its port, and a stranger's wrong codes no longer cancel your pairing code. ([#1019](https://github.com/throndir2/Martlet/pull/1019))

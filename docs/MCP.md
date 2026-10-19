@@ -2621,7 +2621,10 @@ address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
-throttled entries with their source) and the host log lines naming each source.
+throttled entries with their source, plus `StoresHealthy`, `FailingStores` and
+the authority save counts `AuthorityCommits`, `AuthorityCommitAverageMs` and
+`AuthorityCommitLongestMs`; the first step fails when a store is not healthy)
+and the host log lines naming each source.
 Then outside addresses, played by other loopback ports: with the home address
 closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
