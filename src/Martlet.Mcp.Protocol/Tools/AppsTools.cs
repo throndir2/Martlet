@@ -123,7 +123,8 @@ internal sealed partial class McpServer
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "memories")),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
-            "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
+            "header names, on/off, auto-approve, the MCP directory entry it was installed from, the secret names it uses and how a " +
+            "reply names its tools (toolNames: always <server>_<tool>, whatever else runs). " +
             "Read-only; starts no server and reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
@@ -445,6 +446,8 @@ internal sealed partial class McpServer
                     registry = server.Registry,
                     registryVersion = server.RegistryVersion,
                     secrets = server.Secrets,
+                    // How a reply offers its tools: always <prefix>_<tool> (McpToolNames), whatever else runs.
+                    toolNames = McpToolNames.Safe(server.Name) + "_<tool>",
                     problem = server.Problem
                 };
             }).ToArray()

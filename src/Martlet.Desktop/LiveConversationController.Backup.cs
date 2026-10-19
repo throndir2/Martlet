@@ -76,7 +76,7 @@ internal sealed partial class LiveConversationController
 
     /// <summary>Opens Backup Thinking's stream for a reply's request on the member <see cref="ThinkingBackupMembers.Choose"/> picks
     /// now, with that member's own one-use authorization and slot, as live work (see the file's summary). Null, and why, when no
-    /// member may take it or its stream couldn't be opened.</summary>
+    /// member may take it; a member chosen whose stream couldn't be opened throws <see cref="ThinkingBackupOpenException"/>.</summary>
     internal async Task<(ThinkingBackupStream? Stream, string Why)> OpenBackupAsync(LiveConversationConfiguration configured,
         ConversationRequest reply, BoundedTextInput input, CorrelationIds ids, long epoch, bool held, CancellationToken token)
     {
@@ -119,7 +119,8 @@ internal sealed partial class LiveConversationController
         {
             await lease.DisposeAsync().ConfigureAwait(false);
             if (error is OperationCanceledException && token.IsCancellationRequested) throw;
-            return (null, $"{member.Describe()} couldn't be asked ({error.GetType().Name})");
+            // The member was chosen but couldn't be asked: the reply records it as Failed, with the reason (never the key).
+            throw new ThinkingBackupOpenException(member.Describe(), ThinkingBackupOpenException.Reason(error), error);
         }
     }
 
@@ -189,7 +190,12 @@ internal sealed partial class LiveConversationController
         }
         Task.Run(() =>
         {
-            if (result.Describe() is { } line) ErrorLog.Info(line);
+            // A member that failed (its stream couldn't be opened, or it gave no answer) needs the owner's look: a warning.
+            if (result.Describe() is { } line)
+            {
+                if (result.Outcome == ThinkingBackupOutcome.Failed) ErrorLog.Warn(line);
+                else ErrorLog.Info(line);
+            }
             WritePoolStatus();
         }).Forget();
     }

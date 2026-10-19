@@ -19,7 +19,9 @@ public interface IThinkingBackup
     /// <summary>Opens the backup's stream of the same request: <paramref name="input"/> as <paramref name="reply"/> sends it, with
     /// <paramref name="ids"/> and <paramref name="epoch"/> on its events (<see cref="ConversationRuntime.OpenTextAsync"/>), or null
     /// when no member may take it now. <paramref name="held"/>: the reply was started early and isn't taken yet, so no paid
-    /// cloud member may be asked. <paramref name="token"/> stops the stream too.</summary>
+    /// cloud member may be asked. <paramref name="token"/> stops the stream too. A member chosen whose stream couldn't be opened
+    /// throws (<see cref="ThinkingBackupOpenException"/> names it): the reply records <see cref="ThinkingBackupOutcome.Failed"/>,
+    /// not <see cref="ThinkingBackupOutcome.NoMember"/>.</summary>
     Task<ThinkingBackupStream?> OpenAsync(ConversationRequest reply, BoundedTextInput input, CorrelationIds ids, long epoch, bool held,
         CancellationToken token);
 
@@ -36,6 +38,26 @@ public sealed record ThinkingBackupStream(string Name, ITextGenerationStream Str
     public override string ToString() => $"{nameof(ThinkingBackupStream)} {Name}";
 }
 
+/// <summary>The member <paramref name="Member"/> was chosen, but its stream couldn't be opened, for the reason
+/// <paramref name="Why"/> (a failure code or an error type, never a secret or what was said).</summary>
+public sealed class ThinkingBackupOpenException(string member, string why, Exception? inner = null)
+    : Exception($"Backup Thinking couldn't open {member}'s stream ({why}).", inner)
+{
+    public string Member { get; } = member;
+    public string Why { get; } = why;
+
+    /// <summary>A short reason for <paramref name="error"/>: a provider's failure code, a contract's error code or the error's type.</summary>
+    public static string Reason(Exception error) => error switch
+    {
+        ThinkingBackupOpenException open => open.Why,
+        HostTextException host => host.Code.ToString(),
+        ContractException contract => contract.Code.ToString(),
+        CredentialUnavailableException => "its key isn't available",
+        TimeoutException => "it timed out",
+        _ => error.GetType().Name
+    };
+}
+
 /// <summary>How Backup Thinking ended in one reply.</summary>
 public enum ThinkingBackupOutcome
 {
@@ -47,7 +69,7 @@ public enum ThinkingBackupOutcome
     Won,
     /// <summary>The conversation's model had words first; the member was stopped.</summary>
     Lost,
-    /// <summary>The member failed (or ended without an answer); the conversation's model went on alone.</summary>
+    /// <summary>The member failed (or ended without an answer, or its stream couldn't be opened); the conversation's model went on alone.</summary>
     Failed
 }
 
@@ -67,7 +89,7 @@ public sealed record ThinkingBackupResult(ThinkingBackupOutcome Outcome, TimeSpa
             $"(asked at {Ms(AskedAfter)} ms after a {Ms(Delay)} ms wait); the conversation's model was stopped.",
         ThinkingBackupOutcome.Lost => $"Backup Thinking: asked {Member} at {Ms(AskedAfter)} ms after a {Ms(Delay)} ms wait; " +
             $"the conversation's model had words first at {Ms(FirstWordsAfter)} ms, so {Member} was stopped.",
-        ThinkingBackupOutcome.Failed => $"Backup Thinking: asked {Member} at {Ms(AskedAfter)} ms, but it gave no answer" +
+        ThinkingBackupOutcome.Failed => $"Backup Thinking: asked {Member ?? "a member"} at {Ms(AskedAfter)} ms, but it gave no answer" +
             (Why is null ? "" : $" ({Why})") + "; the conversation's model went on alone.",
         ThinkingBackupOutcome.NoMember => $"Backup Thinking: no first words after {Ms(Delay)} ms, but no member could take the " +
             "request" + (Why is null ? "." : $" ({Why})."),

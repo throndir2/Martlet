@@ -396,6 +396,14 @@ internal sealed class SmartHome : IDisposable
     /// <summary>A tool-capable turn that offers Home Assistant's tools skips the Assist step, so nothing runs twice.</summary>
     internal HomeTurn ToolsTurn(PromptSettings? prompts = null) => new(HomeTurnKind.Tools, HomeAssistantContext.ToolsOffered(Preferences.AllowSensitive, prompts), null);
 
+    /// <summary>Starts <see cref="RefreshSafetyAsync"/> in the background and returns at once, for the reply path: a reply never
+    /// waits for Home Assistant. The next reply uses the new list.</summary>
+    internal void RefreshSafetyLater()
+    {
+        if (!ModelToolsEnabled) return;
+        Task.Run(() => RefreshSafetyAsync(CancellationToken.None)).Forget();
+    }
+
     /// <summary>Reads which of Home Assistant's entities can open the home (at most every 5 minutes) so tool calls that
     /// name one are held back. A failure keeps the previous list; with none, calls that address devices by name ask first.</summary>
     internal async Task RefreshSafetyAsync(CancellationToken cancellationToken)
@@ -422,6 +430,8 @@ internal sealed class SmartHome : IDisposable
             }
         }
         catch (HomeAssistantException) { }
+        // Martlet is closing.
+        catch (ObjectDisposedException) { }
     }
 
     /// <summary>How one Home Assistant tool call is approved: status tools and ordinary devices run; locks, doors, garages,

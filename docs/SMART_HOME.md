@@ -73,7 +73,9 @@ address; plain `http` is accepted only for local-network addresses). With
    `GetDateTime`, ...) and Home Assistant intents (`Hass*`) on ordinary devices
    run at once; anything naming a lock, door, garage, gate, alarm or valve in
    the tool name, its arguments, a `domain`/`device_class`, or a name of such
-   an entity read from `/api/states` (refreshed at most every 5 minutes) is
+   an entity read from `/api/states` (refreshed at most every 5 minutes, in the
+   background when a talk window opens and after replies start; a reply never
+   waits for it) is
    blocked or asks every time per the setting above; other tools (exposed
    scripts) ask every time; Always allow is never offered. If the entity list
    can't be read, intents that address a device only by name ask first.
