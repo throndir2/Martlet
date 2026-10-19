@@ -2,7 +2,7 @@
 
 **Metadata slice only; no runnable preset, installer or runtime qualification.**
 [host-artifacts.v2.json](host-artifacts.v2.json) is accepted by the existing
-[offline reader and ArtifactDoctor](../../../src/Martlet.HostArtifacts/README.md).
+[offline reader](../../../src/Martlet.HostArtifacts/README.md).
 The original [v1 archive/model catalog](host-artifacts.v1.json) is unchanged.
 Select the v2 file explicitly; nothing in app settings, Desktop, the gateway,
 Compose or the installation planner automatically consumes or approves it.

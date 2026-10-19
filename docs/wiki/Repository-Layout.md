@@ -38,23 +38,21 @@ This page tells you where things are in the repository. Before you change a rule
 | `Martlet.Conversation` | The conversation, background jobs, the Thinking pool and web research. |
 | `Martlet.Providers` | Cloud and local model providers. |
 | `Martlet.Participation` | When Martlet takes part in a conversation. |
-| `Martlet.Audio`, `Martlet.EchoCancellation`, `Martlet.VoiceActivity` | Audio, echo reduction and voice activity detection. |
-| `Martlet.Stt.Windows`, `Martlet.LocalStt`, `Martlet.Sherpa` | Speech recognition: Windows speech, local whisper and sherpa-onnx (Parakeet, speaker recognition, sound tagging). |
+| `Martlet.Audio`, `Martlet.EchoCancellation` | Audio, echo reduction and voice activity detection. |
+| `Martlet.Sherpa` | Speech recognition on this PC with sherpa-onnx (Parakeet, speaker recognition, sound tagging, Smart Turn). |
 | `Martlet.Memory` | Remembered facts and retrieval. |
-| `Martlet.Perception` | Screen capture, reading and seeing contracts. |
+| `Martlet.Perception` | The contracts for the reading (OCR) and seeing (VLM) host workers. |
 | `Martlet.Discord`, `Martlet.Messaging`, `Martlet.Home` | Discord, Telegram and WhatsApp, and Home Assistant. |
 | `Martlet.Avatars`, `Martlet.Avatar.Hosting`, `Martlet.Avatar.Audio2Face` | Character contracts, hosting and Audio2Face lip-sync. |
 | `Martlet.Avatar.Vrm`, `Martlet.Avatar.Live2D` | The VRM and Live2D web packages (npm). |
 | `Martlet.Gateway`, `Martlet.Gateway.Trust`, `Martlet.Gateway.Persistence` | The host gateway, its pairing trust and its saved state. |
 | `Martlet.Gateway.*` (Ollama, Stt, F5, Xtts, GptSovits, Dia, Singing, Pictures, Ocr, Motion, VoiceRecognition, Audio2Face) | The relays from the gateway to each host role. |
 | `Martlet.F5` | The F5 voice worker client and voice presets. |
-| `Martlet.Host.Inventory`, `Martlet.Host.Setup`, `Martlet.HostArtifacts`, `Martlet.ArtifactDoctor` | Host reports, host setup and host artifact checks. |
+| `Martlet.Host.Inventory`, `Martlet.Host.Setup`, `Martlet.HostArtifacts` | Host reports, host setup and host artifact checks. |
 | `Martlet.Credentials.Windows` | API keys in Windows Credential Manager. |
 | `Martlet.Diagnostics`, `Martlet.Support` | Diagnostic probes and the local support bundle. |
-| `Martlet.Updates`, `Martlet.Launcher`, `Martlet.Readiness` | Update records, the launcher and the readiness protocol. |
 | `Martlet.Mcp.Client` | The MCP client for the tools Martlet uses while you talk. |
 | `Martlet.NodeLinkCheck` | A test tool that MCP self-tests run between real gateways. |
-| `Martlet.LocalStt.PackageTool` | An offline tool that makes local speech recognition packages. |
 
 ## Other folders
 

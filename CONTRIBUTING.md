@@ -139,8 +139,9 @@ validation** (owner policy, 2026-10-03).
   `Directory.Packages.props`, restore normally to update the lock files and
   review their diff. Then restore with `--locked-mode` and run the targeted
   tests again.
-- `Martlet.slnx` lists the main projects for the IDE; `Test-Martlet.ps1` finds
-  every test project under `tests\` itself.
+- `Martlet.slnx` lists every project under `src\` and `tests\`. Add a new
+  project to it in the same change. `Test-Martlet.ps1` finds every test project
+  under `tests\` itself.
 - `Smoke-Doctor.ps1` and `Invoke-MartletMcp.ps1` use unique temporary data
   paths, never the real user profile. `Invoke-MartletMcp.ps1 -Desktop` needs
   an interactive Windows desktop.

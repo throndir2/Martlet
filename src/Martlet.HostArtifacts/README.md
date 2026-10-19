@@ -1,13 +1,15 @@
 # Offline host artifact inspection (H02a/H02c/H02d metadata)
 
 **Standalone internal managed-code foundation, not a shipped installer feature.**
-The library and `Martlet.ArtifactDoctor` inspect one explicitly selected local
+The library inspects one explicitly selected local
 JSON document. They do not install, download, verify model payloads, execute
 commands, resolve URLs, inspect caches, probe the host/GPU, load models, modify
 settings, approve rights, or enable a preset. All candidates remain disabled.
 
-These three projects intentionally remain outside `Martlet.slnx` and the
-Desktop/existing Doctor/Windows package graph. Core's parser is reused without
+The library and its test project are listed in `Martlet.slnx`, but they are
+outside the Desktop/Doctor/Windows package graph. The `Martlet.ArtifactDoctor`
+command-line tool that wrapped the library was removed because no app or script
+used it (issue #973). Core's parser is reused without
 changing Core, its enums, settings or dependency authority. The library has no
 external package dependencies. The dedicated suite uses the repository's
 existing central Test SDK/xUnit pins.
@@ -30,10 +32,6 @@ $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
 & $sdk restore tests\Martlet.HostArtifacts.Tests\Martlet.HostArtifacts.Tests.csproj --locked-mode --artifacts-path $artifacts
 & $sdk build tests\Martlet.HostArtifacts.Tests\Martlet.HostArtifacts.Tests.csproj -c Release --no-restore --artifacts-path $artifacts
 & $sdk test tests\Martlet.HostArtifacts.Tests\Martlet.HostArtifacts.Tests.csproj -c Release --no-build --no-restore --artifacts-path $artifacts --results-directory "$artifacts\TestResults"
-$doctor = "$artifacts\bin\Martlet.ArtifactDoctor\release\Martlet.ArtifactDoctor.dll"
-$manifest = "$PWD\deploy\ubuntu\artifacts\host-artifacts.v1.json"
-& $sdk $doctor inspect --manifest $manifest --json
-& $sdk $doctor inspect --manifest $manifest --role f5-tts --target ubuntu-24.04-x64
 ```
 
 Also point `DOTNET_CLI_HOME`, NuGet caches and `TEMP`/`TMP` at your explicit
@@ -46,23 +44,8 @@ reviewed unchanged existing locks/pins, then performed locked restores. That
 one-time generation is not an ordinary validation command or persistent
 project override.
 
-The CLI also supports `--help`, `-h` and `--version`. Inspection requires
-`inspect --manifest ABSOLUTE_LOCAL_JSON_PATH`, optional `--role ROLE_ID`,
-optional `--target TARGET_ID`, optional v2-only `--platform OS/ARCH[/VARIANT]`,
-and optional `--json`, each at most once.
-Omitted role selects all roles in this document; omitted target remains
-unknown. A selector such as `ubuntu-24.04-x64` is supplied intent, not evidence
-of the machine running the tool.
-
-| Exit | Meaning |
-| --- | --- |
-| 0 | Help/version only |
-| 1 | A valid inspected candidate's declared target or selected image platform differs from the requested selector |
-| 2 | Valid but disabled/incomplete candidate, or explicitly reported cancellation/read deadline |
-| 3 | Invalid invocation, unsupported/invalid/inconsistent/oversized document, inaccessible/disallowed input |
-
-Exit 2 is expected for the committed catalog, including a matching declared
-Ubuntu target. No `ready` field or successful installation outcome is emitted.
+The committed catalog is a disabled, incomplete candidate, also for a matching
+declared Ubuntu target. No `ready` field or successful installation outcome is emitted.
 Inspection always computes `execution_eligible`, `download_authorized`,
 `host_qualified`, `payload_verified` and `source_assertions_authenticated` as
 false. GPU fit is `not_measured`, rights are `not_reviewed`, prerequisite
@@ -203,7 +186,6 @@ publisher trust, rights or execution permission.
 | Upstream paths/URLs | 512 path characters, 128 per segment; URL 2,048 characters |
 | Payload bytes | Positive integer, at most 16 TiB per artifact; total at most 64 TiB |
 | Findings/prerequisites | At most 128 findings and 16 prerequisite records; authored summaries/remedies at most 512 characters |
-| CLI | At most 8 arguments, 4,096 characters each; explicit local `.json` input, 10-second bounded asynchronous read |
 
 Only exact GitHub source/release-asset and Hugging Face commit-file/evidence URL
 shapes are accepted. Equality is checked against raw canonical text, before URI
@@ -214,7 +196,7 @@ redirect URL, or hostname suffix trick is accepted. URLs are **never fetched**.
 
 Relative upstream paths are data, not extraction destinations or local reads.
 They reject traversal/empty segments, roots/drives, backslashes, encoding,
-controls, device names and trailing dots/spaces. The local CLI file boundary
+controls, device names and trailing dots/spaces. The local file boundary
 rejects UNC/device/alternate-stream paths and link/reparse ancestors; it does
 not enumerate directories or read any referenced artifact. Expected IO/parser
 failures are sanitized. Hostile concurrent filesystem substitution, special
@@ -263,12 +245,12 @@ accepted `locally_verified` or approved-rights token.
 
 Platform tokens are bounded lowercase ASCII OS/architecture/optional-variant
 strings (32 characters each). Null `platform` is unknown; null `variant` means
-no variant declared, not a wildcard. `--platform linux/amd64` compares this
+no variant declared, not a wildcard. A platform selector such as `linux/amd64` compares this
 tuple only, with exact equality and no architecture aliases. A mismatching
-tuple exits 1 (`declared_platform_mismatch`); an unknown tuple or omitted
-selector stays unknown/disabled (exit 2). `--target` still compares the opaque
+tuple reports exit code 1 (`declared_platform_mismatch`); an unknown tuple or omitted
+selector stays unknown/disabled (exit code 2). The target selector still compares the opaque
 role target label; neither selector discovers the host or establishes runtime
-compatibility. V1 rejects `--platform`, rather than pretending to compare an
+compatibility. V1 rejects a platform selector, rather than pretending to compare an
 image it cannot represent.
 
 V2 allows `container_image` **instead of** `runtime_archive` as a family's
@@ -321,14 +303,14 @@ positive or null; expanded/staging blob sizes are nonnegative or null. Each
 known size is at most 16 TiB; each unique known byte subtotal is at most 64 TiB,
 including files in the combined compressed subtotal. Repeated layers still
 consume the per-image and document occurrence limits. Graph edges retain the
-16-per-node/256-total bounds. The CLI now allows at most 10 arguments.
+16-per-node/256-total bounds.
 
 The [v2 fixture](../../tests/Martlet.HostArtifacts.Tests/fixtures/container-images.v2.json)
 and [golden inventory](../../tests/Martlet.HostArtifacts.Tests/fixtures/container-inventory.golden.json)
 are **authored synthetic metadata**, including fake commits, versions, digests,
 sizes, index relationships and `.invalid` registry URLs. They are not upstream
 records, executable presets, payloads or runtime evidence. Tests exercise these
-through the production reader, validator, graph, inspector and CLI, alongside
+through the production reader, validator, graph and inspector, alongside
 the frozen v1 catalog. H02d must research exact upstream runtime/image/model
 closure separately.
 
@@ -375,7 +357,7 @@ All license cards/files are declarations, not Martlet/project/voice rights grant
 ## Coverage and retained gates
 
 The dedicated suite exercises the actual parser/graph/inspector, catalog,
-human/JSON command path and executable subprocess; strict shape/null/enum/
+human/JSON report; strict shape/null/enum/
 Unicode/limit cases; source/path/pin attacks; graph/role/license inconsistencies;
 invariant totals/fingerprints; source-evidence distinctions; mandatory gaps;
 and private-file preservation/cancellation/IO errors. Core and existing Doctor

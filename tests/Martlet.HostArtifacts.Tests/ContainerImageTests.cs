@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Martlet.ArtifactDoctor;
 using Martlet.HostArtifacts;
 using static Martlet.HostArtifacts.Tests.SyntheticManifests;
 
@@ -455,22 +454,5 @@ public sealed class ContainerImageTests
             Assert.Contains("not locally verified", report.ToHuman());
         }
         finally { CultureInfo.CurrentCulture = culture; }
-    }
-
-    [Theory]
-    [InlineData("linux/amd64", 2)]
-    [InlineData("linux/arm64", 1)]
-    [InlineData("Linux/amd64", 3)]
-    [InlineData("linux/amd64/", 3)]
-    [InlineData("linux", 3)]
-    public async Task RealCliHandlesV2AndPlatformExitConventions(string platform, int exit)
-    {
-        using var output = new StringWriter();
-        Assert.Equal(exit, await ArtifactDoctorCommand.RunAsync(
-            ["inspect", "--manifest", FixturePath, "--role", "ollama-llm", "--target", "ubuntu-24.04-x64", "--platform", platform, "--json"], output));
-        using var json = JsonDocument.Parse(output.ToString());
-        Assert.Equal(exit, json.RootElement.GetProperty("exit_code").GetInt32());
-        Assert.False(json.RootElement.GetProperty("execution_eligible").GetBoolean());
-        Assert.DoesNotContain(FixturePath, output.ToString());
     }
 }
