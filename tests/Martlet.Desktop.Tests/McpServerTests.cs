@@ -433,7 +433,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
                 jsonrpc = "2.0", id = 1, method = "tools/call",
                 @params = new { name = "discord_companion_check", arguments = new { dataDirectory = directory, requestFrom = "42", requestName = "Bo" } }
             });
-            var result = ToolResult((await SendAsync(message))[0]);
+            var result = ToolResult((await SendWithAsync(true, false, message))[0]);
             Assert.Equal("Requested", result.GetProperty("filed").GetProperty("outcome").GetString());
             Assert.Equal(1, result.GetProperty("current").GetProperty("requestsWaiting").GetInt32());
             var call = result.GetProperty("rehearsal").GetProperty("call");
@@ -1210,11 +1210,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
         try
         {
             Directory.CreateDirectory(directory);
-            string Call(int id, string name, object arguments) => JsonSerializer.Serialize(new
-            {
-                jsonrpc = "2.0", id, method = "tools/call", @params = new { name, arguments }
-            });
-            var messages = await SendWithAsync(false, true,
+            // Keeping the motion in a given data folder writes it, so it needs --allow-changes.
+            var messages = await SendWithAsync(true, true,
                 Call(1, "kept_motions_check", new { name = "Big Cheer", motion = "A person raises both fists above the head and jumps once.", seconds = 2, dataDirectory = directory }),
                 Call(2, "kept_motions_status", new { dataDirectory = directory }));
             var check = ToolResult(messages[0]);
@@ -1248,10 +1245,194 @@ public sealed class McpServerTests(ITestOutputHelper output)
         using var reader = new StringReader(string.Join('\n', requests) + "\n");
         using var writer = new StringWriter();
         await new McpServer(new DesktopAutomation(false), allowChanges, allTools).RunAsync(reader, writer, CancellationToken.None);
+        // Ping and the other methods answer while tool calls wait their turn, so the responses are put back in request order.
         return writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
         {
             using var document = JsonDocument.Parse(line);
             return document.RootElement.Clone();
-        }).ToArray();
+        }).OrderBy(message => message.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number ? id.GetInt32() : -1).ToArray();
+    }
+
+    private static string Call(int id, string name, object arguments) => JsonSerializer.Serialize(new
+    {
+        jsonrpc = "2.0", id, method = "tools/call", @params = new { name, arguments }
+    });
+
+    private static string ToolText(JsonElement message) => message.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString()!;
+
+    private static bool IsToolError(JsonElement message) =>
+        message.GetProperty("result").TryGetProperty("isError", out var error) && error.GetBoolean();
+
+    [Fact]
+    public async Task ToolsThatWriteNeedAllowChangesAndNeverWriteMartletsOwnFolder()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Writes." + Guid.NewGuid().ToString("N"));
+        var own = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var zip = Path.Combine(directory, "logs.zip");
+            var refused = await SendWithAsync(false, true,
+                Call(1, "character_eyes", new { dataDirectory = directory, modelId = "fixture-model", forget = true }),
+                Call(2, "character_touch_zones", new { dataDirectory = directory, modelId = "fixture-model", save = true }),
+                Call(3, "character_reaction_changes", new { dataDirectory = directory, save = true }),
+                Call(4, "discord_companion_check", new { dataDirectory = directory, requestFrom = "42", requestName = "Bo" }),
+                Call(5, "logs_export", new { dataDirectory = directory, outputPath = zip }),
+                Call(6, "character_picture", new { outputPath = Path.Combine(directory, "picture.png") }),
+                Call(7, "kept_motions_check", new { dataDirectory = directory }),
+                Call(8, "martlet_call", new { tool = "character_eyes", arguments = new { dataDirectory = directory, modelId = "fixture-model", forget = true } }));
+            Assert.Equal(8, refused.Length);
+            Assert.All(refused, message =>
+            {
+                Assert.True(IsToolError(message), message.GetRawText());
+                Assert.Contains("--allow-changes", ToolText(message));
+            });
+            Assert.Empty(Directory.EnumerateFileSystemEntries(directory));
+
+            // With --allow-changes, the FIXTURE tools still refuse Martlet's own data folder, before they read or write it, and an
+            // output file never goes to another computer or over an existing file.
+            File.WriteAllText(zip, "kept");
+            var guarded = await SendWithAsync(true, true,
+                Call(1, "character_eyes", new { dataDirectory = own, modelId = "fixture-model", forget = true }),
+                Call(2, "discord_companion_check", new { dataDirectory = own + "\\", requestFrom = "42" }),
+                Call(3, "kept_motions_check", new { dataDirectory = own }),
+                Call(4, "logs_export", new { dataDirectory = directory, outputPath = @"\\server\share\logs.zip" }),
+                Call(5, "logs_export", new { dataDirectory = directory, outputPath = zip }));
+            Assert.All(guarded, message => Assert.True(IsToolError(message), message.GetRawText()));
+            Assert.Contains("not Martlet's own data folder", ToolText(guarded[0]));
+            Assert.Contains("not Martlet's own data folder", ToolText(guarded[1]));
+            Assert.Contains("not Martlet's own data folder", ToolText(guarded[2]));
+            Assert.Contains("network", ToolText(guarded[3]));
+            Assert.Contains("already exists", ToolText(guarded[4]));
+            Assert.Equal("kept", File.ReadAllText(zip));
+
+            var allowed = await SendWithAsync(true, true, Call(1, "discord_companion_check", new { dataDirectory = directory, requestFrom = "42", requestName = "Bo" }));
+            Assert.False(IsToolError(allowed[0]), allowed[0].GetRawText());
+            Assert.Single(Martlet.Discord.DiscordCompanionState.Load(directory).Requests);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ToolExceptionsBecomeToolErrorsAndTheServerKeepsAnswering()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Errors." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var messages = await SendWithAsync(false, true,
+                Call(1, "long_talk_check", new { seconds = 45.5 }),
+                Call(2, "character_reaction_changes", new { dataDirectory = directory, at = "not a time" }),
+                "{not json",
+                """{"jsonrpc":"2.0","id":4,"method":"ping"}""");
+            Assert.Equal(4, messages.Length);
+            var parse = messages[0];
+            Assert.Equal(-32700, parse.GetProperty("error").GetProperty("code").GetInt32());
+            Assert.Equal(JsonValueKind.Null, parse.GetProperty("id").ValueKind);
+            Assert.True(IsToolError(messages[1]));
+            Assert.Contains("whole number", ToolText(messages[1]));
+            Assert.True(IsToolError(messages[2]));
+            Assert.Contains("FormatException", ToolText(messages[2]));
+            Assert.Equal(4, messages[3].GetProperty("id").GetInt32());
+            Assert.True(messages[3].TryGetProperty("result", out _));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PingAnswersWhileAToolRunsAndACancelledCallStopsWithoutAResponse()
+    {
+        var lines = System.Threading.Channels.Channel.CreateUnbounded<string>();
+        var writer = new WatchedWriter();
+        var run = new McpServer(new DesktopAutomation(false), false, true).RunAsync(new ChannelLines(lines.Reader), writer, CancellationToken.None);
+        await lines.Writer.WriteAsync(Call(1, "backup_thinking_check", new { }));
+        await lines.Writer.WriteAsync("""{"jsonrpc":"2.0","id":2,"method":"ping"}""");
+        await writer.Answered(2).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.DoesNotContain("\"id\":1,", writer.Text);
+        await lines.Writer.WriteAsync("""{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1,"reason":"test"}}""");
+        lines.Writer.Complete();
+        await run.WaitAsync(TimeSpan.FromSeconds(20));
+        Assert.DoesNotContain("\"id\":1,", writer.Text);
+        Assert.Contains("\"id\":2,", writer.Text);
+    }
+
+    [Fact]
+    public async Task McpServersStatusHidesLiteralSecretsInArgumentsButKeepsReferences()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Servers." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "mcp.json"), JsonSerializer.Serialize(new
+            {
+                mcpServers = new Dictionary<string, object>
+                {
+                    ["db"] = new
+                    {
+                        command = "npx",
+                        args = new[]
+                        {
+                            "-y", "@modelcontextprotocol/server-postgres", "--api-key", "sk-live1234567890abcdefghij", "--token=ghp_abcdefghijklmnopqrstuvwxyz0123",
+                            "postgres://admin:hunter2@db.local:5432/app", "--password", "${secret:db-password}", "API_KEY=${env:DB_KEY}", "--port", "8080",
+                            "C:\\tools\\server.js", "AbCdEf0123456789AbCdEf0123456789xyz"
+                        }
+                    }
+                }
+            }));
+            var result = ToolResult((await SendWithAsync(false, true, Call(1, "mcp_servers_status", new { dataDirectory = directory })))[0]);
+            var args = result.GetProperty("servers")[0].GetProperty("args").EnumerateArray().Select(a => a.GetString()).ToArray();
+            Assert.Equal(new[]
+            {
+                "-y", "@modelcontextprotocol/server-postgres", "--api-key", "[hidden]", "--token=[hidden]",
+                "postgres://[hidden]@db.local:5432/app", "--password", "${secret:db-password}", "API_KEY=${env:DB_KEY}", "--port", "8080",
+                "C:\\tools\\server.js", "[hidden]"
+            }, args);
+            Assert.DoesNotContain("hunter2", result.GetRawText());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private sealed class ChannelLines(System.Threading.Channels.ChannelReader<string> lines) : TextReader
+    {
+        public override async ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) =>
+            await lines.WaitToReadAsync(cancellationToken) && lines.TryRead(out var line) ? line : null;
+    }
+
+    private sealed class WatchedWriter : StringWriter
+    {
+        private readonly object gate = new();
+        private readonly Dictionary<int, TaskCompletionSource> waiting = [];
+
+        internal string Text { get { lock (gate) return ToString(); } }
+
+        internal Task Answered(int id)
+        {
+            lock (gate)
+            {
+                if (ToString().Contains($"\"id\":{id},", StringComparison.Ordinal)) return Task.CompletedTask;
+                if (!waiting.TryGetValue(id, out var signal)) waiting[id] = signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                return signal.Task;
+            }
+        }
+
+        public override Task WriteLineAsync(string? value)
+        {
+            lock (gate)
+            {
+                WriteLine(value);
+                foreach (var (id, signal) in waiting)
+                    if (value?.Contains($"\"id\":{id},", StringComparison.Ordinal) == true) signal.TrySetResult();
+            }
+            return Task.CompletedTask;
+        }
     }
 }

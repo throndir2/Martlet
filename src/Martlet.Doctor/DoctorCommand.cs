@@ -19,7 +19,7 @@ public static class DoctorCommand
         }
         if (args is ["--version"])
         {
-            await output.WriteLineAsync($"Martlet {FoundationStatusService.ApplicationVersion} (foundation)");
+            await output.WriteLineAsync($"Martlet {FoundationStatusService.ApplicationVersion}");
             return 0;
         }
 

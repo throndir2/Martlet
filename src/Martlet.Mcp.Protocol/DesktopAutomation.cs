@@ -96,8 +96,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 var id = element.Current.AutomationId;
                 // Status text blocks expose their text as the accessible name; a status button's name carries its state, a
                 // list item's (a Diagnostics log line) its text and a filter pill's (Diagnostics' "From: This PC (...)") its choice.
-                var value = !AutomationPolicy.IsSafeValue(id) ? null
-                    : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
+                var value = !AutomationPolicy.IsSafeValue(id) ? null : AutomationPolicy.Redact(
+                    element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
                     // A slider reads as its number ("80" for Voice volume at 80%).
                     : element.TryGetCurrentPattern(RangeValuePattern.Pattern, out var range)
                         ? ((RangeValuePattern)range).Current.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -107,7 +107,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
                         ? element.Current.Name
                     // A combo box without a value pattern reads as its selected option.
                     : element.TryGetCurrentPattern(SelectionPattern.Pattern, out var choice)
-                        ? ((SelectionPattern)choice).Current.GetSelection().FirstOrDefault()?.Current.Name : null;
+                        ? ((SelectionPattern)choice).Current.GetSelection().FirstOrDefault()?.Current.Name : null);
                 var entry = new Dictionary<string, object?>
                 {
                     ["window"] = window.Current.Name,
@@ -515,6 +515,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         if (outputPath is not null && (!System.IO.Path.IsPathFullyQualified(outputPath) ||
             !outputPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
             throw new ArgumentException("outputPath is a full path to a .png file.");
+        if (outputPath is not null) McpServer.RequireLocalNewFile(outputPath, "outputPath");
         var element = Find("MoveAvatar");
         if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
             throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
@@ -534,7 +535,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         string? saved = null;
         if (taken && outputPath is not null && read.TryGetProperty("path", out var path) && path.GetString() is { } file && System.IO.File.Exists(file))
         {
-            System.IO.File.Copy(file, outputPath, overwrite: true);
+            System.IO.File.Copy(file, outputPath, overwrite: false);
             saved = outputPath;
         }
         return new { taken, picture = read, saved };

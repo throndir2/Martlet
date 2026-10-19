@@ -202,7 +202,8 @@ public sealed class SetupTests : IDisposable
         var json = await File.ReadAllTextAsync(Store.FilePath);
         Assert.DoesNotContain(Canary, json);
         var report = await new FoundationStatusService(Store).GetReportAsync();
-        Assert.False(report.Ready);
+        // Saved setup is not live readiness: the provider connection is not checked by this report.
+        Assert.Equal(EvidenceProvenance.NotRun, report.Probes.Single(probe => probe.Id == "provider.connection").Provenance);
         Assert.Equal(14, report.Probes.Count);
         Assert.DoesNotContain(Canary, ReportFormatter.Human(report));
         Assert.DoesNotContain(Canary, Encoding.UTF8.GetString(ContractJson.Write(report)));

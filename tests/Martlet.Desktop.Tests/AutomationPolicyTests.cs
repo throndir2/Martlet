@@ -44,7 +44,38 @@ public sealed class AutomationPolicyTests
     [InlineData("LiveSend", false)]
     [InlineData("CheckInRun-c1", false)]
     [InlineData("ThinkingRequestsClear", false)]
+    [InlineData("LiveStop", true)]
+    [InlineData("NearbyFind", true)]
+    [InlineData("FriendsCheck", false)]
+    [InlineData("OpenAiCheck", false)]
+    [InlineData("OpenAiCheckAddress", false)]
+    [InlineData("PicturesCheck", false)]
+    [InlineData("PicturesComfyConnect-0", false)]
+    [InlineData("HostSignInSettings", false)]
+    [InlineData("LiveJobCancel-think-1", false)]
+    [InlineData("TrayPause", false)]
+    [InlineData("TrayStopListening", false)]
+    [InlineData("TrayStopWatching", false)]
     public void ClicksThatChangeNothingAreSafe(string id, bool safe) => Assert.Equal(safe, AutomationPolicy.IsSafeClick(id));
+
+    /// <summary>The click lists keep the policy's own rule: no entry says it writes a file, contacts a computer by its address,
+    /// sends something or pauses Martlet.</summary>
+    [Fact]
+    public void NoSafeClickSaysItWritesSendsOrPauses()
+    {
+        var forbidden = new System.Text.RegularExpressions.Regex(
+            @"\bkeeps\b[^.;]*\.json|\bwrites (?!nothing)|\bsends (?!nothing|and saves nothing)|\bGET [</]|\bsigned\b|\bPause Martlet\b|\bStop listening\b|\bStop watching\b|\bCancel button of a background job\b");
+        var broken = AutomationPolicy.SafeClicks.Concat(AutomationPolicy.SafeClickPrefixes)
+            .Where(entry => forbidden.IsMatch(entry.Effect)).Select(entry => $"{entry.Id}: {entry.Effect}").ToArray();
+        Assert.True(broken.Length == 0, "These safe clicks break AutomationPolicy's rule:\n" + string.Join("\n", broken));
+    }
+
+    [Theory]
+    [InlineData("21:04:11.532 WARN This PC · App: Could not read C:\\Users\\ana\\AppData\\Local\\Martlet\\x.json", "21:04:11.532 WARN This PC · App: Could not read [path]")]
+    [InlineData("ana@example.net (authentik). Shares gpu-box", "[email] (authentik). Shares gpu-box")]
+    [InlineData("Failed at \\\\nas\\share\\file.txt and /home/ana/.martlet", "Failed at [path] and [path]")]
+    [InlineData("http://192.168.1.20:8080/v1 answered at 21:04", "http://192.168.1.20:8080/v1 answered at 21:04")]
+    public void SafeValuesHideEmailAddressesAndFilePaths(string shown, string returned) => Assert.Equal(returned, AutomationPolicy.Redact(shown));
 
     [Theory]
     [InlineData("CheckInsNow", true)]
