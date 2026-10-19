@@ -274,7 +274,7 @@ internal sealed class DiscordReplyEngine : IDiscordReplyEngine, IAsyncDisposable
         if (memory is null || configured.Memory is not { Enabled: true } settings || !turn.Speaker.IsOwner || !turn.Place.Direct ||
             turn.Source != DiscordTurnSource.Text || Busy())
             return null;
-        try { return await memory.RecallAsync(settings, turn.Text, DesktopMemoryService.MaximumRecalledFacts, null, token).ConfigureAwait(false); }
+        try { return await memory.RecallAsync(settings, turn.Text, DesktopMemoryService.MaximumRecalledFacts, null, token, CurrentActivity.Now).ConfigureAwait(false); }
         catch (Exception error) when (error is DesktopMemoryException or Martlet.Memory.MemoryException or ContractException or
             IOException or UnauthorizedAccessException or ObjectDisposedException)
         {

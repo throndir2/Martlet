@@ -95,7 +95,7 @@ public sealed record ThinkingJob
         ContractRules.Require(Timeout > TimeSpan.Zero && Timeout <= TimeSpan.FromHours(1), "A Thinking pool job's timeout is up to an hour.");
         ContractRules.Require(MaxOutputTokens is >= 1 and <= 65_536, "A Thinking pool job writes 1-65536 tokens.");
         ContractRules.Require(Tools is not null && (Tools.Count == 0 || ToolHost is not null) &&
-            MaxToolRounds is >= 0 and <= BoundedTextInput.HardMaxToolRounds, "A Thinking pool job with tools needs a tool host and 0-8 rounds.");
+            MaxToolRounds is >= 0 and <= BoundedTextInput.HardMaxToolRounds, $"A Thinking pool job with tools needs a tool host and 0-{BoundedTextInput.HardMaxToolRounds} rounds.");
         RunsOn?.Validate();
     }
 

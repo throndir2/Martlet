@@ -57,7 +57,8 @@ internal sealed partial class McpServer
             arguments => KeptMotionsCheck.Status(DataDirectory(arguments), OptionalString(arguments, "model"))),
         Tool("kept_motions_check", "Make one body motion (or, with starters, Martlet's five starter motions) with the FIXTURE - NOT AI " +
             "motion maker and check it the way Martlet keeps and plays it in conversation: the clip checked as the VRM renderer checks it " +
-            "(size, length, bones), kept as a motion creation in dataDirectory (disposable when left out) and read back, the creation " +
+            "(size, length, bones), kept as a motion creation in dataDirectory (disposable when left out; a given dataDirectory must not " +
+            "be Martlet's own data folder and needs --allow-changes) and read back, the creation " +
             "tools' words unchanged and never listing it, and the motion listed as a VRM's motion with its reply tag (model: an absolute " +
             "path to a .vrm; a FIXTURE VRM when left out). Returns ok, each step and the motions with their ids, clip names and the note " +
             "the conversation gets. Never uses a motion computer (motion_check does).", new
@@ -71,8 +72,11 @@ internal sealed partial class McpServer
         },
             async (arguments, cancellation) => await KeptMotionsCheck.RunAsync(OptionalString(arguments, "name"), OptionalString(arguments, "motion"),
                 OptionalDouble(arguments, "seconds"), OptionalBool(arguments, "starters") ?? false,
-                OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "model"),
-                cancellation)),
+                OptionalString(arguments, "dataDirectory") is null ? null
+                    : DisposableDataDirectory(arguments) ? DataDirectory(arguments)
+                    : throw new ArgumentException("kept_motions_check writes a FIXTURE motion: give a disposable dataDirectory (not Martlet's own data folder) or leave it out."),
+                OptionalString(arguments, "model"),
+                cancellation)) with { Writes = arguments => OptionalString(arguments, "dataDirectory") is not null },
         Tool("greeting_check", "Rehearse Martlet's greeting once it has warmed up after it starts (docs/CONVERSATION.md#greeting-when-martlet-starts) " +
             "with the production code and fixture facts: the time of day, the weekend and special days, which account, voice or " +
             "Windows names count as a real name (user names and handles don't), the end of the newest conversation on this PC and " +

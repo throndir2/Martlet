@@ -47,8 +47,11 @@ internal static class MemoryBriefWriter
     internal const int MinimumCharacters = 40;
     internal const string Purpose = "Writing the memory brief";
 
-    /// <summary>Whether a fact may go in a brief now: it hasn't expired. A fact another fact replaced (history) never does.</summary>
-    internal static bool Current(MemoryFact fact, DateTimeOffset now) => !fact.IsHistory && !fact.Retention.HasExpired(now);
+    /// <summary>Whether a fact may go in a brief now: it hasn't expired and matters everywhere. A fact another fact replaced
+    /// (history) never does, nor one kept for a game or other activity: the brief goes with every conversation, and recall brings
+    /// such a fact up during its activity.</summary>
+    internal static bool Current(MemoryFact fact, DateTimeOffset now) =>
+        !fact.IsHistory && !fact.Retention.HasExpired(now) && fact.Activity is null;
 
     /// <summary>Every fact a brief may use, each once: current, about no one in particular or about a person named in
     /// <see cref="MemoryBriefFacts.People"/> (a forgotten voice's facts are left out).</summary>

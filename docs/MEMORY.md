@@ -441,7 +441,10 @@ route of each job, and MCP's `helper_jobs_status` shows the last route of each
 kind (`helper-jobs.json`).
 The model answers in a strict line format: `REMEMBER: <fact>`,
 `REMEMBER V<n>: <fact>` (a fact about another voice heard), `UPDATE <n>: <fact>`,
-`FORGET <n>` or `NOTHING`, at most three of them. A `WORDS: <words>` line after a
+`FORGET <n>` or `NOTHING`, at most three of them. While a game is played, a
+`REMEMBER` line can say where its fact matters (`REMEMBER HERE:`,
+`REMEMBER GAMES:`, `REMEMBER EVERYWHERE:`; [Memories for a game](#memories-for-a-game)).
+A `WORDS: <words>` line after a
 `REMEMBER` or `UPDATE` line gives that fact its hidden search words
 ([Search words, history and tidying](#search-words-history-and-tidying)). Desktop
 validates every line (single line, <=300 characters, real words, in-range
@@ -496,9 +499,32 @@ in the Tools page's log (`Martlet > manage_memories: forgot 2`, never a fact).
 **After the reply instead.** The **Memory** check-in tool set (`memory`, see
 [Check-in tool sets](CONVERSATION.md#check-in-tool-sets)) does the same work on
 the Thinking pool, so the reply doesn't wait for it. Its tools each run one
-action: `memory_find`, `memory_remember` (`fact`, optional `person`),
-`memory_update` (`id`, a new `fact` and/or `person`) and `memory_forget`
-(`ids`). `me` is whoever spoke last. The set takes over `manage_memories`
+action, and a check-in calls them in [several steps](CONVERSATION.md#check-in-tool-sets)
+until its work is done:
+
+- `memory_overview`: how many facts there are, whose, where they matter (for
+  which game), how many earlier versions are kept and the oldest and newest
+  dates. It shows no fact.
+- `memory_find` (`query` and/or `person`, `skip`, `limit` up to 50): finds
+  facts as `find` does, and pages through all of them (`count`, `more`).
+- `memory_history` (`id`): the earlier versions of one fact, newest first, and
+  where it matters now.
+- `memory_remember` (`fact`, optional `person` and `where`) and `memory_update`
+  (`id`, a new `fact`, `person` and/or `where`), as `remember` and `update` do.
+  `where` keeps a fact for one game (its name, `here` or `games`) or everywhere.
+- `memory_update_many` (`edits`: up to 25 of `id`, `fact`, `person`, `where`): corrects
+  many facts in one call; each edit is done or refused on its own.
+- `memory_note` (`ids` up to 50, `note` up to 80 characters): adds the same note
+  to many facts, such as *(in Minecraft)*. A note in brackets goes before
+  the fact's last period. A fact that has the note already is left as it is.
+- `memory_merge` (2 to 10 `ids`, optional `fact`): folds duplicates into the
+  first one; the others are forgotten and their history moves to it.
+- `memory_outdated` (`id`, `by`): keeps a fact that a newer fact replaced as
+  history, as tidying memory's OUTDATED does.
+- `memory_forget` (`ids`), as `forget` does.
+
+Every correction and note keeps the earlier version as history. `me` is
+whoever spoke last. The set takes over `manage_memories`
 (`Replaces`): while an After each exchange check-in that is on ticks it and the
 Thinking pool has a member that calls tools, the reply is not offered
 `manage_memories`. It is offered the read-only `find_memories` (`query` and/or
@@ -510,6 +536,29 @@ show in the conversation and the Tools log as before
 the check-in's card and `check-ins-status.json` show, is the outcome only
 (*Memory: forgot 1.*), never a fact or a name. Automatic recall and
 remembering after a reply do not change.
+
+### Memory care
+
+Facts are saved quickly after each reply, so some say too little (*The user
+is building a castle in survival mode.* doesn't say which game), belong to the
+wrong person, repeat each other or are no longer true. The built-in check-in
+**Memory care** (`memory`, Companion › Check-ins, on by default) looks after
+them: every hour while something new was said, a Thinking pool member that
+calls tools reads what was said since it last ran and what you do on this PC,
+then works through the facts with the Memory tools in as many steps as it
+takes. It looks over memory, pages through the facts, keeps a fact that
+matters in one game for that game (`where`), adds which game, app or thing a
+fact is about to its words (`memory_note` for many facts at once), gives facts to
+the right person, merges duplicates, keeps facts a newer one replaced as
+history and corrects facts the conversation showed are wrong. It never makes
+up a fact and leaves a fact as it is when it can't tell. Its prompt is
+*Check-in: memory care* (Companion › Prompts). It needs memory on: without the
+Memory tools on this PC it doesn't ask the pool.
+
+When you correct Martlet in a conversation (*that's for Minecraft, not
+Terraria!*), **Act on what was said** does the same right after the reply: it
+finds every fact with those words and corrects each one or keeps it for the
+right game, in as many steps as it takes.
 
 ### Search words, history and tidying
 
@@ -643,6 +692,78 @@ everyone's (about no one in particular), as every fact was before voices.
 The library checks only the ID's form (1-64 ASCII letters, digits, `-` or `_`);
 it never reads the voice list. `memory_status` (MCP) counts the facts and whose
 they are from a data directory without opening the store.
+
+## Memories for a game
+
+A fact said while you play a game is often true only in that game: *Chillet
+is my favorite!* in Palworld is not a reason to talk about Chillet in another
+game. So each fact can say where it matters (`activity` in the fact):
+
+- **Everywhere** (no `activity`): facts about you and your life. Every fact
+  made before this change is one of them.
+- **While gaming** (`gaming`): facts about games in general, such as the
+  genres you like or that you play with a controller.
+- **While playing one game** (`gaming/<name>`, such as `gaming/Palworld`):
+  facts about that game, its characters, items, places, goals and your
+  progress and favorites in it.
+
+**What Martlet is doing now.** While memory is on, the desktop's game watch
+(`GameWatch`, the same look at the window in front and the apps that play
+sound that [Situations](RECOMMENDATION_DESIGN.md) use) tells which game is
+played on this PC, every 3 seconds and never on a reply's path. It runs on a
+companion PC only, and nothing it sees is recorded or sent. The game is kept in
+`CurrentActivity`; the log says when a game starts and ends, never its name.
+`MARTLET_SIMULATE_SITUATION=1,game` makes it a FIXTURE game for checks.
+
+- **Recall** leaves out the facts kept for another game, and those for any
+  game while no game is played. A fact for a game still comes back when your
+  words name the game (*What's my favorite Palworld pal?*), in any game or
+  none. The facts of the game played now fill the recall first, then those for
+  any game, then those for everywhere. A recalled game fact says so in its
+  line (*...; while playing Palworld*), so the reply doesn't take it for
+  something true everywhere. Discord calls recall the same way.
+- **Remembering** while a game is played adds Companion › Prompts ›
+  *Remembering while you play* to its request: a fact about the game starts
+  `REMEMBER HERE:` (kept for this game), a fact about games in general
+  `REMEMBER GAMES:` and a fact about your life `REMEMBER EVERYWHERE:`. A
+  `REMEMBER` line without one of these words is kept for the game. `V2` and the
+  word can come in either order (`REMEMBER V2 HERE:`). Without a game every new
+  fact is for everywhere, as before. The related facts it shows are only those
+  that apply now, each marked with where it matters, and an `UPDATE` keeps
+  where its fact matters. The same words for two games are two facts; a fact
+  for everywhere already covers the same fact for a game.
+- **`manage_memories`** and the Memory check-in tool set take `where`:
+  `everywhere` (the default), `here` (the game played now), `games` or a
+  game's name; `find` lists every fact with `where` for a game's fact, so the
+  reply can say where each one matters.
+- **The memory brief** is written only from facts for everywhere: it goes with
+  every conversation, and recall brings a game's facts up during the game.
+- **Tidying memory** merges only facts kept for the same place.
+- **Memory window.** *Where it matters* (`MemoryWhere`) chooses where a fact
+  you add or change matters: *Everywhere*, *While gaming (any game)*, the game
+  played now and each game a fact is kept for. Each fact's line says where it
+  matters when it isn't everywhere, the details say *Matters: ...*, and the
+  status line counts the facts kept for games.
+
+The start of every reply's request doesn't change: the activity only changes
+which facts go in the message's notes, and the remembering request is a
+background request after the reply. Nothing new runs on the reply's path but a
+field read and the same search with one more filter.
+
+**Sync and compatibility.** `activity` travels inside the fact like
+`voice_id`, so every computer agrees where each fact matters. A fact without one
+is written exactly as before (no new key). An older Martlet can't read a fact
+that has one: its sync passes the fact through untouched, as it does for
+`voice_id`. The form is checked (`MemoryActivity`: a kind of lowercase ASCII
+letters, then optionally `/` and a one-line name, at most 128 characters).
+There is no setting for this: it follows the facts on every computer.
+
+Checked locally: `MemoryActivityTests` in `Martlet.Memory.Tests` and in
+`Martlet.Desktop.Tests`. Through MCP: `memory_activity_check` runs the
+production filter on a disposable store, `memory_status` counts the facts by
+where they matter, `memory_where` changes it, and the Memory window's
+`MemoryWhere` shows it. A real game seen by the game watch and a real Thinking
+model writing `REMEMBER HERE:` lines are **NOT RUN** here.
 
 ## The memory brief
 

@@ -37,6 +37,30 @@ public sealed class CloudflaredDownloadTests : IDisposable
     }
 
     [Fact]
+    public void Only_a_copy_signed_by_Cloudflare_passes_the_signature_check()
+    {
+        Directory.CreateDirectory(tools);
+        var unsigned = Path.Combine(tools, "cloudflared.exe");
+        File.WriteAllBytes(unsigned, program);
+        Assert.Contains("no valid Windows signature", CloudflaredSignature.Problem(unsigned));
+
+        // A file with a valid signature from someone else (Microsoft's runtime) is refused by name.
+        var microsoft = Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "coreclr.dll");
+        Assert.Contains("not Cloudflare, Inc.", CloudflaredSignature.Problem(microsoft));
+    }
+
+    [Fact]
+    public async Task An_unsigned_cloudflared_is_not_started()
+    {
+        Directory.CreateDirectory(tools);
+        var unsigned = Path.Combine(tools, "cloudflared.exe");
+        File.WriteAllBytes(unsigned, program);
+        using var tunnel = new CloudflareQuickTunnel(unsigned);
+        var error = await Assert.ThrowsAsync<MessagingException>(() => tunnel.OpenAsync(8080, CancellationToken.None));
+        Assert.Contains("doesn't run", error.Message);
+    }
+
+    [Fact]
     public async Task AWrongDigestOrACutOffDownloadIsRefusedAndNothingIsKept()
     {
         var wrong = await Assert.ThrowsAsync<InvalidDataException>(() =>

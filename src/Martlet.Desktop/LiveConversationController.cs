@@ -247,6 +247,9 @@ internal sealed class LiveConversationOperation
     internal int PastExchanges { get; set; }
     /// <summary>How many sections of an app guide went in the notes of this message (Companion › App guides).</summary>
     internal int GuideSections { get; set; }
+    /// <summary>The app whose guide this reply used (its notes, or search_guide found sections), or null: the speech bubble then
+    /// offers to read more about it.</summary>
+    internal string? GuideKey { get; set; }
     internal long? MemoryStoreRevision { get; set; }
     /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
     internal string? MemoryProblem { get; set; }
@@ -1882,8 +1885,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             string? guide = null;
             if (own is not null && Guides is { On: true } guides)
             {
-                guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections);
+                guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections, out var guideKey);
                 operation.GuideSections = guideSections;
+                if (guideKey is not null) UsedGuide(operation, guideKey);
                 if (ReadUpAsked(guides, own, toolset) is { } reading) guide = guide is null ? reading : guide + "\n\n" + reading;
                 operation.LatencyTimeline?.Mark("app guide");
             }
@@ -2005,7 +2009,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         (past is not null || guide is not null || brief is not null || picture is not null || describedNote is not null))
                     {
                         if (past is not null) (past, pastCount) = (null, 0);
-                        else if (guide is not null) (guide, operation.GuideSections) = (null, 0);
+                        else if (guide is not null) (guide, operation.GuideSections, operation.GuideKey) = (null, 0, null);
                         else if (brief is not null) brief = null;
                         else if (picture is not null) picture = null;
                         else describedNote = null;
@@ -3157,7 +3161,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             try
             {
                 var recalled = await memory!.RecallAsync(operation.Authorization.Configuration.Memory!, query,
-                    DesktopMemoryService.MaximumRecalledFacts, speaker, worker).ConfigureAwait(false);
+                    DesktopMemoryService.MaximumRecalledFacts, speaker, worker, Activity()).ConfigureAwait(false);
                 return recalled with { People = MemoryPeople.Labels(recalled.Facts, roster) };
             }
             catch (DesktopMemoryException error) when (error.Code == "memory.retrieval_invalidated" && attempt == 0)
@@ -3199,12 +3203,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var job = new AfterReplyJob(configured, remember, heard,
             LiveConversationConfiguration.WithoutMarked(earlier.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text),
             earlier.LastOrDefault(message => message.Role == TextHistoryRole.Assistant)?.Text,
-            user, reply, configured.LocalThinking ? sent : null, captureCancel.Token, present);
+            user, reply, configured.LocalThinking ? sent : null, captureCancel.Token, present, Activity());
         captureTail = AfterReplyAsync(captureTail, job);
     }
 
+    /// <summary>What the user does now (<see cref="MemoryActivity"/>): recall leaves out the facts of other activities, and
+    /// remembering keeps a new fact for this one when it matters only here. The game watch's game by default.</summary>
+    internal Func<string?> Activity { get; set; } = () => CurrentActivity.Now;
+
+    /// <param name="Activity">What the user did during the exchange: where its new facts matter.</param>
     private sealed record AfterReplyJob(LiveConversationConfiguration Configuration, bool Remember, HeardVoices? Heard, string? EarlierUser,
-        string? EarlierReply, string User, string Reply, BoundedTextInput? Conversation, CancellationToken Token, HeardVoices? Present = null)
+        string? EarlierReply, string User, string Reply, BoundedTextInput? Conversation, CancellationToken Token, HeardVoices? Present = null,
+        string? Activity = null)
     {
         public override string ToString() => nameof(AfterReplyJob);
     }
@@ -3338,21 +3348,21 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // Facts that say related things in other words join the lexical matches (finding by meaning, after the reply).
             var similar = await MeaningFactsAsync(job.User, token).ConfigureAwait(false);
             var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
-                MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token, similar), token).ConfigureAwait(false);
+                MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token, similar, job.Activity), token).ConfigureAwait(false);
             var (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
             var people = MemoryPeople.Labels(known, roster);
             var prompt = AfterReply.Prompt(known, null, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts,
-                job.Conversation, job.Configuration.FitsContext, job.Present, people, job.Configuration.CharacterName);
+                job.Conversation, job.Configuration.FitsContext, job.Present, people, job.Configuration.CharacterName, job.Activity);
             // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
             // own model continues the reply's request as before, after the reply finished speaking.
             AfterReplyPrompt? pooled = null;
             var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, Purpose, HelperCapability.Text,
                 () => (pooled = AfterReply.Prompt(known, null, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
-                    job.Configuration.Prompts, null, null, job.Present, people, job.Configuration.CharacterName)).Input,
+                    job.Configuration.Prompts, null, null, job.Present, people, job.Configuration.CharacterName, job.Activity)).Input,
                 worker => AskAsync(Purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
             if (onPool) prompt = pooled!;
             if (answer is null) return !token.IsCancellationRequested && failure is not null ? new(Failure: failure) : null;
-            if (MemoryCapture.Parse(answer, prompt.ShownFacts, prompt.Voices, speaker?.Id) is not { Count: > 0 } operations) return null;
+            if (MemoryCapture.Parse(answer, prompt.ShownFacts, prompt.Voices, speaker?.Id, job.Activity) is not { Count: > 0 } operations) return null;
             try
             {
                 var shown = known.Take(prompt.ShownFacts).ToArray();

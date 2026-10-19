@@ -159,6 +159,15 @@ which has the pool's rules (`ThinkingJobBoard`).
 
 See [Share your language models](OPENAI_ENDPOINT.md).
 
+## Memory
+
+| Concept | Code name | UI name | Do not use for it |
+| --- | --- | --- | --- |
+| Where a remembered fact matters: everywhere, any game, or one game | activity (`MemoryFact.Activity`, `MemoryActivity`: `gaming`, `gaming/<game>`) | Where it matters (*Everywhere*, *While gaming*, *While playing <game>*) | "scope" in UI text; "context" (that is the conversation sent) |
+| What the user does on this PC now, for memory | `CurrentActivity` (fed by the game watch, `GameWatch`) | the game played now | "situation" (that is where live Thinking runs) |
+
+See [Memories for a game](MEMORY.md#memories-for-a-game).
+
 ## The app's controls
 
 | Concept | Code name | UI name | Do not use for it |
