@@ -15,6 +15,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- An account with a PIN or password on this PC no longer opens without it when its unlock file is damaged: Martlet asks you to sign in with the account's Martlet password instead. Unlocking with Windows Hello no longer crashes Martlet when the unlock file is busy, and unlock and sign-in errors show a plain message. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
+- Switching away from an account with encrypted files and back quickly can no longer delete its files. Files another program had open are encrypted later instead of staying plain, and Martlet tells you which files didn't decrypt before it opens an account without them. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
 - A change you type just before you exit Martlet is saved first, also in the Character, Lorebook, Memory and Avatar windows. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
 - Two share links clicked quickly one after the other both open in the running Martlet, and a link is never cut short. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
 - The zone names on the Touch page are readable on every zone color and follow Windows high contrast. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
