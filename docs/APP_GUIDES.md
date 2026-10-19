@@ -51,11 +51,19 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
    [Choosing the pages](#choosing-the-pages)).
 6. The App guides page lists every app: its pages, size, when it was read, the
    pages it reads from, its program names, the last problem and whether the
-   user said no. Each app has **Read up now** (or **Read again**), **Delete**
-   and, after a no, **Allow again**. The app being read has **Stop reading**,
-   which ends the read and keeps what Martlet read. **Cancel** in the talk
-   window's task list also ends it. The page also says what is in front, as
-   App guides sees it.
+   user said no. Each app has **Read up now** (or **Read again** and **Read
+   more**), **Delete** and, after a no, **Allow again**. The app being read has
+   **Stop reading**, which ends the read and keeps what Martlet read. **Cancel**
+   in the talk window's task list also ends it. The page also says what is in
+   front, as App guides sees it.
+7. **Read more** adds pages to a guide: up to 300 more pages of the same wiki
+   each time, never a page the guide has (see [Reading more](#reading-more)).
+   It is on the App guides page, in the talk window's header (while the app in
+   front, or the one the last reply used a guide about, has a guide) and, for
+   20 seconds after a reply that used a guide, as a button in the character's
+   speech bubble (*"Want me to read more about Stardew Valley?"*). Asking
+   Martlet (*"read more about this game"*) does the same. **Read again** reads
+   the first pages again for what changed and keeps the pages Read more added.
 
 ## How it works
 
@@ -68,7 +76,7 @@ flowchart LR
     D --> E[Chunk pages by heading]
     E --> F[Guide on this PC: guides\\key.guide.json]
     F --> G[Index in memory: BM25F + reranker]
-    F -.->|after the first read| M[Read more: a Thinking pool helper chooses linked pages with what the user does now]
+    F -.->|after the first read, or Read more| M[Read more: linked pages, chosen by a Thinking pool helper or the most linked first]
     M -.-> F
     Q[User asks a question while the app is in front] --> G
     G -->|sure matches only| N[Notes on the user's message]
@@ -219,6 +227,46 @@ chooses pages from their titles before it downloads them
    answered with what you do now, 180 pages added ...*), never titles,
    notes or links.
 
+### Reading more
+
+Owner report (Discord): *Read again* added no pages, and asking Martlet in the
+middle of a game to read more got a yes and no new pages. *Read again* read the
+same first 200 pages again, reading more ran only once, after a read, and only
+with a Thinking pool member, and what was left to read more was in memory only.
+Now:
+
+1. **What is left is kept.** The guide file keeps what is left to read more
+   (`AppGuide.More`, `GuideMoreState`): the wiki's api.php, up to 5,000 linked
+   titles not read (the most linked first, with their counts) and up to 20,000
+   titles read or left out. A guide kept before this finds its wiki again from
+   its pages (`GuideMore.ForGuide`: a wiki farm's api.php, or the api.php the
+   page names) and starts from the main page's and the most linked pages.
+2. **Read more** (`AppGuideService.ReadMoreAsync`, through
+   `AppGuideResearcher.ReadMoreNowAsync`) reads the linked titles, then their
+   links, then the wiki's other pages (`generator=allpages`), within 300 pages,
+   25 MB and 20 minutes each time. It never reads a page the guide has or a
+   title read or left out before, and never another game's pages. A Thinking
+   pool member chooses the pages when one can; without one (or when it stops
+   answering) the most linked titles are read with no model. The pages join
+   the guide, what is left is kept again, and the brief is written again when
+   a member can think. It works after Martlet starts again.
+3. **Asking** works on every route: `read_up_on` on an app with a guide reads
+   more instead of the first pages again, and the user's own words *read more
+   about X*, *learn more about this game* or *keep reading up on it*
+   (`AppGuideTools.AskedToReadMore`) start it before the reply, also when the
+   route has tools, so the reply never says yes with no job behind it. The
+   notes tell the model, and the prompt tells it never to say it is reading
+   unless `read_up_on` or a note says it started. The job runs as the
+   conversation's reading-up job (one at a time, 4 an hour) and Martlet says
+   in character how many pages it added.
+4. **Read again** reads the first pages again and keeps the guide's other
+   pages of the same site (those Read more added) and its research sections,
+   so a guide never shrinks by being read again.
+
+Only MediaWiki wikis can be read more (most game wikis). A guide from other
+sites says that Martlet couldn't reach its wiki or that its pages aren't from
+one; *Read again* reads such a site again.
+
 ### Searching a guide (on the reply's path, with no added wait)
 
 [Never add conversation latency](../AGENTS.md#never-add-conversation-latency)
@@ -311,7 +359,7 @@ index is kept in memory (about 4.5 KB a chunk with its index, so about 440 MB
 at 100,000 chunks), and a search over 100,000 chunks takes about 0.7 ms. A
 guide of 500 pages (200 read first and 300 read more) makes about 3,000 to
 5,000 chunks, far below these bounds; guides read whole before 0.75.0 can be
-much larger, and **Read again** makes them small. When a read has more, the guide keeps the pages read first (the
+much larger; **Delete** and reading up again makes them small (**Read again** keeps the other pages). When a read has more, the guide keeps the pages read first (the
 best ones on a MediaWiki site), and the read ends. A file that would pass
 200 MB is refused with an `AppGuideTooLargeException` before it replaces the
 earlier file; reading up then keeps four fifths of the pages and tries again.
@@ -388,7 +436,9 @@ the *App guides* prompt (Companion › Prompts), so the start of every request
 stays the same:
 
 - `read_up_on(app, sites?)`: starts the reading-up job (the user asked) and
-  returns at once; it says so when Martlet already reads up on that app.
+  returns at once; it says so when Martlet already reads up on that app. For an
+  app with a guide (and no new pages given) it reads more of the same wiki
+  instead (see [Reading more](#reading-more)).
 - `search_guide(app?, question)`: searches a guide for more than the notes
   carried (the app in front when `app` is left out) and returns the sections
   with their page titles, links and relevance. Sections close in meaning to the

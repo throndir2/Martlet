@@ -87,6 +87,7 @@ internal static class AutomationPolicy
         new("LiveSongStop", "Talk window", "Stop singing: only ends the song playing (musically); nothing in the talk window plays a song."),
         new("LiveTasks", "Talk window", "The background tasks chip: only opens the task list."),
         new("LiveTasksClose", "Talk window", "Only closes the task list."),
+        // Needs --allow-ui-effects: LiveReadMore (Read more reads more of an app's wiki on the web and adds it to its guide).
         new("MessageContextClose", "What was sent", "Close: only closes the What was sent window."),
         // Needs --allow-ui-effects: MessageContextPlay (it plays the recording) and MessageContextCopyAll (it writes the clipboard).
         new("TouchZonesStop", "Companion › Touch › Touch zones", "Stop: only stops finding zones; sends nothing (the zones found until then are already saved)."),
@@ -777,6 +778,7 @@ internal static class AutomationPolicy
         new("DeepThinkingLocalShare", "Companion › Deep thinking", "Shows the line on sharing this PC's graphics card between Deep thinking and the Thinking model."),
         new("DeepThinkingKeyStatus", "Companion › Deep thinking", "Shows what an endpoint's key field will do. Never a key or a typed base URL."),
         new("LiveTasks", "Talk window", "Shows the background tasks chip, such as 'Background tasks: 1 running · 1 ready'."),
+        new("LiveReadMore", "Talk window", "Shows the Read more chip (only while the app in front, or the one the last reply used a guide about, has a guide), such as 'Read more about Elden Ring'; its help text says how many pages the guide has, or that Martlet reads up on an app now. Pressing it reads the app's wiki on the web, so that needs --allow-ui-effects."),
         new("MessageContextTitle", "What was sent", "Shows the title, such as 'What was sent for this reply' (or remark, report...)."),
         new("MessageContextSummary", "What was sent", "Shows the model, how many requests the message took, the shown request's size and whether a picture or recording went with it, and the input tokens the model said it read. Never the text."),
         new("MessageContextRequest", "What was sent", "Shows which request is shown, such as 'Request 2: after tool round 1'."),
@@ -1186,7 +1188,7 @@ internal static class AutomationPolicy
         new("MessageContextPart-", "What was sent", "A part's name and size, such as MessageContextPart-instructions-0: Persona · 3,200 characters. Never the text, and never on earlier messages (they say who spoke)."),
         new("AppGuideName-", "Companion › App guides", "An app's name on the list, such as AppGuideName-elden-ring: Elden Ring."),
         new("AppGuideStatus-", "Companion › App guides", "An app's line, such as AppGuideStatus-elden-ring: 42 pages, 3.1 MB, read 10 Oct 2026, 18:40., No guide yet. or Reading up now: Reading page 3. Never a guide's text."),
-        // Needs --allow-ui-effects: AppGuideRead-<key>, AppGuideStop-<key>, AppGuideAskAgain-<key>, AppGuideDelete-<key>, AppGuideAdd and AppGuideAddRead.
+        // Needs --allow-ui-effects: AppGuideRead-<key>, AppGuideMore-<key> (Read more: reads more of the app's wiki), AppGuideStop-<key>, AppGuideAskAgain-<key>, AppGuideDelete-<key>, AppGuideAdd and AppGuideAddRead.
         // Typing in AppGuideAddName, AppGuideAddPrograms and AppGuideAddSites uses ui_set_text or ui_type.
         new("CheckInStatus-", "Companion › Check-ins", "A check-in's line, such as CheckInStatus-emotes: Waits: next in 3 min. Last at 10:31 PM on diva (qwen3:8b): turned off {blush}."),
         new("CheckInOn-", "Companion › Check-ins", "Whether the On box of a built-in or own check-in is ticked, such as CheckInOn-emotes."),

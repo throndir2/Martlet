@@ -181,6 +181,33 @@ public sealed class AppGuidesDesktopTests
         Assert.Null(guides.Offer());
     }
 
+    // The tester's report: asking Martlet to read more in the middle of a game got "sure, I'd love to", and no pages were ever
+    // added. Now words that ask to read more about the app in front start reading more of its wiki on every route, and the
+    // pages join the guide.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AskingToReadMoreAboutTheGameInFrontAddsPagesToItsGuide(bool tools)
+    {
+        await using var fixture = await LiveFixture.Create(tools: tools);
+        using var guides = new AppGuideService(new FileAppGuideStore(Path.Combine(fixture.DirectoryPath, "guides")), new FixtureBuilder());
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        fixture.Controller.Guides = guides;
+        Assert.True((await guides.BuildAsync("Stardew Valley", [], null)).Built);
+        guides.See("Stardew Valley", "Stardew Valley", game: true, fullScreen: true);
+        Assert.Equal("stardew-valley", fixture.Controller.ReadMoreTarget()?.Key);
+
+        fixture.Answer("Sure, I'd love to!");
+        var asked = fixture.Start("Can you read more about this game?");
+        await fixture.Finish(asked);
+        Assert.Contains("reading more pages about it from its wiki", Notes(fixture.Llm.Body));
+        await fixture.Advance(() => guides.Building is null && !fixture.Controller.ReadingGuide &&
+            guides.Library.Apps.Single().Pages == 2);
+        var guide = await guides.Store.LoadGuideAsync("stardew-valley", default);
+        Assert.Equal(["https://game.fandom.com/wiki/Iron_Ore", "https://game.fandom.com/wiki/Copper_Ore"], guide!.Sources.Select(s => s.Url));
+    }
+
     [Fact]
     public async Task ReadUpOnAnAppStartsReadingWhenTheReplyCantCallTools()
     {
@@ -285,6 +312,10 @@ public sealed class AppGuidesDesktopTests
         public async Task<GuideBuildOutcome> BuildAsync(GuideBuildRequest request, IProgress<string>? progress, CancellationToken cancellationToken)
         {
             if (Hold is not null) await Hold.Task.WaitAsync(cancellationToken);
+            // Reading more: a page the guide doesn't have yet.
+            if (request.More is not null)
+                return new GuideBuildOutcome([new GuidePage("https://game.fandom.com/wiki/Copper_Ore", "Copper Ore", Page.Replace("Iron", "Copper"), 400)],
+                    ["game.fandom.com"], 0, 400, null);
             return new GuideBuildOutcome([new GuidePage("https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", Page, 400)],
                 ["game.fandom.com"], 0, 400, null);
         }

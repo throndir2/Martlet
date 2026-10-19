@@ -47,6 +47,10 @@ internal sealed partial class RendererWindow : Window
     // shown text then returns its old size (an empty bubble) and the next speech would overflow a tiny bubble.
     private readonly TextBlock speechMeasure = SpeechText();
     private readonly System.Windows.Shapes.Path speechShape = new() { StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round };
+    // The bubble's button (Read more), under the text while Martlet offers it; it sizes from speechButtonMeasure like the text.
+    private readonly Button speechButton = SpeechButton();
+    private readonly TextBlock speechButtonMeasure = new() { FontSize = 14, FontFamily = new FontFamily("Segoe UI"), FontWeight = FontWeights.SemiBold };
+    private double speechTextHeight;
     // The bubble's soft halo takes the palette's Glow, like the halos behind Martlet's mascot; Windows' high contrast drops it.
     private readonly System.Windows.Media.Effects.DropShadowEffect speechHalo = new()
     {
@@ -1376,9 +1380,33 @@ internal sealed partial class RendererWindow : Window
     }
 
     private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
-        BubbleMargin = 18, ScreenMargin = 6, SpeechWidth = 280, WidestSpeech = 640, SpeechWidthStep = 60;
+        BubbleMargin = 18, ScreenMargin = 6, SpeechWidth = 280, WidestSpeech = 640, SpeechWidthStep = 60,
+        ButtonGap = 8, ButtonHeight = 30, ButtonPadX = 14;
     // Beyond the longest sentence Martlet speaks at once (1,536 UTF-8 bytes); only bounds an arbitrary request.
     private const int MaximumSpeechCharacters = 2000;
+
+    // The bubble's button: a pill in the palette's Accent with its On-accent text, named for screen readers and MCP.
+    private static Button SpeechButton()
+    {
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(ButtonHeight / 2));
+        border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        border.SetValue(Border.PaddingProperty, new Thickness(ButtonPadX, 0, ButtonPadX, 0));
+        var content = new FrameworkElementFactory(typeof(ContentPresenter));
+        content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(content);
+        var button = new Button
+        {
+            Template = new ControlTemplate(typeof(Button)) { VisualTree = border }, Height = ButtonHeight, Cursor = Cursors.Hand,
+            FontSize = 14, FontFamily = new FontFamily("Segoe UI"), FontWeight = FontWeights.SemiBold, Focusable = false,
+            Visibility = Visibility.Collapsed
+        };
+        button.SetResourceReference(Control.BackgroundProperty, "AccentBrush");
+        button.SetResourceReference(Control.ForegroundProperty, "OnAccentBrush");
+        AutomationProperties.SetAutomationId(button, "CharacterSpeechButton");
+        return button;
+    }
 
     // Martlet's own typeface (its windows' AppWindowStyle), a little larger to read over a game.
     private static TextBlock SpeechText() => new()
@@ -1399,6 +1427,8 @@ internal sealed partial class RendererWindow : Window
         speechShape.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentBrush");
         speechCanvas.Children.Add(speechShape);
         speechCanvas.Children.Add(speechText);
+        speechCanvas.Children.Add(speechButton);
+        speechButton.Click += (_, _) => Request(RendererRequest.ReadMore);
         speechCanvas.RenderTransform = speechPop;
         speechBubble.Child = speechCanvas;
         // The bubble is its own window, made again each time it opens: it lets clicks pass through too while that is on.
@@ -1412,10 +1442,20 @@ internal sealed partial class RendererWindow : Window
     internal RendererBubble ShowSpeech(RendererSay say)
     {
         speechPlacement = say;
+        var button = say.Button is { } label && !string.IsNullOrWhiteSpace(label)
+            ? label.Trim().Length > RendererSay.MaximumButtonCharacters ? label.Trim()[..RendererSay.MaximumButtonCharacters] + "…" : label.Trim()
+            : null;
+        speechButton.Content = speechButtonMeasure.Text = button ?? "";
+        speechButton.Visibility = button is null ? Visibility.Collapsed : Visibility.Visible;
+        AutomationProperties.SetName(speechButton, button ?? "");
+        // Only a bubble with a button catches clicks (unless clicks pass through the character); speech alone never does.
+        speechBubble.IsHitTestVisible = button is not null;
         if (string.IsNullOrWhiteSpace(say.Text))
         {
             speechBubble.IsOpen = false;
             speechText.Text = "";
+            speechButton.Visibility = Visibility.Collapsed;
+            speechBubble.IsHitTestVisible = false;
             return speechShown = new("hidden", 0, 0, 0, 0);
         }
         speechText.Text = say.Text.Length > MaximumSpeechCharacters ? say.Text[..MaximumSpeechCharacters] + "…" : say.Text;
@@ -1441,7 +1481,8 @@ internal sealed partial class RendererWindow : Window
             TextFits = speechText.ActualWidth <= speechShown.Width - BubblePadX * 2 + 1 &&
                 speechText.ActualHeight <= speechShown.Height - BubblePadY * 2 + 1,
             Colors = new(BrushHex(speechShape.Fill), BrushHex(speechShape.Stroke), BrushHex(speechText.Foreground),
-                speechShape.Effect is System.Windows.Media.Effects.DropShadowEffect halo ? Hex(halo.Color) : null)
+                speechShape.Effect is System.Windows.Media.Effects.DropShadowEffect halo ? Hex(halo.Color) : null),
+            Button = button
         };
 
         static string BrushHex(Brush? brush) => brush is SolidColorBrush solid ? Hex(solid.Color) : "";
@@ -1517,6 +1558,8 @@ internal sealed partial class RendererWindow : Window
         speechCanvas.Height = bounds.Height;
         Canvas.SetLeft(speechText, local.Left + BubblePadX);
         Canvas.SetTop(speechText, local.Top + BubblePadY);
+        Canvas.SetLeft(speechButton, local.Left + BubblePadX);
+        Canvas.SetTop(speechButton, local.Top + BubblePadY + speechTextHeight + ButtonGap);
         var pivot = tail?.Tip ?? new Point(body.Left + width / 2, body.Bottom);
         speechCanvas.RenderTransformOrigin = new Point((pivot.X - origin.X) / bounds.Width, (pivot.Y - origin.Y) / bounds.Height);
         speechBubble.HorizontalOffset = origin.X;
@@ -1543,8 +1586,16 @@ internal sealed partial class RendererWindow : Window
             if (speechMeasure.DesiredSize.Height <= tallest || wrap >= widest) break;
         }
         speechText.MaxWidth = speechMeasure.MaxWidth;
-        return (Math.Max(48, Math.Ceiling(speechMeasure.DesiredSize.Width) + BubblePadX * 2),
-            Math.Ceiling(speechMeasure.DesiredSize.Height) + BubblePadY * 2);
+        speechTextHeight = Math.Ceiling(speechMeasure.DesiredSize.Height);
+        var width = Math.Ceiling(speechMeasure.DesiredSize.Width);
+        var height = speechTextHeight;
+        if (speechButton.Visibility == Visibility.Visible)
+        {
+            speechButtonMeasure.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            width = Math.Max(width, Math.Ceiling(speechButtonMeasure.DesiredSize.Width) + ButtonPadX * 2);
+            height += ButtonGap + ButtonHeight;
+        }
+        return (Math.Max(48, width + BubblePadX * 2), height + BubblePadY * 2);
     }
 
     private static double Overflow(Rect body, Rect screen) =>

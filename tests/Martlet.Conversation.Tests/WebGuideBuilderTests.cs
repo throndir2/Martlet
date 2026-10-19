@@ -398,8 +398,9 @@ public sealed class WebGuideBuilderTests
         Assert.Equal(["Orla", "Ice Golem"], more.Pages.Select(p => p.Title));
         Assert.Equal(["Ice Golem", "Orla", "Voice cast"], asked.Single().Order(StringComparer.Ordinal));
         Assert.DoesNotContain(web.Requests, r => r.Contains("Voice", StringComparison.Ordinal) && r.Contains("action=parse", StringComparison.Ordinal));
-        Assert.DoesNotContain(web.Requests.Skip(before), r => r.Contains("generator=allpages", StringComparison.Ordinal) ||
-            r.Contains("querypage", StringComparison.Ordinal) || r.Contains("list=search", StringComparison.Ordinal));
+        // Once the links are read, the wiki's other pages are listed (all known here); never a search or the most linked list.
+        Assert.DoesNotContain(web.Requests.Skip(before), r => r.Contains("querypage", StringComparison.Ordinal) || r.Contains("list=search", StringComparison.Ordinal));
+        Assert.NotNull(more.More);
 
         // A chooser that can't choose any more ends reading more at once.
         var stopped = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Iron Valley 4", [], new() { Delay = TimeSpan.Zero })
@@ -444,6 +445,66 @@ public sealed class WebGuideBuilderTests
             try { Directory.Delete(folder, true); } catch (IOException) { }
         }
     }
+
+    [Fact]
+    public async Task ReadMoreAfterARestartAddsNewPagesWithNoModelAndReadAgainKeepsThem()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "martlet-guide-more-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            var web = new FakeWeb();
+            web.Sites.Add(SeriesWiki().Respond);
+            AppGuideService Service() => new(new FileAppGuideStore(folder), new WebGuideBuilder(web, web) { Wait = NoWait },
+                limits: new() { Delay = TimeSpan.Zero, Pages = 2 }) { MoreLimits = GuideBuildLimits.More with { Delay = TimeSpan.Zero, Pages = 2 } };
+            const string start = "https://ironseries.fandom.com/wiki/Iron_Series_Wiki";
+            using (var first = Service())
+            {
+                await first.LoadAsync(default);
+                await first.SetOnAsync(true, default);
+                Assert.Equal(2, (await first.BuildAsync("Iron Valley 4", [start], null)).Pages);
+                Assert.NotNull((await first.Store.LoadGuideAsync("iron-valley-4", default))!.More);
+            }
+
+            // Martlet starts again: what is left to read more comes from the guide file, and no model chooses.
+            using var guides = Service();
+            await guides.LoadAsync(default);
+            var once = await guides.ReadMoreAsync("iron-valley-4");
+            Assert.Null(once.Problem);
+            Assert.True(once.Pages > 0);
+            var twice = await guides.ReadMoreAsync("iron-valley-4");
+            Assert.Null(twice.Problem);
+            var urls = (await guides.Store.LoadGuideAsync("iron-valley-4", default))!.Sources.Select(s => s.Url).ToList();
+            Assert.Equal(2 + once.Pages + twice.Pages, urls.Count);
+            Assert.Equal(urls.Count, urls.Distinct().Count());
+            Assert.DoesNotContain(urls, u => u.Contains("Valley_2", StringComparison.Ordinal) || u.Contains("Valley_3", StringComparison.Ordinal));
+
+            // Read again reads the first pages again and keeps the pages Read more added.
+            var again = await guides.BuildAsync("Iron Valley 4", [start], null);
+            Assert.True(again.Built);
+            var after = (await guides.Store.LoadGuideAsync("iron-valley-4", default))!.Sources.Select(s => s.Url).ToList();
+            Assert.All(urls, u => Assert.Contains(u, after));
+
+            // A guide kept before Martlet saved what is left finds its wiki again from its pages.
+            var guide = (await guides.Store.LoadGuideAsync("iron-valley-4", default))!;
+            await guides.Store.SaveGuideAsync(guide with { More = null }, default);
+            var found = await guides.ReadMoreAsync("iron-valley-4");
+            Assert.True(found.Pages > 0 || found.Problem == "no more pages were worth reading", found.Problem);
+            Assert.NotEqual(WebGuideBuilder.NotAWiki, found.Problem);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [Theory]
+    [InlineData("can you read more about it?", AppGuideTools.InFront)]
+    [InlineData("learn more about Elden Ring please", "Elden Ring")]
+    [InlineData("could you read some more on this game", AppGuideTools.InFront)]
+    [InlineData("keep reading up on it", AppGuideTools.InFront)]
+    [InlineData("don't read more about it", null)]
+    [InlineData("I read more books this year", null)]
+    public void WordsThatAskToReadMoreAreToldApart(string words, string? app) => Assert.Equal(app, AppGuideTools.AskedToReadMore(words));
 
     // A wiki about a series: this game's page, another game's page and pages about none, the first linked to more pages.
     private static FakeWiki SeriesWiki()
