@@ -22,6 +22,7 @@
     <ProjectReference Include="..\Martlet.Memory\Martlet.Memory.csproj" />
     <!-- discord_text_check runs the production Discord text pipeline with a fake transport; discord_voice_check rehearses Discord voice the same way; discord_companion_check rehearses the companion against an in-memory Discord. discord_reply_check rehearses the Discord reply side (DiscordReplier) against a loopback fixture. -->
     <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
+    <ProjectReference Include="..\Martlet.Messaging\Martlet.Messaging.csproj" />
     <!-- echo_check rehearses the production echo reduction (EchoReducer and the WebRTC canceller) with fixture devices. -->
     <ProjectReference Include="..\Martlet.EchoCancellation\Martlet.EchoCancellation.csproj" />
     <!-- utterance_filter_check synthesizes its spoken fixtures with a Windows voice (nothing is played). -->

@@ -12,7 +12,8 @@ public sealed class WhatsAppTransport : IMessagingTransport
     private readonly WhatsAppCloud cloud;
     private readonly WhatsAppAccount account;
     private readonly IPublicAddress publicAddress;
-    private readonly WhatsAppWebhook webhook;
+    private readonly string appSecret;
+    private WhatsAppWebhook webhook;
     private readonly ConcurrentDictionary<string, string> waiting = new(StringComparer.Ordinal);
     private readonly TimeSpan verifyPause;
     private Uri? registered;
@@ -24,8 +25,12 @@ public sealed class WhatsAppTransport : IMessagingTransport
         this.account = account;
         this.publicAddress = publicAddress;
         this.verifyPause = verifyPause ?? TimeSpan.FromSeconds(5);
-        webhook = new WhatsAppWebhook(port, secrets.AppSecret.Trim(), account.PhoneNumberId);
+        appSecret = secrets.AppSecret.Trim();
+        webhook = new WhatsAppWebhook(port, appSecret, account.PhoneNumberId);
     }
+
+    /// <summary>Raised when the saved port was in use and the webhook moved to a new free port, so the app can save it.</summary>
+    public event Action<int>? PortChanged;
 
     public MessagingApp App => MessagingApp.WhatsApp;
     public int MaximumMessageLength => 4096;
@@ -35,7 +40,18 @@ public sealed class WhatsAppTransport : IMessagingTransport
 
     public async Task<BotIdentity> ConnectAsync(CancellationToken cancellation)
     {
-        webhook.Start();
+        try { webhook.Start(); }
+        catch (MessagingException) when (publicAddress is not FixedPublicAddress)
+        {
+            // Another program took the saved port. A quick tunnel can point anywhere, so move to a free port and register
+            // the webhook again there. The owner's own address forwards to one fixed port, so that one keeps retrying.
+            var busy = webhook;
+            webhook = new WhatsAppWebhook(WhatsAppWebhook.FreePort(), appSecret, account.PhoneNumberId);
+            busy.Dispose();
+            registered = null;
+            webhook.Start();
+            PortChanged?.Invoke(webhook.Port);
+        }
         await RegisterAsync(cancellation).ConfigureAwait(false);
         return new(account.Name, account.Number);
     }
