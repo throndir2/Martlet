@@ -15,6 +15,9 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- A shared setting that this PC applied but couldn't use yet (Voice ID, for example) is tried again after a minute, then less often, instead of staying different until Martlet restarts. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- A settings change made by another computer or by MCP while Martlet was busy reading settings now always shows; a failed refresh is written to the log. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- A damaged voice recognition model is refused every time instead of giving wrong voiceprints on the next try. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - An account with a PIN or password on this PC no longer opens without it when its unlock file is damaged: Martlet asks you to sign in with the account's Martlet password instead. Unlocking with Windows Hello no longer crashes Martlet when the unlock file is busy, and unlock and sign-in errors show a plain message. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
 - Switching away from an account with encrypted files and back quickly can no longer delete its files. Files another program had open are encrypted later instead of staying plain, and Martlet tells you which files didn't decrypt before it opens an account without them. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
 - A change you type just before you exit Martlet is saved first, also in the Character, Lorebook, Memory and Avatar windows. ([#1013](https://github.com/throndir2/Martlet/pull/1013))

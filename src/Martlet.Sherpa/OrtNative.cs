@@ -21,7 +21,7 @@ internal static unsafe class OrtNative
         CreateSessionOptionsAt = 10,
         SetSessionExecutionModeAt = 13, SetSessionGraphOptimizationLevelAt = 23, SetIntraOpNumThreadsAt = 24,
         SetInterOpNumThreadsAt = 25, CreateTensorWithDataAsOrtValueAt = 49, GetTensorMutableDataAt = 51, CreateCpuMemoryInfoAt = 69,
-        ReleaseStatusAt = 93, ReleaseMemoryInfoAt = 94, ReleaseSessionAt = 95, ReleaseValueAt = 96, ReleaseSessionOptionsAt = 100;
+        ReleaseEnvAt = 92, ReleaseStatusAt = 93, ReleaseMemoryInfoAt = 94, ReleaseSessionAt = 95, ReleaseValueAt = 96, ReleaseSessionOptionsAt = 100;
 
     private static readonly object gate = new();
     private static IntPtr* api;
@@ -41,18 +41,29 @@ internal static unsafe class OrtNative
                 return;
             }
             var library = NativeLibrary.Load(Path.Combine(directory, "onnxruntime.dll"));
-            var getBase = (delegate* unmanaged[Cdecl]<IntPtr*>)NativeLibrary.GetExport(library, "OrtGetApiBase");
-            var apiBase = getBase();
-            var getApi = (delegate* unmanaged[Cdecl]<uint, IntPtr*>)apiBase[0];
-            var table = getApi(ApiVersion);
-            if (table == null) throw new SherpaException("This ONNX Runtime doesn't offer the API the end-of-turn judge needs.");
-            IntPtr created;
-            var name = Utf8("martlet-turn");
-            fixed (byte* logId = name)
-                Check(table, ((delegate* unmanaged[Cdecl]<int, byte*, IntPtr*, IntPtr>)table[CreateEnvAt])(LoggingError, logId, &created));
+            IntPtr created = IntPtr.Zero;
+            IntPtr* table = null;
+            try
+            {
+                var getBase = (delegate* unmanaged[Cdecl]<IntPtr*>)NativeLibrary.GetExport(library, "OrtGetApiBase");
+                var apiBase = getBase();
+                var getApi = (delegate* unmanaged[Cdecl]<uint, IntPtr*>)apiBase[0];
+                table = getApi(ApiVersion);
+                if (table == null) throw new SherpaException("This ONNX Runtime doesn't offer the API the end-of-turn judge needs.");
+                var name = Utf8("martlet-turn");
+                fixed (byte* logId = name)
+                    Check(table, ((delegate* unmanaged[Cdecl]<int, byte*, IntPtr*, IntPtr>)table[CreateEnvAt])(LoggingError, logId, &created));
+                // ONNX Runtime's Windows telemetry events stay off, as for every model Martlet runs.
+                Check(table, ((delegate* unmanaged[Cdecl]<IntPtr, IntPtr>)table[DisableTelemetryEventsAt])(created));
+            }
+            catch
+            {
+                // A setup that fails part of the way leaves nothing loaded, so the next try starts clean.
+                if (created != IntPtr.Zero && table != null) ((delegate* unmanaged[Cdecl]<IntPtr, void>)table[ReleaseEnvAt])(created);
+                NativeLibrary.Free(library);
+                throw;
+            }
             env = created;
-            // ONNX Runtime's Windows telemetry events stay off, as for every model Martlet runs.
-            Check(table, ((delegate* unmanaged[Cdecl]<IntPtr, IntPtr>)table[DisableTelemetryEventsAt])(created));
             api = table;
             loadedFrom = directory;
         }
@@ -98,7 +109,13 @@ internal static unsafe class OrtNative
             }
             finally { ((delegate* unmanaged[Cdecl]<IntPtr, void>)api[ReleaseSessionOptionsAt])(options); }
             IntPtr info;
-            Check(((delegate* unmanaged[Cdecl]<int, int, IntPtr*, IntPtr>)api[CreateCpuMemoryInfoAt])(ArenaAllocator, MemTypeDefault, &info));
+            try { Check(((delegate* unmanaged[Cdecl]<int, int, IntPtr*, IntPtr>)api[CreateCpuMemoryInfoAt])(ArenaAllocator, MemTypeDefault, &info)); }
+            catch
+            {
+                ((delegate* unmanaged[Cdecl]<IntPtr, void>)api[ReleaseSessionAt])(session);
+                session = IntPtr.Zero;
+                throw;
+            }
             memory = info;
         }
 
