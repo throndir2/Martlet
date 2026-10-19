@@ -69,9 +69,13 @@ public sealed class GeneratedSpeechObserver : IDisposable
 
 public sealed class GeneratedSpeechObservation
 {
+    /// <summary>The most frames the observation holds: as many as playback can ever queue (<see cref="PlaybackOptions.MaximumQueuedFrames"/>
+    /// at most 256), so a burst at the start of a sentence fits while the character side gets ready to read it.</summary>
+    public const int FrameCapacity = 256;
+
     private readonly object gate = new();
     private readonly Channel<PcmFrame> frames = Channel.CreateBounded<PcmFrame>(
-        new BoundedChannelOptions(64) { FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = false });
+        new BoundedChannelOptions(FrameCapacity) { FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = false });
     private readonly TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long samples, sequence;
     private bool sealedInput;
