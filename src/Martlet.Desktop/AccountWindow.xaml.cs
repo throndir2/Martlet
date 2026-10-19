@@ -109,7 +109,10 @@ public partial class AccountWindow : ThemedWindow
             : "Logins: " + Describe(account);
         PasswordSection.IsEnabled = WindowsSection.IsEnabled = MergeSection.IsEnabled = ProviderSection.IsEnabled = account is not null;
         LockStateText.Text = locks.NeedsUnlock(windows)
-            ? "Martlet asks you to unlock this account on this PC."
+            ? windows && !locks.Encrypt
+                // Anything this Windows user can change, others on the same login can too (#1014): only encryption keeps them out.
+                ? "Martlet asks you to unlock this account on this PC, but only Encrypt my files keeps out others who use this Windows login."
+                : "Martlet asks you to unlock this account on this PC."
             : "This Windows login unlocks this account by itself on this PC.";
         MethodsText.Text = locks.Methods.Count == 0
             ? "Unlocks on this PC with: nothing yet."

@@ -50,7 +50,7 @@ internal sealed partial class DesktopAutomation
                             ["near"] = id.Length > 0 ? null : near,
                             ["kind"] = type.ProgrammaticName,
                             ["sentences"] = count,
-                            ["text"] = text
+                            ["text"] = AutomationPolicy.Redact(text)
                         });
                 }
                 var inside = id.Length > 0 ? id : near;

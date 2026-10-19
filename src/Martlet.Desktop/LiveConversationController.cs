@@ -247,6 +247,9 @@ internal sealed class LiveConversationOperation
     internal int PastExchanges { get; set; }
     /// <summary>How many sections of an app guide went in the notes of this message (Companion › App guides).</summary>
     internal int GuideSections { get; set; }
+    /// <summary>The app whose guide this reply used (its notes, or search_guide found sections), or null: the speech bubble then
+    /// offers to read more about it.</summary>
+    internal string? GuideKey { get; set; }
     internal long? MemoryStoreRevision { get; set; }
     /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
     internal string? MemoryProblem { get; set; }
@@ -1883,8 +1886,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             string? guide = null;
             if (own is not null && Guides is { On: true } guides)
             {
-                guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections);
+                guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections, out var guideKey);
                 operation.GuideSections = guideSections;
+                if (guideKey is not null) UsedGuide(operation, guideKey);
                 if (ReadUpAsked(guides, own, toolset) is { } reading) guide = guide is null ? reading : guide + "\n\n" + reading;
                 operation.LatencyTimeline?.Mark("app guide");
             }
@@ -2007,7 +2011,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         (past is not null || guide is not null || brief is not null || picture is not null || describedNote is not null))
                     {
                         if (past is not null) (past, pastCount) = (null, 0);
-                        else if (guide is not null) (guide, operation.GuideSections) = (null, 0);
+                        else if (guide is not null) (guide, operation.GuideSections, operation.GuideKey) = (null, 0, null);
                         else if (brief is not null) brief = null;
                         else if (picture is not null) picture = null;
                         else describedNote = null;

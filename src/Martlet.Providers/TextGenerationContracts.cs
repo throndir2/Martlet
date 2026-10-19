@@ -74,7 +74,8 @@ public sealed class BoundedTextInput
     public const int MessageTokens = 8;
     public const int HardMaxTools = 128;
     public const int HardMaxToolDefinitionBytes = 98_304;
-    public const int HardMaxToolRounds = 8;
+    /// <summary>The most tool rounds one reply or Thinking request may use: enough for a check-in that works in many steps.</summary>
+    public const int HardMaxToolRounds = 32;
     /// <summary>The most tool calls and results one reply's rounds carry (UTF-8). The request's context binds first when it is
     /// smaller: each result is cut to what is left of both, and says so.</summary>
     public const int HardMaxToolExchangeBytes = 655_360;

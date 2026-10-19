@@ -523,6 +523,14 @@ public static partial class PromptCatalog
             "the reply), or every exchange since it last ran, and {work} the reminders set and the background work started or " +
             "finished. It changes nothing itself: the tools of the sets it may use do (such as reminders).",
             DefaultCheckInActionsInstructions, ["name", "exchange", "work"]),
+        new(CheckInMemory, CheckInGroup, "Check-in: memory care",
+            "What Memory care checks, every hour while something new was said. {exchange} is what was said since it last ran and " +
+            "{activity} what the user seems to be doing on this PC (a game, an app). It changes nothing itself: the Memory tools " +
+            "it calls in as many steps as it takes (memory_overview, memory_find, memory_history, memory_update, " +
+            "memory_update_many, memory_note, memory_merge, memory_outdated, memory_forget) do: they correct facts, keep a " +
+            "fact for the right game (where) and merge duplicates, and every correction keeps the " +
+            "earlier version as history.",
+            DefaultCheckInMemoryInstructions, ["name", "exchange", "activity"]),
         new(CheckInAhead, CheckInGroup, "Check-in: think ahead",
             "What Think ahead asks right after each reply, while the user hasn't answered yet. {persona} is the active " +
             "personality, {conversation} the end of the conversation and {callbacks} the callback list (what Callback list keeps, " +

@@ -8,8 +8,8 @@ internal enum ToolPermission
     /// <summary>Runs as it is: it reads, or it rehearses on fixtures.</summary>
     None,
 
-    /// <summary>Saves Martlet's characters or settings: <see cref="McpServer"/> refuses it unless the server started with
-    /// --allow-changes.</summary>
+    /// <summary>Saves Martlet's characters or settings, or writes a file: <see cref="McpServer"/> refuses it unless the server
+    /// started with --allow-changes.</summary>
     Changes,
 
     /// <summary>Deletes only with --allow-changes, but its preview (preview: true) runs without it. The tool checks this
@@ -26,6 +26,11 @@ internal enum ToolPermission
 internal sealed record McpTool(string Name, string Description, object Properties, string[] Required, ToolPermission Permission,
     Func<JsonElement, CancellationToken, Task<object>> Run)
 {
+    /// <summary>For a tool that only sometimes writes (a save or forget argument, an output file): whether this call's arguments
+    /// make it write. When it does, <see cref="McpServer"/> refuses the call unless the server started with --allow-changes, as
+    /// for <see cref="ToolPermission.Changes"/>.</summary>
+    internal Func<JsonElement, bool>? Writes { get; init; }
+
     /// <summary>The tool as tools/list shows it.</summary>
     internal object Definition => new
     {

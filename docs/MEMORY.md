@@ -499,9 +499,32 @@ in the Tools page's log (`Martlet > manage_memories: forgot 2`, never a fact).
 **After the reply instead.** The **Memory** check-in tool set (`memory`, see
 [Check-in tool sets](CONVERSATION.md#check-in-tool-sets)) does the same work on
 the Thinking pool, so the reply doesn't wait for it. Its tools each run one
-action: `memory_find`, `memory_remember` (`fact`, optional `person`),
-`memory_update` (`id`, a new `fact` and/or `person`) and `memory_forget`
-(`ids`). `me` is whoever spoke last. The set takes over `manage_memories`
+action, and a check-in calls them in [several steps](CONVERSATION.md#check-in-tool-sets)
+until its work is done:
+
+- `memory_overview`: how many facts there are, whose, where they matter (for
+  which game), how many earlier versions are kept and the oldest and newest
+  dates. It shows no fact.
+- `memory_find` (`query` and/or `person`, `skip`, `limit` up to 50): finds
+  facts as `find` does, and pages through all of them (`count`, `more`).
+- `memory_history` (`id`): the earlier versions of one fact, newest first, and
+  where it matters now.
+- `memory_remember` (`fact`, optional `person` and `where`) and `memory_update`
+  (`id`, a new `fact`, `person` and/or `where`), as `remember` and `update` do.
+  `where` keeps a fact for one game (its name, `here` or `games`) or everywhere.
+- `memory_update_many` (`edits`: up to 25 of `id`, `fact`, `person`, `where`): corrects
+  many facts in one call; each edit is done or refused on its own.
+- `memory_note` (`ids` up to 50, `note` up to 80 characters): adds the same note
+  to many facts, such as *(in Minecraft)*. A note in brackets goes before
+  the fact's last period. A fact that has the note already is left as it is.
+- `memory_merge` (2 to 10 `ids`, optional `fact`): folds duplicates into the
+  first one; the others are forgotten and their history moves to it.
+- `memory_outdated` (`id`, `by`): keeps a fact that a newer fact replaced as
+  history, as tidying memory's OUTDATED does.
+- `memory_forget` (`ids`), as `forget` does.
+
+Every correction and note keeps the earlier version as history. `me` is
+whoever spoke last. The set takes over `manage_memories`
 (`Replaces`): while an After each exchange check-in that is on ticks it and the
 Thinking pool has a member that calls tools, the reply is not offered
 `manage_memories`. It is offered the read-only `find_memories` (`query` and/or
@@ -513,6 +536,29 @@ show in the conversation and the Tools log as before
 the check-in's card and `check-ins-status.json` show, is the outcome only
 (*Memory: forgot 1.*), never a fact or a name. Automatic recall and
 remembering after a reply do not change.
+
+### Memory care
+
+Facts are saved quickly after each reply, so some say too little (*The user
+is building a castle in survival mode.* doesn't say which game), belong to the
+wrong person, repeat each other or are no longer true. The built-in check-in
+**Memory care** (`memory`, Companion › Check-ins, on by default) looks after
+them: every hour while something new was said, a Thinking pool member that
+calls tools reads what was said since it last ran and what you do on this PC,
+then works through the facts with the Memory tools in as many steps as it
+takes. It looks over memory, pages through the facts, keeps a fact that
+matters in one game for that game (`where`), adds which game, app or thing a
+fact is about to its words (`memory_note` for many facts at once), gives facts to
+the right person, merges duplicates, keeps facts a newer one replaced as
+history and corrects facts the conversation showed are wrong. It never makes
+up a fact and leaves a fact as it is when it can't tell. Its prompt is
+*Check-in: memory care* (Companion › Prompts). It needs memory on: without the
+Memory tools on this PC it doesn't ask the pool.
+
+When you correct Martlet in a conversation (*that's for Minecraft, not
+Terraria!*), **Act on what was said** does the same right after the reply: it
+finds every fact with those words and corrects each one or keeps it for the
+right game, in as many steps as it takes.
 
 ### Search words, history and tidying
 

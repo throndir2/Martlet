@@ -102,6 +102,9 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
     /// <summary>Whether a page at <paramref name="url"/> was read already.</summary>
     public bool Has(string url) => read.Contains(url);
 
+    /// <summary>Marks pages the guide has already as read, so this run never keeps them again.</summary>
+    public void Know(IEnumerable<string> urls) => read.UnionWith(urls);
+
     /// <summary>Keeps a page read (once per address) and returns whether it was kept.</summary>
     public bool Add(GuidePage page)
     {

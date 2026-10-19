@@ -126,7 +126,7 @@ internal static partial class VoiceNaming
     /// <summary>The most other known voices listed for a merge or a SPOKE line.</summary>
     internal const int MaximumOthers = 8;
     /// <summary>How many tool rounds the request may use when it is offered the people tools.</summary>
-    internal const int MaximumToolRounds = 2;
+    internal const int MaximumToolRounds = 4;
 
     internal const string Instructions = PromptCatalog.DefaultVoiceNamingInstructions;
 

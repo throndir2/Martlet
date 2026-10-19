@@ -63,8 +63,9 @@ public static partial class AppGuideTools
 
     public static TextToolDefinition ReadUpDefinition { get; } = new(ReadUpName,
         "Read up on a game or app in the background: the most useful pages of its fan wiki or help pages, kept on this PC as a " +
-        "guide that grows as it reads, so later questions about it get answers from the guide. Only when the user asks you to " +
-        "read up on it. Tell them first. One at a time.", ReadUpParametersJson);
+        "guide that grows as it reads, so later questions about it get answers from the guide. When you have a guide about it " +
+        "already, it reads more pages of the same wiki and adds them: use it when the user asks you to read more or learn more " +
+        "about it. Only when the user asks you to. Tell them first. One at a time.", ReadUpParametersJson);
 
     /// <summary>search_guide also searches the web research reports Martlet wrote (<see cref="ResearchReportIndex"/>); it is
     /// offered alone, without the other three, while App guides are off and Web research is offered.</summary>
@@ -166,13 +167,17 @@ public static partial class AppGuideTools
     /// <summary>The job's label in the talk window ("Reading up on" Elden Ring): the app's name.</summary>
     public static string Label(string app) => CleanName(app) is { Length: > 0 } name ? name : "an app";
 
-    public static string Started(BackgroundJob job, string app, bool toldUser) =>
-        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none" }) + "\n" +
+    public static string Started(BackgroundJob job, string app, bool toldUser, bool more = false) =>
+        JsonSerializer.Serialize(new { status = "started", id = job.Id, reading = more ? "more" : "first",
+            time_limit = TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none" }) + "\n" +
         (toldUser
-            ? $"You're reading up on {app} in the background now. You already told the user, so add nothing more, or at most a few words."
-            : $"You're reading up on {app} in the background now. Tell the user now, in one short sentence in character, that you'll " +
-              "read up on it and tell them when you're done.") +
+            ? $"You're {Doing(app, more)} in the background now. You already told the user, so add nothing more, or at most a few words."
+            : $"You're {Doing(app, more)} in the background now. Tell the user now, in one short sentence in character, that you'll " +
+              $"{(more ? "read more about it" : "read up on it")} and tell them when you're done.") +
         " Don't make up what you'll find; a note tells you when the guide is ready.";
+
+    // What Martlet does: reading up on the app, or reading more of its wiki (it has a guide about it already).
+    private static string Doing(string app, bool more) => more ? $"reading more pages about {app} from its wiki" : $"reading up on {app}";
 
     public static string Refused(BackgroundJobStart start) => start.Refusal switch
     {
@@ -188,22 +193,37 @@ public static partial class AppGuideTools
         $"You're already reading up on {app} in the background. Tell the user briefly, in character, and that you'll tell them " +
         "when you're done. Don't make up what you'll find; a note tells you when the guide is ready.";
 
-    /// <summary>The note on the user's message when they asked to read up on <paramref name="app"/> and the reply can't call
-    /// read_up_on (a Thinking route without function calling): Martlet started reading up itself (<paramref name="start"/>; null
-    /// when it already reads up on that app).</summary>
-    public static string ReadingNote(string app, BackgroundJobStart? start) => start is null || start.Job is not null
-        ? $"(Martlet's note: the user asked you to read up on {app}, and you're reading up on it in the background now. Tell " +
-          "them briefly, in character, and that you'll tell them when you're done. Don't make up what you'll find, and don't say " +
-          "you're done before a note says the guide is ready.)"
-        : $"(Martlet's note: the user asked you to read up on {app}, but you couldn't start now: {start.Message ?? start.Refusal}. " +
-          "Tell them briefly, in character.)";
+    /// <summary>The note on the user's message when they asked to read up on (or read more about) <paramref name="app"/> and
+    /// Martlet started it itself (a Thinking route without function calling, or words that ask to read more): Martlet started
+    /// (<paramref name="start"/>; null when it already reads up on that app), or couldn't.</summary>
+    public static string ReadingNote(string app, BackgroundJobStart? start, bool more = false) => start is null || start.Job is not null
+        ? $"(Martlet's note: the user asked you to {(more ? "read more about" : "read up on")} {app}, and you're " +
+          $"{(more ? "reading more pages about it from its wiki" : "reading up on it")} in the background now. Tell them briefly, in " +
+          "character, and that you'll tell them when you're done. Don't make up what you'll find, and don't say you're done before " +
+          "a note says the guide is ready.)"
+        : $"(Martlet's note: the user asked you to {(more ? "read more about" : "read up on")} {app}, but you couldn't start now: " +
+          $"{start.Message ?? start.Refusal}. Tell them briefly, in character, and never say you're reading about it.)";
+
+    /// <summary>The job's result after reading more: the pages added and the guide's pages now, or that nothing was added and
+    /// why.</summary>
+    public static string MoreReady(AppGuideBuild read, int total) => read.Built && read.Pages > 0
+        ? JsonSerializer.Serialize(new { status = "ready", app = read.Name, added = read.Pages, pages = total }) + "\n" +
+          $"You've read {read.Pages} more page{(read.Pages == 1 ? "" : "s")} about {read.Name}; its guide has {total} pages now. " +
+          $"Tell the user briefly, in character, like \"I've read {read.Pages} more pages about {read.Name}.\""
+        : $"You couldn't add pages about {read.Name}: {read.Problem}. Tell the user briefly, in character.";
+
+    /// <summary>What the user's own words ask Martlet to read more about ("read more about Stardew Valley", "can you learn more
+    /// about this game"), or null when they don't ask that. <see cref="InFront"/> when they mean the app in front.</summary>
+    public static string? AskedToReadMore(string? words) => Asked(words, ReadMoreWords());
 
     /// <summary>What the user's own words ask Martlet to read up on ("read up on Stardew Valley please" is "Stardew Valley"), or
     /// null when they don't ask that. <see cref="InFront"/> when they mean the app in front ("read up on this game").</summary>
-    public static string? AskedToReadUp(string? words)
+    public static string? AskedToReadUp(string? words) => Asked(words, ReadUpWords());
+
+    private static string? Asked(string? words, System.Text.RegularExpressions.Regex asking)
     {
         if (string.IsNullOrWhiteSpace(words)) return null;
-        var match = ReadUpWords().Match(words);
+        var match = asking.Match(words);
         if (!match.Success) return null;
         // "Don't read up on it", "no need to read up on that": never a request.
         var before = words[..match.Index];
@@ -230,6 +250,12 @@ public static partial class AppGuideTools
     [System.Text.RegularExpressions.GeneratedRegex(@"\bread\s+up\s+(?:on|about)\s+(?<app>[^\n.?!,;:()""]{1,80})",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
     private static partial System.Text.RegularExpressions.Regex ReadUpWords();
+
+    // "read more about it", "read some more on Elden Ring", "learn more about this game", "keep reading up on it".
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"\b(?:(?:read|learn|look)\s+(?:up\s+)?(?:some\s+|a\s+bit\s+|a\s+little\s+)?more\s+(?:on|about|of|into)|keep\s+reading\s+(?:up\s+)?(?:on|about))\s+(?<app>[^\n.?!,;:()""]{1,80})",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex ReadMoreWords();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"n['’]t\b|\b(dont|cant|wont|shouldnt|not|never|no|stop|without)\b",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]

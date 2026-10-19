@@ -140,7 +140,9 @@ internal sealed partial class McpServer
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "memories")),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
-            "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
+            "transport, program and raw arguments (${env:...} and ${secret:...} references are kept, never their values; a literal " +
+            "value that looks secret, such as the value after --token or --api-key, a key=value with a secret name, a password in a " +
+            "web address or a token such as sk-... or ghp_..., shows as [hidden]), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
             "Read-only; starts no server and reads no credentials.", new
         {
@@ -270,7 +272,7 @@ internal sealed partial class McpServer
             "the friend, the bot and the owner, the ring DM with a jump link and a server invite), calling again (channel reused, " +
             "joined), cleanup, calls turned off, /friend remove, the presence each state shows and its rate limit, and the avatar " +
             "rate limit. requestFrom (a Discord user ID as a string, with requestName) files a friend request into the given " +
-            "dataDirectory as /friend ask would (requires an explicit, disposable dataDirectory), so Companion > Discord's Friends " +
+            "dataDirectory as /friend ask would (requires an explicit, disposable dataDirectory, never Martlet's own data folder, and --allow-changes), so Companion > Discord's Friends " +
             "and calls card lists it for DiscordFriendApprove-<id>.", new
         {
             dataDirectory = new { type = "string" },
@@ -280,13 +282,13 @@ internal sealed partial class McpServer
             requestName = new { type = "string", maxLength = 64 }
         },
             async (arguments, cancellation) => await DiscordCompanionCheck.RunAsync(DataDirectory(arguments),
-                arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out _),
+                DisposableDataDirectory(arguments),
                 OptionalString(arguments, "person"), OptionalString(arguments, "character"),
                 OptionalString(arguments, "requestFrom") is { } from
                     ? ulong.TryParse(from, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)
                         ? id : throw new ArgumentException("requestFrom must be a Discord user ID.")
                     : null,
-                OptionalString(arguments, "requestName"), cancellation)),
+                OptionalString(arguments, "requestName"), cancellation)) with { Writes = arguments => OptionalString(arguments, "requestFrom") is not null },
         Tool("discord_reply_status", "Martlet's Discord reply engine, from a data directory: the desktop's discord-replies.json " +
             "(whether the engine is wired, replies, passes, skipped turns with the last reason, failures with the last code, places " +
             "with history, requests running, the last reply and pass times, its latency, first-words time and prompt-cache use, " +
@@ -453,7 +455,8 @@ internal sealed partial class McpServer
     ];
 
     /// <summary>mcp.json in a data directory as the desktop's McpToolService parses it (the file name matches). Arguments are
-    /// the raw ones from the file, so ${env:...} and ${secret:...} stay references; no server starts and no credential is read.</summary>
+    /// the raw ones from the file, so ${env:...} and ${secret:...} stay references; a literal value that looks secret is
+    /// hidden (<see cref="HideSecretArguments"/>). No server starts and no credential is read.</summary>
     private static object McpServersStatus(JsonElement arguments)
     {
         var path = Path.Combine(DataDirectory(arguments), "mcp.json");
@@ -482,7 +485,7 @@ internal sealed partial class McpServer
                     name = server.Name,
                     transport = server.Transport.ToString().ToLowerInvariant(),
                     command = (raw?["command"] as JsonValue)?.ToString(),
-                    args = (raw?["args"] as JsonArray)?.Select(a => a?.ToString()).ToArray() ?? [],
+                    args = HideSecretArguments((raw?["args"] as JsonArray)?.Select(a => a?.ToString()).ToArray() ?? []),
                     host = server.Url?.Host,
                     env = server.Env.Keys.ToArray(),
                     headers = server.Headers.Keys.ToArray(),
@@ -497,6 +500,77 @@ internal sealed partial class McpServer
             }).ToArray()
         };
     }
+
+    private const string Hidden = "[hidden]";
+
+    /// <summary>mcp.json arguments with every literal value that looks secret replaced by [hidden]: the value after a flag with a
+    /// secret name (--token, --api-key, --password...), the value of a key=value or --key=value with such a name, the user and
+    /// password in a web address, and values shaped like well-known tokens (sk-..., ghp_..., xoxb-..., long random strings).
+    /// ${env:...} and ${secret:...} references stay as they are.</summary>
+    internal static string?[] HideSecretArguments(string?[] arguments)
+    {
+        var hidden = new string?[arguments.Length];
+        var afterSecretFlag = false;
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            var argument = arguments[i];
+            if (argument is null) { hidden[i] = null; afterSecretFlag = false; continue; }
+            if (afterSecretFlag && !argument.StartsWith('-'))
+            {
+                hidden[i] = OnlyReferences(argument) ? argument : Hidden;
+                afterSecretFlag = false;
+                continue;
+            }
+            afterSecretFlag = false;
+            var equals = argument.IndexOf('=');
+            if (equals > 0 && SecretName(argument[..equals]))
+            {
+                var value = argument[(equals + 1)..];
+                hidden[i] = OnlyReferences(value) ? argument : argument[..(equals + 1)] + Hidden;
+                continue;
+            }
+            if (argument.StartsWith('-') && equals < 0 && SecretName(argument)) afterSecretFlag = true;
+            hidden[i] = HideInValue(argument);
+        }
+        return hidden;
+    }
+
+    private static readonly string[] SecretWords =
+        ["token", "secret", "password", "passwd", "pwd", "apikey", "api-key", "api_key", "auth", "credential", "bearer", "private-key",
+         "private_key", "access-key", "access_key", "client-secret", "client_secret", "pat", "key"];
+
+    // A flag or setting name that names a secret: --token, --api-key, API_KEY, password, -p is not one (too short to tell).
+    private static bool SecretName(string name)
+    {
+        var words = name.TrimStart('-').ToLowerInvariant();
+        if (words.Length < 3) return false;
+        return SecretWords.Any(word => words == word || words.EndsWith("-" + word, StringComparison.Ordinal) ||
+            words.EndsWith("_" + word, StringComparison.Ordinal) || words.StartsWith(word + "-", StringComparison.Ordinal) ||
+            words.StartsWith(word + "_", StringComparison.Ordinal) || (word.Length >= 5 && words.Contains(word, StringComparison.Ordinal)));
+    }
+
+    private static bool OnlyReferences(string value) => SecretReference().Replace(value, "").Length == 0 && value.Length > 0;
+
+    // A value that is not after a flag: hides a web address's user and password and values shaped like tokens.
+    private static string HideInValue(string value)
+    {
+        if (OnlyReferences(value)) return value;
+        var hidden = UrlUserInfo().Replace(value, match => match.Groups[1].Value + Hidden + "@");
+        return TokenShape().IsMatch(hidden) ? Hidden : hidden;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\$\{(?:env|secret):[^}]+\}")]
+    private static partial System.Text.RegularExpressions.Regex SecretReference();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@")]
+    private static partial System.Text.RegularExpressions.Regex UrlUserInfo();
+
+    // Well-known token prefixes, a JWT, or a long run of letters and digits that holds both (a key, not a word or a path).
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^(?:sk-[A-Za-z0-9_-]{16,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|" +
+        @"xox[abposr]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{30,}|glpat-[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*|" +
+        @"(?=[A-Za-z0-9_\-]*[0-9])(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{32,})$")]
+    private static partial System.Text.RegularExpressions.Regex TokenShape();
 
     /// <summary>How the desktop's MCP directory would install one registry entry. Secret values are never returned, only the
     /// ${secret:...} names the entry would use.</summary>
@@ -806,13 +880,15 @@ internal sealed partial class McpServer
         }
     }
 
-    /// <summary>Martlet's own cloudflared download in the data directory's tools folder: its version and whether it still matches
-    /// the size and SHA-256 checked against GitHub's release at download (Martlet runs it only then).</summary>
+    /// <summary>Martlet's own cloudflared download in the data directory's tools folder: its version, whether it still matches
+    /// the size and SHA-256 checked against GitHub's release at download, and whether Windows confirms Cloudflare's signature
+    /// on it (Martlet runs it only when both hold).</summary>
     private static object CloudflaredStatus(string directory)
     {
         var own = Martlet.Messaging.CloudflareQuickTunnel.Installed(Path.Combine(directory, "tools"));
-        return own is null ? new { downloaded = false, version = (string?)null, verified = false }
-            : new { downloaded = true, version = own.Version, verified = own.Verified };
+        if (own is null) return new { downloaded = false, version = (string?)null, verified = false, signed = false, signatureProblem = (string?)null };
+        var problem = Martlet.Messaging.CloudflaredSignature.Problem(own.Path);
+        return new { downloaded = true, version = own.Version, verified = own.Verified, signed = problem is null, signatureProblem = problem };
     }
 
     /// <summary>messaging.json in a data directory (the file name and fields match Martlet.Desktop's MessagingPreferences). The

@@ -4,14 +4,16 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 
 .DESCRIPTION
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
-order, and prints one JSON array of results. Doctor, voices_status, voices_naming_check, voices_people, f5_voices, cluster_status, network_status, accounts_status, account_security_status, nearby_status, logs_tail,
-logs_timeline, logs_export, virtualization_status, mcp_servers_status, api_keys_status, openai_endpoint_status, smart_home_status, messaging_status, discord_status, discord_check, terminal_status, terminal_check, prompts_status, settings_sync_status, memory_sync_status, memory_status, memory_brief_status, memory_forget, character_status, hearing_check, model_ability_check, local_model_facts,
-echo_check, pc_audio_check, discord_call_check, context_check, context_board, thinking_steps_check, think_longer_status, thinking_pool_status, thinking_requests, sense_models_status, audio_model_check, image_model_check, live_floor_status, helper_jobs_status, external_endpoints_status, reminders_status, check_ins_status, setup_run_status, discord_reply_status, discord_reply_check, conversation_history_status, app_guides_status, creations_status, chattiness_status, discord_text_check, discord_companion_check, vision_history_check, active_app_check, screen_digest_check, songs_status, pictures_status, motion_status, latency_report, thinking_trace, character_models, character_profiles, household_sharing,
-character_actions, character_gaze, character_touch_zones, character_reaction_changes, character_eyes, character_physical_check, character_theme, singing_status, sound_digest_check, utterance_filter_check, barge_in_check, parakeet_check, long_talk_check, gpu_priority_status, quick_sounds_status, voice_sounds_status, node_presence_status, situation_status, recommended_setup_status, lip_sync_pool_status, pc_scope, characters_list, character_find_looks, vroid_hub_status, character_create, character_update, character_use, character_delete, settings_get, settings_set and model_catalog_* calls without an explicit dataDirectory get a disposable one
-(-AllowChanges lets the character and settings tools save there; martlet_call gives it to the tool it runs);
-voices_status, voices_engine_check, utterance_filter_check, parakeet_check, long_talk_check, sound_digest_check, straight_voice_check, discord_voice_check and turn_judge_check also use this checkout's Desktop
-build (martletDirectory) when it is built. -Desktop launches Martlet.Desktop with the
-same disposable data directory (plus any -DesktopArguments, such as --tray) and connects ui_* tools to it first.
+order, and prints one JSON array of results. Every call whose tool takes a
+dataDirectory (its input schema in tools/list has that property) and gives none
+gets a disposable one, so no tool reads or writes the real profile
+(%LOCALAPPDATA%\Martlet) by default; martlet_call gives it to the tool it runs.
+-AllowChanges lets the tools save or write there (character and settings
+tools, memory_forget, and the save, forget and output files of the diagnostic
+tools). Every call whose tool takes a martletDirectory (the voice and listening
+checks) also uses this checkout's Desktop build when it is built. -Desktop
+launches Martlet.Desktop with the same disposable data directory (plus any
+-DesktopArguments, such as --tray) and connects ui_* tools to it first.
 
 Each call is {"name": "<tool>", "arguments": {...}} with optional "waitMs"
 (pause after the call) and "until" (repeat the call for up to 20 seconds until
@@ -31,7 +33,7 @@ param(
     [string]$DataDirectory,
     [string[]]$DesktopArguments = @(),
     [switch]$AllowUiEffects,
-    # Lets the character and settings tools save (--allow-changes); they change the disposable data directory unless one is given.
+    # Lets the tools save or write (--allow-changes); they change the disposable data directory unless one is given.
     [switch]$AllowChanges,
     [switch]$KeepDesktop,
     # Keep pairing secrets in a lab-credentials folder inside the data directory instead of Windows Credential Manager, for the
@@ -130,6 +132,8 @@ try {
     }
 
     $start = [System.Diagnostics.ProcessStartInfo]::new($server)
+    # --all-tools: tools/list gives every tool's input schema, which says which tools take a dataDirectory or martletDirectory.
+    $start.ArgumentList.Add('--all-tools')
     if ($AllowUiEffects) { $start.ArgumentList.Add('--allow-ui-effects') }
     if ($AllowChanges) { $start.ArgumentList.Add('--allow-changes') }
     $start.UseShellExecute = $false
@@ -149,6 +153,14 @@ try {
         clientInfo = [ordered]@{ name = 'Invoke-MartletMcp'; version = '1.0' }
     })
     $mcp.StandardInput.WriteLine('{"jsonrpc":"2.0","method":"notifications/initialized"}')
+
+    # Each tool's input properties, from the server itself, so a new tool with a dataDirectory is covered without a list here.
+    $properties = @{}
+    foreach ($tool in (Send-Request 'tools/list' $null).tools) {
+        $properties[[string]$tool.name] = @($tool.inputSchema.properties.PSObject.Properties.Name)
+    }
+    $desktopBuild = Join-Path $root "src\Martlet.Desktop\$bin"
+    $desktopBuilt = Test-Path -LiteralPath (Join-Path $desktopBuild 'Martlet.Desktop.exe') -PathType Leaf
 
     if ($DesktopProcessId) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -175,36 +187,14 @@ try {
             }
             $target = $arguments.arguments
         }
-        if ($toolName -like 'doctor_*' -or $toolName -like 'voices_*' -or $toolName -like 'logs_*' -or $toolName -like 'f5_*' -or
-            $toolName -like 'cluster_*' -or $toolName -like 'nearby_*' -or $toolName -like 'virtualization_*' -or $toolName -eq 'mcp_servers_status' -or
-            $toolName -eq 'network_status' -or $toolName -eq 'accounts_status' -or $toolName -eq 'account_security_status' -or $toolName -eq 'signin_lab' -or $toolName -eq 'role_lab' -or $toolName -eq 'api_keys_status' -or $toolName -eq 'openai_endpoint_status' -or $toolName -eq 'smart_home_status' -or $toolName -eq 'messaging_status' -or $toolName -eq 'discord_status' -or $toolName -eq 'discord_check' -or $toolName -eq 'prompts_status' -or
-            $toolName -eq 'settings_sync_status' -or $toolName -eq 'memory_sync_status' -or $toolName -eq 'memory_status' -or $toolName -eq 'memory_brief_status' -or $toolName -eq 'memory_forget' -or $toolName -eq 'hearing_check' -or $toolName -eq 'model_ability_check' -or $toolName -eq 'local_model_facts' -or $toolName -eq 'echo_check' -or $toolName -eq 'pc_audio_check' -or $toolName -eq 'discord_call_check' -or $toolName -eq 'character_status' -or $toolName -eq 'character_models' -or $toolName -eq 'character_profiles' -or $toolName -eq 'household_sharing' -or
-            $toolName -eq 'character_actions' -or $toolName -eq 'character_gaze' -or $toolName -eq 'character_touch_zones' -or $toolName -eq 'character_reaction_changes' -or $toolName -eq 'character_eyes' -or $toolName -eq 'character_physical_check' -or $toolName -eq 'character_theme' -or $toolName -eq 'context_check' -or $toolName -eq 'context_board' -or $toolName -eq 'thinking_steps_check' -or
-            $toolName -eq 'latency_report' -or $toolName -eq 'thinking_trace' -or $toolName -like 'terminal_*' -or $toolName -eq 'utterance_filter_check' -or $toolName -eq 'barge_in_check' -or $toolName -eq 'parakeet_check' -or $toolName -eq 'long_talk_check' -or
-            $toolName -eq 'think_longer_status' -or $toolName -eq 'thinking_pool_status' -or $toolName -eq 'thinking_requests' -or $toolName -eq 'sense_models_status' -or $toolName -eq 'audio_model_check' -or $toolName -eq 'image_model_check' -or $toolName -eq 'live_floor_status' -or $toolName -eq 'helper_jobs_status' -or $toolName -eq 'work_sharing_status' -or $toolName -eq 'external_endpoints_status' -or $toolName -eq 'reminders_status' -or $toolName -eq 'check_ins_status' -or $toolName -eq 'setup_run_status' -or $toolName -eq 'discord_reply_status' -or $toolName -eq 'discord_reply_check' -or $toolName -eq 'conversation_history_status' -or $toolName -eq 'app_guides_status' -or $toolName -eq 'creations_status' -or $toolName -eq 'chattiness_status' -or $toolName -eq 'discord_text_check' -or $toolName -eq 'discord_companion_check' -or $toolName -eq 'vision_history_check' -or $toolName -eq 'active_app_check' -or $toolName -eq 'screen_digest_check' -or $toolName -eq 'songs_status' -or $toolName -eq 'pictures_status' -or $toolName -eq 'motion_status' -or
-            $toolName -eq 'singing_status' -or $toolName -eq 'sound_digest_check' -or $toolName -eq 'gpu_priority_status' -or $toolName -eq 'quick_sounds_status' -or $toolName -eq 'voice_sounds_status' -or $toolName -eq 'node_presence_status' -or $toolName -eq 'situation_status' -or $toolName -eq 'recommended_setup_status' -or
-            $toolName -eq 'lip_sync_pool_status' -or $toolName -eq 'pc_scope' -or $toolName -like 'model_catalog_*' -or
-            $toolName -in 'characters_list', 'character_find_looks', 'vroid_hub_status', 'character_create', 'character_update', 'character_use', 'character_delete', 'settings_get', 'settings_set') {
-            if ($null -eq $target.PSObject.Properties['dataDirectory']) {
-                $target | Add-Member -NotePropertyName dataDirectory -NotePropertyValue $data
-            }
-            # voices_status, voices_engine_check, utterance_filter_check, parakeet_check and long_talk_check use this checkout's Desktop
-            # build (its bundled sherpa-onnx runtime), when built.
-            $desktopBuild = Join-Path $root "src\Martlet.Desktop\$bin"
-            if (($toolName -like 'voices_*' -or $toolName -eq 'utterance_filter_check' -or $toolName -eq 'parakeet_check' -or $toolName -eq 'long_talk_check' -or $toolName -eq 'sound_digest_check') -and $null -eq $target.PSObject.Properties['martletDirectory'] -and
-                (Test-Path -LiteralPath (Join-Path $desktopBuild 'Martlet.Desktop.exe') -PathType Leaf)) {
-                $target | Add-Member -NotePropertyName martletDirectory -NotePropertyValue $desktopBuild
-            }
+        $takes = if ($properties.ContainsKey($toolName)) { $properties[$toolName] } else { @() }
+        if ($null -ne $target -and $takes -contains 'dataDirectory' -and $null -eq $target.PSObject.Properties['dataDirectory']) {
+            $target | Add-Member -NotePropertyName dataDirectory -NotePropertyValue $data
         }
-        # straight_voice_check, discord_voice_check and turn_judge_check take no data directory; they use this checkout's Desktop
-        # build (its sherpa-onnx runtime, its libdave.dll, its Smart Turn model) too.
-        if ($call.name -eq 'straight_voice_check' -or $call.name -eq 'discord_voice_check' -or $call.name -eq 'turn_judge_check') {
-            if ($null -eq $arguments) { $arguments = [pscustomobject]@{} }
-            $desktopBuild = Join-Path $root "src\Martlet.Desktop\$bin"
-            if ($null -eq $arguments.PSObject.Properties['martletDirectory'] -and
-                (Test-Path -LiteralPath (Join-Path $desktopBuild 'Martlet.Desktop.exe') -PathType Leaf)) {
-                $arguments | Add-Member -NotePropertyName martletDirectory -NotePropertyValue $desktopBuild
-            }
+        # The voice and listening checks use this checkout's Desktop build (its sherpa-onnx runtime, libdave.dll and Smart Turn
+        # model) when it is built.
+        if ($null -ne $target -and $desktopBuilt -and $takes -contains 'martletDirectory' -and $null -eq $target.PSObject.Properties['martletDirectory']) {
+            $target | Add-Member -NotePropertyName martletDirectory -NotePropertyValue $desktopBuild
         }
         $deadline = [DateTime]::UtcNow.AddSeconds(20)
         do {

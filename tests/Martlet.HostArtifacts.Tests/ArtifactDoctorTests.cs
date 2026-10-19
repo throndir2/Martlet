@@ -31,6 +31,15 @@ public sealed class ArtifactDoctorTests : IDisposable
         Assert.False(Directory.Exists(root));
     }
 
+    [Fact]
+    public async Task VersionIsMartletsOwnVersion()
+    {
+        using var output = new StringWriter();
+        Assert.Equal(0, await ArtifactDoctorCommand.RunAsync(["--version"], output));
+        Assert.StartsWith($"Martlet.ArtifactDoctor {typeof(ArtifactDoctorCommand).Assembly.GetName().Version!.ToString(3)} ", output.ToString());
+        Assert.DoesNotContain("0.1.0", output.ToString());
+    }
+
     [Theory]
     [InlineData(null, 2)]
     [InlineData("ubuntu-24.04-x64", 2)]

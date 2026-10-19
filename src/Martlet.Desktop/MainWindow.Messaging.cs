@@ -215,9 +215,11 @@ public partial class MainWindow
                     ? "cloudflared. Martlet's copy doesn't match the SHA-256 it checked at download (or is from an older Martlet), so Martlet doesn't run it: " +
                       "Get cloudflared downloads and checks the official build again (about 60 MB)."
                     : "cloudflared, which isn't on this PC yet: Get cloudflared downloads the official build from GitHub (about 60 MB) and checks its SHA-256.");
+        if (Martlet.Messaging.CloudflaredSignature.Problem(cloudflared) is { } unsigned)
+            return $"Martlet doesn't run {cloudflared}: {unsigned}. Get cloudflared downloads Cloudflare's signed build.";
         var which = own is { Verified: true } && string.Equals(own.Path, cloudflared, StringComparison.OrdinalIgnoreCase)
-            ? $"cloudflared {own.Version}, SHA-256 checked ({cloudflared})"
-            : $"cloudflared ({cloudflared})";
+            ? $"cloudflared {own.Version}, SHA-256 and Cloudflare's signature checked ({cloudflared})"
+            : $"cloudflared, Cloudflare's signature checked ({cloudflared})";
         return $"Leave the address empty and Martlet opens a free Cloudflare quick tunnel to {port} with {which}. " +
             "Use your own https address only if you already have one that forwards there.";
     }

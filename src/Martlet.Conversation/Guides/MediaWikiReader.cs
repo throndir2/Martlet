@@ -129,9 +129,11 @@ internal static class MediaWikiReader
 
     /// <summary>Reads the site's best pages into the run, the <paramref name="seeds"/> (pages the owner pointed at) first, and
     /// returns how many pages it added; then leaves what is left to read more in <see cref="GuideRun.More"/>. With
-    /// <paramref name="more"/> it reads more instead: only titles the pages read before link to, and the links of those, as the
-    /// run's chooser chooses them (no main page, most linked or every-page lists).</summary>
-    public static async Task<int> ReadAsync(GuideRun run, MediaWikiSite site, IReadOnlyList<string> seeds, GuideMore? more = null)
+    /// <paramref name="more"/> it reads more instead: titles the pages read before link to, and the links of those, as the run's
+    /// chooser chooses them (the main page's and the most linked pages when it knows no links), then the wiki's other pages,
+    /// never one in <paramref name="have"/> (the guide's pages) or read or left out before; and leaves what is left again.</summary>
+    public static async Task<int> ReadAsync(GuideRun run, MediaWikiSite site, IReadOnlyList<string> seeds, GuideMore? more = null,
+        IReadOnlyCollection<string>? have = null)
     {
         var before = run.Pages.Count;
         var queued = new HashSet<string>(StringComparer.Ordinal);
@@ -171,11 +173,24 @@ internal static class MediaWikiReader
         else
         {
             asked.UnionWith(more.Known);
-            foreach (var (title, count) in more.Related) linked[Key(title)] = (title, count);
+            foreach (var url in have ?? [])
+                if (Uri.TryCreate(url, UriKind.Absolute, out var page) && site.TitleOf(page) is { Length: > 0 } title) asked.Add(Key(title));
+            run.Know(have ?? []);
+            foreach (var (title, count) in more.Related)
+                if (!asked.Contains(Key(title))) linked[Key(title)] = (title, count);
+            // Nothing left of the links (a guide kept before Martlet saved them): the main page's and the most linked pages first.
+            if (linked.Count == 0)
+            {
+                run.Report("Reading the wiki's page list");
+                var candidates = (await CandidatesAsync(run, site).ConfigureAwait(false)).Where(t => !asked.Contains(Key(t))).ToList();
+                asked.UnionWith(candidates.Select(Key));
+                foreach (var title in await run.ChooseAsync(candidates).ConfigureAwait(false))
+                    if (queued.Add(Key(title))) queue.Add(title);
+            }
         }
         var next = 0;
         var blocked = 0;
-        var everyPage = more is null ? new AllPages(site) : null;
+        var everyPage = new AllPages(site);
         while (!run.Full)
         {
             if (next >= queue.Count)
@@ -240,7 +255,7 @@ internal static class MediaWikiReader
                 linked[key] = (linked.TryGetValue(key, out var seen) ? seen.Title : title, seen.Count + 1);
             }
         }
-        if (more is null && run.Pages.Count > before && run.More is null)
+        if (more is not null || run.Pages.Count > before && run.More is null)
         {
             // What is left to read more: the chosen pages not read yet, then the linked titles not asked about, most linked first.
             var left = queue.Skip(next).Concat(later.Where(t => !queued.Contains(Key(t))))
