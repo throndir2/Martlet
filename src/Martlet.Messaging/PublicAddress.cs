@@ -50,6 +50,8 @@ public sealed partial class CloudflareQuickTunnel(string cloudflared) : IPublicA
     {
         if (address is not null && process is { HasExited: false } && openPort == port) return address;
         Close();
+        if (CloudflaredSignature.Problem(cloudflared) is { } unsigned)
+            throw new MessagingException(MessagingFailure.Network, $"Martlet doesn't run {cloudflared}: {unsigned}.");
         var start = new ProcessStartInfo(cloudflared)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true
@@ -98,7 +100,8 @@ public sealed partial class CloudflareQuickTunnel(string cloudflared) : IPublicA
     }
 
     /// <summary>cloudflared.exe on this PC: Martlet's own download (only while it still matches the SHA-256 checked at download),
-    /// then PATH and the places its installer and winget use.</summary>
+    /// then PATH and the places its installer and winget use. A copy signed by Cloudflare comes first; when none is, the first
+    /// copy found is given, and <see cref="OpenAsync"/> says why it doesn't run.</summary>
     public static string? Find(string? toolsDirectory)
     {
         var candidates = new List<string>();
@@ -108,11 +111,12 @@ public sealed partial class CloudflareQuickTunnel(string cloudflared) : IPublicA
         foreach (var root in new[] { Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolder.ProgramFiles })
             candidates.Add(Path.Combine(Environment.GetFolderPath(root), "cloudflared", "cloudflared.exe"));
         candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WinGet", "Links", "cloudflared.exe"));
-        return candidates.FirstOrDefault(path =>
+        var found = candidates.Where(path =>
         {
             try { return Path.IsPathFullyQualified(path) && File.Exists(path); }
             catch (ArgumentException) { return false; }
-        });
+        }).ToList();
+        return found.FirstOrDefault(path => CloudflaredSignature.Problem(path) is null) ?? found.FirstOrDefault();
     }
 
     private static readonly Dictionary<string, (long Length, DateTime Written, CloudflaredInstall Install)> checkedCopies = new(StringComparer.OrdinalIgnoreCase);
