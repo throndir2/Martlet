@@ -1,4 +1,4 @@
-# Explicit Desktop API conversation (V04b)
+# Live conversation
 
 **Internal functional integration, not account/device/release qualification.**
 **Start talking** on Home opens the talk window: the conversation history, what
@@ -4145,7 +4145,7 @@ from this checklist.
 Actual API account/model quality/cost/performance, real OS-vault roundtrip,
 physical audio, full first-conversation novice trial, clean Windows installer
 lifecycle, signing, rights and release gates remain **NOT RUN / NOT PASSED**.
-V06b adds [local Troubleshooting](TROUBLESHOOTING.md) using the existing Support
+Martlet adds [local Troubleshooting](TROUBLESHOOTING.md) using the existing Support
 engine. Optional typed stage metadata uses a separate bounded worker, not the
 conversation effect slot; no input, response or audio enters its journal.
 Screen/memory capture, model download, host service/driver change, deployment

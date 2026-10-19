@@ -70,7 +70,8 @@ public sealed class MessagingTests
         var wrong = code.Code == "000000" ? "111111" : "000000";
         for (var attempt = 0; attempt < MessagingBridge.PairingAttempts; attempt++)
             await bridge.HandleAsync(new("9", "Stranger", wrong, Private: true), default);
-        Assert.Null(bridge.Pairing);
+        // The code still works for other chats, but no longer for the chat that guessed wrong too often.
+        Assert.NotNull(bridge.Pairing);
         await bridge.HandleAsync(new("9", "Stranger", code.Code, Private: true), default);
         Assert.DoesNotContain(bridge.Chats, chat => chat.Id == "9");
 
@@ -84,11 +85,11 @@ public sealed class MessagingTests
     public void LongRepliesSplitAtBreaksWithinTheLimit()
     {
         var text = string.Join("\n\n", Enumerable.Range(0, 30).Select(i => $"Paragraph {i} " + new string('x', 300)));
-        var parts = MessagingBridge.Split(text, 4096);
+        var parts = Martlet.Core.Text.MessageSplitter.Split(text, 4096);
         Assert.True(parts.Count > 1);
         Assert.All(parts, part => Assert.InRange(part.Length, 1, 4096));
         Assert.Equal(text.Replace("\n", "").Replace(" ", ""), string.Concat(parts).Replace("\n", "").Replace(" ", ""));
-        Assert.Equal(["abcd", "efgh", "ij"], MessagingBridge.Split("abcdefghij", 4));
+        Assert.Equal(["abcd", "efgh", "ij"], Martlet.Core.Text.MessageSplitter.Split("abcdefghij", 4));
     }
 
     [Fact]
@@ -111,6 +112,130 @@ public sealed class MessagingTests
         await stop.CancelAsync();
         await run.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(MessagingState.Off, running.Status.State);
+    }
+
+    [Fact]
+    public async Task UnexpectedErrorsAreRetriedAndAFailedAnswerDoesNotLoseTheBatch()
+    {
+        using var stop = new CancellationTokenSource();
+        var transport = new FakeTransport { UnexpectedReceiveFailures = 1, TypingFailure = new IOException("typing broke") };
+        transport.Incoming.Enqueue([new("7", "Me", "first", Private: true), new("7", "Me", "second", Private: true)]);
+        var states = new ConcurrentQueue<MessagingState>();
+        var failures = new ConcurrentQueue<Exception>();
+        var bridge = new MessagingBridge(transport, [new("7", "Me")], (message, _) =>
+            message.Text == "first" ? throw new InvalidOperationException("broken answer") : Task.FromResult("pong"));
+        bridge.StatusChanged += status => states.Enqueue(status.State);
+        bridge.Failed += failures.Enqueue;
+        var run = bridge.RunAsync(stop.Token);
+        await Until(() => { lock (transport.Sent) return transport.Sent.Count == 2; });
+        Assert.Equal(MessagingState.Running, bridge.Status.State);
+        await stop.CancelAsync();
+        await run.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Contains(MessagingState.Retrying, states);
+        Assert.Equal([("7", "Martlet couldn't answer that. Try again in a moment."), ("7", "pong")], transport.Sent);
+        Assert.Contains(failures, error => error is InvalidOperationException { Message: "broken answer" });
+        Assert.Contains(failures, error => error is InvalidOperationException { Message: "receive broke" });
+        Assert.Equal(MessagingState.Off, bridge.Status.State);
+    }
+
+    [Fact]
+    public async Task AStrangersWrongCodesDoNotUseUpTheOwnersCode()
+    {
+        var transport = new FakeTransport();
+        var bridge = new MessagingBridge(transport, [], (_, _) => Task.FromResult("x"));
+        var code = bridge.StartPairing();
+        var wrong = code.Code == "000000" ? "111111" : "000000";
+        for (var attempt = 0; attempt < MessagingBridge.PairingAttempts + 3; attempt++)
+            await bridge.HandleAsync(new("9", "Stranger", wrong, Private: true), default);
+        Assert.NotNull(bridge.Pairing);
+        await bridge.HandleAsync(new("9", "Stranger", code.Code, Private: true), default);
+        Assert.DoesNotContain(bridge.Chats, chat => chat.Id == "9");
+        await bridge.HandleAsync(new("42", "Owner", code.Code, Private: true), default);
+        Assert.Contains(bridge.Chats, chat => chat.Id == "42");
+
+        // Guessing from many chats still ends the code.
+        code = bridge.StartPairing();
+        wrong = code.Code == "000000" ? "111111" : "000000";
+        for (var chat = 0; chat < MessagingBridge.PairingAttemptsInAll; chat++)
+            await bridge.HandleAsync(new($"s{chat}", "Stranger", wrong, Private: true), default);
+        Assert.Null(bridge.Pairing);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ABrokenBodyReadIsANetworkFailure(bool whatsApp)
+    {
+        var handler = new BrokenBodyHandler();
+        var error = whatsApp
+            ? await Assert.ThrowsAsync<MessagingException>(() => new WhatsAppCloud(new(AccessToken, AppSecret), handler)
+                .SendTextAsync("106540352242922", "15550199", "hi", default))
+            : await Assert.ThrowsAsync<MessagingException>(() => new TelegramTransport(Token, handler, pollSeconds: 0).ConnectAsync(default));
+        Assert.Equal(MessagingFailure.Network, error.Failure);
+        Assert.DoesNotContain("AAH_", error.Message);
+    }
+
+    [Fact]
+    public async Task WhatsAppMovesToAFreePortWhenTheSavedOneIsTaken()
+    {
+        var busy = WhatsAppWebhook.FreePort();
+        using var squatter = new HttpListener();
+        squatter.Prefixes.Add($"http://localhost:{busy}/");
+        squatter.Prefixes.Add($"http://127.0.0.1:{busy}/");
+        squatter.Start();
+        using var local = new HttpClient();
+        var graph = new GraphStub(request =>
+        {
+            if (!request.Path.EndsWith("/subscriptions")) return new JsonObject { ["success"] = true };
+            var body = JsonNode.Parse(request.Body)!;
+            var answer = local.GetStringAsync($"{body["callback_url"]}?hub.mode=subscribe&hub.verify_token={body["verify_token"]}&hub.challenge=7").GetAwaiter().GetResult();
+            return answer == "7" ? new JsonObject { ["success"] = true } : null;
+        });
+        var account = new WhatsAppAccount("670843887433847", "102290129340398", "106540352242922", "+1 555-0100", "Martlet test");
+        using var transport = new WhatsAppTransport(new(AccessToken, AppSecret), account, busy, new LoopbackTunnel(), graph,
+            verifyPause: TimeSpan.FromMilliseconds(10));
+        int? moved = null;
+        transport.PortChanged += port => moved = port;
+
+        await transport.ConnectAsync(default);
+        Assert.NotNull(moved);
+        Assert.NotEqual(busy, moved);
+        Assert.Equal(moved, transport.Listener.Port);
+        Assert.StartsWith($"http://127.0.0.1:{moved}/whatsapp/", transport.Webhook!.AbsoluteUri);
+
+        // The owner's own address forwards to one port, so that one is never moved.
+        using var fixedAddress = new WhatsAppTransport(new(AccessToken, AppSecret), account, busy,
+            new FixedPublicAddress(new Uri("https://martlet.example.com/")), graph);
+        var refused = await Assert.ThrowsAsync<MessagingException>(() => fixedAddress.ConnectAsync(default));
+        Assert.Equal(MessagingFailure.Network, refused.Failure);
+    }
+
+    private sealed class LoopbackTunnel : IPublicAddress
+    {
+        public Task<Uri> OpenAsync(int port, CancellationToken cancellation) => Task.FromResult(new Uri($"http://127.0.0.1:{port}/"));
+        public bool Lost => false;
+        public void Dispose() { }
+    }
+
+    private sealed class BrokenBodyHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BrokenStream()) });
+    }
+
+    private sealed class BrokenStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new IOException("The response ended prematurely.");
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     [Fact]
@@ -515,6 +640,8 @@ public sealed class MessagingTests
     {
         internal MessagingException? ConnectFailure { get; init; }
         internal int ReceiveFailures { get; set; }
+        internal int UnexpectedReceiveFailures { get; set; }
+        internal Exception? TypingFailure { get; init; }
         internal ConcurrentQueue<IReadOnlyList<InboundMessage>> Incoming { get; } = new();
         internal List<(string Chat, string Text)> Sent { get; } = [];
         internal ConcurrentBag<string> Typing { get; } = [];
@@ -526,6 +653,11 @@ public sealed class MessagingTests
 
         public async Task<IReadOnlyList<InboundMessage>> ReceiveAsync(CancellationToken cancellation)
         {
+            if (UnexpectedReceiveFailures > 0)
+            {
+                UnexpectedReceiveFailures--;
+                throw new InvalidOperationException("receive broke");
+            }
             if (ReceiveFailures > 0)
             {
                 ReceiveFailures--;
@@ -545,7 +677,7 @@ public sealed class MessagingTests
         public Task TypingAsync(string chatId, CancellationToken cancellation)
         {
             Typing.Add(chatId);
-            return Task.CompletedTask;
+            return TypingFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
         }
 
         public void Dispose() { }

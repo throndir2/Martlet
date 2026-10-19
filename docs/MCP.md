@@ -1379,7 +1379,9 @@ and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
 waits, its last run, runs and actions since Martlet started). `Help-CheckInsAbout`
-next to *Now* explains check-ins (`help`). Every check-in,
+next to *Now* explains check-ins in one short line (`help`); its card links to the
+wiki's *Check-ins* section (`Help-CheckInsAbout-Wiki`), and *Your own check-ins*
+has `Help-CheckInsOwn` with a link to *Your own check-ins*. Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>` and `CheckInOutcome-<id>` show on its card, and the rest
 is under *More settings* (`Fold-CheckInMore-<id>`, closed at first: click it
@@ -2341,7 +2343,9 @@ without the desktop: `device` (this data folder's device ID), `network`
 `merged`, `none` when a host or desktop would refuse it, or `no_network`);
 `signedInHere`; and `locks`, per account with an unlock file in
 `account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
-`askOnThisPc`, `remember`, `encrypt`, `encryptedFiles` and `plainFiles` in
+`askOnThisPc`, `remember`, `encrypt`, `damaged` (the unlock file is there but
+can't be read, so the account fails closed and needs a sign-in),
+`encryptedFiles` and `plainFiles` in
 the account's folder, `failures`, `waitUntil` and whether the DPAPI-protected
 part exists. Never a PIN, password, verifier, attestation, e-mail, login user
 name or SID.
@@ -2617,7 +2621,10 @@ address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
-throttled entries with their source) and the host log lines naming each source.
+throttled entries with their source, plus `StoresHealthy`, `FailingStores` and
+the authority save counts `AuthorityCommits`, `AuthorityCommitAverageMs` and
+`AuthorityCommitLongestMs`; the first step fails when a store is not healthy)
+and the host log lines naming each source.
 Then outside addresses, played by other loopback ports: with the home address
 closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
@@ -3076,7 +3083,7 @@ Ana's key refuses her on both hosts while Ben's request still goes through.
 Before the owner-first step it also checks the [network model
 names](OPENAI_ENDPOINT.md#network-model-names): `GET /v1/models` lists
 `martlet@any` (both models) and `martlet@fast` (the front door's `1b` model)
-with their `martlet_models` and no `martlet@smart`; a chat for
+with the models behind each (the `"martlet_models"` field) and no `martlet@smart`; a chat for
 `martlet@fast` runs on the front door's model and its answer names it;
 `martlet@smart` gets 404 `model_not_found` and `martlet@fast` on
 `/v1/embeddings` gets 400 `invalid_request_error`. Loopback only; nothing is
@@ -4883,8 +4890,28 @@ never their names or IDs) and
 `enabled`, `number`, `name`, `appId`, `businessAccountId`, `phoneNumberId`,
 `port` (Martlet's localhost webhook port), `publicAddress` (the owner's own;
 empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
-(never the access token or app secret), `chats` and `speakReplies`. The secrets
-live in Windows Credential Manager and are never read. In the desktop,
+(never the access token or app secret), `chats` and `speakReplies`, and
+`cloudflared` with `downloaded` (Martlet's own copy is in the data directory's
+`tools` folder), `version` (the cloudflared release it came from) and
+`verified` (it still matches the size and SHA-256 that GitHub publishes for
+that release, checked at download and recorded in `tools\cloudflared.json`;
+Martlet runs its own copy only when this is true). The secrets
+live in Windows Credential Manager and are never read.
+`messaging_check` rehearses the production `MessagingBridge` and
+`TelegramTransport` with local fakes and contacts no Telegram, WhatsApp or
+Meta server. It returns `ok` and `steps`: `telegramBodyReadBreaks` (a
+connection that breaks while the answer is read is a `Network` failure, with
+no token in the message), `unexpectedErrorRetries` (an unexpected receive
+error gives `Retrying`, then `Running` again, never a silent `Off`),
+`failedAnswerKeepsTheBatch` (a failing typing call and a failing answer do not
+lose the next message; the chat is told Martlet couldn't answer), `stopsAsOff`
+and `pairingCodeSurvivesAStranger` (wrong codes count per chat, so a stranger
+can't use up the owner's code). `smart_home_guard` shows how Smart home's
+safety guard (`HomeCommandGuard`) treats one `text`: `risk` (`Normal`,
+`Sensitive` or `NotACommand`), `mentionsSensitive` and `meaning`. A request
+that asks for an action on a lock, door, garage, gate, alarm or valve is
+`Sensitive` also when it starts with a question word ("why don't you unlock
+the door"); it is local only and contacts nothing. In the desktop,
 Companion › Messaging's `MessagingStatus` (whether Martlet
 answers the bot now, or why not), `MessagingNote` (the last connect outcome),
 `MessagingChats` (how many chats) and `MessagingPairStatus` (until when the
@@ -8163,9 +8190,23 @@ page's controls are only visible after you open it: click `NavHome`,
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
 explanation as `help`, and `ui_click` on it only opens a small card with that
-text (passive, no `--allow-ui-effects`). An explanation line that shows only its
+text (passive, no `--allow-ui-effects`). While the card is open, `ui_snapshot`
+also lists its text as `Help-<id>-Card` (`value`: the explanation) and, when the
+explanation has a wiki page, its *Read more in the wiki* link as `Help-<id>-Wiki`
+(`value`: *Read more in the wiki*; `help`: the wiki address, such as
+`https://github.com/throndir2/Martlet/wiki/Thinking#check-ins`). Read the
+address from `help`: `ui_click` on `Help-<id>-Wiki` opens the browser, so it
+needs `--allow-ui-effects`. An explanation line that shows only its
 first sentence before its *?* returns that sentence as `value` and all of the
-text as `help`. Settings most people leave alone sit in sections you open and
+text as `help`. `ui_long_texts` lists the texts that show now with more than one
+sentence (text blocks and check box or radio button labels): each one's
+`window`, `id` (or `near`, the nearest container's automation ID), `sentences`
+and `text`, and `count` for all of them (at most 200 are listed). Martlet 1.0
+shows one short sentence and puts the rest behind a *?* with a wiki link, so a
+page that follows the rule lists none. It leaves out lists, tables, trees, text
+boxes, help cards, tooltips and controls whose automation ID `ui_snapshot` does
+not read, so the owner's own content does not show; still, use it on a
+disposable data directory. It changes nothing and needs no `--allow-ui-effects`. Settings most people leave alone sit in sections you open and
 close (`Fold-<id>`, such as `Fold-CheckInMore-emotes`): `ui_snapshot` returns
 `expanded` (true or false), their controls show in `ui_snapshot` only while the
 section is open, and `ui_click` opens or closes it (passive). A section stays

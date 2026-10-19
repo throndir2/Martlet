@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using Martlet.Core.Text;
 
 namespace Martlet.Messaging;
 
@@ -21,8 +22,12 @@ public sealed class MessagingBridge
 {
     /// <summary>How long a pairing code works.</summary>
     public static readonly TimeSpan PairingLifetime = TimeSpan.FromMinutes(10);
-    /// <summary>Wrong codes before a pairing code stops working.</summary>
+    /// <summary>Wrong codes one chat may send before the pairing code stops working for that chat.</summary>
     public const int PairingAttempts = 5;
+    /// <summary>Wrong codes from all chats together before the pairing code stops working for everyone.</summary>
+    public const int PairingAttemptsInAll = 50;
+    /// <summary>Unpaired chats told how to pair while Martlet runs; more strangers get no answer.</summary>
+    public const int MaximumToldChats = 1000;
     /// <summary>The longest Martlet takes to answer one message.</summary>
     public static readonly TimeSpan AnswerLimit = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan TypingEvery = TimeSpan.FromSeconds(4);
@@ -34,7 +39,8 @@ public sealed class MessagingBridge
     private readonly HashSet<string> told = new(StringComparer.Ordinal);
     private readonly object gate = new();
     private PairingCode? pairing;
-    private int wrongCodes;
+    private readonly Dictionary<string, int> wrongCodes = new(StringComparer.Ordinal);
+    private int wrongCodesInAll;
     private MessagingStatus status = new(MessagingState.Off);
 
     public MessagingBridge(IMessagingTransport transport, IEnumerable<MessagingChat> chats,
@@ -53,6 +59,9 @@ public sealed class MessagingBridge
     /// <summary>Raised once a reply went back to a paired chat: the message it answered and the app's IDs of the reply's pieces
     /// (empty when the app doesn't give them), so the record of conversations can find them there again.</summary>
     public event Action<InboundMessage, IReadOnlyList<string>>? Replied;
+    /// <summary>Raised for an unexpected error that the bridge survived (it retries or goes on with the next message), so the
+    /// app can log it.</summary>
+    public event Action<Exception>? Failed;
 
     public MessagingStatus Status { get { lock (gate) return status; } }
     public IReadOnlyList<MessagingChat> Chats => [.. allowed.Select(pair => new MessagingChat(pair.Key, pair.Value)).OrderBy(chat => chat.Name)];
@@ -71,7 +80,8 @@ public sealed class MessagingBridge
     {
         lock (gate)
         {
-            wrongCodes = 0;
+            wrongCodes.Clear();
+            wrongCodesInAll = 0;
             return pairing = new(RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6"), clock.GetUtcNow() + PairingLifetime);
         }
     }
@@ -103,7 +113,15 @@ public sealed class MessagingBridge
                     var messages = await transport.ReceiveAsync(cancellation).ConfigureAwait(false);
                     pause = TimeSpan.FromSeconds(2);
                     if (Status.State != MessagingState.Running) Publish(Status with { State = MessagingState.Running, Problem = null });
-                    foreach (var message in messages) await HandleAsync(message, cancellation).ConfigureAwait(false);
+                    foreach (var message in messages)
+                    {
+                        // One message that fails must not lose the rest of the batch: Telegram already moved past them.
+                        try { await HandleAsync(message, cancellation).ConfigureAwait(false); }
+                        catch (Exception error) when (error is not MessagingException && error is not OperationCanceledException)
+                        {
+                            Failed?.Invoke(error);
+                        }
+                    }
                 }
                 catch (MessagingException error) when (error.Failure == MessagingFailure.Unauthorized)
                 {
@@ -115,6 +133,14 @@ public sealed class MessagingBridge
                     var wait = error.RetryAfter ?? pause;
                     Publish(Status with { State = MessagingState.Retrying, Problem = error.Message });
                     await Task.Delay(wait, clock, cancellation).ConfigureAwait(false);
+                    pause = TimeSpan.FromSeconds(Math.Min(pause.TotalSeconds * 2, 60));
+                }
+                catch (Exception error) when (!cancellation.IsCancellationRequested)
+                {
+                    // Anything else (a bug, a transport error that wasn't wrapped) is retried too, never a silent stop.
+                    Failed?.Invoke(error);
+                    Publish(Status with { State = MessagingState.Retrying, Problem = $"Something went wrong ({error.GetType().Name}); trying again." });
+                    await Task.Delay(pause, clock, cancellation).ConfigureAwait(false);
                     pause = TimeSpan.FromSeconds(Math.Min(pause.TotalSeconds * 2, 60));
                 }
             }
@@ -134,7 +160,7 @@ public sealed class MessagingBridge
         var text = message.Text?.Trim();
         if (!allowed.ContainsKey(message.ChatId))
         {
-            if (TryPair(text))
+            if (TryPair(message.ChatId, text))
             {
                 allowed[message.ChatId] = message.ChatName;
                 Paired?.Invoke(new(message.ChatId, message.ChatName));
@@ -143,7 +169,7 @@ public sealed class MessagingBridge
             }
             // Say how to pair once per chat while Martlet runs, so a stranger can't make the bot talk on and on.
             bool first;
-            lock (gate) first = told.Add(message.ChatId);
+            lock (gate) first = told.Count < MaximumToldChats && told.Add(message.ChatId);
             if (first)
                 await SendAsync(message.ChatId, "This Martlet answers only chats its owner paired. To pair this chat, open Martlet on your PC, " +
                     "go to Companion › Messaging, press Pair a chat and send the code here.", cancellation).ConfigureAwait(false);
@@ -168,6 +194,11 @@ public sealed class MessagingBridge
             var typing = KeepTypingAsync(message.ChatId, limit.Token);
             try { reply = await answer(message, limit.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { reply = "Martlet took too long to answer. Try again in a moment."; }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                Failed?.Invoke(error);
+                reply = "Martlet couldn't answer that. Try again in a moment.";
+            }
             finally
             {
                 await limit.CancelAsync().ConfigureAwait(false);
@@ -176,14 +207,14 @@ public sealed class MessagingBridge
         }
         if (string.IsNullOrWhiteSpace(reply)) reply = "(Martlet had nothing to say.)";
         var sent = new List<string>();
-        foreach (var part in Split(reply, transport.MaximumMessageLength))
+        foreach (var part in MessageSplitter.Split(reply, transport.MaximumMessageLength))
             if (await SendAsync(message.ChatId, part, cancellation).ConfigureAwait(false) is { } id) sent.Add(id);
         Publish(Status with { LastAnswered = clock.GetUtcNow(), Answered = Status.Answered + 1 });
         Replied?.Invoke(message, sent);
     }
 
     // The code works alone or after /start (a t.me link with ?start=CODE sends "/start CODE").
-    private bool TryPair(string? text)
+    private bool TryPair(string chatId, string? text)
     {
         if (text is null) return false;
         var candidate = text.StartsWith("/start", StringComparison.OrdinalIgnoreCase) ? text[6..].Trim() : text;
@@ -191,12 +222,15 @@ public sealed class MessagingBridge
         lock (gate)
         {
             if (pairing is not { } code || code.Expires <= clock.GetUtcNow()) return false;
+            if (wrongCodes.GetValueOrDefault(chatId) >= PairingAttempts) return false;
             if (CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(candidate), System.Text.Encoding.ASCII.GetBytes(code.Code)))
             {
                 pairing = null;
                 return true;
             }
-            if (++wrongCodes >= PairingAttempts) pairing = null;
+            // Count per chat, so a stranger can't use up the owner's code; a ceiling for all chats stops guessing from many chats.
+            wrongCodes[chatId] = wrongCodes.GetValueOrDefault(chatId) + 1;
+            if (++wrongCodesInAll >= PairingAttemptsInAll) pairing = null;
             return false;
         }
     }
@@ -207,8 +241,9 @@ public sealed class MessagingBridge
         {
             while (!cancellation.IsCancellationRequested)
             {
+                // "typing" is only a courtesy: no error from it may stop the answer.
                 try { await transport.TypingAsync(chatId, cancellation).ConfigureAwait(false); }
-                catch (MessagingException) { }
+                catch (Exception error) when (error is not OperationCanceledException) { }
                 await Task.Delay(TypingEvery, clock, cancellation).ConfigureAwait(false);
             }
         }
@@ -228,29 +263,6 @@ public sealed class MessagingBridge
             Publish(Status with { Problem = "Couldn't send a reply: " + error.Message });
         }
         return null;
-    }
-
-    /// <summary>Splits a reply into messages of at most <paramref name="limit"/> characters, at a paragraph, line or word break
-    /// when there is one in the second half.</summary>
-    public static IReadOnlyList<string> Split(string text, int limit)
-    {
-        var parts = new List<string>();
-        var rest = text.Trim();
-        while (rest.Length > limit)
-        {
-            var cut = -1;
-            foreach (var separator in new[] { "\n\n", "\n", " " })
-            {
-                cut = rest.LastIndexOf(separator, limit, StringComparison.Ordinal);
-                if (cut >= limit / 2) break;
-                cut = -1;
-            }
-            if (cut < 0) cut = char.IsHighSurrogate(rest[limit - 1]) ? limit - 1 : limit;
-            parts.Add(rest[..cut].TrimEnd());
-            rest = rest[cut..].TrimStart();
-        }
-        if (rest.Length > 0) parts.Add(rest);
-        return parts;
     }
 
     private void Publish(MessagingStatus next)

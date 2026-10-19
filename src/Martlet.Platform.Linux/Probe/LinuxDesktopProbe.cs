@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Martlet.Core.Processes;
 
 namespace Martlet.Platform.Linux.Probe;
 
@@ -217,14 +218,8 @@ public static class LinuxDesktopProbe
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(file, arguments)
-            {
-                RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true
-            });
-            if (process is null) return null;
-            var output = process.StandardOutput.ReadToEndAsync();
-            if (!process.WaitForExit(3000)) { try { process.Kill(true); } catch (InvalidOperationException) { } return null; }
-            return process.ExitCode == 0 ? output.GetAwaiter().GetResult() : null;
+            var result = ProcessRunner.Run(new ProcessStartInfo(file, arguments) { CreateNoWindow = true }, TimeSpan.FromSeconds(3));
+            return result.ExitCode == 0 ? result.StandardOutput : null;
         }
         catch (System.ComponentModel.Win32Exception) { return null; }
         catch (InvalidOperationException) { return null; }

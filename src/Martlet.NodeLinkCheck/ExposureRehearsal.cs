@@ -70,8 +70,11 @@ internal static class ExposureRehearsal
             desktop = new Audio2FaceHostConnection(pairing, secret);
             (saved, savedSecret) = (pairing, secret);
             var audit = await desktop.ReadSecurityAuditAsync(token);
-            return (audit.Events.Any(e => e is { Outcome: "success", Subject: "lab-desktop", SourceKind: "loopback" }) && !audit.InternetReachable,
-                $"paired; audit: {audit.Successes} success(es), source kind {audit.Events.LastOrDefault()?.SourceKind}");
+            return (audit.Events.Any(e => e is { Outcome: "success", Subject: "lab-desktop", SourceKind: "loopback" }) && !audit.InternetReachable &&
+                    audit is { StoresHealthy: true, FailingStores.Count: 0, AuthorityCommits: not null },
+                $"paired; audit: {audit.Successes} success(es), source kind {audit.Events.LastOrDefault()?.SourceKind}; stores healthy: " +
+                $"{audit.StoresHealthy}; authority saves: {audit.AuthorityCommits} (average {audit.AuthorityCommitAverageMs} ms, " +
+                $"longest {audit.AuthorityCommitLongestMs} ms)");
         });
 
         host.Server.Exposure = new() { TreatAllAsOutside = true, InternetReachable = true };

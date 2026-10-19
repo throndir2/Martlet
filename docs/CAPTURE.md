@@ -2,7 +2,7 @@
 
 This is a **library foundation**, not by itself full V01, a live conversation feature,
 validated VAD, microphone qualification, or a passed G2 gate.
-The subsequent [V02b local audio setup](SETUP.md#explicit-local-audio-setup-v02b)
+The subsequent [local audio setup](SETUP.md#explicit-local-audio-setup)
 now calls this library from explicit Desktop tests; it leaves this reviewed
 capture lifecycle unchanged and does not wire a provider or live conversation.
 The later [V04b app composition](CONVERSATION.md) now uses the same capture

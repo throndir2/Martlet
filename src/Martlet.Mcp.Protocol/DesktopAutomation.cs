@@ -6,7 +6,7 @@ using System.Windows.Automation.Text;
 
 namespace Martlet.Mcp;
 
-internal sealed class DesktopAutomation(bool allowEffects)
+internal sealed partial class DesktopAutomation(bool allowEffects)
 {
     /// <summary>Whether ui_* tools may press buttons that change things (--allow-ui-effects).</summary>
     internal bool AllowsEffects => allowEffects;
@@ -103,7 +103,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                         ? ((RangeValuePattern)range).Current.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ||
                         element.Current.ControlType == ControlType.ListItem || element.Current.ControlType == ControlType.MenuItem ||
-                        element.Current.ControlType == ControlType.RadioButton || element.Current.ControlType == ControlType.CheckBox
+                        element.Current.ControlType == ControlType.RadioButton || element.Current.ControlType == ControlType.CheckBox ||
+                        element.Current.ControlType == ControlType.Hyperlink
                         ? element.Current.Name
                     // A combo box without a value pattern reads as its selected option.
                     : element.TryGetCurrentPattern(SelectionPattern.Pattern, out var choice)

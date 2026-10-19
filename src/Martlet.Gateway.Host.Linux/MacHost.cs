@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Platforms;
+using Martlet.Core.Processes;
 
 namespace Martlet.Gateway.Host.Linux;
 
@@ -599,14 +600,13 @@ internal static class MacHostCommands
 
     private static int Launchctl(TextWriter output, bool quiet, params string[] arguments)
     {
-        var start = new ProcessStartInfo("/bin/launchctl") { RedirectStandardOutput = true, RedirectStandardError = true };
+        var start = new ProcessStartInfo("/bin/launchctl");
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new IOException("launchctl did not start.");
-        var text = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        if (process.ExitCode != 0 && !quiet)
-            output.WriteLine($"macos.launchctl: launchctl {arguments[0]} failed ({process.ExitCode}): {text.Trim()}");
-        return process.ExitCode;
+        var result = ProcessRunner.Run(start, TimeSpan.FromSeconds(60));
+        var text = result.TimedOut ? "it did not finish in 60 seconds" : result.StandardOutput + result.StandardError;
+        if (result.ExitCode != 0 && !quiet)
+            output.WriteLine($"macos.launchctl: launchctl {arguments[0]} failed ({result.ExitCode}): {text.Trim()}");
+        return result.ExitCode;
     }
 }
 
@@ -645,14 +645,10 @@ internal static class MacNative
     {
         try
         {
-            var start = new ProcessStartInfo("/usr/bin/pmset", "-g batt") { RedirectStandardOutput = true };
-            using var process = Process.Start(start);
-            if (process is null) return false;
-            var text = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(3000);
-            return text.Contains("'Battery Power'", StringComparison.Ordinal);
+            var result = ProcessRunner.Run(new ProcessStartInfo("/usr/bin/pmset", "-g batt"), TimeSpan.FromSeconds(3));
+            return result.StandardOutput.Contains("'Battery Power'", StringComparison.Ordinal);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException) { return false; }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException) { return false; }
     }
 
     private static string? Text(string name)

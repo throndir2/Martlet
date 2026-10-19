@@ -28,19 +28,20 @@ internal sealed class GatewaySpeakingVoiceStore
     private SpeakingVoiceLibrary library = SpeakingVoiceLibrary.Empty;
     private string digest = SpeakingVoiceLibrary.Empty.Digest();
     private IGatewaySpeakingVoiceStorage? storage;
+    private GatewayStoreHealth health = new();
 
     internal SpeakingVoiceLibrary Current { get { lock (gate) return library; } }
 
     /// <summary>The recordings this host holds, by SHA-256, sorted.</summary>
     internal IReadOnlyList<string> Present { get { lock (gate) return audio.Keys.Order(StringComparer.Ordinal).ToArray(); } }
 
-    internal void Attach(IGatewaySpeakingVoiceStorage value)
+    internal void Attach(IGatewaySpeakingVoiceStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         SpeakingVoiceLibrary? saved = null;
-        try { if (value.LoadLibrary() is { } bytes) saved = SpeakingVoiceLibrary.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try("speaking voices", "load", () => { if (value.LoadLibrary() is { } bytes) saved = SpeakingVoiceLibrary.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -48,11 +49,10 @@ internal sealed class GatewaySpeakingVoiceStore
             foreach (var sha256 in Referenced())
             {
                 if (audio.ContainsKey(sha256)) continue;
-                try
+                health.Try("speaking voices", "load", () =>
                 {
                     if (value.LoadAudio(sha256) is { } bytes && Valid(sha256, bytes)) audio[sha256] = bytes;
-                }
-                catch (Exception) { }
+                });
             }
         }
     }
@@ -76,8 +76,7 @@ internal sealed class GatewaySpeakingVoiceStore
             if (audio.ContainsKey(sha256)) return true;
             var copy = (byte[])bytes.Clone();
             audio[sha256] = copy;
-            try { storage?.SaveAudio(sha256, copy); }
-            catch (Exception) { }
+            health.Try("speaking voices", "save", () => { storage?.SaveAudio(sha256, copy); });
             return true;
         }
     }
@@ -133,12 +132,10 @@ internal sealed class GatewaySpeakingVoiceStore
         {
             CryptographicOperations.ZeroMemory(audio[sha256]);
             audio.Remove(sha256);
-            try { storage?.RemoveAudio(sha256); }
-            catch (Exception) { }
+            health.Try("speaking voices", "remove", () => { storage?.RemoveAudio(sha256); });
         }
         if (!save || storage is null) return;
-        try { storage.SaveLibrary(next.Write()); }
-        catch (Exception) { }
+        health.Try("speaking voices", "save", () => { storage.SaveLibrary(next.Write()); });
     }
 }
 

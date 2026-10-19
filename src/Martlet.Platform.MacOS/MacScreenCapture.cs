@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Martlet.Companion.Platform;
+using Martlet.Core.Processes;
 
 namespace Martlet.Platform.MacOS;
 
@@ -97,19 +98,10 @@ public sealed class MacScreenCapture : IScreenCapture
 
     private static async Task<int> RunAsync(string tool, IReadOnlyList<string> arguments, CancellationToken cancellation)
     {
-        var start = new ProcessStartInfo(tool) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        var start = new ProcessStartInfo(tool) { CreateNoWindow = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new InvalidOperationException($"{tool} didn't start.");
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        timeout.CancelAfter(TimeSpan.FromSeconds(15));
-        try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            if (cancellation.IsCancellationRequested) throw;
-            return -1;
-        }
-        return process.ExitCode;
+        var result = await ProcessRunner.RunAsync(start, TimeSpan.FromSeconds(15), cancellation).ConfigureAwait(false);
+        return result.ExitCode;
     }
 
     private static class Native

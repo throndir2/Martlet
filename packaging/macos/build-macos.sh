@@ -3,7 +3,9 @@
 # Martlet.app bundle, ad-hoc signed and wrapped in Martlet-<version>-macos-<arch>.dmg.
 # The bundle is not Developer ID signed or notarized; first launch needs Open Anyway once.
 # Both architectures build on either Mac. On other systems (or with --no-dmg) it stops after
-# the bundle and Info.plist check, because codesign and hdiutil exist only on macOS.
+# the bundle and Info.plist check, because codesign and hdiutil exist only on macOS. It needs python3, Node.js 20.11+
+# and npm. The character renderer with Live2D, Martlet's LICENSE and every third-party notice (in
+# Contents/Resources/notices) are required; the script stops when one is missing.
 #
 #   packaging/macos/build-macos.sh --version 0.50.0 --arch arm64 [--arch x64]
 #       [--project src/Martlet.Companion/Martlet.Companion.csproj] [--host-project <Mac host .csproj>]
@@ -12,6 +14,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
+. "$here/../common.sh"
 version=''
 arches=()
 project="$root/src/Martlet.Companion/Martlet.Companion.csproj"
@@ -50,6 +53,7 @@ assembly_name() { # project
 exe=$(assembly_name "$project")
 mkdir -p "$output"
 output=$(cd "$output" && pwd)
+prepare_character "$root"
 node_arg=()
 if command -v node >/dev/null; then node_arg=("-p:NodeExecutable=$(command -v node)"); fi
 publish() { # project rid destination [extra msbuild arguments]
@@ -68,6 +72,7 @@ for arch in "${arches[@]}"; do
   echo "Publishing $rid..."
   publish "$project" "$rid" "$work/publish"
   [ -f "$work/publish/$exe" ] || { echo "Publish did not produce $exe." >&2; exit 1; }
+  assert_character "$work/publish"
 
   app="$work/Martlet.app"
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -89,6 +94,9 @@ for arch in "${arches[@]}"; do
     [ -f "$host/$host_exe" ] || { echo "Host publish did not produce $host_exe." >&2; exit 1; }
     chmod +x "$host/$host_exe"
   fi
+  notices=("$work/publish")
+  [ ! -d "$host" ] || notices+=("$host")
+  collect_notices "$root" "$dotnet" "$app/Contents/Resources/notices" "${notices[@]}"
   printf 'APPL????' > "$app/Contents/PkgInfo"
   python3 "$here/make-bundle.py" --app "$app" --executable "$exe" --version "$version" \
     --icon "$root/src/Martlet.Desktop/Assets/Martlet.png"
