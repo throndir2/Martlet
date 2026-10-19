@@ -258,8 +258,9 @@ internal sealed partial class LiveConversationController
             MemoryToolOutcome outcome;
             try
             {
+                var activity = owner.Activity();
                 outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(owner.memory!, revision, argumentsJson, roster, speaker, token, yours,
-                    owner.MeaningFactsAsync), token).ConfigureAwait(false);
+                    owner.MeaningFactsAsync, activity), token).ConfigureAwait(false);
             }
             catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
                 ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)

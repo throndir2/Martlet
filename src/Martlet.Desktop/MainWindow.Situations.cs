@@ -57,6 +57,7 @@ public partial class MainWindow
         gameWatch = null;
         LiveSituation.Current = null;
         LiveSituation.Gaming = false;
+        CurrentActivity.Game = null;
     }
 
     private void SituationPresenceChanged(PresenceChange change) => ObserveSituation();
@@ -71,6 +72,7 @@ public partial class MainWindow
             // A host PC doesn't talk: no situation, no moved route, no game watch (the role can change while Martlet runs).
             FollowGameWatch(false);
             LiveSituation.Gaming = false;
+            CurrentActivity.Game = null;
             if (situationApplied is not null || LiveSituation.Current is not null)
             {
                 situationApplied = null;
@@ -80,10 +82,14 @@ public partial class MainWindow
             return;
         }
         var facts = SituationFactsNow();
-        // The game watch runs only while it can matter: live Thinking on this PC's card, or this PC's own host service.
+        // The game watch runs only while it can matter: live Thinking on this PC's card, or this PC's own host service, or memory,
+        // which keeps what was said in a game for that game (CurrentActivity). Only the first decides the situation.
         var ownHost = WorkSharingRoster.Shared.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
-        FollowGameWatch(facts.PlaysGames && simulatedSituation is null && (facts.Home == LiveHome.ThisPc || ownHost is not null));
-        facts = facts with { Game = simulatedSituation is { } fixture ? fixture.Game : gameWatch?.Game };
+        var forSituation = facts.PlaysGames && simulatedSituation is null && (facts.Home == LiveHome.ThisPc || ownHost is not null);
+        var forMemory = homeSettings?.Memory?.Enabled == true && simulatedSituation is null;
+        FollowGameWatch(forSituation || forMemory);
+        facts = facts with { Game = simulatedSituation is { } fixture ? fixture.Game : forSituation ? gameWatch?.Game : null };
+        CurrentActivity.Game = simulatedSituation is { } simulated ? simulated.Game : forMemory ? gameWatch?.Game : null;
         situationFacts = facts;
         var decision = LiveSituations.Decide(facts);
         LiveSituation.Gaming = facts.PlaysGames && facts.Game is not null;
