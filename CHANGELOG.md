@@ -27,6 +27,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Martlet runs cloudflared for WhatsApp only when Windows confirms Cloudflare's signature on it, also a copy you installed yourself. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
+- The Account page says that a PIN or password alone doesn't keep out others who use the same Windows login, and that encryption does. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
 - Asking Martlet in the middle of a game to read more about it now really reads more pages, instead of saying yes and adding nothing. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - Read again no longer drops the pages Martlet read more of, so a guide never gets smaller. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))

@@ -4930,7 +4930,10 @@ empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
 `tools` folder), `version` (the cloudflared release it came from) and
 `verified` (it still matches the size and SHA-256 that GitHub publishes for
 that release, checked at download and recorded in `tools\cloudflared.json`;
-Martlet runs its own copy only when this is true). The secrets
+Martlet runs its own copy only when this is true), `signed` (Windows confirms a
+valid Authenticode signature from *Cloudflare, Inc.* on it; Martlet runs no
+cloudflared.exe without it, also one on PATH) and `signatureProblem` (why not,
+or null). The secrets
 live in Windows Credential Manager and are never read.
 `messaging_check` rehearses the production `MessagingBridge` and
 `TelegramTransport` with local fakes and contacts no Telegram, WhatsApp or
