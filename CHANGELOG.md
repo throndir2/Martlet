@@ -10,11 +10,11 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
-- Many requests to a host at the same time no longer wait for each other's disk saves one by one. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
-- When a host can't save or load API keys, accounts, memories, conversations or other shared data, it now says so in its log and security audit instead of losing the change without a sign. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
-- A device on the home network sending false pairing proofs can no longer stop your own desktops from pairing with a host, and a failed re-pair no longer removes a desktop's working pairing. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
-- Host setup on a Mac, Mac screen capture and the Linux desktop check can no longer hang when a tool writes a lot of output. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- Many requests to a host at the same time no longer wait for each other's disk saves one by one. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- When a host can't save or load API keys, accounts, memories, conversations or other shared data, it now says so in its log and security audit instead of losing the change without a sign. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- A device on the home network sending false pairing proofs can no longer stop your own desktops from pairing with a host, and a failed re-pair no longer removes a desktop's working pairing. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- Host setup on a Mac, Mac screen capture and the Linux desktop check can no longer hang when a tool writes a lot of output. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 
 ## [0.88.2] - 2026-10-17
 
