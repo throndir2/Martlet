@@ -58,6 +58,32 @@ cannot responsibly be resolved from the user's goal and available evidence.
   integration; completion requires a working persistent result, not a
   proposal or queued merge.
 
+## File issues for problems you find
+
+When you find a bug, defect or other problem during a task and you do not fix
+it in the same change, file a GitHub issue so that it is not lost. This
+applies to problems in the code, tests, scripts, tools and documentation.
+Examples are a test that fails on `origin/main`, a flaky test, a crash, a
+wrong result, a setting that is not shared, a slow path, a broken script and
+a wrong or old document.
+
+1. Search the open issues first (`gh issue list --search "<words>"`). If an
+   issue is there, add a comment with your new evidence instead.
+2. File the issue in `throndir2/Martlet` with the app's `create_issue` tool
+   when it is available. Otherwise use `gh issue create`.
+3. Give it a short, specific title and a body that tells what happens, what
+   you expected, how to make it happen again (commands, files and lines), the
+   commit or branch, and the error or log text.
+4. Add the labels that apply: a kind (`bug`, `reliability`, `performance`,
+   `security`, `settings-sync`, `tech-debt`, `ux`, `documentation`), one
+   `area: ...` label and, when you can tell, one `priority: ...` label.
+5. Link the issue in your PR description and in any `tests\known-failures.txt`
+   line or code comment about the problem.
+
+Do not file an issue for a problem that your change makes and fixes before
+merge. Do not put secrets, API keys, private data or personal paths in an
+issue. Never assign an issue to Copilot or any other cloud agent.
+
 ## Write in Simplified Technical English
 
 Write responses, progress updates, PR descriptions and developer
