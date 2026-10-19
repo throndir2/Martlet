@@ -200,6 +200,20 @@ internal sealed partial class McpServer
             dataDirectory = new { type = "string" }
         },
             arguments => MessagingStatus(arguments)),
+        Tool("messaging_check", "Rehearse Companion > Messaging's production bridge and Telegram transport with local fakes (no Telegram, " +
+            "WhatsApp or Meta server is contacted): a connection that breaks while Telegram's answer is read is a network failure " +
+            "(retried, no token in the message); an unexpected receive error makes the bridge Retrying, then Running again (never a " +
+            "silent Off); a failing typing call and a failing answer don't lose the rest of the batch (the chat is told Martlet " +
+            "couldn't answer); and a stranger's wrong pairing codes don't use up the owner's code. Returns ok and each step.", new { },
+            async (_, cancellation) => await MessagingCheck.RunAsync(cancellation)),
+        Tool("smart_home_guard", "Show how Smart home's safety guard (HomeCommandGuard) treats one request before it would go to " +
+            "Home Assistant: Normal (ordinary words or a status question, sent to Assist), Sensitive (asks for an action on a lock, " +
+            "door, garage, gate, alarm or valve: never sent unless allowed and confirmed) or NotACommand (a longer sentence; chat). " +
+            "Local only; contacts nothing.", new
+        {
+            text = new { type = "string", maxLength = 2000 }
+        }, ["text"],
+            arguments => MessagingCheck.Guard(RequiredString(arguments, "text"))),
         Tool("terminal_status", "Read Companion > Tools > Terminal from a data directory's terminal.json (this PC only, never " +
             "synced): whether replies may run terminal commands (off by default), the shell and whether it is installed, which shells " +
             "this PC has, whether every command asks first (on by default), the time limit, whether commands start in the home folder " +
@@ -791,6 +805,15 @@ internal sealed partial class McpServer
         }
     }
 
+    /// <summary>Martlet's own cloudflared download in the data directory's tools folder: its version and whether it still matches
+    /// the size and SHA-256 checked against GitHub's release at download (Martlet runs it only then).</summary>
+    private static object CloudflaredStatus(string directory)
+    {
+        var own = Martlet.Messaging.CloudflareQuickTunnel.Installed(Path.Combine(directory, "tools"));
+        return own is null ? new { downloaded = false, version = (string?)null, verified = false }
+            : new { downloaded = true, version = own.Version, verified = own.Verified };
+    }
+
     /// <summary>messaging.json in a data directory (the file name and fields match Martlet.Desktop's MessagingPreferences). The
     /// bot token lives in Windows Credential Manager and is never read here; paired chats are only counted.</summary>
     private static object MessagingStatus(JsonElement arguments)
@@ -798,7 +821,7 @@ internal sealed partial class McpServer
         var path = Path.Combine(DataDirectory(arguments), "messaging.json");
         object NoTelegram() => new { connected = false, enabled = false, chats = 0 };
         object NoWhatsApp() => new { connected = false, enabled = false, chats = 0 };
-        if (!File.Exists(path)) return new { state = "none", telegram = NoTelegram(), whatsApp = NoWhatsApp() };
+        if (!File.Exists(path)) return new { state = "none", telegram = NoTelegram(), whatsApp = NoWhatsApp(), cloudflared = CloudflaredStatus(DataDirectory(arguments)) };
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllBytes(path));
@@ -827,7 +850,7 @@ internal sealed partial class McpServer
                     secretsSaved = Saved(whatsApp), chats = Chats(whatsApp), speakReplies = Flag(whatsApp, "SpeakReplies")
                 }
                 : NoWhatsApp();
-            return new { state = "loaded", telegram = telegramStatus, whatsApp = whatsAppStatus };
+            return new { state = "loaded", telegram = telegramStatus, whatsApp = whatsAppStatus, cloudflared = CloudflaredStatus(DataDirectory(arguments)) };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {

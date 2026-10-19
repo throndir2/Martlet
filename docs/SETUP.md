@@ -1,10 +1,17 @@
-# Resumable setup, Windows credentials and local audio (V02a/V02b)
+# Setup, Windows credentials and local audio
 
-**Local configuration backup / restore (V07a)** is available from the main
-window. It is same-profile recovery only, not portable
-profile import, corrupt-store repair or binary rollback. See the
-[installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a)
-and the transaction contract below.
+This document tells how you set up each job (Thinking, Listening and Voice),
+how Martlet keeps API keys in Windows Credential Manager, and how the local
+microphone and speaker tests work. It also gives the settings schema and the
+configuration backup and restore contract. On a new computer, the
+[welcome tour](WELCOME_WIZARD.md) suggests a setup first; the job pages below
+change it later.
+
+**Local configuration backup and restore** is available from the main
+window. It is recovery for the same profile only. It does not import a profile
+from another computer, repair a damaged settings file or roll back the app. See
+the [installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a)
+and the [transaction contract](#local-configuration-recovery-transaction).
 
 [Troubleshooting](TROUBLESHOOTING.md) is available from the main window and
 Audio setup even before configuration succeeds. Opening it is passive; local metadata
@@ -12,8 +19,8 @@ recording is OFF until explicitly started. Preview/export never reads keys,
 audio or raw settings and does not replace malformed settings.
 
 **Setup is configuration, not live readiness or future spending permission.**
-The separate [V04b real API conversation](CONVERSATION.md) now consumes these
-saved choices for explicitly authorized typed/PTT actions. Unsupported model/
+The [conversation](CONVERSATION.md) uses these saved choices for typed and
+push-to-talk turns. Unsupported model/
 voice IDs are rejected there without discovery or fallback; its guide lists
 the exact supported IDs and account/device gates still NOT RUN.
 Set up each job on its own Companion page: **Thinking** (conversation model,
@@ -164,7 +171,7 @@ explicitly reports `MigratedFromVersion1` and `SnapshotFileName`. Existing
 profile ID, kind (unless deliberately changed in the UI) and legacy credential
 references are retained. Legacy references are not resolved, reused or deleted
 by this setup. Downgrade through Save is rejected. This snapshot is not a
-blanket rollback guarantee or V07 lifecycle qualification.
+blanket rollback guarantee or app lifecycle qualification.
 
 `DestinationConsent` is an immutable versioned record of explicit user
 selection, role, provider alias, approved origin, actual model/voice,
@@ -180,17 +187,13 @@ files and atomic replacement. Stale saves require reload/review. A normal save
 cannot silently drop an active credential or a pending cleanup marker.
 No app-data directory/file is created by launch or first-run load.
 
-### Schema 5 self-host client foundation (layer 1)
+### Schema 5 self-host route types
 
 Schema 5 uses setup schema 2 with explicit `OpenAi`, `GatewayOllama`,
 `GatewayF5`, and `LocalWhisper` role discriminators. Migrating ordinary API
 settings preserves their role/model/voice/credential choices and does not select
 self-host routes. Endpoint, model, package and reference snapshots are passive
-configuration, not runtime qualification. The current Desktop still offers API
-setup only and refuses self-host dispatch. Actual accessible self-host Setup,
-typed/PTT/optional-TTS routing and the expanded published
-dependency graph are a **mandatory separate layer 2**, not completed by this
-foundation.
+configuration, not runtime qualification.
 
 Gateway bindings use exact HTTPS IP origin, host ID, SPKI pin, device identity,
 voice role, route type and a fresh opaque credential reference. The Windows
@@ -270,7 +273,7 @@ hostile same-user manipulation and OS-vault roundtrips are not qualified here.
 
 ## Integration and evidence boundaries
 
-### Local configuration recovery transaction (V07a)
+### Local configuration recovery transaction
 
 The explicit `.martlet-config` output is a bounded 16 MiB format-1 JSON
 envelope, not a ZIP/support bundle. Its deterministic manifest records
@@ -331,7 +334,7 @@ flushes and atomically replaces `settings.json`, checking the source/current
 revision again just before replacement. Every pre-restore snapshot is retained,
 even after a failed replacement; historical `settings.v1.*.bak` files are never
 overwritten or pruned. These raw originals remain evidence for compatible
-manual recovery/V07b, not importable envelopes. No settings schema downgrade or
+manual recovery, not importable envelopes. No settings schema downgrade or
 old executable activation is offered.
 
 Failed/canceled staging removes only its uniquely owned temporary file. Cleanup
@@ -358,13 +361,12 @@ count. Desktop/Doctor reports exclude route IDs, origins and credential IDs,
 retain the original twelve probes and exit-code semantics, and never turn
 saved metadata into provider readiness.
 
-V02b adds the explicit local audio actions below, not physical qualification or
-novice evidence. V01b learned VAD/endpointer remains separate. V04b now bridges
-`ICredentialStore` to the provider credential source only after explicit fresh
-bounded per-turn authorization, matching role/model/origin, request IDs and
-limits in its separate app-owned controller. The original V02a slice did not
-register adapters. V03 live capability/access evidence and budgets require separate
-authorization; saved setup alone cannot issue a request.
+The explicit local audio actions below are not physical qualification or
+novice evidence. The conversation bridges `ICredentialStore` to the provider
+credential source only after explicit fresh bounded per-turn authorization,
+matching role/model/origin, request IDs and limits in its separate app-owned
+controller. Live capability checks and budgets need separate authorization;
+saved setup alone cannot issue a request.
 
 Ordinary regression tests exercise the production settings/transaction service
 and actual Windows wrapper with an injected native boundary, never the real OS
@@ -378,7 +380,7 @@ microphone/speaker, live API, clean VM lifecycle, signing, release and novice
 gates remain **NOT RUN**. Do not run a real-key or OS-vault integration test in
 the shared Windows profile without separate permission.
 
-## Explicit local audio setup (V02b)
+## Explicit local audio setup
 
 Open **Microphone and speakers** from Companion › *Listening* or *Voice* (or
 the Devices map). This is a separate local device-test surface, **not** a
@@ -506,15 +508,11 @@ configuration IDs, user paths, or PCM. The existing twelve probes, exit codes
 and automatic read-only effect policy are unchanged. No new CLI device command
 pretends to be implemented.
 
-### V04b seam and remaining gates
+### Tests and remaining gates
 
-V04b may later map the saved choices to input/output policies, but must obtain
-fresh bounded per-turn permission and coordinate runtime ownership with these
-local actions. It must use reviewed runtime/provider boundaries and a separately
-authorized vault-to-provider bridge. This slice references no Conversation or
-Providers library, resolves no keys and installs no real provider adapter.
-V01b learned VAD/endpointer, acoustic tail/AEC, real AI speech, price/quality and
-paid access remain separate.
+The [conversation](CONVERSATION.md) gets its own bounded permission for each
+turn and coordinates runtime ownership with these local actions. The audio
+setup window resolves no keys and installs no provider adapter.
 
 Controlled-device regressions exercise actual WPF button events, metering,
 exact tone bytes, confirmation/invalidation, settings preservation/conflict,
@@ -528,8 +526,7 @@ existing owned-HWND Alt+F Stop assertions remain strict and unchanged.
 **NOT RUN / not passed:** physical endpoint enumeration/capture/audibility,
 USB unplug/reconnect, Bluetooth profile/default/format churn, Windows privacy
 denial and exclusive-device matrix, acoustic tails/physical Stop latency,
-novice/accessibility witness sessions, clean Windows/installer lifecycle,
-signing and G2. No OS-vault roundtrip, live provider/key/model request, cost or
+novice/accessibility witness sessions and clean Windows/installer lifecycle. No OS-vault roundtrip, live provider/key/model request, cost or
 voice-quality test was run. Passing a controlled PCM meter test is not physical
 device qualification or learned VAD evidence.
 

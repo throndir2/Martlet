@@ -50,6 +50,14 @@ public partial class MainWindow
         return true;
     }
 
+    /// <summary>Think with it in the Recommended setup review: Thinking switches to a model an app on this PC serves, as the owner's
+    /// own choice (a change by hand, so Recommended setup keeps it).</summary>
+    private async Task UseServedFromReviewAsync(ServedModel served)
+    {
+        ErrorLog.Info($"Recommended setup: you chose {served.ModelId} in {(served.AppName.Length > 0 ? served.AppName : "a model app")} on this PC for Thinking.");
+        if (await UseServedThinkingAsync(served) && !closing) await RefreshHomeAsync();
+    }
+
     /// <summary>Thinking with a model the owner's own model app serves on this PC, the way Companion › Thinking › This PC uses
     /// it. Ollama's own address goes through Ollama's choice.</summary>
     private async Task<bool> UseServedThinkingAsync(ServedModel served)

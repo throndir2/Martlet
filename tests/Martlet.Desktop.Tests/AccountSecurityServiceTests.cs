@@ -125,6 +125,118 @@ public sealed class AccountSecurityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_seal_asked_for_before_the_account_opened_again_does_not_run()
+    {
+        var (household, sam, _) = Household();
+        var service = new AccountSecurityService(household.Session, data) { SealRetries = [TimeSpan.FromMilliseconds(500)], UnsealRetries = [] };
+        service.Locks.SetPin(sam.Id, "2468", null);
+        var (_, fileKey) = service.Locks.TurnOnEncryption(sam.Id, "2468", null);
+        var folder = AccountSession.FolderFor(data, sam.Id);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), "{}");
+        File.WriteAllText(Path.Combine(folder, "memories.json"), "[]");
+        service.SetFileKey(sam.Id, fileKey);
+
+        // A quick switch away and back: the first seal leaves a file in use plain, then the account opens again before the retry.
+        Task<AccountSealResult?> seal;
+        using (new FileStream(Path.Combine(folder, "settings.json"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            seal = service.SealInBackground(sam.Id);
+            SpinWait.SpinUntil(() => AccountVault.Count(folder).Encrypted == 1, TimeSpan.FromSeconds(5));
+            Thread.Sleep(50);
+        }
+        Assert.True(service.Opened(sam.Id, null));
+        Assert.Null(await seal);
+        Assert.Equal((0, 2), AccountVault.Count(folder));
+        Assert.Equal(fileKey, service.FileKey(sam.Id));
+    }
+
+    [Fact]
+    public void The_file_key_is_a_copy_and_a_seal_keeps_it_until_every_file_is_encrypted()
+    {
+        var (service, sam, _) = Household();
+        service.Locks.SetPin(sam.Id, "2468", null);
+        var (_, fileKey) = service.Locks.TurnOnEncryption(sam.Id, "2468", null);
+        var folder = AccountSession.FolderFor(data, sam.Id);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), "{}");
+        service.SetFileKey(sam.Id, fileKey);
+        var copy = service.FileKey(sam.Id)!;
+        Assert.Equal(fileKey, copy);
+
+        AccountSealResult? result;
+        using (new FileStream(Path.Combine(folder, "settings.json"), FileMode.Open, FileAccess.Read, FileShare.Read))
+            result = service.Seal(sam.Id);
+        Assert.Equal(["settings.json"], result!.Skipped);
+        // The key stays (a later seal or the one at exit encrypts the file), and the copy given out wasn't zeroed.
+        Assert.Equal(fileKey, service.FileKey(sam.Id));
+        Assert.Equal(fileKey, copy);
+        Assert.Empty(service.Seal(sam.Id)!.Skipped);
+        Assert.Equal((1, 0), AccountVault.Count(folder));
+        Assert.Null(service.FileKey(sam.Id));
+    }
+
+    [Fact]
+    public async Task A_background_seal_tries_again_the_files_another_program_had_open()
+    {
+        var (household, sam, _) = Household();
+        var service = new AccountSecurityService(household.Session, data) { SealRetries = [TimeSpan.FromMilliseconds(300), TimeSpan.FromSeconds(1)] };
+        service.Locks.SetPin(sam.Id, "2468", null);
+        var (_, fileKey) = service.Locks.TurnOnEncryption(sam.Id, "2468", null);
+        var folder = AccountSession.FolderFor(data, sam.Id);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), "{}");
+        service.SetFileKey(sam.Id, fileKey);
+
+        var held = new FileStream(Path.Combine(folder, "settings.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        var seal = service.SealInBackground(sam.Id);
+        Thread.Sleep(100);
+        held.Dispose();
+        var result = await seal;
+        Assert.Empty(result!.Skipped);
+        Assert.Equal((1, 0), AccountVault.Count(folder));
+        Assert.Null(service.FileKey(sam.Id));
+    }
+
+    [Fact]
+    public void An_unlock_whose_files_do_not_all_decrypt_asks_and_stays_locked_when_the_person_says_no()
+    {
+        var (household, sam, _) = Household();
+        IReadOnlyList<string>? asked = null;
+        var service = new AccountSecurityService(household.Session, data)
+        {
+            UnsealRetries = [],
+            OpenWithout = (_, _, files) => { asked = files; return false; }
+        };
+        var folder = AccountSession.FolderFor(data, sam.Id);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), "{}");
+        File.WriteAllText(Path.Combine(folder, "memories.json"), "[]");
+        service.Locks.SetPin(sam.Id, "2468", null);
+        var (_, key) = service.Locks.TurnOnEncryption(sam.Id, "2468", null);
+        AccountVault.Seal(folder, key);
+        File.WriteAllText(Path.Combine(folder, "memories.json.mlock"), "damaged");
+        service.SetFileKey(sam.Id, key);
+
+        // No: the account stays locked and the file that did decrypt is encrypted again.
+        Assert.False(service.Opened(sam.Id, null));
+        Assert.Equal(["memories.json"], asked);
+        Assert.Equal((2, 0), AccountVault.Count(folder));
+        Assert.Null(service.FileKey(sam.Id));
+
+        var opened = new AccountSecurityService(household.Session, data) { UnsealRetries = [], OpenWithout = (_, _, _) => true };
+        opened.SetFileKey(sam.Id, key);
+        Assert.True(opened.Opened(sam.Id, null));
+        Assert.Equal((1, 1), AccountVault.Count(folder));
+    }
+
+    [Fact]
+    public void A_damaged_unlock_file_needs_an_unlock_even_for_this_windows_login()
+    {
+        var (service, sam, _) = Household();
+        Assert.False(service.NeedsUnlock(sam.Id));
+        Directory.CreateDirectory(service.Locks.Directory);
+        File.WriteAllText(service.Locks.PathFor(sam.Id), "{ not json");
+        Assert.True(service.NeedsUnlock(sam.Id));
+    }
+
+    [Fact]
     public void Continue_as_replaces_the_new_account_first_start_made_while_it_is_unwritten()
     {
         var alexAttestation = default(AccountAttestation);

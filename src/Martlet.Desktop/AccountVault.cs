@@ -93,9 +93,18 @@ internal static class AccountVault
         return (encrypted, files.Count - encrypted);
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> FolderGates = new(StringComparer.OrdinalIgnoreCase);
+
     private static AccountSealResult Walk(string folder, byte[] fileKey, bool seal)
     {
         if (fileKey.Length != 32) throw new ArgumentException("The file key must be 32 bytes.", nameof(fileKey));
+        // One walk of a folder at a time: a seal and an unseal together could each delete the copy the other just made.
+        lock (FolderGates.GetOrAdd(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)), _ => new object()))
+            return WalkAlone(folder, fileKey, seal);
+    }
+
+    private static AccountSealResult WalkAlone(string folder, byte[] fileKey, bool seal)
+    {
         if (!Directory.Exists(folder)) return new(0, []);
         var done = 0;
         var skipped = new List<string>();

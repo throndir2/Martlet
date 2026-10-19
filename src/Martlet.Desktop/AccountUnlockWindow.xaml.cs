@@ -33,7 +33,9 @@ public partial class AccountUnlockWindow : ThemedWindow
         HelloButton.Visibility = current.Hello && !current.Encrypt ? Visibility.Visible : Visibility.Collapsed;
         UnlockButton.Visibility = current.HasPin || current.HasPassword ? Visibility.Visible : Visibility.Collapsed;
         OtherButton.Visibility = SignInButton.Visibility = othersAllowed ? Visibility.Visible : Visibility.Collapsed;
-        HintText.Text = current.Methods.Count == 0
+        HintText.Text = current.Damaged
+            ? $"Martlet can't read how {accountName} unlocks on this PC, so it asks for a sign-in. Sign in with the Martlet password through one of your hosts."
+            : current.Methods.Count == 0
             ? $"Nothing is set up to unlock {accountName} on this PC. Sign in with the Martlet password through one of your hosts."
             : current.Encrypt
                 ? $"{accountName}'s files on this PC are encrypted until you unlock."
@@ -71,9 +73,9 @@ public partial class AccountUnlockWindow : ThemedWindow
             PasswordText.Clear();
             Show(result, usePin ? "PIN" : "password");
         }
-        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+        catch (Exception error) when (IsLockFileError(error))
         {
-            StatusText.Text = $"Martlet could not read how {accountName} unlocks here ({error.Message}).";
+            ShowLockFileError(error);
         }
         finally { UnlockButton.IsEnabled = true; }
     }
@@ -90,9 +92,23 @@ public partial class AccountUnlockWindow : ThemedWindow
                 StatusText.Text = WindowsHello.Describe(verified);
                 return;
             }
-            Show(store.Unlock(accountId, AccountUnlockMethod.WindowsHello, null), "Windows Hello");
+            Show(await Task.Run(() => store.Unlock(accountId, AccountUnlockMethod.WindowsHello, null)), "Windows Hello");
+        }
+        catch (Exception error) when (IsLockFileError(error))
+        {
+            ShowLockFileError(error);
         }
         finally { HelloButton.IsEnabled = true; }
+    }
+
+    private static bool IsLockFileError(Exception error) =>
+        error is System.IO.IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException;
+
+    // The details (paths) go to the log only.
+    private void ShowLockFileError(Exception error)
+    {
+        ErrorLog.Warn($"Account {accountId:N}: the unlock file on this PC could not be read or saved", error);
+        StatusText.Text = $"Martlet could not read or save how {accountName} unlocks on this PC. Another program can have the file open. Try again in a moment.";
     }
 
     private void Show(AccountUnlockResult result, string what)

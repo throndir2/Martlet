@@ -74,6 +74,10 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     /// <summary>The chat models the model apps on this PC serve: "qwen3:32b in LM Studio (about 21 GB)".</summary>
     public IReadOnlyList<string> Served { get; init; } = [];
 
+    /// <summary>The models of <see cref="Served"/>, in the same order: each is an explicit Thinking choice in the review (Think with
+    /// it), next to Martlet's own pick.</summary>
+    public IReadOnlyList<ServedModel> ServedChoices { get; init; } = [];
+
     /// <summary>Prefer models your hosts already have is on: the recommendation plans Thinking with <see cref="HostModels"/>.</summary>
     public bool PreferHostModels { get; init; }
 
@@ -214,6 +218,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             Parts = [.. recommendation.Components.Select(c => new ReviewPart(c.Component, c.Rank, c.Name, c.CanBeOff ? "Optional" : "Needed",
                 c.On, c.Where, c.Why, c.OffInReview, c.OwnerOff) { Facts = PartFacts(c, recommendation, catalog) })],
             Served = ServedLines(request.ServedModels),
+            ServedChoices = RecommendedSetupInputs.ServedOrder(request.ServedModels),
             UseServed = build.Preferences.UseServedModels,
             PreferHostModels = request.PreferHostModels,
             HostModels = HostModelLines(request.Machines, Name),
@@ -255,10 +260,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
 
     /// <summary>One line per chat model the owner's model apps serve, biggest first: "qwen3:32b in LM Studio (about 21 GB)".</summary>
     internal static IReadOnlyList<string> ServedLines(IEnumerable<ServedModel> served) =>
-        [.. served.Where(m => ServedModels.Chats(m.ModelId)).DistinctBy(m => (m.ModelId, m.AppId))
-            .OrderByDescending(m => ServedModels.Gb(m) ?? 0).ThenBy(m => m.ModelId, StringComparer.OrdinalIgnoreCase)
-            .Select(m => $"{m.ModelId} in {(m.AppName.Length > 0 ? m.AppName : "your model app")}" +
-                (ServedModels.Gb(m) is { } gb ? $" (about {gb.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} GB)" : ""))];
+        [.. RecommendedSetupInputs.ServedOrder(served).Select(RecommendedSetupInputs.ServedLine)];
 
     /// <summary>A computer's host roles and, on a companion PC, the jobs it does itself (Thinking in Ollama, Parakeet in Martlet):
     /// "Chatterbox Turbo; on the PC itself: Thinking (Gemma 4 E2B in Ollama), Listening (Parakeet on the processor)".</summary>

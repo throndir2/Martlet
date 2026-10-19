@@ -171,16 +171,9 @@ internal sealed partial class CheckInsPageModel
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
         "{presence}, {touches}, {activity}, {people}, {away}, {exchange}, {heard} and {callbacks}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
-    internal const string About = "A check-in is a short question that the Thinking pool answers for Martlet every few " +
-        "minutes, with only the facts it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, " +
-        "where the eyes look, and the reminders and work Martlet started. Martlet then acts on the answer. It turns off an emote, " +
-        "takes the eyes back to their usual gaze, or puts a short reminder in the notes of your next message, so its next reply " +
-        "follows it. A check-in can also call tools from the sets you tick on its card, and with Its tools act, those calls are " +
-        "what it does. Its card shows each tool it called and what came of it.\n\n" +
-        "Check-ins run only on Thinking pool members, never on the conversation's own Thinking model, so replies never wait for " +
-        "them. They wait while you talk and while nobody uses this PC, and they stay on this PC. The built-in check-ins work like " +
-        "your own: change their prompt, facts, conditions and answer under More settings on their card, and Use built-in settings " +
-        "puts Martlet's own back. Copy as your own makes a check-in of your own from any card.";
+    // The "?" after Now: one short line; the full instructions are in the wiki (docs/wiki/Thinking.md#check-ins).
+    internal const string About = "A check-in is a short question that the Thinking pool answers for Martlet every few minutes. " +
+        "Martlet then acts on the answer, so its next reply follows it.";
 
     // What models hear of a long recording (docs/CONVERSATION.md#check-ins).
     internal const string LengthHelp = "Gemma 4 and Gemma 3n hear only the first 30 seconds of a recording. " +

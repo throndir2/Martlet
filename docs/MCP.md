@@ -1379,7 +1379,9 @@ and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
 waits, its last run, runs and actions since Martlet started). `Help-CheckInsAbout`
-next to *Now* explains check-ins (`help`). Every check-in,
+next to *Now* explains check-ins in one short line (`help`); its card links to the
+wiki's *Check-ins* section (`Help-CheckInsAbout-Wiki`), and *Your own check-ins*
+has `Help-CheckInsOwn` with a link to *Your own check-ins*. Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>` and `CheckInOutcome-<id>` show on its card, and the rest
 is under *More settings* (`Fold-CheckInMore-<id>`, closed at first: click it
@@ -2376,7 +2378,9 @@ without the desktop: `device` (this data folder's device ID), `network`
 `merged`, `none` when a host or desktop would refuse it, or `no_network`);
 `signedInHere`; and `locks`, per account with an unlock file in
 `account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
-`askOnThisPc`, `remember`, `encrypt`, `encryptedFiles` and `plainFiles` in
+`askOnThisPc`, `remember`, `encrypt`, `damaged` (the unlock file is there but
+can't be read, so the account fails closed and needs a sign-in),
+`encryptedFiles` and `plainFiles` in
 the account's folder, `failures`, `waitUntil` and whether the DPAPI-protected
 part exists. Never a PIN, password, verifier, attestation, e-mail, login user
 name or SID.
@@ -4918,8 +4922,28 @@ never their names or IDs) and
 `enabled`, `number`, `name`, `appId`, `businessAccountId`, `phoneNumberId`,
 `port` (Martlet's localhost webhook port), `publicAddress` (the owner's own;
 empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
-(never the access token or app secret), `chats` and `speakReplies`. The secrets
-live in Windows Credential Manager and are never read. In the desktop,
+(never the access token or app secret), `chats` and `speakReplies`, and
+`cloudflared` with `downloaded` (Martlet's own copy is in the data directory's
+`tools` folder), `version` (the cloudflared release it came from) and
+`verified` (it still matches the size and SHA-256 that GitHub publishes for
+that release, checked at download and recorded in `tools\cloudflared.json`;
+Martlet runs its own copy only when this is true). The secrets
+live in Windows Credential Manager and are never read.
+`messaging_check` rehearses the production `MessagingBridge` and
+`TelegramTransport` with local fakes and contacts no Telegram, WhatsApp or
+Meta server. It returns `ok` and `steps`: `telegramBodyReadBreaks` (a
+connection that breaks while the answer is read is a `Network` failure, with
+no token in the message), `unexpectedErrorRetries` (an unexpected receive
+error gives `Retrying`, then `Running` again, never a silent `Off`),
+`failedAnswerKeepsTheBatch` (a failing typing call and a failing answer do not
+lose the next message; the chat is told Martlet couldn't answer), `stopsAsOff`
+and `pairingCodeSurvivesAStranger` (wrong codes count per chat, so a stranger
+can't use up the owner's code). `smart_home_guard` shows how Smart home's
+safety guard (`HomeCommandGuard`) treats one `text`: `risk` (`Normal`,
+`Sensitive` or `NotACommand`), `mentionsSensitive` and `meaning`. A request
+that asks for an action on a lock, door, garage, gate, alarm or valve is
+`Sensitive` also when it starts with a question word ("why don't you unlock
+the door"); it is local only and contacts nothing. In the desktop,
 Companion › Messaging's `MessagingStatus` (whether Martlet
 answers the bot now, or why not), `MessagingNote` (the last connect outcome),
 `MessagingChats` (how many chats) and `MessagingPairStatus` (until when the
@@ -5493,6 +5517,30 @@ words, NOT AI): llama.cpp without `--jinja` (`llamaCpp`: its model list says
 and warns) and an app that asks for a key (`keyed`: `NeedsKey` without the key,
 its models with it), plus an address off this PC (`offComputer`, refused).
 `fixture.ok` needs all of them. Loopback only; never a key; saves nothing.
+
+`ollama_model_file` is Companion › Thinking › This PC › *Use a model file you
+downloaded* without the window. `paths` (absolute paths of GGUF files the owner
+would pick) returns `plan`: the `files` Martlet would add to this PC's Ollama
+(every part of a split model `name-00001-of-0000N.gguf`, and `addedProjector`,
+a lone `mmproj*.gguf` in the same folder that lets the model see), the Ollama
+`model` name made from the file name (*Qwen3-8B-Q4_K_M.gguf* is
+`qwen3-8b-q4_k_m`) and the `bytes` Ollama would copy, or `refused` (not a GGUF,
+only a projector, a missing part). It reads only the folder listing and file
+sizes and contacts nothing. `fixture: true` runs the production import
+(`OllamaModelImport`: the SHA-256 of each file, `HEAD` and `POST
+/api/blobs/sha256:...`, then `POST /api/create` with the files) on FIXTURE
+files (small text, NOT real models) against a fixture Ollama on 127.0.0.1 that
+checks each digest and already has one part: `import` (`blobsSent` 2,
+`blobsChecked`, `createdModel`, `createdFiles`, `output`), `ollamaRefuses`
+(Ollama's own words when it refuses a model) and `refusals`. `fixture.ok` needs
+all of them. Never touches the real Ollama; saves nothing.
+
+In the desktop, `SetupAddModelFile` (*Use a model file you downloaded...*, on
+the *Ollama on this PC* card; `SetupAddModelFileNote` reads what it does)
+opens a file dialog, asks `AddModelFileQuestion` (the files, the model name and
+the space Ollama's copy takes), adds the files in a run window titled *Add
+<model> to Ollama*, then switches Thinking to the model like
+`SetupUseLocalThinking` and tests it. It needs `--allow-ui-effects`.
 
 On the Thinking page, *Model app* is an option picker without a details panel:
 `Picker-LocalApp-Ollama`, one row per app found on this PC
@@ -6538,7 +6586,9 @@ alone, as before the catalog, to compare. The result has:
   embedding, speech or picture model, which Thinking can't use), `downloadGb`
   (the app's own size; only Ollama says it), `estimatedGb` (the graphics
   memory the planner counts) and `option` (`served:<model>`, the job option
-  the recommendation uses)) and `note`.
+  the recommendation uses)), `choices` (the review's explicit Thinking choices,
+  in its order: each `button` `RecommendedSetupUseServed-<n>`, its `line`,
+  `model` and `address`; empty when the choice is off) and `note`.
 - `hostModels`: `prefer` (*Prefer models your hosts already have* is on: the
   fixture's, or `PreferHostModels` in the directory's
   `recommended-setup.json`; off by default), `found` (each Thinking chat model
@@ -6690,7 +6740,14 @@ review opens again planned that way; the values read the choice in effect and
 `RecommendationUseServedModels`, `RecommendationPreferHostModels`; also
 `--allow-ui-effects`), and `RecommendationPreferencesStatus` reads *Saved for
 all your computers. ...* after a change. `RecommendedSetupHostModels` reads the models your hosts
-keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. Reconfigure
+keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. While *Use
+models your apps already run* is on and an app on this PC serves chat models,
+`RecommendedSetupServedHeading` (*Or choose one of the models your apps already
+run for Thinking:*) lists each as `RecommendedSetupServed-<n>` (*qwen3-32b in LM
+Studio (about 22 GB)*, biggest first) with its `RecommendedSetupUseServed-<n>`
+(*Think with it*): it closes the review and switches Thinking to that model in
+that app, a change by hand that Recommended setup keeps, so it needs
+`--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
@@ -8164,9 +8221,23 @@ page's controls are only visible after you open it: click `NavHome`,
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
 explanation as `help`, and `ui_click` on it only opens a small card with that
-text (passive, no `--allow-ui-effects`). An explanation line that shows only its
+text (passive, no `--allow-ui-effects`). While the card is open, `ui_snapshot`
+also lists its text as `Help-<id>-Card` (`value`: the explanation) and, when the
+explanation has a wiki page, its *Read more in the wiki* link as `Help-<id>-Wiki`
+(`value`: *Read more in the wiki*; `help`: the wiki address, such as
+`https://github.com/throndir2/Martlet/wiki/Thinking#check-ins`). Read the
+address from `help`: `ui_click` on `Help-<id>-Wiki` opens the browser, so it
+needs `--allow-ui-effects`. An explanation line that shows only its
 first sentence before its *?* returns that sentence as `value` and all of the
-text as `help`. Settings most people leave alone sit in sections you open and
+text as `help`. `ui_long_texts` lists the texts that show now with more than one
+sentence (text blocks and check box or radio button labels): each one's
+`window`, `id` (or `near`, the nearest container's automation ID), `sentences`
+and `text`, and `count` for all of them (at most 200 are listed). Martlet 1.0
+shows one short sentence and puts the rest behind a *?* with a wiki link, so a
+page that follows the rule lists none. It leaves out lists, tables, trees, text
+boxes, help cards, tooltips and controls whose automation ID `ui_snapshot` does
+not read, so the owner's own content does not show; still, use it on a
+disposable data directory. It changes nothing and needs no `--allow-ui-effects`. Settings most people leave alone sit in sections you open and
 close (`Fold-<id>`, such as `Fold-CheckInMore-emotes`): `ui_snapshot` returns
 `expanded` (true or false), their controls show in `ui_snapshot` only while the
 section is open, and `ui_click` opens or closes it (passive). A section stays
