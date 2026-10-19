@@ -47,8 +47,8 @@ public sealed class BackgroundPlacesTests
         var next = jobs.Start(Think, "next", Until(release.Task), Pool);
         Assert.Equal("ripley", next.Job!.Place!.Name);
         release.SetResult();
-        await WaitAsync(() => jobs.Active.Count == 0);
-        Assert.Empty(jobs.Places.Leases);
+        // A job is finished a moment before its place is let go.
+        await WaitAsync(() => jobs.Active.Count == 0 && jobs.Places.Leases.Count == 0);
         Assert.Equal("done on ripley", next.Job.Result);
     }
 
