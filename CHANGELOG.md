@@ -19,9 +19,9 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- Taking a picture of the character while it speaks no longer closes or crashes the character window. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
-- The character's mouth keeps moving when the start of a sentence arrives in a burst, and a stop is written to the log. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
-- With manual Audio2Face lip-sync, one late frame no longer stops the mouth for the rest of the sentence. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- Taking a picture of the character while it speaks no longer closes or crashes the character window. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
+- The character's mouth keeps moving when the start of a sentence arrives in a burst, and a stop is written to the log. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
+- With manual Audio2Face lip-sync, one late frame no longer stops the mouth for the rest of the sentence. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
 - The Linux (.deb and AppImage) and macOS packages now include Martlet's license and the full license notices of every component they contain, and a new release shows up only after all its Windows, Linux and macOS files are ready, with one SHA256SUMS.txt for all of them. ([#1018](https://github.com/throndir2/Martlet/pull/1018))
 - A shared setting that this PC applied but couldn't use yet (Voice ID, for example) is tried again after a minute, then less often, instead of staying different until Martlet restarts. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
 - A settings change made by another computer or by MCP while Martlet was busy reading settings now always shows; a failed refresh is written to the log. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
