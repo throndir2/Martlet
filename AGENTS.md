@@ -258,7 +258,7 @@ Use it to work with Martlet itself, not only to validate changes:
 ## Publication and merge
 
 Follow the [validation policy](CONTRIBUTING.md#local-only-validation-policy)
-and [delivery protocol](docs/DELIVERY.md). Before each push, PR creation/update
+and the rules in this section. Before each push, PR creation/update
 or merge, check the applicable workflow triggers so publishing starts no remote
 validation, including self-hosted Actions. If no safe path exists, retain the
 local work and report the exact blocker.
@@ -333,7 +333,10 @@ one normal merged release PR bumps `<Version>` in `Directory.Build.props`,
 dates the changelog section and refreshes the README's *What's new*; then run
 `gh workflow run windows-release.yml --ref main -f version=<that version>`
 and confirm the release is published as Latest on GitHub with its notes. If the
-build fails, fix the cause before dispatching again.
+build fails, fix the cause before dispatching again. The release stays a draft
+until the Linux and macOS files are attached; when only a platform job failed
+for a reason outside the code, use **Re-run failed jobs** on that run instead
+of a new dispatch ([When a release run fails](packaging/windows/README.md#when-a-release-run-fails)).
 
 Code signing is not required. Martlet is a personal project and publishes
 unsigned installers as actual, normal releases; do not label them prototype

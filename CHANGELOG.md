@@ -19,6 +19,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- The Linux (.deb and AppImage) and macOS packages now include Martlet's license and the full license notices of every component they contain, and a new release shows up only after all its Windows, Linux and macOS files are ready, with one SHA256SUMS.txt for all of them. ([#1018](https://github.com/throndir2/Martlet/pull/1018))
 - A shared setting that this PC applied but couldn't use yet (Voice ID, for example) is tried again after a minute, then less often, instead of staying different until Martlet restarts. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
 - A settings change made by another computer or by MCP while Martlet was busy reading settings now always shows; a failed refresh is written to the log. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
 - A damaged voice recognition model is refused every time instead of giving wrong voiceprints on the next try. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
