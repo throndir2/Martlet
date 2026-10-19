@@ -474,7 +474,15 @@ Switching to an account that is signed in on this PC needs an **Unlock** when:
 - the account doesn't have this PC's Windows login among its logins (it signed
   in with *Sign in as someone else*), or
 - *Ask for my password on this PC* is on, or
-- its files are encrypted here.
+- its files are encrypted here, or
+- its unlock file here is there but can't be read (damaged, another account's,
+  or held by another program). Martlet can't tell what was set up, so it fails
+  closed: the Unlock window asks for a sign-in (Prove) with the account's
+  Martlet password. A good sign-in keeps the damaged file as
+  `<32 hex>.json.damaged` and starts a new one with nothing set. Martlet never
+  changes a damaged file in another way. A missing file still means nothing
+  is set up; people who share the Windows login can delete it, so only
+  encryption keeps them out for sure.
 
 The Unlock window takes the PIN, the password or Windows Hello, offline. It
 shows at start before the account loads and before every switch, never during
@@ -597,7 +605,14 @@ here):
   associated data), one file at a time with an atomic replace. Unlock decrypts
   them before the account loads. A crash leaves each file whole; when both
   copies exist, the plain one wins. A file another program has open stays
-  plain and is logged. **Lock now** shows Unlock without encrypting (the
+  plain. Martlet tries those files again after 2 s, 10 s, 30 s and 2 minutes
+  and keeps the key until they are encrypted; after the last try it tells
+  you which files are still plain and encrypts them when it closes. One
+  encryption or decryption of a folder runs at a time, and a switch back to the
+  account stops an encryption that hasn't started yet. When Unlock can't
+  decrypt every file, Martlet tries again, then names the files and asks
+  **Open without them** or **Don't open now** (the files that did decrypt are
+  encrypted again). **Lock now** shows Unlock without encrypting (the
   account's files are in use).
 - Only the account's folder is encrypted. The settings of the account in use
   are also in the data folder's own files (the working copy of

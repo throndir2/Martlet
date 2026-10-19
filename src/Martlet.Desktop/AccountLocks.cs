@@ -55,6 +55,11 @@ internal sealed record AccountLock
     public DateTimeOffset? UpdatedAt { get; init; }
     public string? Protected { get; init; }
 
+    /// <summary>The unlock file is there but Martlet can't read it (damaged, another account's or held by another program). Martlet
+    /// can't tell what was set up, so the account always needs an Unlock (a Prove sign-in) here: it fails closed.</summary>
+    [JsonIgnore]
+    public bool Damaged { get; init; }
+
     /// <summary>The ways to unlock set up here: "pin", "password", "hello".</summary>
     [JsonIgnore]
     public IReadOnlyList<string> Methods =>
@@ -62,8 +67,8 @@ internal sealed record AccountLock
 
     /// <summary>Whether switching to the account here needs an Unlock. <paramref name="windowsLoginOfThisPc"/>: the account has
     /// this PC's Windows login (this device ID and SID) among its logins, so the Windows login unlocks it unless the person asked
-    /// for the password here or encrypted the files.</summary>
-    public bool NeedsUnlock(bool windowsLoginOfThisPc) => !windowsLoginOfThisPc || AskOnThisPc || Encrypt;
+    /// for the password here or encrypted the files. A <see cref="Damaged"/> unlock file always needs an Unlock.</summary>
+    public bool NeedsUnlock(bool windowsLoginOfThisPc) => Damaged || !windowsLoginOfThisPc || AskOnThisPc || Encrypt;
 }
 
 /// <summary>The protected part of an <see cref="AccountLock"/>.</summary>
@@ -100,26 +105,60 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
 
     internal string PathFor(Guid accountId) => Path.Combine(Directory, accountId.ToString("N") + ".json");
 
-    /// <summary>The account's unlock file; a new one (nothing set) when there is none or it can't be read.</summary>
+    /// <summary>The account's unlock file; a new one (nothing set) when there is none. A file that is there but can't be read
+    /// gives a <see cref="AccountLock.Damaged"/> one (nothing set, but it needs an Unlock): the lock fails closed.</summary>
     internal AccountLock Load(Guid accountId)
     {
         lock (Gate)
         {
             var path = PathFor(accountId);
-            try
+            for (var attempt = 1; ; attempt++)
             {
-                var loaded = JsonSerializer.Deserialize<AccountLock>(File.ReadAllBytes(path), Json);
-                if (loaded is { SchemaVersion: 1 } && loaded.AccountId == accountId) return loaded;
-                ErrorLog.Warn($"{Folder}\\{accountId:N}.json is not this account's unlock file; nothing is set up to unlock it here.");
+                try
+                {
+                    var loaded = JsonSerializer.Deserialize<AccountLock>(File.ReadAllBytes(path), Json);
+                    if (loaded is { SchemaVersion: 1 } && loaded.AccountId == accountId) return loaded;
+                    ErrorLog.Warn($"{Folder}\\{accountId:N}.json is not this account's unlock file; the account needs a sign-in to unlock here.");
+                    return new() { AccountId = accountId, Damaged = true };
+                }
+                catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return new() { AccountId = accountId }; }
+                // Another program (an antivirus or a sync tool) can hold the file for a moment.
+                catch (IOException) when (attempt < 3) { Thread.Sleep(50); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    ErrorLog.Warn($"{Folder}\\{accountId:N}.json could not be read ({error.GetType().Name}); the account needs a sign-in to unlock here.");
+                    return new() { AccountId = accountId, Damaged = true };
+                }
             }
-            catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-            {
-                ErrorLog.Warn($"{Folder}\\{accountId:N}.json could not be read ({error.GetType().Name}); nothing is set up to unlock it here.");
-            }
-            return new() { AccountId = accountId };
         }
     }
+
+    /// <summary>After a Prove sign-in: replaces a damaged unlock file (one that is there but isn't valid) with a new one with
+    /// nothing set, and keeps the damaged one as <c>.damaged</c>. A file that only can't be read now (held by another program)
+    /// stays. True when it replaced the file.</summary>
+    internal bool Repair(Guid accountId)
+    {
+        lock (Gate)
+        {
+            var path = PathFor(accountId);
+            byte[] bytes;
+            try { bytes = File.ReadAllBytes(path); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+            try
+            {
+                if (JsonSerializer.Deserialize<AccountLock>(bytes, Json) is { SchemaVersion: 1 } loaded && loaded.AccountId == accountId) return false;
+            }
+            catch (JsonException) { }
+            File.Move(path, path + ".damaged", overwrite: true);
+            Save(new AccountLock { AccountId = accountId });
+            ErrorLog.Warn($"{Folder}\\{accountId:N}.json was damaged; it is kept as .damaged and the account's unlock here starts again with nothing set.");
+            return true;
+        }
+    }
+
+    // A damaged unlock file is never overwritten by a change: it would lose the PIN and the wrapped file keys. Repair it first.
+    private AccountLock Writable(Guid accountId) => Load(accountId) is { Damaged: false } current ? current
+        : throw new InvalidOperationException("Martlet can't read how this account unlocks on this PC. Try again, or sign in with its Martlet password.");
 
     /// <summary>Every account with an unlock file here.</summary>
     internal IReadOnlyList<AccountLock> All()
@@ -144,7 +183,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
     {
         lock (Gate)
         {
-            var next = change(Load(accountId)) with { AccountId = accountId };
+            var next = change(Writable(accountId)) with { AccountId = accountId };
             if (next.AskOnThisPc && next.Methods.Count == 0)
                 throw new InvalidOperationException("Set a PIN, Windows Hello or a password first, so Martlet has something to ask for.");
             return Save(next);
@@ -156,7 +195,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
         if (!IsPin(pin)) throw new ArgumentException("A PIN is 4 to 12 digits.", nameof(pin));
         lock (Gate)
         {
-            var current = Load(accountId);
+            var current = Writable(accountId);
             if (current.Encrypt && fileKey is null) throw new InvalidOperationException("Unlock the account first: its files are encrypted with the PIN.");
             var secrets = Secrets(current) with
             {
@@ -171,7 +210,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
     {
         lock (Gate)
         {
-            var current = Load(accountId);
+            var current = Writable(accountId);
             if (current.Encrypt) throw new InvalidOperationException("Turn off encryption first: the PIN opens your encrypted files.");
             var next = current with { HasPin = false };
             if (next.AskOnThisPc && next.Methods.Count == 0) next = next with { AskOnThisPc = false };
@@ -187,7 +226,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
             throw new ArgumentException($"A Martlet password has at least {MinimumPasswordLength} characters.", nameof(password));
         lock (Gate)
         {
-            var current = Load(accountId);
+            var current = Writable(accountId);
             var secrets = Secrets(current);
             var wrap = current.Encrypt && fileKey is not null ? AccountVault.Wrap(fileKey, password, iterations) : current.Encrypt ? secrets.PasswordKey : null;
             return Save(current with { HasPassword = true }, secrets with { Password = AccountProtection.Verifier(password, iterations), PasswordKey = wrap });
@@ -198,7 +237,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
     {
         lock (Gate)
         {
-            var current = Load(accountId);
+            var current = Writable(accountId);
             var next = current with { HasPassword = false };
             if (next.AskOnThisPc && next.Methods.Count == 0) next = next with { AskOnThisPc = false };
             return Save(next, Secrets(current) with { Password = null, PasswordKey = null });
@@ -209,7 +248,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
     {
         lock (Gate)
         {
-            var current = Load(accountId);
+            var current = Writable(accountId);
             if (on && current.Encrypt) throw new InvalidOperationException("Windows Hello can't open encrypted files; turn off encryption to use it.");
             var next = current with { Hello = on };
             if (next.AskOnThisPc && next.Methods.Count == 0) next = next with { AskOnThisPc = false };
@@ -223,7 +262,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
     {
         lock (Gate)
         {
-            var current = Load(accountId);
+            var current = Writable(accountId);
             var secrets = Secrets(current);
             if (!current.HasPin || !AccountProtection.Matches(pin, secrets.Pin)) throw new InvalidOperationException("That PIN is not this account's PIN here.");
             var withPassword = password is { Length: > 0 } && current.HasPassword && AccountProtection.Matches(password, secrets.Password);
@@ -243,7 +282,7 @@ internal sealed class AccountLockStore(string dataDirectory, int iterations = Ac
     {
         lock (Gate)
         {
-            var current = Load(accountId);
+            var current = Writable(accountId);
             return Save(current with { Encrypt = false }, Secrets(current) with { PinKey = null, PasswordKey = null });
         }
     }
