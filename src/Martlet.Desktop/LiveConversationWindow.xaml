@@ -16,6 +16,15 @@
         <Border DockPanel.Dock="Top" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Read more: shown while the app in front (or the one the last reply used a guide about) has a guide; it reads
+                         more pages of that guide's wiki as a background task (LiveConversationWindow.AppGuides.cs). -->
+                    <Button x:Name="ReadMoreChip" Click="ReadMore_Click" Padding="12,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
+                            ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="LiveReadMore">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{DynamicResource Icon}" FontSize="13" Text="&#xE82D;" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Read more" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <!-- Background tasks (thinking longer, a song...): how many Martlet is running or has ready, shown once it starts
                          one. It opens the task list over the conversation (TasksPanel). -->
                     <Button x:Name="TasksChip" Click="TasksChip_Click" Padding="12,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"

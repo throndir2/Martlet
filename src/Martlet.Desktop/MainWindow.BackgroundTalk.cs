@@ -27,6 +27,12 @@ public partial class MainWindow
             preferences: Talk, videoAddress: visionAddress)
             { Support = support, Gaze = avatar.Gaze, Calls = discordCalls };
         window.TouchStatusChanged += characterTouchZones.SetNoticed;
+        // A reply that used an app's guide: the speech bubble offers Read more for a little while.
+        window.ReadMoreOffered += entry =>
+        {
+            if (captions.Offer(entry.Key, $"Want me to read more about {entry.Name}?", "Read more"))
+                ErrorLog.Info("App guides: the speech bubble offers Read more for a little while.");
+        };
         // Its warming-up banner also shows Parakeet and the character loading; a conversation after Free up this PC loads
         // Parakeet again now rather than on the first thing said.
         window.MoreWarmup = LocalWarmup;

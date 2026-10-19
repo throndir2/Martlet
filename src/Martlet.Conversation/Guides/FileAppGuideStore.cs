@@ -268,6 +268,11 @@ public sealed class FileAppGuideStore : IAppGuideStore
             if (chunk.Text.Length > MaximumChunkCharacters) return $"a chunk is longer than {MaximumChunkCharacters} characters";
             if (chunk.Url.Length > MaximumUrlCharacters || chunk.Page.Length > 1_000 || chunk.Section.Length > 2_000) return "a chunk's page is too long";
         }
+        if (guide.More is { } more && (more.Api is null || more.Api.Length > MaximumUrlCharacters || more.Related is null || more.Known is null ||
+                more.Related.Count > GuideMoreState.MaximumRelated || more.Known.Count > GuideMoreState.MaximumKnown ||
+                more.Related.Any(r => r is null || r.Title is null || r.Title.Length > GuideMoreState.MaximumTitleCharacters) ||
+                more.Known.Any(k => k is null || k.Length > GuideMoreState.MaximumTitleCharacters)))
+            return "what is left to read more is too long or broken";
         return null;
     }
 
