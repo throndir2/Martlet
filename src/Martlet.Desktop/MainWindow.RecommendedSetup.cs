@@ -178,6 +178,7 @@ public partial class MainWindow
         window.OpenThinking += use => OpenFreeKey(use, fromReview: true);
         window.LockChanged += (job, locked, today) => LockRecommendedJob(job, locked, today);
         window.UseSuggestion += job => Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync(job).Forget());
+        window.UseServed += served => Dispatcher.BeginInvoke(() => UseServedFromReviewAsync(served).Forget());
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(recommendedSetupWindow, window)) recommendedSetupWindow = null;
