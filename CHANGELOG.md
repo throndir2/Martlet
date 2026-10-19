@@ -13,6 +13,14 @@ Each release's section here is also its notes on GitHub.
 - Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 - The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 
+### Fixed
+
+- A change you type just before you exit Martlet is saved first, also in the Character, Lorebook, Memory and Avatar windows. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- Two share links clicked quickly one after the other both open in the running Martlet, and a link is never cut short. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- The zone names on the Touch page are readable on every zone color and follow Windows high contrast. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- In the Hosts window, an unfinished SSH target such as `user@` no longer fills in this PC's own address, and a too-long name no longer shows an error. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- Appearance now says that your theme and colors are the same on all your computers. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+
 ## [0.88.2] - 2026-10-17
 
 ### Changed
