@@ -7380,12 +7380,18 @@ call (`call`) is dropped. Three `tools:`
 steps check [tool sets](CONVERSATION.md#check-in-tool-sets): `tools: sets saved
 and read back` (an own check-in's and a built-in choice's sets kept; an unknown
 set and the same set twice refused), `tools: the job offers them` (the job
-needs a member that calls tools, offers the chosen sets' tools for 4 rounds and
+needs a member that calls tools, offers the chosen sets' tools for 16 rounds and
 asks for the *Its tools act* answer; with no sets it waits) and `tools: only a
 member that calls tools runs them` (a text-only member never gets it; on a
 member that calls tools, FIXTURE calls are kept with their first line only, an
-unknown tool and a failing handler are errors, and every call after the eighth
-is refused). `tools: background work takes over the reply's think_longer and
+unknown tool and a failing handler are errors, and every call after the 64th
+is refused). `memory care: a built-in check-in that works on memory in several
+steps` checks the built-in Memory care check-in: on, every hour, *Its tools
+act* with the Memory set, its job offering all ten Memory tools for 16 rounds
+with 8 minutes and 2,048 tokens a request, its message saying it works in
+steps, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
+rules list `maximumToolRounds`, `maximumToolCalls`, `maximumToolOutputTokens`,
+`toolTimeoutSeconds` and `hardMaxToolRounds`. `tools: background work takes over the reply's think_longer and
 research` checks the `background-work` set: its two tools take the reply's
 arguments, it replaces `think_longer` and `research` (never `cancel_thinking`),
 and a refusal's first line is `Not started: ...`. `how I react: the built-in check-in changes how the character

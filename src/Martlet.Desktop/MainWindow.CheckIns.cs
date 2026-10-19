@@ -298,6 +298,9 @@ public partial class MainWindow
                 result = "its script printed the same as last time, so it didn't ask";
                 kept = true;
             }
+            // Its tools are its work: without one that runs on this PC (memory off, no reminders here) it doesn't ask.
+            else if (checkIn.Outcome == CheckInOutcome.Tools && tools is not { Tools.Count: > 0 })
+                result = "none of its tools works on this PC now";
             else if (CheckIns.Prepare(checkIn, withInputs, prompts, tools) is not { } job) result = "its prompt is empty";
             else
             {
