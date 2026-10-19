@@ -261,10 +261,19 @@ would run it:
   which deletes its entry and the secrets only it used.
 
 **When servers run.** Nothing starts when Martlet starts. Enabled servers start in
-the background when you open a talk window (or press *Start servers now*), and a
-reply waits at most 10 seconds for servers still starting. Servers that stopped are
+the background when you open a talk window (or press *Start servers now*). A reply
+never waits for them: a server that is still starting (or stopped) offers the tools
+it listed last in this session, so the tool list stays the same while servers come
+and go, and a call to it waits at most 10 seconds for it to start or tells the
+model that it isn't running. A server whose tools were never listed yet offers
+none until it is ready. Servers that stopped are
 retried when a talk window opens again or from the Tools page. Each server's state,
 tools and recent error output are on the Tools page.
+
+**Tool names.** Each server tool is offered as `<server>_<tool>` (made safe for
+function calling), for example `home-assistant_HassTurnOn`. The name never
+depends on which other servers run, so the start of every request stays the same
+for prompt caches.
 
 **Which replies get tools.** Only replies to what you say or type (and Martlet's
 own reply bringing up finished background work), and only when
@@ -687,7 +696,9 @@ one of 500-3000, 900 by default) rehearses the production race in
 (`ThinkingBackupMembers`) with two fixture Chat Completions endpoints on
 127.0.0.1 (canned words, NOT AI), which note when the client stopped their
 stream. Scenarios: `backup-wins`, `conversation-wins`, `late-conversation`
-(the member asked, then stopped), `conversation-fails`, `no-member`, `held`
+(the member asked, then stopped), `conversation-fails`, `no-member`,
+`open-fails` (a member is chosen but its stream can't be opened: `Failed` with
+the reason in `why`, not "no member"), `held`
 (only a paid cloud member: asked once the reply is taken), `let-go` (a reply
 started early and let go stops its member's stream too) and `members` (the
 rules). Each turn reports its outcome, the member, when it was asked, the
@@ -4866,7 +4877,8 @@ as `[hidden]`: the value after a flag such as `--token`, `--api-key` or
 address, and tokens such as `sk-...`, `ghp_...` or a long random string), `host` for HTTP servers, `env`
 and `headers` names, `disabled`, `autoApproveAll`, `autoApprove`, the MCP
 directory `registry` and `registryVersion` it was installed from, the `secrets`
-names it uses and its `problem`. It starts no server and reads no credentials.
+names it uses, `toolNames` (how a reply names its tools: always
+`<server>_<tool>`, whatever else runs) and its `problem`. It starts no server and reads no credentials.
 
 `terminal_status` reads Companion › Tools › Terminal from a data directory's
 `terminal.json` (optional absolute `dataDirectory`, default the current user's):
@@ -7465,7 +7477,13 @@ past the fixture's time limit, `requestTimeHours` 24); and `fullLine`: on three
 one-slot places, Deep thinking's own kind lets six thinks run or wait
 (`runningOrWaiting`, `maxActive`) and runs two at once (`atOnce`), and a seventh
 is refused as `busy` with those real numbers (`message`: *Martlet already has 6
-thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`). `plans`: the production `DeepThinkingPlan`
+thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`);
+`startFailure`: a job waiting in line whose seating throws (a clock that fails,
+as at shutdown) ends `Failed` (*it couldn't start on this PC*) and is
+`reported` through `BackgroundJobs.Faulted` (the desktop log's warning), so
+its kind is never blocked; and `waitingTrimmed`: finished jobs that wait to be
+brought up stay at most `limit` (`BackgroundJobs.KeptWaiting`), the oldest
+dropped. `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on

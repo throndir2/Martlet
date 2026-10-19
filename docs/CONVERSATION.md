@@ -939,8 +939,12 @@ words first gives the reply. The other stream stops at once.
 **Observability.** The reply latency line says `Backup Thinking won at 1104 ms
 (diva (qwen3-8b), asked at 912 ms).`, `Backup Thinking asked at 912 ms (diva
 (qwen3-8b)); the conversation's model won.`, `... it gave no answer.` or
-`Backup Thinking: no member could take it.`; a fast reply says nothing. The
-desktop log has one line each time a member was asked, and
+`Backup Thinking: no member could take it.`; a fast reply says nothing. A
+member that was chosen but whose stream couldn't be opened (a wrong key, a
+network or provider error) counts as `Failed`, not "no member", with the reason
+(a failure code or an error type, never the key) in `why`. The
+desktop log has one line each time a member was asked (a warning when it
+failed), and
 `thinking-pool-status.json` has a `backup` part: the wait used, the automatic
 wait and its replies, and the last results and counts (never what was said).
 MCP's `thinking_pool_status` shows the choices and the member it would ask now,
