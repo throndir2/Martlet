@@ -63,6 +63,7 @@ public static partial class PromptCatalog
     public const string ChattinessDecides = "chattiness_decides";
     public const string ChattinessNow = "chattiness_now";
     public const string MemoryCapture = "memory_capture";
+    public const string MemoryCaptureGame = "memory_capture_game";
     public const string MemoryUpkeep = "memory_upkeep";
     public const string VoiceNaming = "voice_naming";
     public const string CharacterActionNaming = "character_action_naming";

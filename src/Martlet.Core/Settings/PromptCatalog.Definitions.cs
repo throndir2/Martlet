@@ -392,6 +392,11 @@ public static partial class PromptCatalog
             "and the WORDS line after a REMEMBER or UPDATE line as the fact's hidden search words; " +
             "{nothing} is the word for no change.",
             DefaultMemoryCaptureInstructions, ["nothing"]),
+        new(MemoryCaptureGame, BackgroundGroup, "Remembering while you play",
+            "Added to Remembering while Martlet sees a game played on this PC, so a fact about that game is kept for it and isn't " +
+            "brought up in other games. {game} is the game's name. Martlet reads REMEMBER HERE (this game only), REMEMBER GAMES " +
+            "(any game) and REMEMBER EVERYWHERE; a REMEMBER line without one counts as HERE.",
+            DefaultMemoryCaptureGameInstructions, ["game"]),
         new(MemoryUpkeep, BackgroundGroup, "Tidying memory",
             "Sent in the background to a free Thinking pool member, never to the conversation's own model: groups of remembered " +
             "facts that may repeat or contradict each other, and facts without search words. Martlet reads the SAME (merge), " +

@@ -123,12 +123,12 @@ internal static partial class MemoryUpkeep
             if (MemoryQuery.TryFromBoundedSource(text, 8) is not { } query) continue;
             if (near.Count > 0) query = query with { Similar = [.. near] };
             // Facts that share a good part of this one's words (its search words too), or that are close in meaning, of the same
-            // person.
+            // person and kept for the same activity (a Palworld fact never merges with another game's or with one for everywhere).
             var needed = Math.Max(2, (int)Math.Ceiling(query.Text.Split(' ').Length * 0.25));
             var who = person(fact.VoiceId);
             var related = snapshot.Search(query, now, token)
                 .Where(hit => hit.Fact.Id != fact.Id && !numbers.ContainsKey(hit.Fact.Id) && (hit.MatchedTerms >= needed || near.Contains(hit.Fact.Id)) &&
-                    string.Equals(person(hit.Fact.VoiceId), who, StringComparison.Ordinal))
+                    string.Equals(person(hit.Fact.VoiceId), who, StringComparison.Ordinal) && MemoryActivity.Same(hit.Fact.Activity, fact.Activity))
                 .Take(MaximumGroupSize - 1).Select(hit => hit.Fact).ToArray();
             if (related.Length == 0) continue;
             groups.Add([Number(fact), .. related.Select(Number)]);

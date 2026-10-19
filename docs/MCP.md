@@ -1967,10 +1967,13 @@ the same `state`, `facts`, `typed`, `fromConversation`, `expiring`, `replaced`,
 (`state` `none`, `loaded` or `unreadable`; `storesChecked`, how many stores
 tidying has checked for duplicates; `last`, the last pass's `at`, `space`,
 `outcome`, `listed`, `groups`, `need_words`, `retired`, `merged`, `worded` and
-`member`).
+`member`). `where` counts the current facts by where they matter
+([Memories for a game](MEMORY.md#memories-for-a-game)): `everywhere`,
+`anyGame` and `activities` (each game a fact is kept for, `where` such as
+*while playing Palworld*, and its `facts`).
 It reads each store's file as JSON without opening or locking a store (the
-desktop can keep running), and never returns a fact's text, a name, a voice ID
-or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
+desktop can keep running), and never returns a fact's text, a person's name, a
+voice ID or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
 characters per fact (`factCharacters`, 32,768) and store bytes (`storeBytes`,
 256 MiB). It contacts nothing.
 
@@ -2034,6 +2037,38 @@ the owner's other computers. It returns `preview`, `matched`, `deleted` and
 `spaces` (each with `space`, `facts`, `matched`, `deleted` and the matched fact
 `ids`), and never a fact's text. Without `dataDirectory`,
 `Invoke-MartletMcp.ps1` gives it a disposable data folder.
+
+`memory_where` sets where remembered facts matter, the way Companion >
+Memory's *Where it matters* does
+([Memories for a game](MEMORY.md#memories-for-a-game)): each current fact whose
+text contains `contains` or whose ID is in `ids` (as `memory_forget` finds
+them, in every store or only in `space`) is kept for `where`: `everywhere`,
+`games` (any game) or a game's name (only while that game is played). Replaced
+facts (history) don't change. `preview: true` only counts the facts; without it
+the tool needs `--allow-changes` and waits up to 15 seconds for a running
+desktop to let the store go. It returns `preview`, `where` (*everywhere*,
+*while gaming* or *while playing <game>*), `matched`, `changed` (or
+`wouldChange` with `preview`) and `spaces` (each with `space`, `facts`,
+`matched`, `changed` and the matched fact `ids`), and never a fact's text.
+
+`memory_activity_check` (optional `query`, optional `activity`: a game's name)
+rehearses [memories for a game](MEMORY.md#memories-for-a-game) with the
+production code (`MemoryActivity`, `MemoryActivityFilter`, `MemoryStore` and
+`MemorySnapshot` in `src\Martlet.Memory`) on synthetic facts in a disposable
+store, and returns `{passed, failures, steps, asked, sampleFacts, note}`. The
+steps: playing Palworld recalls its favorite and a fact for everywhere but not
+another game's; playing Elden Ring never recalls Palworld's favorite; with no
+game only facts for everywhere come back; naming Palworld recalls its facts
+with no game and in another game; a fact for any game comes back in every game
+and not outside games; a search without the filter (the Memory window,
+`manage_memories` `find`) finds every fact; a snapshot leaves out the same facts
+as the store; a game's fact travels with `activity` while a fact for
+everywhere is written exactly as before; a correction keeps where a fact
+matters and choosing it moves the fact; an activity of the wrong form is
+refused; and game names compare without regard to case or spacing. With
+`query`, `asked.recalled` lists the sample facts (by key) those words recall
+while `activity` is played (none: no game). It never opens the owner's memory
+and contacts nothing.
 
 `memory_recall_check` (optional `query`, optional `facts`: 1-100,000 strings)
 rehearses how recall ranks remembered facts
@@ -5059,7 +5094,9 @@ character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 many people Martlet knows by voice and how many to forgotten voices, how many
 are kept in each [memory space](MEMORY.md#memory-spaces-on-the-desktop)
 besides yours (*3 in Household*), how many replaced facts it keeps as history
-(*1 replaced kept as history*), how many
+(*1 replaced kept as history*), how many are kept for a game
+([Memories for a game](MEMORY.md#memories-for-a-game): *2 kept for 1 game or
+activity*), how many
 its *Show* choice (`MemoryPersonFilter`), *Show replaced facts*
 (`MemoryShowHistory`, a check box `ui_toggle` turns without
 `--allow-ui-effects` because it only changes the list) and search (`MemorySearch`, set with
@@ -5104,7 +5141,10 @@ an entry's three-state `LorebookEntryWordForms`, *Other word forms*; *Try it*'s
 `LorebookTestResult` reads which entries a sample message would add, by title,
 lorebook and keyword, never their text),
 `MemoryEnable` and Memory's fact fields: `MemoryFactContent`, `MemoryPerson`
-(*Belongs to*), `MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
+(*Belongs to*), `MemoryWhere` (*Where it matters*: *Everywhere*, *While gaming
+(any game)*, the game played now and each game a fact is kept for; the selected
+fact's `MemoryFactDetails` says *Matters: while playing <game>*),
+`MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
 choosing in `MemoryPersonFilter` (it only filters the list) still goes through
 `ui_select`, so these need `--allow-ui-effects`; `ShowCharacter`/`StopAvatar` show or hide the
 character, so they need `--allow-ui-effects` too. Typing a persona name or text and

@@ -37,8 +37,11 @@ internal static class MemoryPromptContext
         var expiry = fact.Retention.Kind == MemoryRetentionKind.ExpiresAt
             ? "; until " + fact.Retention.ExpiresAtUtc!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : "";
+        // A fact kept for a game says so, so the reply doesn't take it for something true everywhere.
+        var where = fact.Activity is null ? ""
+            : "; " + MemoryActivity.Describe(fact.Activity).Replace(Label, "memory", StringComparison.OrdinalIgnoreCase);
         return Whose(fact, people) + $"{content} ({Source(fact.LastModifiedBy.SourceKind)} " +
-            $"{fact.UpdatedAtUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}{expiry})";
+            $"{fact.UpdatedAtUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}{expiry}{where})";
     }
 
     /// <summary>"[Sam] " for a fact that belongs to someone, nothing for a fact about no one in particular.</summary>

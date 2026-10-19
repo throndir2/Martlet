@@ -503,7 +503,8 @@ internal static class AutomationPolicy
         new("SettingsSyncWaiting", "Devices › Settings for all devices", "Shows the settings this PC cannot follow yet, and why. Never values or keys."),
         // Needs --allow-ui-effects: SettingsSyncClaim (makes every computer use the settings of this PC).
         new("MemorySyncStatus", "Devices › Settings for all devices", "Shows how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or forgotten on other computers. Never a fact."),
-        new("MemoryFactStatus", "Memory window", "Shows how many facts it remembers, how many belong to people known by voice or to forgotten voices, how many replaced facts it keeps, how many Show lists and what the last action did. Never a fact or a name."),
+        new("MemoryFactStatus", "Memory window", "Shows how many facts it remembers, how many belong to people known by voice or to forgotten voices, how many replaced facts it keeps, how many are kept for a game, how many Show lists and what the last action did. Never a fact or a name."),
+        new("MemoryWhere", "Memory window", "Shows where the fact being written or changed matters: Everywhere, While gaming (any game) or While playing <game> (a game's name, never a person's). Never a fact."),
         new("MemoryStatus", "Memory window", "Shows the bottom line: whether memory is on, saving or why it cannot be. Fixed text; never a fact or a folder."),
         new("MemoryShareStatus", "Memory window", "Shows what Share selected with did or what Share new memories about me now does, such as 'Copied 2 facts to the household's memories.'. Counts and the kind of place; never a fact or a name."),
         // Needs --allow-ui-effects: MemoryShareTarget (ui_select), MemoryShareCopy, MemoryShareMove and the MemoryShareAboutMe box (they change memories).

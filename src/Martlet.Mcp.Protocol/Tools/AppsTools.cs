@@ -68,7 +68,9 @@ internal sealed partial class McpServer
             "accounts\\<id>\\memory, household and character spaces in memory-spaces\\<space>) with its space ID and the same counts. The " +
             "top-level counts are the store in the memory setting's folder (memories from before accounts until they move to the owner's " +
             "space, or a custom folder). upkeep: what tidying memory last did (memory-upkeep.json: how many stores it checked for " +
-            "duplicates, and the last pass's space, outcome, counts and pool member). Never a fact's text, a name, a voice ID or a " +
+            "duplicates, and the last pass's space, outcome, counts and pool member). where: how many current facts matter " +
+            "everywhere, in any game (anyGame) and for each game by its name (docs/MEMORY.md, \"Memories for a game\"). Never a " +
+            "fact's text, a person's name, a voice ID or a " +
             "path. Read-only (it never opens or locks a " +
             "store); contacts nothing. limits: the most facts a store holds, characters per fact and store bytes.", new
         {
@@ -107,6 +109,22 @@ internal sealed partial class McpServer
             dataDirectory = new { type = "string" }
         },
             async (arguments, cancellation) => await MemoryForgetAsync(arguments, cancellation), ToolPermission.ChangesUnlessPreview),
+        Tool("memory_where", "Set where remembered facts matter, as Companion › Memory's Where it matters does (docs/MEMORY.md, " +
+            "\"Memories for a game\"): every current fact whose text contains contains (any case) or whose ID is in ids, in every " +
+            "memory store of the data folder or only in space, is kept for where: \"everywhere\", \"games\" (any game) or a game's " +
+            "name (only while that game is played). preview: true only counts them. A running Martlet keeps working (the tool waits " +
+            "up to 15 s for the store to be free) and its memory sync carries the change to your other computers. Returns per space " +
+            "how many facts matched and changed and their IDs; never a fact's text. Needs --allow-changes unless preview. " +
+            DataDirectoryNote, new
+        {
+            where = new { type = "string", maxLength = 120 },
+            contains = new { type = "string", maxLength = 200 },
+            ids = new { type = "array", items = new { type = "string" }, maxItems = 1000 },
+            space = new { type = "string", maxLength = 128 },
+            preview = new { type = "boolean" },
+            dataDirectory = new { type = "string" }
+        },
+            async (arguments, cancellation) => await MemoryWhereAsync(arguments, cancellation), ToolPermission.ChangesUnlessPreview),
         Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
@@ -407,7 +425,21 @@ internal sealed partial class McpServer
             facts = new { type = "array", items = new { type = "string" }, minItems = 1, maxItems = Martlet.Memory.MemoryLimits.MaximumFacts }
         },
             async (arguments, cancellation) => await MemoryRecallCheck.RunAsync(OptionalString(arguments, "query"), MemoryRecallCheck.Facts(arguments), cancellation)),
-        Tool("memory_upkeep_check", "Rehearse search words, replaced facts kept as history and tidying memory with the production " +
+        Tool("memory_activity_check", "Rehearse memories kept for the game they come from with the production memory code " +
+            "(Martlet.Memory: the activity on each fact, the recall filter, the store's search and another space's snapshot) on " +
+            "synthetic facts in a disposable store: a fact made while playing Palworld recalled while playing Palworld or when the " +
+            "words name it, never in another game or outside games; a fact for any game in every game; a fact for everywhere " +
+            "always; a game's fact travelling with its activity while a fact for everywhere is written exactly as before; a " +
+            "correction keeping where a fact matters; an activity of the wrong form refused. Optional query (with activity, a " +
+            "game's name, or none for no game) recalls those words against the sample facts. Never opens your memory. Nothing " +
+            "leaves this PC.", new
+        {
+            query = new { type = "string" },
+            activity = new { type = "string" }
+        },
+            async (arguments, cancellation) => await MemoryActivityCheck.RunAsync(OptionalString(arguments, "activity"),
+                OptionalString(arguments, "query"), cancellation)),
+        Tool("memory_upkeep_check","Rehearse search words, replaced facts kept as history and tidying memory with the production " +
             "code (Martlet.Memory's store and recall, and the desktop's own upkeep: the plan, the pool member's fact list, parsing " +
             "its answer and the store request) on synthetic facts in a disposable store: a question in other words (\"What should " +
             "I cook tonight?\") finding \"The user is vegetarian.\" only once the fact has search words; the WORDS, SAME and " +
@@ -616,7 +648,7 @@ internal sealed partial class McpServer
             : here.State == "unreadable" ? new { memory, storage, state = "unreadable", voiceList, spaces = (object)spaces, upkeep, limits }
             : (object)new { memory, storage, state = "loaded", voiceList, facts = here.Facts, typed = here.Typed,
                 fromConversation = here.FromConversation, expiring = here.Expiring, replaced = here.Replaced,
-                withSearchWords = here.WithSearchWords, whose = here.Whose, spaces, upkeep, limits };
+                withSearchWords = here.WithSearchWords, whose = here.Whose, where = here.Where, spaces, upkeep, limits };
     }
 
     /// <summary>What tidying memory last did, from the desktop's memory-upkeep.json (counts, times and the pool member only).</summary>
@@ -646,7 +678,8 @@ internal sealed partial class McpServer
     private static object? Shaped(MemoryCounts? counts) => counts is null ? null : new
     {
         state = counts.State, facts = counts.Facts, typed = counts.Typed, fromConversation = counts.FromConversation,
-        expiring = counts.Expiring, replaced = counts.Replaced, withSearchWords = counts.WithSearchWords, whose = counts.Whose
+        expiring = counts.Expiring, replaced = counts.Replaced, withSearchWords = counts.WithSearchWords, whose = counts.Whose,
+        where = counts.Where
     };
 
     /// <summary>The counts of one memory store's authoritative file (".martlet-memory.v1.json", the name Martlet.Memory's
@@ -656,7 +689,7 @@ internal sealed partial class McpServer
     {
         var path = Path.Combine(folder, ".martlet-memory.v1.json");
         if (!File.Exists(path)) return null;
-        List<(string? Voice, string? Source, string? Retention, bool Replaced, bool Words)> facts = [];
+        List<(string? Voice, string? Source, string? Retention, bool Replaced, bool Words, string? Activity)> facts = [];
         try
         {
             byte[] bytes;
@@ -677,7 +710,7 @@ internal sealed partial class McpServer
                     return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
                 }
                 facts.Add((Text("voice_id"), Text("created_from", "source_kind"), Text("retention", "kind"),
-                    Text("replaced_at_utc") is not null, Text("search_words") is not null));
+                    Text("replaced_at_utc") is not null, Text("search_words") is not null, Text("activity")));
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
@@ -697,7 +730,16 @@ internal sealed partial class McpServer
                     .OrderBy(g => g.First().Number)
                     .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, linked = g.First().Account is not null, facts = g.Count() }).ToArray(),
                 forgottenVoices = owned.Count(v => v is null)
-            }, facts.Count(f => f.Replaced), facts.Count(f => f.Words));
+            }, facts.Count(f => f.Replaced), facts.Count(f => f.Words),
+            // Where the current facts matter (docs/MEMORY.md, "Memories for a game"): everywhere, any game, and each game by name.
+            new
+            {
+                everywhere = facts.Count(f => !f.Replaced && f.Activity is null),
+                anyGame = facts.Count(f => !f.Replaced && f.Activity == Martlet.Memory.MemoryActivity.Gaming),
+                activities = facts.Where(f => !f.Replaced && Martlet.Memory.MemoryActivity.Name(f.Activity) is not null)
+                    .GroupBy(f => f.Activity!.ToLowerInvariant()).OrderByDescending(g => g.Count())
+                    .Select(g => new { where = Martlet.Memory.MemoryActivity.Describe(g.First().Activity), facts = g.Count() }).ToArray()
+            });
     }
 
     /// <summary>One Home Assistant's first-run state (no sign-in needed), as Smart home checks it before offering Set up.</summary>
