@@ -59,7 +59,8 @@ PR. Details: [File issues for problems you find](../AGENTS.md#file-issues-for-pr
 **Changelog:** every PR with a change users can notice adds a plain-language
 line with its PR link under `## [Unreleased]` in `CHANGELOG.md`. A release PR
 bumps `<Version>`, turns `Unreleased` into `## [<version>] - <date>`, refreshes
-the README's *What's new in <version>* highlights and checks
+the README's *What's new in <version>* highlights, refreshes the model catalog
+(`.\scripts\Update-ModelCatalog.ps1`) and checks
 `.\scripts\Get-ReleaseNotes.ps1 -Version <version>`; the release workflow
 publishes that section as the release notes. Full steps:
 [Changelog and release notes](../AGENTS.md#changelog-and-release-notes).
