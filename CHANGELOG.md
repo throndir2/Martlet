@@ -27,6 +27,12 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Martlet's MCP server no longer stops when a tool fails or gets a wrong value (such as `seconds: 45.5`); the tool says what went wrong and the server keeps working. It now answers while a long tool runs, and an assistant can cancel a tool call. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- MCP tools that save test data or write a file (a character's eyes or touch zones, a Discord friend request, saved logs, a character picture) now need `--allow-changes`, never write test data into your own Martlet folder, and never replace a file or write to another computer. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- Without `--allow-ui-effects`, an assistant can no longer make Martlet contact your hosts or picture places, cancel a background task or pause Martlet, and the window text it reads shows `[email]` and `[path]` instead of e-mail addresses and file paths. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- `mcp_servers_status` no longer shows passwords or tokens that are written in `mcp.json` arguments. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- Martlet.Doctor's status is no longer always "not ready": checks it cannot run here show as *not checked here*, so a healthy PC passes. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- `Register-MartletMcp.ps1` keeps your assistant's original configuration in a dated backup each time, and no longer removes comments from VS Code's `mcp.json` unless you add `-Force`. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
 - Martlet runs cloudflared for WhatsApp only when Windows confirms Cloudflare's signature on it, also a copy you installed yourself. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
 - The Account page says that a PIN or password alone doesn't keep out others who use the same Windows login, and that encryption does. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
 - Asking Martlet in the middle of a game to read more about it now really reads more pages, instead of saying yes and adding nothing. ([#1026](https://github.com/throndir2/Martlet/pull/1026))

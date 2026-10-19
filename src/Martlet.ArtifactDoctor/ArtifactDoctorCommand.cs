@@ -25,7 +25,7 @@ public static class ArtifactDoctorCommand
         }
         if (args is ["--version"])
         {
-            await output.WriteLineAsync("Martlet.ArtifactDoctor 0.1.0 (metadata-only formats 1 and 2)");
+            await output.WriteLineAsync($"Martlet.ArtifactDoctor {typeof(ArtifactDoctorCommand).Assembly.GetName().Version!.ToString(3)} (metadata-only formats 1 and 2)");
             return 0;
         }
         var json = args.Contains("--json", StringComparer.Ordinal);

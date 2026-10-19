@@ -22,6 +22,8 @@ internal static class CharacterEyesCheck
         string? second, string? snapshotPath, string? face, string? previewDirectory, bool save, bool forget, string? eyesFrom,
         CancellationToken cancellation)
     {
+        if ((save || forget) && !explicitDirectory)
+            throw new ArgumentException((save ? "save" : "forget") + " needs an explicit, disposable dataDirectory (not Martlet's own data folder).");
         var (id, renderer, problem) = await ModelAsync(dataDirectory, modelPath, modelId, cancellation);
         EyeCloseUp closeUp;
         if (snapshotPath is not null)
@@ -84,12 +86,12 @@ internal static class CharacterEyesCheck
         string? wrote = null;
         if (forget)
         {
-            if (!explicitDirectory) throw new ArgumentException("forget needs an explicit (disposable) dataDirectory.");
+            if (!explicitDirectory) throw new ArgumentException("forget needs an explicit, disposable dataDirectory (not Martlet's own data folder).");
             wrote = await CharacterEyes.ForgetAsync(dataDirectory, Need(id, problem), cancellation) ? "Forgot the model's measurement and its pictures." : "No measurement was saved for the model.";
         }
         if (save)
         {
-            if (!explicitDirectory) throw new ArgumentException("save needs an explicit (disposable) dataDirectory.");
+            if (!explicitDirectory) throw new ArgumentException("save needs an explicit, disposable dataDirectory (not Martlet's own data folder).");
             if (result?.Hint is not { } hint) throw new ArgumentException("save needs an answer that passes Martlet's checks.");
             var model = Need(id, problem);
             var folder = CharacterEyes.ClearPictures(dataDirectory, model);
@@ -178,7 +180,9 @@ internal static class CharacterEyesCheck
     // degrees (clockwise).
     private static EyeFace Face(string text, int width, int height)
     {
-        var values = text.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries).Select(t => double.Parse(t, CultureInfo.InvariantCulture)).ToArray();
+        var values = text.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries).Select(t =>
+            double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) ? value
+                : throw new ArgumentException("face is \"x,y,width[,rollDegrees]\": numbers, fractions of the snapshot.")).ToArray();
         if (values.Length is not (3 or 4)) throw new ArgumentException("face is \"x,y,width[,rollDegrees]\", fractions of the snapshot.");
         return new(values[0] * width, values[1] * height, values[2] * width, values.Length == 4 ? values[3] * Math.PI / 180 : 0);
     }

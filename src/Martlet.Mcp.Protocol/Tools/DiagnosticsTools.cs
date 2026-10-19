@@ -71,14 +71,15 @@ internal sealed partial class McpServer
                 OptionalString(arguments, "source"))),
         Tool("logs_export", "Diagnostics > Save logs to share, from a data directory: every log line it has (this PC's logs and the other " +
             "computers' lines log sharing collected) saved in one new ZIP at outputPath (absolute, ending .zip, in an existing folder; an " +
-            "existing file is never replaced) with about.txt (where and when, computers and parts, what logs can contain) and " +
+            "existing file is never replaced; a network path is refused) with about.txt (where and when, computers and parts, what logs can contain) and " +
             "martlet-logs.txt (every line once, oldest first). Returns the files, line, computer, error and warning counts and about.txt's " +
-            "text. Writes only that file; contacts nothing.", new
+            "text. Writes only that file, so it needs --allow-changes; contacts nothing.", new
         {
             outputPath = new { type = "string" },
             dataDirectory = new { type = "string" }
         }, ["outputPath"],
-            arguments => LogTimeline.Export(OptionalString(arguments, "dataDirectory"), RequiredString(arguments, "outputPath"))),
+            arguments => LogTimeline.Export(OptionalString(arguments, "dataDirectory"), RequiredString(arguments, "outputPath")),
+            ToolPermission.Changes),
         Tool("logs_share_selftest", "Rehearse shared logs (Diagnostics: every computer's logs on every computer) end to end with the " +
             "production code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory logs.json) and three simulated " +
             "desktops with real log folders, the desktop's paired client and the real log sharing engine (Martlet.Core.Logs.LogShare). " +
