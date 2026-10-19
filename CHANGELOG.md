@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- Martlet keeps what you say in a game for that game: tell it Chillet is your favorite while playing Palworld, and it brings that up in Palworld (or when you ask about Palworld), not in other games. Facts about you still come up everywhere. In Companion › Memory, *Where it matters* shows and changes this for each memory. (PRLINK)
+- Martlet keeps what you say in a game for that game: tell it Chillet is your favorite while playing Palworld, and it brings that up in Palworld (or when you ask about Palworld), not in other games. Facts about you still come up everywhere. In Companion › Memory, *Where it matters* shows and changes this for each memory. ([#1030](https://github.com/throndir2/Martlet/pull/1030))
 - Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 - The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 
