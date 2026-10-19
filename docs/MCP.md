@@ -25,8 +25,12 @@ data folder of the current Windows user (`%LOCALAPPDATA%\Martlet`).
    (`%APPDATA%\Claude\claude_desktop_config.json`) and VS Code
    (`%APPDATA%\Code\User\mcp.json`), for each one installed. `-Client copilot`
    chooses one, `-ReadOnly` leaves changes off, `-AllowUiEffects` adds
-   `--allow-ui-effects`, and `-Unregister` removes the entry. Each file is
-   backed up to `<file>.martlet-backup` first.
+   `--allow-ui-effects`, and `-Unregister` removes the entry. Each run first
+   copies the file to a new `<file>.martlet-backup-<date>-<time>` and prints
+   its path; the first backup and the four newest are kept. A file with
+   comments (VS Code's `mcp.json` may have them) is left as it is unless you
+   add `-Force`, because the rewrite removes the comments; the backup keeps
+   them.
 2. Restart the assistant.
 3. Ask it, for example: "Make a Martlet character called Ava, a cheerful
    astronomer who speaks briefly, with the built-in look." The assistant starts
@@ -46,9 +50,9 @@ To configure a client by hand, give it the full path of `Martlet.Mcp.exe`:
 
 | Flag | What it does |
 | --- | --- |
-| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save. Without it they refuse and say how to turn it on. |
+| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save, and `memory_forget` delete (its `preview: true` runs without the flag). It also lets the tools that write save or write: `logs_export`, `character_picture` with `outputPath`, `kept_motions_check` with a `dataDirectory`, `character_eyes` with `save` or `forget`, `character_touch_zones` and `character_reaction_changes` with `save`, and `discord_companion_check` with `requestFrom`. Without it they refuse and say how to turn it on. The FIXTURE saves also refuse Martlet's own data folder (`%LOCALAPPDATA%\Martlet`), and an output file is never on a network path or over an existing file. |
 | `--allow-ui-effects` | Lets `ui_*` tools press buttons, type and toggle (see [Local MCP control](#local-mcp-control-windows)). Without it they only navigate and read. |
-| `--all-tools` | Lists every tool (about 180). Without it, `tools/list` has the 22 tools an assistant needs most (about 16 KB instead of about 230 KB, under the 128-tool limit of some clients); every tool still runs by name. |
+| `--all-tools` | Lists every tool. Without it, `tools/list` has only the short list of the tools an assistant needs most (much smaller, and under the 128-tool limit of some clients); every tool still runs by name. `martlet_guide` says how many tools there are and how many are listed. |
 
 ### What an assistant sees
 
@@ -1240,7 +1244,7 @@ its kind and its state: whether the Picture making role is ready there, its work
 or a cloud provider's key status), `Pool-pictures-On-<i>`, `-Up-`, `-Down-`,
 `-Remove-`, `-OnlyFor-<i>`, `-AddThisPc`, `-AddHost-<host>`, `-Address` and
 `-AddAddress`. `Pool-pictures-Settings-<i>` (show or hide a place's settings),
-`PicturesCheck` and a place's `PicturesComfyConnect-<i>` are passive clicks.
+`PicturesCheck` and a place's `PicturesComfyConnect-<i>` contact the places, so they need `--allow-ui-effects`.
 `PicturesNow` (where it draws and the places that draw when the first is busy),
 `PicturesTestState` (each place ready or why not, or the test picture's size,
 place and seconds), and in a place's settings `PicturesMemberState-<i>`,
@@ -1495,7 +1499,14 @@ built from `src\Martlet.Mcp` (`scripts\Register-MartletMcp.ps1` does it for
 assistants, see [Use Martlet from an AI assistant](#use-martlet-from-an-ai-assistant);
 for development: `src\Martlet.Mcp\bin\Release\net10.0-windows\Martlet.Mcp.exe`).
 The server speaks newline-delimited JSON-RPC 2.0 on standard input/output;
-stderr is for diagnostics. It takes the flags `--allow-changes`,
+stderr is for diagnostics. Tool calls run one at a time, in the order they
+come, but the server keeps reading while one runs: `ping`, `tools/list` and
+`initialize` answer at once, and `notifications/cancelled` with a call's
+`requestId` stops that call (running or waiting); a cancelled call gets no
+response. A tool that fails returns a result with `isError: true` and a short
+message, and the server keeps running. Only a request line that is not JSON
+gets `-32700` (parse error); an invalid request gets `-32600` and any other
+server problem `-32603`. It takes the flags `--allow-changes`,
 `--allow-ui-effects` and `--all-tools` in any order. The installer does not
 include it yet. Build locally with:
 
@@ -3033,7 +3044,7 @@ else contacts a host or changes it and needs `--allow-ui-effects`.
 Sharing hosts with friends on the Share page (`MainWindow.Friends.cs`):
 **Friends** (`FriendsCard`, shown with paired hosts; status
 `FriendsStatus`, `FriendsCheck` reads each of your hosts' sign-in settings and
-is a safe click; reading them also adds the share links this PC made to hosts
+needs `--allow-ui-effects`, because it contacts the hosts and writes `friends.json`; reading them also adds the share links this PC made to hosts
 that miss them) lists each person as `Friend-<provider>-<subject>` (*name
 (provider). Shares gpu-box: their engines only. Their computers: ...*, or that
 they signed in to a host and wait) with `FriendShare-<host>-<provider>-<subject>`
@@ -4856,8 +4867,11 @@ include local paths and provider error text (never keys or conversation content)
 `mcp_servers_status` reads `mcp.json` from a data directory (optional absolute
 `dataDirectory`, default the current user's) as the desktop parses it: `state`
 (`none`, `loaded`, `invalid` or `unreadable` with `problem`) and per server its
-`name`, `transport`, `command`, raw `args` (with `${env:...}` and
-`${secret:...}` references, never their values), `host` for HTTP servers, `env`
+`name`, `transport`, `command`, raw `args` (`${env:...}` and `${secret:...}`
+references stay, never their values; a literal value that looks secret shows
+as `[hidden]`: the value after a flag such as `--token`, `--api-key` or
+`--password`, a `key=value` with a secret name, the user and password in a web
+address, and tokens such as `sk-...`, `ghp_...` or a long random string), `host` for HTTP servers, `env`
 and `headers` names, `disabled`, `autoApproveAll`, `autoApprove`, the MCP
 directory `registry` and `registryVersion` it was installed from, the `secrets`
 names it uses, `toolNames` (how a reply names its tools: always
@@ -4942,7 +4956,10 @@ empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
 `tools` folder), `version` (the cloudflared release it came from) and
 `verified` (it still matches the size and SHA-256 that GitHub publishes for
 that release, checked at download and recorded in `tools\cloudflared.json`;
-Martlet runs its own copy only when this is true). The secrets
+Martlet runs its own copy only when this is true), `signed` (Windows confirms a
+valid Authenticode signature from *Cloudflare, Inc.* on it; Martlet runs no
+cloudflared.exe without it, also one on PATH) and `signatureProblem` (why not,
+or null). The secrets
 live in Windows Credential Manager and are never read.
 `messaging_check` rehearses the production `MessagingBridge` and
 `TelegramTransport` with local fakes and contacts no Telegram, WhatsApp or
@@ -7671,8 +7688,9 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   keeps what it read while it reads (`pagesKeptWhileReading` above 0, *Saving
   what it read so far* in `progress`), and its progress says *Reading page 1 of
   at most 200*. `stopReading`:
-  Stop reading at page 2 ends the read and keeps the 1 page read
-  (`stoppedAtPage2`), and stopping while nothing is read does nothing.
+  Stop reading at page 2 of a second read ends it and keeps the page read again
+  and the guide's 2 other pages (3 pages, `stoppedAtPage2`), and stopping while
+  nothing is read does nothing.
 - `series`: [choosing the pages](APP_GUIDES.md#choosing-the-pages) on a
   MediaWiki fixture about a series (NOT a real wiki), with a stand-in Thinking
   pool member that gives canned answers (NOT a model), for *Starfall Valley 2*.
@@ -7689,6 +7707,18 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   (`leftOutByTheMember`); the chosen pages join the guide
   (`pagesInTheGuide`, 5) and the brief is written again (`status`). The log
   has counts only (`holdsTitlesOrLinks` false).
+- `readMore`: [Read more](APP_GUIDES.md#reading-more) on the same series
+  fixture with no Thinking pool member, as the Read more buttons and asking
+  Martlet do it. `firstRead` reads 2 pages and the guide file keeps what is
+  left (`savedWhatIsLeft`). `afterRestart`: a new service on the same folder
+  reads more twice from the guide file alone; each time it adds pages the guide
+  doesn't have (`guidePages`, `guidePagesAgain`, `noPageTwice`). `readAgain`:
+  Read again keeps the pages Read more added (`keptReadMorePages`).
+  `guideKeptWithoutState`: a guide file without what is left finds its wiki
+  again from its pages and adds pages. `words`: what
+  `AppGuideTools.AskedToReadMore` takes from 5 messages (*read more about it*
+  is the app in front; *don't read more about it* and *I read more books* are
+  nothing). `toolResult` is the job's result for the model.
 - `indexes`: only the indexes that can be used now stay in memory, with three
   small guides and a clock moved forward for the idle time: none at start
   (`atStart` 0), 3 once all are used, 2 when the app in front leaves (the 2
@@ -8095,8 +8125,9 @@ desktop that passed a line on). Optional filters: `level` (`all`, `warnings`,
 it contacts no host.
 
 `logs_export` is Diagnostics' **Save logs to share** without the window:
-`outputPath` (required; absolute, ending `.zip`, in an existing folder; an
-existing file is never replaced) and optional `dataDirectory`. It writes the
+`outputPath` (required; absolute, ending `.zip`, in an existing folder on this
+PC, never a network path; an existing file is never replaced) and optional
+`dataDirectory`. It writes a file, so it needs `--allow-changes`. It writes the
 same ZIP with the production writer (`LogBundle`): `about.txt` and
 `martlet-logs.txt` with every line once, oldest first, from this PC's logs and
 `network-logs.json` (with its journal). It returns `path`, `bytes`, `files` (name and size),
@@ -8640,10 +8671,10 @@ Devices page.
 The **Share your language models** card ([OpenAI-compatible
 endpoint](OPENAI_ENDPOINT.md)) holds `OpenAiStatus` (status text: how many
 models on how many hosts, how many people have a key, hosts that need an
-update, when it was checked), `OpenAiCheck` (passive: reads each host's
+update, when it was checked), `OpenAiCheck` (needs `--allow-ui-effects`: it reads each host's
 `GET /v1/models` with the signed pairing and keeps `openai-models.json`),
 `OpenAiPublicAddress` (the address to give people; an editable field, never
-returned), `OpenAiSaveAddress`, `OpenAiCheckAddress` (passive: sends `GET
+returned), `OpenAiSaveAddress`, `OpenAiCheckAddress` (needs `--allow-ui-effects`: sends `GET
 <address>/models` without a key and shows the answer in `OpenAiCheckResult`),
 `Help-OpenAiExpose` (the *?* with the ways to give the front door an address),
 `OpenAiAddressProblem`, `OpenAiAddressStatus`, `OpenAiHomeAddresses` and
@@ -8994,6 +9025,7 @@ shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
 whose value reads *<time> <level> <computer> · <part>: <first line>*, where
 *<computer>* is *This PC* for this PC's desktop app and for its own host
 service's gateway (its host ID, paired here or read from Docker on a host PC);
+file paths in it read as `[path]` and e-mail addresses as `[email]`;
 clicking one only selects it, and `LogDetail` then returns the whole line
 (time, level, computer with its ID, such as *This PC (diva-host) · Host
 gateway*, part, who passed it on and every following line).
@@ -10451,7 +10483,11 @@ tasks chip, shown once Martlet starts a task in the conversation: its name reads
 *Background tasks: 2 running*, *1 running · 1 ready*, *1 ready* or *3 done*; a
 passive click that only opens and closes the task list `LiveTasksPanel` over the
 conversation, which `LiveTasksClose`, Esc or a click in the conversation also
-close), and in that list `LiveJobs` (*Martlet keeps working on these while you
+close), `LiveReadMore` (the header's *Read more* chip, shown while the app in
+front, or the one the last reply used a guide about, has a guide: its name reads
+*Read more about Elden Ring* and its help text says how many pages the guide has;
+pressing it reads more of the app's wiki on the web, so it needs
+`--allow-ui-effects`), and in that list `LiveJobs` (*Martlet keeps working on these while you
 talk. Stop (Esc) doesn't end them.*, *Finished work comes up as soon as Martlet
 is free.* or *... when you talk next.*; never what a task is about), each task's
 card `LiveTask-<id>` with `LiveJob-<id>` (what the task is about, so snapshots
@@ -10459,8 +10495,8 @@ don't return it), `LiveJobState-<id>` (*Checking it fits beside Thinking.*,
 *Done after 1:02. Martlet brought it up.*, *You stopped it.*, *Couldn't finish:
 it failed on this PC.*), `LiveJobResultToggle-<id>` (*Show result*, a passive
 click that shows `LiveJobResult-<id>`, which isn't a readable value) and
-`LiveJobCancel-<id>` (a passive click: it only stops that task, and the next
-thing you say tells Martlet). Setting `MARTLET_BACKGROUND_FIXTURE=1` before
+`LiveJobCancel-<id>` (needs `--allow-ui-effects`: it stops that task, and the
+next thing you say tells Martlet). Setting `MARTLET_BACKGROUND_FIXTURE=1` before
 Martlet starts makes opening the talk window start one *FIXTURE - NOT AI* task
 (`fixture-1`) that works until canceled, so these can be checked without a
 model. Then the song panel
@@ -10749,7 +10785,8 @@ the list `AppGuideName-<key>` and `AppGuideStatus-<key>` (*42 pages, 3.1 MB, rea
 10 Oct 2026, 18:40. Reads from stardewvalleywiki.com. Programs: StardewValley.*,
 *No guide yet.*, *Reading up now: ...* or the last problem; never a guide's
 text). Its buttons `AppGuideRead-<key>` (*Read up now* or *Read again*: reads on
-the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
+the web and keeps the pages Read more added), `AppGuideMore-<key>` (*Read more*,
+on an app with a guide: reads more pages of its wiki on the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
 read and keeps what it read), `AppGuideAskAgain-<key>` (*Allow again*),
 `AppGuideDelete-<key>`, `AppGuideAdd` and `AppGuideAddRead`, and typing in
 `AppGuideAddName`, `AppGuideAddPrograms` and `AppGuideAddSites`
@@ -10903,9 +10940,9 @@ has `TrayStartListening` (*Start listening*) or, once started, `TrayStopListenin
 (*Stop listening*); with vision on in Companion it also has `TrayStartWatching`
 (*Start watching*) or, once started, `TrayStopWatching` (*Stop watching*), each
 working without the other. `TrayOpen`, `TrayTalk` (like
-`OpenLiveConversation`), `TrayPause` (it only stops work), `TrayStopListening`,
-`TrayStopWatching` (they only stop listening or watching) and `TrayEndTalk`
-(like `CloseLive`) are passive clicks; `TrayStartListening`, `TrayStartWatching`,
+`OpenLiveConversation`) and `TrayEndTalk` (like `CloseLive`) are passive
+clicks; `TrayPause`, `TrayStopListening` and `TrayStopWatching` (they pause
+Martlet until you turn it on again), `TrayStartListening`, `TrayStartWatching`,
 `TrayResume`, `TrayCharacter`, `TrayCharacterClickThrough`, the two
 choices and `TrayExit` need `--allow-ui-effects`. The menu's status line reads
 *Martlet is listening and watching* when both run. While another Martlet dialog
@@ -11121,10 +11158,13 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `long_talk_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
-  use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `voices_people`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `external_endpoints_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `memory_brief_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
-  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
+- Calls whose tool takes a `martletDirectory` (the voice and listening checks)
+  and give none use this checkout's Desktop build when it is built.
+- Calls whose tool takes a `dataDirectory` (its input schema in `tools/list`,
+  which the script reads from the server with `--all-tools`) and give none get
+  the script's disposable data directory, so no tool reaches the real profile
+  by default and a new tool is covered without a list in the script. `-Desktop`
+  also uses that directory, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
@@ -11134,9 +11174,11 @@ call fails or an `until` is not met.
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).
 - `-AllowChanges` passes `--allow-changes`, so `character_*` and `settings_set`
-  save; without an explicit `dataDirectory` they, `characters_list` and
-  `settings_get` use the disposable data directory, and `martlet_call` passes it
-  to the tool it runs.
+  save, `memory_forget` deletes and the tools that write (a `save`, `forget`,
+  `requestFrom`, `outputPath` or `logs_export`; `kept_motions_check` with the
+  disposable `dataDirectory`) write; without an explicit `dataDirectory` they
+  use the disposable data directory, and `martlet_call` passes it to the tool
+  it runs.
 - `-Build` builds `Martlet.Mcp` (and `Martlet.Desktop` with `-Desktop`) in
   `-Configuration` (default Release) with the `dotnet` that has the SDK pinned in
   `global.json` (found the same way as `scripts\Test-Martlet.ps1`, including the
@@ -11158,13 +11200,20 @@ observe them:
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
   `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
-  family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
-  records, plays, spends, writes files or handles credentials stays behind
-  `--allow-ui-effects`.
+  family of generated IDs such as `CompanionTab-` and `Node-`). A passive click
+  may read this PC, ask the local network a discovery question that carries
+  none of your data, and stop what Martlet does at this moment (a reply, a
+  song). Anything that sends, records, plays, spends, writes files, handles
+  credentials, contacts another computer by its address (a host, a ComfyUI
+  server, a cloud provider), cancels a background job or pauses Martlet stays
+  behind `--allow-ui-effects`. `AutomationPolicyTests` checks the effect texts
+  for these words.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
   `SafeValuePrefixes`) in the same file so snapshots return their text (a value
   pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
+  `ui_snapshot` also replaces every e-mail address with `[email]` and every
+  file path with `[path]` in the text it returns (`AutomationPolicy.Redact`).
 - **One line for each ID:** write each entry as
   `new("<ID>", "<page>", "<what it does or shows>")`, for example
   `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Thinking pool.")`.

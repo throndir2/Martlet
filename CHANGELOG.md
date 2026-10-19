@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Read more adds new pages to a game's guide from the same wiki, each time you use it, even without a Thinking pool helper and after Martlet restarts. It is next to Read again on Companion › App guides, in the talk window's header, and as a button in the character's speech bubble for a little while after Martlet answers from a guide. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - Martlet keeps what you say in a game for that game: tell it Chillet is your favorite while playing Palworld, and it brings that up in Palworld (or when you ask about Palworld), not in other games. Facts about you still come up everywhere. In Companion › Memory, *Where it matters* shows and changes this for each memory. ([#1030](https://github.com/throndir2/Martlet/pull/1030))
 - Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 - The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
@@ -18,6 +19,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Martlet starts answering sooner: it no longer waits for Home Assistant or for tool servers that are still starting before it answers, and it reads memories and lorebooks at the same time. A tool from a server that is still starting waits for it only when Martlet uses that tool. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
+- Tools from your MCP servers keep the same names (the server's name, then the tool's) while servers start, stop or restart, so replies on a local model stay quick after a server restarts. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Check-ins that use tools now work in several steps until they are done, like a coding agent: they look things up, read the result and keep going. When you say "that's for Minecraft, not Terraria!", Act on what was said finds every fact it touches and corrects each one. Learning names can also look up voices in more steps. ([#1033](https://github.com/throndir2/Martlet/pull/1033))
 
 ### Changed
@@ -26,6 +29,18 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- A background task (such as a think or a song) that couldn't start no longer stays "running" forever and blocks new ones until a restart; it ends as failed and the log says why. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
+- When a Backup Thinking machine can't be reached (a wrong key or a network error), the log and the Thinking pool status now say that it failed and why, instead of "no machine could take it". ([#1037](https://github.com/throndir2/Martlet/pull/1037))
+- Martlet's MCP server no longer stops when a tool fails or gets a wrong value (such as `seconds: 45.5`); the tool says what went wrong and the server keeps working. It now answers while a long tool runs, and an assistant can cancel a tool call. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- MCP tools that save test data or write a file (a character's eyes or touch zones, a Discord friend request, saved logs, a character picture) now need `--allow-changes`, never write test data into your own Martlet folder, and never replace a file or write to another computer. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- Without `--allow-ui-effects`, an assistant can no longer make Martlet contact your hosts or picture places, cancel a background task or pause Martlet, and the window text it reads shows `[email]` and `[path]` instead of e-mail addresses and file paths. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- `mcp_servers_status` no longer shows passwords or tokens that are written in `mcp.json` arguments. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- Martlet.Doctor's status is no longer always "not ready": checks it cannot run here show as *not checked here*, so a healthy PC passes. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- `Register-MartletMcp.ps1` keeps your assistant's original configuration in a dated backup each time, and no longer removes comments from VS Code's `mcp.json` unless you add `-Force`. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- Martlet runs cloudflared for WhatsApp only when Windows confirms Cloudflare's signature on it, also a copy you installed yourself. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
+- The Account page says that a PIN or password alone doesn't keep out others who use the same Windows login, and that encryption does. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
+- Asking Martlet in the middle of a game to read more about it now really reads more pages, instead of saying yes and adding nothing. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
+- Read again no longer drops the pages Martlet read more of, so a guide never gets smaller. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - Many requests to a host at the same time no longer wait for each other's disk saves one by one. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - When a host can't save or load API keys, accounts, memories, conversations or other shared data, it now says so in its log and security audit instead of losing the change without a sign. ([#1027](https://github.com/throndir2/Martlet/pull/1027))

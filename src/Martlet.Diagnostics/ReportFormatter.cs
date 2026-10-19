@@ -11,6 +11,9 @@ public static class ReportFormatter
         var text = new StringBuilder();
         text.AppendLine($"Martlet {report.ApplicationVersion} - diagnostics");
         text.AppendLine($"Status: {(report.Ready ? "requested checks passed" : "not ready")} (exit {report.ExitCode})");
+        var notChecked = report.Probes.Where(probe => !probe.Required && DoctorExitCodes.NotChecked(probe)).Select(probe => probe.Id).ToArray();
+        if (notChecked.Length > 0)
+            text.AppendLine($"Not checked here (they do not change the status): {string.Join(", ", notChecked)}");
         text.AppendLine($"Profile: {report.ProfileKind?.ToString() ?? "not inspected / not configured"}; ID: {report.ProfileId?.ToString() ?? "none"}");
         text.AppendLine($"Report: {report.CreatedAt.ToString("O", CultureInfo.InvariantCulture)}");
         if (report.StartedAt is { } started)

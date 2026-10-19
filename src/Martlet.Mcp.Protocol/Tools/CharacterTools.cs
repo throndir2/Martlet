@@ -257,7 +257,7 @@ internal sealed partial class McpServer
             "wanted ones it couldn't place and the steps (what placed each). save writes " +
             "the parsed (or detected, or estimated) zones (or, with add alone, the zones with the ones added) (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
-            "disposable dataDirectory as Detect zones would, each zone with no reaction list yet given the one a new zone gets (as " +
+            "disposable dataDirectory (never Martlet's own data folder; needs --allow-changes) as Detect zones would, each zone with no reaction list yet given the one a new zone gets (as " +
             "the desktop saves them). Each saved zone reports reactions (its reaction list as saved, in play order: emote, gesture and " +
             "motion IDs and sound:<cue> voice sounds, every entry kept; null when not filled yet), seed (the list a new zone gets: " +
             "Defaults), plays (what it plays on the model) and sounds (the cues of its voice sounds). temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
@@ -280,7 +280,7 @@ internal sealed partial class McpServer
             estimate = new { type = "boolean" }, special = new { type = "integer", minimum = 0, maximum = 10 }
         },
             async (arguments, cancellation) => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
-                OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
+                DisposableDataDirectory(arguments), OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
                 OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
                 OptionalString(arguments, "crop"), OptionalString(arguments, "probe"), OptionalString(arguments, "touch"),
                 OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
@@ -288,7 +288,7 @@ internal sealed partial class McpServer
                 OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                 OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
                 OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false,
-                OptionalInt(arguments, "special"))),
+                OptionalInt(arguments, "special"))) with { Writes = arguments => OptionalBool(arguments, "save") == true },
         Tool("character_reaction_changes", "Companion > Touch > Changes the character made (Martlet.Avatar.Hosting " +
             "CharacterReactionChanges and CharacterReactionTools; docs/CONVERSATION.md \"How I react\") with NO model request: the " +
             "Touch reactions tool set the How I react check-in calls (its tools and limits), the changes the character made itself in " +
@@ -298,7 +298,7 @@ internal sealed partial class McpServer
             "change_touch_feeling, change_zone_reactions, set_touch_mood or undo_touch_change) with arguments (the JSON a model would " +
             "send, such as {\"target\":\"head\",\"feeling\":\"dislikes\",\"why\":\"...\"}) runs one call as the desktop runs it, with " +
             "every bound; undo (a change id, or all) ends changes as the owner's Undo does. save writes the call's change or the undo " +
-            "into an explicit, disposable dataDirectory; at (an ISO time) sets the time; checkInId the check-in that calls (reactions). " +
+            "into an explicit, disposable dataDirectory (never Martlet's own data folder; needs --allow-changes); at (an ISO time) sets the time; checkInId the check-in that calls (reactions). " +
             "read is what read_touch_reactions returns after it. Contacts nothing.", new
         {
             dataDirectory = new { type = "string" }, personaId = new { type = "string" }, modelId = new { type = "string" },
@@ -306,10 +306,10 @@ internal sealed partial class McpServer
             undo = new { type = "string" }, save = new { type = "boolean" }, at = new { type = "string" }, checkInId = new { type = "string" }
         },
             async (arguments, cancellation) => await ReactionChangesCheck.RunAsync(DataDirectory(arguments),
-                OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "personaId"), OptionalString(arguments, "modelId"),
+                DisposableDataDirectory(arguments), OptionalString(arguments, "personaId"), OptionalString(arguments, "modelId"),
                 OptionalString(arguments, "modelPath"), OptionalString(arguments, "tool"), OptionalString(arguments, "arguments"),
                 OptionalString(arguments, "undo"), OptionalBool(arguments, "save") ?? false, OptionalString(arguments, "at"),
-                OptionalString(arguments, "checkInId"), cancellation)),
+                OptionalString(arguments, "checkInId"), cancellation)) with { Writes = arguments => OptionalBool(arguments, "save") == true },
         Tool("character_eyes", "Companion > Eyes > Where the face is (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
             "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
@@ -322,7 +322,7 @@ internal sealed partial class McpServer
             "upright face; with snapshotPath (a PNG of the character, transparent around it) and face (\"x,y,width[,rollDegrees]\", the " +
             "face's middle and width as fractions of the snapshot) the production close-up is composed and encoded as the desktop sends " +
             "it (previewDirectory keeps the pictures). save writes the measurement (with the pictures and the picture of its boxes) for " +
-            "the model (modelPath, modelId or the model dataDirectory's avatar.json shows) into an explicit, disposable dataDirectory, as " +
+            "the model (modelPath, modelId or the model dataDirectory's avatar.json shows) into an explicit, disposable dataDirectory (never Martlet's own data folder; save and forget need --allow-changes), as " +
             "Measure the face would (marked FIXTURE - NOT AI); forget removes it. eyesFrom (mesh, bones, vision or estimate: what the " +
             "renderer says the eyes use) shows the status line the section shows. Contacts nothing; never returns the model's path.", new
         {
@@ -331,11 +331,14 @@ internal sealed partial class McpServer
             previewDirectory = new { type = "string" }, save = new { type = "boolean" }, forget = new { type = "boolean" },
             eyesFrom = new { type = "string", @enum = new[] { "mesh", "bones", "vision", "estimate" } }
         },
-            async (arguments, cancellation) => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
+            async (arguments, cancellation) => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), DisposableDataDirectory(arguments),
                 OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                 OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
                 OptionalString(arguments, "previewDirectory"), OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "forget") ?? false,
-                OptionalString(arguments, "eyesFrom"), cancellation)),
+                OptionalString(arguments, "eyesFrom"), cancellation)) with
+            {
+                Writes = arguments => OptionalBool(arguments, "save") == true || OptionalBool(arguments, "forget") == true
+            },
         Tool("character_gaze", "Where the character looks (Companion > Eyes > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
             "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +

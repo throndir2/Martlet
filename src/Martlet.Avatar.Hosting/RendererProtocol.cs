@@ -130,13 +130,20 @@ public sealed record RendererTheme(bool Dark, IReadOnlyDictionary<string, string
 /// Shows (or with null text, hides) the speech bubble. By default it follows the character's head through moves, zoom and pan,
 /// choosing the side with room on screen, then shifts by the offsets (device-independent pixels, +x right, +y down). Static
 /// keeps it in one place: the offsets are then measured from the top-left of the work area of the character's screen.
+/// <paramref name="Button"/>, when given, is the label of a button under the text (Read more): the bubble then catches clicks
+/// (unless clicks pass through the character), and pressing the button sends a "read-more" <see cref="RendererRequest"/>.
 /// </summary>
-public sealed record RendererSay(string? Text, bool Static = false, double OffsetX = 0, double OffsetY = 0);
+public sealed record RendererSay(string? Text, bool Static = false, double OffsetX = 0, double OffsetY = 0, string? Button = null)
+{
+    /// <summary>The longest button label the overlay shows.</summary>
+    public const int MaximumButtonCharacters = 60;
+}
 /// <summary>Where the speech bubble is: "left", "right" or "above" the character's head, "static", or "hidden"; its
 /// body's screen rectangle in device-independent pixels (zero when hidden); and, when it was just shown, whether the text as
-/// laid out on screen lies within that body and the <paramref name="Colors"/> it is drawn in (null when hidden or unknown).</summary>
+/// laid out on screen lies within that body and the <paramref name="Colors"/> it is drawn in (null when hidden or unknown), and
+/// the label of the button it shows (null for none).</summary>
 public sealed record RendererBubble(string Placement, double Left, double Top, double Width, double Height, bool? TextFits = null,
-    RendererBubbleColors? Colors = null);
+    RendererBubbleColors? Colors = null, string? Button = null);
 /// <summary>The colors a shown speech bubble is drawn in (#RRGGBB): its fill, outline and text, and its halo (null without
 /// one, as in Windows' high contrast). They come from the overlay's palette: Surface, Accent, Text and Glow.</summary>
 public sealed record RendererBubbleColors(string Fill, string Outline, string Text, string? Halo);
@@ -183,15 +190,16 @@ public sealed record RendererLook(string Target, double X, double Y, GazeMode Mo
 /// <see cref="RendererPlacement"/>) and saves that on this PC. "clear" (Clear emotes) turns off every lingering emote the
 /// character shows. "framed" says the character was moved or zoomed within the camera
 /// view and has settled: Martlet then reads the view ("zoom" "status") and saves the framing. Zoom, position and keep-on-top
-/// stay inside the overlay. Taps on the character travel on the same pipe as "touch" messages (<see cref="CharacterTouch"/>).
+/// stay inside the overlay. "read-more" is the speech bubble's Read more button (<see cref="RendererSay.Button"/>): Martlet reads
+/// more about the app it offered it for. Taps on the character travel on the same pipe as "touch" messages (<see cref="CharacterTouch"/>).
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
     public const string LookPrefix = "look-", FreeOn = "look-free-on", FreeOff = "look-free-off",
-        ClickThroughOn = "click-through-on", ClickThroughOff = "click-through-off";
+        ClickThroughOn = "click-through-on", ClickThroughOff = "click-through-off", ReadMore = "read-more";
 
     public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed", "framed", "clear",
-        .. RendererGaze.Choices.Select(choice => LookPrefix + choice), FreeOn, FreeOff, ClickThroughOn, ClickThroughOff];
+        .. RendererGaze.Choices.Select(choice => LookPrefix + choice), FreeOn, FreeOff, ClickThroughOn, ClickThroughOff, ReadMore];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area

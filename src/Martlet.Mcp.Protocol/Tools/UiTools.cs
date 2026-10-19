@@ -194,12 +194,14 @@ internal sealed partial class McpServer
             "are in it, cropped to the character with a little room. Zoom the character first (SetupCharacterZoomIn) to see small " +
             "parts such as the eyes larger. Returns taken, picture (n, path: the renderer's PNG file in the temp folder, replaced " +
             "each time; width and height in pixels; left, top, cropWidth and cropHeight: where it sits on the overlay's drawing, " +
-            "as fractions like character_face's positions; or error) and saved, the copy at outputPath (a full path to a .png " +
-            "file) when given. Taking it changes nothing on the character, so it needs no --allow-ui-effects.", new
+            "as fractions like character_face's positions; or error) and saved, the copy at outputPath (a full path to a new .png " +
+            "file on this PC; an existing file is never replaced) when given. Taking it changes nothing on the character, so it needs " +
+            "no --allow-ui-effects; saving the copy at outputPath writes a file, so that needs --allow-changes.", new
         {
             outputPath = new { type = "string" }
         },
-            async (arguments, cancellation) => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath"))),
+            async (arguments, cancellation) => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")))
+            with { Writes = arguments => OptionalString(arguments, "outputPath") is not null },
         Tool("character_pose", "Read what the showing character's idle body does, samples times (1 to 60, default 1) gapMs apart (0 to " +
             "5000, default 250), as each frame is drawn. A VRM rests in a relaxed pose (arms hanging close to the body, elbows " +
             "softly bent, fingers curled) and breathes. Each reading (poses) has n, found (false for a Live2D model, whose own " +
