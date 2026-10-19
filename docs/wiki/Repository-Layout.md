@@ -10,7 +10,6 @@ This page tells you where things are in the repository. Before you change a rule
 | `CHANGELOG.md` | What changed in each version. Each release takes its notes from it. |
 | `CONTRIBUTING.md` | The developer quick start and the local-only validation policy. |
 | `AGENTS.md` | The rules for coding agents. |
-| `DEVELOPMENT_PLAN.md` | Product scope, decisions and risks. |
 | `LICENSE` | The license terms. |
 | `Martlet.slnx` | The main solution for the IDE. |
 | `Directory.Build.props` | Shared build settings and the Martlet `<Version>`. |

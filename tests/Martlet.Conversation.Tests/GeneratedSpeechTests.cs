@@ -43,4 +43,8 @@ public sealed class GeneratedSpeechTests
         Assert.False(observer.Segments.TryRead(out _));
         Assert.Equal(0, harness.Device.ClockReads);
     }
+
+    [Fact]
+    public void The_observation_holds_as_many_frames_as_playback_can_queue() =>
+        Assert.True(GeneratedSpeechObservation.FrameCapacity >= new Martlet.Audio.PlaybackOptions().MaximumQueuedFrames);
 }
