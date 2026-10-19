@@ -207,6 +207,16 @@ internal static class LocalOllama
         if (last != "success") throw new InvalidOperationException($"Ollama didn't finish downloading {model}. The output has details.");
     }
 
+    /// <summary>Puts downloaded GGUF <paramref name="files"/> into this PC's Ollama as <paramref name="model"/>
+    /// (<see cref="OllamaModelImport"/>), starting Ollama first when it isn't answering.</summary>
+    internal static async Task ImportAsync(string model, IReadOnlyList<string> files, Action<string> status, IProgress<string> output,
+        CancellationToken token)
+    {
+        using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        await EnsureRunningAsync(client, status, output, token);
+        await OllamaModelImport.ImportAsync(client, OriginUri, model, files, status, output, token);
+    }
+
     private const string TestPrompt = "Say hello in one short, friendly sentence.";
     private static readonly TimeSpan LoadLimit = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan AnswerLimit = TimeSpan.FromMinutes(2);

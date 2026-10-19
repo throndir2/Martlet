@@ -46,6 +46,54 @@ obvious next step at every stage, and a living map of the user's computers.
    starting programs (*Save and start* for MCP servers), adding or updating a
    remembered fact (*Add fact*), and removing a key Martlet kept from before
    (*Remove*, after a confirmation).
+8. **One short sentence, the rest behind a *?*.** A UI text has at most one
+   short sentence of explanation. The longer explanation goes behind a *?*
+   help mark, and the full instructions go to the wiki (see
+   [Help marks and the wiki](#help-marks-and-the-wiki)).
+
+## Help marks and the wiki
+
+`HelpTip` (`src/Martlet.Desktop/HelpTip.cs`) is the small round *?*. Pointing
+at it shows its text as a tooltip. A click opens a small card with the text
+and, when it has a wiki page, a *Read more in the wiki* link to
+`https://github.com/throndir2/Martlet/wiki/<Page>#<anchor>`. The wiki's source
+is [`docs/wiki/`](wiki/).
+
+| Call | What it makes |
+|---|---|
+| `HelpTip.For(topic, text, id, wiki: "Page#anchor")` | A *?* alone, such as in a row of controls. |
+| `HelpTip.After(label, topic, text, id, wiki: "Page#anchor")` | A heading, label or check box with a *?* after it. |
+| `HelpTip.Explain(text, margin, id, topic, wiki: "Page#anchor")` | A muted line that shows only the first sentence of `text`, with a *?* whose card has all of `text`. With `wiki`, the *?* shows also for one sentence. |
+
+The automation IDs are `Help-<id>` (the *?*), `Help-<id>-Card` (the open
+card's text) and `Help-<id>-Wiki` (the link; its help text is the URL).
+[MCP](MCP.md) reads them, and `ui_long_texts` lists the texts on the open page
+that have more than one sentence.
+
+To move a long text behind a *?*:
+
+1. Find the long texts: open the page with `scripts\Invoke-MartletMcp.ps1
+   -Desktop` and call `ui_long_texts`, or use the list in the sub-issue of
+   [#992](https://github.com/throndir2/Martlet/issues/992).
+2. Find the wiki section with the full instructions in `docs/wiki/`. If it is
+   not there, add the instructions to the right page under a heading.
+3. Write one short sentence for the page. Write the card text: one or two
+   short sentences.
+4. Replace `Note(longText, margin)` with
+   `HelpTip.Explain("Short line. Optional second sentence.", margin, "<Id>", "<topic>", wiki: "Page#anchor")`.
+   For a heading or label, use `HelpTip.After(...)` with `wiki:`.
+5. Write `wiki:` as a literal `"Page#anchor"`. The anchor is the heading in
+   lower case, with punctuation left out and hyphens for spaces
+   (`## Check-ins` is `check-ins`). `HelpTipTests` reads each `wiki:` value in
+   `src/Martlet.Desktop` and fails when the page or heading is not in
+   `docs/wiki/`.
+6. Run `.\scripts\Test-Martlet.ps1 -Project Martlet.Desktop.Tests -Filter
+   'FullyQualifiedName~HelpTipTests'`. Then call `ui_long_texts` on the page
+   again, `ui_click` the new `Help-<id>` and read `Help-<id>-Card` and
+   `Help-<id>-Wiki` with `ui_snapshot`.
+
+Companion › Check-ins is the first page that uses wiki links
+(`Help-CheckInsAbout`, `Help-CheckInsOwn`).
 
 ## Stages and surfaces
 

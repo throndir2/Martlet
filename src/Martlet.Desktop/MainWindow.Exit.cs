@@ -26,11 +26,15 @@ public partial class MainWindow
     private static readonly TimeSpan ExitSettle = TimeSpan.FromSeconds(1.5);
     /// <summary>The longest closing waits for interrupted work to let go of its files.</summary>
     private static readonly TimeSpan InterruptWait = TimeSpan.FromSeconds(5);
+    /// <summary>The longest exit waits for an editor window to save and close (it may ask about a change it can't save).</summary>
+    private static readonly TimeSpan EditorWindowWait = TimeSpan.FromSeconds(30);
 
     private readonly DispatcherTimer closingTimer = new() { Interval = SlowClosing };
     /// <summary>Windows is signing out or shutting down: nothing asks, everything stops.</summary>
     private bool sessionEnding;
     private bool askingToExit, confirmingExitNow, closingFinished;
+    /// <summary>Exit is saving the last edits before closing starts; another close waits for it.</summary>
+    private bool savingBeforeExit;
     /// <summary>What closing is doing now ("stopping the character") and what exiting without waiting leaves undone.</summary>
     private string closingStep = "getting ready to exit", closingEffect = "";
 
@@ -45,7 +49,7 @@ public partial class MainWindow
             _ = Dispatcher.InvokeAsync(ConfirmExitNow);
             return;
         }
-        if (askingToExit)
+        if (askingToExit || savingBeforeExit)
             return;
         // The close button keeps Martlet running in the notification area unless you chose to exit.
         if (!exiting && tray is { Added: true } && background.CloseToTray)
@@ -146,6 +150,12 @@ public partial class MainWindow
     private async Task CloseMartletAsync()
     {
         FlushCustomTheme();
+        // Edits still waiting for their typing pause save first, on the open page and in the other editor windows: once
+        // closing starts, the page saves are skipped.
+        savingBeforeExit = true;
+        try { await SavePendingEditsAsync(); }
+        catch (Exception error) when (!ErrorLog.IsFatal(error)) { ErrorLog.Warn("Couldn't save the last changes before exiting.", error); }
+        finally { savingBeforeExit = false; }
         closing = true;
         exiting = true;
         rowBatches.Stop();
@@ -252,6 +262,28 @@ public partial class MainWindow
         {
             if (DateTime.UtcNow >= deadline) throw new TimeoutException($"Still running after {limit.TotalSeconds:0} seconds.");
             await Task.Delay(100);
+        }
+    }
+
+    /// <summary>The editor windows that save on their own (and when they close).</summary>
+    internal static bool SavesOnClose(Window window) => window is CompanionWindow or LorebookWindow or MemoryWindow or AvatarWindow;
+
+    /// <summary>Saves the open page's waiting edit, then closes each editor window and waits while it saves its own (it may
+    /// ask about a change it can't save).</summary>
+    private async Task SavePendingEditsAsync()
+    {
+        if (tabAutoSave is { Pending: true } page)
+        {
+            await page.SaveNowAsync().WaitAsync(InterruptWait);
+            ErrorLog.Info(page.Pending ? "Exiting with the page's last change unsaved." : "Saved the page's last change before exiting.");
+        }
+        foreach (var window in Application.Current?.Windows.OfType<Window>().Where(SavesOnClose).ToList() ?? [])
+        {
+            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.Closed += (_, _) => closed.TrySetResult();
+            window.Close();
+            try { await closed.Task.WaitAsync(sessionEnding ? InterruptWait : EditorWindowWait); }
+            catch (TimeoutException) { ErrorLog.Warn($"{window.Title} didn't close before exit; its last change may be missing."); }
         }
     }
 
