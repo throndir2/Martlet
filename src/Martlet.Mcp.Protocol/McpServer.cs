@@ -203,7 +203,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
     };
 
     private sealed record MemoryCounts(string State, int Facts = 0, int Typed = 0, int FromConversation = 0, int Expiring = 0, object? Whose = null,
-        int Replaced = 0, int WithSearchWords = 0);
+        int Replaced = 0, int WithSearchWords = 0, object? Where = null);
 
     /// <summary>Whether a hosts.json entry is a host a friend shares with that desktop (Martlet.Desktop's PairedHost.Access).</summary>
     internal static bool IsSharedHost(JsonElement host) =>

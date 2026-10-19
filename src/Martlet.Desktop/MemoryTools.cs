@@ -27,10 +27,11 @@ internal static class MemoryTools
         "Your long-term memory of the user and the people you know by voice. Use it when the user asks what you remember, or asks " +
         "you to remember, correct, reassign or forget something. action find: look up facts (query words and/or person) to get " +
         "their ids. remember: save a new fact. update: change one fact's text and/or whose it is (person). forget: delete facts " +
-        "by id. Always find first for ids; never guess them. Facts are short standalone third-person sentences.";
+        "by id. Always find first for ids; never guess them. Facts are short standalone third-person sentences. A fact kept for one " +
+        "game (where) comes up only while the user plays it.";
 
     internal const string ParametersJson =
-        """{"type":"object","properties":{"action":{"type":"string","enum":["find","remember","update","forget"]},"query":{"type":"string","description":"find: words to look for (empty lists the newest)."},"person":{"type":"string","description":"Whose facts: a name or voice tag like V3, \"me\" for who is speaking, or \"everyone\" for no one in particular. find: only theirs. remember/update: who it belongs to."},"fact":{"type":"string","description":"remember/update: the fact."},"ids":{"type":"array","items":{"type":"string"},"description":"update: one id; forget: one or more ids, from find."}},"required":["action"],"additionalProperties":false}""";
+        """{"type":"object","properties":{"action":{"type":"string","enum":["find","remember","update","forget"]},"query":{"type":"string","description":"find: words to look for (empty lists the newest)."},"person":{"type":"string","description":"Whose facts: a name or voice tag like V3, \"me\" for who is speaking, or \"everyone\" for no one in particular. find: only theirs. remember/update: who it belongs to."},"fact":{"type":"string","description":"remember/update: the fact."},"where":{"type":"string","description":"remember/update: where the fact matters: \"everywhere\" (the default), \"here\" for only what the user does now (such as the game they play), \"games\" for any game, or a game's name."},"ids":{"type":"array","items":{"type":"string"},"description":"update: one id; forget: one or more ids, from find."}},"required":["action"],"additionalProperties":false}""";
 
     internal static TextToolDefinition Definition { get; } = new(Name, Description, ParametersJson);
 
@@ -67,9 +68,10 @@ internal static class MemoryTools
     /// person's voice).</param>
     /// <param name="similar">Finds facts by meaning for find's query words (best first; null when it can't now): they are fused
     /// with the facts found by their words.</param>
+    /// <param name="activity">What the user does now (<see cref="MemoryActivity"/>), which "here" names.</param>
     internal static async Task<MemoryToolOutcome> RunAsync(DesktopMemoryService service, Guid configurationRevision, string argumentsJson,
         VoiceRoster? roster, KnownVoice? speaker, CancellationToken token, KnownVoice? yours = null,
-        Func<string, CancellationToken, Task<IReadOnlyList<Guid>?>>? similar = null)
+        Func<string, CancellationToken, Task<IReadOnlyList<Guid>?>>? similar = null, string? activity = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         JsonObject? arguments;
@@ -87,6 +89,8 @@ internal static class MemoryTools
             if (problem is not null) return Refused(problem);
             voice = resolved;
         }
+        var (setWhere, where, whereProblem) = Where(Text(arguments, "where"), activity);
+        if (whereProblem is not null && action is "remember" or "update") return Refused(whereProblem);
         switch (action)
         {
             case "find":
@@ -108,7 +112,8 @@ internal static class MemoryTools
                     var all = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
                     var facts = Current(all);
                     if (facts.Concat(service.OtherFacts(set).Select(f => f.Fact))
-                        .FirstOrDefault(f => MemoryCapture.SameFact(f.Content, content) && Same(f.VoiceId, voice, roster)) is { } known)
+                        .FirstOrDefault(f => MemoryCapture.SameFact(f.Content, content) && Same(f.VoiceId, voice, roster) &&
+                            (f.Activity is null || MemoryActivity.Same(f.Activity, where))) is { } known)
                         return new MemoryToolOutcome(new($"Already remembered as {ShortId(known)}: {known.Content}"), "already remembered", []);
                     if (all.Count >= MemoryLimits.MaximumFacts)
                         return Refused($"Memory is full ({MemoryLimits.MaximumFacts:N0} facts). Tell the user to delete some on the Memory page.");
@@ -117,17 +122,19 @@ internal static class MemoryTools
                         Content = content,
                         Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), service.UtcNow),
                         Retention = MemoryRetention.UntilDeleted(),
-                        VoiceId = voice
+                        VoiceId = voice,
+                        Activity = where
                     }, operationToken).ConfigureAwait(false);
-                    return new MemoryToolOutcome(new($"Remembered as {ShortId(saved.Fact)}{Whose(voice, roster)}."), "remembered",
-                        [new(MemoryCaptureKind.Remember, saved.Fact.Content, saved.Fact.VoiceId)]);
+                    return new MemoryToolOutcome(new($"Remembered as {ShortId(saved.Fact)}{Whose(voice, roster)}, " +
+                        $"{MemoryActivity.Describe(saved.Fact.Activity)}."), "remembered",
+                        [new(MemoryCaptureKind.Remember, saved.Fact.Content, saved.Fact.VoiceId, Activity: saved.Fact.Activity)]);
                 }, token).ConfigureAwait(false);
             case "update":
                 if (ids.Count != 1) return Refused("Pass exactly one id from find in ids.");
                 string? text = null;
                 if (fact is not null && (text = Fact(fact)) is null)
                     return Refused($"The fact must be one short sentence of up to {MemoryCapture.MaximumFactCharacters} characters.");
-                if (text is null && person is null) return Refused("Pass the corrected fact, a person to give it to, or both.");
+                if (text is null && person is null && !setWhere) return Refused("Pass the corrected fact, a person to give it to, where it matters, or more of them.");
                 return await ChangeAsync(service, configurationRevision, ids, async (store, targets, operationToken) =>
                 {
                     var target = targets[0];
@@ -140,10 +147,13 @@ internal static class MemoryTools
                         Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), service.UtcNow),
                         Retention = target.Retention,
                         VoiceId = person is null ? target.VoiceId : voice,
-                        KeepHistory = true
+                        KeepHistory = true,
+                        SetActivity = setWhere,
+                        Activity = where
                     }, operationToken).ConfigureAwait(false);
-                    return new MemoryToolOutcome(new($"Updated {ShortId(edited.Fact)}: {edited.Fact.Content}{Whose(edited.Fact.VoiceId, roster)}."),
-                        "updated", [new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId)]);
+                    return new MemoryToolOutcome(new($"Updated {ShortId(edited.Fact)}: {edited.Fact.Content}{Whose(edited.Fact.VoiceId, roster)}, " +
+                        $"{MemoryActivity.Describe(edited.Fact.Activity)}."),
+                        "updated", [new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId, Activity: edited.Fact.Activity)]);
                 }, token).ConfigureAwait(false);
             case "forget":
                 if (ids.Count is 0 or > MaximumForget) return Refused($"Pass 1 to {MaximumForget} ids from find in ids.");
@@ -244,6 +254,7 @@ internal static class MemoryTools
             id = ShortId(m.Fact),
             person = MemoryPeople.Label(m.Fact.VoiceId, roster) ?? "everyone",
             fact = m.Fact.Content,
+            where = m.Fact.Activity is null ? null : MemoryActivity.Describe(m.Fact.Activity),
             updated = m.Fact.UpdatedAtUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             kept = kept?.GetValueOrDefault(m.Fact.Id)
         }).ToArray();
@@ -272,6 +283,27 @@ internal static class MemoryTools
         return (null, named.Length > 1
             ? $"More than one voice goes by \"{name}\"; use their tag instead. Voices: {known}."
             : $"No one Martlet knows by voice is called \"{name}\". Voices: {known}. For someone else, use \"everyone\" and name them in the fact.");
+    }
+
+    private static readonly string[] EverywhereWords = ["everywhere", "global", "always", "anywhere", "all", "life", "everything"];
+    private static readonly string[] HereWords = ["here", "now", "this game", "current", "the current game", "this", "current game"];
+    private static readonly string[] GamesWords = ["games", "gaming", "any game", "all games", "every game", "while gaming"];
+
+    /// <summary>Where a fact matters from what the model wrote (<see cref="MemoryActivity"/>): (false, null, null) when it said
+    /// nothing; (true, activity or null for everywhere, null); or a problem. "here" is <paramref name="now"/>; any other words are a
+    /// game's name.</summary>
+    internal static (bool Set, string? Activity, string? Problem) Where(string? text, string? now)
+    {
+        var name = text?.Trim().Trim('"', '\'', '.').Trim();
+        if (string.IsNullOrEmpty(name)) return (false, null, null);
+        if (EverywhereWords.Contains(name, StringComparer.OrdinalIgnoreCase)) return (true, null, null);
+        if (HereWords.Contains(name, StringComparer.OrdinalIgnoreCase))
+            return now is null ? (false, null, "Martlet doesn't know of a game or other activity now; use \"everywhere\", \"games\" or a game's name.")
+                : (true, now, null);
+        if (GamesWords.Contains(name, StringComparer.OrdinalIgnoreCase)) return (true, MemoryActivity.Gaming, null);
+        foreach (var prefix in new[] { "while playing ", "playing ", "in " })
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) name = name[prefix.Length..].Trim();
+        return MemoryActivity.Game(name) is { } game ? (true, game, null) : (false, null, "where must be everywhere, here, games or a game's name.");
     }
 
     private static (MemoryFact? Fact, string? Problem) Resolve(IReadOnlyList<MemoryFact> facts, string id)

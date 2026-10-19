@@ -42,7 +42,7 @@ public sealed class MemoryStore : IDisposable
         LexicalIndex Index);
 
     private readonly record struct CachedHit(Guid FactId, double Score, int MatchedTerms);
-    private readonly record struct QueryKey(string Terms, int MaximumResults);
+    private readonly record struct QueryKey(string Terms, int MaximumResults, bool ByActivity, string? Activity);
 
     private readonly object gate = new();
     private readonly SemaphoreSlim writeGate = new(1, 1);
@@ -281,6 +281,7 @@ public sealed class MemoryStore : IDisposable
             ValidateWrite(request?.Content, request?.Provenance, request?.Retention, now);
             MemoryFact.ValidateVoiceId(request!.VoiceId);
             MemoryFact.ValidateSearchWords(request.SearchWords);
+            MemoryActivity.Validate(request.Activity);
             StoreState current;
             lock (gate)
             {
@@ -299,7 +300,8 @@ public sealed class MemoryStore : IDisposable
                 LastModifiedBy = request.Provenance,
                 Retention = request.Retention,
                 VoiceId = request.VoiceId,
-                SearchWords = request.SearchWords
+                SearchWords = request.SearchWords,
+                Activity = request.Activity
             };
             var facts = current.Facts.Values.Append(fact).ToArray();
             var committed = await CommitFactsAsync(current, facts, now, cancellationToken);
@@ -324,6 +326,7 @@ public sealed class MemoryStore : IDisposable
             ValidateWrite(request!.Content, request.Provenance, request.Retention, now);
             MemoryFact.ValidateVoiceId(request.VoiceId);
             MemoryFact.ValidateSearchWords(request.SearchWords);
+            if (request.SetActivity) MemoryActivity.Validate(request.Activity);
             StoreState current;
             MemoryFact existing;
             lock (gate)
@@ -346,6 +349,7 @@ public sealed class MemoryStore : IDisposable
                 LastModifiedBy = request.Provenance,
                 Retention = request.Retention,
                 VoiceId = request.VoiceId,
+                Activity = request.SetActivity ? request.Activity : existing.Activity,
                 // Words describe the content: new content drops them unless new ones come with it.
                 SearchWords = request.SearchWords ?? (changed ? null : existing.SearchWords)
             };
@@ -622,7 +626,7 @@ public sealed class MemoryStore : IDisposable
         CachedHit[]? cached = null;
         // A search fused with facts found by meaning isn't cached: the same words can come with other facts.
         var cacheable = query.Similar is not { Count: > 0 };
-        var key = new QueryKey(string.Join('\u001f', terms), query.MaximumResults);
+        var key = new QueryKey(string.Join('\u001f', terms), query.MaximumResults, query.Activity is not null, query.Activity?.Now);
         lock (gate)
         {
             EnsureOpen();
@@ -632,7 +636,8 @@ public sealed class MemoryStore : IDisposable
         hooks?.Query?.Invoke(MemoryQueryPoint.AfterSnapshot, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var hits = cached ?? snapshot.Index.Search(terms, query.MaximumResults, cancellationToken, similar: query.Similar)
+        var hits = cached ?? snapshot.Index.Search(terms, query.MaximumResults, cancellationToken,
+                query.Activity is { } activity ? id => activity.Allows(snapshot.Facts[id], query.Text) : null, query.Similar)
             .Select(match => new CachedHit(match.FactId, match.Score, match.MatchedTerms))
             .ToArray();
         hooks?.Query?.Invoke(MemoryQueryPoint.BeforeRevisionCheck, cancellationToken);

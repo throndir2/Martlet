@@ -134,6 +134,11 @@ public sealed record MemoryFact
     /// <see cref="VoiceId"/>, a fact without them is written exactly as before.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SearchWords { get; init; }
+    /// <summary>Where the fact matters (<see cref="MemoryActivity"/>): null for everywhere, "gaming" while the user plays any game,
+    /// "gaming/Palworld" only while they play Palworld. Recall leaves out a fact for another activity. Like <see cref="VoiceId"/>,
+    /// a fact without one (every fact made before activities) is written exactly as before and matters everywhere.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Activity { get; init; }
     /// <summary>When the fact stopped being true: set on an earlier version kept as history after a correction, or on a fact a
     /// newer fact made outdated. A replaced fact is never recalled as current; null for a current fact.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -155,6 +160,7 @@ public sealed record MemoryFact
         ValidateContent(Content);
         ValidateVoiceId(VoiceId);
         ValidateSearchWords(SearchWords);
+        MemoryActivity.Validate(Activity);
         MemoryGuard.Utc(CreatedAtUtc);
         MemoryGuard.Utc(UpdatedAtUtc);
         MemoryGuard.Require(UpdatedAtUtc >= CreatedAtUtc);
@@ -214,6 +220,8 @@ public sealed record SaveFactRequest
     public string? VoiceId { get; init; }
     /// <summary>Hidden search words for the fact (<see cref="MemoryFact.SearchWords"/>), or null.</summary>
     public string? SearchWords { get; init; }
+    /// <summary>Where the fact matters (<see cref="MemoryFact.Activity"/>); null for everywhere.</summary>
+    public string? Activity { get; init; }
 
     public override string ToString() => "Explicit memory fact save request (content omitted)";
 }
@@ -235,6 +243,12 @@ public sealed record EditFactRequest
     /// <see cref="MemoryFact.ReplacedAtUtc"/> now and <see cref="MemoryFact.ReplacedBy"/> this fact). A full store skips the
     /// history copy rather than the correction.</summary>
     public bool KeepHistory { get; init; }
+    /// <summary>Gives the fact <see cref="Activity"/>. Without it the fact keeps where it matters, so an edit never moves it by
+    /// accident.</summary>
+    public bool SetActivity { get; init; }
+    /// <summary>Where the fact matters after the edit (<see cref="MemoryFact.Activity"/>; null for everywhere), when
+    /// <see cref="SetActivity"/>.</summary>
+    public string? Activity { get; init; }
 
     public override string ToString() =>
         $"Explicit memory fact edit request {{ Id = {Id}, ExpectedRevision = {ExpectedRevision}, Content = [redacted], KeepHistory = {KeepHistory} }}";
@@ -332,6 +346,9 @@ public sealed record MemoryQuery
     /// fused with the lexical order by reciprocal rank fusion, so a fact that says the same thing in other words is found too. IDs
     /// a store doesn't have (or whose fact expired) are left out. Null: words only.</summary>
     public IReadOnlyList<Guid>? Similar { get; init; }
+    /// <summary>Which facts it may find by where they matter (<see cref="MemoryActivityFilter"/>): those for everywhere, those
+    /// for the activity now and those whose activity the words name. Null: every fact.</summary>
+    public MemoryActivityFilter? Activity { get; init; }
 
     public static MemoryQuery? TryFromBoundedSource(string source, int maximumResults = 5)
     {
@@ -347,7 +364,7 @@ public sealed record MemoryQuery
     }
 
     public override string ToString() =>
-        $"MemoryQuery {{ Text = [redacted], MaximumResults = {MaximumResults}, Similar = {Similar?.Count ?? 0} }}";
+        $"MemoryQuery {{ Text = [redacted], MaximumResults = {MaximumResults}, Similar = {Similar?.Count ?? 0}, ByActivity = {Activity is not null} }}";
 }
 
 public sealed record MemoryRetrievalHit(MemoryFact Fact, double Score, int MatchedTerms);

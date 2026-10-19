@@ -42,7 +42,9 @@ public sealed class MemorySnapshot
         MemoryGuard.Require(query.MaximumResults is >= 1 and <= MemoryLimits.MaximumResults);
         if (byId.Count == 0)
             return [];
-        return index.Search(terms, query.MaximumResults, cancellationToken, id => !byId[id].Retention.IsExpired(now), query.Similar)
+        return index.Search(terms, query.MaximumResults, cancellationToken,
+                id => !byId[id].Retention.IsExpired(now) && (query.Activity is not { } activity || activity.Allows(byId[id], query.Text)),
+                query.Similar)
             .Select(match => new MemoryRetrievalHit(byId[match.FactId], match.Score, match.MatchedTerms))
             .ToArray();
     }
