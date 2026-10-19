@@ -52,6 +52,10 @@ public partial class RecommendedSetupWindow : ThemedWindow
     /// <summary>The owner chose Use the suggestion for a locked job. The review closes and opens again with that suggestion in it.</summary>
     internal event Action<string>? UseSuggestion;
 
+    /// <summary>The owner chose Think with it for a model an app on this PC serves. The review closes; Martlet switches Thinking
+    /// to that model in that app.</summary>
+    internal event Action<ServedModel>? UseServed;
+
     /// <summary>The review closed to open again with a suggestion or a new lock: the owner hasn't finished with it.</summary>
     internal bool LeftForSuggestion { get; private set; }
 
@@ -87,6 +91,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
         PreferencesPanel.Children.Add(RecommendationPreferencesControls.Build("RecommendedSetup",
             review.Preferences with { UseServedModels = review.UseServed, PreferHostModels = review.PreferHostModels }, review.Games,
             ChangePreferences, servedNote, hostModelsNote));
+        if (review.UseServed && review.ServedChoices.Count > 0) PreferencesPanel.Children.Add(ServedChoicesPanel());
         RenderBanner();
         ChoicesPanel.Children.Clear();
         foreach (var choice in review.Choices) ChoicesPanel.Children.Add(ChoiceRow(choice));
@@ -267,6 +272,41 @@ public partial class RecommendedSetupWindow : ThemedWindow
         if (muted) line.SetResourceReference(StyleProperty, "Muted");
         AutomationProperties.SetAutomationId(line, id);
         return line;
+    }
+
+    /// <summary>Models your apps already run, as explicit choices: one row per chat model an app on this PC serves
+    /// (<c>RecommendedSetupServed-&lt;n&gt;</c>), each with Think with it (<c>RecommendedSetupUseServed-&lt;n&gt;</c>).</summary>
+    private FrameworkElement ServedChoicesPanel()
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var heading = Line("Or choose one of the models your apps already run for Thinking:", "RecommendedSetupServedHeading");
+        heading.FontWeight = FontWeights.SemiBold;
+        panel.Children.Add(heading);
+        for (var i = 0; i < review.ServedChoices.Count; i++)
+        {
+            var served = review.ServedChoices[i];
+            var text = RecommendedSetupInputs.ServedLine(served);
+            var row = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
+            var use = new Button
+            {
+                Content = "Think with it", Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top,
+                ToolTip = $"Switch Thinking to {served.ModelId} now. Martlet keeps your choice: Recommended setup doesn't change it."
+            };
+            AutomationProperties.SetAutomationId(use, $"RecommendedSetupUseServed-{i}");
+            AutomationProperties.SetName(use, $"Think with {text}");
+            use.Click += (_, _) =>
+            {
+                if (applying) return;
+                LeftForSuggestion = true;
+                UseServed?.Invoke(served);
+                Close();
+            };
+            DockPanel.SetDock(use, Dock.Right);
+            row.Children.Add(use);
+            row.Children.Add(Line("\u2022 " + text, $"RecommendedSetupServed-{i}"));
+            panel.Children.Add(row);
+        }
+        return panel;
     }
 
     /// <summary>One job in Your choices: who does it today, its lock (Locked: keep my choice) and Martlet's suggestion, with Use the
