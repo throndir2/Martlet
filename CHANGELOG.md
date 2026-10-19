@@ -8,6 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- A change you type just before you exit Martlet is saved first, also in the Character, Lorebook, Memory and Avatar windows. ([#1011](https://github.com/throndir2/Martlet/pull/1011))
+- Two share links clicked quickly one after the other both open in the running Martlet, and a link is never cut short. ([#1011](https://github.com/throndir2/Martlet/pull/1011))
+- The zone names on the Touch page are readable on every zone color and follow Windows high contrast. ([#1011](https://github.com/throndir2/Martlet/pull/1011))
+- In the Hosts window, an unfinished SSH target such as `user@` no longer fills in this PC's own address, and a too-long name no longer shows an error. ([#1011](https://github.com/throndir2/Martlet/pull/1011))
+- Appearance now says that your theme and colors are the same on all your computers. ([#1011](https://github.com/throndir2/Martlet/pull/1011))
+
 ## [0.88.2] - 2026-10-17
 
 ### Changed
