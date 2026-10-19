@@ -121,7 +121,7 @@ internal static class MemoryTools
                     return target is null ? Refused(problem!) : History(target, all, roster);
                 }, token).ConfigureAwait(false);
             case "update_many":
-                return await UpdateManyAsync(service, configurationRevision, arguments, roster, speaker, yours, token).ConfigureAwait(false);
+                return await UpdateManyAsync(service, configurationRevision, arguments, roster, speaker, yours, activity, token).ConfigureAwait(false);
             case "note":
                 if (ids.Count is 0 or > MemoryToolSet.MaximumNoted) return Refused($"Pass 1 to {MemoryToolSet.MaximumNoted} ids from find in ids.");
                 if (Note(Text(arguments, "note")) is not { } note)
@@ -262,7 +262,7 @@ internal static class MemoryTools
 
     /// <summary>update_many: each edit runs as one update, done or refused on its own; one line for each.</summary>
     private static async Task<MemoryToolOutcome> UpdateManyAsync(DesktopMemoryService service, Guid configurationRevision, JsonObject arguments,
-        VoiceRoster? roster, KnownVoice? speaker, KnownVoice? yours, CancellationToken token)
+        VoiceRoster? roster, KnownVoice? speaker, KnownVoice? yours, string? activity, CancellationToken token)
     {
         if (arguments["edits"] is not JsonArray edits || edits.Count is 0 or > MemoryToolSet.MaximumEdits)
             return Refused($"Pass 1 to {MemoryToolSet.MaximumEdits} edits, each with an id from find and the corrected fact and/or person.");
@@ -277,10 +277,10 @@ internal static class MemoryTools
                 continue;
             }
             var single = new JsonObject { ["action"] = "update" };
-            foreach (var name in new[] { "id", "fact", "person" })
+            foreach (var name in new[] { "id", "fact", "person", "where" })
                 if (Text(edit, name) is { } value) single[name] = value;
             MemoryToolOutcome outcome;
-            try { outcome = await RunAsync(service, configurationRevision, single.ToJsonString(), roster, speaker, token, yours).ConfigureAwait(false); }
+            try { outcome = await RunAsync(service, configurationRevision, single.ToJsonString(), roster, speaker, token, yours, activity: activity).ConfigureAwait(false); }
             catch (MemoryException error) when (error.Failure is MemoryFailure.Conflict or MemoryFailure.NotFound)
             {
                 outcome = Refused("The fact changed meanwhile; call find again.");
@@ -312,6 +312,8 @@ internal static class MemoryTools
             people = current.GroupBy(f => MemoryPeople.Label(f.VoiceId, roster) ?? "everyone")
                 .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
                 .Select(g => new { person = g.Key, facts = g.Count() }).ToArray(),
+            where = current.GroupBy(f => MemoryActivity.Describe(f.Activity)).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { where = g.Key, facts = g.Count() }).ToArray(),
             kept = elsewhere.Count == 0 ? null : elsewhere.GroupBy(e => e.Kept).Select(g => new { place = g.Key, facts = g.Count() }).ToArray(),
             most = MemoryLimits.MaximumFacts
         }, FoundJson);
@@ -328,7 +330,7 @@ internal static class MemoryTools
                 person = MemoryPeople.Label(f.VoiceId, roster) ?? "everyone",
                 until = f.ReplacedAtUtc!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             }).ToArray();
-        var json = JsonSerializer.Serialize(new { id = ShortId(target), fact = target.Content, earlier }, FoundJson);
+        var json = JsonSerializer.Serialize(new { id = ShortId(target), fact = target.Content, where = MemoryActivity.Describe(target.Activity), earlier }, FoundJson);
         return new(new(earlier.Length == 0 ? json + "\nIt has no earlier versions." : json), $"history with {earlier.Length} earlier", []);
     }
 
