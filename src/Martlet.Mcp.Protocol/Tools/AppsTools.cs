@@ -879,13 +879,15 @@ internal sealed partial class McpServer
         }
     }
 
-    /// <summary>Martlet's own cloudflared download in the data directory's tools folder: its version and whether it still matches
-    /// the size and SHA-256 checked against GitHub's release at download (Martlet runs it only then).</summary>
+    /// <summary>Martlet's own cloudflared download in the data directory's tools folder: its version, whether it still matches
+    /// the size and SHA-256 checked against GitHub's release at download, and whether Windows confirms Cloudflare's signature
+    /// on it (Martlet runs it only when both hold).</summary>
     private static object CloudflaredStatus(string directory)
     {
         var own = Martlet.Messaging.CloudflareQuickTunnel.Installed(Path.Combine(directory, "tools"));
-        return own is null ? new { downloaded = false, version = (string?)null, verified = false }
-            : new { downloaded = true, version = own.Version, verified = own.Verified };
+        if (own is null) return new { downloaded = false, version = (string?)null, verified = false, signed = false, signatureProblem = (string?)null };
+        var problem = Martlet.Messaging.CloudflaredSignature.Problem(own.Path);
+        return new { downloaded = true, version = own.Version, verified = own.Verified, signed = problem is null, signatureProblem = problem };
     }
 
     /// <summary>messaging.json in a data directory (the file name and fields match Martlet.Desktop's MessagingPreferences). The

@@ -33,6 +33,8 @@ Each release's section here is also its notes on GitHub.
 - `mcp_servers_status` no longer shows passwords or tokens that are written in `mcp.json` arguments. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
 - Martlet.Doctor's status is no longer always "not ready": checks it cannot run here show as *not checked here*, so a healthy PC passes. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
 - `Register-MartletMcp.ps1` keeps your assistant's original configuration in a dated backup each time, and no longer removes comments from VS Code's `mcp.json` unless you add `-Force`. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
+- Martlet runs cloudflared for WhatsApp only when Windows confirms Cloudflare's signature on it, also a copy you installed yourself. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
+- The Account page says that a PIN or password alone doesn't keep out others who use the same Windows login, and that encryption does. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
 - Asking Martlet in the middle of a game to read more about it now really reads more pages, instead of saying yes and adding nothing. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - Read again no longer drops the pages Martlet read more of, so a guide never gets smaller. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
