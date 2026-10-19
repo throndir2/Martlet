@@ -127,8 +127,13 @@ public sealed class SharedSettingsNode
     private readonly bool account;
     private readonly Dictionary<string, string> observed;
     private readonly Dictionary<string, string> secrets = new(StringComparer.Ordinal);
-    /// <summary>Entries applied that still read back differently; not applied again until they change.</summary>
-    private readonly Dictionary<string, string> mismatched = new(StringComparer.Ordinal);
+    /// <summary>Entries applied that still read back differently: not applied again until they change or their retry time
+    /// comes (sooner at first, then less often, see <see cref="MismatchRetry"/>).</summary>
+    private readonly Dictionary<string, (string Version, int Tries, DateTimeOffset RetryAt)> mismatched = new(StringComparer.Ordinal);
+
+    /// <summary>How long a setting that read back differently waits before it is applied again: 1 minute after the first try,
+    /// doubling to at most 30 minutes.</summary>
+    public static TimeSpan MismatchRetry(int tries) => TimeSpan.FromMinutes(Math.Min(30, Math.Pow(2, Math.Clamp(tries, 1, 6) - 1)));
 
     /// <param name="account">An account's node (docs/ACCOUNTS.md, "Account settings"): its copy is that account's whole set of
     /// settings, which a switch gives back to the files. So every setting the files hold that the copy lacks is recorded, a
@@ -263,10 +268,15 @@ public sealed class SharedSettingsNode
                     continue;
                 }
                 var version = $"{entry.Revision}/{entry.UpdatedBy}";
-                if (mismatched.TryGetValue(section.Key, out var tried) && tried == version)
+                var tries = 0;
+                if (mismatched.TryGetValue(section.Key, out var tried) && tried.Version == version)
                 {
-                    waiting[section.Key] = "It is set up differently on this PC.";
-                    continue;
+                    if (now < tried.RetryAt)
+                    {
+                        waiting[section.Key] = "It is set up differently on this PC. Martlet tries again soon.";
+                        continue;
+                    }
+                    tries = tried.Tries;
                 }
                 var secret = entry.SecretSha256 is { } sha ? secrets.GetValueOrDefault(sha) : null;
                 if (entry.SecretSha256 is not null && secret is null)
@@ -284,17 +294,24 @@ public sealed class SharedSettingsNode
                 }
                 invalidate?.Invoke();
                 SharedLocal? after = null;
+                string? unread = null;
                 try { after = await section.ReadAsync(token); }
-                catch (Exception error) when (error is not OperationCanceledException) { }
-                if (after is not null)
+                catch (Exception error) when (error is not OperationCanceledException) { unread = error.Message; }
+                if (after is null)
                 {
-                    observed[section.Key] = after.Digest;
-                    if (after.Secret is { } own) secrets[SharedSettings.Sha256(own)] = own;
+                    // Applied, but this PC can't show it yet (a part not ready, or a read that failed): it is tried again on the
+                    // next sync instead of being taken as set up differently.
+                    waiting[section.Key] = unread is null
+                        ? "It isn't ready on this PC yet. Martlet tries again."
+                        : $"Couldn't read it back here: {unread} Martlet tries again.";
+                    continue;
                 }
-                if (after is null || !entry.Holds(after.Value, after.SecretSha256))
+                observed[section.Key] = after.Digest;
+                if (after.Secret is { } own) secrets[SharedSettings.Sha256(own)] = own;
+                if (!entry.Holds(after.Value, after.SecretSha256))
                 {
-                    mismatched[section.Key] = version;
-                    waiting[section.Key] = "It is set up differently on this PC.";
+                    mismatched[section.Key] = (version, tries + 1, now + MismatchRetry(tries + 1));
+                    waiting[section.Key] = "It is set up differently on this PC. Martlet tries again soon.";
                     continue;
                 }
                 mismatched.Remove(section.Key);
