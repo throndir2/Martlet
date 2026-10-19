@@ -26,8 +26,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- Martlet runs cloudflared for WhatsApp only when Windows confirms Cloudflare's signature on it, also a copy you installed yourself. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
-- The Account page says that a PIN or password alone doesn't keep out others who use the same Windows login, and that encryption does. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- Martlet runs cloudflared for WhatsApp only when Windows confirms Cloudflare's signature on it, also a copy you installed yourself. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
+- The Account page says that a PIN or password alone doesn't keep out others who use the same Windows login, and that encryption does. ([#1036](https://github.com/throndir2/Martlet/pull/1036))
 - A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - Many requests to a host at the same time no longer wait for each other's disk saves one by one. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - When a host can't save or load API keys, accounts, memories, conversations or other shared data, it now says so in its log and security audit instead of losing the change without a sign. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
