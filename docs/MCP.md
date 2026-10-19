@@ -7415,7 +7415,8 @@ is refused). `memory care: a built-in check-in that works on memory in several
 steps` checks the built-in Memory care check-in: on, every hour, *Its tools
 act* with the Memory set, its job offering all ten Memory tools for 16 rounds
 with 8 minutes and 2,048 tokens a request, its message saying it works in
-steps, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
+steps and keeps facts for the right game, the three tools that save or correct
+facts taking `where`, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
 rules list `maximumToolRounds`, `maximumToolCalls`, `maximumToolOutputTokens`,
 `toolTimeoutSeconds` and `hardMaxToolRounds`. `tools: background work takes over the reply's think_longer and
 research` checks the `background-work` set: its two tools take the reply's

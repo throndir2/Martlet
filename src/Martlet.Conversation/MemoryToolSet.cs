@@ -21,6 +21,7 @@ public static class MemoryToolSet
     public const int MaximumNoted = 50, MaximumNoteCharacters = 80, MaximumMerged = 10;
 
     private const string PersonText = "Whose facts: a name or voice tag like V3, \\\"me\\\" for who spoke last, or \\\"everyone\\\" for no one in particular.";
+    private const string WhereText = "Where the fact matters: \\\"everywhere\\\", \\\"here\\\" for what the user does now (such as the game they play), \\\"games\\\" for any game, or a game\u0027s name like Minecraft. A fact for one game comes up only while the user plays it.";
 
     public static CheckInToolSet Set { get; } = new(Id, "Memory",
         "Looks over, finds, remembers, corrects, notes, merges, marks outdated, gives to someone else and forgets facts in " +
@@ -37,13 +38,13 @@ public static class MemoryToolSet
             "its id from memory_find.",
             """{"type":"object","properties":{"id":{"type":"string","description":"The fact's id from memory_find."}},"required":["id"],"additionalProperties":false}"""),
         new(Remember, "Saves a new fact the user asked to be remembered: one short standalone third-person sentence.",
-            $$$"""{"type":"object","properties":{"fact":{"type":"string","description":"The fact, one short sentence."},"person":{"type":"string","description":"{{{PersonText}}} Who it belongs to (by default who spoke last)."}},"required":["fact"],"additionalProperties":false}"""),
+            $$$"""{"type":"object","properties":{"fact":{"type":"string","description":"The fact, one short sentence."},"person":{"type":"string","description":"{{{PersonText}}} Who it belongs to (by default who spoke last)."},"where":{"type":"string","description":"{{{WhereText}}} By default everywhere."}},"required":["fact"],"additionalProperties":false}"""),
         new(Update, "Corrects one fact's text and/or gives it to someone else, by its id from memory_find. The earlier version is " +
             "kept as history.",
-            $$$"""{"type":"object","properties":{"id":{"type":"string","description":"The fact's id from memory_find."},"fact":{"type":"string","description":"The corrected fact."},"person":{"type":"string","description":"{{{PersonText}}} Who it belongs to now."}},"required":["id"],"additionalProperties":false}"""),
+            $$$"""{"type":"object","properties":{"id":{"type":"string","description":"The fact's id from memory_find."},"fact":{"type":"string","description":"The corrected fact."},"person":{"type":"string","description":"{{{PersonText}}} Who it belongs to now."},"where":{"type":"string","description":"{{{WhereText}}} Only to move it."}},"required":["id"],"additionalProperties":false}"""),
         new(UpdateMany, $"Corrects up to {MaximumEdits} facts in one call, each like memory_update: its id from memory_find and its " +
             "corrected text and/or whose it is now. Each edit is done or refused on its own.",
-            $$$$"""{"type":"object","properties":{"edits":{"type":"array","maxItems":{{{{MaximumEdits}}}},"items":{"type":"object","properties":{"id":{"type":"string","description":"The fact's id from memory_find."},"fact":{"type":"string","description":"The corrected fact."},"person":{"type":"string","description":"{{{{PersonText}}}} Who it belongs to now."}},"required":["id"],"additionalProperties":false}}},"required":["edits"],"additionalProperties":false}"""),
+            $$$$"""{"type":"object","properties":{"edits":{"type":"array","maxItems":{{{{MaximumEdits}}}},"items":{"type":"object","properties":{"id":{"type":"string","description":"The fact's id from memory_find."},"fact":{"type":"string","description":"The corrected fact."},"person":{"type":"string","description":"{{{{PersonText}}}} Who it belongs to now."},"where":{"type":"string","description":"{{{{WhereText}}}} Only to move it."}},"required":["id"],"additionalProperties":false}}},"required":["edits"],"additionalProperties":false}"""),
         new(Note, $"Adds the same short note to the end of up to {MaximumNoted} facts at once, by their ids from memory_find, such " +
             "as \"(in Minecraft)\" for facts about that game that don't say so. A fact that already has the note is left as it is. " +
             "The earlier versions are kept as history.",
