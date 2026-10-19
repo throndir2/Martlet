@@ -7667,8 +7667,9 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   keeps what it read while it reads (`pagesKeptWhileReading` above 0, *Saving
   what it read so far* in `progress`), and its progress says *Reading page 1 of
   at most 200*. `stopReading`:
-  Stop reading at page 2 ends the read and keeps the 1 page read
-  (`stoppedAtPage2`), and stopping while nothing is read does nothing.
+  Stop reading at page 2 of a second read ends it and keeps the page read again
+  and the guide's 2 other pages (3 pages, `stoppedAtPage2`), and stopping while
+  nothing is read does nothing.
 - `series`: [choosing the pages](APP_GUIDES.md#choosing-the-pages) on a
   MediaWiki fixture about a series (NOT a real wiki), with a stand-in Thinking
   pool member that gives canned answers (NOT a model), for *Starfall Valley 2*.
@@ -7685,6 +7686,18 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   (`leftOutByTheMember`); the chosen pages join the guide
   (`pagesInTheGuide`, 5) and the brief is written again (`status`). The log
   has counts only (`holdsTitlesOrLinks` false).
+- `readMore`: [Read more](APP_GUIDES.md#reading-more) on the same series
+  fixture with no Thinking pool member, as the Read more buttons and asking
+  Martlet do it. `firstRead` reads 2 pages and the guide file keeps what is
+  left (`savedWhatIsLeft`). `afterRestart`: a new service on the same folder
+  reads more twice from the guide file alone; each time it adds pages the guide
+  doesn't have (`guidePages`, `guidePagesAgain`, `noPageTwice`). `readAgain`:
+  Read again keeps the pages Read more added (`keptReadMorePages`).
+  `guideKeptWithoutState`: a guide file without what is left finds its wiki
+  again from its pages and adds pages. `words`: what
+  `AppGuideTools.AskedToReadMore` takes from 5 messages (*read more about it*
+  is the app in front; *don't read more about it* and *I read more books* are
+  nothing). `toolResult` is the job's result for the model.
 - `indexes`: only the indexes that can be used now stay in memory, with three
   small guides and a clock moved forward for the idle time: none at start
   (`atStart` 0), 3 once all are used, 2 when the app in front leaves (the 2
@@ -10449,7 +10462,11 @@ tasks chip, shown once Martlet starts a task in the conversation: its name reads
 *Background tasks: 2 running*, *1 running · 1 ready*, *1 ready* or *3 done*; a
 passive click that only opens and closes the task list `LiveTasksPanel` over the
 conversation, which `LiveTasksClose`, Esc or a click in the conversation also
-close), and in that list `LiveJobs` (*Martlet keeps working on these while you
+close), `LiveReadMore` (the header's *Read more* chip, shown while the app in
+front, or the one the last reply used a guide about, has a guide: its name reads
+*Read more about Elden Ring* and its help text says how many pages the guide has;
+pressing it reads more of the app's wiki on the web, so it needs
+`--allow-ui-effects`), and in that list `LiveJobs` (*Martlet keeps working on these while you
 talk. Stop (Esc) doesn't end them.*, *Finished work comes up as soon as Martlet
 is free.* or *... when you talk next.*; never what a task is about), each task's
 card `LiveTask-<id>` with `LiveJob-<id>` (what the task is about, so snapshots
@@ -10747,7 +10764,8 @@ the list `AppGuideName-<key>` and `AppGuideStatus-<key>` (*42 pages, 3.1 MB, rea
 10 Oct 2026, 18:40. Reads from stardewvalleywiki.com. Programs: StardewValley.*,
 *No guide yet.*, *Reading up now: ...* or the last problem; never a guide's
 text). Its buttons `AppGuideRead-<key>` (*Read up now* or *Read again*: reads on
-the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
+the web and keeps the pages Read more added), `AppGuideMore-<key>` (*Read more*,
+on an app with a guide: reads more pages of its wiki on the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
 read and keeps what it read), `AppGuideAskAgain-<key>` (*Allow again*),
 `AppGuideDelete-<key>`, `AppGuideAdd` and `AppGuideAddRead`, and typing in
 `AppGuideAddName`, `AppGuideAddPrograms` and `AppGuideAddSites`

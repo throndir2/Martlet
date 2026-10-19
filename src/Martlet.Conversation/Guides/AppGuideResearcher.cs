@@ -209,16 +209,43 @@ public sealed class AppGuideResearcher : IDisposable
     /// the last exchanges), read again for each ask; null for none. Never logged.</summary>
     public Func<string?>? Context { get; set; }
 
-    private async Task<GuideResearchResult> MoreJobAsync(string key, GuideMore more, CancellationToken token)
+    private async Task<GuideResearchResult> MoreJobAsync(string key, GuideMore more, CancellationToken token) =>
+        (await MoreCoreAsync(key, more, anyway: false, null, token).ConfigureAwait(false)).Result;
+
+    /// <summary>Reads more of <paramref name="key"/>'s wiki now, as the user asked (Read more, or asking Martlet): from what the
+    /// guide file kept (or the wiki found again from its pages), so it works after Martlet starts again. A Thinking pool member
+    /// chooses the pages when one can; without one (or when it can't answer) the most linked titles are read, with no model. When
+    /// it added pages and a member can think, the brief is written again in the background. The result's counts are what it
+    /// added.</summary>
+    public async Task<AppGuideBuild> ReadMoreNowAsync(string key, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var (_, read) = await MoreCoreAsync(key, null, anyway: true, progress, cancellationToken).ConfigureAwait(false);
+        read ??= new(key, guides.Library.Apps.FirstOrDefault(a => a.Key == key)?.Name ?? key, 0, 0, 0, [], 0, 0, TimeSpan.Zero, "it failed on this PC");
+        if (read is { Built: true, Pages: > 0 } && thinker.CanThink && !disposed)
+            _ = Task.Run(async () =>
+            {
+                try { await WriteBriefAsync(key, null, closing.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+                catch (ObjectDisposedException) { }
+            });
+        return read;
+    }
+
+    // Reading more: a pool member chooses among the titles (with what the user does now). anyway: titles a member can't choose
+    // from (none can think, or it stopped answering) are read as they are ranked, with no model.
+    private async Task<(GuideResearchResult Result, AppGuideBuild? Read)> MoreCoreAsync(string key, GuideMore? more, bool anyway,
+        IProgress<string>? progress, CancellationToken token)
     {
         var started = Stopwatch.GetTimestamp();
         Begin("more");
         GuideResearchResult result;
         var chooser = new GuidePageChooser(thinker, guides.Library.Apps.FirstOrDefault(a => a.Key == key)?.Name ?? key, Context);
+        Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyList<string>?>> choose = !anyway ? chooser.ChooseAsync
+            : async (titles, cancel) => (thinker.CanThink ? await chooser.ChooseAsync(titles, cancel).ConfigureAwait(false) : null) ?? titles;
         AppGuideBuild? read = null;
         try
         {
-            read = await guides.ReadMoreAsync(key, more, chooser.ChooseAsync, null, token).ConfigureAwait(false);
+            read = await guides.ReadMoreAsync(key, more, choose, progress, token).ConfigureAwait(false);
             result = new(key, null, true, read.Built ? read.Chunks : 0, false, read.Problem, Stopwatch.GetElapsedTime(started));
         }
         catch (Exception error) when (error is not OperationCanceledException && error is not OutOfMemoryException)
@@ -226,12 +253,13 @@ public sealed class AppGuideResearcher : IDisposable
             result = new(key, null, true, 0, false, "it failed on this PC (" + error.GetType().Name + ")", Stopwatch.GetElapsedTime(started));
         }
         lock (gate) mores++;
-        Log?.Invoke($"App guides: read more of a wiki in {BackgroundJobs.Duration(result.Took)}: {more.Count} linked titles, " +
+        Log?.Invoke($"App guides: read more of a wiki{(anyway ? " (asked)" : "")} in {BackgroundJobs.Duration(result.Took)}: " +
+            (more is null ? "from the guide file, " : $"{more.Count} linked titles, ") +
             $"{chooser.Answers} of {chooser.Asks} asks answered{(chooser.HadContext ? " with what you do now" : "")}, " +
             $"{(read?.Built == true ? read.Pages : 0)} pages added ({result.Sections} sections, {(read?.Downloaded ?? 0) / 1024} KiB downloaded)" +
             (result.Problem is null ? "." : $"; {result.Problem}."));
         Done("more", result);
-        return result;
+        return (result, read);
     }
 
     private async Task<GuideResearchResult> RefreshCoreAsync(string key, string? focus, CancellationToken token)

@@ -33,7 +33,7 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
         using var time = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, request.Stop);
         if (limits.Time is { } most) time.CancelAfter(most);
         var run = new GuideRun(documents, limits, progress, Wait, time.Token, request.Keep, request.KeepEvery, request.Name, request.Choose);
-        if (request.More is { } more) return await ReadMoreAsync(run, more, cancellationToken).ConfigureAwait(false);
+        if (request.More is { } more) return await ReadMoreAsync(run, more, request.Have, cancellationToken).ConfigureAwait(false);
         var job = new Job(run, request.Name, search);
         var late = false;
         try
@@ -53,20 +53,51 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
         return new(run.Pages.ToArray(), run.Hosts.ToArray(), run.Failed, run.Bytes, problem, run.Choice, run.More);
     }
 
-    // Reading more of a wiki read before: the titles its pages link to, as the request's chooser chooses them.
-    private static async Task<GuideBuildOutcome> ReadMoreAsync(GuideRun run, GuideMore more, CancellationToken cancellationToken)
+    /// <summary>The problem of reading more of a guide whose pages aren't from a wiki Martlet can read through its api.php.</summary>
+    public const string NotAWiki = "Martlet couldn't reach its wiki, or its pages aren't from a wiki Martlet can read more of";
+
+    // Reading more of a wiki read before: the titles its pages link to, as the request's chooser chooses them, then the wiki's
+    // other pages. The wiki is found again from its api.php (or a page of it) when only that was kept.
+    private static async Task<GuideBuildOutcome> ReadMoreAsync(GuideRun run, GuideMore more, IReadOnlyCollection<string> have,
+        CancellationToken cancellationToken)
     {
         var late = false;
-        try { await MediaWikiReader.ReadAsync(run, more.Site, [], more).ConfigureAwait(false); }
+        var found = true;
+        try
+        {
+            if ((more.Site ?? await SiteOfAsync(run, more).ConfigureAwait(false)) is { } site)
+                await MediaWikiReader.ReadAsync(run, site, [], more, have).ConfigureAwait(false);
+            else found = false;
+        }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             late = true;
         }
         var problem = run.Pages.Count > 0 ? null
             : late || run.TimeUp ? "reading more took too long"
-            : run.Choice is not { Asked: > 0 } ? "no Thinking pool member could choose the pages"
+            : !found ? NotAWiki
+            : run.Choosing && run.ChoiceEnded && run.Choice is not { Asked: > 0 } ? "no Thinking pool member could choose the pages"
             : "no more pages were worth reading";
-        return new(run.Pages.ToArray(), run.Hosts.ToArray(), run.Failed, run.Bytes, problem, run.Choice);
+        return new(run.Pages.ToArray(), run.Hosts.ToArray(), run.Failed, run.Bytes, problem, run.Choice, run.More);
+    }
+
+    // The wiki of a guide kept before: through its api.php, else from one of its pages (a wiki farm's own api.php, or the
+    // api.php the page names).
+    private static async Task<MediaWikiSite?> SiteOfAsync(GuideRun run, GuideMore more)
+    {
+        run.Report("Finding the wiki again");
+        if (more.Api is { } api) return await MediaWikiReader.ProbeAsync(run, api).ConfigureAwait(false);
+        if (more.Page is not { } page) return null;
+        if (WikiDiscovery.IsFarm(page.Host) && await MediaWikiReader.ProbeAsync(run, WikiDiscovery.FarmApi(page)).ConfigureAwait(false) is { } farm)
+            return farm;
+        WebDocument? document;
+        try { document = await run.GetAsync(page).ConfigureAwait(false); }
+        catch (WebResearchException) { return null; }
+        if (document is null || document.MediaType is not ("text/html" or "application/xhtml+xml")) return null;
+        var final = new Uri(document.Url);
+        foreach (var named in HtmlOutline.MediaWikiApis(document.Body, HtmlParser.Parse(document.Body), final).Take(2))
+            if (await MediaWikiReader.ProbeAsync(run, named).ConfigureAwait(false) is { } site) return site;
+        return null;
     }
 
     // Without IWebDocuments: the start pages, or the best search results for its wiki, read one page each.

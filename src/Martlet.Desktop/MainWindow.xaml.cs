@@ -563,6 +563,7 @@ public partial class MainWindow : ThemedWindow
                 if (avatar.ClickThrough) SetCharacterClickThroughAsync(false).Forget();
                 break;
             case "clear": ClearCharacterEmotesAsync().Forget(); break;
+            case Martlet.Avatar.Hosting.RendererRequest.ReadMore: ReadMoreFromBubble(); break;
         }
     }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
