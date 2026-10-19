@@ -8,6 +8,15 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Read more adds new pages to a game's guide from the same wiki, each time you use it, even without a Thinking pool helper and after Martlet restarts. It is next to Read again on Companion › App guides, in the talk window's header, and as a button in the character's speech bubble for a little while after Martlet answers from a guide. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
+
+### Fixed
+
+- Asking Martlet in the middle of a game to read more about it now really reads more pages, instead of saying yes and adding nothing. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
+- Read again no longer drops the pages Martlet read more of, so a guide never gets smaller. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
+
 ## [0.88.2] - 2026-10-17
 
 ### Changed
