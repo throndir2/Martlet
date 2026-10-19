@@ -67,6 +67,8 @@ public partial class MainWindow
     private readonly System.Windows.Threading.DispatcherTimer hostProbeTimer = new() { Interval = HostProbeInterval };
     private WindowsVirtualization? virtualization;
     private bool refreshingHome;
+    /// <summary>A refresh was asked for while another ran: read settings.json again when it ends.</summary>
+    private bool refreshHomeAgain;
     private readonly AudioDevicePresence audioPresence = new();
     private DependencyPropertyDescriptor? actionTextDescriptor;
 
@@ -432,7 +434,14 @@ public partial class MainWindow
     /// with).</summary>
     private async Task RefreshHomeAsync(SettingsChangeSource reason = SettingsChangeSource.LocalEdit)
     {
-        if (store is null || setupService is null || closing || refreshingHome || setupOperations.IsRunning) return;
+        if (store is null || setupService is null || closing) return;
+        if (refreshingHome || setupOperations.IsRunning)
+        {
+            // Read again once the running refresh or setup is done, so this change isn't missed until the next one.
+            refreshHomeAgain = true;
+            if (!refreshingHome) settingsFileTimer.Start();
+            return;
+        }
         refreshingHome = true;
         try
         {
@@ -458,9 +467,21 @@ public partial class MainWindow
                 : null;
             await audioPresence.CheckAsync(lifetime.Token);
         }
+        catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
-            ContractException or JsonException or OperationCanceledException) { }
-        finally { refreshingHome = false; }
+            ContractException or JsonException)
+        {
+            ErrorLog.Warn("Martlet couldn't bring Home and the pages up to date with the saved settings.", error);
+        }
+        finally
+        {
+            refreshingHome = false;
+            if (refreshHomeAgain && !closing)
+            {
+                refreshHomeAgain = false;
+                settingsFileTimer.Start();
+            }
+        }
         if (closing) return;
         // A character profile switched to on another computer brings back what it keeps on this PC.
         FollowCharacterProfile();

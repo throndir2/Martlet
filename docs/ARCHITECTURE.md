@@ -19,12 +19,9 @@ and preview-versus-active selection. VS01 implements only Core's local Voice
 Library and its Desktop preparation UI. It does not register a self-hosted
 provider or generalize the existing OpenAI/F5 authorization contracts.
 
-**Broader proposed design.** The implemented D02/F01 subset and remaining
-conformance work are recorded in [Foundation boundaries](FOUNDATION.md);
-the subsequent internal fixture/session/sink/status implementation is recorded
-in [Delivery](DELIVERY.md) and [Diagnostics](DIAGNOSTICS.md#offline-fixture-experience-f03c).
-the components and remote protocols below are not all implemented.
-The subsequent [V04b app integration](CONVERSATION.md) composes setup/vault,
+**Broader proposed design.** Not all of the components and remote protocols
+below are implemented.
+The [live conversation](CONVERSATION.md) composes setup/vault,
 explicit typed/PTT capture, named STT, participation policy and the existing
 streaming conversation runtime under one app-shared operation owner. It does
 not implement learned VAD, automatic listening or the proposed remote topology.
@@ -52,11 +49,8 @@ OFF-by-default versioned fact store and lexical retrieval contract with
 schema-4 settings, explicit Desktop management and separately permitted per-turn
 retrieval in the existing input budget. It is not the proposed
 SQLite/gateway service, automatic conversation memory or a passed AC-16/G4 gate.
-Read [the development plan](../DEVELOPMENT_PLAN.md)
-for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
-lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to
-[the research ledger](RESEARCH.md). D02 must turn these contracts into schemas
-and conformance fixtures before adapters are built independently.
+Read [installation and support](INSTALLATION_SUPPORT.md) for the lifecycle.
+Source IDs refer to [the research ledger](RESEARCH.md).
 
 ## 1. Components, ownership, and topology
 
@@ -514,7 +508,7 @@ New activity invalidates a proposed gap-based dispatch. Only a fresh eligible
 decision can lead to LLM/TTS; quiet accumulation uses no second inference
 model. Participation frequency/gap/cooldown and opt-in capture remain separate
 from the persona. The persona never overrides truthfulness, explicit controls
-or permission. The current V05b adds fixed-revision persona instructions to fresh
+or permission. Martlet adds fixed-revision persona instructions to fresh
 explicit turns. The reused explicit-context slice adds the open talk window's
 completed exchanges, the newest that fit the context size (Companion ›
 Replies), with lifecycle clearing; it is not the proposed automatic

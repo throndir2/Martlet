@@ -119,6 +119,11 @@
                             <Label Target="{Binding ElementName=PersonChoice}" Content="Belongs _to" Padding="0,8,0,3" />
                             <ComboBox x:Name="PersonChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryPerson"
                                       AutomationProperties.Name="Whose fact it is" />
+                            <!-- Where the fact matters: everywhere, any game, or one game (recall brings it up only then). -->
+                            <Label Target="{Binding ElementName=WhereChoice}" Content="Where it _matters" Padding="0,8,0,3" />
+                            <ComboBox x:Name="WhereChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryWhere"
+                                      AutomationProperties.Name="Where the fact matters"
+                                      ToolTip="A fact for one game comes up only while you play it; one for everywhere always can." />
                             <Label Target="{Binding ElementName=RetentionChoice}" Content="_Keep it" Padding="0,8,0,3" />
                             <ComboBox x:Name="RetentionChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryRetention" />
                             <WrapPanel Margin="0,10,0,0">

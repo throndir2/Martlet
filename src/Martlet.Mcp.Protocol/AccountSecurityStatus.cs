@@ -62,6 +62,7 @@ internal static class AccountSecurityStatus
                     askOnThisPc = l.AskOnThisPc,
                     remember = l.Remember,
                     encrypt = l.Encrypt,
+                    damaged = l.Damaged,
                     encryptedFiles = encrypted,
                     plainFiles = plain,
                     failures = l.Failures,

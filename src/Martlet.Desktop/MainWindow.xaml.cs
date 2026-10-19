@@ -68,7 +68,7 @@ public partial class MainWindow : ThemedWindow
         accounts = OpenAccounts(store);
         ThemeChoice.SelectedIndex = (int)((Application.Current as App)?.SelectedTheme ?? AppearanceTheme.Light);
         AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
-            ?? "Choose a palette. Your choice is saved on this PC.";
+            ?? "Choose a palette. Your other computers use the same choice.";
         InitializeUpdates();
         this.support = support;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());

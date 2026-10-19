@@ -39,20 +39,21 @@ internal static class AfterReply
     /// <param name="people">The label of each voice the known facts belong to (<see cref="MemoryPeople.Labels"/>).</param>
     /// <param name="companion">The name of the persona the companion is: its lines in an excerpt carry it
     /// (<see cref="MemoryCapture.Speaker"/>).</param>
+    /// <param name="activity">What the user did during the exchange, when remembering (<see cref="MemoryCapture.AppendActivity"/>).</param>
     internal static AfterReplyPrompt Prompt(IReadOnlyList<MemoryFact>? known, VoiceNamingContext? naming, string? earlierUser, string? earlierReply,
         string user, string reply, PromptSettings? prompts, BoundedTextInput? conversation = null, Func<BoundedTextInput, bool>? fits = null,
-        HeardVoices? present = null, IReadOnlyDictionary<string, string>? people = null, string? companion = null)
+        HeardVoices? present = null, IReadOnlyDictionary<string, string>? people = null, string? companion = null, string? activity = null)
     {
         ContractRules.Require(known is null != naming is null, "Remembering or learning names, one at a time, is required.");
         if (present is { Known.Count: 0 } || naming is not null) present = null;
         var instructions = Instructions(known is not null, prompts);
         var voices = naming?.Tags ?? (present is not null ? VoiceNaming.Voices(present) : NoVoices);
         if (conversation is not null && fits is not null &&
-            Continue(conversation, instructions, known, naming, present, people, reply) is { } continued && fits(continued.Input))
+            Continue(conversation, instructions, known, naming, present, people, reply, activity, prompts) is { } continued && fits(continued.Input))
             return continued with { Voices = voices };
         if (naming is null)
         {
-            var memory = MemoryCapture.Prompt(earlierUser, earlierReply, user, reply, known!, prompts, present, people, companion);
+            var memory = MemoryCapture.Prompt(earlierUser, earlierReply, user, reply, known!, prompts, present, people, companion, activity);
             return new(memory.Input, memory.ShownFacts, voices, false);
         }
         var named = VoiceNaming.Prompt(naming, earlierUser, earlierReply, user, reply, prompts, companion);
@@ -74,7 +75,8 @@ internal static class AfterReply
     // The reply's request exactly as it was sent (instructions, earlier messages, the message with its notes), then the reply
     // and the task. The picture or recording sent with the message isn't sent again.
     private static AfterReplyPrompt? Continue(BoundedTextInput conversation, string? instructions, IReadOnlyList<MemoryFact>? known,
-        VoiceNamingContext? naming, HeardVoices? present, IReadOnlyDictionary<string, string>? people, string reply)
+        VoiceNamingContext? naming, HeardVoices? present, IReadOnlyDictionary<string, string>? people, string reply, string? activity,
+        PromptSettings? prompts)
     {
         if (!CanContinue(conversation) || string.IsNullOrWhiteSpace(reply)) return null;
         var shown = Math.Min(known?.Count ?? 0, MemoryCapture.MaximumShownFacts);
@@ -90,6 +92,7 @@ internal static class AfterReply
             if (listed.Speaker?.Voice is { } speaker) task.Append("The latest message above was said by ").Append(speaker.Tag).Append(".\n");
             if (known is not null) MemoryCapture.AppendWhose(task, listed);
         }
+        if (known is not null) MemoryCapture.AppendActivity(task, activity, prompts);
         var said = conversation.SentUserText;
         try
         {

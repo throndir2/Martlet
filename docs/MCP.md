@@ -1390,7 +1390,9 @@ and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
 waits, its last run, runs and actions since Martlet started). `Help-CheckInsAbout`
-next to *Now* explains check-ins (`help`). Every check-in,
+next to *Now* explains check-ins in one short line (`help`); its card links to the
+wiki's *Check-ins* section (`Help-CheckInsAbout-Wiki`), and *Your own check-ins*
+has `Help-CheckInsOwn` with a link to *Your own check-ins*. Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>` and `CheckInOutcome-<id>` show on its card, and the rest
 is under *More settings* (`Fold-CheckInMore-<id>`, closed at first: click it
@@ -1976,10 +1978,13 @@ the same `state`, `facts`, `typed`, `fromConversation`, `expiring`, `replaced`,
 (`state` `none`, `loaded` or `unreadable`; `storesChecked`, how many stores
 tidying has checked for duplicates; `last`, the last pass's `at`, `space`,
 `outcome`, `listed`, `groups`, `need_words`, `retired`, `merged`, `worded` and
-`member`).
+`member`). `where` counts the current facts by where they matter
+([Memories for a game](MEMORY.md#memories-for-a-game)): `everywhere`,
+`anyGame` and `activities` (each game a fact is kept for, `where` such as
+*while playing Palworld*, and its `facts`).
 It reads each store's file as JSON without opening or locking a store (the
-desktop can keep running), and never returns a fact's text, a name, a voice ID
-or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
+desktop can keep running), and never returns a fact's text, a person's name, a
+voice ID or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
 characters per fact (`factCharacters`, 32,768) and store bytes (`storeBytes`,
 256 MiB). It contacts nothing.
 
@@ -2043,6 +2048,38 @@ the owner's other computers. It returns `preview`, `matched`, `deleted` and
 `spaces` (each with `space`, `facts`, `matched`, `deleted` and the matched fact
 `ids`), and never a fact's text. Without `dataDirectory`,
 `Invoke-MartletMcp.ps1` gives it a disposable data folder.
+
+`memory_where` sets where remembered facts matter, the way Companion >
+Memory's *Where it matters* does
+([Memories for a game](MEMORY.md#memories-for-a-game)): each current fact whose
+text contains `contains` or whose ID is in `ids` (as `memory_forget` finds
+them, in every store or only in `space`) is kept for `where`: `everywhere`,
+`games` (any game) or a game's name (only while that game is played). Replaced
+facts (history) don't change. `preview: true` only counts the facts; without it
+the tool needs `--allow-changes` and waits up to 15 seconds for a running
+desktop to let the store go. It returns `preview`, `where` (*everywhere*,
+*while gaming* or *while playing <game>*), `matched`, `changed` (or
+`wouldChange` with `preview`) and `spaces` (each with `space`, `facts`,
+`matched`, `changed` and the matched fact `ids`), and never a fact's text.
+
+`memory_activity_check` (optional `query`, optional `activity`: a game's name)
+rehearses [memories for a game](MEMORY.md#memories-for-a-game) with the
+production code (`MemoryActivity`, `MemoryActivityFilter`, `MemoryStore` and
+`MemorySnapshot` in `src\Martlet.Memory`) on synthetic facts in a disposable
+store, and returns `{passed, failures, steps, asked, sampleFacts, note}`. The
+steps: playing Palworld recalls its favorite and a fact for everywhere but not
+another game's; playing Elden Ring never recalls Palworld's favorite; with no
+game only facts for everywhere come back; naming Palworld recalls its facts
+with no game and in another game; a fact for any game comes back in every game
+and not outside games; a search without the filter (the Memory window,
+`manage_memories` `find`) finds every fact; a snapshot leaves out the same facts
+as the store; a game's fact travels with `activity` while a fact for
+everywhere is written exactly as before; a correction keeps where a fact
+matters and choosing it moves the fact; an activity of the wrong form is
+refused; and game names compare without regard to case or spacing. With
+`query`, `asked.recalled` lists the sample facts (by key) those words recall
+while `activity` is played (none: no game). It never opens the owner's memory
+and contacts nothing.
 
 `memory_recall_check` (optional `query`, optional `facts`: 1-100,000 strings)
 rehearses how recall ranks remembered facts
@@ -2352,7 +2389,9 @@ without the desktop: `device` (this data folder's device ID), `network`
 `merged`, `none` when a host or desktop would refuse it, or `no_network`);
 `signedInHere`; and `locks`, per account with an unlock file in
 `account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
-`askOnThisPc`, `remember`, `encrypt`, `encryptedFiles` and `plainFiles` in
+`askOnThisPc`, `remember`, `encrypt`, `damaged` (the unlock file is there but
+can't be read, so the account fails closed and needs a sign-in),
+`encryptedFiles` and `plainFiles` in
 the account's folder, `failures`, `waitUntil` and whether the DPAPI-protected
 part exists. Never a PIN, password, verifier, attestation, e-mail, login user
 name or SID.
@@ -2628,7 +2667,10 @@ address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
-throttled entries with their source) and the host log lines naming each source.
+throttled entries with their source, plus `StoresHealthy`, `FailingStores` and
+the authority save counts `AuthorityCommits`, `AuthorityCommitAverageMs` and
+`AuthorityCommitLongestMs`; the first step fails when a store is not healthy)
+and the host log lines naming each source.
 Then outside addresses, played by other loopback ports: with the home address
 closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
@@ -3087,7 +3129,7 @@ Ana's key refuses her on both hosts while Ben's request still goes through.
 Before the owner-first step it also checks the [network model
 names](OPENAI_ENDPOINT.md#network-model-names): `GET /v1/models` lists
 `martlet@any` (both models) and `martlet@fast` (the front door's `1b` model)
-with their `martlet_models` and no `martlet@smart`; a chat for
+with the models behind each (the `"martlet_models"` field) and no `martlet@smart`; a chat for
 `martlet@fast` runs on the front door's model and its answer names it;
 `martlet@smart` gets 404 `model_not_found` and `martlet@fast` on
 `/v1/embeddings` gets 400 `invalid_request_error`. Loopback only; nothing is
@@ -4895,8 +4937,28 @@ never their names or IDs) and
 `enabled`, `number`, `name`, `appId`, `businessAccountId`, `phoneNumberId`,
 `port` (Martlet's localhost webhook port), `publicAddress` (the owner's own;
 empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
-(never the access token or app secret), `chats` and `speakReplies`. The secrets
-live in Windows Credential Manager and are never read. In the desktop,
+(never the access token or app secret), `chats` and `speakReplies`, and
+`cloudflared` with `downloaded` (Martlet's own copy is in the data directory's
+`tools` folder), `version` (the cloudflared release it came from) and
+`verified` (it still matches the size and SHA-256 that GitHub publishes for
+that release, checked at download and recorded in `tools\cloudflared.json`;
+Martlet runs its own copy only when this is true). The secrets
+live in Windows Credential Manager and are never read.
+`messaging_check` rehearses the production `MessagingBridge` and
+`TelegramTransport` with local fakes and contacts no Telegram, WhatsApp or
+Meta server. It returns `ok` and `steps`: `telegramBodyReadBreaks` (a
+connection that breaks while the answer is read is a `Network` failure, with
+no token in the message), `unexpectedErrorRetries` (an unexpected receive
+error gives `Retrying`, then `Running` again, never a silent `Off`),
+`failedAnswerKeepsTheBatch` (a failing typing call and a failing answer do not
+lose the next message; the chat is told Martlet couldn't answer), `stopsAsOff`
+and `pairingCodeSurvivesAStranger` (wrong codes count per chat, so a stranger
+can't use up the owner's code). `smart_home_guard` shows how Smart home's
+safety guard (`HomeCommandGuard`) treats one `text`: `risk` (`Normal`,
+`Sensitive` or `NotACommand`), `mentionsSensitive` and `meaning`. A request
+that asks for an action on a lock, door, garage, gate, alarm or valve is
+`Sensitive` also when it starts with a question word ("why don't you unlock
+the door"); it is local only and contacts nothing. In the desktop,
 Companion › Messaging's `MessagingStatus` (whether Martlet
 answers the bot now, or why not), `MessagingNote` (the last connect outcome),
 `MessagingChats` (how many chats) and `MessagingPairStatus` (until when the
@@ -5044,7 +5106,9 @@ character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 many people Martlet knows by voice and how many to forgotten voices, how many
 are kept in each [memory space](MEMORY.md#memory-spaces-on-the-desktop)
 besides yours (*3 in Household*), how many replaced facts it keeps as history
-(*1 replaced kept as history*), how many
+(*1 replaced kept as history*), how many are kept for a game
+([Memories for a game](MEMORY.md#memories-for-a-game): *2 kept for 1 game or
+activity*), how many
 its *Show* choice (`MemoryPersonFilter`), *Show replaced facts*
 (`MemoryShowHistory`, a check box `ui_toggle` turns without
 `--allow-ui-effects` because it only changes the list) and search (`MemorySearch`, set with
@@ -5089,7 +5153,10 @@ an entry's three-state `LorebookEntryWordForms`, *Other word forms*; *Try it*'s
 `LorebookTestResult` reads which entries a sample message would add, by title,
 lorebook and keyword, never their text),
 `MemoryEnable` and Memory's fact fields: `MemoryFactContent`, `MemoryPerson`
-(*Belongs to*), `MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
+(*Belongs to*), `MemoryWhere` (*Where it matters*: *Everywhere*, *While gaming
+(any game)*, the game played now and each game a fact is kept for; the selected
+fact's `MemoryFactDetails` says *Matters: while playing <game>*),
+`MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
 choosing in `MemoryPersonFilter` (it only filters the list) still goes through
 `ui_select`, so these need `--allow-ui-effects`; `ShowCharacter`/`StopAvatar` show or hide the
 character, so they need `--allow-ui-effects` too. Typing a persona name or text and
@@ -5465,6 +5532,30 @@ words, NOT AI): llama.cpp without `--jinja` (`llamaCpp`: its model list says
 and warns) and an app that asks for a key (`keyed`: `NeedsKey` without the key,
 its models with it), plus an address off this PC (`offComputer`, refused).
 `fixture.ok` needs all of them. Loopback only; never a key; saves nothing.
+
+`ollama_model_file` is Companion › Thinking › This PC › *Use a model file you
+downloaded* without the window. `paths` (absolute paths of GGUF files the owner
+would pick) returns `plan`: the `files` Martlet would add to this PC's Ollama
+(every part of a split model `name-00001-of-0000N.gguf`, and `addedProjector`,
+a lone `mmproj*.gguf` in the same folder that lets the model see), the Ollama
+`model` name made from the file name (*Qwen3-8B-Q4_K_M.gguf* is
+`qwen3-8b-q4_k_m`) and the `bytes` Ollama would copy, or `refused` (not a GGUF,
+only a projector, a missing part). It reads only the folder listing and file
+sizes and contacts nothing. `fixture: true` runs the production import
+(`OllamaModelImport`: the SHA-256 of each file, `HEAD` and `POST
+/api/blobs/sha256:...`, then `POST /api/create` with the files) on FIXTURE
+files (small text, NOT real models) against a fixture Ollama on 127.0.0.1 that
+checks each digest and already has one part: `import` (`blobsSent` 2,
+`blobsChecked`, `createdModel`, `createdFiles`, `output`), `ollamaRefuses`
+(Ollama's own words when it refuses a model) and `refusals`. `fixture.ok` needs
+all of them. Never touches the real Ollama; saves nothing.
+
+In the desktop, `SetupAddModelFile` (*Use a model file you downloaded...*, on
+the *Ollama on this PC* card; `SetupAddModelFileNote` reads what it does)
+opens a file dialog, asks `AddModelFileQuestion` (the files, the model name and
+the space Ollama's copy takes), adds the files in a run window titled *Add
+<model> to Ollama*, then switches Thinking to the model like
+`SetupUseLocalThinking` and tests it. It needs `--allow-ui-effects`.
 
 On the Thinking page, *Model app* is an option picker without a details panel:
 `Picker-LocalApp-Ollama`, one row per app found on this PC
@@ -6510,7 +6601,9 @@ alone, as before the catalog, to compare. The result has:
   embedding, speech or picture model, which Thinking can't use), `downloadGb`
   (the app's own size; only Ollama says it), `estimatedGb` (the graphics
   memory the planner counts) and `option` (`served:<model>`, the job option
-  the recommendation uses)) and `note`.
+  the recommendation uses)), `choices` (the review's explicit Thinking choices,
+  in its order: each `button` `RecommendedSetupUseServed-<n>`, its `line`,
+  `model` and `address`; empty when the choice is off) and `note`.
 - `hostModels`: `prefer` (*Prefer models your hosts already have* is on: the
   fixture's, or `PreferHostModels` in the directory's
   `recommended-setup.json`; off by default), `found` (each Thinking chat model
@@ -6662,7 +6755,14 @@ review opens again planned that way; the values read the choice in effect and
 `RecommendationUseServedModels`, `RecommendationPreferHostModels`; also
 `--allow-ui-effects`), and `RecommendationPreferencesStatus` reads *Saved for
 all your computers. ...* after a change. `RecommendedSetupHostModels` reads the models your hosts
-keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. Reconfigure
+keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. While *Use
+models your apps already run* is on and an app on this PC serves chat models,
+`RecommendedSetupServedHeading` (*Or choose one of the models your apps already
+run for Thinking:*) lists each as `RecommendedSetupServed-<n>` (*qwen3-32b in LM
+Studio (about 22 GB)*, biggest first) with its `RecommendedSetupUseServed-<n>`
+(*Think with it*): it closes the review and switches Thinking to that model in
+that app, a change by hand that Recommended setup keeps, so it needs
+`--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
@@ -7289,12 +7389,18 @@ call (`call`) is dropped. Three `tools:`
 steps check [tool sets](CONVERSATION.md#check-in-tool-sets): `tools: sets saved
 and read back` (an own check-in's and a built-in choice's sets kept; an unknown
 set and the same set twice refused), `tools: the job offers them` (the job
-needs a member that calls tools, offers the chosen sets' tools for 4 rounds and
+needs a member that calls tools, offers the chosen sets' tools for 16 rounds and
 asks for the *Its tools act* answer; with no sets it waits) and `tools: only a
 member that calls tools runs them` (a text-only member never gets it; on a
 member that calls tools, FIXTURE calls are kept with their first line only, an
-unknown tool and a failing handler are errors, and every call after the eighth
-is refused). `tools: background work takes over the reply's think_longer and
+unknown tool and a failing handler are errors, and every call after the 64th
+is refused). `memory care: a built-in check-in that works on memory in several
+steps` checks the built-in Memory care check-in: on, every hour, *Its tools
+act* with the Memory set, its job offering all ten Memory tools for 16 rounds
+with 8 minutes and 2,048 tokens a request, its message saying it works in
+steps, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
+rules list `maximumToolRounds`, `maximumToolCalls`, `maximumToolOutputTokens`,
+`toolTimeoutSeconds` and `hardMaxToolRounds`. `tools: background work takes over the reply's think_longer and
 research` checks the `background-work` set: its two tools take the reply's
 arguments, it replaces `think_longer` and `research` (never `cancel_thinking`),
 and a refusal's first line is `Not started: ...`. `how I react: the built-in check-in changes how the character
@@ -8142,9 +8248,23 @@ page's controls are only visible after you open it: click `NavHome`,
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
 explanation as `help`, and `ui_click` on it only opens a small card with that
-text (passive, no `--allow-ui-effects`). An explanation line that shows only its
+text (passive, no `--allow-ui-effects`). While the card is open, `ui_snapshot`
+also lists its text as `Help-<id>-Card` (`value`: the explanation) and, when the
+explanation has a wiki page, its *Read more in the wiki* link as `Help-<id>-Wiki`
+(`value`: *Read more in the wiki*; `help`: the wiki address, such as
+`https://github.com/throndir2/Martlet/wiki/Thinking#check-ins`). Read the
+address from `help`: `ui_click` on `Help-<id>-Wiki` opens the browser, so it
+needs `--allow-ui-effects`. An explanation line that shows only its
 first sentence before its *?* returns that sentence as `value` and all of the
-text as `help`. Settings most people leave alone sit in sections you open and
+text as `help`. `ui_long_texts` lists the texts that show now with more than one
+sentence (text blocks and check box or radio button labels): each one's
+`window`, `id` (or `near`, the nearest container's automation ID), `sentences`
+and `text`, and `count` for all of them (at most 200 are listed). Martlet 1.0
+shows one short sentence and puts the rest behind a *?* with a wiki link, so a
+page that follows the rule lists none. It leaves out lists, tables, trees, text
+boxes, help cards, tooltips and controls whose automation ID `ui_snapshot` does
+not read, so the owner's own content does not show; still, use it on a
+disposable data directory. It changes nothing and needs no `--allow-ui-effects`. Settings most people leave alone sit in sections you open and
 close (`Fold-<id>`, such as `Fold-CheckInMore-emotes`): `ui_snapshot` returns
 `expanded` (true or false), their controls show in `ui_snapshot` only while the
 section is open, and `ui_click` opens or closes it (passive). A section stays

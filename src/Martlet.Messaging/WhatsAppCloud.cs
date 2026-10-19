@@ -129,14 +129,23 @@ public sealed class WhatsAppCloud : IDisposable
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));
-        HttpResponseMessage response;
+        JsonObject? answer = null;
+        HttpStatusCode statusCode;
+        string? reason;
+        bool success;
+        // The whole exchange, also reading the answer, is one network step (see TelegramTransport).
         try
         {
             using var request = new HttpRequestMessage(method, new Uri($"{api.AbsoluteUri.TrimEnd('/')}/{Version}/{path}"));
             // An app access token is the app's ID and secret; it is needed only to set the app's webhook.
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", appId is null ? secrets.AccessToken : $"{appId}|{secrets.AppSecret}");
             if (body is not null) request.Content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
-            response = await http.SendAsync(request, deadline.Token).ConfigureAwait(false);
+            using var response = await http.SendAsync(request, deadline.Token).ConfigureAwait(false);
+            statusCode = response.StatusCode;
+            reason = response.ReasonPhrase;
+            success = response.IsSuccessStatusCode;
+            try { answer = JsonNode.Parse(await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false)) as JsonObject; }
+            catch (JsonException) { }
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
         {
@@ -146,29 +155,27 @@ public sealed class WhatsAppCloud : IDisposable
         {
             throw new MessagingException(MessagingFailure.Network, $"Couldn't reach WhatsApp (Meta) ({error.HttpRequestError}).");
         }
-        using (response)
+        catch (IOException error)
         {
-            JsonObject? answer = null;
-            try { answer = JsonNode.Parse(await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false)) as JsonObject; }
-            catch (JsonException) { }
-            if (response.IsSuccessStatusCode && answer is not null && answer["error"] is null) return answer;
-            var error = answer?["error"] as JsonObject;
-            var code = error?["code"] is JsonValue number && number.TryGetValue<int>(out var value) ? value : 0;
-            var description = Clip((string?)error?["error_user_msg"] ?? (string?)error?["message"] ?? response.ReasonPhrase ?? "no answer");
-            var name = path.Split('?')[0].Split('/')[^1];
-            throw (response.StatusCode, code) switch
-            {
-                (HttpStatusCode.Unauthorized, _) or (_, 190) or (_, 102) =>
-                    new MessagingException(MessagingFailure.Unauthorized, $"Meta didn't accept the access token ({description}). Temporary tokens last 24 hours; " +
-                        "make a permanent one for a system user."),
-                (HttpStatusCode.TooManyRequests, _) or (_, 4) or (_, 17) or (_, 80007) or (_, 130429) or (_, 131056) =>
-                    new MessagingException(MessagingFailure.RateLimited, "WhatsApp asked Martlet to slow down.", TimeSpan.FromSeconds(30)),
-                (_, 2200) => new MessagingException(MessagingFailure.Network, $"Meta couldn't reach Martlet's webhook yet: {description}"),
-                (HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout or HttpStatusCode.InternalServerError, _) =>
-                    new MessagingException(MessagingFailure.Network, $"WhatsApp (Meta) had a problem: {description}"),
-                _ => new MessagingException(MessagingFailure.Protocol, $"WhatsApp refused {name}: {description}")
-            };
+            throw new MessagingException(MessagingFailure.Network, $"The connection to WhatsApp (Meta) broke ({error.GetType().Name}).");
         }
+        if (success && answer is not null && answer["error"] is null) return answer;
+        var problem = answer?["error"] as JsonObject;
+        var code = problem?["code"] is JsonValue number && number.TryGetValue<int>(out var value) ? value : 0;
+        var description = Clip((string?)problem?["error_user_msg"] ?? (string?)problem?["message"] ?? reason ?? "no answer");
+        var name = path.Split('?')[0].Split('/')[^1];
+        throw (statusCode, code) switch
+        {
+            (HttpStatusCode.Unauthorized, _) or (_, 190) or (_, 102) =>
+                new MessagingException(MessagingFailure.Unauthorized, $"Meta didn't accept the access token ({description}). Temporary tokens last 24 hours; " +
+                    "make a permanent one for a system user."),
+            (HttpStatusCode.TooManyRequests, _) or (_, 4) or (_, 17) or (_, 80007) or (_, 130429) or (_, 131056) =>
+                new MessagingException(MessagingFailure.RateLimited, "WhatsApp asked Martlet to slow down.", TimeSpan.FromSeconds(30)),
+            (_, 2200) => new MessagingException(MessagingFailure.Network, $"Meta couldn't reach Martlet's webhook yet: {description}"),
+            (HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout or HttpStatusCode.InternalServerError, _) =>
+                new MessagingException(MessagingFailure.Network, $"WhatsApp (Meta) had a problem: {description}"),
+            _ => new MessagingException(MessagingFailure.Protocol, $"WhatsApp refused {name}: {description}")
+        };
     }
 
     private static string Clip(string text) => text.Length <= 200 ? text : text[..200] + "…";

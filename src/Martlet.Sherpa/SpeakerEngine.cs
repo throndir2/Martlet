@@ -102,10 +102,15 @@ public sealed class SpeakerEngine : IDisposable
         if (extractor == IntPtr.Zero)
         {
             using var config = new NativeConfig(24).Text(0, SherpaComponents.SpeakerModelPath(models)).Int(8, threads).Text(16, "cpu");
-            extractor = SherpaNative.SherpaOnnxCreateSpeakerEmbeddingExtractor(config.Pointer);
-            if (extractor == IntPtr.Zero) throw new SherpaException("The voice model could not be loaded.");
-            if (SherpaNative.SherpaOnnxSpeakerEmbeddingExtractorDim(extractor) != 256)
+            var created = SherpaNative.SherpaOnnxCreateSpeakerEmbeddingExtractor(config.Pointer);
+            if (created == IntPtr.Zero) throw new SherpaException("The voice model could not be loaded.");
+            // Kept only once it passes its check, so a bad model is checked (and refused) again on the next call.
+            if (SherpaNative.SherpaOnnxSpeakerEmbeddingExtractorDim(created) != 256)
+            {
+                SherpaNative.SherpaOnnxDestroySpeakerEmbeddingExtractor(created);
                 throw new SherpaException("The voice model has an unexpected format.");
+            }
+            extractor = created;
         }
         if (diarizer == IntPtr.Zero)
         {
@@ -116,10 +121,14 @@ public sealed class SpeakerEngine : IDisposable
                 .Text(0, SherpaComponents.SegmentationModelPath(models)).Int(16, threads).Text(24, "cpu")
                 .Text(32, SherpaComponents.SpeakerModelPath(models)).Int(40, threads).Text(48, "cpu")
                 .Int(56, -1).Float(60, 0.5f);
-            diarizer = SherpaNative.SherpaOnnxCreateOfflineSpeakerDiarization(config.Pointer);
-            if (diarizer == IntPtr.Zero) throw new SherpaException("The speaker segmentation model could not be loaded.");
-            if (SherpaNative.SherpaOnnxOfflineSpeakerDiarizationGetSampleRate(diarizer) != SampleRate)
+            var created = SherpaNative.SherpaOnnxCreateOfflineSpeakerDiarization(config.Pointer);
+            if (created == IntPtr.Zero) throw new SherpaException("The speaker segmentation model could not be loaded.");
+            if (SherpaNative.SherpaOnnxOfflineSpeakerDiarizationGetSampleRate(created) != SampleRate)
+            {
+                SherpaNative.SherpaOnnxDestroyOfflineSpeakerDiarization(created);
                 throw new SherpaException("The speaker segmentation model has an unexpected format.");
+            }
+            diarizer = created;
         }
     }
 

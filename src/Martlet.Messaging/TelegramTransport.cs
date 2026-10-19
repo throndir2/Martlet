@@ -102,13 +102,21 @@ public sealed partial class TelegramTransport : IMessagingTransport, IMessagingM
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(limit);
-        HttpResponseMessage response;
+        JsonObject? answer = null;
+        HttpStatusCode statusCode;
+        string? reason;
+        // The whole exchange, also reading the answer, is one network step: a drop or the deadline anywhere in it is a
+        // network failure the bridge retries.
         try
         {
             // Built as text: "bot123:AA..." alone would read as a URI scheme. The body is sent whole, with its length.
             using var content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
-            response = await http.PostAsync(new Uri($"{api.AbsoluteUri.TrimEnd('/')}/bot{token}/{method}"), content, deadline.Token)
+            using var response = await http.PostAsync(new Uri($"{api.AbsoluteUri.TrimEnd('/')}/bot{token}/{method}"), content, deadline.Token)
                 .ConfigureAwait(false);
+            statusCode = response.StatusCode;
+            reason = response.ReasonPhrase;
+            try { answer = JsonNode.Parse(await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false)) as JsonObject; }
+            catch (JsonException) { }
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
         {
@@ -119,26 +127,24 @@ public sealed partial class TelegramTransport : IMessagingTransport, IMessagingM
             // HttpRequestException never carries the request URI (and so the token); its message is safe to show.
             throw new MessagingException(MessagingFailure.Network, $"Couldn't reach Telegram ({error.HttpRequestError}).");
         }
-        using (response)
+        catch (IOException error)
         {
-            JsonObject? answer = null;
-            try { answer = JsonNode.Parse(await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false)) as JsonObject; }
-            catch (JsonException) { }
-            if (answer?["ok"]?.GetValue<bool>() == true) return answer["result"];
-            var description = (string?)answer?["description"] ?? response.ReasonPhrase ?? "no answer";
-            var retry = answer?["parameters"]?["retry_after"] is JsonValue seconds && seconds.TryGetValue<int>(out var wait)
-                ? TimeSpan.FromSeconds(wait) : (TimeSpan?)null;
-            throw response.StatusCode switch
-            {
-                HttpStatusCode.Unauthorized or HttpStatusCode.NotFound =>
-                    new MessagingException(MessagingFailure.Unauthorized, "Telegram didn't accept this bot token. Copy it again from BotFather."),
-                HttpStatusCode.Conflict =>
-                    new MessagingException(MessagingFailure.Conflict, "Another program (or another Martlet) is reading this bot's messages. Only one can."),
-                HttpStatusCode.TooManyRequests =>
-                    new MessagingException(MessagingFailure.RateLimited, "Telegram asked Martlet to slow down.", retry),
-                _ => new MessagingException(MessagingFailure.Protocol, $"Telegram refused {method}: {Clip(description)}")
-            };
+            throw new MessagingException(MessagingFailure.Network, $"The connection to Telegram broke ({error.GetType().Name}).");
         }
+        if (answer?["ok"]?.GetValue<bool>() == true) return answer["result"];
+        var description = (string?)answer?["description"] ?? reason ?? "no answer";
+        var retry = answer?["parameters"]?["retry_after"] is JsonValue seconds && seconds.TryGetValue<int>(out var wait)
+            ? TimeSpan.FromSeconds(wait) : (TimeSpan?)null;
+        throw statusCode switch
+        {
+            HttpStatusCode.Unauthorized or HttpStatusCode.NotFound =>
+                new MessagingException(MessagingFailure.Unauthorized, "Telegram didn't accept this bot token. Copy it again from BotFather."),
+            HttpStatusCode.Conflict =>
+                new MessagingException(MessagingFailure.Conflict, "Another program (or another Martlet) is reading this bot's messages. Only one can."),
+            HttpStatusCode.TooManyRequests =>
+                new MessagingException(MessagingFailure.RateLimited, "Telegram asked Martlet to slow down.", retry),
+            _ => new MessagingException(MessagingFailure.Protocol, $"Telegram refused {method}: {Clip(description)}")
+        };
     }
 
     private static string Clip(string text) => text.Length <= 200 ? text : text[..200] + "…";

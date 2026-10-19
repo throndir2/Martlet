@@ -28,11 +28,13 @@ internal sealed class GatewayHomeAssistantStore
     private readonly object gate = new();
     private SharedHomeAssistantConnection? current;
     private IGatewayHomeAssistantStorage? storage;
+    private GatewayStoreHealth health = new();
 
     internal SharedHomeAssistantConnection? Current { get { lock (gate) return current; } }
 
-    internal void Attach(IGatewayHomeAssistantStorage value)
+    internal void Attach(IGatewayHomeAssistantStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         SharedHomeAssistantConnection? saved = null;
         try
@@ -47,7 +49,11 @@ internal sealed class GatewayHomeAssistantStore
         }
         // An unreadable or malformed copy starts empty; the next accepted desktop write replaces it.
         catch (Exception error) when (error is JsonException or InvalidOperationException or NotSupportedException or GatewayProtocolException or
-            IOException or UnauthorizedAccessException) { saved = null; }
+            IOException or UnauthorizedAccessException)
+        {
+            saved = null;
+            health.Failed("Home Assistant", "load", error);
+        }
         lock (gate)
         {
             storage = value;
@@ -83,13 +89,12 @@ internal sealed class GatewayHomeAssistantStore
     private void SaveLocked(SharedHomeAssistantConnection value)
     {
         if (storage is null) return;
-        try
+        // If saving fails, keep serving the in-memory copy; desktops will send it again.
+        health.Try("Home Assistant", "save", () =>
         {
             var bytes = JsonSerializer.SerializeToUtf8Bytes(value, StorageJson);
             if (bytes.Length <= MaximumBytes) storage.Save(bytes);
-        }
-        // If saving fails, keep serving the in-memory copy; desktops will send it again.
-        catch (Exception) { }
+        });
     }
 
     private static SharedHomeAssistantConnection Winner(SharedHomeAssistantConnection? stored, SharedHomeAssistantConnection incoming)

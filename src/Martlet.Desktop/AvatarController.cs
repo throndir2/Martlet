@@ -895,6 +895,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 if (feeding && stream!.TrySubmit(frame) != SpeechIngressResult.Accepted) feeding = false;
             }
             completed = segment.InputCompleted;
+            if (segment.Failure == SpeechObservationFailure.QueueFull)
+                ErrorLog.Warn("Lip-sync stopped for this sentence: the character didn't read the voice fast enough. The voice continues.");
             if (feeding && (!completed || stream!.CompleteInput(segment.SampleCount) != SpeechIngressResult.Completed)) feeding = false;
         }
         finally
@@ -1355,10 +1357,15 @@ internal sealed partial class AvatarController : IAsyncDisposable
                     await Task.Delay(10, stop.Token);
                 }
                 var composed = composition.Compose(frame, gate, position);
+                // A late frame is skipped, as in the automatic mode; the next one catches up with the voice.
+                if (composed.Disposition == FrameDisposition.TooLate) continue;
                 if (composed.Disposition != FrameDisposition.Accepted)
                     throw new AvatarOperationException("frame cannot be synchronized: " + composed.Disposition);
+                // Every target gets a value, its neutral one when this frame doesn't set it, so nothing keeps an old value.
+                var parameters = targets.ToDictionary(t => t.Id,
+                    t => composed.Parameters.TryGetValue(t.Id, out var value) ? value : t.Neutral, StringComparer.Ordinal);
                 await ownedRenderer.SendAsync("apply", new RendererParameters(identity, frame.Sequence, frame.SampleOffset,
-                    position.SampleOffset, config.ModelRevision, config.MappingRevision, composed.Parameters), stop.Token);
+                    position.SampleOffset, config.ModelRevision, config.MappingRevision, parameters), stop.Token);
                 Publish("Audio2Face lip-sync is active.");
             }
 

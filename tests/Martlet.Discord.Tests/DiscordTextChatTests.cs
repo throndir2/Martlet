@@ -49,7 +49,7 @@ public sealed class DiscordTextChatTests
     public void SplitKeepsEveryPieceUnderTheLimitAtBreaks()
     {
         var text = string.Join("\n\n", Enumerable.Range(0, 30).Select(i => new string('a', 90) + $" paragraph {i}."));
-        var pieces = DiscordTextFormat.Split(text);
+        var pieces = Martlet.Core.Text.MessageSplitter.Split(text, DiscordTextFormat.Limit);
         Assert.True(pieces.Count > 1);
         Assert.All(pieces, piece => Assert.InRange(piece.Length, 1, DiscordTextFormat.Limit));
         Assert.All(pieces, piece => Assert.EndsWith(".", piece));
@@ -59,9 +59,9 @@ public sealed class DiscordTextChatTests
     [Fact]
     public void SplitHardCutsTextWithoutBreaks()
     {
-        var pieces = DiscordTextFormat.Split(new string('x', 4500));
+        var pieces = Martlet.Core.Text.MessageSplitter.Split(new string('x', 4500), DiscordTextFormat.Limit);
         Assert.Equal([2000, 2000, 500], pieces.Select(piece => piece.Length));
-        Assert.Equal(["short"], DiscordTextFormat.Split("  short  "));
+        Assert.Equal(["short"], Martlet.Core.Text.MessageSplitter.Split("  short  ", DiscordTextFormat.Limit));
     }
 
     [Fact]

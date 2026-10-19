@@ -1,13 +1,12 @@
-# F03b bounded PCM playback
+# Bounded PCM playback
 
 This is an opt-in playback library, not a voice app or a passed audio hardware
-gate. F03c now connects Desktop/Windows Doctor fixture sessions to this same
-sink through a separate per-action synthetic-tone permission boundary.
-See [the fixture experience](DIAGNOSTICS.md#offline-fixture-experience-f03c).
-[V02b Audio setup](SETUP.md#explicit-local-audio-setup-v02b) additionally uses
+gate. Doctor's audio checks use this same sink through a separate per-action
+synthetic-tone permission boundary.
+[Audio setup](SETUP.md#explicit-local-audio-setup) additionally uses
 this same sink/tone for explicit selected-output local tests and human listening
 confirmation. The reviewed playback lifecycle is unchanged. The later
-[V04b explicit API conversation](CONVERSATION.md) now routes authorized
+[live conversation](CONVERSATION.md) now routes authorized
 TTS segments through this sink. The optional
 [Desktop avatar integration](../src/Martlet.Avatar.Hosting/README.md) now observes
 accepted generated PCM and an independently nullable device clock; it does not
@@ -84,7 +83,7 @@ Both modes bind an actual `MMDevice`; neither uses NAudio's automatic-routing
 virtual endpoint. Mid-stream default changes do not move the stream. Endpoint
 loss/invalidation stops the attempt, reports an error and requires an explicit
 new epoch/selection; no headset-to-room-speaker failover or automatic replay.
-The V02b Desktop selection adapter explicitly enumerates capture/render choices
+The Desktop selection adapter explicitly enumerates capture/render choices
 without activating audio clients; it does not replace this adapter.
 This minimal playback adapter polls selected-device state and observes WASAPI
 operation errors. It does not change system defaults, endpoint volume, mute,
@@ -242,8 +241,8 @@ The focused audio cases also passed again after worker-thread assertions.
 
 **Not run / not passed:** actual audibility, physical 250 ms Stop, device
 unplug/default-change/Bluetooth/format-churn matrix, clean Windows installation,
-denied-egress qualification, acoustic-tail measurement and F03c fixture-to-device
-integration. F03b's actual-speaker acceptance and G1/G2 remain pending witness.
+denied-egress qualification, acoustic-tail measurement and fixture-to-device
+integration. Acceptance on a real speaker remains open.
 
 Sources: [NAudio 3.1.0 release](https://github.com/naudio/NAudio/releases/tag/v3.1.0),
 [package metadata](https://api.nuget.org/v3-flatcontainer/naudio.wasapi/3.1.0/naudio.wasapi.nuspec),

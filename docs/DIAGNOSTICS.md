@@ -1,4 +1,4 @@
-# F04 diagnostic experience
+# Diagnostics
 
 ## Diagnostics page and shared logs
 
@@ -130,14 +130,14 @@ after a restart; the gateway endpoint (marks,
 deduplication, relaying, paging, persistence and refused requests) in-process.
 Sharing between real computers over a network is **NOT RUN**.
 
-V06b connects the existing Support engine to the real Desktop
+Troubleshooting connects the existing Support engine to the real Desktop
 [Troubleshooting surface](TROUBLESHOOTING.md): passive access at each setup
 stage, explicit OFF-by-default local metadata recording, exact five-file frozen
 preview and default-No destination-bound local export. Doctor help shares its
 authored scope/bounds; ordinary status/JSON/exit semantics remain unchanged.
 No CLI export or support upload/contact channel is implemented.
 
-V04b adds a separate [real conversation timeline](CONVERSATION.md) in Desktop,
+The live conversation adds a separate [real conversation timeline](CONVERSATION.md) in Desktop,
 fed by actual capture/STT/policy/runtime/playback state and sanitized credential/
 configuration failures. It does not turn ordinary Doctor probes into live
 requests. `status` and `run` retain their existing no-network, no-key semantics;
@@ -148,17 +148,16 @@ and all live permission/output choices OFF.
 This records the **AC-04 local registry integration**, not M1
 release qualification or G1 completion. It extends the foundation's entry points without
 changing Core contracts, settings serialization, original file bytes or the
-provider/PCM schema. The existing foundation document describes the earlier
-three-result status; this document describes the F04 replacement.
+provider/PCM schema. It replaces the earlier three-result status.
 
-V02a adds optional typed setup metadata to the existing `settings.load` report:
+Setup adds optional typed setup metadata to the existing `settings.load` report:
 checkpoint, per-role route/consent/key-reference booleans and pending cleanup
 count. Human output and Desktop share that summary; JSON contains no route
 IDs, origins or credential IDs. The twelve-probe registry and exit semantics
 are unchanged. Saved setup is not live readiness and never resolves secrets.
 See [SETUP](SETUP.md) for configuration, migration and explicit vault actions.
 
-V02b's **Audio setup (local only)** is a separate explicit action surface.
+**Audio setup (local only)** is a separate explicit action surface.
 It displays real local capture/tone stages and historical checkpoints through
 `AudioSetupDiagnostics`, never as a provider or fixture pass. `settings.load`
 may include optional sanitized `setup.audio` metadata: selected/default
@@ -167,7 +166,7 @@ configuration revisions. Saved observations are stale for current readiness.
 Ordinary status/list/run still do not enumerate or open devices or play a tone;
 the audio guides point to separately permissioned Desktop actions instead.
 The audio-OFF executable smoke opens this window only to view never-tested
-status. See [local audio semantics and unrun gates](SETUP.md#explicit-local-audio-setup-v02b).
+status. See [local audio semantics and unrun gates](SETUP.md#explicit-local-audio-setup).
 
 ## Implemented commands and scope
 

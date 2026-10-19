@@ -424,7 +424,9 @@ public partial class MainWindow
     private async Task<bool> SaveRepliesAsync(Func<GenerationSettings?, GenerationSettings?> update, Action<GenerationSettings?> saved,
         string done)
     {
-        if (store is null || setupService is null || closing) return true;
+        if (store is null || setupService is null) return true;
+        // Closing has begun: the change is not saved, so it still counts as waiting.
+        if (closing) return false;
         ChangeTurns.Turn? turn = null;
         var token = lifetime.Token;
         try

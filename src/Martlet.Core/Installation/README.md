@@ -6,8 +6,7 @@ installation executor, authorization grant, consent receipt, qualified preset
 or readiness report. It has no ambient filesystem, network, clock, process,
 device, inference, credential-store or host-probe access.
 
-This implements the first foundation of the
-[installation execution order](../../../docs/DELIVERY.md#installation-program-execution-order-2026-09-22).
+This implements the first foundation of the installation program.
 It does not change `AppSettings`, `SetupSettings`, Desktop, provider registration,
 the existing OpenAI path, package graphs or host services. H08d owns versioned
 persistence/migration; H08b/c own checks and coordinator integration. No new

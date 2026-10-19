@@ -526,7 +526,17 @@ internal sealed class SmartHome : IDisposable
             if (!result.Recognized) return new(HomeTurnKind.NotRecognized, HomeAssistantContext.NotRecognized(prompts), null);
             var summary = Describe(result);
             if (result.Kind == HomeResponseKind.ActionDone && !confirmed && result.Succeeded.Any(HomeCommandGuard.IsSensitive))
-                summary += " It affected a lock, door, garage, gate, alarm or valve. Hide that device from Home Assistant voice assistants to block it.";
+            {
+                // Martlet's guard let this through as ordinary words, but Home Assistant operated something that can open the
+                // home. That is a safety failure, not a normal action: say so loudly in the log and the action list.
+                var operated = string.Join(", ", result.Succeeded.Where(HomeCommandGuard.IsSensitive).Select(t => t.Name).Where(n => n.Length > 0).Distinct().Take(6));
+                ErrorLog.Warn($"Smart home safety: Home Assistant operated a lock, door, garage, gate, alarm or valve ({operated}) without confirmation.");
+                summary = "Safety problem: Home Assistant operated a lock, door, garage, gate, alarm or valve" +
+                    (operated.Length > 0 ? $" ({operated})" : "") + " without your confirmation. " + summary +
+                    " Hide that device from Home Assistant voice assistants to block it.";
+                Record(summary);
+                return new(HomeTurnKind.Handled, HomeAssistantContext.Handled(result, prompts), "Home Assistant: " + summary);
+            }
             if (result.Kind != HomeResponseKind.QueryAnswer) Record(summary);
             return new(HomeTurnKind.Handled, HomeAssistantContext.Handled(result, prompts), "Home Assistant: " + summary);
         }

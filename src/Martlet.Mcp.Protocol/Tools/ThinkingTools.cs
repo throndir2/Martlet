@@ -223,7 +223,22 @@ internal sealed partial class McpServer
             async (arguments, cancellation) => await LocalModelServersCheck.RunAsync(OptionalString(arguments, "address"),
                 OptionalString(arguments, "model"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "fixture") ?? false,
                 cancellation)),
-        Tool("ollama_recovery", "Why Ollama on this PC doesn't answer, headless, as the desktop's Home and Companion > Thinking find it " +
+        Tool("ollama_model_file", "Companion > Thinking > This PC > Use a model file you downloaded, headless. paths (absolute paths of " +
+            "GGUF files the owner would pick, such as a Hugging Face or LM Studio download) says what Martlet would add to this PC's " +
+            "Ollama: the files (every part of a split model name-00001-of-0000N.gguf, and a lone mmproj*.gguf projector in the same " +
+            "folder so the model can see), the Ollama model name made from the file name and the bytes Ollama would copy, or why it " +
+            "refuses; it reads only the folder listing and file sizes and contacts nothing. fixture=true runs the production import " +
+            "(SHA-256 of each file, HEAD and POST /api/blobs/sha256:..., then POST /api/create with the files) on FIXTURE files (small " +
+            "text, NOT real models) against a fixture Ollama on 127.0.0.1 that checks each digest, plus the refusals (not a GGUF, only " +
+            "a projector, a missing part) and an Ollama that refuses the model; ok is all of them. Never touches the real Ollama; " +
+            "saves nothing.", new
+        {
+            paths = new { type = "array", items = new { type = "string", maxLength = 1024 }, maxItems = 16 },
+            fixture = new { type = "boolean" }
+        },
+            async (arguments, cancellation) => await OllamaModelFileCheck.RunAsync(OptionalStrings(arguments, "paths"),
+                OptionalBool(arguments, "fixture") ?? false, cancellation)),
+        Tool("ollama_recovery",  "Why Ollama on this PC doesn't answer, headless, as the desktop's Home and Companion > Thinking find it " +
             "(the production OllamaRecovery diagnosis): whether it answers on 127.0.0.1:11434, its tray app and server processes, the " +
             "end of its server.log and app.log (failed starts, the last Error: line, the models path of the last start, why the app " +
             "couldn't use its model location), its app database's model location (db.sqlite settings.models, read-only through " +
