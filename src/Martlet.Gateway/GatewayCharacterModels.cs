@@ -35,6 +35,7 @@ internal sealed class GatewayCharacterModelStore
     private IReadOnlyDictionary<string, int> chunks = new Dictionary<string, int>();
     private string digest = CharacterModelLibrary.Empty.Digest();
     private IGatewayCharacterModelStorage? storage;
+    private GatewayStoreHealth health = new();
 
     internal CharacterModelLibrary Current { get { lock (gate) return library; } }
 
@@ -44,21 +45,20 @@ internal sealed class GatewayCharacterModelStore
         get { lock (gate) return stored.Concat(memory.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(); }
     }
 
-    internal void Attach(IGatewayCharacterModelStorage value)
+    internal void Attach(IGatewayCharacterModelStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         CharacterModelLibrary? saved = null;
-        try { if (value.LoadLibrary() is { } bytes) saved = CharacterModelLibrary.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try("character models", "load", () => { if (value.LoadLibrary() is { } bytes) saved = CharacterModelLibrary.Parse(bytes); });
         lock (gate)
         {
             storage = value;
             if (saved is not null) Replace(CharacterModelLibrary.Merge(library, saved), save: false);
             foreach (var sha256 in chunks.Keys)
             {
-                try { if (value.HasChunk(sha256)) stored.Add(sha256); }
-                catch (Exception) { }
+                health.Try("character models", "load", () => { if (value.HasChunk(sha256)) stored.Add(sha256); });
             }
         }
     }
@@ -84,13 +84,11 @@ internal sealed class GatewayCharacterModelStore
             if (stored.Contains(sha256) || memory.ContainsKey(sha256)) return true;
             if (storage is not null)
             {
-                try
+                if (health.Try("character models", "save", () => storage.SaveChunk(sha256, bytes)))
                 {
-                    storage.SaveChunk(sha256, bytes);
                     stored.Add(sha256);
                     return true;
                 }
-                catch (Exception) { }
             }
             if (memoryBytes + bytes.Length > MaximumMemoryBytes) return false;
             memory[sha256] = (byte[])bytes.Clone();
@@ -108,14 +106,12 @@ internal sealed class GatewayCharacterModelStore
             if (memory.TryGetValue(sha256, out var kept)) return (byte[])kept.Clone();
             if (!stored.Contains(sha256) || storage is null) return null;
             byte[]? bytes = null;
-            try { bytes = storage.LoadChunk(sha256); }
-            catch (Exception) { }
+            health.Try("character models", "load", () => { bytes = storage.LoadChunk(sha256); });
             if (bytes is not null && chunks.TryGetValue(sha256, out var length) && bytes.Length == length &&
                 Convert.ToHexStringLower(SHA256.HashData(bytes)) == sha256)
                 return bytes;
             stored.Remove(sha256);
-            try { storage.RemoveChunk(sha256); }
-            catch (Exception) { }
+            health.Try("character models", "remove", () => { storage.RemoveChunk(sha256); });
             return null;
         }
     }
@@ -136,12 +132,10 @@ internal sealed class GatewayCharacterModelStore
         foreach (var sha256 in stored.Where(k => !chunks.ContainsKey(k)).ToArray())
         {
             stored.Remove(sha256);
-            try { storage?.RemoveChunk(sha256); }
-            catch (Exception) { }
+            health.Try("character models", "remove", () => { storage?.RemoveChunk(sha256); });
         }
         if (!save || storage is null) return;
-        try { storage.SaveLibrary(next.Write()); }
-        catch (Exception) { }
+        health.Try("character models", "save", () => { storage.SaveLibrary(next.Write()); });
     }
 }
 

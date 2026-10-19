@@ -2621,7 +2621,10 @@ address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
-throttled entries with their source) and the host log lines naming each source.
+throttled entries with their source, plus `StoresHealthy`, `FailingStores` and
+the authority save counts `AuthorityCommits`, `AuthorityCommitAverageMs` and
+`AuthorityCommitLongestMs`; the first step fails when a store is not healthy)
+and the host log lines naming each source.
 Then outside addresses, played by other loopback ports: with the home address
 closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
@@ -3080,7 +3083,7 @@ Ana's key refuses her on both hosts while Ben's request still goes through.
 Before the owner-first step it also checks the [network model
 names](OPENAI_ENDPOINT.md#network-model-names): `GET /v1/models` lists
 `martlet@any` (both models) and `martlet@fast` (the front door's `1b` model)
-with their `martlet_models` and no `martlet@smart`; a chat for
+with the models behind each (the `"martlet_models"` field) and no `martlet@smart`; a chat for
 `martlet@fast` runs on the front door's model and its answer names it;
 `martlet@smart` gets 404 `model_not_found` and `martlet@fast` on
 `/v1/embeddings` gets 400 `invalid_request_error`. Loopback only; nothing is

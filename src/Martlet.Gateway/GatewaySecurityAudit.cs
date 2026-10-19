@@ -34,7 +34,10 @@ internal sealed partial class GatewayHttpApplication
             Failures = totals.Failures,
             Throttled = totals.Throttled,
             LockedOut = totals.LockedOut,
-            Events = Guard.Recent()
+            Events = Guard.Recent(),
+            StoresHealthy = StoreHealth.Healthy,
+            Stores = StoreHealth.Snapshot(),
+            AuthorityCommits = AuthorityCommits(credentials.CommitStats)
         }).ConfigureAwait(false);
     }
 
@@ -64,5 +67,29 @@ internal sealed partial class GatewayHttpApplication
         public required long Throttled { get; init; }
         public required int LockedOut { get; init; }
         public required IReadOnlyList<GatewayAuthEvent> Events { get; init; }
+        /// <summary>False when a shared store (API keys, accounts, memories, ...) failed to load or save and has not worked since.</summary>
+        public required bool StoresHealthy { get; init; }
+        /// <summary>Each store that failed since the gateway started: what failed last, how often, when and why.</summary>
+        public required IReadOnlyList<GatewayStoreStatus> Stores { get; init; }
+        /// <summary>How long saving the pairing authority takes; every signed request waits for one save.</summary>
+        public required AuthorityCommitDocument AuthorityCommits { get; init; }
+    }
+
+    private static AuthorityCommitDocument AuthorityCommits(GatewayAuthorityCommitStats stats) => new()
+    {
+        Count = stats.Commits,
+        Slow = stats.SlowCommits,
+        LastMs = Math.Round(stats.Last.TotalMilliseconds, 2),
+        AverageMs = Math.Round(stats.Average.TotalMilliseconds, 2),
+        LongestMs = Math.Round(stats.Longest.TotalMilliseconds, 2)
+    };
+
+    private sealed record AuthorityCommitDocument
+    {
+        public required long Count { get; init; }
+        public required long Slow { get; init; }
+        public required double LastMs { get; init; }
+        public required double AverageMs { get; init; }
+        public required double LongestMs { get; init; }
     }
 }

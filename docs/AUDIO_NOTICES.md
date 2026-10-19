@@ -1,6 +1,6 @@
 # Audio dependency inventory and notices
 
-F03b development dependency inventory, not a release SBOM, project license
+Playback library development dependency inventory, not a release SBOM, project license
 grant, or clean-machine qualification. No NAudio binary is committed.
 `Martlet.Audio` lockfiles pin resolved packages/content hashes; the portable
 target does not reference these packages.

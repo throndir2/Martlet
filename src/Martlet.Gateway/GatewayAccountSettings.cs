@@ -30,6 +30,7 @@ internal sealed class GatewayAccountSettings
     private readonly object gate = new();
     private readonly Dictionary<string, GatewaySettingsStore> accounts = new(StringComparer.Ordinal);
     private IGatewayAccountSettingsStorage? storage;
+    private GatewayStoreHealth health = new();
 
     /// <summary>Whether <paramref name="value"/> is an account ID as paths carry it: 32 lowercase hex digits.</summary>
     internal static bool IsAccount(string? value) =>
@@ -41,23 +42,24 @@ internal sealed class GatewayAccountSettings
         get { lock (gate) return [.. accounts.Keys.Order(StringComparer.Ordinal)]; }
     }
 
-    internal void Attach(IGatewayAccountSettingsStorage value)
+    internal void Attach(IGatewayAccountSettingsStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         string[] saved;
-        try { saved = [.. value.List().Where(IsAccount).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]; }
+        saved = [];
         // Accounts that cannot be listed come back from the next desktops that sync them.
-        catch (Exception) { saved = []; }
+        health.Try("account settings", "load", () => saved = [.. value.List().Where(IsAccount).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
         lock (gate)
         {
             storage = value;
-            foreach (var (account, store) in accounts) store.Attach(new AccountStorage(value, account));
+            foreach (var (account, store) in accounts) store.Attach(new AccountStorage(value, account), health, "account settings");
             foreach (var account in saved)
             {
                 if (accounts.ContainsKey(account)) continue;
                 if (accounts.Count >= MaximumAccounts) break;
                 var store = new GatewaySettingsStore();
-                store.Attach(new AccountStorage(value, account));
+                store.Attach(new AccountStorage(value, account), health, "account settings");
                 accounts[account] = store;
             }
         }
@@ -85,7 +87,7 @@ internal sealed class GatewayAccountSettings
                 if (incoming.Settings.Count == 0) return SharedSettings.Empty;
                 GatewayRules.Require(accounts.Count < MaximumAccounts, "settings.accounts_full");
                 store = new GatewaySettingsStore();
-                if (storage is not null) store.Attach(new AccountStorage(storage, account));
+                if (storage is not null) store.Attach(new AccountStorage(storage, account), health, "account settings");
                 accounts[account] = store;
             }
         }
