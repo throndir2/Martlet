@@ -2341,7 +2341,9 @@ without the desktop: `device` (this data folder's device ID), `network`
 `merged`, `none` when a host or desktop would refuse it, or `no_network`);
 `signedInHere`; and `locks`, per account with an unlock file in
 `account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
-`askOnThisPc`, `remember`, `encrypt`, `encryptedFiles` and `plainFiles` in
+`askOnThisPc`, `remember`, `encrypt`, `damaged` (the unlock file is there but
+can't be read, so the account fails closed and needs a sign-in),
+`encryptedFiles` and `plainFiles` in
 the account's folder, `failures`, `waitUntil` and whether the DPAPI-protected
 part exists. Never a PIN, password, verifier, attestation, e-mail, login user
 name or SID.
