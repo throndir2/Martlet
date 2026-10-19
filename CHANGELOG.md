@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Read more adds new pages to a game's guide from the same wiki, each time you use it, even without a Thinking pool helper and after Martlet restarts. It is next to Read again on Companion › App guides, in the talk window's header, and as a button in the character's speech bubble for a little while after Martlet answers from a guide. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - Martlet keeps what you say in a game for that game: tell it Chillet is your favorite while playing Palworld, and it brings that up in Palworld (or when you ask about Palworld), not in other games. Facts about you still come up everywhere. In Companion › Memory, *Where it matters* shows and changes this for each memory. ([#1030](https://github.com/throndir2/Martlet/pull/1030))
 - Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 - The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
@@ -26,6 +27,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Asking Martlet in the middle of a game to read more about it now really reads more pages, instead of saying yes and adding nothing. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
+- Read again no longer drops the pages Martlet read more of, so a guide never gets smaller. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - Many requests to a host at the same time no longer wait for each other's disk saves one by one. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - When a host can't save or load API keys, accounts, memories, conversations or other shared data, it now says so in its log and security audit instead of losing the change without a sign. ([#1027](https://github.com/throndir2/Martlet/pull/1027))

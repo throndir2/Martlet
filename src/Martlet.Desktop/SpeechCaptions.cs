@@ -132,14 +132,92 @@ internal sealed class SpeechCaptions : IDisposable
         catch (OperationCanceledException) { return; }
         if (id != current) return;
         overlay?.ClearLine();
+        // A Read more offer that waited for Martlet to finish speaking takes the bubble now.
+        if (offer is not null)
+        {
+            ShowOffer();
+            return;
+        }
         if (bubbleText is not null) Say(null);
     }
 
     // Bubble updates are chained so a late "hide" can never overtake the next sentence.
-    private void Say(string? text)
+    private void Say(string? text, string? button = null)
     {
         bubbleText = text;
-        bubbleSends = SendAfterAsync(bubbleSends, Preferences.Bubble(text));
+        bubbleSends = SendAfterAsync(bubbleSends, Preferences.Bubble(text) with { Button = text is null ? null : button });
+    }
+
+    /// <summary>How long the speech bubble's Read more offer stays.</summary>
+    internal static TimeSpan OfferTime { get; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>The app the shown (or waiting) Read more offer is for, or null.</summary>
+    internal string? Offered { get; private set; }
+
+    /// <summary>Raised on the UI thread when an offer appears or goes away.</summary>
+    internal event Action? OfferChanged;
+
+    /// <summary>Shows <paramref name="text"/> with a <paramref name="button"/> (Read more) in a bubble beside the showing
+    /// character for <see cref="OfferTime"/>, or until Martlet speaks again or the button is pressed (<see cref="TakeOffer"/>).
+    /// <paramref name="key"/> is the app it is for. While Martlet still speaks, it waits for the bubble to be free first. False
+    /// when speech bubbles are off or the character isn't showing.</summary>
+    internal bool Offer(string key, string text, string button)
+    {
+        if (!Preferences.SpeechBubbles || !avatar.IsShowing) return false;
+        Offered = key;
+        offer = (text, button);
+        if (bubbleText is null) ShowOffer();
+        else _ = DropWaitingAsync(key);
+        OfferChanged?.Invoke();
+        return true;
+    }
+
+    // An offer still waiting for the bubble after twice its time is dropped.
+    private async Task DropWaitingAsync(string key)
+    {
+        try { await Task.Delay(OfferTime * 2, lifetime.Token); }
+        catch (OperationCanceledException) { return; }
+        if (Offered != key || offerShown) return;
+        Offered = null;
+        offer = null;
+        OfferChanged?.Invoke();
+    }
+
+    /// <summary>The button was pressed: the offer goes away and its app is returned (null when there was none).</summary>
+    internal string? TakeOffer()
+    {
+        var key = Offered;
+        if (key is null) return null;
+        Offered = null;
+        offer = null;
+        if (offerShown && bubbleText is not null) Say(null);
+        offerShown = false;
+        OfferChanged?.Invoke();
+        return key;
+    }
+
+    private (string Text, string Button)? offer;
+    private bool offerShown;
+
+    private void ShowOffer()
+    {
+        if (offer is not { } waiting || Offered is not { } key) return;
+        var id = ++current;
+        offerShown = true;
+        Say(waiting.Text, waiting.Button);
+        offer = null;
+        _ = EndOfferAsync(id, key);
+    }
+
+    private async Task EndOfferAsync(long id, string key)
+    {
+        try { await Task.Delay(OfferTime, lifetime.Token); }
+        catch (OperationCanceledException) { return; }
+        if (Offered != key) return;
+        Offered = null;
+        offerShown = false;
+        if (id == current && bubbleText is not null) Say(null);
+        OfferChanged?.Invoke();
     }
 
     private async Task<RendererBubble?> SendAfterAsync(Task previous, RendererSay say)

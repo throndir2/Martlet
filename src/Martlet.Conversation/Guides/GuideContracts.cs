@@ -16,9 +16,25 @@ public sealed record GuideChunk(string Url, string Page, string Section, string 
 public sealed record GuideSource(string Url, string Title, long Bytes);
 
 /// <summary>One app's guide as kept on this PC: the app's key and name, the sites it was read from, when, its pages and its
-/// chunks.</summary>
+/// chunks. <see cref="More"/>: what is left to read more of its wiki (null for a guide that isn't from a wiki Martlet can read
+/// more of, or one kept before Martlet saved it; Read more then finds the wiki from the guide's pages).</summary>
 public sealed record AppGuide(string Key, string Name, IReadOnlyList<string> Sites, DateTimeOffset BuiltAt,
-    IReadOnlyList<GuideSource> Sources, IReadOnlyList<GuideChunk> Chunks);
+    IReadOnlyList<GuideSource> Sources, IReadOnlyList<GuideChunk> Chunks)
+{
+    public GuideMoreState? More { get; init; }
+}
+
+/// <summary>What is left to read more of a wiki, as a guide file keeps it: the wiki's api.php, the titles its pages link to
+/// that weren't read (the most linked first, each with how many read pages link to it) and the titles read or left out
+/// (<see cref="GuideMore.Key"/> form), so Read more goes on after Martlet starts again.</summary>
+public sealed record GuideMoreState(string Api, IReadOnlyList<GuideMoreTitle> Related, IReadOnlyList<string> Known)
+{
+    /// <summary>The most linked titles and known titles a guide file keeps.</summary>
+    public const int MaximumRelated = 5_000, MaximumKnown = 20_000, MaximumTitleCharacters = 500;
+}
+
+/// <summary>A wiki title the guide's pages link to, and how many of them link to it.</summary>
+public sealed record GuideMoreTitle(string Title, int Count);
 
 /// <summary>One app in the guide library (Companion › App guides), without its chunks.</summary>
 public sealed record AppGuideEntry
@@ -150,27 +166,67 @@ public sealed record GuideBuildRequest(string Name, IReadOnlyList<string> Sites,
     /// member), or null when it can't choose any more, which ends reading. Null: titles are only sorted by their brackets.</summary>
     public Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyList<string>?>>? Choose { get; init; }
     /// <summary>Reads more of a wiki read before instead: the pages its pages link to that weren't read, as <see cref="Choose"/>
-    /// chooses them, and the links of those, with no search and no other site.</summary>
+    /// chooses them, and the links of those, then the wiki's other pages, with no search and no other site.</summary>
     public GuideMore? More { get; init; }
+    /// <summary>The addresses of the pages the guide has already (reading more never reads them again).</summary>
+    public IReadOnlyCollection<string> Have { get; init; } = [];
 }
 
-/// <summary>What a read of a MediaWiki site leaves to read more: the site, the titles its pages link to that weren't read (the
-/// most linked first) and the titles it read or left out. Only the reader uses what is inside.</summary>
+/// <summary>What a read of a MediaWiki site leaves to read more: the site (or its api.php, or a page of it, to find it again),
+/// the titles its pages link to that weren't read (the most linked first) and the titles it read or left out. A guide file keeps
+/// it (<see cref="State"/>, <see cref="Restore"/>) so Read more goes on after Martlet starts again; a guide kept without it gets
+/// one from its pages (<see cref="ForGuide"/>).</summary>
 public sealed class GuideMore
 {
     internal GuideMore(MediaWikiSite site, IReadOnlyList<(string Title, int Count)> related, IReadOnlySet<string> known)
+        : this(site, site.Api, null, related, known) { }
+
+    private GuideMore(MediaWikiSite? site, Uri? api, Uri? page, IReadOnlyList<(string Title, int Count)> related, IReadOnlySet<string> known)
     {
         Site = site;
+        Api = api;
+        Page = page;
         Related = related;
         Known = known;
     }
 
-    internal MediaWikiSite Site { get; }
+    internal MediaWikiSite? Site { get; }
+    /// <summary>The wiki's api.php, when known.</summary>
+    internal Uri? Api { get; }
+    /// <summary>A page of the wiki to find its api.php from (a guide kept without <see cref="State"/>).</summary>
+    internal Uri? Page { get; }
     internal IReadOnlyList<(string Title, int Count)> Related { get; }
     internal IReadOnlySet<string> Known { get; }
 
     /// <summary>How many linked titles weren't read.</summary>
     public int Count => Related.Count;
+
+    /// <summary>A title as the wiki compares it ("iron_ore" and "Iron ore" are one).</summary>
+    public static string Key(string title) => MediaWikiReader.Key(title);
+
+    /// <summary>What a guide file keeps of it, within <see cref="GuideMoreState"/>'s caps; null when the wiki's api.php isn't
+    /// known.</summary>
+    public GuideMoreState? State => Api is not { } api ? null : new(api.AbsoluteUri,
+        [.. Related.Where(r => r.Title.Length <= GuideMoreState.MaximumTitleCharacters).Take(GuideMoreState.MaximumRelated)
+            .Select(r => new GuideMoreTitle(r.Title, Math.Max(1, r.Count)))],
+        [.. Known.Where(k => k.Length <= GuideMoreState.MaximumTitleCharacters).Take(GuideMoreState.MaximumKnown)]);
+
+    /// <summary>What a guide file kept, to read more again; null when it kept nothing usable.</summary>
+    public static GuideMore? Restore(GuideMoreState? state) =>
+        state is { Api: { } api } && Uri.TryCreate(api, UriKind.Absolute, out var url) && WebAccess.IsWeb(url)
+            ? new(null, url, null, [.. (state.Related ?? []).Where(r => r is { Title.Length: > 0 }).Select(r => (r.Title, r.Count))],
+                new HashSet<string>((state.Known ?? []).Where(k => !string.IsNullOrEmpty(k)), StringComparer.Ordinal))
+            : null;
+
+    /// <summary>For a guide kept without <see cref="State"/>: the wiki of its pages (most of them on one site), found again from
+    /// one of them when reading more; null when it has no web page.</summary>
+    public static GuideMore? ForGuide(AppGuide guide)
+    {
+        var pages = guide.Sources.Select(s => Uri.TryCreate(s.Url, UriKind.Absolute, out var url) && WebAccess.IsWeb(url) ? url : null)
+            .OfType<Uri>().ToList();
+        var site = pages.GroupBy(p => p.Host, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).FirstOrDefault();
+        return site is null ? null : new(null, null, site.First(), [], new HashSet<string>(StringComparer.Ordinal));
+    }
 }
 
 /// <summary>How a read chose its wiki pages: the titles it looked at, those left out because their brackets name another game

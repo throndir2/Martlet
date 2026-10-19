@@ -1988,6 +1988,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 StopWatching($"The Thinking model rejected the picture. {selected.VisionAdvice()}");
         }
         if (typed is { } finished && ReferenceEquals(finished.Operation, done)) typed = null;
+        // A reply that used an app's guide: the speech bubble offers to read more about it for a little while.
+        if (!continued && !notWords && done.GuideKey is { } used && done.Turn?.Snapshot.State == ConversationState.Completed) OfferReadMore(used);
         if (notWords && done.Spoken && answering is { } dropped)
             foreach (var entry in dropped.Where(entry => !entry.Pc))
             {
@@ -2574,6 +2576,7 @@ public partial class LiveConversationWindow : ThemedWindow
         RenderJobs();
         RenderSong();
         RenderWarmup();
+        RenderReadMore();
     }
 
     /// <summary>The line under the status while vision or hearing what this PC plays is turned on and Martlet decides how
