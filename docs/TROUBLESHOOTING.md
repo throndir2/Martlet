@@ -1,4 +1,4 @@
-# Desktop troubleshooting and local support (V06b)
+# Desktop troubleshooting and local support
 
 ## Crashes and unexpected errors (error log)
 
@@ -287,7 +287,7 @@ home network*. When it doesn't:
    older than this feature.
 5. Run MCP `hosts_find` to see which hosts answer and from where.
 
-## Local configuration backup / restore (V07a)
+## Local configuration backup / restore
 
 **Configuration backups are NOT support bundles.** The support ZIP described
 below contains a deliberately lossy, redacted projection and cannot restore
@@ -323,7 +323,7 @@ personal. Configuration envelopes are LOCAL and **NOT encrypted or sanitized**.
    metadata, **not deleted**. Current legacy references/pending removals survive;
    obsolete imported IDs do not authorize key use or deletion.
 
-**V07a supports only an existing valid same-profile v1-v4 destination.** Memory
+**Recovery supports only an existing valid same-profile v1-v4 destination.** Memory
 is always forced OFF with a fresh revision, without opening or copying its store.
 A missing,
 foreign-profile, corrupt or future-version destination is refused; this is not
@@ -353,7 +353,7 @@ does not scan or resume recovery. Atomic rename/replace and flushed files are
 tested with controlled faults, not qualified against physical power loss.
 
 No binary switching, installer upgrade/uninstall, account sync or automatic
-update is implemented by V07a. Clean-VM N-1/N rollback, OS-vault roundtrip,
+update is implemented by recovery. Clean-VM N-1/N rollback, OS-vault roundtrip,
 physical devices, novice trials, signing, rights and G2 remain NOT RUN / NOT
 PASSED. No old executable is launched against a new schema.
 

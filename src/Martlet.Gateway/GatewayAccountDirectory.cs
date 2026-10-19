@@ -23,19 +23,21 @@ internal sealed class GatewayAccountDirectoryStore
     private AccountDirectory directory = AccountDirectory.Empty;
     private string digest = AccountDirectory.Empty.Digest();
     private IGatewayAccountStorage? storage;
+    private GatewayStoreHealth health = new();
+    private bool unsaved;
 
     internal AccountDirectory Current { get { lock (gate) return directory; } }
 
     internal string Digest { get { lock (gate) return digest; } }
 
     /// <summary>Loads the saved copy. It is this host's own file, so its entries are taken as they are.</summary>
-    internal void Attach(IGatewayAccountStorage value)
+    internal void Attach(IGatewayAccountStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         AccountDirectory? saved = null;
-        try { if (value.Load() is { } bytes) saved = AccountDirectory.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try("accounts", "load", () => { if (value.Load() is { } bytes) saved = AccountDirectory.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -58,12 +60,13 @@ internal sealed class GatewayAccountDirectoryStore
     private void Replace(AccountDirectory next, bool save)
     {
         var nextDigest = next.Digest();
-        if (nextDigest == digest) return;
+        if (nextDigest == digest && !(save && unsaved)) return;
         directory = next;
         digest = nextDigest;
         if (!save || storage is null) return;
-        try { storage.Save(next.Write()); }
-        catch (Exception) { }
+        // Security state (a revoked key must stay revoked after a restart): try twice, and when it still is not saved, save
+        // it again at the next sync even when nothing changed. The change applies in memory at once either way.
+        unsaved = !health.Try("accounts", "save", () => storage.Save(next.Write()), attempts: 2);
     }
 }
 

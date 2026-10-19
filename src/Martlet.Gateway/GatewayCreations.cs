@@ -50,6 +50,7 @@ internal sealed class GatewayCreationStore
     private long memoryBytes;
     private Dictionary<string, int> chunks = new(StringComparer.Ordinal);
     private IGatewayCreationStorage? storage;
+    private GatewayStoreHealth health = new();
     private IGatewayAccountCreationStorage? accountStorage;
 
     private sealed class Library
@@ -82,13 +83,13 @@ internal sealed class GatewayCreationStore
     /// <summary>Identifies <see cref="Present"/> (<see cref="CreationLibrary.PresentDigest"/>).</summary>
     internal static string PresentDigest(IEnumerable<string> present) => CreationLibrary.PresentDigest(present);
 
-    internal void Attach(IGatewayCreationStorage value)
+    internal void Attach(IGatewayCreationStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         CreationLibrary? saved = null;
-        try { if (value.LoadLibrary() is { } bytes) saved = CreationLibrary.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try("creations", "load", () => { if (value.LoadLibrary() is { } bytes) saved = CreationLibrary.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -99,20 +100,16 @@ internal sealed class GatewayCreationStore
 
     /// <summary>Loads the account lists saved in <paramref name="value"/> and saves each later change there. Attach it before
     /// <see cref="Attach"/>, so the pieces only an account uses are known when the pool is checked.</summary>
-    internal void AttachAccounts(IGatewayAccountCreationStorage value)
+    internal void AttachAccounts(IGatewayAccountCreationStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         var saved = new List<(Guid Account, CreationLibrary Library)>();
-        try
-        {
-            foreach (var account in value.List().Distinct().OrderBy(a => a.ToString("N"), StringComparer.Ordinal))
-            {
-                // A list that cannot be read comes back from the next desktop of that account that syncs.
-                try { if (value.Load(account) is { } bytes) saved.Add((account, CreationLibrary.Parse(bytes))); }
-                catch (Exception) { }
-            }
-        }
-        catch (Exception) { }
+        // A list that cannot be read comes back from the next desktop of that account that syncs.
+        Guid[] listed = [];
+        if (health.Try("account creations", "load", () => listed = value.List().Distinct().OrderBy(a => a.ToString("N"), StringComparer.Ordinal).ToArray()))
+            foreach (var account in listed)
+                health.Try("account creations", "load", () => { if (value.Load(account) is { } bytes) saved.Add((account, CreationLibrary.Parse(bytes))); });
         lock (gate)
         {
             accountStorage = value;
@@ -160,13 +157,11 @@ internal sealed class GatewayCreationStore
             if (stored.Contains(sha256) || memory.ContainsKey(sha256)) return true;
             if (storage is not null)
             {
-                try
+                if (health.Try("creations", "save", () => storage.SaveChunk(sha256, bytes)))
                 {
-                    storage.SaveChunk(sha256, bytes);
                     stored.Add(sha256);
                     return true;
                 }
-                catch (Exception) { }
             }
             if (memoryBytes + bytes.Length > MaximumMemoryBytes) return false;
             memory[sha256] = (byte[])bytes.Clone();
@@ -186,13 +181,11 @@ internal sealed class GatewayCreationStore
             if (memory.TryGetValue(sha256, out var kept)) return (byte[])kept.Clone();
             if (!stored.Contains(sha256) || storage is null) return null;
             byte[]? bytes = null;
-            try { bytes = storage.LoadChunk(sha256); }
-            catch (Exception) { }
+            health.Try("creations", "load", () => { bytes = storage.LoadChunk(sha256); });
             if (bytes is not null && bytes.Length == length && Convert.ToHexStringLower(SHA256.HashData(bytes)) == sha256)
                 return bytes;
             stored.Remove(sha256);
-            try { storage.RemoveChunk(sha256); }
-            catch (Exception) { }
+            health.Try("creations", "remove", () => { storage.RemoveChunk(sha256); });
             return null;
         }
     }
@@ -206,8 +199,7 @@ internal sealed class GatewayCreationStore
         foreach (var sha256 in chunks.Keys)
         {
             if (stored.Contains(sha256)) continue;
-            try { if (storage.HasChunk(sha256)) stored.Add(sha256); }
-            catch (Exception) { }
+            health.Try("creations", "load", () => { if (storage.HasChunk(sha256)) stored.Add(sha256); });
         }
     }
 
@@ -231,16 +223,14 @@ internal sealed class GatewayCreationStore
         foreach (var sha256 in stored.Where(k => !chunks.ContainsKey(k)).ToArray())
         {
             stored.Remove(sha256);
-            try { storage?.RemoveChunk(sha256); }
-            catch (Exception) { }
+            health.Try("creations", "remove", () => { storage?.RemoveChunk(sha256); });
         }
         if (!save) return;
-        try
+        health.Try(account is null ? "creations" : "account creations", "save", () =>
         {
             if (account is { } id) accountStorage?.Save(id, next.Write());
             else storage?.SaveLibrary(next.Write());
-        }
-        catch (Exception) { }
+        });
     }
 }
 

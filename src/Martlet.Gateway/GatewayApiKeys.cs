@@ -49,19 +49,21 @@ internal sealed class GatewayApiKeyStore(string hostId, TimeProvider clock) : IG
     private ApiKeyList list = ApiKeyList.Empty;
     private string digest = ApiKeyList.Empty.Digest();
     private IGatewayApiKeyStorage? storage;
+    private GatewayStoreHealth health = new();
+    private bool unsaved;
 
     internal ApiKeyList Current { get { lock (gate) return list; } }
 
     /// <summary>When each key was last accepted here since the gateway started (key ID → time).</summary>
     internal IReadOnlyDictionary<string, DateTimeOffset> Used => used.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
 
-    internal void Attach(IGatewayApiKeyStorage value)
+    internal void Attach(IGatewayApiKeyStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         ApiKeyList? saved = null;
-        try { if (value.Load() is { } bytes) saved = ApiKeyList.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try("API keys", "load", () => { if (value.Load() is { } bytes) saved = ApiKeyList.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -82,12 +84,13 @@ internal sealed class GatewayApiKeyStore(string hostId, TimeProvider clock) : IG
     private void Replace(ApiKeyList next, bool save)
     {
         var nextDigest = next.Digest();
-        if (nextDigest == digest) return;
+        if (nextDigest == digest && !(save && unsaved)) return;
         list = next;
         digest = nextDigest;
         if (!save || storage is null) return;
-        try { storage.Save(next.Write()); }
-        catch (Exception) { }
+        // Security state (a revoked key must stay revoked after a restart): try twice, and when it still is not saved, save
+        // it again at the next sync even when nothing changed. The change applies in memory at once either way.
+        unsaved = !health.Try("API keys", "save", () => storage.Save(next.Write()), attempts: 2);
     }
 
     internal static bool IsBearer(HttpRequest request) =>

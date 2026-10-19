@@ -42,6 +42,7 @@ internal sealed class GatewayMemorySpaces
     private readonly object gate = new();
     private readonly Dictionary<string, GatewayMemoryStore> spaces = new(StringComparer.Ordinal);
     private IGatewayMemorySpaceStorage? storage;
+    private GatewayStoreHealth health = new();
 
     /// <summary>Decides which device may use which space. The gateway application sets the account directory's rules
     /// (GatewayMemorySpaceAccess.cs); a store on its own lets every member device use every space.</summary>
@@ -56,23 +57,24 @@ internal sealed class GatewayMemorySpaces
         get { lock (gate) return [.. spaces.Keys.Order(StringComparer.Ordinal)]; }
     }
 
-    internal void Attach(IGatewayMemorySpaceStorage value)
+    internal void Attach(IGatewayMemorySpaceStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         string[] saved;
-        try { saved = [.. value.List().Where(MemorySpaceId.IsValid).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]; }
+        saved = [];
         // Spaces that cannot be listed come back from the next desktops that sync them.
-        catch (Exception) { saved = []; }
+        health.Try("memory spaces", "load", () => saved = [.. value.List().Where(MemorySpaceId.IsValid).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
         lock (gate)
         {
             storage = value;
-            foreach (var (space, store) in spaces) store.Attach(new SpaceStorage(value, space));
+            foreach (var (space, store) in spaces) store.Attach(new SpaceStorage(value, space), health, "memory spaces");
             foreach (var space in saved)
             {
                 if (spaces.ContainsKey(space)) continue;
                 if (spaces.Count >= MaximumSpaces) break;
                 var store = new GatewayMemoryStore();
-                store.Attach(new SpaceStorage(value, space));
+                store.Attach(new SpaceStorage(value, space), health, "memory spaces");
                 spaces[space] = store;
             }
         }
@@ -100,7 +102,7 @@ internal sealed class GatewayMemorySpaces
                 if (incoming.Facts.Count == 0) return SharedMemories.Empty;
                 GatewayRules.Require(spaces.Count < MaximumSpaces, "memories.spaces_full");
                 store = new GatewayMemoryStore();
-                if (storage is not null) store.Attach(new SpaceStorage(storage, space));
+                if (storage is not null) store.Attach(new SpaceStorage(storage, space), health, "memory spaces");
                 spaces[space] = store;
             }
         }
@@ -121,7 +123,7 @@ internal sealed class GatewayMemorySpaces
                 if (!given.Live.Any()) return 0;
                 GatewayRules.Require(spaces.Count < MaximumSpaces, "memories.spaces_full");
                 store = new GatewayMemoryStore();
-                if (storage is not null) store.Attach(new SpaceStorage(storage, space));
+                if (storage is not null) store.Attach(new SpaceStorage(storage, space), health, "memory spaces");
                 spaces[space] = store;
             }
         }

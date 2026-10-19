@@ -21,16 +21,17 @@ internal sealed class GatewayVoiceStore
     private VoiceRoster roster = VoiceRoster.Empty;
     private string digest = VoiceRoster.Empty.Digest();
     private IGatewayVoiceStorage? storage;
+    private GatewayStoreHealth health = new();
 
     internal VoiceRoster Current { get { lock (gate) return roster; } }
 
-    internal void Attach(IGatewayVoiceStorage value)
+    internal void Attach(IGatewayVoiceStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         VoiceRoster? saved = null;
-        try { if (value.Load() is { } bytes) saved = VoiceRoster.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try("voices", "load", () => { if (value.Load() is { } bytes) saved = VoiceRoster.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -54,8 +55,7 @@ internal sealed class GatewayVoiceStore
         roster = next;
         digest = nextDigest;
         if (!save || storage is null) return;
-        try { storage.Save(next.Write()); }
-        catch (Exception) { }
+        health.Try("voices", "save", () => { storage.Save(next.Write()); });
     }
 }
 

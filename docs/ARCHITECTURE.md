@@ -21,7 +21,7 @@ provider or generalize the existing OpenAI/F5 authorization contracts.
 
 **Broader proposed design.** Not all of the components and remote protocols
 below are implemented.
-The subsequent [V04b app integration](CONVERSATION.md) composes setup/vault,
+The [live conversation](CONVERSATION.md) composes setup/vault,
 explicit typed/PTT capture, named STT, participation policy and the existing
 streaming conversation runtime under one app-shared operation owner. It does
 not implement learned VAD, automatic listening or the proposed remote topology.
@@ -508,7 +508,7 @@ New activity invalidates a proposed gap-based dispatch. Only a fresh eligible
 decision can lead to LLM/TTS; quiet accumulation uses no second inference
 model. Participation frequency/gap/cooldown and opt-in capture remain separate
 from the persona. The persona never overrides truthfulness, explicit controls
-or permission. The current V05b adds fixed-revision persona instructions to fresh
+or permission. Martlet adds fixed-revision persona instructions to fresh
 explicit turns. The reused explicit-context slice adds the open talk window's
 completed exchanges, the newest that fit the context size (Companion ›
 Replies), with lifecycle clearing; it is not the proposed automatic

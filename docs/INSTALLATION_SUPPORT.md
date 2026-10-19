@@ -501,7 +501,7 @@ companion personas. A restore does not bring back credentials, permissions or
 readiness. It refuses missing, damaged, newer and foreign destinations, and it
 keeps the exact original file. It is not the diagnostic bundle and not the
 database, voice, host or binary lifecycle below. See the
-[recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a)
+[recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore)
 and [the transaction contract](SETUP.md#local-configuration-recovery-transaction).
 
 The [staging and selection libraries](../src/Martlet.Updates/README.md) add
