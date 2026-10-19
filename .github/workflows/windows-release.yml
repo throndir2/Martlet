@@ -79,7 +79,8 @@ jobs:
           }
           exit 0
 
-      - name: Publish the GitHub release
+      # The release stays a draft: the attach job publishes it as Latest after every platform's files are on it.
+      - name: Create the draft GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,7 +113,7 @@ jobs:
           $noticeUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/packaging/windows/DEPENDENCIES.txt"
           $changes = [IO.File]::ReadAllText((Join-Path $env:RUNNER_TEMP 'changes.md'))
           $changelogUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/CHANGELOG.md"
-          $notes = "## What's new`n`n$changes`n`n[Full changelog]($changelogUrl)`n`n## Install`n`nMartlet $env:RELEASE_VERSION for Windows 10 (version 2004 or newer) and Windows 11, x64. Download and run $name.`n`nThe installer is not code-signed, so Windows SmartScreen may show an unknown-publisher warning.`n`nLicense: $licenseUrl (personal, noncommercial use of these official binaries). Third-party components keep their own terms: $noticeUrl; full notices are included in the installer.`n`nInstaller SHA-256: $sha"
+          $notes = "## What's new`n`n$changes`n`n[Full changelog]($changelogUrl)`n`n## Install`n`nMartlet $env:RELEASE_VERSION for Windows 10 (version 2004 or newer) and Windows 11, x64. Download and run $name.`n`nThe installer is not code-signed, so Windows SmartScreen may show an unknown-publisher warning.`n`nLicense: $licenseUrl (personal, noncommercial use of these official binaries). Third-party components keep their own terms: $noticeUrl. Every package (the Windows installer, the .deb, the AppImage and the .dmg) includes Martlet's license and the full third-party notices.`n`nInstaller SHA-256: $sha"
           $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           [IO.File]::WriteAllText($notesFile, $notes)
           & gh api -X POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$env:GITHUB_SHA" --silent
@@ -135,8 +136,6 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $publishedTag.Trim() -cne $env:GITHUB_SHA) {
             throw 'The release tag no longer points at the built commit; leaving the release as a draft.'
           }
-          & gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest
-          if ($LASTEXITCODE -ne 0) { throw 'The release remains a draft; publication failed.' }
           exit 0
 
   linux:
@@ -154,6 +153,11 @@ jobs:
         with:
           dotnet-version: 10.0.401
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.11.1
+
+      # build-linux.sh runs npm ci, requires the Live2D SDK download and stops when the character or a notice is missing.
       - name: Package the AppImage and .deb files (x64 and arm64)
         run: |
           grep -q "<Version>$RELEASE_VERSION</Version>" Directory.Build.props || { echo '::error::The requested version differs from <Version> in Directory.Build.props.'; exit 1; }
@@ -183,6 +187,11 @@ jobs:
         with:
           dotnet-version: 10.0.401
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.11.1
+
+      # build-macos.sh runs npm ci, requires the Live2D SDK download and stops when the character or a notice is missing.
       - name: Package the .dmg files (Apple silicon and Intel), with the Mac host inside the app
         run: |
           grep -q "<Version>$RELEASE_VERSION</Version>" Directory.Build.props || { echo '::error::The requested version differs from <Version> in Directory.Build.props.'; exit 1; }
@@ -214,23 +223,38 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Attach the Linux and macOS packages to the release
+      # Publishes the draft as Latest only when every platform's files are attached and GitHub reports their SHA-256.
+      # Recovery when the linux or macos job fails: fix the cause, then use "Re-run failed jobs" on this run
+      # (packaging/windows/README.md, "When a release run fails").
+      - name: Attach the Linux and macOS packages, write SHA256SUMS.txt and publish the release
         run: |
           tag="v$RELEASE_VERSION"
-          gh release view "$tag" --json tagName >/dev/null || { echo "::error::Release $tag does not exist; the Windows job must create it first."; exit 1; }
+          # The releases/tags endpoint returns only published releases; find the draft in the release list.
+          id=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$tag\") | .id")
+          [ -n "$id" ] && [ "$(wc -w <<<"$id")" = 1 ] || { echo "::error::Release $tag does not exist; the release job must create it first."; exit 1; }
           [ "$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha)" = "$GITHUB_SHA" ] || { echo "::error::Tag $tag does not point at the built commit."; exit 1; }
           cd dist
           files=(Martlet-"$RELEASE_VERSION"-linux-x64.AppImage martlet_"$RELEASE_VERSION"_amd64.deb
                  Martlet-"$RELEASE_VERSION"-linux-arm64.AppImage martlet_"$RELEASE_VERSION"_arm64.deb
                  Martlet-"$RELEASE_VERSION"-macos-arm64.dmg Martlet-"$RELEASE_VERSION"-macos-x64.dmg)
-          sha256sum "${files[@]}" > "$RUNNER_TEMP/sums.txt"
-          gh release upload "$tag" "${files[@]}"
-          for f in "${files[@]}"; do
-            want="sha256:$(sha256sum "$f" | cut -d' ' -f1)"
-            got=$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq ".assets[] | select(.name == \"$f\") | .digest")
-            [ "$got" = "$want" ] || { echo "::error::GitHub reports $got for $f, expected $want."; exit 1; }
+          # One SHA256SUMS.txt for every file: the release job's Windows lines (a re-run finds the full file) and these.
+          gh release download "$tag" --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP/windows" --clobber
+          grep -E "  (Martlet-$RELEASE_VERSION-win-x64\.exe|installer-manifest\.json)\$" "$RUNNER_TEMP/windows/SHA256SUMS.txt" > SHA256SUMS.txt
+          [ "$(wc -l < SHA256SUMS.txt)" = 2 ] || { echo "::error::SHA256SUMS.txt on the release has no Windows installer and receipt lines."; exit 1; }
+          sha256sum "${files[@]}" >> SHA256SUMS.txt
+          gh release upload "$tag" "${files[@]}" SHA256SUMS.txt --clobber
+          (cat SHA256SUMS.txt; sha256sum SHA256SUMS.txt) > "$RUNNER_TEMP/expected.txt"
+          for attempt in 1 2 3 4 5 6; do
+            assets=$(gh api "repos/$GH_REPO/releases/$id" --jq '.assets[] | "\(.digest // "") \(.name)"')
+            missing=0
+            while read -r sum name; do
+              grep -qxF "sha256:$sum $name" <<<"$assets" || missing=1
+            done < "$RUNNER_TEMP/expected.txt"
+            [ $missing = 1 ] || break
+            [ $attempt = 6 ] && { echo "::error::GitHub does not report the expected SHA-256 for every file; the release stays a draft."; exit 1; }
+            sleep 5
           done
-          gh release view "$tag" --json body --jq .body > "$RUNNER_TEMP/notes.md"
+          gh api "repos/$GH_REPO/releases/$id" --jq .body | sed '/^## Linux and macOS (desktop companion)$/,$d' > "$RUNNER_TEMP/notes.md"
           {
             echo
             echo "## Linux and macOS (desktop companion)"
@@ -239,10 +263,12 @@ jobs:
             echo
             echo "**macOS 14 or newer**: Martlet-${RELEASE_VERSION}-macos-arm64.dmg for Apple silicon (About This Mac shows \"Chip\"), -macos-x64.dmg for Intel (\"Processor\"). Drag Martlet to Applications. The app is ad-hoc signed only, not Developer ID signed or notarized: the first time, macOS says it cannot check Martlet; choose Done, then System Settings > Privacy & Security > **Open Anyway** and confirm. You do this once per version."
             echo
-            echo "SHA-256 (the GitHub asset digest checks the download is intact, not who published it):"
+            echo "License and notices: /usr/share/doc/martlet (.deb), usr/lib/martlet/notices in the AppImage, Martlet.app/Contents/Resources/notices (macOS)."
+            echo
+            echo "SHA-256 of every file, also in SHA256SUMS.txt (the GitHub asset digest checks the download is intact, not who published it):"
             echo
             echo '```text'
-            cat "$RUNNER_TEMP/sums.txt"
+            cat SHA256SUMS.txt
             echo '```'
           } >> "$RUNNER_TEMP/notes.md"
-          gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md" --draft=false --latest

@@ -9,8 +9,8 @@ Windows 11, or Windows 11 on Arm (Snapdragon X and similar), where Martlet runs
 under Windows' x64 emulation. Windows 10 on Arm can't run it. Mainly tested on
 Windows 11 25H2 x64.
 This per-user installer provides a self-contained Desktop app, a Doctor CLI,
-dependency notices, a prerequisites tool, and an uninstaller. Setup asks no
-questions and installs nothing else. When Martlet first starts, its welcome
+dependency notices, a prerequisites tool, and an uninstaller. Setup shows the
+license and this page, then asks nothing else and installs nothing else. When Martlet first starts, its welcome
 tour asks what this PC is for, offers anything missing here (the WebView2
 runtime for the desktop character, microphone access, Windows speech, Ollama
 for a local LLM, or WSL 2 and Docker Desktop for GPU roles) and can recommend
@@ -19,8 +19,9 @@ publishers, and keep their own license terms; Windows features ask for
 administrator approval separately. Run "Martlet prerequisites" from the Start
 menu to check or add them later. No API calls,
 microphone capture, model download, startup task, or automatic installation
-occurs merely by launching Martlet. If you opt in, Martlet checks GitHub for
-updates while it runs and can install them for you (Settings > App updates);
+occurs merely by launching Martlet. While it runs, Martlet checks GitHub for
+updates and installs one when you choose to, or by itself if you turn on
+automatic installation (Settings > App updates; you can also turn checks off);
 real provider use requires explicit configuration
 and per-action consent and may incur charges.
 

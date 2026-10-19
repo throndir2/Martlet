@@ -10,8 +10,7 @@ can also install, onboard and manage Home Assistant is researched in
 [Installing and managing Home Assistant](#installing-and-managing-home-assistant-research-2026-10-01).
 
 This is a separate post-MVP track, like the [iOS plan](IOS.md). It touches an
-MVP non-goal, **general tool execution**
-([non-goals](../DEVELOPMENT_PLAN.md#explicit-non-goals-for-mvp)): Martlet adds
+early non-goal, **general tool execution**: Martlet adds
 a narrow, opt-in home surface on the user's own turns, not arbitrary tool or
 command execution.
 

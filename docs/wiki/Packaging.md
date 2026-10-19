@@ -37,7 +37,9 @@ It writes `package\installer\Martlet-<version>-win-x64.exe`, `installer-manifest
 bash packaging/linux/build-linux.sh --version 0.1.0 --arch x64 --arch arm64 --output artifacts/linux-release
 ```
 
-It needs bash, curl, sha256sum, file and dpkg-deb on x86_64 or aarch64 Linux (a Linux host, WSL or the .NET SDK image in Docker). Both architectures build on either one. The package is a self-contained publish of `src/Martlet.Companion`. The `.deb` installs to `/opt/martlet` with a `martlet` command, a menu entry and an icon. It depends on WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`) and libsecret. The AppImage uses the distribution's WebKitGTK 4.1, libsecret and libicu.
+It needs bash, curl, sha256sum, file, dpkg-deb, python3, Node.js 20.11 or later and npm on x86_64 or aarch64 Linux (a Linux host, WSL or the .NET SDK image in Docker). Both architectures build on either one. The package is a self-contained publish of `src/Martlet.Companion`. The `.deb` installs to `/opt/martlet` with a `martlet` command, a menu entry and an icon. It depends on WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`) and libsecret. The AppImage uses the distribution's WebKitGTK 4.1, libsecret and libicu.
+
+**Character and notices (Linux and macOS).** Both scripts run `npm ci`, build the character renderer again and need the Live2D SDK download. They stop when `character/app.js` or `character/live2d/sdk/core.js` is missing. `packaging/collect-notices.py` then writes Martlet's `LICENSE`, the .NET runtime license and notices, and the complete license text of every NuGet package (from each `.deps.json`) into a notices folder. It stops when a license is missing. The folder is `/usr/share/doc/martlet` (with a `copyright` file) in the `.deb`, `usr/lib/martlet/notices` in the AppImage and `Martlet.app/Contents/Resources/notices` on macOS. Add a `packaging/licenses/<SPDX id>.txt` file when a new package has only a license expression that has no text there yet.
 
 ## macOS
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Packages the Martlet desktop companion for Linux: a self-contained .NET publish as
 # Martlet-<version>-linux-<arch>.AppImage and martlet_<version>_<debarch>.deb.
-# Runs on any x86_64 or aarch64 Linux with bash, curl, sha256sum, file and dpkg-deb; both
-# architectures can be built on either (the AppImage runtime is chosen per target).
+# Runs on any x86_64 or aarch64 Linux with bash, curl, sha256sum, file, dpkg-deb, python3, Node.js 20.11+ and npm; both
+# architectures can be built on either (the AppImage runtime is chosen per target). The character renderer with
+# Live2D, Martlet's LICENSE and every third-party notice are required; the script stops when one is missing.
 #
 #   packaging/linux/build-linux.sh --version 0.50.0 --arch x64 [--arch arm64]
 #       [--project src/Martlet.Companion/Martlet.Companion.csproj] [--output artifacts/linux-release] [--dotnet dotnet]
@@ -10,6 +11,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
+. "$here/../common.sh"
 version=''
 arches=()
 project="$root/src/Martlet.Companion/Martlet.Companion.csproj"
@@ -29,7 +31,7 @@ done
 [[ "$version" =~ ^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || { echo 'Use --version with a three-part numeric version such as 0.50.0.' >&2; exit 2; }
 [ ${#arches[@]} -gt 0 ] || arches=(x64)
 [ -f "$project" ] || { echo "Project not found: $project" >&2; exit 1; }
-for tool in curl sha256sum dpkg-deb file; do command -v "$tool" >/dev/null || { echo "$tool is required." >&2; exit 1; }; done
+for tool in curl sha256sum dpkg-deb file python3; do command -v "$tool" >/dev/null || { echo "$tool is required." >&2; exit 1; }; done
 
 # The apphost is named after <AssemblyName>, or the project file name without one.
 exe=$(sed -n 's:.*<AssemblyName>\(.*\)</AssemblyName>.*:\1:p' "$project" | head -n 1)
@@ -59,6 +61,7 @@ case "$(uname -m)" in
   *) echo "Unsupported build machine: $(uname -m)" >&2; exit 1 ;;
 esac
 
+prepare_character "$root"
 node_arg=()
 if command -v node >/dev/null; then node_arg=("-p:NodeExecutable=$(command -v node)"); fi
 
@@ -80,11 +83,14 @@ for arch in "${arches[@]}"; do
     -p:DebugType=None -p:DebugSymbols=false ${node_arg[@]+"${node_arg[@]}"} -o "$work/publish" -nologo -v:minimal
   [ -f "$work/publish/$exe" ] || { echo "Publish did not produce $exe." >&2; exit 1; }
   chmod +x "$work/publish/$exe"
+  assert_character "$work/publish"
+  collect_notices "$root" "$dotnet" "$work/notices" "$work/publish"
 
   # AppImage: the publish output under usr/lib/martlet, started by AppRun.
   appdir="$work/AppDir"
   mkdir -p "$appdir/usr/lib/martlet"
   cp -a "$work/publish/." "$appdir/usr/lib/martlet/"
+  cp -a "$work/notices" "$appdir/usr/lib/martlet/notices"
   printf '#!/bin/sh\nhere="$(dirname "$(readlink -f "$0")")"\nexec "$here/usr/lib/martlet/%s" "$@"\n' "$exe" > "$appdir/AppRun"
   chmod +x "$appdir/AppRun"
   install -m 0644 "$here/$appid.desktop" "$appdir/$appid.desktop"
@@ -95,14 +101,17 @@ for arch in "${arches[@]}"; do
   ARCH="$aiarch" APPIMAGE_EXTRACT_AND_RUN=1 "$tools/appimagetool" --no-appstream \
     --runtime-file "$tools/runtime-$aiarch" "$appdir" "$appimage"
 
-  # .deb: /opt/martlet with a martlet command, menu entry and icon.
+  # .deb: /opt/martlet with a martlet command, menu entry, icon, and the license and notices in /usr/share/doc/martlet.
   pkg="$work/deb"
   mkdir -p "$pkg/DEBIAN" "$pkg/opt/martlet" "$pkg/usr/bin" "$pkg/usr/share/applications" \
-    "$pkg/usr/share/icons/hicolor/256x256/apps"
+    "$pkg/usr/share/icons/hicolor/256x256/apps" "$pkg/usr/share/doc"
   cp -a "$work/publish/." "$pkg/opt/martlet/"
   ln -s "/opt/martlet/$exe" "$pkg/usr/bin/martlet"
   install -m 0644 "$here/$appid.desktop" "$pkg/usr/share/applications/$appid.desktop"
   install -m 0644 "$icon" "$pkg/usr/share/icons/hicolor/256x256/apps/$appid.png"
+  cp -a "$work/notices" "$pkg/usr/share/doc/martlet"
+  { cat "$work/notices/LICENSE.txt"; printf '\nThird-party components keep their own licenses: see THIRD-PARTY-NOTICES.txt, the\nMicrosoft.*.Runtime.* folders and README.txt in /usr/share/doc/martlet.\n'; } > "$pkg/usr/share/doc/martlet/copyright"
+  chmod -R u+rwX,go+rX,go-w "$pkg/usr/share/doc/martlet"
   find "$pkg" -type d -exec chmod 0755 {} +
   cat > "$pkg/DEBIAN/control" <<EOF
 Package: martlet
