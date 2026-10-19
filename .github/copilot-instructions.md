@@ -50,6 +50,12 @@ confirm the merged result on `origin/main`. Releases are pre-authorized:
 agents may build and publish them through a minimal build/release workflow
 without asking.
 
+**File issues for problems you find:** when you find a bug or other problem
+during a task and do not fix it in the same change, search the open issues,
+then file a GitHub issue (or comment on the existing one) with the steps to
+make it happen again, the evidence and the matching labels. Link it in your
+PR. Details: [File issues for problems you find](../AGENTS.md#file-issues-for-problems-you-find).
+
 **Changelog:** every PR with a change users can notice adds a plain-language
 line with its PR link under `## [Unreleased]` in `CHANGELOG.md`. A release PR
 bumps `<Version>`, turns `Unreleased` into `## [<version>] - <date>`, refreshes
