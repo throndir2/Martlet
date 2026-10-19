@@ -261,7 +261,10 @@ reads the entire conversation again before every reply (on a 12B model, about
   message the request carries has it (so once a conversation), what was said
   in earlier conversations when the message refers to
   one ([Memory › Conversation history](MEMORY.md#conversation-history)), who is
-  talking when that changed, a smart home result, and the
+  talking when that changed, Companion › Prompts › *While you play* while a
+  game is played and no earlier message the request carries has it for that
+  game ([Memories for a game](MEMORY.md#memories-for-a-game)), a smart home
+  result, and the
   picked style when the persona has several and it changed. The first notes
   start with what notes are (Companion › Prompts › *Notes with messages*).
   Notes are never shown and never what the user said.

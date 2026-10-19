@@ -131,6 +131,24 @@ internal static class MemoryActivityCheck
             }
             Step("an activity of the wrong form is refused (a lowercase kind, then '/' and a trimmed one-line name)", refused == 5,
                 new { refused, of = 5 });
+            // Prompts for a game (docs/MEMORY.md, "Memories for a game"): the While you play prompt and lorebook entries for the game.
+            var lore = Martlet.Core.Lorebooks.LorebookLibrary.Create() with
+            {
+                ScanDepth = 2,
+                Books = [new Martlet.Core.Lorebooks.Lorebook
+                {
+                    Id = Guid.NewGuid(), Name = "Games",
+                    Entries = [new() { Uid = 0, Content = "Pals can be caught with spheres.", Keys = ["Palworld"] }]
+                }]
+            };
+            var quiet = Martlet.Core.Lorebooks.LorebookScanner.Scan(lore, new("What should I do next?", []), _ => 0).Included.Count;
+            var played = Martlet.Core.Lorebooks.LorebookScanner.Scan(lore, new("What should I do next?", [], Activity: "Palworld"), _ => 0).Included;
+            Step("a lorebook entry keyed by the game played now joins in, though the words don't name it",
+                quiet == 0 && played.Count == 1 && played[0].Trigger == "Palworld (played now)", new { withoutGame = quiet, playing = played.Select(h => h.Trigger) });
+            var whilePlaying = Martlet.Core.Settings.PromptSettings.Fill(null, Martlet.Core.Settings.PromptCatalog.WhilePlaying, ("game", "Palworld"));
+            Step("the While you play prompt (Companion › Prompts) names the game played now",
+                whilePlaying?.StartsWith("The user is playing Palworld right now.", StringComparison.Ordinal) == true, new { prompt = whilePlaying });
+
             Step("game names compare without regard to case or spacing, and are made from what the game watch saw",
                 MemoryActivity.Same("gaming/ELDEN RING", "gaming/Elden  ring") && MemoryActivity.Game("  Palworld \t") == Palworld &&
                 MemoryActivity.Describe(Palworld) == "while playing Palworld" && MemoryActivity.Describe(null) == "everywhere",

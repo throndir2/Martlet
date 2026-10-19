@@ -432,7 +432,8 @@ internal sealed partial class McpServer
             "synthetic facts in a disposable store: a fact made while playing Palworld recalled while playing Palworld or when the " +
             "words name it, never in another game or outside games; a fact for any game in every game; a fact for everywhere " +
             "always; a game's fact travelling with its activity while a fact for everywhere is written exactly as before; a " +
-            "correction keeping where a fact matters; an activity of the wrong form refused. Optional query (with activity, a " +
+            "correction keeping where a fact matters; an activity of the wrong form refused; a lorebook entry keyed by the game " +
+            "played now joining in (Martlet.Core's LorebookScanner) and the While you play prompt naming the game. Optional query (with activity, a " +
             "game's name, or none for no game) recalls those words against the sample facts. Never opens your memory. Nothing " +
             "leaves this PC.", new
         {
