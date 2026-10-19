@@ -30,6 +30,7 @@ internal sealed class GatewayConversationRecords
     private readonly object gate = new();
     private readonly Dictionary<string, Document> documents = new(StringComparer.Ordinal);
     private IGatewayConversationStorage? storage;
+    private GatewayStoreHealth health = new();
 
     private sealed class Document(SharedConversations copy, string digest)
     {
@@ -52,13 +53,14 @@ internal sealed class GatewayConversationRecords
         get { lock (gate) return [.. documents.Keys.Order(StringComparer.Ordinal)]; }
     }
 
-    internal void Attach(IGatewayConversationStorage value)
+    internal void Attach(IGatewayConversationStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         string[] saved;
-        try { saved = [.. value.List().Where(IsKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]; }
+        saved = [];
         // Months that cannot be listed come back from the next desktops that sync them.
-        catch (Exception) { saved = []; }
+        health.Try("conversations", "load", () => saved = [.. value.List().Where(IsKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
         lock (gate) storage = value;
         foreach (var key in saved)
         {
@@ -71,7 +73,11 @@ internal sealed class GatewayConversationRecords
                 copy = SharedConversations.Parse(bytes);
             }
             // An unreadable or malformed copy is replaced by the next desktop that syncs the month.
-            catch (Exception) { continue; }
+            catch (Exception error)
+            {
+                health.Failed("conversations", "load", error);
+                continue;
+            }
             finally { if (bytes is not null) CryptographicOperations.ZeroMemory(bytes); }
             if (copy.Month != key[33..] || copy.Exchanges.Count == 0) continue;
             var digest = Digest(copy, out _, keep: false);
@@ -170,8 +176,7 @@ internal sealed class GatewayConversationRecords
             IGatewayConversationStorage? target;
             lock (gate) target = storage;
             if (!save || target is null || bytes is null) return;
-            try { target.Save(key, bytes); }
-            catch (Exception) { }
+            health.Try("conversations", "save", () => { target.Save(key, bytes); });
         }
         finally { if (bytes is not null) CryptographicOperations.ZeroMemory(bytes); }
     }

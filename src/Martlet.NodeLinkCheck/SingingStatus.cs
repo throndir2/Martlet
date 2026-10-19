@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Cluster;
+using Martlet.Core.Processes;
 using Martlet.Core.Singing;
 
 namespace Martlet.NodeLinkCheck;
@@ -181,18 +182,13 @@ internal static class SingingStatus
 
     private static async Task<IReadOnlyList<string>?> DockerLinesAsync(CancellationToken token, params string[] arguments)
     {
-        var start = new ProcessStartInfo("docker") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        var start = new ProcessStartInfo("docker") { CreateNoWindow = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         try
         {
-            using var process = Process.Start(start);
-            if (process is null) return null;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
-            return process.ExitCode == 0
-                ? (await output).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            var result = await ProcessRunner.RunAsync(start, TimeSpan.FromSeconds(15), token);
+            return result.ExitCode == 0
+                ? result.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 : null;
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or OperationCanceledException && !token.IsCancellationRequested)

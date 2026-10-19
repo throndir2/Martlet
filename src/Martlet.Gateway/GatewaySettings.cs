@@ -23,18 +23,21 @@ internal sealed class GatewaySettingsStore
     private SharedSettings settings = SharedSettings.Empty;
     private string digest = SharedSettings.Empty.Digest();
     private IGatewaySettingsStorage? storage;
+    private GatewayStoreHealth health = new();
+    private string storeName = "settings";
 
     internal SharedSettings Current { get { lock (gate) return settings; } }
 
     internal string Digest { get { lock (gate) return digest; } }
 
-    internal void Attach(IGatewaySettingsStorage value)
+    internal void Attach(IGatewaySettingsStorage value, GatewayStoreHealth? storeHealth = null, string? name = null)
     {
+        if (storeHealth is not null) health = storeHealth;
+        if (name is not null) storeName = name;
         ArgumentNullException.ThrowIfNull(value);
         SharedSettings? saved = null;
-        try { if (value.Load() is { } bytes) saved = SharedSettings.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try(storeName, "load", () => { if (value.Load() is { } bytes) saved = SharedSettings.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -59,12 +62,7 @@ internal sealed class GatewaySettingsStore
         digest = nextDigest;
         if (!save || storage is null) return;
         byte[]? bytes = null;
-        try
-        {
-            bytes = next.Write();
-            storage.Save(bytes);
-        }
-        catch (Exception) { }
+        try { health.Try(storeName, "save", () => storage.Save(bytes = next.Write())); }
         finally { if (bytes is not null) CryptographicOperations.ZeroMemory(bytes); }
     }
 }

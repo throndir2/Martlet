@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Contracts;
+using Martlet.Core.Processes;
 using Martlet.Core.Singing;
 using Martlet.Core.Voices;
 using Martlet.F5;
@@ -487,13 +488,15 @@ internal static class SingingCheck
                 start.Environment["MARTLET_SINGING_FIXTURE_STAGE_SECONDS"] = "0.4";
                 return start;
             }
-            using (var provision = Process.Start(Python("provision", "--fixture")) ?? throw new InvalidOperationException("Python did not start."))
-            {
-                await provision.WaitForExitAsync(token);
-                if (provision.ExitCode != 0)
-                    throw new InvalidOperationException($"Provisioning the fixture failed: {await provision.StandardError.ReadToEndAsync(token)}");
-            }
+            var provision = await ProcessRunner.RunAsync(Python("provision", "--fixture"), TimeSpan.FromMinutes(5), token);
+            if (provision.TimedOut)
+                throw new InvalidOperationException("Provisioning the fixture did not finish in 5 minutes.");
+            if (provision.ExitCode != 0)
+                throw new InvalidOperationException($"Provisioning the fixture failed: {provision.StandardError}");
             var serve = Process.Start(Python("serve")) ?? throw new InvalidOperationException("Python did not start.");
+            // Nobody reads the service's output; drain it so that a full pipe cannot stop the service.
+            serve.BeginOutputReadLine();
+            serve.BeginErrorReadLine();
             var endpoint = new Uri($"http://127.0.0.1:{port}/");
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
             for (var attempt = 0; attempt < 100; attempt++)
