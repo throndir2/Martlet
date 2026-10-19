@@ -13,6 +13,10 @@ Each release's section here is also its notes on GitHub.
 - Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 - The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 
+### Changed
+
+- The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
+
 ### Fixed
 
 - A shared setting that this PC applied but couldn't use yet (Voice ID, for example) is tried again after a minute, then less often, instead of staying different until Martlet restarts. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
