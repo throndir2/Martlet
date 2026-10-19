@@ -19,6 +19,10 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Smart home no longer sends requests such as "why don't you unlock the front door" or "how about opening the garage" to Home Assistant as if they were questions. Like other requests for locks, doors, garages, gates, alarms and valves, they are blocked unless you allow them, and then need your click. If Home Assistant still operates one of them without your click, Martlet shows it as a safety problem. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
+- Martlet checks the cloudflared it downloads for WhatsApp against the size and SHA-256 that GitHub publishes, and runs its copy only while it still matches. The WhatsApp page shows the cloudflared version. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
+- Telegram and WhatsApp keep answering after a short network problem, a failed reply or a failed "typing" sign, instead of stopping and showing Off. WhatsApp moves to a free port when another program took its port, and a stranger's wrong codes no longer cancel your pairing code. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
+- The Discord bot shows Connecting while Discord reconnects instead of Online, and lets go of a connection that Discord closed for good. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
 - Taking a picture of the character while it speaks no longer closes or crashes the character window. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
 - The character's mouth keeps moving when the start of a sentence arrives in a burst, and a stop is written to the log. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
 - With manual Audio2Face lip-sync, one late frame no longer stops the mouth for the rest of the sentence. ([#1022](https://github.com/throndir2/Martlet/pull/1022))

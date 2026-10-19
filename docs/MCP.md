@@ -4887,8 +4887,28 @@ never their names or IDs) and
 `enabled`, `number`, `name`, `appId`, `businessAccountId`, `phoneNumberId`,
 `port` (Martlet's localhost webhook port), `publicAddress` (the owner's own;
 empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
-(never the access token or app secret), `chats` and `speakReplies`. The secrets
-live in Windows Credential Manager and are never read. In the desktop,
+(never the access token or app secret), `chats` and `speakReplies`, and
+`cloudflared` with `downloaded` (Martlet's own copy is in the data directory's
+`tools` folder), `version` (the cloudflared release it came from) and
+`verified` (it still matches the size and SHA-256 that GitHub publishes for
+that release, checked at download and recorded in `tools\cloudflared.json`;
+Martlet runs its own copy only when this is true). The secrets
+live in Windows Credential Manager and are never read.
+`messaging_check` rehearses the production `MessagingBridge` and
+`TelegramTransport` with local fakes and contacts no Telegram, WhatsApp or
+Meta server. It returns `ok` and `steps`: `telegramBodyReadBreaks` (a
+connection that breaks while the answer is read is a `Network` failure, with
+no token in the message), `unexpectedErrorRetries` (an unexpected receive
+error gives `Retrying`, then `Running` again, never a silent `Off`),
+`failedAnswerKeepsTheBatch` (a failing typing call and a failing answer do not
+lose the next message; the chat is told Martlet couldn't answer), `stopsAsOff`
+and `pairingCodeSurvivesAStranger` (wrong codes count per chat, so a stranger
+can't use up the owner's code). `smart_home_guard` shows how Smart home's
+safety guard (`HomeCommandGuard`) treats one `text`: `risk` (`Normal`,
+`Sensitive` or `NotACommand`), `mentionsSensitive` and `meaning`. A request
+that asks for an action on a lock, door, garage, gate, alarm or valve is
+`Sensitive` also when it starts with a question word ("why don't you unlock
+the door"); it is local only and contacts nothing. In the desktop,
 Companion › Messaging's `MessagingStatus` (whether Martlet
 answers the bot now, or why not), `MessagingNote` (the last connect outcome),
 `MessagingChats` (how many chats) and `MessagingPairStatus` (until when the

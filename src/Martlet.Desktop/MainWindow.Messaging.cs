@@ -178,7 +178,7 @@ public partial class MainWindow
         var cloudflared = messaging.Cloudflared;
         children.Add(new Label { Content = "Public a_ddress (optional)", Target = address, Padding = new Thickness(0, 10, 0, 4) });
         children.Add(address);
-        children.Add(Status(WhatsAppAddressText(saved, cloudflared), "MessagingWhatsAppTunnel"));
+        children.Add(Status(WhatsAppAddressText(saved, cloudflared, messaging.OwnCloudflared), "MessagingWhatsAppTunnel"));
         children.Add(Row(
             cloudflared is null ? PageButton(whatsAppBusy ? "Downloading..." : "Get cloudflared", () => GetCloudflaredAsync().Forget(), id: "MessagingWhatsAppGetCloudflared") : null,
             PageButton("About quick tunnels", () => OpenInBrowser(CloudflareQuickTunnel.About), link: true, id: "MessagingWhatsAppOpenTunnelHelp")));
@@ -204,16 +204,22 @@ public partial class MainWindow
 
     /// <summary>Where Meta delivers WhatsApp messages: the owner's own address or a Cloudflare quick tunnel (and whether
     /// cloudflared is here).</summary>
-    internal static string WhatsAppAddressText(WhatsAppPreferences saved, string? cloudflared)
+    internal static string WhatsAppAddressText(WhatsAppPreferences saved, string? cloudflared, CloudflaredInstall? own = null)
     {
         var port = saved.Port > 0 ? $"http://localhost:{saved.Port}" : "Martlet's local port (shown once connected)";
         if (saved.PublicAddress.Length > 0)
             return $"Meta delivers messages to {saved.PublicAddress}, which must forward to {port} (with Host: localhost).";
-        return cloudflared is null
-            ? "Leave the address empty and Martlet opens a free Cloudflare quick tunnel (no account, port or router change). It needs Cloudflare's " +
-              "cloudflared, which isn't on this PC yet: Get cloudflared downloads the official build from GitHub (about 60 MB)."
-            : $"Leave the address empty and Martlet opens a free Cloudflare quick tunnel to {port} with cloudflared ({cloudflared}). " +
-              "Use your own https address only if you already have one that forwards there.";
+        if (cloudflared is null)
+            return "Leave the address empty and Martlet opens a free Cloudflare quick tunnel (no account, port or router change). It needs Cloudflare's " +
+                (own is { Verified: false }
+                    ? "cloudflared. Martlet's copy doesn't match the SHA-256 it checked at download (or is from an older Martlet), so Martlet doesn't run it: " +
+                      "Get cloudflared downloads and checks the official build again (about 60 MB)."
+                    : "cloudflared, which isn't on this PC yet: Get cloudflared downloads the official build from GitHub (about 60 MB) and checks its SHA-256.");
+        var which = own is { Verified: true } && string.Equals(own.Path, cloudflared, StringComparison.OrdinalIgnoreCase)
+            ? $"cloudflared {own.Version}, SHA-256 checked ({cloudflared})"
+            : $"cloudflared ({cloudflared})";
+        return $"Leave the address empty and Martlet opens a free Cloudflare quick tunnel to {port} with {which}. " +
+            "Use your own https address only if you already have one that forwards there.";
     }
 
     private static Grid SecretField(PasswordBox box, bool saved, string text)
@@ -423,7 +429,7 @@ public partial class MainWindow
                 try
                 {
                     var path = await CloudflareQuickTunnel.DownloadAsync(tools, progress, cancellation.Token);
-                    run.Output.Report($"Saved {path}.");
+                    run.Output.Report($"Saved {path} (cloudflared {CloudflareQuickTunnel.Installed(tools)?.Version}; size and SHA-256 match GitHub's release).");
                 }
                 catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
                 catch (Exception error) when (error is System.Net.Http.HttpRequestException or IOException or UnauthorizedAccessException or

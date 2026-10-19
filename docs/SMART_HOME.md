@@ -44,11 +44,16 @@ address; plain `http` is accepted only for local-network addresses). With
    **never sent** unless **Also locks, doors, garage doors, gates, alarms and
    valves** is on, and then only after the user clicks **Yes, send it** in
    the talk window (inline, above the message box; 30 s, Stop or Close means
-   no). Status questions ("is the front
-   door locked?") always go through. Longer sentences that merely mention a
+   no). A status question starts with a question word and asks for no action
+   ("is the front door locked?", "did I close the garage?"); it always goes
+   through. Text that asks for an action is not a status question, also when
+   it starts with a question word ("why don't you unlock the door", "how
+   about opening the garage", "est-ce que tu peux déverrouiller la porte").
+   Longer sentences that merely mention a
    door are treated as chat and not sent. If Home Assistant still reports
-   operating such a device without confirmation, the summary says so and
-   recommends unexposing it. Home Assistant's exposed-entities list remains the
+   operating such a device without confirmation, Martlet records a **Safety
+   problem** in the action list and the log and recommends unexposing it.
+   Home Assistant's exposed-entities list remains the
    outer allowlist; it does not expose locks, garage doors or alarms by
    default.
 4. The talk window's history shows a **Home Assistant:** line above the reply,
