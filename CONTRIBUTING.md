@@ -134,6 +134,11 @@ validation** (owner policy, 2026-10-03).
   long inherited Windows PATH is truncated by nested command execution. Explicit
   RID restores use project-local generated `obj\runtime-locks` documents, not
   ordinary source locks, and are not release reproducibility evidence.
+- NuGet versions are pinned in `Directory.Packages.props`, and every project
+  commits its `packages.lock.json`. To change a dependency, edit
+  `Directory.Packages.props`, restore normally to update the lock files and
+  review their diff. Then restore with `--locked-mode` and run the targeted
+  tests again.
 - `Martlet.slnx` lists the main projects for the IDE; `Test-Martlet.ps1` finds
   every test project under `tests\` itself.
 - `Smoke-Doctor.ps1` and `Invoke-MartletMcp.ps1` use unique temporary data

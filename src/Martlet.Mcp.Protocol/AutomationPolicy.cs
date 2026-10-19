@@ -15,8 +15,13 @@ internal static class AutomationPolicy
     internal sealed record Entry(string Id, string Page, string Effect);
 
     /// <summary>Whether ui_click may press this control without --allow-ui-effects.</summary>
-    internal static bool IsSafeClick(string id) =>
-        SafeClickIds.Contains(id) || SafeClickPrefixes.Any(prefix => id.StartsWith(prefix.Id, StringComparison.Ordinal));
+    internal static bool IsSafeClick(string id) => !IsWikiLink(id) &&
+        (SafeClickIds.Contains(id) || SafeClickPrefixes.Any(prefix => id.StartsWith(prefix.Id, StringComparison.Ordinal)));
+
+    /// <summary>A help mark's wiki link (Help-&lt;id&gt;-Wiki): a click opens the browser, so it is never a safe click, although
+    /// Help- is.</summary>
+    private static bool IsWikiLink(string id) =>
+        id.StartsWith("Help-", StringComparison.Ordinal) && id.EndsWith("-Wiki", StringComparison.Ordinal);
 
     /// <summary>Whether ui_snapshot returns this control's text.</summary>
     internal static bool IsSafeValue(string id) =>
@@ -137,7 +142,8 @@ internal static class AutomationPolicy
         new("RecommendedSetupUseSuggestion-thinking", "Recommended setup review", "Use the suggestion for the locked Thinking job: only closes the review and opens it again with that suggestion planned; saves nothing."),
         new("RecommendedSetupUseSuggestion-listening", "Recommended setup review", "Use the suggestion for the locked Listening job: only closes the review and opens it again with that suggestion planned; saves nothing."),
         new("RecommendedSetupUseSuggestion-lip-sync", "Recommended setup review", "Use the suggestion for the locked lip-sync job: only closes the review and opens it again with that suggestion planned; saves nothing."),
-        // Needs --allow-ui-effects: the locks RecommendedSetupLock-<job> (save recommendation-preferences.json).
+        // Needs --allow-ui-effects: the locks RecommendedSetupLock-<job> (save recommendation-preferences.json) and Think with it
+        // (RecommendedSetupUseServed-<n>, switches Thinking to a model an app on this PC serves).
         new("RecommendedSetupFreeKeyAdd", "Recommended setup review", "Add your key in the free API key prompt: closes the review, then only opens Companion › Thinking at A cloud provider with NVIDIA Build chosen."),
         new("FreeKeyAdd-Thinking", "Companion › Thinking", "Add your key in the free API key prompt: only opens Companion › Thinking at A cloud provider with NVIDIA Build chosen."),
         // Needs --allow-ui-effects: Get a free key (RecommendedSetupFreeKeyGet, FreeKeyGet-Thinking, SetupCloudGetKey-Thinking, HealthFix-recommended-setup-free-key-get) opens the browser.
@@ -306,7 +312,8 @@ internal static class AutomationPolicy
         new("ThinkingRequest-", "Thinking requests", "A request row, such as ThinkingRequest-tr-3; only selects that request and shows it in full (ThinkingRequestDetail)."),
         new("CustomThemeRole-", "Settings › Appearance", "A part of the Custom theme, such as CustomThemeRole-Accent; only shows its color in the editor."),
         // HelpTip.cs and Fold.cs
-        new("Help-", "Any page", "A '?' button, such as Help-CheckInsAbout; only shows its explanation. It saves nothing."),
+        new("Help-", "Any page", "A '?' button, such as Help-CheckInsAbout; only shows its explanation card. It saves nothing."),
+        // Needs --allow-ui-effects: Help-<id>-Wiki, the card's "Read more in the wiki" link (it opens the browser; IsSafeClick refuses it).
         new("Fold-", "Any page", "A section that you open and close, such as Fold-CheckInMore-emotes; only shows or hides its settings. It saves nothing."),
         // MainWindow.Pools.cs: the pool lists on Companion › Voice, Listening, Thinking and each pooled area's page.
         new("Pool-speaking-Settings-", "Companion › Voice", "The Settings (Hide settings while open) button of a list member, such as Pool-speaking-Settings-0; only shows or hides its settings under it."),
@@ -530,6 +537,8 @@ internal static class AutomationPolicy
         new("TalkHearVoiceStatus", "Companion › Hearing", "Shows the advice on whether and how Martlet can hear your voice."),
         new("SetupCloudHint-Thinking", "Companion › Thinking", "Shows the hint of the cloud form for the Thinking provider and model."),
         new("SetupLocalRecommendation", "Companion › Thinking › This PC", "Shows the graphics card of this PC and the recommended Ollama model."),
+        new("SetupAddModelFileNote", "Companion › Thinking › This PC", "Shows what Use a model file you downloaded does (fixed text)."),
+        new("SetupAddModelFile", "Companion › Thinking › This PC", "Shows the label of Use a model file you downloaded. Pressing it needs --allow-ui-effects: it opens a file dialog, adds the file to Ollama and switches Thinking."),
         new("F5VoicesStatus", "Companion › Voice", "Shows how many voices there are and which voice is chosen or in use."),
         new("FreeKeyTip-Thinking", "Companion › Thinking", "Shows the free API key tip: fixed text, or why the browser could not open."),
         new("FreeKeyAdd-Thinking", "Companion › Thinking", "Shows the label of a button of the free API key tip."),
@@ -1087,7 +1096,7 @@ internal static class AutomationPolicy
         new("PicturesSaveSettings-", "Companion › Picture making", "The label of a place's Save button, such as PicturesSaveSettings-0."),
         new("PicturesKeyStatus-", "Companion › Picture making", "A cloud place's key status, such as PicturesKeyStatus-0: whether its own key or the Thinking key is used; never the key."),
         new("PicturesSaveKey-", "Companion › Picture making", "The label of a cloud place's Save key button, such as PicturesSaveKey-0; the label only, never the key."),
-        new("Help-", "Any page", "A help mark (?) from HelpTip.cs, such as Help-CheckInsAbout; reads About <topic>, and its help is the explanation it shows. Never anything typed or secret."),
+        new("Help-", "Any page", "A help mark (?) from HelpTip.cs, such as Help-CheckInsAbout; reads About <topic>, and its help is the explanation it shows. Its open card's Help-<id>-Card reads the explanation, and Help-<id>-Wiki reads Read more in the wiki with the wiki URL as its help. Never anything typed or secret."),
         // MainWindow.OptionPicker.cs
         new("PickerFacts-", "Any option picker", "The short facts of one option, such as PickerFacts-VoiceEngine-chatterbox: NVIDIA GPU · 4.2 GB VRAM · 0.45 s to first audio."),
         new("PickerDetail-", "Any option picker", "The title of the shown option's details, such as PickerDetail-VoiceEngine-chatterbox."),

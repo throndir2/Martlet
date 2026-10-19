@@ -36,17 +36,18 @@ The input must be equal to `<Version>` in `Directory.Build.props` on `main`. The
 
 The workflow runs only from `main` of the public repository. It has four jobs:
 
-1. **release** (Windows): checks the version, the release notes, the dispatched `main` commit and that the tag is absent. Then it restores, compiles and packages one time, checks the installer against its receipt and SHA-256, and creates the tag `v<version>` at the built commit. It uploads the installer, `installer-manifest.json` and `SHA256SUMS.txt` to a draft release, with the changelog section as *What's new*. It publishes the release as Latest only when GitHub reports the expected SHA-256.
-2. **linux**: builds the x64 and arm64 AppImage and `.deb` files.
-3. **macos**: builds the Apple silicon and Intel `.dmg` files, with the Mac host inside the app.
-4. **attach**: waits for the other jobs, uploads the six Linux and macOS files to the release, checks their SHA-256 digests on GitHub and adds the Linux and macOS install text to the notes.
+1. **release** (Windows): checks the version, the release notes, the dispatched `main` commit and that the tag is absent. Then it restores, compiles and packages one time, checks the installer against its receipt and SHA-256, and creates the tag `v<version>` at the built commit. It uploads the installer, `installer-manifest.json` and `SHA256SUMS.txt` to a **draft** release, with the changelog section as *What's new*, and checks the installer's SHA-256 on GitHub. The release stays a draft.
+2. **linux**: builds the x64 and arm64 AppImage and `.deb` files with Node.js 20.11.1. The build stops when the character renderer, Live2D, Martlet's license or a third-party notice is missing.
+3. **macos**: builds the Apple silicon and Intel `.dmg` files, with the Mac host inside the app. It uses the same Node.js version and makes the same checks as **linux**.
+4. **attach**: waits for the other jobs and uploads the six Linux and macOS files to the draft. It replaces `SHA256SUMS.txt` with one file for all eight files, checks every SHA-256 digest on GitHub and adds the Linux and macOS install text to the notes. Then it publishes the release as Latest. Users never see a Latest release without all its files.
 
 After the workflow finishes, confirm on GitHub that `v<version>` is Latest and that its notes show the changelog entries.
 
 ## When something goes wrong
 
 - **Wrong notes:** fix `CHANGELOG.md` in a normal pull request. Then run `gh release edit v<version> --notes-file <file>`. Never dispatch the workflow again only for the notes.
-- **Failed build:** fix the cause first. If it failed after the tag was created, inspect and delete the tag and the draft release before you dispatch again. Never move a release tag.
+- **The linux, macos or attach job failed:** the release is still a draft, so users do not see it. If the cause is not in the code (for example a failed download or a runner problem), open the failed run on GitHub and choose **Re-run failed jobs** within one day (the build artifacts are kept for one day). Do not choose *Re-run all jobs*: the **release** job runs only on the first attempt, so **attach** is skipped. If the cause is in the code, delete the draft release and the tag, merge the fix and dispatch again.
+- **The release job failed:** fix the cause first. If it failed after the tag was created, inspect and delete the tag and the draft release before you dispatch again. Never move a release tag.
 
 ## Wording
 

@@ -43,6 +43,9 @@ public sealed class DiscordCompanion
     private readonly DiscordPresenceThrottle presence = new();
     private DiscordCompanionState state;
     private string? lastCall, lastAvatar, lastProblem;
+    private IDiscordCompanionTransport? transport;
+    // Work that runs after a call returns (a welcome DM) ends with the connection it was meant for.
+    private CancellationTokenSource pending = new();
 
     public DiscordCompanion(string? directory, Func<DiscordPreferences> preferences,
         Func<Func<DiscordPreferences, DiscordPreferences>, bool> savePreferences, TimeProvider? clock = null)
@@ -54,7 +57,33 @@ public sealed class DiscordCompanion
         state = DiscordCompanionState.Load(directory);
     }
 
-    public IDiscordCompanionTransport? Transport { get; set; }
+    public IDiscordCompanionTransport? Transport
+    {
+        get { lock (gate) return transport; }
+        set
+        {
+            CancellationTokenSource old;
+            lock (gate)
+            {
+                transport = value;
+                old = pending;
+                pending = new();
+            }
+            old.Cancel();
+        }
+    }
+
+    /// <summary>Stops work still running for the connection that ended (the bot stopped or failed).</summary>
+    public void CancelPending()
+    {
+        CancellationTokenSource old;
+        lock (gate)
+        {
+            old = pending;
+            pending = new();
+        }
+        old.Cancel();
+    }
     public DiscordCompanionState State { get { lock (gate) return state; } }
     /// <summary>Raised (off the UI thread) when requests, friends, calls, presence or the avatar change.</summary>
     public event Action? Changed;
@@ -149,12 +178,16 @@ public sealed class DiscordCompanion
 
     private void DirectLaterAsync(ulong userId, string text)
     {
-        if (Transport is not { Online: true } transport) return;
+        if (Transport is not { Online: true } current) return;
+        CancellationToken lifetime;
+        lock (gate) lifetime = pending.Token;
         _ = Task.Run(async () =>
         {
-            try { await transport.SendDirectAsync(userId, text, null, CancellationToken.None).ConfigureAwait(false); }
+            try { await current.SendDirectAsync(userId, text, null, lifetime).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
             catch (Exception error) when (IsDiscordFailure(error)) { Note($"Couldn't DM {userId}: {error.Message}"); }
-        });
+            catch (Exception error) { Note($"Couldn't DM {userId}: {error.GetType().Name}."); }
+        }, CancellationToken.None);
     }
 
     // ---------- calls ----------

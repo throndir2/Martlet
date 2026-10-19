@@ -151,10 +151,17 @@ catalog's reason, not silently changed.
 
 `windows-release.yml` (manual dispatch, the only allowed workflow; shown as
 *Release (manual) - Windows, Linux and macOS*) builds the Linux and macOS
-packages in parallel with the Windows installer, with no tests. An `attach` job
-waits for all three, fails if the Windows job did not create `v<version>` at
-the built commit, uploads the six files, checks GitHub's SHA-256 digests and
-appends Linux/macOS install text and their SHA-256 lines to the release notes.
+packages in parallel with the Windows installer, with no tests. The Windows job
+leaves the release as a draft. An `attach` job waits for all three, fails if
+the Windows job did not create `v<version>` at the built commit, uploads the
+six files, writes one `SHA256SUMS.txt` for all files, checks GitHub's SHA-256
+digests, appends Linux/macOS install text and the SHA-256 lines to the release
+notes, and then publishes the release as Latest. The Linux and macOS jobs pin
+Node.js 20.11.1; both scripts run `npm ci`, require the Live2D SDK and stop
+when the character renderer or a license notice is missing. Martlet's
+`LICENSE` and every third-party notice (`packaging/collect-notices.py`) go to
+`/usr/share/doc/martlet` (.deb), `usr/lib/martlet/notices` (AppImage) and
+`Martlet.app/Contents/Resources/notices`.
 
 - **Linux** (`packaging/linux/build-linux.sh`, ubuntu-24.04, both
   architectures built on x64): `Martlet-<version>-linux-x64.AppImage`,
@@ -177,8 +184,8 @@ appends Linux/macOS install text and their SHA-256 lines to the release notes.
   signed and not notarized: first launch needs **Open Anyway** once, see
   [Unsigned builds](MACOS.md#unsigned-builds-what-the-user-sees).
 - Both scripts run locally (`--project`, `--output`, `--dotnet`, `--arch` per
-  architecture). Linux packaging needs bash, curl, sha256sum, file and
-  dpkg-deb (a Linux host, WSL or `mcr.microsoft.com/dotnet/sdk` in Docker).
+  architecture). Both need python3, Node.js 20.11+ and npm. Linux packaging
+  also needs bash, curl, sha256sum, file and dpkg-deb (a Linux host, WSL or `mcr.microsoft.com/dotnet/sdk` in Docker).
   `build-macos.sh` builds and checks the bundles anywhere with python3 and
   makes the `.dmg` only on a Mac (`--no-dmg` skips it).
 

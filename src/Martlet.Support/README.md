@@ -8,8 +8,8 @@ Doctor help is read-only and CLI export is not implemented. The sole engine proj
 reference is the existing Diagnostics project (and its existing transitive
 Core/Sessions/Fixtures/Audio references). No new runtime package, database,
 network client, credential-store adapter, device adapter, or source callback
-is added. Refer to the shared [installation/support design](../../docs/INSTALLATION_SUPPORT.md),
-[privacy boundaries](../../docs/ARCHITECTURE.md), and [delivery ledger](../../docs/DELIVERY.md).
+is added. Refer to the shared [installation/support design](../../docs/INSTALLATION_SUPPORT.md)
+and [privacy boundaries](../../docs/ARCHITECTURE.md).
 
 ## Integration API
 

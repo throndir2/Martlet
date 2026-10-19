@@ -34,8 +34,15 @@ internal static class SherpaNative
                     throw new InvalidOperationException("A different sherpa-onnx runtime is already loaded; restart Martlet.");
                 return;
             }
-            NativeLibrary.Load(Path.Combine(directory, "onnxruntime.dll"));
-            var loaded = NativeLibrary.Load(Path.Combine(directory, "sherpa-onnx-c-api.dll"));
+            var runtime = NativeLibrary.Load(Path.Combine(directory, "onnxruntime.dll"));
+            IntPtr loaded;
+            try { loaded = NativeLibrary.Load(Path.Combine(directory, "sherpa-onnx-c-api.dll")); }
+            catch
+            {
+                // Nothing stays loaded from a setup that failed part of the way.
+                NativeLibrary.Free(runtime);
+                throw;
+            }
             loadedFrom = directory;
             Volatile.Write(ref handle, loaded);
         }

@@ -89,10 +89,18 @@ public sealed class ShareLinksTests
         Assert.Equal("\"C:\\Program Files\\Martlet\\Martlet.Desktop.exe\" \"%1\"", ShareLinkProtocol.Command(@"C:\Program Files\Martlet\Martlet.Desktop.exe"));
 
         using var scope = new AvatarHostingTests.Scope();
-        Assert.Null(ShareLinkProtocol.TakeHandedOver(scope.DirectoryPath));
+        Assert.Empty(ShareLinkProtocol.TakeAllHandedOver(scope.DirectoryPath));
         ShareLinkProtocol.HandOver(scope.DirectoryPath, "martlet://share/abc");
-        Assert.Equal("martlet://share/abc", ShareLinkProtocol.TakeHandedOver(scope.DirectoryPath));
-        Assert.Null(ShareLinkProtocol.TakeHandedOver(scope.DirectoryPath));
+        Assert.Equal(["martlet://share/abc"], ShareLinkProtocol.TakeAllHandedOver(scope.DirectoryPath));
+        Assert.Empty(ShareLinkProtocol.TakeAllHandedOver(scope.DirectoryPath));
+
+        // Two quick starts before the running Martlet looks: both links wait, oldest first, and no temporary file counts.
+        File.WriteAllText(Path.Combine(scope.DirectoryPath, ShareLinkProtocol.HandOverFile), "martlet://share/old");
+        ShareLinkProtocol.HandOver(scope.DirectoryPath, "martlet://share/one");
+        ShareLinkProtocol.HandOver(scope.DirectoryPath, "martlet://share/two");
+        File.WriteAllText(Path.Combine(scope.DirectoryPath, "pending-share-link-half.tmp"), "martlet://sh");
+        Assert.Equal(["martlet://share/old", "martlet://share/one", "martlet://share/two"], ShareLinkProtocol.TakeAllHandedOver(scope.DirectoryPath));
+        Assert.Empty(ShareLinkProtocol.TakeAllHandedOver(scope.DirectoryPath));
 
         var document = new ShareLinksDocument
         {

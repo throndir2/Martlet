@@ -66,6 +66,7 @@ internal sealed partial class RendererWindow : Window
     private bool highContrast;
     private bool closed;
     private TaskCompletionSource<JsonElement>? response;
+    private readonly SemaphoreSlim browserGate = new(1, 1);
     private Guid activation;
     // A still renderer draws Martlet's touch zones picture: never on screen, never animated (the model's rest pose).
     private readonly bool still;
@@ -1125,7 +1126,7 @@ internal sealed partial class RendererWindow : Window
         }
         catch (Exception error) when (error is IOException or NotSupportedException or ArgumentException or InvalidDataException or
             FileFormatException or InvalidOperationException or UnauthorizedAccessException or FormatException or
-            System.Runtime.InteropServices.COMException)
+            System.Runtime.InteropServices.COMException or TimeoutException or OperationCanceledException)
         {
             ErrorLog.Warn($"Couldn't take a picture of the character for Martlet's MCP: {error.Message}");
             viewport.LastPicture = JsonSerializer.Serialize(new { n = id, error = "The picture couldn't be taken." }, RendererProtocol.Json);
@@ -1950,12 +1951,24 @@ internal sealed partial class RendererWindow : Window
     private async Task<JsonElement> BrowserAsync<T>(string kind, T data)
     {
         failure.ThrowIfFailed();
-        response = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind, data }, RendererProtocol.Json));
-        var result = await response.Task.WaitAsync(TimeSpan.FromSeconds(kind switch { "load" => 30, "picture" => 15, "animation" => 10, _ => 2 }), lifetime.Token);
-        failure.ThrowIfFailed();
-        if (result.TryGetProperty("error", out _)) throw new InvalidDataException("Browser rejected the selected resource or controls.");
-        return result;
+        // The page answers one command at a time with no request ID, so a command from outside the command loop (a picture for
+        // MCP) waits its turn instead of taking another command's reply.
+        await browserGate.WaitAsync(lifetime.Token);
+        try
+        {
+            failure.ThrowIfFailed();
+            response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind, data }, RendererProtocol.Json));
+            var result = await response.Task.WaitAsync(TimeSpan.FromSeconds(kind switch { "load" => 30, "picture" => 15, "animation" => 10, _ => 2 }), lifetime.Token);
+            failure.ThrowIfFailed();
+            if (result.TryGetProperty("error", out _)) throw new InvalidDataException("Browser rejected the selected resource or controls.");
+            return result;
+        }
+        finally
+        {
+            response = null;
+            browserGate.Release();
+        }
     }
 
     /// <summary>Gives the page the face hint (<see cref="RendererEyes"/>: the eyes, and the cheeks and mouth when measured;

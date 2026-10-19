@@ -13,7 +13,7 @@ many features as possible:
   desktop or to another companion, like a Linux/Docker host does today.
 
 This is a separate post-MVP track. It does not change the Windows product or
-promise a cross-platform desktop ([non-goals](../DEVELOPMENT_PLAN.md#explicit-non-goals-for-mvp)).
+promise a cross-platform desktop ([Platforms](PLATFORMS.md)).
 
 ## Short answer
 
