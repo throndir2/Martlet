@@ -10,7 +10,7 @@ change it later.
 **Local configuration backup and restore** is available from the main
 window. It is recovery for the same profile only. It does not import a profile
 from another computer, repair a damaged settings file or roll back the app. See
-the [installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a)
+the [installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore)
 and the [transaction contract](#local-configuration-recovery-transaction).
 
 [Troubleshooting](TROUBLESHOOTING.md) is available from the main window and
