@@ -1379,7 +1379,9 @@ and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
 waits, its last run, runs and actions since Martlet started). `Help-CheckInsAbout`
-next to *Now* explains check-ins (`help`). Every check-in,
+next to *Now* explains check-ins in one short line (`help`); its card links to the
+wiki's *Check-ins* section (`Help-CheckInsAbout-Wiki`), and *Your own check-ins*
+has `Help-CheckInsOwn` with a link to *Your own check-ins*. Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>` and `CheckInOutcome-<id>` show on its card, and the rest
 is under *More settings* (`Fold-CheckInMore-<id>`, closed at first: click it
@@ -8124,9 +8126,23 @@ page's controls are only visible after you open it: click `NavHome`,
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
 explanation as `help`, and `ui_click` on it only opens a small card with that
-text (passive, no `--allow-ui-effects`). An explanation line that shows only its
+text (passive, no `--allow-ui-effects`). While the card is open, `ui_snapshot`
+also lists its text as `Help-<id>-Card` (`value`: the explanation) and, when the
+explanation has a wiki page, its *Read more in the wiki* link as `Help-<id>-Wiki`
+(`value`: *Read more in the wiki*; `help`: the wiki address, such as
+`https://github.com/throndir2/Martlet/wiki/Thinking#check-ins`). Read the
+address from `help`: `ui_click` on `Help-<id>-Wiki` opens the browser, so it
+needs `--allow-ui-effects`. An explanation line that shows only its
 first sentence before its *?* returns that sentence as `value` and all of the
-text as `help`. Settings most people leave alone sit in sections you open and
+text as `help`. `ui_long_texts` lists the texts that show now with more than one
+sentence (text blocks and check box or radio button labels): each one's
+`window`, `id` (or `near`, the nearest container's automation ID), `sentences`
+and `text`, and `count` for all of them (at most 200 are listed). Martlet 1.0
+shows one short sentence and puts the rest behind a *?* with a wiki link, so a
+page that follows the rule lists none. It leaves out lists, tables, trees, text
+boxes, help cards, tooltips and controls whose automation ID `ui_snapshot` does
+not read, so the owner's own content does not show; still, use it on a
+disposable data directory. It changes nothing and needs no `--allow-ui-effects`. Settings most people leave alone sit in sections you open and
 close (`Fold-<id>`, such as `Fold-CheckInMore-emotes`): `ui_snapshot` returns
 `expanded` (true or false), their controls show in `ui_snapshot` only while the
 section is open, and `ui_click` opens or closes it (passive). A section stays

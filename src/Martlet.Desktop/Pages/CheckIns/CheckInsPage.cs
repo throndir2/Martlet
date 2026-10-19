@@ -32,7 +32,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         var last = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(last, "CheckInsLast");
         AutomationProperties.SetLiveSetting(last, AutomationLiveSetting.Polite);
-        page.Children.Add(Card(HelpTip.After(Heading("Now"), "check-ins", CheckInsPageModel.About, "CheckInsAbout"), now, last,
+        page.Children.Add(Card(HelpTip.After(Heading("Now"), "check-ins", CheckInsPageModel.About, "CheckInsAbout", wiki: "Thinking#check-ins"), now, last,
             Row(PageButton("Open Thinking pool", services.OpenThinkingPool, link: true, id: "CheckInsOpenPool"))));
         var lines = new List<Action>();
         // Edits to the built-in check-ins' prompts and to your own check-ins save on their own, a moment after typing stops.
@@ -193,13 +193,9 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         var stack = new List<UIElement>
         {
             Heading("Your own check-ins"),
-            HelpTip.Explain("Write what the Thinking pool should check, such as \"If the user has been at it for hours, suggest a short break\" or " +
-                "\"If it's late at night, remind Martlet to talk more softly\". Choose what it gets to know (it always gets the day " +
-                "and time), when it waits, how often it runs and what happens with its answer: a reminder in Martlet's next reply, " +
-                "Martlet brings it up on its own as soon as it's free, it turns off lingering emotes, it takes the eyes back to " +
-                "their usual, or its tools act. A check-in can also take a screenshot, the last seconds of the microphone or of what this PC plays, " +
-                "and what a script of yours prints, and you choose the tool sets it may call and what its model must handle. Copy as your own on a built-in " +
-                "check-in starts from that one. A new check-in starts off.", new Thickness(0, 0, 0, 4), "CheckInsOwn", "your own check-ins")
+            HelpTip.Explain("Write what the Thinking pool should check, such as \"If the user has been at it for hours, suggest a short break\". " +
+                "Choose what it gets to know, when it runs and what its answer does.", new Thickness(0, 0, 0, 4), "CheckInsOwn",
+                "your own check-ins", wiki: "Thinking#your-own-check-ins")
         };
         foreach (var custom in model.Choices.Custom) stack.Add(OwnCheckInRow(custom, lines, rows, autoSave, saveAll));
         var add = PageButton("Add a check-in", AddOwnCheckIn, id: "CheckInAdd");

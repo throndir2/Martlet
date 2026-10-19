@@ -15,8 +15,13 @@ internal static class AutomationPolicy
     internal sealed record Entry(string Id, string Page, string Effect);
 
     /// <summary>Whether ui_click may press this control without --allow-ui-effects.</summary>
-    internal static bool IsSafeClick(string id) =>
-        SafeClickIds.Contains(id) || SafeClickPrefixes.Any(prefix => id.StartsWith(prefix.Id, StringComparison.Ordinal));
+    internal static bool IsSafeClick(string id) => !IsWikiLink(id) &&
+        (SafeClickIds.Contains(id) || SafeClickPrefixes.Any(prefix => id.StartsWith(prefix.Id, StringComparison.Ordinal)));
+
+    /// <summary>A help mark's wiki link (Help-&lt;id&gt;-Wiki): a click opens the browser, so it is never a safe click, although
+    /// Help- is.</summary>
+    private static bool IsWikiLink(string id) =>
+        id.StartsWith("Help-", StringComparison.Ordinal) && id.EndsWith("-Wiki", StringComparison.Ordinal);
 
     /// <summary>Whether ui_snapshot returns this control's text.</summary>
     internal static bool IsSafeValue(string id) =>
@@ -305,7 +310,8 @@ internal static class AutomationPolicy
         new("ThinkingRequest-", "Thinking requests", "A request row, such as ThinkingRequest-tr-3; only selects that request and shows it in full (ThinkingRequestDetail)."),
         new("CustomThemeRole-", "Settings › Appearance", "A part of the Custom theme, such as CustomThemeRole-Accent; only shows its color in the editor."),
         // HelpTip.cs and Fold.cs
-        new("Help-", "Any page", "A '?' button, such as Help-CheckInsAbout; only shows its explanation. It saves nothing."),
+        new("Help-", "Any page", "A '?' button, such as Help-CheckInsAbout; only shows its explanation card. It saves nothing."),
+        // Needs --allow-ui-effects: Help-<id>-Wiki, the card's "Read more in the wiki" link (it opens the browser; IsSafeClick refuses it).
         new("Fold-", "Any page", "A section that you open and close, such as Fold-CheckInMore-emotes; only shows or hides its settings. It saves nothing."),
         // MainWindow.Pools.cs: the pool lists on Companion › Voice, Listening, Thinking and each pooled area's page.
         new("Pool-speaking-Settings-", "Companion › Voice", "The Settings (Hide settings while open) button of a list member, such as Pool-speaking-Settings-0; only shows or hides its settings under it."),
@@ -1085,7 +1091,7 @@ internal static class AutomationPolicy
         new("PicturesSaveSettings-", "Companion › Picture making", "The label of a place's Save button, such as PicturesSaveSettings-0."),
         new("PicturesKeyStatus-", "Companion › Picture making", "A cloud place's key status, such as PicturesKeyStatus-0: whether its own key or the Thinking key is used; never the key."),
         new("PicturesSaveKey-", "Companion › Picture making", "The label of a cloud place's Save key button, such as PicturesSaveKey-0; the label only, never the key."),
-        new("Help-", "Any page", "A help mark (?) from HelpTip.cs, such as Help-CheckInsAbout; reads About <topic>, and its help is the explanation it shows. Never anything typed or secret."),
+        new("Help-", "Any page", "A help mark (?) from HelpTip.cs, such as Help-CheckInsAbout; reads About <topic>, and its help is the explanation it shows. Its open card's Help-<id>-Card reads the explanation, and Help-<id>-Wiki reads Read more in the wiki with the wiki URL as its help. Never anything typed or secret."),
         // MainWindow.OptionPicker.cs
         new("PickerFacts-", "Any option picker", "The short facts of one option, such as PickerFacts-VoiceEngine-chatterbox: NVIDIA GPU · 4.2 GB VRAM · 0.45 s to first audio."),
         new("PickerDetail-", "Any option picker", "The title of the shown option's details, such as PickerDetail-VoiceEngine-chatterbox."),
