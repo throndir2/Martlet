@@ -699,9 +699,25 @@ companion PC only, and nothing it sees is recorded or sent. The game is kept in
   matters when it isn't everywhere, the details say *Matters: ...*, and the
   status line counts the facts kept for games.
 
+**Prompts for gaming and for one game.** Companion › Prompts has three levels:
+
+- The prompts for every reply (the global set) stay as they are.
+- *While you play* (the set for gaming) goes in the notes of a message while a
+  game is played, once while the conversation sent carries it and again when
+  the game changes. It says which game it is, to keep replies short and to keep
+  what Martlet remembers from that game to that game. Empty it to send nothing.
+- A lorebook entry with the game's name as a keyword (the set for one game)
+  joins in on every reply while that game is played
+  ([Lorebooks](LOREBOOKS.md#what-happens-on-a-reply)), like an entry the
+  words named. Lorebooks are shared like the other settings.
+
+Screen and camera glances get the same *While you play* note and lorebook
+entries while a game is played.
+
 The start of every reply's request doesn't change: the activity only changes
-which facts go in the message's notes, and the remembering request is a
-background request after the reply. Nothing new runs on the reply's path but a
+what goes in the message's notes (which facts, the *While you play* note and
+the game's lorebook entries), and the remembering request is a background
+request after the reply. Nothing new runs on the reply's path but a
 field read and the same search with one more filter.
 
 **Sync and compatibility.** `activity` travels inside the fact like

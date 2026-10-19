@@ -262,6 +262,12 @@ public static partial class PromptCatalog
             "from what Martlet remembers (Companion › Memory › Memory brief). It goes in the notes of the first message of each " +
             "conversation, never in the instructions, so prompt caches keep working. Empty it to send no brief.",
             DefaultMemoryBriefInstructions, []),
+        new(WhilePlaying, ConversationGroup, "While you play",
+            "Goes in the notes of a message while Martlet sees a game played on this PC, once while the conversation sent still " +
+            "carries it (again after the game changes), never in the instructions, so prompt caches keep working. Lorebook entries " +
+            "with the game's name as a keyword are added too, so a lorebook can hold what Martlet should know for one game. {game} " +
+            "is the game's name. Empty it to send nothing.",
+            DefaultWhilePlayingInstructions, ["game"]),
         new(Notes, ConversationGroup, "Notes with messages",
             "Opens the first notes in the conversation sent. Whatever changes from message to message " +
             "(new lorebook entries and remembered facts, who is talking, smart home results) goes with the message, " +

@@ -1452,6 +1452,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             LiveConversationConfiguration.SilentReply, characterActions: without.Contains(LookActions) ? null : characterActions,
                             gaze: gaze && !without.Contains(LookGaze) ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
                             chattiness: decides ? configured.ChattinessNote(level) : null,
+                            activity: Activity(),
                             controlTags: LiveConversationConfiguration.ControlTags(decides, picture: note is null, configured.Prompts),
                             board: without.Contains(LookNotes) ? null : Join(board.Text, lately));
                         boardSent = !without.Contains(LookNotes);
@@ -1975,6 +1976,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             // instead still reaches it (with tools, it follows the tools prompt).
                             toolset is null && builtIns is { Tools.Count: 0 } ? builtIns.Guidance : null),
                         voices: VoicePromptContext.Block(operation.Heard),
+                        activity: Activity(),
                         messageNotes: Join(brief, home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null && describedNote is null ? null : noticed, recalled, guide, songNote, whileSinging, touchNote),
                         silentReply: operation.MayPass ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
@@ -3134,8 +3136,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.Publish(new("lorebook.unavailable"));
             return null;
         }
+        // While a game is played its name is scanned too, so lorebook entries for that game (keyed by its name) join in.
+        var activity = Activity();
         var result = LorebookScanner.Scan(loaded.Library,
-            new(current, history.Select(message => message.Text).ToArray(), persona?.Id, persona?.Name), Random.Shared.Next);
+            new(current, history.Select(message => message.Text).ToArray(), persona?.Id, persona?.Name,
+                MemoryActivity.Kind(activity) == MemoryActivity.Gaming ? MemoryActivity.Name(activity) : null), Random.Shared.Next);
         return result.Included.Count == 0 && result.OverBudget.Count == 0 ? null : result;
     }
 

@@ -2065,7 +2065,10 @@ and not outside games; a search without the filter (the Memory window,
 as the store; a game's fact travels with `activity` while a fact for
 everywhere is written exactly as before; a correction keeps where a fact
 matters and choosing it moves the fact; an activity of the wrong form is
-refused; and game names compare without regard to case or spacing. With
+refused; a lorebook entry keyed by the game played now joins in though the
+words don't name it (`LorebookScanner` in `src\Martlet.Core`); the *While you
+play* prompt names the game; and game names compare without regard to case or
+spacing. With
 `query`, `asked.recalled` lists the sample facts (by key) those words recall
 while `activity` is played (none: no game). It never opens the owner's memory
 and contacts nothing.

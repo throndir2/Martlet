@@ -527,6 +527,11 @@ public static partial class PromptCatalog
         "FORGET <number> (only when the user asks Martlet to forget it or says it is no longer true)\n" +
         "If nothing should change, reply exactly: {nothing}";
 
+    public const string DefaultWhilePlayingInstructions =
+        "The user is playing {game} right now. Talk with them like a friend watching them play: keep replies short so they " +
+        "don't pull the user out of the game. What you remember from {game} is about {game} only; don't bring up details of " +
+        "other games unless the user does.";
+
     public const string DefaultMemoryCaptureGameInstructions =
         "The user is playing {game} now. Say where each new fact matters: a fact about this game (its characters, creatures, " +
         "items, places, quests, builds, goals or the user's progress and favorites in it) starts REMEMBER HERE: <fact>, and " +
