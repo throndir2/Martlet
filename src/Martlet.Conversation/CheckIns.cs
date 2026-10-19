@@ -317,6 +317,10 @@ public static partial class CheckIns
     public const string Lull = "lull";
     /// <summary>The background job kind of what a check-in brings up on Martlet's own (checkin-1...).</summary>
     public const string SayKindName = "checkin";
+    /// <summary>Memory care: every hour while something new was said, a pool member looks after Martlet's long-term memory in
+    /// several steps with the Memory tools: facts that don't say which game, app or thing they are about, facts saved to the wrong
+    /// person, duplicates, outdated facts and facts the conversation showed are wrong (<see cref="CheckInOutcome.Tools"/>).</summary>
+    public const string MemoryCare = "memory";
     public const int MaximumCustom = 8, MaximumNameCharacters = 60, MaximumTaskCharacters = PromptSettings.MaximumTextCharacters,
         MaximumAnswerCharacters = 300;
     /// <summary>How many new exchanges Staying in character waits for between two checks.</summary>
@@ -355,9 +359,14 @@ public static partial class CheckIns
     public const int MaximumScriptCharacters = 4_000, MaximumScriptOutputCharacters = 4_000;
     /// <summary>How long the owner's script may run before Martlet stops it.</summary>
     public static TimeSpan ScriptTimeout => TimeSpan.FromSeconds(20);
-    /// <summary>A run with tool sets: at most this many tool rounds (requests that call tools) before the model must answer, and
-    /// at most this many calls in all; later calls get an error.</summary>
-    public const int MaximumToolRounds = 4, MaximumToolCalls = 8;
+    /// <summary>A run with tool sets works in several steps, as long as it needs, until it is done: at most this many tool rounds
+    /// (requests that call tools, each reading what the calls before it returned) before the model must answer, and at most this
+    /// many calls in all; later calls get an error.</summary>
+    public const int MaximumToolRounds = 16, MaximumToolCalls = 64;
+    /// <summary>What one request of a run with tools may write (tokens): room for many tool calls in one round.</summary>
+    public const int MaximumToolOutputTokens = 2_048;
+    /// <summary>How long a run with tools may wait for a free member and work through its steps, after which it is dropped.</summary>
+    public static TimeSpan ToolTimeout => TimeSpan.FromMinutes(8);
     /// <summary>How much of a tool's answer the run record keeps (its first line).</summary>
     public const int MaximumToolResultCharacters = 120;
 
@@ -477,6 +486,15 @@ public static partial class CheckIns
         {
             PromptId = PromptCatalog.CheckInCallbacks, Facts = CheckInFacts.Latest | CheckInFacts.Callbacks,
             Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded
+        },
+        new(MemoryCare, "Memory care", "Every hour, while something new was said, looks after what Martlet remembers, in as many " +
+            "steps as it takes: it adds which game, app or thing a fact is about when the fact doesn't say, gives facts to the " +
+            "right person, merges facts that say the same thing, keeps facts a newer one replaced as history and fixes facts the " +
+            "conversation showed are wrong. Every correction keeps the earlier version as history. It needs memory on and a " +
+            "Thinking pool member that calls tools.", CheckInOutcome.Tools, true, 60)
+        {
+            PromptId = PromptCatalog.CheckInMemory, Facts = CheckInFacts.Latest | CheckInFacts.Activity,
+            Conditions = CheckInConditions.SomethingNew, ToolSets = [MemoryToolSet.Id]
         }
     ];
 
@@ -691,20 +709,23 @@ public static partial class CheckIns
     /// <summary>The Thinking pool job for <paramref name="checkIn"/> with <paramref name="state"/> (narrowed with
     /// <see cref="Focus"/>), or null when its prompt is empty. It needs what <see cref="CheckIn.Needs"/> says and carries the
     /// screenshot and the recording gathered in the state. With <paramref name="tools"/> (its tool sets' host) the member's model
-    /// may call their tools for up to <see cref="MaximumToolRounds"/> rounds.</summary>
+    /// works in several steps: it may call their tools for up to <see cref="MaximumToolRounds"/> rounds, with more time
+    /// (<see cref="ToolTimeout"/>) and room to write (<see cref="MaximumToolOutputTokens"/>).</summary>
     public static ThinkingJob? Prepare(CheckIn checkIn, CheckInState state, PromptSettings? prompts, CheckInToolHost? tools = null)
     {
         var offered = tools?.Tools ?? [];
         // The message says it may call tools only when this run offers some.
         if (Message(offered.Count > 0 ? checkIn : checkIn with { ToolSets = [] }, state, prompts) is not { } text) return null;
+        var steps = offered.Count > 0;
         return new()
         {
             Kind = ThinkingJobKind.CheckIn, Label = $"Check-in: {checkIn.Name}", Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
             Needs = ThinkingCapability.Text | checkIn.Needs,
             Image = checkIn.Screenshot ? state.Screenshot : null,
             Audio = checkIn.Recording != CheckInRecording.None ? state.Recording : null,
-            Timeout = Timeout, DropWhenStale = true, MaxOutputTokens = MaximumOutputTokens, Reasoning = false,
-            Tools = offered, ToolHost = offered.Count > 0 ? tools : null, MaxToolRounds = offered.Count > 0 ? MaximumToolRounds : 0,
+            Timeout = steps ? ToolTimeout : Timeout, DropWhenStale = true,
+            MaxOutputTokens = steps ? MaximumToolOutputTokens : MaximumOutputTokens, Reasoning = false,
+            Tools = offered, ToolHost = steps ? tools : null, MaxToolRounds = steps ? MaximumToolRounds : 0,
             RunsOn = checkIn.RunsOn
         };
     }
@@ -716,6 +737,10 @@ public static partial class CheckIns
 
     // A tool's answer without its own final period, so the line around it adds one; "..." (a cut answer) stays.
     private static string Sentence(string text) => text.EndsWith('.') && !text.EndsWith("...", StringComparison.Ordinal) ? text[..^1] : text;
+
+    /// <summary>How a run with tools works, in the words its message uses: in steps, until it is done.</summary>
+    public static string Steps { get; } = "Work in steps, as many as it takes: call your tools, read what they return, then call " +
+        $"more until all of it is done (at most {MaximumToolRounds} rounds of calls and {MaximumToolCalls} calls in all).";
 
     /// <summary>The prompt <paramref name="checkIn"/> sends: a built-in one's (as edited on its card), or what the owner wrote.</summary>
     public static string? Template(CheckIn checkIn, PromptSettings? prompts) =>
@@ -770,8 +795,8 @@ public static partial class CheckIns
             CheckInOutcome.GazeUsual => "Write only USUAL to take the eyes back to their usual, or KEEP to leave them.",
             CheckInOutcome.Say => "If nothing needs doing now, write only: OK\nOtherwise write one line that starts with SAY: and " +
                 $"says what {who} should bring up with the user now.",
-            CheckInOutcome.Tools => "Use your tools for what needs doing. When you are done, write one short line that says what " +
-                "you did and why, or only OK when nothing needed doing.",
+            CheckInOutcome.Tools => "Use your tools for what needs doing. " + (checkIn.ToolSets.Count > 0 ? Steps + " " : "") +
+                "When you are done, write one short line that says what you did and why, or only OK when nothing needed doing.",
             CheckInOutcome.Context => "If there is nothing worth adding, write only: OK\nOtherwise write one line that starts with KNOW: " +
                 $"and describes what is happening, briefly and vividly, as background {who} can draw on in its next reply. " +
                 $"Describe it; don't tell {who} what to do or say.",
@@ -788,7 +813,8 @@ public static partial class CheckIns
             _ => $"If nothing needs doing now, write only: OK\nOtherwise write one line to {who} that starts with REMIND: and says " +
                 "what to keep in mind or do in its next reply."
         };
-        if (checkIn.Outcome != CheckInOutcome.Tools && checkIn.ToolSets.Count > 0) answer = "You may call your tools first if they help.\n" + answer;
+        if (checkIn.Outcome != CheckInOutcome.Tools && checkIn.ToolSets.Count > 0)
+            answer = "You may call your tools first if they help. " + Steps + "\n" + answer;
         var text = PromptSettings.Fill(prompts, PromptCatalog.CheckInCustom, ("task", task), ("facts", facts), ("time", time),
             ("answer", answer), ("name", who)) ?? task + (facts.Length > 0 ? "\n\n" + facts : "");
         return string.IsNullOrWhiteSpace(text) ? null : ExtraLines().Replace(text.Trim(), "\n\n");

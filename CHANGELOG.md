@@ -12,6 +12,12 @@ Each release's section here is also its notes on GitHub.
 
 - Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
 - The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
+- A new check-in, **Memory care**, looks after what Martlet remembers every hour: it adds which game or app a fact is about when the fact doesn't say, gives facts to the right person, merges duplicates and fixes facts your conversation showed are wrong. Every correction keeps the earlier version. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Check-ins have many more memory tools: an overview of memory, paging through all facts, a fact's earlier versions, correcting many facts at once, adding one note (such as "in Minecraft") to many facts, merging duplicates and marking a fact as no longer true. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
+### Changed
+
+- Check-ins that use tools now work in several steps until they are done, like a coding agent: they look things up, read the result and keep going. When you say "that's for Minecraft, not Terraria!", Act on what was said finds every fact it touches and corrects each one. Learning names can also look up voices in more steps. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 
 ## [0.88.2] - 2026-10-17
 
