@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Linux (.deb and AppImage) and macOS packages now include Martlet's license and the full license notices of every component they contain, and a new release shows up only after all its Windows, Linux and macOS files are ready, with one SHA256SUMS.txt for all of them. ([#1018](https://github.com/throndir2/Martlet/pull/1018))
+
 ## [0.88.2] - 2026-10-17
 
 ### Changed
