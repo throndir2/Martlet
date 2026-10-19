@@ -155,10 +155,12 @@ public partial class AccountProveWindow : ThemedWindow
                     InvalidOperationException or JsonException or ContractException ||
                     error is OperationCanceledException && !lifetime.IsCancellationRequested)
                 {
-                    reasons.Add($"{choice.Label}: {error.Message}");
+                    // The details (addresses, HTTP status) go to the log only.
+                    ErrorLog.Warn($"Account sign-in: {choice.Host.HostId} couldn't check the sign-in", error);
+                    reasons.Add(error is OperationCanceledException or TimeoutException ? $"{choice.Label} didn't answer in time." : $"{choice.Label} couldn't check it.");
                 }
             }
-            StatusText.Text = "No host could check the sign-in. " + string.Join(" ", reasons);
+            StatusText.Text = "No host could check the sign-in. " + string.Join(" ", reasons) + " Make sure a host is on and try again.";
         }
         catch (OperationCanceledException) { }
         finally { SignInButton.IsEnabled = true; }

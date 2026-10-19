@@ -44,6 +44,8 @@ public sealed class AutomationPolicyTests
     [InlineData("LiveSend", false)]
     [InlineData("CheckInRun-c1", false)]
     [InlineData("ThinkingRequestsClear", false)]
+    [InlineData("Help-CheckInsAbout", true)]
+    [InlineData("Help-CheckInsAbout-Wiki", false)]
     public void ClicksThatChangeNothingAreSafe(string id, bool safe) => Assert.Equal(safe, AutomationPolicy.IsSafeClick(id));
 
     [Theory]
@@ -64,5 +66,7 @@ public sealed class AutomationPolicyTests
     [InlineData("ThinkingRequestInput", false)]
     [InlineData("ThinkingRequestOutput", false)]
     [InlineData("CheckInPrompt-c1", false)]
+    [InlineData("Help-CheckInsAbout-Card", true)]
+    [InlineData("Help-CheckInsAbout-Wiki", true)]
     public void OnlyStatusTextIsReturned(string id, bool safe) => Assert.Equal(safe, AutomationPolicy.IsSafeValue(id));
 }

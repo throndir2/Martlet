@@ -8,9 +8,28 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
+- The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
+
+### Changed
+
+- The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
+
 ### Fixed
 
 - The Linux (.deb and AppImage) and macOS packages now include Martlet's license and the full license notices of every component they contain, and a new release shows up only after all its Windows, Linux and macOS files are ready, with one SHA256SUMS.txt for all of them. ([#1018](https://github.com/throndir2/Martlet/pull/1018))
+- A shared setting that this PC applied but couldn't use yet (Voice ID, for example) is tried again after a minute, then less often, instead of staying different until Martlet restarts. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
+- A settings change made by another computer or by MCP while Martlet was busy reading settings now always shows; a failed refresh is written to the log. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
+- A damaged voice recognition model is refused every time instead of giving wrong voiceprints on the next try. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
+- An account with a PIN or password on this PC no longer opens without it when its unlock file is damaged: Martlet asks you to sign in with the account's Martlet password instead. Unlocking with Windows Hello no longer crashes Martlet when the unlock file is busy, and unlock and sign-in errors show a plain message. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
+- Switching away from an account with encrypted files and back quickly can no longer delete its files. Files another program had open are encrypted later instead of staying plain, and Martlet tells you which files didn't decrypt before it opens an account without them. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
+- A change you type just before you exit Martlet is saved first, also in the Character, Lorebook, Memory and Avatar windows. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- Two share links clicked quickly one after the other both open in the running Martlet, and a link is never cut short. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- The zone names on the Touch page are readable on every zone color and follow Windows high contrast. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- In the Hosts window, an unfinished SSH target such as `user@` no longer fills in this PC's own address, and a too-long name no longer shows an error. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- Appearance now says that your theme and colors are the same on all your computers. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
 
 ## [0.88.2] - 2026-10-17
 
