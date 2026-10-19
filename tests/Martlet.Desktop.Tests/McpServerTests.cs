@@ -1183,6 +1183,19 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task OllamaModelFileRehearsesTheImportAgainstALoopbackFixture()
+    {
+        var result = ToolResult((await SendAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ollama_model_file","arguments":{"fixture":true,"paths":["C:\\nowhere\\notes.txt"]}}}"""))[0]);
+        var fixture = result.GetProperty("fixture");
+        output.WriteLine(fixture.ToString());
+        Assert.True(fixture.GetProperty("ok").GetBoolean());
+        Assert.Equal("fixture-model-q4_k_m", fixture.GetProperty("model").GetString());
+        Assert.Equal("mmproj-fixture-f16.gguf", fixture.GetProperty("addedProjector").GetString());
+        Assert.Contains("isn't a GGUF", result.GetProperty("plan").GetProperty("refused").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task OllamaRecoveryRehearsesTheRepairOnFixturesAndOnlyReadsThisPc()
     {
         var result = ToolResult((await SendAsync(

@@ -141,7 +141,8 @@ internal static class AutomationPolicy
         new("RecommendedSetupUseSuggestion-thinking", "Recommended setup review", "Use the suggestion for the locked Thinking job: only closes the review and opens it again with that suggestion planned; saves nothing."),
         new("RecommendedSetupUseSuggestion-listening", "Recommended setup review", "Use the suggestion for the locked Listening job: only closes the review and opens it again with that suggestion planned; saves nothing."),
         new("RecommendedSetupUseSuggestion-lip-sync", "Recommended setup review", "Use the suggestion for the locked lip-sync job: only closes the review and opens it again with that suggestion planned; saves nothing."),
-        // Needs --allow-ui-effects: the locks RecommendedSetupLock-<job> (save recommendation-preferences.json).
+        // Needs --allow-ui-effects: the locks RecommendedSetupLock-<job> (save recommendation-preferences.json) and Think with it
+        // (RecommendedSetupUseServed-<n>, switches Thinking to a model an app on this PC serves).
         new("RecommendedSetupFreeKeyAdd", "Recommended setup review", "Add your key in the free API key prompt: closes the review, then only opens Companion › Thinking at A cloud provider with NVIDIA Build chosen."),
         new("FreeKeyAdd-Thinking", "Companion › Thinking", "Add your key in the free API key prompt: only opens Companion › Thinking at A cloud provider with NVIDIA Build chosen."),
         // Needs --allow-ui-effects: Get a free key (RecommendedSetupFreeKeyGet, FreeKeyGet-Thinking, SetupCloudGetKey-Thinking, HealthFix-recommended-setup-free-key-get) opens the browser.
@@ -535,6 +536,8 @@ internal static class AutomationPolicy
         new("TalkHearVoiceStatus", "Companion › Hearing", "Shows the advice on whether and how Martlet can hear your voice."),
         new("SetupCloudHint-Thinking", "Companion › Thinking", "Shows the hint of the cloud form for the Thinking provider and model."),
         new("SetupLocalRecommendation", "Companion › Thinking › This PC", "Shows the graphics card of this PC and the recommended Ollama model."),
+        new("SetupAddModelFileNote", "Companion › Thinking › This PC", "Shows what Use a model file you downloaded does (fixed text)."),
+        new("SetupAddModelFile", "Companion › Thinking › This PC", "Shows the label of Use a model file you downloaded. Pressing it needs --allow-ui-effects: it opens a file dialog, adds the file to Ollama and switches Thinking."),
         new("F5VoicesStatus", "Companion › Voice", "Shows how many voices there are and which voice is chosen or in use."),
         new("FreeKeyTip-Thinking", "Companion › Thinking", "Shows the free API key tip: fixed text, or why the browser could not open."),
         new("FreeKeyAdd-Thinking", "Companion › Thinking", "Shows the label of a button of the free API key tip."),

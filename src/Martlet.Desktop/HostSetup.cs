@@ -387,14 +387,16 @@ internal static partial class HostSetupCommands
     /// <summary>The LAN address for an SSH target: the literal IP, or its first private IPv4 from DNS.</summary>
     internal static async Task<string?> ResolveAsync(string sshTarget, CancellationToken token)
     {
-        var host = sshTarget[(sshTarget.IndexOf('@') + 1)..].Split(':')[0];
+        var host = sshTarget[(sshTarget.IndexOf('@') + 1)..].Split(':')[0].Trim();
         if (IPAddress.TryParse(host, out var literal)) return IsPrivate(literal) ? literal.ToString() : null;
+        // An empty name resolves to this PC's own addresses, and an invalid one throws; neither names the host.
+        if (host.Length is 0 or > 253 || Uri.CheckHostName(host) != UriHostNameType.Dns) return null;
         try
         {
             var addresses = await Dns.GetHostAddressesAsync(host, AddressFamily.InterNetwork, token);
             return addresses.FirstOrDefault(IsPrivate)?.ToString();
         }
-        catch (SocketException) { return null; }
+        catch (Exception error) when (error is SocketException or ArgumentException) { return null; }
     }
 
     /// <summary>A new host ID for the computer named <paramref name="name"/>, by the one rule every host uses

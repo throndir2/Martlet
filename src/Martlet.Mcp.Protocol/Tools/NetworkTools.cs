@@ -848,7 +848,8 @@ internal sealed partial class McpServer
             }
             catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { }
         }
-        var pending = File.Exists(Path.Combine(directory, "pending-share-link.txt"));
+        var pending = File.Exists(Path.Combine(directory, "pending-share-link.txt"))
+            || (Directory.Exists(directory) && Directory.EnumerateFiles(directory, "pending-share-link-*.link").Any());
         try
         {
             var path = Path.Combine(directory, "share-links.json");
