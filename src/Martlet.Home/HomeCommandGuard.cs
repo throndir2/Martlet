@@ -38,7 +38,7 @@ public static class HomeCommandGuard
     [
         "unlock", "deadbolt", "padlock", "garag", "disarm",
         "verriegel", "entriegel", "abschlie", "aufschlie", "zuschlie", "alarmanlage", "haustür", "haustuer",
-        "serrure", "verrou", "déverrouill", "deverrouill", "portail",
+        "serrure", "verrou", "déverrouill", "deverrouill", "portail", "désarm", "desarm",
         "portón", "porton", "cerradura", "cerrojo", "válvul", "valvul",
         "serratura", "portone", "allarm", "valvol",
         "vergrendel", "ontgrendel"
@@ -54,9 +54,11 @@ public static class HomeCommandGuard
 
     /// <summary>Whether any word of <paramref name="text"/> names a lock, door, garage, gate, alarm or valve.</summary>
     public static bool MentionsSensitive(string text) => Words(text, keepGreeting: true).Any(IsSensitiveWord);
+    // Words that can open a status question. "do" and "have" are not here: they also open requests ("do unlock the door",
+    // "have the alarm disarmed"). A question word alone is not enough; the text must also have no action word.
     private static readonly HashSet<string> QuestionWords = new(StringComparer.Ordinal)
     {
-        "is", "are", "was", "were", "did", "does", "do", "has", "have", "had", "what", "whats", "which", "where", "wheres",
+        "is", "are", "was", "were", "did", "does", "has", "had", "what", "whats", "which", "where", "wheres",
         "who", "whos", "when", "how", "hows", "why",
         "ist", "sind", "war", "waren", "hat", "haben", "welche", "welcher", "welches", "wo", "wie", "wer", "wann", "warum",
         "est", "quel", "quelle", "quels", "quelles", "où", "comment", "qui", "quand", "pourquoi", "combien",
@@ -65,13 +67,61 @@ public static class HomeCommandGuard
         "zijn", "wat", "welke", "waar", "hoe", "wie", "wanneer", "staat", "staan"
     };
 
+    // Verb forms that ask for an action ("why don't you unlock the door", "how about opening the garage"). State words such
+    // as "unlocked", "geöffnet", "ouvert" or "abierta" are not here, so "is the door unlocked?" stays a status question.
+    private static readonly HashSet<string> ActionWords = new(StringComparer.Ordinal)
+    {
+        "unlock", "unlocking", "disarm", "disarming", "arm", "arming", "opening", "closing", "locking", "shutting", "raise",
+        "raising", "lift", "lifting", "release", "releasing", "trigger", "toggle", "deactivate", "deactivating", "let",
+        "öffne", "öffnen", "öffnest", "öffnet", "oeffne", "oeffnen", "aufmachen", "aufmache", "entriegle", "entriegele",
+        "entriegeln", "entsperre", "entsperren", "aufschließen", "aufschliessen", "aufsperren", "deaktiviere", "deaktivieren",
+        "schließe", "schliesse", "schließen", "schliessen", "mach", "mache",
+        "ouvre", "ouvres", "ouvrez", "ouvrir", "ouvrons", "déverrouille", "déverrouiller", "déverrouillez", "deverrouille",
+        "deverrouiller", "deverrouillez", "désarme", "désarmer", "désarmez", "desarme", "desarmer", "désactive", "désactiver",
+        "desactive", "desactiver", "ferme", "fermer", "fermez",
+        "abre", "abres", "abra", "abran", "abrir", "desbloquea", "desbloquear", "desbloquee", "desactiva", "desactivar",
+        "desarma", "desarmar", "cierra", "cerrar",
+        "apri", "aprire", "apra", "sblocca", "sbloccare", "disattiva", "disattivare", "disarma", "disarmare", "chiudi", "chiudere",
+        "openen", "opent", "ontgrendel", "ontgrendelen", "ontgrendelt", "deactiveer", "deactiveren", "doe", "sluit", "sluiten"
+    };
+
+    // Words that are a request as a verb ("why don't you open the gate") but a state or a name after the device or "the"
+    // ("is the garage door open?", "is the lock on?").
+    private static readonly HashSet<string> ActionOrStateWords = new(StringComparer.Ordinal)
+    {
+        "open", "close", "shut", "lock"
+    };
+
+    private static readonly HashSet<string> StateContext = new(StringComparer.Ordinal)
+    {
+        "the", "a", "an", "my", "our", "your", "this", "that", "these", "those", "its", "any", "still", "left", "wide", "all",
+        "fully", "now", "currently", "already", "properly", "been", "being"
+    };
+
     public static HomeCommandRisk Assess(string text)
     {
         var words = Words(text);
         if (!words.Any(IsSensitiveWord))
             return HomeCommandRisk.Normal;
         if (words.Count > MaximumCommandWords) return HomeCommandRisk.NotACommand;
-        return words.Count > 0 && QuestionWords.Contains(words[0]) ? HomeCommandRisk.Normal : HomeCommandRisk.Sensitive;
+        return IsStatusQuestion(words) ? HomeCommandRisk.Normal : HomeCommandRisk.Sensitive;
+    }
+
+    // A status question starts with a question word and asks for no action anywhere in it.
+    private static bool IsStatusQuestion(List<string> words)
+    {
+        if (words.Count == 0 || !QuestionWords.Contains(words[0])) return false;
+        // "did I lock the door?" and "does the gate close?" ask about the past or a habit, not for an action.
+        var pastOrHabit = words[0] is "did" or "does";
+        for (var i = 0; i < words.Count; i++)
+        {
+            var word = words[i];
+            if (ActionWords.Contains(word)) return false;
+            if (!pastOrHabit && ActionOrStateWords.Contains(word) &&
+                !(i > 0 && (IsSensitiveWord(words[i - 1]) || StateContext.Contains(words[i - 1]))))
+                return false;
+        }
+        return true;
     }
 
     /// <summary>Whether Home Assistant reports operating something that can open the home.</summary>
@@ -100,7 +150,15 @@ public static class HomeCommandGuard
             }
             previous = c;
             if (char.IsLetterOrDigit(c)) current.Append(char.ToLower(c, CultureInfo.InvariantCulture));
-            else if (c is '\'' or '’') continue;
+            else if (c is '\'' or '’')
+            {
+                // French and Italian elision ("l'alarme", "d'entrée", "qu'il") ends a word; English ("don't") does not.
+                if (current.ToString() is "l" or "d" or "j" or "m" or "n" or "s" or "c" or "qu" or "dell" or "all" or "nell" or "dall")
+                {
+                    words.Add(current.ToString());
+                    current.Clear();
+                }
+            }
             else if (current.Length > 0)
             {
                 words.Add(current.ToString());

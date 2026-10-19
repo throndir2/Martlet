@@ -130,14 +130,14 @@ after a restart; the gateway endpoint (marks,
 deduplication, relaying, paging, persistence and refused requests) in-process.
 Sharing between real computers over a network is **NOT RUN**.
 
-V06b connects the existing Support engine to the real Desktop
+Troubleshooting connects the existing Support engine to the real Desktop
 [Troubleshooting surface](TROUBLESHOOTING.md): passive access at each setup
 stage, explicit OFF-by-default local metadata recording, exact five-file frozen
 preview and default-No destination-bound local export. Doctor help shares its
 authored scope/bounds; ordinary status/JSON/exit semantics remain unchanged.
 No CLI export or support upload/contact channel is implemented.
 
-V04b adds a separate [real conversation timeline](CONVERSATION.md) in Desktop,
+The live conversation adds a separate [real conversation timeline](CONVERSATION.md) in Desktop,
 fed by actual capture/STT/policy/runtime/playback state and sanitized credential/
 configuration failures. It does not turn ordinary Doctor probes into live
 requests. `status` and `run` retain their existing no-network, no-key semantics;
@@ -165,7 +165,7 @@ configuration revisions. Saved observations are stale for current readiness.
 Ordinary status/list/run still do not enumerate or open devices or play a tone;
 the audio guides point to separately permissioned Desktop actions instead.
 The audio-OFF executable smoke opens this window only to view never-tested
-status. See [local audio semantics and unrun gates](SETUP.md#explicit-local-audio-setup-v02b).
+status. See [local audio semantics and unrun gates](SETUP.md#explicit-local-audio-setup).
 
 ## Implemented commands and scope
 

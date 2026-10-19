@@ -28,7 +28,7 @@ public partial class MainWindow
             var from = securedAccount;
             securedAccount = accounts.AccountId;
             // The previous account's files were released by the change steps; encrypt them off the window's thread.
-            if (from is { } previous && previous != accounts.AccountId && security is { } service) Task.Run(() => service.Seal(previous));
+            if (from is { } previous && previous != accounts.AccountId && security is { } service) service.SealInBackground(previous).Forget();
         };
         accounts.Changed += () => Dispatcher.BeginInvoke(FollowMerges, DispatcherPriority.Background);
     }

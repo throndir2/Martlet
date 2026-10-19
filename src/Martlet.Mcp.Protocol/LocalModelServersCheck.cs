@@ -139,10 +139,10 @@ internal static class LocalModelServersCheck
         public void Report(string value) { lock (lines) lines.Add(value); }
     }
 
-    private sealed record Request(string Method, string Path, string? Authorization, string Body);
+    internal sealed record Request(string Method, string Path, string? Authorization, string Body);
 
     /// <summary>An HTTP/1.1 server on 127.0.0.1 (a free port) that answers each request with the canned status, type and body.</summary>
-    private sealed class Fixture : IAsyncDisposable
+    internal sealed class Fixture : IAsyncDisposable
     {
         private readonly TcpListener listener = new(IPAddress.Loopback, 0);
         private readonly CancellationTokenSource stop = new();

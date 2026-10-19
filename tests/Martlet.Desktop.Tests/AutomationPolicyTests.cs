@@ -56,6 +56,8 @@ public sealed class AutomationPolicyTests
     [InlineData("TrayPause", false)]
     [InlineData("TrayStopListening", false)]
     [InlineData("TrayStopWatching", false)]
+    [InlineData("Help-CheckInsAbout", true)]
+    [InlineData("Help-CheckInsAbout-Wiki", false)]
     public void ClicksThatChangeNothingAreSafe(string id, bool safe) => Assert.Equal(safe, AutomationPolicy.IsSafeClick(id));
 
     /// <summary>The click lists keep the policy's own rule: no entry says it writes a file, contacts a computer by its address,
@@ -95,5 +97,7 @@ public sealed class AutomationPolicyTests
     [InlineData("ThinkingRequestInput", false)]
     [InlineData("ThinkingRequestOutput", false)]
     [InlineData("CheckInPrompt-c1", false)]
+    [InlineData("Help-CheckInsAbout-Card", true)]
+    [InlineData("Help-CheckInsAbout-Wiki", true)]
     public void OnlyStatusTextIsReturned(string id, bool safe) => Assert.Equal(safe, AutomationPolicy.IsSafeValue(id));
 }

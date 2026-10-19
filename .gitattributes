@@ -3,3 +3,7 @@ deploy/host/** text eol=lf
 *.wav binary
 packaging/linux/** text eol=lf
 packaging/macos/** text eol=lf
+packaging/common.sh text eol=lf
+packaging/collect-notices.py text eol=lf
+packaging/licenses/** text eol=lf
+packaging/NOTICES-README.txt text eol=lf

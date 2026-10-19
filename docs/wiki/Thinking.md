@@ -63,16 +63,20 @@ Ask Martlet to take her time and she thinks it over in the background while you 
 
 ## Check-ins
 
-Small models forget what they left on and what they promised. **Companion › Check-ins** has the Thinking pool check on Martlet every few minutes or when something happens. Check-ins run only on pool machines, never on your conversation model, so replies never wait for them.
+Small models forget what they left on and what they promised. **Companion › Check-ins** has the Thinking pool check on Martlet every few minutes or when something happens. Check-ins run only on pool machines, never on your conversation model, so replies never wait for them. Each check-in gets only the facts it needs, such as the end of the conversation, the emotes that stay on and the reminders Martlet started. Check-ins wait while you talk and while nobody uses the PC, and they stay on that PC. A check-in's card shows its last answer and each tool it called.
 
 Built-in check-ins turn off emotes that no longer fit and take the eyes back to their usual gaze. They remind Martlet of her promises and her character, and stop her from repeating herself. Others keep her quiet while you talk to someone else, describe your touches and think ahead about what you'll say next. **How I react** changes how she takes your touches when her mood changes. **Welcome back**, **Unanswered question** and **Someone else is here** are off until you turn them on.
 
-**Act on what was said** runs right after each reply. The pool does what you asked or Martlet promised, like calling a Discord friend, setting a reminder or changing a memory. So the reply only says she'll do it, and it starts sooner. If something doesn't work, the talk window says so.
+**Act on what was said** runs right after each reply. The pool does what you asked or Martlet promised, like calling a Discord friend, setting a reminder or changing a memory. So the reply only says she'll do it, and it starts sooner. If something doesn't work, the talk window says so. Check-ins with tools work in several steps until they are done: say "that's for Minecraft, not Terraria!" and it finds every memory it touches and fixes each one.
+
+**Memory care** looks after what Martlet remembers every hour. It adds which game or app a memory is about when the memory doesn't say, gives memories to the right person, merges duplicates and fixes memories your conversation showed are wrong. Every fix keeps the earlier version.
+
+### Your own check-ins
 
 To write your own check-in:
 
-1. Press **Add a check-in**.
-2. Write its prompt, and choose what it gets to know: your screen, your microphone, what the PC plays, your touches, what was said or who is here.
+1. Press **Add a check-in**. A new check-in starts off.
+2. Write its prompt, such as "If it's late at night, remind Martlet to talk more softly". Choose what it gets to know (it always gets the day and time): your screen, your microphone, what the PC plays, your touches, what was said or who is here.
 3. Choose when it runs: **Every** few minutes, or under **It starts when**, such as when a reply ends or your touches end. It can also wait until you come back, a call starts or ends, a notification shows, a song ends or a script's output changes.
 4. Choose what **Its answer** does: remind Martlet in her next reply, have her bring it up, add to what she knows, or let **Its tools act**.
 5. Under **It may use these tools**, tick tool sets such as reminders, memory, Discord calls, songs and pictures. Tools need a pool model that calls tools.

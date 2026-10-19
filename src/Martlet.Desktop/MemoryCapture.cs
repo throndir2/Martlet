@@ -12,9 +12,10 @@ internal enum MemoryCaptureKind { Remember, Update, Forget }
 
 /// <summary>One change the model asked for. A new fact (Remember) belongs to <paramref name="VoiceId"/>: the voice the model named
 /// (REMEMBER V2: ...) or else the speaker's; null for no one in particular. <paramref name="SearchWords"/> are the hidden search
-/// words of the WORDS line after a REMEMBER or UPDATE line, or null.</summary>
+/// words of the WORDS line after a REMEMBER or UPDATE line, or null. A new fact is kept for <paramref name="Activity"/>
+/// (<see cref="MemoryActivity"/>; null: everywhere).</summary>
 internal sealed record MemoryCaptureOperation(MemoryCaptureKind Kind, int? Index = null, string? Content = null, string? VoiceId = null,
-    string? SearchWords = null)
+    string? SearchWords = null, string? Activity = null)
 {
     public override string ToString() => $"{nameof(MemoryCaptureOperation)} {{ Kind = {Kind}, Index = {Index} }}";
 }
@@ -43,9 +44,11 @@ internal static partial class MemoryCapture
     /// <param name="heard">The voices heard in the latest message (to say whose new facts are), or null.</param>
     /// <param name="people">The label of each voice the known facts belong to (<see cref="MemoryPeople.Labels"/>).</param>
     /// <param name="companion">The name of the persona the companion is: its lines in the excerpt carry it (<see cref="Speaker"/>).</param>
+    /// <param name="activity">What the user did during the exchange (<see cref="MemoryActivity"/>): the request asks where each new
+    /// fact matters (<see cref="AppendActivity"/>).</param>
     internal static MemoryCapturePrompt Prompt(string? earlierUser, string? earlierReply, string user, string reply,
         IReadOnlyList<MemoryFact> known, PromptSettings? prompts = null, HeardVoices? heard = null,
-        IReadOnlyDictionary<string, string>? people = null, string? companion = null)
+        IReadOnlyDictionary<string, string>? people = null, string? companion = null, string? activity = null)
     {
         ArgumentNullException.ThrowIfNull(known);
         if (heard is { Known.Count: 0 }) heard = null;
@@ -61,6 +64,7 @@ internal static partial class MemoryCapture
                 VoiceNaming.AppendVoices(text, heard);
                 AppendWhose(text, heard);
             }
+            AppendActivity(text, activity, prompts);
             AppendCompanion(text, companion);
             if (earlier && (earlierUser is not null || earlierReply is not null))
             {
@@ -94,7 +98,8 @@ internal static partial class MemoryCapture
             text.Append("(nothing related)\n");
         for (var index = 0; index < shown; index++)
             text.Append(index + 1).Append(". ").Append(MemoryPromptContext.Whose(known[index], people))
-                .Append(Clip(known[index].Content, 160)).Append('\n');
+                .Append(Clip(known[index].Content, 160))
+                .Append(known[index].Activity is { } activity ? $" ({MemoryActivity.Describe(Clip(activity, 100))})" : "").Append('\n');
     }
 
     /// <summary>Whose a new fact is: the speaker's (by their voice tag) unless the answer names another voice heard. Nothing
@@ -107,11 +112,22 @@ internal static partial class MemoryCapture
             : "For a fact about one of the voices listed, write ").Append("REMEMBER V<number>: <fact>.\n");
     }
 
+    /// <summary>While the user plays a game, the Remembering while you play prompt: where each new fact matters (this game, any
+    /// game or everywhere). Nothing without an activity, or when the prompt is emptied.</summary>
+    internal static void AppendActivity(StringBuilder text, string? activity, PromptSettings? prompts)
+    {
+        if (MemoryActivity.Kind(activity) != MemoryActivity.Gaming || MemoryActivity.Name(activity) is not { } game) return;
+        if (PromptSettings.Fill(prompts, PromptCatalog.MemoryCaptureGame, ("game", Clip(game, 100))) is { } where)
+            text.Append('\n').Append(where).Append('\n');
+    }
+
     /// <param name="voices">The tags of the voices heard in the message and their voice IDs (V3 → ID), which REMEMBER V3: lines
     /// may name.</param>
     /// <param name="speaker">The speaker's voice ID: whose a REMEMBER line's fact is when it names no listed voice.</param>
+    /// <param name="activity">What the user did during the exchange: a REMEMBER line keeps its fact for it (HERE, or no word),
+    /// for its kind (GAMES) or for everywhere (EVERYWHERE). Null: every new fact is for everywhere.</param>
     internal static IReadOnlyList<MemoryCaptureOperation> Parse(string? text, int shownFacts,
-        IReadOnlyDictionary<string, string>? voices = null, string? speaker = null)
+        IReadOnlyDictionary<string, string>? voices = null, string? speaker = null, string? activity = null)
     {
         var operations = new List<MemoryCaptureOperation>();
         if (string.IsNullOrWhiteSpace(text))
@@ -139,10 +155,12 @@ internal static partial class MemoryCapture
             {
                 var voice = match.Groups["v"].Success && voices?.TryGetValue("V" + match.Groups["v"].Value, out var named) == true
                     ? named : speaker;
+                var where = Where(match.Groups["where"].Success ? match.Groups["where"].Value : null, activity);
                 if (Fact(match.Groups["fact"].Value) is { } fact &&
-                    !operations.Any(operation => operation.Content is { } other && operation.VoiceId == voice && SameFact(other, fact)))
+                    !operations.Any(operation => operation.Content is { } other && operation.VoiceId == voice &&
+                        MemoryActivity.Same(operation.Activity, where) && SameFact(other, fact)))
                 {
-                    operations.Add(new(MemoryCaptureKind.Remember, null, fact, voice));
+                    operations.Add(new(MemoryCaptureKind.Remember, null, fact, voice, Activity: where));
                     described = operations.Count - 1;
                 }
             }
@@ -162,6 +180,20 @@ internal static partial class MemoryCapture
             }
         }
         return operations;
+    }
+
+    /// <summary>Where a REMEMBER line's fact matters: the activity for HERE or no word, its kind for GAMES, everywhere for
+    /// EVERYWHERE; always everywhere without an activity.</summary>
+    private static string? Where(string? word, string? activity)
+    {
+        if (activity is null) return null;
+        var key = word is null ? "" : string.Concat(word.Where(char.IsLetter)).ToUpperInvariant();
+        return key switch
+        {
+            "EVERYWHERE" or "GLOBAL" or "ALWAYS" or "LIFE" => null,
+            "GAMES" or "GAMING" or "ANYGAME" => MemoryActivity.Kind(activity),
+            _ => activity
+        };
     }
 
     /// <summary>The same fact in slightly different words (same or nearly the same set of words).</summary>
@@ -237,7 +269,8 @@ internal static partial class MemoryCapture
         return clipped.Length < text.Length ? result + "\u2026" : result;
     }
 
-    [GeneratedRegex(@"^(?:REMEMBER|NEW|ADD)(?:\s*(?:FOR|ABOUT)?\s*[(\[]?\s*V(?<v>\d{1,7})\s*[)\]]?)?\s*[:\-\u2013]\s*(?<fact>.+)$",
+    // REMEMBER, then optionally a voice (V2) and where the fact matters (HERE, GAMES, EVERYWHERE), in either order.
+    [GeneratedRegex(@"^(?:REMEMBER|NEW|ADD)(?:\s*(?:(?:FOR|ABOUT)\s*)?[(\[]?\s*(?:V(?<v>\d{1,7})|(?<where>HERE|THIS\s+GAME|GAMES|GAME|GAMING|ANY\s+GAME|EVERYWHERE|GLOBAL|ALWAYS|LIFE))\s*[)\]]?){0,2}\s*[:\-\u2013]\s*(?<fact>.+)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex RememberLine();
 

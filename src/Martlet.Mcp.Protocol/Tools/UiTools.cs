@@ -30,6 +30,13 @@ internal sealed partial class McpServer
             layout = new { type = "boolean" }, idPrefix = new { type = "string" }
         },
             arguments => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix"))),
+        Tool("ui_long_texts", "List the texts that show now in the attached Martlet's windows with more than one sentence (text " +
+            "blocks and check box or radio button labels): each one's window, its automation ID (or near: the nearest container's), " +
+            "how many sentences it has and the text. Martlet 1.0 shows one short sentence and puts the rest behind a '?' " +
+            "(Help-<id>) with a wiki link, so an open page should list none. Lists, tables, text boxes, help cards and controls " +
+            "ui_snapshot does not read are left out. At most " + DesktopAutomation.MaximumLongTexts + " texts; count is all of them.",
+            new { },
+            _ => desktop.LongTexts()),
         Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
             "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
             "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\"). With focus true the control takes the " +

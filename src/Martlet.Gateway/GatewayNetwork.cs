@@ -32,14 +32,18 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
     internal const int MaximumJoins = 8;
     internal static readonly TimeSpan JoinLifetime = TimeSpan.FromHours(1);
     private const int MaximumNonces = 512;
-    private const int MaximumPairingsPerMinute = 30;
+    /// <summary>Failed member-pairing proofs one source address may make in a minute. Only failures count, per address, so
+    /// a device on the home network that sends false proofs cannot block the real members.</summary>
+    internal const int MaximumFailedPairingsPerMinute = 30;
+    private const int MaximumFailureSources = 256;
 
     private readonly object gate = new();
     private readonly Dictionary<string, GatewayJoinRequest> joins = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTimeOffset> nonces = new(StringComparer.Ordinal);
-    private readonly Queue<DateTimeOffset> attempts = new();
+    private readonly Dictionary<string, Queue<DateTimeOffset>> failures = new(StringComparer.Ordinal);
     private NetworkRoster? roster;
     private IGatewayNetworkStorage? storage;
+    private GatewayStoreHealth health = new();
 
     internal NetworkRoster? Roster { get { lock (gate) return roster; } }
 
@@ -55,17 +59,20 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
 
     private string StateLocked => roster is null ? "unbound" : BoundLocked ? "bound" : "removed";
 
-    internal void Attach(IGatewayNetworkStorage value)
+    internal void Attach(IGatewayNetworkStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         NetworkRoster? saved = null;
         try { if (value.Load() is { } bytes) saved = NetworkRoster.Parse(bytes); }
         catch (Exception error) when (error is ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
+            health.Failed("network", "load", error, logged: true);
             log(LogLevels.Warn, "network.json is unreadable or invalid, so this host is in no Martlet network until a paired desktop binds it again.");
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            health.Failed("network", "load", error, logged: true);
             log(LogLevels.Warn, "network.json could not be read, so this host is in no Martlet network until a paired desktop binds it again.");
         }
         lock (gate)
@@ -150,8 +157,8 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
         if (changed) Changed?.Invoke(next);
         if (changed && storage is not null)
         {
-            try { storage.Save(next.Write()); }
-            catch (Exception) { log(LogLevels.Warn, "Could not save network.json; this host keeps the network in memory until it restarts."); }
+            if (!health.Try("network", "save", () => storage.Save(next.Write()), attempts: 2))
+                log(LogLevels.Warn, "Could not save network.json; this host keeps the network in memory until it restarts.");
         }
         if (!wasBound && isBound)
             log(LogLevels.Info, $"Joined Martlet network {next.NetworkId} (bound by {by}); its member desktops can pair with this host by themselves.");
@@ -200,50 +207,73 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
     /// credential of that device here). A member this host hasn't heard of yet (it joined while nobody could tell this host)
     /// brings its copy of the roster: entries signed by desktops this host already trusts are accepted as in
     /// <see cref="Merge"/>, and the merged roster is kept once the proof checks out against it.</summary>
-    internal IssuedDeviceCredential PairMember(GatewayMemberPairingProof proof, CancellationToken cancellationToken)
+    internal IssuedDeviceCredential PairMember(GatewayMemberPairingProof proof, CancellationToken cancellationToken,
+        string source = "")
     {
         proof.Validate();
         lock (gate)
         {
             var now = clock.GetUtcNow();
-            while (attempts.Count > 0 && attempts.Peek() <= now - TimeSpan.FromMinutes(1)) attempts.Dequeue();
-            GatewayRules.Require(attempts.Count < MaximumPairingsPerMinute, "auth.rate");
-            attempts.Enqueue(now);
-            GatewayRules.Require(roster is not null && BoundLocked, "network.unbound");
-            GatewayRules.Require(proof.NetworkId == roster!.NetworkId, "network.other");
-            var known = roster;
-            if (proof.Roster is { } brought && roster.Desktop(proof.DeviceId) is not { Removed: false })
+            var recent = RecentFailuresLocked(source, now);
+            GatewayRules.Require(recent is null || recent.Count < MaximumFailedPairingsPerMinute, "auth.rate");
+            try { return PairMemberLocked(proof, now, cancellationToken); }
+            catch (GatewayProtocolException error) when (error.Failure.Code is not ("auth.storage" or "auth.closed" or "auth.capacity"))
             {
-                try
+                if (recent is null)
                 {
-                    var incoming = NetworkRoster.Parse(JsonSerializer.SerializeToUtf8Bytes(brought));
-                    GatewayRules.Require(incoming.NetworkId == roster.NetworkId, "network.other");
-                    known = NetworkRoster.Accept(roster, incoming).Roster;
+                    if (failures.Count >= MaximumFailureSources)
+                        failures.Remove(failures.OrderBy(f => f.Value.Count == 0 ? DateTimeOffset.MinValue : f.Value.Last()).First().Key);
+                    failures[source] = recent = new();
                 }
-                catch (ContractException) { throw new GatewayProtocolException("network.invalid"); }
+                recent.Enqueue(now);
+                throw;
             }
-            GatewayRules.Require(known.Desktop(proof.DeviceId) is { Removed: false }, "network.denied");
-            var member = known.Desktop(proof.DeviceId)!;
-            var bytes = NetworkPairing.ProofBytes(identity.HostId, identity.SpkiFingerprint, known.NetworkId, proof.DeviceId,
-                proof.DisplayName, proof.Timestamp, proof.Nonce);
-            GatewayRules.Require(NetworkKey.Verify(member.Key!, bytes, proof.Signature), "pairing.invalid");
-            var at = DateTimeOffset.FromUnixTimeMilliseconds(proof.Timestamp);
-            GatewayRules.Require(at >= now - NetworkPairing.ClockSkew && at <= now + NetworkPairing.ClockSkew, "auth.clock");
-            foreach (var stale in nonces.Where(n => n.Value <= now).Select(n => n.Key).ToArray()) nonces.Remove(stale);
-            GatewayRules.Require(!nonces.ContainsKey(proof.Nonce), "auth.replay");
-            GatewayRules.Require(nonces.Count < MaximumNonces, "auth.rate");
-            nonces[proof.Nonce] = now + NetworkPairing.ClockSkew + NetworkPairing.ClockSkew;
-            if (!ReferenceEquals(known, roster))
-            {
-                ApplyLocked(known, proof.DeviceId, cancellationToken);
-                log(LogLevels.Info, $"{proof.DeviceId} brought this host the network's newer roster when it paired (it joined while nobody could tell this host).");
-            }
-            credentials.RevokeDevice(proof.DeviceId, cancellationToken);
-            var issued = credentials.Issue(proof.DeviceId, NetworkRoster.CleanName(proof.DisplayName, proof.DeviceId),
-                [GatewayRole.Voice], cancellationToken);
-            joins.Remove(proof.DeviceId);
-            return issued;
         }
+    }
+
+    private Queue<DateTimeOffset>? RecentFailuresLocked(string source, DateTimeOffset now)
+    {
+        if (!failures.TryGetValue(source, out var recent)) return null;
+        while (recent.Count > 0 && recent.Peek() <= now - TimeSpan.FromMinutes(1)) recent.Dequeue();
+        return recent;
+    }
+
+    private IssuedDeviceCredential PairMemberLocked(GatewayMemberPairingProof proof, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        GatewayRules.Require(roster is not null && BoundLocked, "network.unbound");
+        GatewayRules.Require(proof.NetworkId == roster!.NetworkId, "network.other");
+        var known = roster;
+        if (proof.Roster is { } brought && roster.Desktop(proof.DeviceId) is not { Removed: false })
+        {
+            try
+            {
+                var incoming = NetworkRoster.Parse(JsonSerializer.SerializeToUtf8Bytes(brought));
+                GatewayRules.Require(incoming.NetworkId == roster.NetworkId, "network.other");
+                known = NetworkRoster.Accept(roster, incoming).Roster;
+            }
+            catch (ContractException) { throw new GatewayProtocolException("network.invalid"); }
+        }
+        GatewayRules.Require(known.Desktop(proof.DeviceId) is { Removed: false }, "network.denied");
+        var member = known.Desktop(proof.DeviceId)!;
+        var bytes = NetworkPairing.ProofBytes(identity.HostId, identity.SpkiFingerprint, known.NetworkId, proof.DeviceId,
+            proof.DisplayName, proof.Timestamp, proof.Nonce);
+        GatewayRules.Require(NetworkKey.Verify(member.Key!, bytes, proof.Signature), "pairing.invalid");
+        var at = DateTimeOffset.FromUnixTimeMilliseconds(proof.Timestamp);
+        GatewayRules.Require(at >= now - NetworkPairing.ClockSkew && at <= now + NetworkPairing.ClockSkew, "auth.clock");
+        foreach (var stale in nonces.Where(n => n.Value <= now).Select(n => n.Key).ToArray()) nonces.Remove(stale);
+        GatewayRules.Require(!nonces.ContainsKey(proof.Nonce), "auth.replay");
+        GatewayRules.Require(nonces.Count < MaximumNonces, "auth.rate");
+        nonces[proof.Nonce] = now + NetworkPairing.ClockSkew + NetworkPairing.ClockSkew;
+        if (!ReferenceEquals(known, roster))
+        {
+            ApplyLocked(known, proof.DeviceId, cancellationToken);
+            log(LogLevels.Info, $"{proof.DeviceId} brought this host the network's newer roster when it paired (it joined while nobody could tell this host).");
+        }
+        // The new credential is issued and the older ones are revoked in one commit, so a failed re-pair keeps the old one.
+        var issued = credentials.IssueReplacing(proof.DeviceId, NetworkRoster.CleanName(proof.DisplayName, proof.DeviceId),
+            [GatewayRole.Voice], cancellationToken);
+        joins.Remove(proof.DeviceId);
+        return issued;
     }
 
     private void SweepJoinsLocked(DateTimeOffset now)

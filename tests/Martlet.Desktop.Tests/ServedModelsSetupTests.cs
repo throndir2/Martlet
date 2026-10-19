@@ -83,6 +83,10 @@ public sealed class ServedModelsSetupTests
         var review = RecommendedSetupReview.From(recommendation, build);
         Assert.True(review.UseServed);
         Assert.Equal(["llama3.3:70b in Ollama (about 46 GB)", "qwen3-32b in LM Studio (about 22 GB)"], review.Served);
+        // Each found model is an explicit choice (Think with it), in the order the review lists them, with its app's address.
+        Assert.Equal(["llama3.3:70b", "qwen3-32b"], review.ServedChoices.Select(m => m.ModelId));
+        Assert.Equal(review.Served, review.ServedChoices.Select(RecommendedSetupInputs.ServedLine));
+        Assert.All(review.ServedChoices, m => Assert.StartsWith("http://", m.BaseUrl, StringComparison.Ordinal));
     }
 
     [Fact]

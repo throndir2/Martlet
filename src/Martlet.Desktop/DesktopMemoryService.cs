@@ -22,7 +22,8 @@ internal sealed record MemoryConfigurationSaveResult(SetupSaveResult Save, AppSe
 internal sealed record DesktopMemoryRecall(long? StoreRevision, IReadOnlyList<MemoryFact> Facts,
     IReadOnlyDictionary<string, string>? People = null, IReadOnlyDictionary<Guid, string>? Spaces = null);
 /// <summary>One change remembering made: <paramref name="VoiceId"/> is whose fact it is, <paramref name="Person"/> its label.</summary>
-internal sealed record MemoryCaptureChange(MemoryCaptureKind Kind, string Content, string? VoiceId = null, string? Person = null);
+internal sealed record MemoryCaptureChange(MemoryCaptureKind Kind, string Content, string? VoiceId = null, string? Person = null,
+    string? Activity = null);
 /// <summary>The facts of one memory space, as the Memory window lists them.</summary>
 internal sealed record MemorySpaceFacts(MemorySpace Space, MemoryInspection Inspection);
 
@@ -190,7 +191,8 @@ internal sealed class DesktopMemoryService : IDisposable
         MemoryRetention retention,
         string? voiceId = null,
         CancellationToken token = default,
-        string? space = null)
+        string? space = null,
+        string? activity = null)
     {
         Invalidate();
         return WithSpaceAsync(expectedConfigurationRevision, space, (_, found, store, operationToken) =>
@@ -199,7 +201,8 @@ internal sealed class DesktopMemoryService : IDisposable
                 Content = content,
                 Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), CurrentUtc()),
                 Retention = retention,
-                VoiceId = voiceId
+                VoiceId = voiceId,
+                Activity = activity
             }, operationToken), token, changes: true);
     }
 
@@ -212,7 +215,8 @@ internal sealed class DesktopMemoryService : IDisposable
         MemoryRetention retention,
         string? voiceId,
         CancellationToken token = default,
-        string? space = null)
+        string? space = null,
+        string? activity = null)
     {
         ArgumentNullException.ThrowIfNull(fact);
         Invalidate();
@@ -224,7 +228,9 @@ internal sealed class DesktopMemoryService : IDisposable
                 Content = content,
                 Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), CurrentUtc()),
                 Retention = retention,
-                VoiceId = voiceId
+                VoiceId = voiceId,
+                SetActivity = true,
+                Activity = activity
             }, operationToken), token, changes: true);
     }
 
@@ -321,12 +327,15 @@ internal sealed class DesktopMemoryService : IDisposable
 
     /// <param name="speaker">The voice IDs of the person speaking (<see cref="MemoryPeople.Ids"/>), whose facts and those about no
     /// one in particular fill the recall before other people's; null when nobody was recognized.</param>
+    /// <param name="activity">What the user does now (<see cref="MemoryActivity"/>, null: nothing known): facts kept for another
+    /// activity are left out unless the words name it.</param>
     internal async Task<DesktopMemoryRecall> RecallAsync(
         MemorySettings expected,
         string query,
         int maximum = MaximumRecalledFacts,
         IReadOnlySet<string>? speaker = null,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        string? activity = null)
     {
         ArgumentNullException.ThrowIfNull(expected);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 1);
@@ -337,7 +346,7 @@ internal sealed class DesktopMemoryService : IDisposable
         {
             result = await WithSpaceAsync(expected.ConfigurationRevision, null,
                 (set, _, store, operationToken) => RecallAsync(store, OtherSnapshots(set), CurrentUtc(), query, maximum, speaker,
-                    operationToken),
+                    operationToken, activity: new(activity)),
                 linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (snapshot.Token.IsCancellationRequested && !token.IsCancellationRequested)
@@ -359,23 +368,25 @@ internal sealed class DesktopMemoryService : IDisposable
     /// <see cref="RememberAsync"/> rechecks every fact revision it acts on. <paramref name="similar"/>: facts an embedding search
     /// found for the same words (finding by meaning), fused with the lexical matches.</summary>
     internal Task<DesktopMemoryRecall> KnownFactsAsync(MemorySettings expected, string query, int maximum,
-        IReadOnlySet<string>? speaker = null, CancellationToken token = default, IReadOnlyList<Guid>? similar = null)
+        IReadOnlySet<string>? speaker = null, CancellationToken token = default, IReadOnlyList<Guid>? similar = null,
+        string? activity = null)
     {
         ArgumentNullException.ThrowIfNull(expected);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 1);
         return WithSpaceAsync(expected.ConfigurationRevision, null,
             (set, _, store, operationToken) => RecallAsync(store, OtherSnapshots(set), CurrentUtc(), query, maximum, speaker,
-                operationToken, similar), token);
+                operationToken, similar, new(activity)), token);
     }
 
     /// <summary>The best lexical matches of the active store and of the <paramref name="others"/>' snapshots first (by score,
     /// then the active space), then the most recently changed facts of them all: the speaker's own and those about no one in
     /// particular before other people's. With no other space this is exactly the recall of one store. <paramref name="similar"/>
     /// (facts found by meaning) is fused with each store's lexical order; when the words have no search term, those facts come
-    /// first.</summary>
+    /// first. <paramref name="activity"/> leaves out the facts kept for another activity than the user's now (unless the words
+    /// name it); the facts of the activity now fill the recall before those for everywhere.</summary>
     private static async Task<DesktopMemoryRecall> RecallAsync(MemoryStore store,
         IReadOnlyList<(string Space, MemorySnapshot Snapshot)> others, DateTimeOffset now, string query, int maximum,
-        IReadOnlySet<string>? speaker, CancellationToken token, IReadOnlyList<Guid>? similar = null)
+        IReadOnlySet<string>? speaker, CancellationToken token, IReadOnlyList<Guid>? similar = null, MemoryActivityFilter? activity = null)
     {
         var facts = new List<MemoryFact>(maximum);
         var included = new HashSet<Guid>();
@@ -390,6 +401,7 @@ internal sealed class DesktopMemoryService : IDisposable
         if (bounded is not null)
         {
             if (similar is { Count: > 0 }) bounded = bounded with { Similar = similar };
+            if (activity is not null) bounded = bounded with { Activity = activity };
             IEnumerable<(MemoryRetrievalHit Hit, string? Space, int Order)> hits =
                 (await store.RetrieveAsync(bounded, token).ConfigureAwait(false)).Hits.Select(hit => (Hit: hit, Space: (string?)null, Order: 0)).ToArray();
             if (others.Count > 0)
@@ -405,7 +417,8 @@ internal sealed class DesktopMemoryService : IDisposable
         // Someone else's facts come after the speaker's own and those about no one in particular (all by recency when nobody
         // was recognized); the best matches above already include anyone's. History (replaced facts) is never recalled.
         var pool = inspection.Facts.Where(fact => !fact.IsHistory).Select(fact => (Fact: fact, Space: (string?)null))
-            .Concat(others.SelectMany(other => other.Snapshot.Live(now).Select(fact => (Fact: fact, Space: (string?)other.Space))));
+            .Concat(others.SelectMany(other => other.Snapshot.Live(now).Select(fact => (Fact: fact, Space: (string?)other.Space))))
+            .Where(f => activity is null || activity.Allows(f.Fact, query));
         // Words without a search term: the facts found by meaning come first.
         if (bounded is null && similar is { Count: > 0 })
         {
@@ -415,6 +428,8 @@ internal sealed class DesktopMemoryService : IDisposable
         }
         foreach (var (fact, space) in pool
             .OrderByDescending(f => speaker is null || f.Fact.VoiceId is null || speaker.Contains(f.Fact.VoiceId))
+            // The game played now first, then any game's, then everywhere's.
+            .ThenByDescending(f => MemoryActivity.Name(f.Fact.Activity) is not null).ThenByDescending(f => f.Fact.Activity is not null)
             .ThenByDescending(f => f.Fact.UpdatedAtUtc).ThenBy(f => f.Fact.Id))
         {
             if (facts.Count >= maximum)
@@ -508,8 +523,10 @@ internal sealed class DesktopMemoryService : IDisposable
             switch (operation.Kind)
             {
                 case MemoryCaptureKind.Remember when operation.Content is { } content:
+                    // A fact for everywhere already covers the same fact for one activity; the same words for two games are two facts.
                     if (current.Concat(elsewhere).Any(fact => MemoryCapture.SameFact(fact.Content, content) &&
-                        samePerson(fact.VoiceId, operation.VoiceId)))
+                        samePerson(fact.VoiceId, operation.VoiceId) &&
+                        (fact.Activity is null || MemoryActivity.Same(fact.Activity, operation.Activity))))
                         continue;
                     if (stored >= MemoryLimits.MaximumFacts)
                     {
@@ -523,11 +540,12 @@ internal sealed class DesktopMemoryService : IDisposable
                         Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), CurrentUtc()),
                         Retention = MemoryRetention.UntilDeleted(),
                         VoiceId = operation.VoiceId,
-                        SearchWords = operation.SearchWords
+                        SearchWords = operation.SearchWords,
+                        Activity = operation.Activity
                     }, operationToken).ConfigureAwait(false);
                     current.Add(saved.Fact);
                     stored++;
-                    changes.Add(new(MemoryCaptureKind.Remember, saved.Fact.Content, saved.Fact.VoiceId));
+                    changes.Add(new(MemoryCaptureKind.Remember, saved.Fact.Content, saved.Fact.VoiceId, Activity: saved.Fact.Activity));
                     break;
                 case MemoryCaptureKind.Update when target is not null && operation.Content is { } content:
                     if (MemoryCapture.SameFact(target.Content, content) ||
@@ -543,7 +561,7 @@ internal sealed class DesktopMemoryService : IDisposable
                     }, operationToken).ConfigureAwait(false);
                     current[current.IndexOf(target)] = edited.Fact;
                     stored = Math.Min(stored + 1, MemoryLimits.MaximumFacts);
-                    changes.Add(new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId));
+                    changes.Add(new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId, Activity: edited.Fact.Activity));
                     break;
                 case MemoryCaptureKind.Forget when target is not null:
                     await store.DeleteAsync(new()

@@ -23,6 +23,7 @@ internal sealed partial class GatewayHttpApplication
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
     private readonly IGatewayAuditSink audit;
+    private readonly GatewayCredentialStore credentials;
     private volatile GatewayMachineReport? machine;
 
     internal GatewayMachineReport? Machine { get => machine; set => machine = value; }
@@ -47,7 +48,12 @@ internal sealed partial class GatewayHttpApplication
         this.clock = clock;
         this.crypto = crypto;
         this.audit = audit;
+        this.credentials = credentials;
         Logs = new(identity.HostId, clock);
+        StoreHealth = new(clock, (level, message, repeatKey) => Logs.Own(level, message, repeatKey));
+        // Each signed request saves its nonce before it is admitted; a slow disk shows up here (issue #1005).
+        credentials.SlowCommitObserved = elapsed => Logs.Own(LogLevels.Warn,
+            $"Saving this host's pairings took {elapsed.TotalMilliseconds:0} ms; signed requests wait for this save.", "authority:slow-commit");
         Network = new(identity, credentials, clock, (level, message) => Logs.Own(level, message));
         ApiKeys = new(identity.HostId, clock);
         Guard = new(clock, (level, message, repeatKey) => Logs.Own(level, message, repeatKey));
@@ -64,6 +70,9 @@ internal sealed partial class GatewayHttpApplication
         // Preemptions and refusals of pool work go into this host's own log, which paired desktops show.
         inference.Activity = (message, repeatKey) => Logs.Own(LogLevels.Info, message, repeatKey);
     }
+
+    /// <summary>The load and save failures of this host's shared stores (see <see cref="GatewayStoreHealth"/>).</summary>
+    internal GatewayStoreHealth StoreHealth { get; }
 
     /// <summary>Rate limits, lockouts and the audit log every request passes (see <see cref="GatewayRequestGuard"/>).</summary>
     internal GatewayRequestGuard Guard { get; }
@@ -132,7 +141,8 @@ internal sealed partial class GatewayHttpApplication
                 // A member this host hasn't heard of yet brings its copy of the roster, so this route takes a roster's size.
                 var proof = await ReadPairingAsync<GatewayMemberPairingProof>(context.Request, context.RequestAborted,
                     MaximumMemberPairingRequestBytes).ConfigureAwait(false);
-                var credential = Network.PairMember(proof, context.RequestAborted);
+                var credential = Network.PairMember(proof, context.RequestAborted,
+                    context.Connection.RemoteIpAddress?.ToString() ?? "");
                 LogMemberPaired(credential);
                 Guard.Succeeded(context, routeClass, "paired", credential.DeviceId);
                 await WritePairingAsync(context, credential, null).ConfigureAwait(false);

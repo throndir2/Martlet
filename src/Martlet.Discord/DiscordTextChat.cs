@@ -97,37 +97,6 @@ public static partial class DiscordTextFormat
     public static string Sanitize(string text) =>
         RoleMention().Replace(MassMention().Replace(text, "@\u200b$1"), "<@\u200b&$1>");
 
-    /// <summary>Splits <paramref name="text"/> into messages of at most <paramref name="limit"/> characters, at a paragraph, line,
-    /// sentence or word break when there is one in the second half of a piece.</summary>
-    public static IReadOnlyList<string> Split(string text, int limit = Limit)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 2);
-        List<string> pieces = [];
-        var rest = text.Trim();
-        while (rest.Length > limit)
-        {
-            var cut = Break(rest, limit);
-            var piece = rest[..cut].TrimEnd();
-            if (piece.Length > 0) pieces.Add(piece);
-            rest = rest[cut..].TrimStart();
-        }
-        if (rest.Length > 0) pieces.Add(rest);
-        return pieces;
-    }
-
-    private static int Break(string text, int limit)
-    {
-        var window = text[..limit];
-        var least = limit / 2;
-        foreach (var separator in new[] { "\n\n", "\n", ". ", "! ", "? ", " " })
-        {
-            var at = window.LastIndexOf(separator, StringComparison.Ordinal);
-            if (at >= least) return at + separator.Length;
-        }
-        // Never cut a surrogate pair in half.
-        return char.IsHighSurrogate(text[limit - 1]) ? limit - 1 : limit;
-    }
-
     [GeneratedRegex("@(everyone|here)", RegexOptions.IgnoreCase)]
     private static partial Regex MassMention();
 
@@ -283,7 +252,7 @@ public sealed class DiscordTextChat
                 return new(DiscordTextOutcome.Passed, addressed, mode, []);
             }
 
-            var pieces = DiscordTextFormat.Split(DiscordTextFormat.Sanitize(text));
+            var pieces = Martlet.Core.Text.MessageSplitter.Split(DiscordTextFormat.Sanitize(text), DiscordTextFormat.Limit);
             var ids = new List<ulong>();
             if (command is not null) await command(pieces).ConfigureAwait(false);
             else

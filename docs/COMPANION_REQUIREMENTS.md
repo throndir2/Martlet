@@ -1,7 +1,6 @@
 # Companion controls and behavior requirements
 
-**Product requirements added 2026-09-19; not implemented features.** These
-requirements extend the installation-first [development plan](../DEVELOPMENT_PLAN.md).
+**Product requirements added 2026-09-19; not implemented features.**
 Detailed controls and initial tuning values below are proposed implementation
 choices. They do not authorize listening, provider spending, model downloads,
 voice uploads, native VAD execution, or changes to the user's machines.
@@ -273,8 +272,7 @@ listening and interruption need authorized live VAD/feedback integration; F5
 reference controls land with the self-hosted F5 adapter; VLM selection lands
 with opt-in vision. None requires an avatar or persistent memory first.
 
-[Delivery](DELIVERY.md#8-requirements-to-delivery-traceability) maps R19-R24 to
-owned work and AC-21 through AC-26. An earlier PTT-only release may ship without
+An earlier PTT-only release may ship without
 automatic listening/barge-in, but must not advertise those capabilities.
 Future implementation must add production-backed local tests plus separately
 authorized real-device/model evidence; this requirements change supplies neither.
