@@ -104,11 +104,12 @@ internal static class AppGuidesCheck
             var latency = await LatencyAsync(directory, cancellation);
             var research = await ResearchAsync(Path.Combine(directory, "research"), guard, fixture, limits, cancellation);
             var series = await SeriesAsync(Path.Combine(directory, "series"), guard, fixture, cancellation);
+            var readMore = await ReadMoreAsync(Path.Combine(directory, "more"), guard, fixture, cancellation);
 
             var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
                 fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && defaults.On && defaults.ReadUpWhenStarted &&
                 migration.Ok && restarted is { loaded: >= 2, on: true, indexReady: true, indexesAtStart: 0 };
-            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok && research.Ok && series.Ok;
+            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok && research.Ok && series.Ok && readMore.Ok;
             return new
             {
                 ok,
@@ -133,7 +134,8 @@ internal static class AppGuidesCheck
                 tools = tools.Report,
                 latency = latency.Report,
                 research = research.Report,
-                series = series.Report
+                series = series.Report,
+                readMore = readMore.Report
             };
         }
         finally
@@ -226,7 +228,7 @@ internal static class AppGuidesCheck
         var ok = defaults is { Pages: 200, Bytes: 25_000_000, Sites: 2 } && defaults.Time == TimeSpan.FromMinutes(15) &&
             GuideBuildLimits.More is { Pages: 300, Sites: 1 } && whole is { Built: true, Pages: 3 } &&
             said.Contains("Reading page 1 of at most 200") &&
-            said.Contains("Saving what it read so far") && keptWhileReading > 0 && stopped && stoppedBuild is { Built: true, Pages: 1 } &&
+            said.Contains("Saving what it read so far") && keptWhileReading > 0 && stopped && stoppedBuild is { Built: true, Pages: 3 } &&
             !nothingToStop && AppGuideTools.Kind.TimeLimit == TimeSpan.FromMinutes(20);
         return (ok, new
         {
@@ -249,7 +251,92 @@ internal static class AppGuidesCheck
                 guideFileMegabytes = FileAppGuideStore.MaximumGuideBytes / 1_000_000
             },
             firstRead = Build(whole), pagesKeptWhileReading = keptWhileReading, progress = said.Distinct().ToArray(),
+            // Stopped at page 2 of Read again: the page read again and the guide's 2 other pages are kept (3 pages).
             stopReading = new { stoppedAtPage2 = stopped, build = Build(stoppedBuild), stopWhenIdle = nothingToStop }
+        });
+    }
+
+    // Read more (docs/APP_GUIDES.md, "Reading more"), as the Read more buttons and asking Martlet do it, with no Thinking pool
+    // member: after Martlet starts again it reads more pages of the same wiki from what the guide file kept, each time adding
+    // pages the guide doesn't have; a guide kept before Martlet saved that finds its wiki again from its pages; Read again keeps
+    // the pages Read more added; and the user's words that ask to read more are told apart from others.
+    private static async Task<(bool Ok, object Report)> ReadMoreAsync(string directory, LoopbackOnly guard, Fixture fixture, CancellationToken cancellation)
+    {
+        const string sequel = "Starfall Valley 2";
+        var key = AppGuideKeys.Of(sequel);
+        var pause = TimeSpan.FromMilliseconds(20);
+        var start = fixture.BaseUrl + Fixture.SeriesStart;
+        AppGuideService Service(string folder) => new(new FileAppGuideStore(folder), new WebGuideBuilder(guard, guard),
+            limits: new GuideBuildLimits { Delay = pause, Time = TimeSpan.FromSeconds(60), Pages = 2 })
+        {
+            MoreLimits = GuideBuildLimits.More with { Delay = pause, Time = TimeSpan.FromSeconds(60), Pages = 2 }
+        };
+        async Task<string[]> PagesAsync(AppGuideService guides) =>
+            (await guides.Store.LoadGuideAsync(key, cancellation))?.Sources.Select(s => s.Url).ToArray() ?? [];
+
+        AppGuideBuild first;
+        bool savedState;
+        using (var guides = Service(directory))
+        {
+            await guides.LoadAsync(cancellation);
+            await guides.SetOnAsync(true, cancellation);
+            first = await guides.BuildAsync(sequel, [start], null, cancellation);
+            savedState = (await guides.Store.LoadGuideAsync(key, cancellation))?.More is { Related.Count: > 0 };
+        }
+        // Martlet starts again: no GuideMore in memory, no Thinking pool member.
+        using var again = Service(directory);
+        await again.LoadAsync(cancellation);
+        var once = await again.ReadMoreAsync(key, cancellationToken: cancellation);
+        var afterOnce = await PagesAsync(again);
+        var twice = await again.ReadMoreAsync(key, cancellationToken: cancellation);
+        var afterTwice = await PagesAsync(again);
+        var readAgain = await again.BuildAsync(sequel, [start], null, cancellation);
+        var afterReadAgain = await PagesAsync(again);
+
+        // A guide kept before Martlet saved what is left to read more: the wiki is found again from its pages.
+        var oldFolder = Path.Combine(directory, "old");
+        using var old = Service(oldFolder);
+        await old.LoadAsync(cancellation);
+        await old.SetOnAsync(true, cancellation);
+        await old.BuildAsync(sequel, [start], null, cancellation);
+        if (await old.Store.LoadGuideAsync(key, cancellation) is { } kept) await old.Store.SaveGuideAsync(kept with { More = null }, cancellation);
+        var fromPages = await old.ReadMoreAsync(key, cancellationToken: cancellation);
+        var oldPages = await PagesAsync(old);
+
+        var words = new Dictionary<string, string?>
+        {
+            ["can you read more about it?"] = AppGuideTools.AskedToReadMore("can you read more about it?"),
+            ["learn more about Starfall Valley 2 please"] = AppGuideTools.AskedToReadMore("learn more about Starfall Valley 2 please"),
+            ["keep reading up on this game"] = AppGuideTools.AskedToReadMore("keep reading up on this game"),
+            ["don't read more about it"] = AppGuideTools.AskedToReadMore("don't read more about it"),
+            ["I read more books this year"] = AppGuideTools.AskedToReadMore("I read more books this year")
+        };
+        var shownWords = words.ToDictionary(w => w.Key, w => w.Value == AppGuideTools.InFront ? "the app in front" : w.Value);
+        var ready = AppGuideTools.MoreReady(once, afterOnce.Length);
+        var wordsOk = words["can you read more about it?"] == AppGuideTools.InFront && words["learn more about Starfall Valley 2 please"] == sequel &&
+            words["keep reading up on this game"] == AppGuideTools.InFront && words["don't read more about it"] is null &&
+            words["I read more books this year"] is null;
+        var ok = first is { Built: true, Pages: 2 } && savedState &&
+            once is { Built: true, Pages: > 0 } && afterOnce.Length == 2 + once.Pages && afterOnce.Distinct().Count() == afterOnce.Length &&
+            twice is { Built: true, Pages: > 0 } && afterTwice.Length == afterOnce.Length + twice.Pages && afterTwice.Distinct().Count() == afterTwice.Length &&
+            readAgain.Built && afterReadAgain.Length >= afterTwice.Length && afterTwice.All(afterReadAgain.Contains) &&
+            fromPages is { Built: true, Pages: > 0 } && oldPages.Length == 2 + fromPages.Pages &&
+            ready.Contains("more page", StringComparison.Ordinal) && wordsOk && again.Building is null;
+        return (ok, new
+        {
+            ok,
+            note = "A MediaWiki fixture on 127.0.0.1 (NOT a real wiki) and no Thinking pool member: the most linked titles are read " +
+                "with no model. The reader, store and service are Martlet's own.",
+            firstRead = Build(first), savedWhatIsLeft = savedState,
+            afterRestart = new
+            {
+                readMore = Build(once), guidePages = afterOnce.Length, readMoreAgain = Build(twice), guidePagesAgain = afterTwice.Length,
+                noPageTwice = afterTwice.Distinct().Count() == afterTwice.Length
+            },
+            readAgain = new { build = Build(readAgain), guidePages = afterReadAgain.Length, keptReadMorePages = afterTwice.All(afterReadAgain.Contains) },
+            guideKeptWithoutState = new { readMore = Build(fromPages), guidePages = oldPages.Length },
+            words = shownWords,
+            toolResult = ready
         });
     }
 
@@ -920,6 +1007,10 @@ internal static class AppGuidesCheck
                     "/series/api.php" => ("application/json", SeriesApi(target)),
                     SeriesStart => ("text/html", "<html><head><link rel=\"EditURI\" type=\"application/rsd+xml\" href=\"" + BaseUrl +
                         "/series/api.php?action=rsd\"/></head><body><p>The Starfall Saga Wiki is about every Starfall game (FIXTURE).</p></body></html>"),
+                    // Every other page of the series wiki names its api.php too (Read more finds the wiki again from a page).
+                    _ when path.StartsWith("/series/wiki/", StringComparison.Ordinal) => ("text/html", "<html><head><link rel=\"EditURI\" " +
+                        "type=\"application/rsd+xml\" href=\"" + BaseUrl + "/series/api.php?action=rsd\"/></head><body><p>A page of the Starfall " +
+                        "Saga Wiki (FIXTURE).</p></body></html>"),
                     "/wiki/Sunken_Crypt" => ("text/html", Page("Sunken Crypt",
                         "<p>The Sunken Crypt is a flooded dungeon under the old chapel in Starfall Valley (FIXTURE).</p><h2>Getting in</h2>" +
                         "<p>Drain the Sunken Crypt by turning the three bronze valves in the chapel cellar; the water drops one floor with " +
