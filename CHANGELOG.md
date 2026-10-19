@@ -20,6 +20,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- New installations start with up-to-date model suggestions: the model list that comes with Martlet is refreshed. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - Martlet starts answering sooner: it no longer waits for Home Assistant or for tool servers that are still starting before it answers, and it reads memories and lorebooks at the same time. A tool from a server that is still starting waits for it only when Martlet uses that tool. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Tools from your MCP servers keep the same names (the server's name, then the tool's) while servers start, stop or restart, so replies on a local model stay quick after a server restarts. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Check-ins that use tools now work in several steps until they are done, like a coding agent: they look things up, read the result and keep going. When you say "that's for Minecraft, not Terraria!", Act on what was said finds every fact it touches and corrects each one. Learning names can also look up voices in more steps. ([#1033](https://github.com/throndir2/Martlet/pull/1033))
