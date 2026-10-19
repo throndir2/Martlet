@@ -16,6 +16,12 @@ public partial class App : Application
     /// <summary>Whether the palette in use is dark (a custom palette's window background decides).</summary>
     internal bool IsDarkTheme => SelectedTheme.IsDark(ThemeColors);
     internal string? AppearanceNotice { get; private set; }
+
+    /// <summary>Offers each handed-over share link in turn; each confirmation waits for the one before.</summary>
+    private static async Task AcceptAllAsync(MainWindow main, IReadOnlyList<string> links)
+    {
+        foreach (var link in links) await main.AcceptShareLinkAsync(link);
+    }
     /// <summary>The --data-directory Martlet was started with, so an update restarts it with the same one.</summary>
     internal string? DataDirectoryArgument { get; private set; }
     /// <summary>The previous run did not exit cleanly (crash, kill or power loss); Home says so with the logs folder.</summary>
@@ -201,8 +207,9 @@ public partial class App : Application
             instance?.Listen(() => Dispatcher.BeginInvoke(() =>
             {
                 main.ShowFromTray();
-                // Another start handed over a clicked share link.
-                if (store is not null && ShareLinkProtocol.TakeHandedOver(store.DataDirectory) is { } handed) main.AcceptShareLinkAsync(handed).Forget();
+                // Other starts handed over clicked share links; each is offered in turn.
+                if (store is not null && ShareLinkProtocol.TakeAllHandedOver(store.DataDirectory) is { Count: > 0 } handed)
+                    AcceptAllAsync(main, handed).Forget();
             }));
             if (shareLink is not null) main.Dispatcher.BeginInvoke(() => main.AcceptShareLinkAsync(shareLink).Forget(), DispatcherPriority.ApplicationIdle);
             // Share links open this Martlet when clicked: a normal start (not a disposable data folder) registers it for this Windows user.

@@ -63,22 +63,76 @@ public sealed class DiscordBot : IAsyncDisposable
         };
         started.Disconnect += args =>
         {
-            if (!args.Reconnect)
-                Publish(new(DiscordBotState.Failed, Status.BotName, Status.BotId, 0, DescribeClose((int?)args.CloseStatus, args.CloseStatusDescription)));
+            Disconnected(started, args.Reconnect, (int?)args.CloseStatus, args.CloseStatusDescription);
             return default;
         };
-        lock (gate) client = started;
+        started.Resume += () =>
+        {
+            Resumed(started);
+            return default;
+        };
+        Adopt(started);
         Publish(new(DiscordBotState.Connecting));
         try
         {
             await started.StartAsync(cancellationToken: cancellation).ConfigureAwait(false);
         }
-        catch (Exception error) when (error is not OperationCanceledException)
+        catch (OperationCanceledException)
         {
-            lock (gate) if (client == started) client = null;
-            started.Dispose();
+            // A cancelled start leaves nothing behind: no client, no Connecting status.
+            if (Release(started)) started.Dispose();
+            Publish(new(DiscordBotState.Off));
+            throw;
+        }
+        catch (Exception error)
+        {
+            if (Release(started)) started.Dispose();
             Publish(new(DiscordBotState.Failed, Problem: Describe(error)));
         }
+    }
+
+    internal void Adopt(GatewayClient started)
+    {
+        lock (gate) client = started;
+    }
+
+    // Clears the client if it is still this one; true when the caller now owns it and must dispose it.
+    private bool Release(GatewayClient source)
+    {
+        lock (gate)
+        {
+            if (client != source) return false;
+            client = null;
+            return true;
+        }
+    }
+
+    /// <summary>The gateway dropped. When NetCord reconnects, the bot is Connecting (not Online) until it resumes or is ready
+    /// again. A close for good (a rejected token, an intent that is off) is Failed, and the closed client is let go and
+    /// disposed, so nothing uses it any more.</summary>
+    internal void Disconnected(GatewayClient source, bool reconnect, int? code, string? description)
+    {
+        if (Client != source) return;
+        if (reconnect)
+        {
+            Publish(Status with { State = DiscordBotState.Connecting, Problem = "The connection to Discord dropped. Martlet is reconnecting." });
+            return;
+        }
+        var released = Release(source);
+        Publish(new(DiscordBotState.Failed, Status.BotName, Status.BotId, 0, DescribeClose(code, description)));
+        // Not inside NetCord's own event: dispose it once the handler has returned.
+        if (released) _ = Task.Run(() =>
+        {
+            try { source.Dispose(); }
+            catch (Exception error) when (error is ObjectDisposedException or InvalidOperationException) { }
+        });
+    }
+
+    /// <summary>NetCord resumed the session after a drop: the bot is Online again with what it knew.</summary>
+    internal void Resumed(GatewayClient source)
+    {
+        if (Client != source || Status.State != DiscordBotState.Connecting || Status.BotId == 0) return;
+        Publish(Status with { State = DiscordBotState.Online, Problem = null, Servers = source.Cache.Guilds.Count });
     }
 
     public async Task StopAsync()
@@ -104,7 +158,7 @@ public sealed class DiscordBot : IAsyncDisposable
         Changed?.Invoke(Status);
     }
 
-    private void Publish(DiscordBotStatus next)
+    internal void Publish(DiscordBotStatus next)
     {
         lock (gate) status = next;
         Changed?.Invoke(next);

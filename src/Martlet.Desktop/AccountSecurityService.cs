@@ -15,8 +15,19 @@ namespace Martlet.Desktop;
 /// </summary>
 internal sealed class AccountSecurityService(AccountSession session, string dataDirectory)
 {
+    // Keys of accounts whose files are encrypted here: the account is open, or some of its files still wait to be encrypted.
     private readonly Dictionary<Guid, byte[]> fileKeys = [];
+    // How many times each account was opened here; a seal asked for before the last opening doesn't run.
+    private readonly Dictionary<Guid, int> openings = [];
+    private readonly Dictionary<Guid, object> folderGates = [];
     private readonly HashSet<Guid> justProved = [];
+
+    /// <summary>The waits before a seal tries again the files another program had open.</summary>
+    internal IReadOnlyList<TimeSpan> SealRetries { get; init; } = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2)];
+    /// <summary>The waits before an unlock tries again the files that didn't decrypt.</summary>
+    internal IReadOnlyList<TimeSpan> UnsealRetries { get; init; } = [TimeSpan.FromMilliseconds(300), TimeSpan.FromSeconds(1)];
+    /// <summary>Asks the person whether to open an account whose files didn't all decrypt (the file list). Null: a dialog.</summary>
+    internal Func<Window?, string, IReadOnlyList<string>, bool>? OpenWithout { get; init; }
 
 
     internal AccountSession Session => session;
@@ -25,18 +36,34 @@ internal sealed class AccountSecurityService(AccountSession session, string data
     internal AccountLoginKey ThisWindowsLogin => AccountLoginKey.ForWindows(session.DeviceId, session.WindowsSid);
     internal NetworkRoster? Roster => NetworkIdentity.Load(dataDirectory).Roster;
 
+    /// <summary>A copy of the account's file key (the caller may zero it), or null.</summary>
     internal byte[]? FileKey(Guid id)
     {
-        lock (fileKeys) return fileKeys.GetValueOrDefault(id);
+        lock (fileKeys) return fileKeys.TryGetValue(id, out var key) ? (byte[])key.Clone() : null;
     }
 
     internal void SetFileKey(Guid id, byte[]? key)
     {
         lock (fileKeys)
         {
-            if (key is null) fileKeys.Remove(id);
-            else fileKeys[id] = key;
+            if (fileKeys.Remove(id, out var old)) CryptographicOperations.ZeroMemory(old);
+            if (key is not null) fileKeys[id] = (byte[])key.Clone();
         }
+    }
+
+    // One seal or unseal of an account's folder at a time.
+    private object FolderGate(Guid id)
+    {
+        lock (folderGates)
+        {
+            if (!folderGates.TryGetValue(id, out var gate)) folderGates[id] = gate = new object();
+            return gate;
+        }
+    }
+
+    private int Openings(Guid id)
+    {
+        lock (fileKeys) return openings.GetValueOrDefault(id);
     }
 
     /// <summary>Whether this Windows login unlocks <paramref name="id"/> here: it wasn't signed in with a Prove sign-in (or was
@@ -77,43 +104,143 @@ internal sealed class AccountSecurityService(AccountSession session, string data
         return Opened(id, owner);
     }
 
-    // Decrypts the account's files when they are encrypted here.
-    private bool Opened(Guid id, Window? owner)
+    // Decrypts the account's files when they are encrypted here. A seal of the account asked for before this doesn't run after it.
+    internal bool Opened(Guid id, Window? owner)
     {
         var folder = AccountSession.FolderFor(dataDirectory, id);
-        if (AccountVault.Count(folder).Encrypted == 0) return true;
-        if (FileKey(id) is not { } key)
+        IReadOnlyList<string> skipped;
+        byte[]? key;
+        lock (FolderGate(id))
+        {
+            lock (fileKeys) openings[id] = openings.GetValueOrDefault(id) + 1;
+            if (AccountVault.Count(folder).Encrypted == 0) return true;
+            key = FileKey(id);
+            if (key is not null)
+            {
+                try
+                {
+                    for (var attempt = 0; ; attempt++)
+                    {
+                        var result = AccountVault.Unseal(folder, key);
+                        ErrorLog.Info($"Accounts: decrypted {result.Done} file(s) of account {AccountSession.Short(id)}" +
+                            (result.Skipped.Count > 0 ? $"; {result.Skipped.Count} couldn't be decrypted." : "."));
+                        skipped = result.Skipped;
+                        if (skipped.Count == 0) return true;
+                        if (attempt >= UnsealRetries.Count) break;
+                        Thread.Sleep(UnsealRetries[attempt]);
+                    }
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    ErrorLog.Warn($"Accounts: the files of account {AccountSession.Short(id)} couldn't be decrypted", error);
+                    skipped = ["(the account's folder)"];
+                }
+                finally { CryptographicOperations.ZeroMemory(key); }
+            }
+            else skipped = [];
+        }
+        if (key is null)
         {
             ErrorLog.Warn($"Accounts: account {AccountSession.Short(id)}'s files here are encrypted, but no key opened them.");
             ShowProblem(owner, $"{NameOf(id)}'s files on this PC are encrypted. Unlock with your PIN to open them.");
             return false;
         }
-        var result = AccountVault.Unseal(folder, key);
-        ErrorLog.Info($"Accounts: decrypted {result.Done} file(s) of account {AccountSession.Short(id)}" +
-            (result.Skipped.Count > 0 ? $"; {result.Skipped.Count} couldn't be decrypted." : "."));
-        return true;
+        // Some files stay encrypted: the account would open without them (its stores would start from their defaults).
+        if ((OpenWithout ?? AskOpenWithout)(owner, NameOf(id), skipped)) return true;
+        ErrorLog.Info($"Accounts: account {AccountSession.Short(id)} stays locked; {skipped.Count} file(s) didn't decrypt.");
+        Seal(id);
+        return false;
+    }
+
+    private static bool AskOpenWithout(Window? owner, string name, IReadOnlyList<string> skipped)
+    {
+        var list = string.Join(", ", skipped.Take(5)) + (skipped.Count > 5 ? $" and {skipped.Count - 5} more" : "");
+        var dialog = new AccountChoiceDialog("AccountFilesStayEncryptedDialog", "Accounts", $"Some of {name}'s files stay encrypted",
+            $"Martlet couldn't decrypt {skipped.Count} of {name}'s files on this PC: {list}. Another program can have them open, or they are damaged. " +
+            "If you open the account now, Martlet starts without them.",
+            [("AccountFilesOpenAnyway", "Open without them"), ("AccountFilesStayLocked", "Don't open now")]) { Owner = owner };
+        return dialog.ShowDialog() == true && dialog.Chosen == "AccountFilesOpenAnyway";
+    }
+
+    /// <summary>After <paramref name="id"/> stopped being active here: encrypts its files off the window's thread
+    /// (<see cref="Seal(Guid)"/>), unless the account opens again first. Files another program has open are tried again after
+    /// <see cref="SealRetries"/>; the key is kept until every file is encrypted, and Martlet tries again when it closes. The
+    /// person sees the files that stayed plain.</summary>
+    internal Task<AccountSealResult?> SealInBackground(Guid id)
+    {
+        var opening = Openings(id);
+        return Task.Run(async () =>
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                var result = Seal(id, opening);
+                if (result is not { Skipped.Count: > 0 }) return result;
+                if (attempt >= SealRetries.Count)
+                {
+                    ShowSealProblem(id, result.Skipped);
+                    return result;
+                }
+                await Task.Delay(SealRetries[attempt]).ConfigureAwait(false);
+            }
+        });
+    }
+
+    private void ShowSealProblem(Guid id, IReadOnlyList<string> skipped)
+    {
+        var list = string.Join(", ", skipped.Take(5)) + (skipped.Count > 5 ? $" and {skipped.Count - 5} more" : "");
+        ErrorLog.Warn($"Accounts: {skipped.Count} file(s) of account {AccountSession.Short(id)} stay plain after every try; Martlet tries again when it closes.");
+        if (Application.Current?.Dispatcher is not { } dispatcher) return;
+        var name = NameOf(id);
+        dispatcher.BeginInvoke(() => ShowProblem(Application.Current?.MainWindow,
+            $"{skipped.Count} of {name}'s files on this PC are not encrypted yet, because another program has them open: {list}. " +
+            "Martlet tries again when it closes."));
     }
 
     /// <summary>Encrypts <paramref name="id"/>'s files here when that is on and its key is known (it just stopped being active
-    /// here), then forgets the key.</summary>
-    internal AccountSealResult? Seal(Guid id)
+    /// here), then forgets the key. When files stay plain (another program has them open), the key is kept so a later seal
+    /// (<see cref="SealInBackground"/>, or when Martlet closes) encrypts them.</summary>
+    internal AccountSealResult? Seal(Guid id) => Seal(id, opening: null);
+
+    private AccountSealResult? Seal(Guid id, int? opening)
     {
-        byte[]? key;
-        lock (fileKeys) fileKeys.Remove(id, out key);
-        if (key is null) return null;
-        if (!Locks.Load(id).Encrypt)
+        lock (FolderGate(id))
         {
-            CryptographicOperations.ZeroMemory(key);
-            return null;
+            byte[]? key;
+            lock (fileKeys)
+            {
+                // The account opened again since this seal was asked for: it is in use, so its files stay plain.
+                if (opening is { } asked && openings.GetValueOrDefault(id) != asked) return null;
+                fileKeys.Remove(id, out key);
+            }
+            if (key is null) return null;
+            var keep = false;
+            try
+            {
+                var locks = Locks.Load(id);
+                // A key is known only while encryption is on; a damaged unlock file doesn't stop the seal (fail closed).
+                if (!locks.Encrypt && !locks.Damaged) return null;
+                var result = AccountVault.Seal(AccountSession.FolderFor(dataDirectory, id), key);
+                ErrorLog.Info($"Accounts: encrypted {result.Done} file(s) of account {AccountSession.Short(id)}" +
+                    (result.Skipped.Count > 0 ? $"; {result.Skipped.Count} in use stayed plain: {string.Join(", ", result.Skipped)}." : "."));
+                keep = result.Skipped.Count > 0;
+                return result;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                ErrorLog.Warn($"Accounts: the files of account {AccountSession.Short(id)} couldn't be encrypted; Martlet tries again", error);
+                keep = true;
+                return new(0, ["(the account's folder)"]);
+            }
+            finally
+            {
+                if (keep)
+                    lock (fileKeys)
+                    {
+                        if (!fileKeys.TryAdd(id, key)) CryptographicOperations.ZeroMemory(key);
+                    }
+                else CryptographicOperations.ZeroMemory(key);
+            }
         }
-        try
-        {
-            var result = AccountVault.Seal(AccountSession.FolderFor(dataDirectory, id), key);
-            ErrorLog.Info($"Accounts: encrypted {result.Done} file(s) of account {AccountSession.Short(id)}" +
-                (result.Skipped.Count > 0 ? $"; {result.Skipped.Count} in use stayed plain." : "."));
-            return result;
-        }
-        finally { CryptographicOperations.ZeroMemory(key); }
     }
 
     /// <summary>Changes this PC's account directory, signed by this PC's network key, after checking that the household's other
@@ -189,6 +316,12 @@ internal sealed class AccountSecurityService(AccountSession session, string data
             var roster = Roster ?? throw new InvalidOperationException("This PC isn't in a Martlet network yet.");
             var id = proof.AccountId;
             var now = DateTimeOffset.UtcNow;
+            // The sign-in proved the person: a damaged unlock file here starts again with nothing set.
+            try { Locks.Repair(id); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                ErrorLog.Warn($"Accounts: the damaged unlock file of {AccountSession.Short(id)} couldn't be replaced", error);
+            }
             // An account this Windows login already unlocks keeps signing in with it; the sign-in only proved the person.
             if (!(session.State.SignedIn.Contains(id) && UnlocksWithWindows(id)))
             {
@@ -200,9 +333,22 @@ internal sealed class AccountSecurityService(AccountSession session, string data
                         : directory);
                 }
                 catch (InvalidOperationException error) { ErrorLog.Warn($"Accounts: the binding of {AccountSession.Short(id)} waits for the directory sync", error); }
-                Locks.Change(id, l => l with { Remember = window.Remember });
+                try { Locks.Change(id, l => l with { Remember = window.Remember }); }
+                catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException)
+                {
+                    ErrorLog.Warn($"Accounts: Remember me of {AccountSession.Short(id)} wasn't saved here", error);
+                }
             }
-            if (window.Password is { } password) Locks.RememberPassword(id, password, FileKey(id));
+            if (window.Password is { } password)
+            {
+                var fileKey = FileKey(id);
+                try { Locks.RememberPassword(id, password, fileKey); }
+                catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException)
+                {
+                    ErrorLog.Warn($"Accounts: the password of {AccountSession.Short(id)} wasn't kept here for offline unlock", error);
+                }
+                finally { if (fileKey is not null) CryptographicOperations.ZeroMemory(fileKey); }
+            }
             justProved.Add(id);
             return id;
         }

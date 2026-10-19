@@ -156,6 +156,9 @@ internal sealed class MessagingService : IDisposable
 
     internal string? Cloudflared => CloudflareQuickTunnel.Find(ToolsDirectory);
 
+    /// <summary>Martlet's own cloudflared download: its version and whether it still matches the SHA-256 checked at download.</summary>
+    internal CloudflaredInstall? OwnCloudflared => ToolsDirectory is { } tools ? CloudflareQuickTunnel.Installed(tools) : null;
+
     private IMessagingTransport DefaultWhatsApp(WhatsAppSecrets secrets, WhatsAppPreferences saved)
     {
         IPublicAddress address;
@@ -307,6 +310,13 @@ internal sealed class MessagingService : IDisposable
             }
             var next = new MessagingBridge(transport, saved.Chats, (message, token) => AnswerAsync(app, message, token));
             next.StatusChanged += _ => Changed?.Invoke();
+            next.Failed += error => ErrorLog.Warn($"{name}: {error.GetType().Name}; Martlet goes on.");
+            if (transport is WhatsAppTransport moving)
+                moving.PortChanged += port =>
+                {
+                    ErrorLog.Info($"WhatsApp: the saved port was in use; the webhook moved to port {port}.");
+                    Update(current => current with { WhatsApp = current.WhatsApp with { Port = port } });
+                };
             next.Replied += (message, ids) =>
             {
                 if (message.MessageId is { } id && ids.Count > 0)

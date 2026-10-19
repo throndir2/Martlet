@@ -1055,8 +1055,9 @@ How it works:
   Windows user each time it starts normally (`HKCU\Software\Classes\martlet`,
   no administrator rights), so a clicked `martlet://share/...` link starts
   Martlet with it. When Martlet already runs, the new start leaves the link in
-  the data folder (`pending-share-link.txt`) and asks the running Martlet to show
-  itself; that one takes the link. Martlet always asks before it signs in with a
+  the data folder (its own `pending-share-link-*.link` file, written whole and
+  then renamed) and asks the running Martlet to show itself; that one takes all
+  waiting links, oldest first. Martlet always asks before it signs in with a
   link. Many chat apps make only `http` links clickable; then copy the link and
   paste it into Martlet. Uninstalling Martlet leaves the registry key; it points
   to a Martlet that is gone and does nothing.

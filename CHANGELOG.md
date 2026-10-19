@@ -8,6 +8,15 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
+- The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
+
+### Changed
+
+- The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
+
 ### Fixed
 
 - A request cancelled while a host checks it no longer stops every paired computer from using that host until it restarts. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
@@ -15,6 +24,24 @@ Each release's section here is also its notes on GitHub.
 - When a host can't save or load API keys, accounts, memories, conversations or other shared data, it now says so in its log and security audit instead of losing the change without a sign. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - A device on the home network sending false pairing proofs can no longer stop your own desktops from pairing with a host, and a failed re-pair no longer removes a desktop's working pairing. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
 - Host setup on a Mac, Mac screen capture and the Linux desktop check can no longer hang when a tool writes a lot of output. ([#1027](https://github.com/throndir2/Martlet/pull/1027))
+- Smart home no longer sends requests such as "why don't you unlock the front door" or "how about opening the garage" to Home Assistant as if they were questions. Like other requests for locks, doors, garages, gates, alarms and valves, they are blocked unless you allow them, and then need your click. If Home Assistant still operates one of them without your click, Martlet shows it as a safety problem. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
+- Martlet checks the cloudflared it downloads for WhatsApp against the size and SHA-256 that GitHub publishes, and runs its copy only while it still matches. The WhatsApp page shows the cloudflared version. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
+- Telegram and WhatsApp keep answering after a short network problem, a failed reply or a failed "typing" sign, instead of stopping and showing Off. WhatsApp moves to a free port when another program took its port, and a stranger's wrong codes no longer cancel your pairing code. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
+- The Discord bot shows Connecting while Discord reconnects instead of Online, and lets go of a connection that Discord closed for good. ([#1019](https://github.com/throndir2/Martlet/pull/1019))
+- Taking a picture of the character while it speaks no longer closes or crashes the character window. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
+- The character's mouth keeps moving when the start of a sentence arrives in a burst, and a stop is written to the log. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
+- With manual Audio2Face lip-sync, one late frame no longer stops the mouth for the rest of the sentence. ([#1022](https://github.com/throndir2/Martlet/pull/1022))
+- The Linux (.deb and AppImage) and macOS packages now include Martlet's license and the full license notices of every component they contain, and a new release shows up only after all its Windows, Linux and macOS files are ready, with one SHA256SUMS.txt for all of them. ([#1018](https://github.com/throndir2/Martlet/pull/1018))
+- A shared setting that this PC applied but couldn't use yet (Voice ID, for example) is tried again after a minute, then less often, instead of staying different until Martlet restarts. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
+- A settings change made by another computer or by MCP while Martlet was busy reading settings now always shows; a failed refresh is written to the log. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
+- A damaged voice recognition model is refused every time instead of giving wrong voiceprints on the next try. ([#1017](https://github.com/throndir2/Martlet/pull/1017))
+- An account with a PIN or password on this PC no longer opens without it when its unlock file is damaged: Martlet asks you to sign in with the account's Martlet password instead. Unlocking with Windows Hello no longer crashes Martlet when the unlock file is busy, and unlock and sign-in errors show a plain message. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
+- Switching away from an account with encrypted files and back quickly can no longer delete its files. Files another program had open are encrypted later instead of staying plain, and Martlet tells you which files didn't decrypt before it opens an account without them. ([#1015](https://github.com/throndir2/Martlet/pull/1015))
+- A change you type just before you exit Martlet is saved first, also in the Character, Lorebook, Memory and Avatar windows. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- Two share links clicked quickly one after the other both open in the running Martlet, and a link is never cut short. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- The zone names on the Touch page are readable on every zone color and follow Windows high contrast. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- In the Hosts window, an unfinished SSH target such as `user@` no longer fills in this PC's own address, and a too-long name no longer shows an error. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
+- Appearance now says that your theme and colors are the same on all your computers. ([#1013](https://github.com/throndir2/Martlet/pull/1013))
 
 ## [0.88.2] - 2026-10-17
 

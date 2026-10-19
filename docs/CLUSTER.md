@@ -66,8 +66,10 @@ are the exception: they are always shared, so Martlet learns everyone's voice
   `max(newest revision known + 1, current Unix milliseconds)`, and the writer's
   device ID. Merging keeps, per job and per host, the entry with the highest
   (revision, writer, content). The merge is commutative, associative and
-  idempotent, so every copy converges whatever order changes arrive in; a
-  computer with a fast clock cannot make later changes lose.
+  idempotent, so every copy converges whatever order changes arrive in. A
+  computer that already saw a newer change always stamps above it; but two
+  changes made without seeing each other are ordered by each computer's own
+  clock, so a computer whose clock runs ahead can win over a later change.
 - The plan holds no secrets or conversation data: host IDs, HTTPS origins,
   model names, flags and stamps only. JSON, snake case, schema 1, at most
   16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.- **Background work across computers** is the speaking computer's own choice,
@@ -653,7 +655,9 @@ to *different* settings made on different computers are all kept.
   and stamped then. This happens even while sync is off or no host answers, so
   an edit made offline keeps its time and wins only if nothing newer was
   changed elsewhere meanwhile. The same setting edited offline on two
-  computers ends as the later edit everywhere.
+  computers ends as the edit with the later stamp everywhere. The stamps come
+  from each computer's clock, so when one computer's clock runs ahead, its
+  older edit can win; keep the computers' clocks set automatically.
 - **Following** a newer setting goes through the same rules as Martlet's own
   pages: a key this PC already has for that provider is used again, a replaced
   key the owner typed on this PC is set aside and listed under *Keys from
@@ -667,7 +671,9 @@ to *different* settings made on different computers are all kept.
   path, a job a paired host does now, Home Assistant not connected here yet,
   emotes and motions while the Thinking model names them here) keeps its
   current value and is tried on every check; *Settings for all devices* lists
-  it with why, and it is never shared back as this PC's choice.
+  it with why, and it is never shared back as this PC's choice. A setting that
+  was applied but reads back differently is tried again after 1 minute, then
+  after longer pauses up to 30 minutes.
 - **A failed push** is not lost: the change is in this PC's copy and goes to
   every host whose copy differs on the next check; a host that was off gets it
   when it answers again, and a restarted host serves its saved copy.

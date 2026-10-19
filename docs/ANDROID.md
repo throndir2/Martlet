@@ -16,7 +16,7 @@ already own**, old phones and tablets included:
   becomes a room microphone/speaker, a voice host or a cloud-backed companion.
 
 This is a separate post-MVP track. It does not change the Windows product or
-promise a cross-platform desktop ([non-goals](../DEVELOPMENT_PLAN.md#explicit-non-goals-for-mvp)).
+promise a cross-platform desktop ([Platforms](PLATFORMS.md)).
 
 ## Short answer
 

@@ -29,7 +29,7 @@ older Intel Macs, as part of "make use of any old hardware a user has":
 This builds on the [iOS and iPadOS plan](IOS.md): the same Swift package
 (`MartletKit`), the same C#-generated conformance vectors (IO01) and the same
 Swift host (IO03). It is a separate post-MVP track and does not change the
-Windows product ([non-goals](../DEVELOPMENT_PLAN.md#explicit-non-goals-for-mvp)).
+Windows product ([Platforms](PLATFORMS.md)).
 
 ## Short answer
 

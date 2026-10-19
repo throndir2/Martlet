@@ -495,6 +495,6 @@ file/native/HTTP boundaries, not personal profiles, microphones, outputs, accoun
 or vaults. Native apphost smoke opens Troubleshooting passively with all effects
 off. Physical audio, real API/account quality/cost, real vault roundtrip, clean-VM
 install/upgrade/uninstall, signing, rights, novice trials and G2 remain **NOT RUN /
-NOT PASSED**. Repository readers can also consult [delivery](DELIVERY.md) and
-the [engine contract](../src/Martlet.Support/README.md); those additional
-repository documents are not part of the installed help folder.
+NOT PASSED**. Repository readers can also consult
+the [engine contract](../src/Martlet.Support/README.md); that additional
+repository document is not part of the installed help folder.

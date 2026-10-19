@@ -36,6 +36,33 @@ The page looks for apps when it opens. **Look again** looks again. Looking
 asks only this PC's loopback address (127.0.0.1), never the network, and it
 starts or installs nothing.
 
+## A model file you downloaded
+
+To think with a GGUF file that you downloaded yourself (from Hugging Face, or
+one that LM Studio keeps in its models folder), use the Ollama card:
+
+1. Open **Companion › Thinking › This PC**.
+2. On the *Ollama on this PC* card, choose **Use a model file you
+   downloaded...**.
+3. Choose the `.gguf` file. For a model in several parts
+   (`name-00001-of-00003.gguf`), choose any part: Martlet adds all of them.
+4. Confirm. Martlet adds the file to Ollama as a model named after the file
+   (`Qwen3-8B-Q4_K_M.gguf` becomes `qwen3-8b-q4_k_m`), loads it, switches
+   Thinking to it and tests it.
+
+When the folder has one `mmproj` file next to the model, Martlet adds it too,
+so the model can see. Ollama keeps its own copy of the files, so you can
+delete your download afterwards. The model then shows in the Ollama list like
+any other. The file and the model stay on this PC; Martlet saves nothing about
+the file.
+
+## Models your apps already run, in Recommended setup
+
+While *Use models your apps already run* is on, the Recommended setup review
+lists the chat models that the model apps on this PC serve. Martlet plans with
+the best one that fits, and each one also has **Think with it**: choose it to
+switch Thinking to that model now. Recommended setup then keeps your choice.
+
 ## Apps Martlet finds by itself
 
 Martlet asks each default address for the app's model list

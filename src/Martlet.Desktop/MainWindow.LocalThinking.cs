@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -8,6 +9,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Presentation;
 using Martlet.Providers;
+using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
@@ -55,11 +57,75 @@ public partial class MainWindow
             $"Recommended: {recommended.Id}, the fastest. Bigger models are smarter but slower.", new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
 
+        // Use a model file you downloaded: a GGUF from Hugging Face, LM Studio's folder or anywhere else becomes an Ollama model.
+        var addFile = Row(PageButton("Use a model file you downloaded...", () => AddOllamaModelFileAsync().Forget(), id: "SetupAddModelFile"));
+        var addFileNote = Note("Choose a GGUF file on this PC. Martlet adds it to Ollama, with its mmproj file when it is in the same " +
+            "folder so the model can see, then thinks with it.", new Thickness(0, 4, 0, 8));
+        AutomationProperties.SetAutomationId(addFileNote, "SetupAddModelFileNote");
+
         return Card(Heading("Ollama on this PC"),
             Note("Ollama runs a local conversation model. Your messages stay on this PC, with no API key or per-request cost.", new Thickness(0, 0, 0, 8)),
             status,
             suggestion,
+            addFile,
+            addFileNote,
             OptionPickerBody("OllamaModel", options));
+    }
+
+    /// <summary>Use a model file you downloaded: the owner picks GGUF files, Martlet puts them into this PC's Ollama under a name
+    /// made from the file name (<see cref="OllamaModelImport"/>) in a run window, then switches Thinking to that model the way
+    /// Use Ollama on this PC does (it loads first). Nothing is saved about the file: the model lives in Ollama on this PC.</summary>
+    private async Task AddOllamaModelFileAsync()
+    {
+        if (Prerequisites.IsMissing(Prerequisites.Ollama))
+        {
+            ActionText.Text = "Install Ollama first: choose a model below and Install Ollama and use it. Then add your model file.";
+            return;
+        }
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Use a model file you downloaded", Filter = "GGUF model files (*.gguf)|*.gguf", CheckFileExists = true, Multiselect = true
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        IReadOnlyList<string> files;
+        string? projector;
+        try { files = OllamaModelImport.Files(dialog.FileNames, out projector); }
+        catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            ActionText.Text = error.Message;
+            return;
+        }
+        var model = OllamaModelImport.NameFor(files[0]);
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        var gb = OllamaModelImport.Bytes(files) / 1e9;
+        var names = string.Join(", ", files.Select(Path.GetFileName));
+        if (!ConfirmationDialog.Confirm(this,
+                $"Add {names} to Ollama on this PC as {model}, then switch Thinking to it?" +
+                (projector is null ? "" : $"\n\n{Path.GetFileName(projector)} was in the same folder, so it comes too: it lets the model see.") +
+                $"\n\nOllama keeps its own copy (about {gb:0.0} GB more on this PC). You can delete your file afterwards. " +
+                "The model's own license applies.",
+                "Add and switch", questionId: "AddModelFileQuestion"))
+        {
+            ActionText.Text = "Nothing changed.";
+            return;
+        }
+        ErrorLog.Info($"Thinking: adding {files.Count} model file(s) to Ollama on this PC as {model}.");
+        ActionText.Text = $"Adding {model} to Ollama...";
+        var done = await HostRunWindow.RunAsync(this, $"Add {model} to Ollama", async run =>
+        {
+            await LocalOllama.ImportAsync(model, files, run.Status, run.Output, run.Token);
+            return $"{model} is in Ollama on this PC.";
+        }, join: true);
+        if (closing) return;
+        if (done is null)
+        {
+            ActionText.Text = $"{model} wasn't added to Ollama. The run window says why.";
+            return;
+        }
+        await CheckOllamaAsync(quiet: true);
+        if (closing) return;
+        if (await SaveLocalThinkingAsync(model, confirmed: true) && !closing) await TestLocalModelAsync(model);
     }
 
     /// <summary>The shown Ollama model's controls: for Another Ollama model (<paramref name="fixedModel"/> null) the name box,

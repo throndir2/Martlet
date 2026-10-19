@@ -1,16 +1,20 @@
-# Windows packaging (internal and unsigned public-release lanes)
+# Windows packaging and the release workflow
 
-**Internal lane: INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
-F02/AC-02/G1 gate.** This packages V04b real explicit typed / push-to-talk app
-integration alongside the Desktop status experience and Doctor status command.
-Opening the app or conversation window does not authorize requests, credential
-lookup or device access. Saved configuration is not live API/account/model readiness.
-Desktop V07a adds explicit same-profile configuration backup/previewed restore,
-not a diagnostic ZIP or installer updater. Transactional binary upgrades,
-rollback and signed distribution remain unimplemented.
-Internal builds have no end-user license grant; the narrow grant for official
-Release binaries is separate.
-The existing foundation/planning documents retain their broader future gates.
+This folder builds Martlet's Windows installer. It has two lanes:
+
+- **Public release lane** (`Build-PublicRelease.ps1`): the unsigned per-user
+  installer `Martlet-<version>-win-x64.exe` that every GitHub release ships.
+  Unsigned installers are actual, normal releases; code signing is not
+  required for this personal project.
+- **Internal lane** (`Publish-Windows.ps1`, `Build-Installer.ps1`): a separate
+  internal development installer with its own AppId and channel. It has no
+  end-user license grant. Never upload it as a release.
+
+The installed Desktop updates itself: it checks GitHub releases while it runs
+and installs a newer release when the user chooses to, or by itself when
+automatic installation is on. The update runs in two steps (`/STAGE=prepare`
+and `/STAGE=finish` in `Martlet.iss`): Martlet closes, the newer installer
+runs and Martlet starts again.
 
 The desktop executable, its Start menu shortcut and the installer use the original
 pink Martlet bird icon. The shared WPF window style also sets it explicitly, so
@@ -21,11 +25,11 @@ Artwork and favicon-ready SVG/PNG/ICO assets live in
 
 ## Public release build (manual dispatch)
 
-`.github\workflows\windows-release.yml` has **only** `workflow_dispatch`; it
-cannot run on a push, PR, tag or schedule. There is **no hosted build-only
-mode**, Actions artifact or upload/download handoff. Build-only work stays
-local, using the command below. The single Windows runner runs no test, lint,
-scan, smoke, repeat-publish or qualification job.
+`.github\workflows\windows-release.yml` (*Release (manual) - Windows, Linux and
+macOS*) has **only** `workflow_dispatch`; it cannot run on a push, PR, tag or
+schedule. It builds and publishes a release and runs no test, lint, scan,
+smoke, repeat-publish or qualification job. Validation stays local
+([Validating changes](../../docs/VALIDATION.md)).
 
 Agents and the owner may dispatch a release without further approval:
 
@@ -37,19 +41,64 @@ The `version` input must equal `<Version>` in `Directory.Build.props` on `main`,
 must not already have a `v<version>` tag, and `CHANGELOG.md` must have a
 `## [<version>] - <date>` section with at least one entry; bump the version and
 date the changelog in a normal release PR before each new release (see
-[Changelog and release notes](../../AGENTS.md#changelog-and-release-notes)). The job runs only from `main` of the public repository
-and on the first attempt. Before restoring dependencies it checks the version,
-the release notes (`scripts\Get-ReleaseNotes.ps1`), the dispatched `main` commit, tag absence and the binary-use grant. The runner
-then uses the exact SDK, Node/npm lock and reviewed Inno compiler to restore,
-compile and package once, checks the clean installer receipt and SHA-256,
-creates `v<version>` at the still-current `main` commit, uploads assets to a
-**draft** GitHub release and publishes it as the latest normal release, titled
-`Martlet <version>`, with that changelog section as its *What's new* notes,
-only if the uploads succeed, GitHub reports the expected
-asset SHA-256, and the tag still points at the built commit. If a step fails
-after tag creation, inspect and delete the tag/draft before dispatching again;
-never move a tag. A release build does not establish clean-machine
-install/upgrade/rollback, device or provider qualification.
+[Changelog and release notes](../../AGENTS.md#changelog-and-release-notes)).
+All jobs run only from `main` of the public repository.
+
+### The four jobs
+
+1. **release** (`windows-2025`, first attempt only). Before it restores
+   dependencies, it checks the version, the release notes
+   (`scripts\Get-ReleaseNotes.ps1`), the dispatched `main` commit, that the tag
+   is absent and the binary-use grant. Then it uses the exact SDK, Node 20.11.1,
+   the npm lock and the reviewed Inno compiler to restore, compile and package
+   one time, and checks the clean installer receipt and SHA-256. It creates
+   `v<version>` at the still-current `main` commit and uploads the installer,
+   `installer-manifest.json` and `SHA256SUMS.txt` to a **draft** release titled
+   `Martlet <version>`, with the changelog section as its *What's new* notes. It
+   checks that GitHub reports the expected installer SHA-256 and that the tag
+   still points at the built commit. The release stays a draft.
+2. **linux** (`ubuntu-24.04`, in parallel). With Node 20.11.1 it runs
+   `packaging/linux/build-linux.sh` for x64 and arm64 and uploads the AppImage
+   and `.deb` files as the `linux-packages` Actions artifact (kept one day).
+3. **macos** (`macos-26`, in parallel). With Node 20.11.1 it runs
+   `packaging/macos/build-macos.sh` for Apple silicon and Intel, with the Mac
+   host inside the app, and uploads the `.dmg` files as the `macos-packages`
+   artifact (kept one day).
+4. **attach** (`ubuntu-24.04`, after the other three). It downloads both
+   artifacts, checks that the draft exists and that the tag points at the
+   built commit, and uploads the six Linux and macOS files. It replaces
+   `SHA256SUMS.txt` with one file for all eight files, checks that GitHub
+   reports every expected SHA-256, and appends the Linux and macOS install text
+   and the SHA-256 lines to the notes. Only then does it publish the release as
+   Latest. Users and the in-app updater never see a release without all files.
+
+The Linux and macOS scripts run `npm ci`, build the character renderer again
+with the Live2D SDK required, and stop when `character/app.js`,
+`character/live2d/sdk/core.js` or a license notice is missing. They put
+Martlet's `LICENSE`, the .NET runtime notices and the complete license of every
+NuGet package (`packaging/collect-notices.py`) in each package: see
+[Linux and macOS installers](../../docs/DESKTOP_LINUX_MACOS.md#installers-part-of-the-release-build).
+
+### When a release run fails
+
+- **linux, macos or attach failed:** the release is still a draft, so users do
+  not see it. If the cause is not in the code (for example a failed download
+  or a runner problem), open the failed run on GitHub and choose **Re-run
+  failed jobs** within one day, while the artifacts are kept. Do not choose
+  *Re-run all jobs*: the release job runs only on the first attempt, so attach
+  is skipped. A re-run of attach is safe: it replaces files with `--clobber`,
+  rebuilds `SHA256SUMS.txt` from the Windows lines and replaces its own notes
+  section.
+- **The cause is in the code, or the release job failed after it created the
+  tag:** delete the draft release and the `v<version>` tag, merge the fix, and
+  dispatch again. Never move a tag.
+- **Only the notes are wrong:** fix `CHANGELOG.md` in a normal PR and use
+  `gh release edit v<version> --notes-file <file>`. Do not dispatch again.
+
+After the run, confirm on GitHub that `v<version>` is Latest, that it has all
+eight files and that its notes show the changelog entries.
+
+### Build the public installer locally
 
 To exercise the public packaging path **locally** without uploading, run from
 the repository root on Windows x64 with PowerShell 7:
@@ -73,13 +122,14 @@ The manifest's full assembly file version is four-part (`0.1.0.0`); the public
 installer and tag use the three-part release version (`0.1.0`). The Desktop
 updater reads the release list and offers the highest numbered normal
 (non-draft, non-prerelease) version. The GitHub asset digest is produced on
-upload; `SHA256SUMS.txt` binds the local installer and receipt but is not
-publisher authentication.
+upload; `SHA256SUMS.txt` lists every release file but is not publisher
+authentication.
 
-The GitHub updater downloads only after user consent and verifies a same-origin
-digest; it does not install the download. Windows may warn about an unknown
-publisher. The existing Updates library's separate signed ZIP/envelope remains
-unsupported by this installer, and rollback qualification has not been performed.
+The updater downloads only after user consent (or with automatic installation
+turned on) and checks the GitHub asset digest before it runs the installer.
+Windows may warn about an unknown publisher. The separate signed ZIP/envelope
+format of the Updates library (`src\Martlet.Updates`) is not used by this
+installer.
 
 ## Quick installer, first-run setup and the prerequisites tool
 
@@ -108,10 +158,11 @@ installer asks on its own.
 The full list of what is bundled, offered or user-supplied is in
 [docs/PREREQUISITES.md](../../docs/PREREQUISITES.md).
 
-**Local qualification is optional for this prototype** (owner policy,
-2026-09-26). This host once saw a pinned `esbuild.exe` crash (`0xc0000005`);
-a locked reinstall resolved it. Never skip the real renderer build, and report
-unrun clean-Windows install/upgrade/rollback checks as NOT RUN.
+The full local packaging checks below are optional for a normal change; run
+them when a change touches packaging. This host once saw a pinned
+`esbuild.exe` crash (`0xc0000005`); a locked reinstall resolved it. Never skip
+the real renderer build, and report unrun clean-Windows
+install/upgrade/rollback checks as NOT RUN.
 
 ## Local internal development build
 
@@ -646,36 +697,33 @@ included with the payload. Microsoft runtime licenses and full upstream notices
 are also retained. This is a dependency inventory, not a release SBOM or a grant
 over Martlet code.
 
-## Evidence boundary and required VM follow-up
+## Evidence boundary
 
-Full payload gates (two locked self-contained publishes, native CLI/WPF smoke,
-integrity/negative coverage, repeat-publish equality and real Inno compilation)
-are available on the Windows developer host but are not required per change
-during the prototype phase. The former dedicated hosted lane is removed.
-These developer commands neither install Martlet nor upload releases/artifacts.
-A minimal remote build/release workflow may package and publish releases but
-must not absorb these validation gates.
+The full payload checks (two locked self-contained publishes, native CLI/WPF
+smoke, integrity/negative coverage, repeat-publish equality and real Inno
+compilation) run on the Windows developer host. Run them when a change touches
+packaging; a normal change needs only its targeted tests
+([Validating changes](../../docs/VALIDATION.md)). These commands neither
+install Martlet nor upload releases or artifacts. The release workflow must not
+absorb them.
 
-**Not run:** clean standard-user Windows with no SDK/preinstalled .NET; actual
-install/uninstall/reinstall/repair; Start menu/registered uninstall operation;
-long consumer account paths; disk-full/cancel/locked-file scenarios;
-interrupted upgrades or rollback; SmartScreen/reputation/signing; novice or
-screen-reader qualification; denied-egress or live provider/audio qualification.
-For V04b, **real API/account or vault effects, physical microphone/speaker
-trials, clean-Windows installation, live first trial, signing and release are
-NOT RUN**. Deterministic fake-port tests are not those
-external trials; implemented app controls are not evidence that they passed.
-No isolated consumer VM was supplied. Never use this shared developer host as
-a disposable install test or install into its real app/data locations.
+No automated check covers these, so report them as **NOT RUN** when a change
+depends on them: a clean standard-user Windows with no SDK or preinstalled
+.NET; actual install, uninstall, reinstall and repair; the Start menu and the
+registered uninstaller; long account paths; disk-full, cancel and locked-file
+cases; an interrupted update; SmartScreen reputation; screen-reader use; and
+live provider or audio use. Deterministic fake-port tests are not those
+checks. Never use this shared developer host as a disposable install test or
+install into its real app or data locations.
 
-In a separately authorized disposable Windows 11 25H2 x64 VM, record exact OS,
-installer/hash and account; exercise clean standard-user install, launch via
-both shortcuts, profile creation, same-version reinstall and registered
-uninstall. Verify profile bytes survive and no unwanted startup/firewall/
-privileged changes occur. Then add failure/long-path/version scenarios and
-signed-release gates under V07. Until those pass, this remains an internal
-skeleton regardless of green compilation.
-# Explicit protected-data smoke scope (V06b)
+To check an installer by hand, use a disposable Windows 11 25H2 x64 VM. Record
+the exact OS, the installer and its SHA-256, and the account. Do a clean
+standard-user install, start Martlet from both shortcuts, create a profile, do
+a same-version reinstall and use the registered uninstaller. Make sure the
+profile bytes survive and that no unwanted startup, firewall or privileged
+change occurs.
+
+## Explicit protected-data smoke scope
 
 `Smoke-Package.ps1` and `Test-WorkflowExit.ps1` accept an optional
 `-ProtectedDataDirectory ABSOLUTE_LOCAL_DIRECTORY`. Use a separate test-owned

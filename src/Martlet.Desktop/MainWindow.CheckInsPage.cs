@@ -62,7 +62,9 @@ public partial class MainWindow : ICheckInsPageServices
     /// saved the settings meanwhile.</summary>
     async Task<bool> ICheckInsPageServices.SavePromptsAsync(IReadOnlyDictionary<string, string> edits, Action saved)
     {
-        if (store is null || setupService is null || closing) return true;
+        if (store is null || setupService is null) return true;
+        // Closing has begun: the change is not saved, so it still counts as waiting.
+        if (closing) return false;
         ChangeTurns.Turn? turn = null;
         var token = lifetime.Token;
         try

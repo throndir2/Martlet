@@ -1095,10 +1095,11 @@ public partial class MainWindow
             TextBlock? label = null;
             if (index == 0)
             {
+                var (text, back) = TouchZoneLabelColors.For(color, SystemParameters.HighContrast);
                 label = new TextBlock
                 {
-                    Text = zone.Name, Foreground = Brushes.White, FontSize = 10, Padding = new Thickness(2, 0, 2, 0), TextWrapping = TextWrapping.NoWrap,
-                    Background = new SolidColorBrush(Color.FromArgb(0xC0, color.R, color.G, color.B)), VerticalAlignment = VerticalAlignment.Top,
+                    Text = zone.Name, Foreground = text, FontSize = 10, Padding = new Thickness(2, 0, 2, 0), TextWrapping = TextWrapping.NoWrap,
+                    Background = back, VerticalAlignment = VerticalAlignment.Top,
                     HorizontalAlignment = HorizontalAlignment.Left, IsHitTestVisible = false
                 };
             }

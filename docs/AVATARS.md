@@ -1786,5 +1786,4 @@ executable update/rollback readiness follows from this metadata compatibility.
 
 G2 voice reliability and G5 avatar release remain
 intact; neither G2 nor G4 blocks independent avatar development. All execution
-and review are local. [Delivery](DELIVERY.md#m5-optional-avatar) owns
-A01-A03, AC-17 and new AC-27-AC-32; AC-18-AC-26 retain existing meanings.
+and review are local.

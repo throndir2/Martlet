@@ -161,12 +161,47 @@ public sealed class AccountLocksTests : IDisposable
     }
 
     [Fact]
-    public void A_damaged_file_starts_with_nothing_set()
+    public void A_damaged_file_fails_closed_until_a_sign_in_repairs_it()
     {
         var store = Store();
         store.SetPin(sam, "1234", null);
         File.WriteAllText(store.PathFor(sam), "{ not json");
-        Assert.Empty(store.Load(sam).Methods);
+        var damaged = store.Load(sam);
+        Assert.Empty(damaged.Methods);
+        Assert.True(damaged.Damaged);
+        Assert.True(damaged.NeedsUnlock(windowsLoginOfThisPc: true));
+        // A change never overwrites it, so a PIN and wrapped keys in a file only held by another program aren't lost.
+        Assert.Throws<InvalidOperationException>(() => store.Change(sam, l => l with { Remember = false }));
+        Assert.Equal(AccountUnlockStatus.NotSet, store.Unlock(sam, AccountUnlockMethod.Pin, "1234").Status);
+
+        Assert.True(store.Repair(sam));
+        Assert.True(File.Exists(store.PathFor(sam) + ".damaged"));
+        Assert.False(store.Load(sam).Damaged);
+        Assert.False(store.Load(sam).NeedsUnlock(windowsLoginOfThisPc: true));
+        Assert.False(store.Repair(sam));
+    }
+
+    [Fact]
+    public void Another_accounts_file_fails_closed()
+    {
+        var store = Store();
+        store.SetPin(Guid.NewGuid(), "1234", null);
+        var other = Directory.GetFiles(store.Directory).Single();
+        File.Copy(other, store.PathFor(sam));
+        Assert.True(store.Load(sam).NeedsUnlock(windowsLoginOfThisPc: true));
+    }
+
+    [Fact]
+    public void A_file_another_program_holds_fails_closed_and_is_not_repaired()
+    {
+        var store = Store();
+        store.SetPin(sam, "1234", null);
+        using (new FileStream(store.PathFor(sam), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.True(store.Load(sam).Damaged);
+            Assert.False(store.Repair(sam));
+        }
+        Assert.Equal(["pin"], store.Load(sam).Methods);
     }
 
     public void Dispose()
@@ -258,6 +293,21 @@ public sealed class AccountVaultTests : IDisposable
             Assert.Equal(2, result.Done);
         }
         Assert.Equal((2, 1), AccountVault.Count(folder));
+    }
+
+    [Fact]
+    public void A_seal_and_an_unseal_at_the_same_time_never_lose_a_file()
+    {
+        var key = AccountVault.NewKey();
+        for (var i = 0; i < 40; i++) File.WriteAllText(Path.Combine(folder, $"note{i}.txt"), $"note {i}");
+        for (var round = 0; round < 20; round++)
+        {
+            Parallel.Invoke(() => AccountVault.Seal(folder, key), () => AccountVault.Unseal(folder, key));
+            AccountVault.Unseal(folder, key);
+            Assert.Equal((0, 43), AccountVault.Count(folder));
+        }
+        for (var i = 0; i < 40; i++) Assert.Equal($"note {i}", File.ReadAllText(Path.Combine(folder, $"note{i}.txt")));
+        Assert.Equal("{\"name\":\"Sam\"}", File.ReadAllText(Path.Combine(folder, "settings.json")));
     }
 
     [Fact]

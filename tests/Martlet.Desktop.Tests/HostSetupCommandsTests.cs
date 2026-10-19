@@ -728,4 +728,20 @@ public sealed class HostSetupCommandsTests
         Assert.Contains("Thinking pool (3 thinks at once)", HostControl.Describe(offers, routes));
         Assert.DoesNotContain("at once", HostControl.Describe(offers, [routes[0], Route(routes[1].RouteId, 1)]));
     }
+
+    [Theory]
+    [InlineData("user@")]
+    [InlineData("user@:22")]
+    [InlineData("user@ ")]
+    [InlineData("user@bad_name!")]
+    public async Task An_ssh_target_without_a_usable_host_name_fills_no_address(string target) =>
+        Assert.Null(await HostSetupCommands.ResolveAsync(target, CancellationToken.None));
+
+    [Fact]
+    public async Task A_too_long_ssh_host_name_fills_no_address_instead_of_failing() =>
+        Assert.Null(await HostSetupCommands.ResolveAsync("user@" + new string('a', 300), CancellationToken.None));
+
+    [Fact]
+    public async Task A_private_literal_address_fills_the_address() =>
+        Assert.Equal("192.168.1.20", await HostSetupCommands.ResolveAsync("me@192.168.1.20:22", CancellationToken.None));
 }

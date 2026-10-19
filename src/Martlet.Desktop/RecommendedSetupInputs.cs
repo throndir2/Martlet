@@ -462,6 +462,17 @@ internal static class RecommendedSetupInputs
                 SizeGb = s.SizesGb.TryGetValue(model, out var gb) && gb > 0 ? gb : null
             }))];
 
+    /// <summary>The chat models the owner's model apps serve, once each, biggest first: the order the Recommended setup review
+    /// lists them in, each with Think with it.</summary>
+    internal static IReadOnlyList<ServedModel> ServedOrder(IEnumerable<ServedModel> served) =>
+        [.. served.Where(m => ServedModels.Chats(m.ModelId)).DistinctBy(m => (m.ModelId, m.AppId))
+            .OrderByDescending(m => ServedModels.Gb(m) ?? 0).ThenBy(m => m.ModelId, StringComparer.OrdinalIgnoreCase)];
+
+    /// <summary>"qwen3:32b in LM Studio (about 21 GB)".</summary>
+    internal static string ServedLine(ServedModel m) =>
+        $"{m.ModelId} in {(m.AppName.Length > 0 ? m.AppName : "your model app")}" +
+        (ServedModels.Gb(m) is { } gb ? $" (about {gb.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} GB)" : "");
+
     /// <summary>The Thinking pool's online members that are on (an HTTPS endpoint, not a model app on this PC), in words:
     /// "moonshotai/kimi-k3 on NVIDIA Build".</summary>
     internal static IReadOnlyList<string> OnlinePool(ThinkingPoolSettings pool)

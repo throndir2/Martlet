@@ -81,6 +81,10 @@ internal sealed partial class DiscordService : IDiscordCaller
         Bot.Commands.Add(DiscordCommands.Slash("call", "Martlet calls one of its friends (owner only)",
             new ApplicationCommandOptionProperties(ApplicationCommandOptionType.String, "person", "The friend's name") { Required = true, MaxLength = 64 }),
             CallCommandAsync);
+        Bot.Changed += status =>
+        {
+            if (status.State is DiscordBotState.Off or DiscordBotState.Failed) friends.CancelPending();
+        };
         Bot.Ready += client =>
         {
             friends.Transport = new NetCordCompanionTransport(client);

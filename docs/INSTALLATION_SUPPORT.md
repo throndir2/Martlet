@@ -1,50 +1,47 @@
-# Installation and support design
+# Installation and support
 
-The [five-engine Voice Studio plan](VOICE_STUDIO.md) expands optional
-self-hosted speech beyond F5. Its guided experience isolates each engine's
-dependencies, distinguishes installation/loading/voice preparation, and allows
-reference or training-material import followed by A/B previews before Apply.
+This document tells how Martlet installs, sets up, updates and gets support
+on Windows, and how it sets up and runs hosts. Most sections describe what
+Martlet does today. Some sections give the rules that host and lifecycle work
+must follow, and they say when a part is not implemented. Version and hardware
+combinations are targets until there is recorded qualification evidence.
+
+What Martlet does today:
+
+- **Install.** A per-user Inno Setup installer from the GitHub releases page
+  (see the [packaging scripts](../packaging/windows/README.md)). The installer
+  is not code-signed. It asks no setup questions and installs no
+  prerequisites. At the end, it offers to start Martlet.
+- **First start.** The [welcome tour](WELCOME_WIZARD.md) asks whether Martlet
+  is already on another of your computers, reads this PC's hardware, asks three
+  short questions and suggests a setup. One confirmation applies it. Downloads,
+  installs and key consent are still asked separately.
+- **Set up each job.** Thinking, Listening and Voice each have their own
+  Companion page. See [Setup, Windows credentials and local audio](SETUP.md).
+  [Conversation](CONVERSATION.md) tells how the saved choices are used.
+- **Update.** Martlet looks for newer releases on GitHub while it runs and
+  offers them to you. It checks the download against the GitHub SHA-256
+  digest, closes, runs the newer installer and starts again. See
+  [In-app updates](#in-app-updates).
+- **Get help.** [Troubleshooting](TROUBLESHOOTING.md) shows status and
+  remedies. Local metadata recording is off until you start it. You can
+  preview and export a local ZIP. There is no support contact, no upload
+  channel and no CLI export.
+- **Hosts.** [`martlet-host`](../deploy/host/README.md) sets up and pairs a
+  host computer and adds or removes its roles.
+
+The [Voice Studio plan](VOICE_STUDIO.md) adds more self-hosted voice engines.
 F5 voices are implemented: Companion > Voice > Voices adds recordings and
-switches between them. Other engines' installation and execution, training and
-previews remain later slices, not enabled services or qualified setup.
+switches between them. The other engines, training and A/B previews are
+later work.
 
-The implemented [V06b Desktop troubleshooting path](TROUBLESHOOTING.md) now
-provides passive shared status/remedies, explicit local metadata recording and
-frozen preview/default-No consent/local ZIP export. There is no configured
-support contact/upload channel and no CLI export. The broader specification
-below remains a target, not a claim that those services are available.
-
-**Future product specification, not an end-user installation guide.**
-The [foundation](FOUNDATION.md) implements a narrow local status CLI and WPF
-shell. The current [internal packaging recipe](../packaging/windows/README.md)
-now provides a self-contained payload/unsigned installer build and real Desktop/
-Doctor status commands. The broader host utilities, live setup and qualified
-installation journey below remain future work. Do not run
-privileged setup or download models as part of implementing this documentation.
-See [delivery](DELIVERY.md) for gates and [architecture](ARCHITECTURE.md) for
-contracts and privacy. All version/hardware combinations below are targets
-until recorded qualification evidence exists.
-
-The configuration-only [V02a setup slice](SETUP.md) implements resumable
-Choice/Destinations/Credentials/Review checkpoints and explicit Windows vault
-actions. V02b additionally implements explicit local input/output selection,
-bounded actual-amplitude capture tests, synthetic-tone output tests and scoped
-human audibility confirmation. These are historical local observations, not
-physical qualification, capabilities, first response or novice readiness, and
-do not authorize live API use. The rest of this storyboard remains a target.
-
-[V04b's explicit API conversation guide](CONVERSATION.md) now provides the
-implemented typed/text-only, optional voice and PTT flow, exact supported
-models/bounds, actionable same-engine remedies and a separately authorized
-manual first-conversation checklist. It joins the existing setup and local
-audio choices without changing installer permissions or introducing background
-listening. This functional integration is not a witnessed account/device/novice
-trial, clean Windows installation or signing/release qualification.
+Do not run privileged setup or download models when you only change this
+document. See [architecture](ARCHITECTURE.md) for contracts and privacy.
 
 ## 1. One Windows golden path
 
-The internal [H05c-A configuration publisher](../src/Martlet.Host.Setup/README.md#selected-role-configuration-publication-h05c-a)
-now binds selected host/owner roles to verified OCI-byte observations and writes
+The internal [configuration publisher](../src/Martlet.Host.Setup/README.md#selected-role-configuration-publication-h05c-a)
+binds selected host/owner roles to verified OCI-byte observations and writes
 reviewed owned configuration revisions. Its partial service fragments and
 missing-recipe findings are **not runnable Compose, installation completion or
 runtime permission**. The [next service/recipe and supervision work](../deploy/ubuntu/compose/README.md)
@@ -55,7 +52,7 @@ Target Windows 11 25H2 x64 Home/Pro on a currently serviced patch. Test a clean
 standard-user account with no Git, Python, Node, Docker, developer SDK, or
 preinstalled .NET required by Martlet. The app bundles its selected .NET runtime
 and necessary redistributable native dependencies. No desktop inference GPU is
-required for P1. Windows 24H2 is a compatibility candidate only while its edition
+required when the jobs use an API. Windows 24H2 is a compatibility candidate only while its edition
 is serviced; it is close to Home/Pro end-of-servicing at the research date
 ([S03](RESEARCH.md#s03)). The installer accepts any x64 Windows 10 2004
 (build 19041) or newer and Windows 11 on Arm (the x64 build under Windows' x64
@@ -82,32 +79,38 @@ SmartScreen/policy issues are support cases: do not tell users to disable
 antivirus or bypass Windows protection. Internal-unsigned artifacts must not
 be mislabeled as public releases; they have distinct identities.
 
-A self-contained ZIP is a developer/support diagnostic artifact only in M1-M2,
-not a promised fully portable mode. If supported later, specify what remains in
+Martlet has no portable mode. A self-contained ZIP, when one is built, is a
+developer and support diagnostic artifact only. If a portable mode is added, specify what remains in
 Credential Manager/AppData, absence of automatic updates/uninstall registration,
 and version coexistence. Do not silently store credentials next to a portable EXE.
 
-### First-run storyboard and resumable state
+### First start and resumable state
 
-| Step | User experience | Persisted checkpoint / probe |
-| --- | --- | --- |
-| 1. Download/install | Release page states supported OS, that the installer is not code-signed, size, no-GPU API option, and planned costs | Verify official GitHub origin, exact version and asset SHA-256, OS/architecture, free disk, standard-user writeability; preserve Windows warnings and display install failure code/log location |
-| 2. Welcome | Choose **Try fixture demo**, **Use an API provider**, or **Connect existing endpoints**; "No avatar" is normal | Profile and onboarding schema version; no credential or network call needed for demo |
-| 3. Explain data | Show mic -> STT destination, text -> LLM, response -> TTS; screen off; memory on by default (facts saved on this PC, one extra LLM request per exchange to pick them out); generated voice disclosure | Explicit consent per role/destination; not one blanket analytics checkbox |
-| 4. Configure provider | Select known preset or named endpoint adapter; show HTTPS origin, model and current pricing/retention links | Save role routes; validate URL without sending secrets to arbitrary redirects |
-| 5. Credentials/pairing | Paste key once in protected field or pair with host; never require editing `.env` | Store OS credential reference, not secret in config; prove retrieval after restart |
-| 6. Microphone | Explain Windows microphone privacy controls, desktop-app access, input selection and local level meter; capture only on Test | Fixed endpoint or default-follow policy; permission/device probe; no cloud upload from the meter |
-| 7. Output | Choose headset/output, safe-volume tone and local consented sample playback; confirm heard | Format/open/playback probe; test requires no TTS provider |
-| 8. Capabilities | Verify configured STT/LLM/TTS operations, model access, voice and limits; show warming vs ready | Timestamped results; user explicitly approves small potentially billable inference tests |
-| 9. First response | Prompt a short PTT utterance; show stages and play the returned voice | End-to-end real-turn result, trace ID, stage latency; user confirms audibility |
-| 10. Ready | Explain Stop, mic mute, pause-all, tray/Exit, diagnostics, and optional name mode | Onboarding complete, chosen name/personality; avatar remains disabled |
+1. **Download and install.** The release page names the supported Windows
+   versions and says that the installer is not code-signed. Windows can warn
+   about an unknown publisher. Martlet never tells you to turn off that warning.
+2. **Welcome tour.** The [welcome tour](WELCOME_WIZARD.md) starts on a computer
+   that has not chosen its role yet. It asks whether Martlet is already on
+   another of your computers: start a new network, join one, or let this PC
+   only lend its power as a host. Then it reads this PC's graphics card, memory
+   and processor, and asks three questions: games, free online services and
+   reply quality. It suggests where each job runs and shows the share of this
+   PC that each part uses. When Thinking goes to NVIDIA Build, it helps you get
+   and save a free key. One confirmation applies the suggestion. Downloads,
+   installs and key consent are still asked separately. Settings › *This PC's
+   role* › *Replay the welcome tour* shows it again.
+3. **Change a job later.** Each job has its own Companion page (Thinking,
+   Listening, Voice). A page saves a route only when you press its button, and a
+   cloud provider also needs its consent box. The key goes into Windows
+   Credential Manager, not into the settings file. See [Setup](SETUP.md).
+4. **Microphone and speakers.** *Microphone and speakers* has optional local
+   tests. It captures only when you press *Test microphone*, and it uploads
+   nothing.
 
-Every step supports Back, Save and exit, and resume without repeating accepted
-steps unnecessarily. Commit checkpoints atomically. Revalidate credentials,
-device IDs, capabilities, and consent if destination/model/configuration changes;
-never resume an old recording or start listening because a checkpoint was saved.
-When permissions or policies prevent progress, keep setup and typed diagnostics
-usable with an exact remedy, not a blocked full-screen wizard.
+Settings save atomically. A change of destination, model or key clears the
+consent of that job only. Saved settings never start listening and never
+resume an old recording. When permissions or policies prevent progress, typed
+conversation and diagnostics stay usable with an exact remedy.
 
 Selecting existing endpoints is not selecting a universal "OpenAI mode." Each
 role needs a verified adapter/capability; LLM-only endpoints do not supply STT
@@ -116,15 +119,16 @@ without turning on a paid cloud service automatically.
 
 ### Feature-first multi-machine setup
 
-**Design update, 2026-09-22; not implemented.** The storyboard above is the
-voice preset, not a requirement to configure every role. One Windows coordinator
+This section is the design for setup on more than one computer. The welcome
+tour, *Add a computer* and the uniform host flow below implement parts of it.
+The other parts are not implemented. Setup does not require you to configure
+every role. One Windows coordinator
 owns the user's desired experience and overall progress. A local host installer
 owns approved changes on each managed machine. Users should not need to
 understand Compose, Python environments or port numbers to choose guided setup.
 
 | User selection | Required capabilities | What setup must skip |
 | --- | --- | --- |
-| Fixture demo | Authored local fixture only | Providers, host provisioning, keys, models and audio unless separately requested |
 | Typed text conversation | Text LLM | Microphone, STT, TTS and output-device prerequisites |
 | Microphone input | Selected capture path and STT, plus LLM for conversation | TTS/output if replies remain text; continuous listening is a separate opt-in |
 | Spoken replies | TTS and selected output, plus conversation LLM | Microphone/STT when input is typed |
@@ -137,7 +141,7 @@ an LLM; one Ubuntu machine can host LLM/TTS/STT; another can provide context.
 An external API can supply any supported role alongside either layout.
 Do not count a WSL VM's resources as additional physical RAM or GPU capacity.
 
-The proposed guided flow is:
+The guided flow is:
 
 1. **Choose features.** Start with typed text, microphone input and spoken
    replies as understandable choices. Screen, memory and avatar remain off.
@@ -186,7 +190,7 @@ SSH/remote desktop or retain remote admin credentials. The initial host GUI is
 a loopback-only browser UI launched locally by the host bundle with local-session
 authorization, origin/CSRF protection and narrowly scoped privileged actions.
 It is not exposed on the LAN; the paired inference/status gateway is separate.
-Packaging and novice accessibility of this UI remain H09 work.
+Packaging and novice accessibility of this UI remain later work.
 
 **Implemented uniform host flow (2026-09-28).** [`martlet-host`](../deploy/host/README.md)
 is the single CLI for every managed host role: `setup` (gateway, identity, boot
@@ -212,10 +216,10 @@ described above and has not been run on a real GPU with the Audio2Face NIM.
 | --- | --- |
 | Guided Ubuntu Desktop or Server host | First managed Linux target: Docker Engine + Compose on the host, selected pinned workers, persistent volumes and reviewed boot supervision. Desktop users get a graphical host setup; headless users use the same plan/journal via CLI. No Docker Desktop requirement. |
 | Advanced Docker/Compose | User installs/manages the qualified engine and explicit Compose project. Supply versioned role configuration and checks; no automatic adoption, upgrade, restart or removal by Martlet. Still require trusted transport, models, consent and capability checks. |
-| Native Windows hosting | Qualify native Ollama first; upstream provides a normal installer and standalone CLI. Reuse an existing install in connect-only mode. A Martlet-managed native lifecycle/package is separate H10 work, not permission to invoke an arbitrary installer or add a service wrapper. |
+| Native Windows hosting | Qualify native Ollama first; upstream provides a normal installer and standalone CLI. Reuse an existing install in connect-only mode. A Martlet-managed native lifecycle/package is separate later work, not permission to invoke an arbitrary installer or add a service wrapper. |
 | Windows Docker hosting | Separate advanced Docker Desktop + WSL2 Linux-container lane. Explain virtualization, disk/memory, driver, possible reboot, Desktop licensing and login/startup behavior. Do not claim Windows containers or Windows Server support. |
 | Existing native/container service | Connect only through a named tested adapter and approved transport. Validate capabilities without assuming ownership of its models, configuration, volumes or upgrades. Remote raw inference ports are not a substitute for TLS/authentication. |
-| External API | No host runtime to install; configure only selected roles, credentials and data/cost consent. Never require Docker for the API or fixture path. |
+| External API | No host runtime to install; configure only selected roles, credentials and data/cost consent. Never require Docker for the API path. |
 
 Docker is a useful managed Linux packaging default, not "all Linux is supported."
 Docker lists distro/version/architecture-specific packages and does not test
@@ -274,7 +278,7 @@ separately authorized selected endpoint action, never remote CI.
 
 ### Companion customization after setup
 
-The planned [Companion controls](COMPANION_REQUIREMENTS.md) must remain
+The [Companion controls](COMPANION_REQUIREMENTS.md) must remain
 accessible after onboarding, without a reinstall or source-code change:
 
 | Surface | Planned controls and safe application |
@@ -309,11 +313,9 @@ in-flight charges, taxes, or other clients using the same key. When estimates
 are unavailable, require explicit limits/confirmation rather than imply zero.
 Honor provider-side budgets if available, without assuming they are hard caps.
 
-The fixture demo uses authored/appropriately licensed synthetic events and
-locally generated tone PCM (not prerecorded speech). It exercises the real
-validator/session/status path, plus the same sink after explicit tone permission, but
-does not prove STT accuracy, model quality, cloud access, CUDA, or hardware
-latency. A local mic test is real capture, not proof of AI transcription.
+A local microphone test is real capture, not proof of AI transcription. A
+test tone is locally generated PCM, not speech, and it does not prove a voice
+provider works.
 
 ### Audio/device recovery
 
@@ -331,14 +333,14 @@ Text input/output and doctor remain operable when every audio device is absent.
 
 ## 2. Ubuntu host support and qualification
 
-### Proposed matrix
+### Ubuntu host matrix
 
 | Layer | First qualification target | Required evidence / exclusions |
 | --- | --- | --- |
 | Host OS | Ubuntu 24.04 LTS x86_64 Desktop/Server, latest qualified security point release/kernel | Qualify both setup experiences and boot without graphical login; 22.04/26.04 are separate expansion lanes, although Docker and NVIDIA list them upstream |
 | CPU/RAM | x86_64 with instruction set required by selected native wheels/engine; provisional planning envelope 4+ CPU cores, 32 GiB RAM | Not a proven minimum; inventory actual system and measure combined load, swap, and context size |
 | GPU | NVIDIA discrete GPU(s), each selected by UUID, exact models/VRAM currently unknown | No generic "CUDA-capable = supported" claim; card compute capability must match all selected binaries/kernels |
-| Driver | One tested distro-packaged NVIDIA branch meeting each chosen image's CUDA and GPU requirements | Numeric floor/pin unresolved until H02; Secure Boot/module status and post-reboot readiness required |
+| Driver | One tested distro-packaged NVIDIA branch meeting each chosen image's CUDA and GPU requirements | Numeric floor/pin unresolved until host qualification; Secure Boot/module status and post-reboot readiness required |
 | Container layer | Docker Engine + Compose v2 plugin + NVIDIA Container Toolkit, exact tested versions | Independently verify host GPU visibility and GPU visibility inside pinned container; no dependency on Windows Docker Desktop |
 | LLM runtime | One selected Ollama image digest and model digest/quantization/context | Fit and concurrency measured with F5; other engines separate qualification |
 | F5 runtime | Separate image with pinned Python, PyTorch, torchaudio, CUDA user-space libraries, F5, vocoder, audio dependencies | Python 3.11 is an upstream example, not a certified environment; current broad dependency ranges are not a release lock |
@@ -346,7 +348,7 @@ Text input/output and doctor remain operable when every audio device is absent.
 | Network | Private LAN; wired connection recommended for first measurements | Record RTT/loss/throughput; Wi-Fi and hostname discovery have separate failure tests |
 
 **There are zero Martlet-qualified GPU/driver/image/model tuples at this stage.**
-H02 must publish a machine-readable support manifest with the exact tested
+Host qualification must publish a machine-readable support manifest with the exact tested
 OS/kernel, CPU features, GPU model/VRAM, driver, Docker/Compose/toolkit versions,
 image digests, model revisions/checksums, precision, context size, concurrency,
 RAM/disk peaks, and observed warm/steady latency. Missing rows block a support
@@ -359,7 +361,7 @@ the selected versions and a real inference smoke run
 ([S20-S22](RESEARCH.md#s20)). AMD/ROCm, Intel, Jetson/ARM, WSL-hosted inference,
 rootless GPU containers, and unmanaged existing Python environments are
 out of the initial supported host matrix. Windows native and WSL2 containers
-are planned H10 expansion lanes, not categorically excluded product goals;
+are planned expansion lanes, not categorically excluded product goals;
 native F5 is not promised. Only selected GPU roles require GPU prerequisites:
 an API-only client or qualified CPU role must not be blocked for lacking CUDA.
 
@@ -381,7 +383,7 @@ Storage/clock failures mean access blocked, not unpaired.
 
 Linux local approval/disclosure, GUI/headless lifecycle, real native execution,
 reboot, service/container mounts and LAN qualification remain **NOT RUN**.
-The Windows Host CLI has not become portable. Preserve H01/#21 and managed
+The Windows Host CLI has not become portable. Preserve the managed
 preset holds; a future installer must use the same authority rather than fork
 pairing records. See [backend contract](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
 
@@ -452,8 +454,8 @@ inform planning but is not the checksum verification of a downloaded file.
 Unknown expanded/installed/peak quantities must remain unknown, not inferred
 from compressed descriptor bytes.
 
-The focused [H05b acquisition library](../src/Martlet.Host.Setup/README.md)
-now separates durable local review from fresh exact-artifact acquisition consent.
+The focused [acquisition library](../src/Martlet.Host.Setup/README.md)
+separates durable local review from fresh exact-artifact acquisition consent.
 It supports pinned public GitHub release assets through a bounded reviewed CDN
 policy and owned, hash-verified local staging. Its separate image API also
 acquires the current named public Docker Hub Ollama and GHCR F5 candidates,
@@ -471,7 +473,7 @@ permanent device-pairing trust remain unchanged.
 | F5 v1 base `model_1250000.safetensors` | 1,348,435,761 bytes; separate vocabulary 13,800 bytes. CC-BY-NC-4.0 official weights; revision/rights must be approved |
 | Vocos candidate `pytorch_model.bin` | 54,365,991 bytes plus config; audit its own license and dependency artifacts |
 | whisper.cpp tiny/base examples | Upstream table lists 75 MiB / 142 MiB disk and approximately 273 MB / 388 MB memory; not Martlet memory/latency results |
-| LLM/VLM/embeddings/reranker | No selection yet. Model choice, precision, context, tokenizer, auxiliary downloads, and image layers determine size; H02 must resolve before an enabled preset |
+| LLM/VLM/embeddings/reranker | No selection yet. Model choice, precision, context, tokenizer, auxiliary downloads, and image layers determine size; must be resolved before an enabled preset |
 | Runtime images | Python/PyTorch/CUDA can dominate downloads; measure exact compressed/expanded bytes from selected digests, do not present weight size as total installation size |
 
 Sources: [S14](RESEARCH.md#s14), [S17-S18](RESEARCH.md#s17). No model was downloaded
@@ -492,22 +494,20 @@ network egress denied after downloads. Unknown optional downloads block readines
 
 ## 3. Start, stop, update, repair, and removal
 
-**Implemented internal V07a:** Desktop offers explicit LOCAL configuration
-snapshots and exact previewed restore into an existing valid same-profile
-v1/v2/v3 store. Version 3 includes inert companion personas/styles; older
-sources preserve current personas. Recovery does not restore credentials,
-permissions, runtime persona use or readiness.
-It refuses missing/corrupt/future/foreign destinations and preserves exact
-pre-replacement originals. This is neither the diagnostic bundle nor the broader
-database/voice/host/binary lifecycle below. See the
-[recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a).
-V07b now has merged [private staging/selection libraries](../src/Martlet.Updates/README.md),
-explicit rollback configuration restore under the shared owner, and fresh-consent
-reconciliation of a verified recorded restore without restoring again. These
-are internal libraries, not a runnable activation or shipped rollback workflow.
-Desktop wiring, executable/installer activation, N-1/N lifecycle and uninstall
-qualification remain unimplemented or NOT RUN; V07a never launches an older
-executable.
+**Configuration backup and restore.** Desktop makes explicit local
+configuration snapshots. It restores one only after an exact preview, into an
+existing valid settings file of the same profile. Snapshots include the
+companion personas. A restore does not bring back credentials, permissions or
+readiness. It refuses missing, damaged, newer and foreign destinations, and it
+keeps the exact original file. It is not the diagnostic bundle and not the
+database, voice, host or binary lifecycle below. See the
+[recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a)
+and [the transaction contract](SETUP.md#local-configuration-recovery-transaction).
+
+The [staging and selection libraries](../src/Martlet.Updates/README.md) add
+explicit rollback of the configuration and a check of a recorded restore. They
+are internal libraries, not a shipped rollback workflow, and the in-app update
+does not use them. A configuration restore never starts an older executable.
 
 | Lifecycle operation | Required behavior |
 | --- | --- |
@@ -524,8 +524,8 @@ executable.
 | Uninstall | Stop app/selected Martlet services and remove owned binaries/startup entries; preserve models, config, voices, memory and logs by default; list retained locations |
 | Full purge | Separate explicit action selecting exact owned data paths, preview and confirmation; no wildcard deletion of shared caches, Docker, drivers, other projects, or user home |
 
-Rollback and update are not free properties of Inno Setup or Compose. V07/H05
-must implement application-aware staging, version checks, and migration tests.
+Rollback and update are not free properties of Inno Setup or Compose. Lifecycle
+work must implement application-aware staging, version checks, and migration tests.
 Proposed compatibility policy: same protocol major supports current and previous
 minor clients; no schema downgrade without a matching backup or explicit
 migration. Use copy-on-write or a tested backup-before-migrate path; record
@@ -537,6 +537,8 @@ explains retained credentials/data. A disconnected host may need local
 revocation later; report that limitation. Removing Martlet never uninstalls
 shared Docker/driver packages by default. Retained data remains subject to the
 user's local backup/privacy policy.
+
+### In-app updates
 
 The Desktop supports ON-by-default automatic checks (at launch, then every
 15 minutes to 24 hours while it runs; a found version is offered once with an
@@ -571,7 +573,7 @@ require new Martlet packages.
 
 ### Optional advanced host administration
 
-**GPU power policy:** independent H06 extension, off by default and never part
+**GPU power policy:** independent optional extension, off by default and never part
 of a privileged inference container. NVIDIA documents watt-based limits within
 device-reported bounds, administrative privileges, and hardware-specific support
 ([S25](RESEARCH.md#s25)). If the owner wants "80% on boot," first identify the
@@ -611,8 +613,9 @@ Expose last successful **real** full-path result separately from last fixture
 run. "Host reachable" does not mean "model ready"; "audio decoded" does not
 prove the user heard sound. Include "I heard it" and output-device guidance.
 
-Proposed CLI counterpart: bundled `Martlet.Doctor.exe --profile demo --json`
-and host `martlet-host doctor`. They share probe IDs, error codes, deadlines,
+The CLI counterpart is the bundled `Martlet.Doctor.exe` (`status`, `list` and
+`run PROBE_ID`, each with `--json`). A host `martlet-host doctor` command is
+proposed, not implemented. They share probe IDs, error codes, deadlines,
 redaction, and remedies with the UI. Exit codes: 0 all requested required
 probes passed; 1 failure; 2 incomplete/unknown/degraded; 3 invalid configuration
 or invocation. JSON has a schema version and per-probe fixture/live provenance.
