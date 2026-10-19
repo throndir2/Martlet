@@ -521,7 +521,8 @@ public static partial class PromptCatalog
             "What Memory care checks, every hour while something new was said. {exchange} is what was said since it last ran and " +
             "{activity} what the user seems to be doing on this PC (a game, an app). It changes nothing itself: the Memory tools " +
             "it calls in as many steps as it takes (memory_overview, memory_find, memory_history, memory_update, " +
-            "memory_update_many, memory_note, memory_merge, memory_outdated, memory_forget) do, and every correction keeps the " +
+            "memory_update_many, memory_note, memory_merge, memory_outdated, memory_forget) do: they correct facts, keep a " +
+            "fact for the right game (where) and merge duplicates, and every correction keeps the " +
             "earlier version as history.",
             DefaultCheckInMemoryInstructions, ["name", "exchange", "activity"]),
         new(CheckInAhead, CheckInGroup, "Check-in: think ahead",

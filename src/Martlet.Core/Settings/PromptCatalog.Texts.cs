@@ -751,7 +751,8 @@ public static partial class PromptCatalog
         "right after its reply, with your tools.\n\n{exchange}\n\nWhat {name} has set up or started:\n{work}\n\n" +
         "If the user asked {name} for something your tools do, or {name} said it would do something your tools do, do it now " +
         "with your tools, exactly as asked. When the user corrects something {name} remembers (like \"that's for Minecraft, not " +
-        "Terraria\"), find every fact it touches, with the words it is about, and correct each one. Don't do what is already set " +
+        "Terraria\"), find every fact it touches, with the words it is about, and correct each one or keep it for the right " +
+        "game (where). Don't do what is already set " +
         "up or started, what {name} only offered and the user didn't accept, or what the user only talked about. If nothing " +
         "needs doing, call no tool.";
 
@@ -760,11 +761,13 @@ public static partial class PromptCatalog
         "Facts are saved quickly after each reply, so some say too little, belong to the wrong person, say the same thing twice " +
         "or are no longer true. Check them and fix what is wrong.\n\n{exchange}\n\n{activity}\n\n" +
         "1. Call memory_overview, then memory_find with no query to read the newest facts (use skip to read more).\n" +
-        "2. A fact about a game, an app, a show, a project or another thing must say which one. \"The user is building a castle " +
-        "in survival mode.\" doesn't say which game. When the conversation, the activity or the other facts show which one it is, " +
-        "add it: memory_note for many facts at once (such as \"(in Minecraft)\"), or memory_update for one.\n" +
-        "3. When the conversation shows a fact is wrong (\"that's for Minecraft, not Terraria\"), find every fact with those " +
-        "words and correct each one (memory_update_many for many).\n" +
+        "2. A fact that matters only in one game must be kept for that game, and it must say which game it is about. \"The user " +
+        "is building a castle in survival mode.\" says neither. memory_find shows where each fact is kept (where). When the " +
+        "conversation, the activity or the other facts show which game it is, keep it for that game with where (memory_update, " +
+        "or memory_update_many for many facts), and add the name to its words with memory_note (such as \"(in Minecraft)\") when " +
+        "the words alone could mislead. A fact about the user's life outside the game stays everywhere.\n" +
+        "3. When the conversation shows facts are wrong or kept for the wrong game (\"that's for Minecraft, not Terraria\"), " +
+        "find every fact with those words and correct or move each one (memory_update_many for many).\n" +
         "4. Give a fact that belongs to someone else to them (memory_update with person).\n" +
         "5. Merge facts that say the same thing (memory_merge). When a newer fact replaced an older one (they moved, finished " +
         "the game), mark the old one with memory_outdated.\n" +
