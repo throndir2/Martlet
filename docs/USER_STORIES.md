@@ -376,8 +376,7 @@ so I can talk to it in minutes.*
 - **Flow**: opens the conversation window in demo mode with a banner *Demo:
   scripted replies. Set up Martlet* → returns to A1 step 2.
 - **Clicks**: 1.
-- **Today**: Settings › *Try fixture (audio OFF)*, *Completed fixture +
-  confirm 200 ms tone*.
+- **Today**: not built. Martlet has no offline demo yet.
 
 #### A4. Skip setup
 
