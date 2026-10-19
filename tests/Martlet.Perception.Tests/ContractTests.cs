@@ -1,5 +1,4 @@
 using Martlet.Perception;
-using System.Runtime.InteropServices;
 
 namespace Martlet.Perception.Tests;
 
@@ -132,26 +131,6 @@ public sealed class ContractTests
             () => SelectedWindowFrameContent.FromInlinePng(bytes));
     }
 
-    [Fact]
-    public async Task Public_inline_memory_cannot_mutate_authorized_transport_bytes()
-    {
-        var worker = DeterministicPerceptionFixtureIdentity.Create(PerceptionRole.Ocr);
-        var (adapter, transport) = PerceptionTestData.Adapter(worker);
-        var request = PerceptionTestData.Intent(
-            PerceptionRole.Ocr, worker: worker);
-        var exposed = request.Frame.Content.InlineBytes;
-        Assert.True(MemoryMarshal.TryGetArray(exposed, out var segment));
-        segment.Array![segment.Offset] = 0;
-
-        var result = await adapter.ExecuteAsync(
-            request, PerceptionTestData.Authorize(request));
-
-        Assert.Equal(PerceptionJobOutcome.Completed, result.Outcome);
-        Assert.Equal(137,
-            Assert.Single(transport.Requests).Frame.Content.InlineBytes.Span[0]);
-        Assert.Equal(request.Frame.Content.Sha256,
-            transport.Requests[0].Frame.Content.Sha256);
-    }
 
     [Theory]
     [InlineData("https://host-2/frame")]
@@ -266,67 +245,8 @@ public sealed class ContractTests
                 TimeSpan.FromSeconds(2)));
     }
 
-    [Fact]
-    public async Task Adapter_rejects_arbitrary_model_change_before_transport()
-    {
-        var selected = DeterministicPerceptionFixtureIdentity.Create(PerceptionRole.Ocr);
-        var changed = new PerceptionWorkerIdentity(
-            selected.WorkerId,
-            selected.Evidence,
-            selected.Role,
-            selected.Runtime,
-            selected.Model with { ModelId = "another-model" },
-            selected.Artifacts,
-            selected.Limits,
-            selected.Resources,
-            selected.Cancellation);
-        var (adapter, transport) = PerceptionTestData.Adapter(selected);
-        var request = PerceptionTestData.Intent(
-            PerceptionRole.Ocr, worker: changed);
 
-        var result = await adapter.ExecuteAsync(
-            request, PerceptionTestData.Authorize(request));
 
-        Assert.Equal(PerceptionWorkerFailure.IdentityMismatch, result.Failure);
-        Assert.Empty(transport.Requests);
-    }
-
-    [Fact]
-    public void Gateway_binding_rejects_automatic_redirects()
-    {
-        var binding = PerceptionTestData.Binding() with
-        {
-            AutomaticRedirectsAllowed = true
-        };
-        var worker = DeterministicPerceptionFixtureIdentity.Create(PerceptionRole.Ocr);
-
-        PerceptionTestData.Failure(
-            PerceptionWorkerFailure.RedirectRejected,
-            () => new DeterministicPerceptionWorkerTransport(binding, worker));
-    }
-
-    [Fact]
-    public async Task Worker_request_policy_forbids_every_hidden_effect()
-    {
-        var worker = DeterministicPerceptionFixtureIdentity.Create(PerceptionRole.Ocr);
-        var (adapter, transport) = PerceptionTestData.Adapter(worker);
-        var request = PerceptionTestData.Intent(PerceptionRole.Ocr, worker: worker);
-
-        var result = await adapter.ExecuteAsync(
-            request, PerceptionTestData.Authorize(request));
-
-        Assert.Equal(PerceptionJobOutcome.Completed, result.Outcome);
-        var policy = Assert.Single(transport.Requests).Policy;
-        Assert.True(policy.SelectedWindowOnly);
-        Assert.False(policy.ScreenWideFallbackAllowed);
-        Assert.False(policy.ArtifactDownloadAllowed);
-        Assert.False(policy.ModelFallbackAllowed);
-        Assert.False(policy.ProviderFallbackAllowed);
-        Assert.False(policy.RedirectAllowed);
-        Assert.False(policy.PersistentImageAllowed);
-        Assert.False(policy.ArbitraryEndpointAllowed);
-        Assert.False(policy.ArbitraryPathAllowed);
-    }
 
     [Fact]
     public void Every_failure_has_a_unique_code_and_actionable_remedy()

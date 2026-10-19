@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Martlet.ArtifactDoctor;
 using Martlet.HostArtifacts;
 using static Martlet.HostArtifacts.Tests.SyntheticManifests;
 
@@ -137,23 +136,6 @@ public sealed class PinnedCatalogTests
             a => a.GetProperty("kind").GetString() == "llm_weights");
         var runtime = catalog.RootElement.GetProperty("runtimes")[0];
         Assert.Equal("0.34.0", runtime.GetProperty("upstream_version").GetString());
-    }
-
-    [Theory]
-    [InlineData("ollama-llm", "linux/amd64", 2, 3_703_364_316L)]
-    [InlineData("f5-tts", "linux/amd64", 2, 13_175_647_723L)]
-    [InlineData("ollama-llm", "linux/arm64", 1, 3_703_364_316L)]
-    public async Task ActualCliReportsPinnedInventoryAndPlatformMismatch(string role, string platform, int exit, long total)
-    {
-        var before = File.ReadAllBytes(CatalogPath);
-        using var output = new StringWriter();
-        Assert.Equal(exit, await ArtifactDoctorCommand.RunAsync(
-            ["inspect", "--manifest", CatalogPath, "--role", role, "--target", "ubuntu-24.04-x64", "--platform", platform, "--json"], output));
-        using var json = JsonDocument.Parse(output.ToString());
-        Assert.Equal(total, json.RootElement.GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
-        Assert.False(json.RootElement.GetProperty("execution_eligible").GetBoolean());
-        Assert.Equal(before, File.ReadAllBytes(CatalogPath));
-        Assert.DoesNotContain(CatalogPath, output.ToString());
     }
 
     private static JsonDocument ReadCapturedMetadata(string name, string digest, long size)

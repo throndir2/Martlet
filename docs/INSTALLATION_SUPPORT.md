@@ -504,10 +504,9 @@ database, voice, host or binary lifecycle below. See the
 [recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore)
 and [the transaction contract](SETUP.md#local-configuration-recovery-transaction).
 
-The [staging and selection libraries](../src/Martlet.Updates/README.md) add
-explicit rollback of the configuration and a check of a recorded restore. They
-are internal libraries, not a shipped rollback workflow, and the in-app update
-does not use them. A configuration restore never starts an older executable.
+Martlet has no rollback to an older version. The in-app update installs the
+newer release over the older one. A configuration restore never starts an older
+executable.
 
 | Lifecycle operation | Required behavior |
 | --- | --- |

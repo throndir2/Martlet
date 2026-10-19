@@ -2,8 +2,8 @@
 
 **H04a/H04b software foundation only; no model, GPU, network, or audio
 qualification.** `Martlet.F5` is an isolated .NET 10 library with a dedicated
-test project. It is intentionally outside `Martlet.slnx`, Desktop, Core
-settings, packaging, and the existing provider graph. Nothing in this slice
+test project. Desktop and the gateway reference it, and both projects are
+listed in `Martlet.slnx`. Nothing in this slice
 installs or starts Python, F5-TTS, weights, CUDA, Docker, services, a gateway,
 or an audio device. The deterministic worker is **FIXTURE - NOT AI**.
 
