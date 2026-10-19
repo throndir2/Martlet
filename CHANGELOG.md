@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
+- The Recommended setup review lists each model your apps already run with **Think with it**, so you can choose one yourself instead of only Martlet's pick. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
+
 ### Fixed
 
 - A change you type just before you exit Martlet is saved first, also in the Character, Lorebook, Memory and Avatar windows. ([#1013](https://github.com/throndir2/Martlet/pull/1013))

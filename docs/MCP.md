@@ -5454,6 +5454,30 @@ and warns) and an app that asks for a key (`keyed`: `NeedsKey` without the key,
 its models with it), plus an address off this PC (`offComputer`, refused).
 `fixture.ok` needs all of them. Loopback only; never a key; saves nothing.
 
+`ollama_model_file` is Companion › Thinking › This PC › *Use a model file you
+downloaded* without the window. `paths` (absolute paths of GGUF files the owner
+would pick) returns `plan`: the `files` Martlet would add to this PC's Ollama
+(every part of a split model `name-00001-of-0000N.gguf`, and `addedProjector`,
+a lone `mmproj*.gguf` in the same folder that lets the model see), the Ollama
+`model` name made from the file name (*Qwen3-8B-Q4_K_M.gguf* is
+`qwen3-8b-q4_k_m`) and the `bytes` Ollama would copy, or `refused` (not a GGUF,
+only a projector, a missing part). It reads only the folder listing and file
+sizes and contacts nothing. `fixture: true` runs the production import
+(`OllamaModelImport`: the SHA-256 of each file, `HEAD` and `POST
+/api/blobs/sha256:...`, then `POST /api/create` with the files) on FIXTURE
+files (small text, NOT real models) against a fixture Ollama on 127.0.0.1 that
+checks each digest and already has one part: `import` (`blobsSent` 2,
+`blobsChecked`, `createdModel`, `createdFiles`, `output`), `ollamaRefuses`
+(Ollama's own words when it refuses a model) and `refusals`. `fixture.ok` needs
+all of them. Never touches the real Ollama; saves nothing.
+
+In the desktop, `SetupAddModelFile` (*Use a model file you downloaded...*, on
+the *Ollama on this PC* card; `SetupAddModelFileNote` reads what it does)
+opens a file dialog, asks `AddModelFileQuestion` (the files, the model name and
+the space Ollama's copy takes), adds the files in a run window titled *Add
+<model> to Ollama*, then switches Thinking to the model like
+`SetupUseLocalThinking` and tests it. It needs `--allow-ui-effects`.
+
 On the Thinking page, *Model app* is an option picker without a details panel:
 `Picker-LocalApp-Ollama`, one row per app found on this PC
 (`Picker-LocalApp-lm-studio-1234`: the app's id and port) and
@@ -6498,7 +6522,9 @@ alone, as before the catalog, to compare. The result has:
   embedding, speech or picture model, which Thinking can't use), `downloadGb`
   (the app's own size; only Ollama says it), `estimatedGb` (the graphics
   memory the planner counts) and `option` (`served:<model>`, the job option
-  the recommendation uses)) and `note`.
+  the recommendation uses)), `choices` (the review's explicit Thinking choices,
+  in its order: each `button` `RecommendedSetupUseServed-<n>`, its `line`,
+  `model` and `address`; empty when the choice is off) and `note`.
 - `hostModels`: `prefer` (*Prefer models your hosts already have* is on: the
   fixture's, or `PreferHostModels` in the directory's
   `recommended-setup.json`; off by default), `found` (each Thinking chat model
@@ -6650,7 +6676,14 @@ review opens again planned that way; the values read the choice in effect and
 `RecommendationUseServedModels`, `RecommendationPreferHostModels`; also
 `--allow-ui-effects`), and `RecommendationPreferencesStatus` reads *Saved for
 all your computers. ...* after a change. `RecommendedSetupHostModels` reads the models your hosts
-keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. Reconfigure
+keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. While *Use
+models your apps already run* is on and an app on this PC serves chat models,
+`RecommendedSetupServedHeading` (*Or choose one of the models your apps already
+run for Thinking:*) lists each as `RecommendedSetupServed-<n>` (*qwen3-32b in LM
+Studio (about 22 GB)*, biggest first) with its `RecommendedSetupUseServed-<n>`
+(*Think with it*): it closes the review and switches Thinking to that model in
+that app, a change by hand that Recommended setup keeps, so it needs
+`--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox

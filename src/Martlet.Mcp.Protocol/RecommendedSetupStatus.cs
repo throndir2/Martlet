@@ -193,6 +193,13 @@ internal static class RecommendedSetupStatus
                     model = m.ModelId, app = m.AppName, address = m.BaseUrl, computer = Name(m.MachineId), chat = ServedModels.Chats(m.ModelId),
                     downloadGb = m.SizeGb, estimatedGb = ServedModels.Gb(m), option = ServedModels.OptionId(m.ModelId)
                 }),
+                // The review's explicit choices (Think with it, RecommendedSetupUseServed-<n>), in its order.
+                choices = chosen.UseServedModels
+                    ? RecommendedSetupInputs.ServedOrder(build.Request.ServedModels).Select((m, i) => new
+                    {
+                        button = $"RecommendedSetupUseServed-{i}", line = RecommendedSetupInputs.ServedLine(m), model = m.ModelId, address = m.BaseUrl
+                    }).ToArray()
+                    : [],
                 note = fixture == ServedFixtureName ? "FIXTURE: these apps and models are made up."
                     : looked ? "Martlet asked the model apps on this PC (127.0.0.1 only)."
                     : !chosen.UseServedModels ? "Use models your apps already run is off."
