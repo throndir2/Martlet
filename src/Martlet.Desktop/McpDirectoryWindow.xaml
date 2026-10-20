@@ -10,8 +10,10 @@
         AutomationProperties.Name="MCP directory: find MCP servers and install them">
     <DockPanel Margin="24,20,24,18">
         <TextBlock DockPanel.Dock="Top" Text="MCP directory" Style="{DynamicResource SectionHeading}"/>
-        <TextBlock DockPanel.Dock="Top" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"
-                   Text="Find an MCP server, fill in what it needs and install it: Martlet adds it to mcp.json for you and starts it. Searches go to the directory you choose (what you type is sent to it). A server runs on this PC with your permissions, or is a service you connect to, so install only ones you trust."/>
+        <TextBlock DockPanel.Dock="Top" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"><Run Text="Find an MCP server, fill in what it needs and install it: Martlet adds it to mcp.json for you and starts it." /><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                   Text="What you type in the search box goes to the directory you choose. A server runs on this PC with your permissions, or is a service you connect to, so install only ones you trust."
+                   Wiki="Tools-and-MCP#mcp-servers" Margin="6,0,0,0"
+                   AutomationProperties.AutomationId="Help-McpDirectoryAbout" AutomationProperties.Name="About the MCP directory" /></InlineUIContainer></TextBlock>
         <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>

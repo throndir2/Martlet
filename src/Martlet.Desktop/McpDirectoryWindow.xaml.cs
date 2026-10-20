@@ -118,13 +118,13 @@ public partial class McpDirectoryWindow : ThemedWindow
             MoreButton.Visibility = nextCursor is null ? Visibility.Collapsed : Visibility.Visible;
             StatusText.Text = entries.Count == 0
                 ? query.Length == 0 ? $"The {directory.Name} didn't list any servers."
-                    : $"No servers in the {directory.Name} match \"{query}\"." + (directory == McpDirectorySource.Official
-                        ? " It searches server names only; try a shorter word or the GitHub MCP Registry." : " Try a shorter word.")
+                    : $"No servers in the {directory.Name} match \"{query}\"" + (directory == McpDirectorySource.Official
+                        ? " (it searches server names only, so try a shorter word or the GitHub MCP Registry)" : " (try a shorter word)") + "."
                 : (query.Length == 0 && directory == McpDirectorySource.GitHub
                     ? $"The {entries.Count} most popular servers on the {directory.Name} (by GitHub stars)"
                     : $"{entries.Count} server{(entries.Count == 1 ? "" : "s")}{(query.Length == 0 ? "" : $" matching \"{query}\"")} from the " +
                       $"{directory.Name}, {directory.Order}") +
-                  $"{(nextCursor is null ? "" : "; Load more shows the next ones")}. Choose one to see what it needs.";
+                  $"{(nextCursor is null ? "" : ", and Load more shows the next ones")}: choose one to see what it needs.";
         }
         catch (McpDirectoryException error) when (!run.IsCancellationRequested)
         {
@@ -232,12 +232,14 @@ public partial class McpDirectoryWindow : ThemedWindow
         if (entry.Website is { } website && website != entry.Repository) links.Children.Add(LinkButton("Website", "McpDirectoryWebsite", () => Open(website)));
         if (links.Children.Count > 0) Details.Children.Add(links);
         if (Installed(entry) is { } installed)
-            Details.Children.Add(Text($"Installed as \"{installed.Name}\"{(installed.RegistryVersion is { } v ? $" (version {v})" : "")}. " +
-                "Installing it again under that name replaces it.", new Thickness(0, 8, 0, 0), "McpDirectoryInstalled"));
+            Details.Children.Add(Text($"Installed as \"{installed.Name}\"{(installed.RegistryVersion is { } v ? $" (version {v})" : "")}, " +
+                "and installing it again under that name replaces it.", new Thickness(0, 8, 0, 0), "McpDirectoryInstalled"));
         if (entry.Options.Count == 0)
         {
-            Details.Children.Add(Text("Martlet can't install this server by itself. " + string.Join(" ", entry.Unsupported) +
-                " Its page may describe other ways to run it, which you can add in mcp.json.", new Thickness(0, 12, 0, 0), "McpDirectoryCantInstall"));
+            Details.Children.Add(Text("Martlet can't install this server by itself, but its page may describe other ways to run it, " +
+                "which you can add in mcp.json.", new Thickness(0, 12, 0, 0), "McpDirectoryCantInstall"));
+            if (entry.Unsupported.Count > 0)
+                Details.Children.Add(Muted("Why: " + string.Join(" ", entry.Unsupported), new Thickness(0, 6, 0, 0)));
             return;
         }
         var preferred = entry.Options.FirstOrDefault(o => o.RuntimeAvailable()) ?? entry.Options[0];
@@ -276,15 +278,15 @@ public partial class McpDirectoryWindow : ThemedWindow
         optionPanel.Children.Add(Muted(chosen.Summary, new Thickness(0, 10, 0, 0), id: "McpDirectorySummary"));
         TextBlock needs;
         if (chosen.Kind == McpInstallKind.Remote)
-            needs = Text($"Martlet connects to {chosen.Host}, so what your tool calls send goes to its publisher. If it wants you to sign " +
-                "in through a browser (OAuth) instead of a key, Martlet can't do that yet.", new Thickness(0, 6, 0, 0), "McpDirectoryNeeds");
+            needs = Text($"Martlet connects to {chosen.Host}, so what your tool calls send goes to its publisher (a browser sign-in " +
+                "(OAuth) instead of a key doesn't work yet).", new Thickness(0, 6, 0, 0), "McpDirectoryNeeds");
         else if (chosen.RuntimeAvailable())
-            needs = Text($"It runs with {chosen.Runtime} from {chosen.RuntimeHelp}, which is on this PC. Its first start downloads the " +
-                "server, which can take a minute. It runs as a program on this PC with your permissions.", new Thickness(0, 6, 0, 0), "McpDirectoryNeeds");
+            needs = Text($"It runs as a program on this PC with your permissions, with {chosen.Runtime} from {chosen.RuntimeHelp}, " +
+                "and its first start downloads the server, which can take a minute.", new Thickness(0, 6, 0, 0), "McpDirectoryNeeds");
         else
         {
-            needs = Text($"It runs with {chosen.Runtime} from {chosen.RuntimeHelp}, which isn't on this PC. Install it and restart Martlet " +
-                "first; until then this server can't start.", new Thickness(0, 6, 0, 0), "McpDirectoryNeeds");
+            needs = Text($"It runs with {chosen.Runtime} from {chosen.RuntimeHelp}, which isn't on this PC, so install it and restart " +
+                "Martlet first.", new Thickness(0, 6, 0, 0), "McpDirectoryNeeds");
             needs.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
         }
         optionPanel.Children.Add(needs);
@@ -317,8 +319,8 @@ public partial class McpDirectoryWindow : ThemedWindow
             optionPanel.Children.Add(expander);
         }
         if (chosen.Inputs.Any(i => i.Secret))
-            optionPanel.Children.Add(Muted("Secret values are kept in Windows Credential Manager; mcp.json only refers to them as " +
-                "${secret:...}. In any field you can type ${env:NAME} to use an environment variable instead.", new Thickness(0, 10, 0, 0)));
+            optionPanel.Children.Add(Muted("Secret values are kept in Windows Credential Manager (mcp.json only refers to them as " +
+                "${secret:...}), and in any field you can type ${env:NAME} to use an environment variable instead.", new Thickness(0, 10, 0, 0)));
 
         preview = Muted("", new Thickness(0, 12, 0, 0), id: "McpDirectoryRuns");
         preview.TextTrimming = TextTrimming.None;
@@ -419,14 +421,14 @@ public partial class McpDirectoryWindow : ThemedWindow
         var existing = service.Configuration.Servers.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
         var replace = existing is not null;
         if (existing is not null && !string.Equals(existing.Registry, entry.Name, StringComparison.OrdinalIgnoreCase) &&
-            !ConfirmationDialog.Confirm(this, $"mcp.json already has a server named \"{existing.Name}\". Replace it with {entry.DisplayName}?",
+            !ConfirmationDialog.Confirm(this, $"Replace the server named \"{existing.Name}\" in mcp.json with {entry.DisplayName}?",
                 "Martlet - MCP directory"))
             return;
         try
         {
             var plan = option.Build(name, Values());
             service.Install(name, plan, replace);
-            StatusText.Text = $"Installed \"{name}\" and started it. Companion > Tools shows whether it's running and its tools" +
+            StatusText.Text = $"Installed \"{name}\" and started it, and Companion > Tools shows whether it's running and its tools" +
                 (option.Kind == McpInstallKind.Remote ? "." : "; the first start downloads it, which can take a minute.");
             foreach (var item in Results.Items.OfType<ListBoxItem>().Where(i => ReferenceEquals(i.Tag, entry))) FillResultItem(item, entry);
             ShowEntry(entry);

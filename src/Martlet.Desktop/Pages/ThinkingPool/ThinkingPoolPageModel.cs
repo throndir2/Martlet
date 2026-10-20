@@ -378,13 +378,13 @@ internal sealed partial class ThinkingPoolPageModel
     internal (string Text, bool Problem) ThinkLongerStatus(ThinkLongerSettings settings)
     {
         var route = Route;
-        if (!settings.On) return ("Off. Martlet answers everything right away and never thinks in the background.", false);
-        if (route is null) return ("On. Set up Thinking so Martlet can use it.", true);
+        if (!settings.On) return ("Off: Martlet answers everything right away and never thinks in the background.", false);
+        if (route is null) return ("On, but set up Thinking so Martlet can use it.", true);
         if (route.RouteType is not (SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
-            return ("On, but your Thinking model can't use tools here (a Martlet host's model), so it can't hand a task off. Use " +
+            return ("On, but your Thinking model can't use tools here (a Martlet host's model), so it can't hand a task off: use " +
                 "OpenAI or a Chat Completions endpoint (such as Ollama on this PC) for Thinking.", true);
         if (services.ToolsRefused(route))
-            return ($"On, but {route.ModelId} turned down tools, so it can't hand a task off. Choose a Thinking model that can use tools.", true);
+            return ($"On, but {route.ModelId} turned down tools, so it can't hand a task off: choose a Thinking model that can use tools.", true);
         if (!LongPlan.Available)
             return ($"On, but the Thinking pool has nowhere to think in parallel, so Martlet doesn't offer to think things over. {LongPlan.Why}", true);
         return ($"On. When a task needs it, Martlet says it'll think it over and works on it in the background ({settings.HowHard} " +

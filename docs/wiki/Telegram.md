@@ -9,6 +9,8 @@ Open **Companion › Messaging**. Set an app up below, then turn it **On** under
 
 ## Telegram
 
+### Set up Telegram
+
 1. In Telegram, open BotFather (**Open BotFather**), send `/newbot` and choose a
    name for your Martlet bot.
 2. Paste the token that BotFather gives you into **Bot token**, and press
@@ -20,11 +22,16 @@ Martlet asks Telegram for new messages itself, so you need no public address,
 open port or webhook. The token stays in Windows Credential Manager on this PC
 and goes only to Telegram.
 
+If Telegram doesn't accept the token, copy it again from BotFather. Only one
+program can read a bot's messages, so use each bot with one Martlet only.
+
 ## WhatsApp
 
 Martlet uses Meta's official **WhatsApp Cloud API**. Nothing runs against your
 personal WhatsApp account. You write to a WhatsApp business number you own;
 Meta's free test number is enough.
+
+### Set up WhatsApp
 
 1. Press **Create a Meta app**. Choose the use case *Connect with customers
    through WhatsApp*.
@@ -32,19 +39,33 @@ Meta's free test number is enough.
    number and confirm it with the code WhatsApp sends. The test number can talk
    to up to five confirmed numbers.
 3. Make a permanent access token in **System users**. Add a system user (Admin),
-   give it your app and your WhatsApp account, and generate a token with
-   `whatsapp_business_messaging` and `whatsapp_business_management`.
+   give it your app and your WhatsApp account with full control, and generate a
+   token with `whatsapp_business_messaging` and `whatsapp_business_management`.
+   The temporary token on **API Setup** also works, but only for 24 hours.
 4. In the app, open **App settings › Basic** and copy the **App secret**.
 5. In Martlet, paste the **Access token** and the **App secret**, and press
    **Connect**. Leave the IDs empty; Martlet finds them.
 6. Press **Pair a chat**. Send the code to the number, or press **Open in
    WhatsApp**.
 
+Martlet finds your number and sets up the webhook itself. You don't configure
+**Webhooks** in Meta. When Meta refuses the token or secret, Martlet says why:
+make a new token, copy the app secret again, or add a phone number in
+**API Setup**.
+
+### The public address
+
 WhatsApp delivers messages to a public web address. Martlet makes one for you
 with a free Cloudflare quick tunnel, so you change nothing on your router. It
 needs Cloudflare's `cloudflared`: Martlet uses one you have, or **Get
 cloudflared** downloads Cloudflare's official copy after you agree. If you have
 your own public HTTPS address, put it in **Public address (optional)**.
+
+**Get cloudflared** asks first. It downloads Cloudflare's program (about 60 MB)
+into Martlet's tools folder and checks it.
+Martlet runs it only while it answers WhatsApp. If the download fails, install
+it yourself with `winget install Cloudflare.cloudflared` and try again. Martlet
+doesn't run a copy whose checks fail.
 
 Martlet accepts only messages signed with your app secret. It keeps the token
 and the secret in Windows Credential Manager and sends them only to Meta. Use a
@@ -61,8 +82,13 @@ Meta app for Martlet only.
 - Use each bot or number on one PC. A host PC never answers.
 - She reads text only for now. Photos, voice notes and stickers get a short note.
 - A tool or smart-home action that asks first waits for you at the PC.
-- **Remove** unpairs one chat. **Disconnect** stops the app, deletes its keys
-  from this PC and forgets the paired chats.
+- **Remove** unpairs one chat. The chat can pair again with a new code.
+- **Disconnect** stops the app, deletes its keys from this PC and forgets the
+  paired chats. The Telegram bot stays in Telegram; delete it with BotFather if
+  you no longer need it. Your Meta app and number stay too; delete them at
+  developers.facebook.com.
+- When Martlet is closing or busy on your PC, or takes too long, she replies
+  that you should try again in a moment.
 
 ## History
 

@@ -138,9 +138,9 @@ public sealed partial class TelegramTransport : IMessagingTransport, IMessagingM
         throw statusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.NotFound =>
-                new MessagingException(MessagingFailure.Unauthorized, "Telegram didn't accept this bot token. Copy it again from BotFather."),
+                new MessagingException(MessagingFailure.Unauthorized, "Telegram didn't accept this bot token, so copy it again from BotFather."),
             HttpStatusCode.Conflict =>
-                new MessagingException(MessagingFailure.Conflict, "Another program (or another Martlet) is reading this bot's messages. Only one can."),
+                new MessagingException(MessagingFailure.Conflict, "Another program (or another Martlet) is reading this bot's messages, and only one can."),
             HttpStatusCode.TooManyRequests =>
                 new MessagingException(MessagingFailure.RateLimited, "Telegram asked Martlet to slow down.", retry),
             _ => new MessagingException(MessagingFailure.Protocol, $"Telegram refused {method}: {Clip(description)}")

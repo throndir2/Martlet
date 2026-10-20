@@ -215,6 +215,11 @@ internal sealed class HostInputDialog : ThemedWindow
         values[key] = () => box.IsChecked == true ? "yes" : "";
     }
 
+    /// <summary>A muted line that shows the first sentence of <paramref name="text"/>, with a "?" (Help-<paramref name="id"/>) that
+    /// has all of it and links to <paramref name="wiki"/> ("Page#anchor").</summary>
+    internal void AddExplanation(string id, string topic, string text, string wiki) =>
+        fields.Children.Add(HelpTip.Explain(text, new Thickness(0, 0, 0, 8), id, topic, wiki));
+
     /// <summary>A highlighted note (status text, automation ID <paramref name="id"/>) with an optional button beside it that
     /// runs <paramref name="action"/> (automation ID <paramref name="actionId"/>).</summary>
     internal void AddNote(string id, string text, string? actionLabel = null, string? actionId = null, Action? action = null)

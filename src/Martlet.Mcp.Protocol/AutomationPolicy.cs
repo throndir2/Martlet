@@ -1201,7 +1201,7 @@ internal static partial class AutomationPolicy
         new("AppGuideStatus-", "Companion › App guides", "An app's line, such as AppGuideStatus-elden-ring: 42 pages, 3.1 MB, read 10 Oct 2026, 18:40., No guide yet. or Reading up now: Reading page 3. Never a guide's text."),
         // Needs --allow-ui-effects: AppGuideRead-<key>, AppGuideMore-<key> (Read more: reads more of the app's wiki), AppGuideStop-<key>, AppGuideAskAgain-<key>, AppGuideDelete-<key>, AppGuideAdd and AppGuideAddRead.
         // Typing in AppGuideAddName, AppGuideAddPrograms and AppGuideAddSites uses ui_set_text or ui_type.
-        new("CheckInStatus-", "Companion › Check-ins", "A check-in's line, such as CheckInStatus-emotes: Waits: next in 3 min. Last at 10:31 PM on diva (qwen3:8b): turned off {blush}."),
+        new("CheckInStatus-", "Companion › Check-ins", "A check-in's line, such as CheckInStatus-emotes: Waits: next in 3 min; last at 10:31 PM on diva (qwen3:8b): turned off {blush}; 4 runs since Martlet started, 1 acted on."),
         new("CheckInOn-", "Companion › Check-ins", "Whether the On box of a built-in or own check-in is ticked, such as CheckInOn-emotes."),
         new("CheckInEvery-", "Companion › Check-ins", "A check-in's Every choice, such as CheckInEvery-emotes."),
         new("CheckInOutcome-", "Companion › Check-ins", "A check-in's Its answer choice, such as CheckInOutcome-emotes; its help says what it means."),

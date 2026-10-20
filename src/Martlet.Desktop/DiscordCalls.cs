@@ -159,7 +159,7 @@ internal sealed class DiscordCallService
     internal string Status(bool listening)
     {
         var saved = Preferences;
-        if (!saved.On) return "Off. Martlet isn't in your Discord calls.";
+        if (!saved.On) return "Off: Martlet isn't in your Discord calls.";
         var hears = Capturing switch
         {
             "discord" => "hears the Discord app",
@@ -167,7 +167,7 @@ internal sealed class DiscordCallService
             _ => saved.Capture == DiscordCallCapture.DiscordApp ? "will hear the Discord app" : "will hear everything this PC plays"
         };
         var plan = Plan;
-        return $"On. Martlet {hears}" + (listening ? "" : " once always listening runs") +
+        return $"On: Martlet {hears}" + (listening ? "" : " once always listening runs") +
             $", sees who talks: {Attribution.Source}, and speaks into {plan.Summary.TrimEnd('.')}.";
     }
 }

@@ -32,7 +32,7 @@ internal static class HomeAssistantHosts
     {
         if (Runs(hardware)) return "It already runs Home Assistant.";
         if (Has(hardware, "ha-existing"))
-            return $"Something already uses port {Port} there, probably another Home Assistant. Connect to it with Find or its address.";
+            return $"Something already uses port {Port} there (probably another Home Assistant): connect to it with Find or its address.";
         if (host.Method is HostSetupMethod.ThisPcDocker or HostSetupMethod.Agent ||
             hardware?.Platform is "windows" or "macos" or "ios" or "android")
             return "Home Assistant needs a Linux computer with Docker Engine; Docker Desktop on Windows or macOS can't put it on your home network.";
