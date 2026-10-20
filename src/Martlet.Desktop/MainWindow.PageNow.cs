@@ -220,10 +220,10 @@ public partial class MainWindow
         foreach (var (bubbles, subtitles, title, detail, id) in new[]
         {
             (true, false, "Speech bubbles", "Beside the character, while it shows.", "SetupCharacterSpeechBubbles"),
-            (false, true, "Subtitles", "At the bottom of the active screen. Subtitles are hidden from screen capture.", "SetupCharacterSubtitles"),
+            (false, true, "Subtitles", "At the bottom of the active screen, hidden from screen capture.", "SetupCharacterSubtitles"),
             (true, true, "Speech bubbles and subtitles", "Both: a bubble beside the character and subtitles at the bottom of the screen.",
                 "SetupCharacterSpeechBoth"),
-            (false, false, "Off", "No speech bubbles or subtitles. The talk window still shows what Martlet says.", "SetupCharacterSpeechOff")
+            (false, false, "Off", "No speech bubbles or subtitles; the talk window still shows what Martlet says.", "SetupCharacterSpeechOff")
         })
         {
             var option = Choice("SpeechDisplay", title, detail, prefs.SpeechBubbles == bubbles && prefs.Subtitles == subtitles, id);
@@ -297,7 +297,7 @@ public partial class MainWindow
             "Voice recognition needs Martlet's data folder, which isn't available.");
         var voices = localVoices.Roster.Live;
         var problem = localVoices.Enabled && !localVoices.Included
-            ? "Voice recognition files are missing from this Martlet installation. Reinstall Martlet to recognize voices."
+            ? "Voice recognition files are missing from this Martlet installation: reinstall Martlet to recognize voices."
             : localVoices.RecognitionProblem ?? localVoices.LoadError;
         return PageNowCard(PeopleNow(localVoices.Active, voices.Count, voices.Count(v => v.Named)), null, "PeopleNow", problem);
     }
@@ -310,7 +310,7 @@ public partial class MainWindow
         else if (terminal.Enabled && TerminalStatus(service, terminal) is (var why, true)) problem = why;
         else if (service.HasEnabledServers && homeSettings.ThinkingRoute() is
                  { RouteType: not (Martlet.Core.Settings.SetupRouteType.OpenAi or Martlet.Core.Settings.SetupRouteType.ChatCompletions) })
-            problem = "Your Thinking model can't use tools here. Use OpenAI or a Chat Completions endpoint (such as Ollama on this PC) in Companion › Thinking.";
+            problem = "Your Thinking model can't use tools: choose OpenAI or a Chat Completions endpoint (such as Ollama on this PC) in Companion › Thinking.";
         return PageNowCard(ToolsNow(service.Servers.Count(s => !s.Disabled), service.Servers.Count, terminal.Enabled), null, "ToolsNow", problem);
     }
 
@@ -334,7 +334,7 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Answer messages"),
-            Note("Choose which apps Martlet answers on this PC. Set an app up below before you turn it on.", new Thickness(0, 0, 0, 4))
+            Note("Choose which apps Martlet answers on this PC; set an app up below before you turn it on.", new Thickness(0, 0, 0, 4))
         };
         foreach (var app in new[] { MessagingApp.Telegram, MessagingApp.WhatsApp })
         {

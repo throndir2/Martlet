@@ -68,7 +68,7 @@ public partial class MainWindow : ThemedWindow
         accounts = OpenAccounts(store);
         ThemeChoice.SelectedIndex = (int)((Application.Current as App)?.SelectedTheme ?? AppearanceTheme.Light);
         AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
-            ?? "Choose a palette. Your other computers use the same choice.";
+            ?? "Choose a palette; your other computers use the same choice.";
         InitializeUpdates();
         this.support = support;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
@@ -586,8 +586,8 @@ public partial class MainWindow : ThemedWindow
             if (closing) return;
             ErrorLog.Info(on ? "Click-through turned on: clicks pass through the character." : "Click-through turned off: the character catches clicks.");
             ActionText.Text = (on
-                ? "Clicks now pass through the character to the windows under it. Turn this off in Companion › Character or from Martlet's icon in the notification area."
-                : "Click-through is off. You can drag, zoom and right-click the character again.") +
+                ? "Clicks now pass through the character: turn this off in Companion › Character or from Martlet's icon in the notification area."
+                : "Click-through is off, so you can drag, zoom and right-click the character again.") +
                 (saved ? "" : on ? " It couldn't be saved on this PC, so it turns off when Martlet restarts."
                     : " It couldn't be saved on this PC, so it may turn on again when Martlet restarts.");
         }
@@ -647,8 +647,8 @@ public partial class MainWindow : ThemedWindow
                     (at.Screen is { } screen ? $" on {CharacterScreen(screen)}." : ".")
                 : "Character position unlocked.");
             ActionText.Text = (locked
-                ? "Character position locked. Unlock it in Companion › Character or on the character's right-click menu to move it."
-                : "Character position unlocked. Drag the character to move it.") +
+                ? "Character position locked: unlock it in Companion › Character or on the character's right-click menu to move it."
+                : "Character position unlocked: drag the character to move it.") +
                 (saved ? "" : locked ? " It couldn't be saved on this PC, so it unlocks when the character hides."
                     : " It couldn't be saved on this PC, so the character may show locked next time.");
         }
@@ -673,12 +673,12 @@ public partial class MainWindow : ThemedWindow
         var where = saved is { } spot ? $"{spot.Left:0}, {spot.Top:0}" + (spot.Screen is { } device ? $" on {CharacterScreen(device)}" : "") : "";
         return (saved, avatar.IsShowing) switch
         {
-            ({ Locked: true } at, true) => $"Position locked at {where} ({at.Width:0} × {at.Height:0}). The character can't be dragged, moved or resized until you unlock it; zoom still works.",
-            ({ Locked: true }, false) => $"Position locked at {where}. The character shows there when it opens, until you unlock it.",
-            ({ }, true) => $"Position unlocked, remembered at {where} on this PC, even after a restart or update. Drag the character where you want it, then lock it here or from its right-click menu.",
-            ({ }, false) => $"Position unlocked. The character shows where you left it, at {where}. Reset position if it's lost: it then shows at the lower-right.",
-            (null, true) => "Position unlocked. Drag the character where you want it; Martlet remembers where on this PC, even after a restart or update. Lock it here or from its right-click menu.",
-            _ => "Position unlocked. The character shows at the lower-right; show it to place and lock it."
+            ({ Locked: true } at, true) => $"Position locked at {where} ({at.Width:0} × {at.Height:0}): it can't move or change size until you unlock it, but zoom still works.",
+            ({ Locked: true }, false) => $"Position locked at {where}, where the character shows when it opens.",
+            ({ }, true) => $"Position unlocked, remembered at {where} on this PC: drag the character where you want it, then lock it here or from its right-click menu.",
+            ({ }, false) => $"Position unlocked: the character shows where you left it, at {where}, or use Reset position if it's lost.",
+            (null, true) => "Position unlocked: drag the character where you want it, then lock it here or from its right-click menu.",
+            _ => "Position unlocked: the character shows at the lower-right; show it to place and lock it."
         };
     }
 
@@ -735,7 +735,7 @@ public partial class MainWindow : ThemedWindow
                 : "Character position reset; it shows at its default spot next time.");
             ActionText.Text = (showing
                 ? "Character moved back to the lower-right of your main screen." + (place is { Locked: true } ? " It stays locked there." : "")
-                : "Character position reset. It shows at the lower-right of your main screen next time, unlocked.") +
+                : "Character position reset: it shows unlocked at the lower-right of your main screen next time.") +
                 (saved ? "" : " It couldn't be saved on this PC.");
         }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
@@ -827,7 +827,7 @@ public partial class MainWindow : ThemedWindow
             RendererFailures.Is(error, CancellationToken.None))
         {
             ErrorLog.Warn("The character could not be stopped cleanly.", error);
-            characterCleanupProblem = "The character didn't close cleanly. Press Hide or Show character to try again.";
+            characterCleanupProblem = "The character didn't close cleanly: press Hide or Show character to try again.";
             if (!closing) ActionText.Text = characterCleanupProblem;
             return false;
         }

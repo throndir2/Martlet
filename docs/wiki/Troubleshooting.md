@@ -68,7 +68,7 @@ Martlet's host service on Windows needs Docker Desktop and WSL 2. **Settings ›
 
 ## Get help
 
-1. Open **Diagnostics** in the left rail. It shows the logs of all your computers, with filters and a search box.
+1. Open **Diagnostics** in the left rail. It shows the logs of all your computers, with filters and a search box. Every computer in your Martlet network shares its logs with the others, so each one shows them all.
 2. Choose **Save logs to share**. It saves one ZIP file and shows it in File Explorer.
 3. Review the file. Logs never hold keys or what you said, but they can hold local paths, computer names and provider error text.
 4. Attach the file to a new [issue](https://github.com/throndir2/Martlet/issues).

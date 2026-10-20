@@ -7,8 +7,7 @@ public static class OpenAiSetup
     public const string Origin = "https://api.openai.com";
     public const string Pricing = "https://openai.com/api/pricing/";
     public const string Retention = "https://platform.openai.com/docs/guides/your-data";
-    public const string Disclosure = "Cloud requests may cost money. " +
-        "Your text, audio or reply text is sent only when you start an action. Saving settings sends nothing.";
+    public const string Disclosure =     "Cloud requests may cost money, and your text, audio or reply text is sent only when you start an action.";
 
     public static string Alias(SetupRole role) => role switch
     {

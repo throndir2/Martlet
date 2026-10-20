@@ -87,7 +87,7 @@ internal static class CompanionWarmup
     /// <summary>The card's line about what Martlet holds on this PC now.</summary>
     internal static string HoldingsLine(PcHoldings held)
     {
-        if (!held.Any) return "Martlet holds no models on this PC now. The character and the conversation are off.";
+        if (!held.Any) return "Martlet holds no models on this PC now, so the character and the conversation are off.";
         var parts = new List<string>();
         parts.AddRange(held.Models.Select(m => $"{m.Name} ({ModelMemory(m)})"));
         if (held.Listening is { } listening) parts.Add($"{listening} for listening");
