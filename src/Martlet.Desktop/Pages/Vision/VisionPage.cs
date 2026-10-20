@@ -84,7 +84,8 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
         page.Children.Add(ScreenSummaryCard(model, model.ScreenSummaryDecision()));
 
         // What Martlet captures and where it goes, for what it looks at and how chatty it is (Turn vision on is above).
-        var disclosure = Note(model.Disclosure(poolSees), new Thickness(0, 0, 0, 0));
+        var disclosure = HelpTip.Explain(model.Disclosure(poolSees), new Thickness(0, 0, 0, 0), "VisionSends", "what Martlet sends",
+            wiki: "Vision#privacy");
         AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
         page.Children.Add(Card(Heading("What Martlet sends"), disclosure));
     }

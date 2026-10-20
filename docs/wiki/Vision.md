@@ -47,7 +47,11 @@ No reply waits for any of this.
 
 On **Companion › Listening**, under **Watch along**, tick **Hear what this PC plays** (off by default). While always listening runs, she also hears videos, streams, calls and games. She knows where each sound comes from, such as a YouTube video in Chrome, a Discord call or Spotify. She never takes those words for yours.
 
-**Describe PC sounds** also tells her about sound without words: music and its mood, game sounds, laughter, applause and alarms. What your PC plays is never saved, remembered or used to learn voices.
+Your **Listening** choice turns what plays into words, the same as your microphone. A cloud Listening provider gets that sound too. The words go to Thinking marked as the PC's, never as yours. On their own, they go to Thinking about every 20 seconds (45 when Martlet is quiet, 12 when she is chatty), and she mostly stays quiet about them. Martlet's own voice is left out where Windows allows it. When another output is in use too, such as a voice changer's virtual cable, she hears only the output you hear and stops hearing it while she speaks.
+
+**Describe PC sounds** also tells her about sound without words: music and its mood, game sounds, laughter, applause and alarms. About every 10 seconds while something plays, she gets one short line for her next reply. The audio model makes it when you have one (Listening › Audio model). Otherwise a Thinking pool model that hears makes it, or a small sound tagger on this PC's processor. A reply never waits for the line.
+
+What your PC plays is never saved, remembered, used to learn voices or sent to Home Assistant or tools.
 
 To hear *how* you say things, see [Listening › Audio model](Listening-and-Voice-ID#audio-model).
 
@@ -67,7 +71,10 @@ The page lists every model that gets your pictures and what for. **Test vision**
 - Martlet's own windows are greyed out. Password managers and private browser windows are greyed out or skipped. Protected video shows black and is skipped.
 - **Companion › Replies › Personal content** decides what she may do with personal things she sees. **Keep private** (the default) never reads out your messages. **Read my messages** lets her read them. **Everything** also lets her see password managers and private windows.
 - Pictures go only to the models that **Companion › Vision** lists. A cloud machine in the Thinking pool gets them only when you tick **May receive pictures and recordings** for it.
-- With a camera, tell anyone in view that the camera is watching.
+- With a camera, tell anyone in view that the camera is watching. The camera light may turn on.
+- **What Martlet sends** on **Companion › Vision** says what she looks at, how often and where the pictures go. Click its **?** for all of it.
+- While she watches, what you type or say also goes with the newest picture. This makes each reply larger and can cost more with a paid provider.
+- She looks only after you press **Start watching**. **Stop watching**, **Stop**, Esc, **Pause**, locking Windows or ending the conversation stops it.
 
 **Glances at your screen** on **Companion › Vision** can let the character's eyes glance at something new on your screen. Her usual gaze is on [The Character](The-Character#where-the-character-looks).
 
