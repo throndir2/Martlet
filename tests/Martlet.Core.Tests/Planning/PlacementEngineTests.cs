@@ -25,6 +25,8 @@ public sealed class PlacementEngineTests
         Assert.Equal("hosted:nvidia-build", plan.Primary(PlanComponent.Thinking)!.Option.Id);
         Assert.Equal("loudness-lipsync", plan.Primary(PlanComponent.LipSync)!.Option.Id);
         Assert.Equal("parakeet-tdt-0.6b-v3-cpu", plan.Primary(PlanComponent.Listening)!.Option.Id);
+        // A name that already says where it runs doesn't say it twice.
+        Assert.DoesNotContain("on the processor on the processor", plan.Primary(PlanComponent.Listening)!.Why);
         Assert.NotNull(plan.Fallback(PlanComponent.Thinking));
         Assert.Contains(plan.Suggestions, s => s.Kind == SuggestionKind.SignUp && s.ToOptionId == "hosted:nvidia-build");
     }
