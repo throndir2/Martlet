@@ -26,7 +26,7 @@ internal sealed record LocalChatModel(string Id, string Size, string Fits, doubl
 public partial class MainWindow
 {
     /// <summary>Where a job runs. Lip-sync has no cloud provider; its voice-loudness way is one of this PC's.</summary>
-    private enum JobPlace { ThisPc, Computer, Cloud }
+    internal enum JobPlace { ThisPc, Computer, Cloud }
 
     internal sealed record CloudProvider(string Name, string? BaseUrl, bool Chat, string? DefaultModel, bool NeedsKey)
     {
@@ -50,7 +50,7 @@ public partial class MainWindow
         new("gemma4:26b", "18.7 GB", "a graphics card with 24 GB or more", 24, Hears: false)
     ];
 
-    private static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
+    internal static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
     internal static readonly CloudProvider CustomCloud = new("Custom OpenAI-compatible server", "", true, null, false);
     /// <summary>The Thinking providers, each with the model it suggests now: the model catalog's pick when it is loaded
     /// (<see cref="PlanningCatalog.SuggestedModel"/>), else the preset's default.</summary>
