@@ -61,6 +61,21 @@ By default, the Thinking model looks at the pictures itself. Gemma 4 E2B, Martle
 
 The page lists every model that gets your pictures and what for. **Test vision** shows a model one word drawn on this PC (never your screen) and checks that it reads the word.
 
+To use a second model in Ollama on this PC, Ollama must be installed. If it isn't, set it up on **Companion › Thinking › This PC** first (see [Ollama on this PC](Thinking#ollama-on-this-pc)). Ollama runs each model in its own process, so the image model works while Thinking answers, but only while both fit on the graphics card. Martlet checks before each job. Pictures and recordings for Ollama on this PC stay on this PC.
+
+When you choose a cloud provider, a model app or another server as the image or audio model, Martlet asks you to agree first. Pictures of your screen or camera (or recordings of your voice and of what this PC plays) and a few lines of the conversation go there, and requests to a cloud provider may cost money.
+
+If Martlet can't read its list of image and audio models (`pools-local.json`, for example from a newer Martlet or a damaged file), the text model takes pictures and recordings. A change to the list replaces the file.
+
+### Test vision and Test hearing
+
+**Test vision** sends the model one picture of a single word, drawn on this PC (never your screen), and asks which word it shows. **Test hearing** (on **Companion › Hearing**, or **Hear how you say it** for the text model) sends one short recording of a single word, made by Windows speech (never your voice), and asks which word it heard.
+
+- The tests ask a model on an OpenAI-compatible endpoint directly, also Ollama on this PC. Test vision also reaches an image model on one of your computers, through its paired, pinned connection; the test waits while a reply needs that computer.
+- Martlet can't test other models. It goes by the model's name, tries it, and remembers when the model refuses a picture or a recording.
+- For a cloud model, a test is one small request with your API key that may cost a little, so Martlet asks first.
+- *By its name* means that Martlet guesses from the model's name; the test makes sure. *Martlet doesn't know yet* means that the name doesn't say; the test finds out.
+
 ## Privacy
 
 - Screenshots stay in memory only. They are never saved, logged, remembered or put in support files.

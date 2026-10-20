@@ -343,7 +343,7 @@ public sealed class RecommendedSetupTests
 
         // A saved key (OpenRouter here): no prompt, and the problem points to Companion › Thinking.
         Assert.False(RecommendedSetupReview.From(recommendation, Build(Plan())).OffersFreeKey);
-        Assert.EndsWith("Choose where Thinking runs in Companion › Thinking.", FreeKeyPrompt.Problem(offerKey: false), StringComparison.Ordinal);
+        Assert.EndsWith("choose where Thinking runs in Companion › Thinking.", FreeKeyPrompt.Problem(offerKey: false), StringComparison.Ordinal);
         // The recommender says whether Martlet can reply; the review doesn't read its sentences.
         Assert.False(RecommendedSetupReview.From(recommendation with { CannotReplyNote = null }, build).CannotReply);
     }

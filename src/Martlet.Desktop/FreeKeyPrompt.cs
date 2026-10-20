@@ -15,17 +15,17 @@ internal static class FreeKeyPrompt
     internal const string GetLabel = "Get a free key";
     internal const string AddLabel = "Add your key";
     internal const string OpenThinkingLabel = "Open Thinking";
-    internal const string Tip = "Get a free key from NVIDIA Build and add it here. Then Martlet can still reply when your computers " +
-        "are offline or have no room for thinking. The key costs nothing. When Martlet uses it, NVIDIA gets and logs what you say.";
+    internal const string Tip = "Add a free NVIDIA Build key so Martlet can still reply when your computers can't (when Martlet uses " +
+        "it, NVIDIA gets and logs what you say).";
     internal const string ProblemTitle = "No computer can do thinking, so Martlet can't reply";
-    internal const string OpenedText = "NVIDIA Build opened in your browser. Sign in, create a key and copy it. Then choose Add your key.";
+    internal const string OpenedText = "NVIDIA Build opened in your browser; sign in, create a key, copy it, then choose Add your key.";
     /// <summary>The line Home adds where Martlet can't reply (Set up thinking, Thinking isn't working) while no key is saved.</summary>
     internal const string HealthHint = "A free API key from NVIDIA Build keeps Martlet able to reply when your computers can't.";
 
     /// <summary>Why Martlet can't reply, and how to fix it: a free key when none is saved, else Companion › Thinking.</summary>
-    internal static string Problem(bool offerKey) => "None of the computers that answer has room for a Thinking model." + (offerKey
-        ? " Add a free API key from NVIDIA Build, and Martlet thinks online instead. NVIDIA gets and logs what you say to Martlet."
-        : " Choose where Thinking runs in Companion › Thinking.");
+    internal static string Problem(bool offerKey) => "None of the computers that answer has room for a Thinking model; " + (offerKey
+        ? "add a free NVIDIA Build key to think online instead (NVIDIA gets and logs what you say to Martlet)."
+        : "choose where Thinking runs in Companion › Thinking.");
 
     /// <summary>The prompt shows only when no hosted provider has a saved key.</summary>
     internal static bool Shows(IReadOnlyCollection<string> configuredProviders) => configuredProviders.Count == 0;
@@ -49,7 +49,7 @@ internal static class FreeKeyPrompt
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
-            return $"Couldn't open the browser ({error.Message}). Go to {Url} yourself.";
+            return $"Couldn't open the browser ({error.Message}); go to {Url} yourself.";
         }
     }
 }

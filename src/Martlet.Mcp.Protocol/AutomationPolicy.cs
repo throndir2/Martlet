@@ -537,7 +537,7 @@ internal static class AutomationPolicy
         new("VisionDisclosure", "Companion › Vision", "Shows what Martlet captures and where it goes (the What Martlet sends card)."),
         new("TalkHearVoiceStatus", "Companion › Hearing", "Shows the advice on whether and how Martlet can hear your voice."),
         new("SetupCloudHint-Thinking", "Companion › Thinking", "Shows the hint of the cloud form for the Thinking provider and model."),
-        new("SetupLocalRecommendation", "Companion › Thinking › This PC", "Shows the graphics card of this PC and the recommended Ollama model."),
+        new("SetupLocalRecommendation", "Companion › Thinking › This PC", "Shows the recommended Ollama model for this PC; its help text adds the graphics card and the smartest model that fits."),
         new("SetupAddModelFileNote", "Companion › Thinking › This PC", "Shows what Use a model file you downloaded does (fixed text)."),
         new("SetupAddModelFile", "Companion › Thinking › This PC", "Shows the label of Use a model file you downloaded. Pressing it needs --allow-ui-effects: it opens a file dialog, adds the file to Ollama and switches Thinking."),
         new("F5VoicesStatus", "Companion › Voice", "Shows how many voices there are and which voice is chosen or in use."),
@@ -1228,7 +1228,7 @@ internal static class AutomationPolicy
         new("DeepThinkingAddCard-", "Companion › Thinking pool › Machines", "The Add a model button of a graphics card with no Thinking pool model yet, such as DeepThinkingAddCard-diva-gpu2."),
         // Needs --allow-ui-effects: clicking DeepThinkingAddRole-, DeepThinkingAddCard-, DeepThinkingChangeModel- or SetupChangeHost- (they install the role or open its dialog).
         // Needs --allow-ui-effects: ticking DeepThinkingPool-<host> (it saves thinking-pool.json).
-        new("ThinkingPoolMember-", "Companion › Thinking pool", "A machine's line, such as ThinkingPoolMember-0: diva's Thinking pool (qwen3-8b): Reads text; writes text. 2 slots, set on diva. A machine that is off starts with Off."),
+        new("ThinkingPoolMember-", "Companion › Thinking pool", "A machine's line, such as ThinkingPoolMember-0: diva's Thinking pool (qwen3-8b): Reads text; writes text; 2 slots, set on diva. A machine that is off starts with Off."),
         new("ThinkingPoolBadges-", "Companion › Thinking pool", "A machine's badges, such as ThinkingPoolBadges-0: Waits while you talk · Costs money · Offline, only those that apply."),
         new("ThinkingPoolSlots-", "Companion › Thinking pool", "A machine's slot choice, such as ThinkingPoolSlots-0."),
         new("ThinkingPoolAnswers-", "Companion › Thinking pool", "Whether a machine's Backup for slow replies box is ticked, such as ThinkingPoolAnswers-0."),

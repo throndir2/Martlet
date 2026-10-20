@@ -27,10 +27,12 @@ public partial class MainWindow
             HelpTip.Explain("Martlet builds each request from these prompts plus your persona, matching lore, remembered facts and the recent " +
                 "conversation. Words in braces, such as {name}, are filled in by Martlet when the prompt is sent; keep them where you " +
                 "want that text. Empty a prompt to send nothing for it. Martlet reads the answers to Remembering and Learning names, so " +
-                "keep their line formats. Edits save as you type; reload an open conversation to use them.", new Thickness(0, 0, 0, 0), "Prompts", "prompts"),
-            HelpTip.Explain("Token counts are Martlet's own estimate, about one token for every three bytes of text: the same rule it uses to " +
-                "keep requests within the model's limit, so the model itself may count somewhat fewer. They count each prompt as " +
-                "written; the text filled in for words in braces adds to it when sent.", new Thickness(0, 6, 0, 0), "PromptTokens", "token counts")));
+                "keep their line formats. Edits save as you type; reload an open conversation to use them.", new Thickness(0, 0, 0, 0), "Prompts", "prompts",
+                wiki: "Personality-and-Characters#prompts"),
+            HelpTip.Explain("Token counts are Martlet's own estimate. It counts about one token for every three bytes of text: the same rule it " +
+                "uses to keep requests within the model's limit, so the model itself may count somewhat fewer. They count each prompt as " +
+                "written; the text filled in for words in braces adds to it when sent.", new Thickness(0, 6, 0, 0), "PromptTokens", "token counts",
+                wiki: "Personality-and-Characters#token-counts")));
 
         var boxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);
         var states = new List<Action>();
@@ -74,8 +76,8 @@ public partial class MainWindow
                 };
                 boxes[prompt.Id] = box;
                 var reset = PageButton("Use built-in text", () => box.Text = prompt.Default, link: true, id: "PromptReset-" + prompt.Id);
-                children.Add(title);
-                children.Add(Note(help, new Thickness(0, 2, 0, 0)));
+                // What the prompt is for and its words in braces sit behind a "?" after its title (issue #995).
+                children.Add(HelpTip.After(title, prompt.Title, help, "Prompt-" + prompt.Id, wiki: "Personality-and-Characters#prompts"));
                 children.Add(state);
                 children.Add(box);
                 children.Add(Row(reset));
@@ -89,8 +91,8 @@ public partial class MainWindow
             autoSave.SaveNowAsync().Forget();
         }, id: "PromptsDefaults");
         page.Children.Add(Card(Heading("Built-in prompts"),
-            Note("Your edits save on their own and apply to every new reply, glance and memory check. Reload an open conversation to use them.",
-                new Thickness(0, 0, 0, 4)),
+            HelpTip.Explain("Your edits save on their own and apply to every new reply, glance and memory check. Reload an open conversation " +
+                "to use them.", new Thickness(0, 0, 0, 4), "PromptsBuiltIn", "built-in prompts", wiki: "Personality-and-Characters#prompts"),
             Row(defaults)));
     }
 
@@ -99,16 +101,16 @@ public partial class MainWindow
     internal static string PromptState(PromptDefinition prompt, string text, PromptSettings? saved)
     {
         var sent = text.Replace("\r\n", "\n", StringComparison.Ordinal);
-        var state = string.IsNullOrWhiteSpace(text) ? "Empty: nothing is sent for this prompt."
-            : (text == prompt.Default ? "Built-in text. About " : "Edited. About ") + Tokens(PromptTokens(sent)) + ".";
-        return sent == PromptSettings.Text(saved, prompt.Id) ? state : state + " Saving...";
+        var state = string.IsNullOrWhiteSpace(text) ? "Empty: nothing is sent for this prompt"
+            : (text == prompt.Default ? "Built-in text, about " : "Edited, about ") + Tokens(PromptTokens(sent));
+        return (sent == PromptSettings.Text(saved, prompt.Id) ? state : state + ", saving") + ".";
     }
 
     /// <summary>The estimated tokens of every prompt together, as typed: what all of them would add if one request sent them all.</summary>
     internal static string DescribePromptTokens(IEnumerable<string> texts) =>
         "All prompts together: about " + Tokens(texts.Sum(t => string.IsNullOrWhiteSpace(t) ? 0
             : PromptTokens(t.Replace("\r\n", "\n", StringComparison.Ordinal)))) +
-        ". Each request sends only the prompts it needs.";
+        " (each request sends only the prompts it needs).";
 
     /// <summary>A prompt's estimated tokens by Martlet's own request-size rule (see <see cref="Martlet.Providers.BoundedTextInput"/>).</summary>
     internal static int PromptTokens(string text) => Martlet.Providers.BoundedTextInput.TextTokens(text);
@@ -125,7 +127,7 @@ public partial class MainWindow
         var parts = new List<string>();
         if (edited > 0) parts.Add($"{edited} of {total} prompts edited");
         if (empty > 0) parts.Add($"{empty} emptied (not sent)");
-        return string.Join(", ", parts) + ". The rest use Martlet's built-in text.";
+        return string.Join(", ", parts) + "; the rest use Martlet's built-in text.";
     }
 
     /// <summary>The Prompts page's auto-save: validates the edits and writes them into the newest saved settings, after any change
@@ -165,7 +167,7 @@ public partial class MainWindow
             }
             homeSettings = updated;
             saved(prompts);
-            ActionText.Text = "Prompts saved. Reload an open conversation to use them.";
+            ActionText.Text = "Prompts saved; reload an open conversation to use them.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)

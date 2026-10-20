@@ -231,10 +231,10 @@ public static partial class NetworkRecommender
 
         /// <summary>The note for <see cref="OnlineDeepThinking"/>'s suggestion.</summary>
         private string OnlineDeepNote(ComponentOption deep) =>
-            $"Deep thinking: {deep.DisplayName} is free and smarter than Thinking's model, and no host's graphics card has room for a " +
-            "smarter one. Add it in Companion › Thinking pool" + (request.ConfiguredProviders.Contains(deep.ProviderId ?? "", StringComparer.OrdinalIgnoreCase)
-                ? " with the key you saved." : " with a free key from its website.") +
-            " What it thinks about goes to that service.";
+            $"Deep thinking: {deep.DisplayName} is free and smarter than Thinking's model; add it in Companion › Thinking pool" +
+            (request.ConfiguredProviders.Contains(deep.ProviderId ?? "", StringComparer.OrdinalIgnoreCase)
+                ? " with the key you saved" : " with a free key from its website") +
+            " (what it thinks about goes to that service).";
 
         /// <summary>A card on <paramref name="node"/> for a new Deep thinking role: one no live job uses first, then the one
         /// with the most room, never the voice's Windows card or a card with a language model; the biggest model that fits

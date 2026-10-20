@@ -25,7 +25,8 @@ public partial class MainWindow
             : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}.", null));
 
         page.Children.Add(Card(Heading("Personas"),
-            Note("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.",
+                new Thickness(0, 0, 0, 8), "PersonalityPersonas", "personas", wiki: "Personality-and-Characters#personas"),
             Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), primary: true, id: "OpenCompanion"))));
 
         page.Children.Add(ProfilesLinkCard());
@@ -35,8 +36,8 @@ public partial class MainWindow
             Row(PageButton("Import a character card", () => OpenCompanionWindowAsync(importCard: true).Forget(), id: "ImportCharacterCard"))));
 
         page.Children.Add(Card(Heading("Prompts"),
-            Note("The persona is wrapped in Martlet's own instructions, along with lore, memory, reply length and more. See and edit every one of them.",
-                new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("See and edit Martlet's own instructions around the persona. They add lore, memory, reply length and more to " +
+                "every request.", new Thickness(0, 0, 0, 8), "PersonalityPrompts", "prompts", wiki: "Personality-and-Characters#prompts"),
             Row(PageButton("Edit prompts", () => OpenCompanion(CompanionTab.Prompts), id: "OpenPrompts"))));
     }
 
@@ -47,10 +48,10 @@ public partial class MainWindow
         var on = homeSettings?.Memory?.Enabled == true;
         page.Children.Add(Card(Heading("Now"),
             new TextBlock { Text = on ? "On" : "Off", FontSize = 15, TextWrapping = TextWrapping.Wrap },
-            Note(on
-                ? "Martlet remembers lasting facts you share and uses them later. Everything stays on this PC; manage facts in Manage memory."
-                : "Martlet doesn't remember or recall anything between conversations. Turn memory on in Manage memory.",
-                new Thickness(0, 2, 0, 8)),
+            on
+                ? HelpTip.Explain("Martlet remembers lasting facts you share and uses them later. Everything stays on your own computers; " +
+                    "manage facts in Manage memory.", new Thickness(0, 2, 0, 8), "MemoryNow", "memory", wiki: "Memory#how-she-remembers")
+                : Note("Martlet doesn't remember anything between conversations; turn memory on in Manage memory.", new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
         if (conversation?.MemoryBrief is { } brief) page.Children.Add(MemoryBriefCard(brief, on));
         if (conversation?.Meaning is { } meaning) page.Children.Add(MeaningSearchCard(meaning));
@@ -99,11 +100,13 @@ public partial class MainWindow
             HelpTip.Explain("Each exchange (what you typed or said and Martlet's reply) is kept in your record, the same on all your " +
                 "computers. When you mention an earlier " +
                 "conversation, like \"remember when...\" or \"what did we talk about yesterday?\", Martlet brings back what was said. " +
-                "Screen glances and what this PC plays are never recorded.", new Thickness(24, 2, 0, 0), "ConversationHistory", "conversation history"),
+                "Screen glances and what this PC plays are never recorded.", new Thickness(24, 2, 0, 0), "ConversationHistory", "conversation history",
+                wiki: "Memory#conversation-history"),
             search,
             HelpTip.Explain("With a Thinking model that uses tools, Martlet can also look things up in the record whenever it thinks that " +
                 "helps. Its search tool makes every request a little longer, so the first reply of a conversation may start a " +
-                "little later.", new Thickness(24, 2, 0, 0), "ConversationSearch", "searching the record"),
+                "little later.", new Thickness(24, 2, 0, 0), "ConversationSearch", "searching the record",
+                wiki: "Memory#conversation-history"),
             Row(PageButton("Open conversations", History_Click, id: "OpenHistory")));
     }
 

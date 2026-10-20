@@ -13,14 +13,14 @@ public static class PoolListSummary
         ArgumentNullException.ThrowIfNull(area);
         var on = list?.Members.Where(m => !m.Off).Select(m => m.Name).ToArray() ?? [];
         if (on.Length == 0)
-            return area.Required ? $"Nothing in the list is on. Instead: {(instead ?? area.WhenEmpty).TrimEnd('.')}."
+            return area.Required ? $"Nothing in the list is on; instead: {(instead ?? area.WhenEmpty).TrimEnd('.')}."
                 : area.ConversationFirst ? "Its own model only: a reply waits for it when it is busy."
                 : "Off: nothing in the list is on.";
         if (area.ConversationFirst)
             return names ? $"Its own model first, then {string.Join(", ", on)}."
-                : $"The conversation's own model goes first. When it is busy, a reply goes to the first free one of {on.Length} below.";
+                : $"The conversation's own model goes first; when it is busy, a reply goes to the first free one of {on.Length} below.";
         if (names) return $"In order: {string.Join(", ", on)}.";
-        return on.Length == 1 ? "One member is on. Requests go to it."
-            : $"{on.Length} members are on. A request goes to the first free one, in this order; when all are busy it waits for the first to finish.";
+        return on.Length == 1 ? "One member is on, so requests go to it."
+            : $"{on.Length} members are on: a request goes to the first free one in this order, or waits for the first to finish when all are busy.";
     }
 }

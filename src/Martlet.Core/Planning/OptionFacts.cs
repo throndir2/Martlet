@@ -54,7 +54,7 @@ public static class OptionFacts
             "How good it is compared with the other choices for the same part, from 1 (basic) to 5 (best)."));
         if (option.Smartness is { } smart)
             facts.Add(new("smartness", "Smartness", smart + (option.SmartnessCredit is { } credit ? $" ({credit})" : ""), null,
-                "How smart the model is among the models Martlet's model catalog scores. Martlet shows words, or LMArena's rating with its credit."));
+                "How smart the model is among the models Martlet's model catalog scores, in words or as LMArena's rating with its credit."));
         if (option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking)
         {
             facts.Add(new("hears", "Hears your voice", option.HearsAudio ? "yes: it takes your recording itself" : "no: it gets the transcript",
@@ -63,15 +63,15 @@ public static class OptionFacts
                 "Whether it looks at your screen or camera itself."));
         }
         if (option.CatalogKey is not null && CatalogOptions.TakesModels(option.Component))
-            facts.Add(new("inputs", "Takes", Inputs(option), null, "What the model takes, as Martlet's model catalog says. Unknown counts as no."));
+            facts.Add(new("inputs", "Takes", Inputs(option), null, "What the model takes, as Martlet's model catalog says (unknown counts as no)."));
         if (option.CallsTools is { } tools && option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking)
             facts.Add(new("tools", "Calls tools", tools ? "yes" : "no", null, "Whether it can call tools (smart home, MCP servers) while it answers."));
         if (option.WordsPerSecond is { } words)
             facts.Add(new("words", "Writes", $"about {words.ToString("0", CultureInfo.InvariantCulture)} words a second (estimate)", null,
-                "Estimated from the bytes the model reads for each word and the graphics card's memory speed. Real speed can be lower."));
+                "Estimated from the bytes the model reads for each word and the graphics card's memory speed; real speed can be lower."));
         if (option.NativeOnly)
             facts.Add(new("hosts", "On a host", "not yet: Martlet's host roles don't offer it, so it runs in this PC's own Ollama", null,
-                "Martlet's host roles install only the models they list. A newer Martlet on the host can offer more."));
+                "Martlet's host roles install only the models they list; a newer Martlet on the host can offer more."));
         if (!option.IsLocal)
             facts.Add(new("cost", "Cost", option.FreeTier ? "free tier" + (option.NeedsSignup ? ", needs a free account and key" : "")
                     : option.NeedsSignup ? "paid, needs an account and key" : "paid",
@@ -123,8 +123,8 @@ public static class OptionFacts
         }
         if (option.IsLocal)
             facts.Add(new("context", "Context", "8,192 tokens, as measured", null,
-                "How much of the conversation it reads at once; the graphics memory above is for this much. A longer context takes " +
-                "more graphics memory. Test model shows what Ollama gives it."));
+                "How much of the conversation it reads at once; the graphics memory above is for this much, a longer context takes " +
+                "more, and Test model shows what Ollama gives it."));
         if (option.IsLocal && option.UsesGpu) facts.Add(Fits(option, cardGb, comfortableGb));
         facts.Add(Of(option).Single(f => f.Key == "evidence"));
         return Lead(facts, "fits", "vram", "speed", "hears");
@@ -136,18 +136,18 @@ public static class OptionFacts
     public static OptionFact Fits(ComponentOption option, double? cardGb, double comfortableGb)
     {
         ArgumentNullException.ThrowIfNull(option);
-        const string help = "Whether this PC's graphics card holds it with room left for a game and Martlet's character.";
+        const string help = "Whether this PC's graphics card holds it with room left for a game and Martlet's character";
         if (cardGb is not { } card)
             return new("fits", "Fits this PC", "no card: the processor, slowly", "no card here",
-                help + " Without a graphics card it runs on the processor, much slower.");
+                help + "; without a graphics card it runs on the processor, much slower.");
         // A "12 GB" card reports a little less.
         if (comfortableGb <= card + 0.5)
-            return new("fits", "Fits this PC", $"yes, with room to spare", null, help + $" This PC's card has {Gb(card)} GB.");
+            return new("fits", "Fits this PC", $"yes, with room to spare", null, help + $" (this PC's card has {Gb(card)} GB).");
         return option.GpuGb <= card
             ? new("fits", "Fits this PC", "only just: little room left", "tight here",
-                help + $" It fits this PC's {Gb(card)} GB card, with little room left for a game or the character.")
+                help + $"; it fits this PC's {Gb(card)} GB card, with little room left for a game or the character.")
             : new("fits", "Fits this PC", $"no: it takes {Gb(option.GpuGb)} GB", "too big here",
-                help + $" This PC's card has {Gb(card)} GB, so part of it runs on the processor, much slower.");
+                help + $"; this PC's card has {Gb(card)} GB, so part of it runs on the processor, much slower.");
     }
 
     /// <summary>A voice's facts: <see cref="Of"/> its footprint (null: a cloud voice, <paramref name="cloud"/> names its
@@ -246,7 +246,7 @@ public static class OptionFacts
             _ => "depends on the server"
         }, free switch { true => "free tier", false => "paid", _ => null }, "What it costs to use."));
         facts.Add(new("key", "API key", keyNeeded ? "your own key" : "only if the server asks", null,
-            "What you need before it works. Martlet keeps a key in Windows Credential Manager."));
+            "What you need before it works (Martlet keeps a key in Windows Credential Manager)."));
         if (option is { Reliability: not OptionReliability.High })
             facts.Add(new("reliability", "Reliability", "may limit or retire models", null,
                 "Free endpoints limit requests, go down and retire models now and then."));
@@ -330,10 +330,10 @@ public static class OptionFacts
         PlanComponent.Thinking or PlanComponent.DeepThinking => "About how long until the model writes its first sentence.",
         PlanComponent.Voice => "About how long from a sentence to the first audio you hear.",
         PlanComponent.Listening => "About how long from the end of your speech to the transcript.",
-        PlanComponent.Reading => "About how long it takes to read the text of one screenshot. A reply never waits for it.",
-        PlanComponent.Vision => "About how long it takes to put one picture into words. A reply never waits for it.",
-        PlanComponent.Hearing => "About how long it takes to describe how you sounded. A reply never waits for it.",
-        PlanComponent.People => "About how long it takes to recognize who spoke in a few seconds of speech. A reply never waits for it.",
+        PlanComponent.Reading => "About how long it takes to read the text of one screenshot; a reply never waits for it.",
+        PlanComponent.Vision => "About how long it takes to put one picture into words; a reply never waits for it.",
+        PlanComponent.Hearing => "About how long it takes to describe how you sounded; a reply never waits for it.",
+        PlanComponent.People => "About how long it takes to recognize who spoke in a few seconds of speech; a reply never waits for it.",
         _ => "About how long until it responds."
     };
 

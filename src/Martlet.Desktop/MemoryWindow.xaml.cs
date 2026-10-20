@@ -149,7 +149,7 @@ public partial class MemoryWindow : ThemedWindow
         catch (Exception error) when (error is OperationCanceledException or ContractException or IOException or
             UnauthorizedAccessException or ArgumentException)
         {
-            if (!closed) ConfigurationStatus.Text = "Couldn't load memory settings. No facts were opened.";
+            if (!closed) ConfigurationStatus.Text = "Couldn't load memory settings, so no facts were opened.";
             return;
         }
         if (closed)
@@ -236,13 +236,13 @@ public partial class MemoryWindow : ThemedWindow
                 policy,
                 customDirectory,
                 token).ConfigureAwait(false);
-        }, "Couldn't save memory settings. Existing settings and facts were preserved.");
+        }, "Couldn't save memory settings; your existing settings and facts are kept.");
         if (closed || result is null)
             return true;
         if (!result.Save.Save.Saved)
         {
             ConfigurationStatus.Text = result.Save.Save.Error?.Summary ??
-                "Couldn't save memory settings. Reload and try again.";
+                "Couldn't save memory settings; reload and try again.";
             return true;
         }
         loadedSettings = result.Settings;
@@ -251,8 +251,8 @@ public partial class MemoryWindow : ThemedWindow
         DisposeExportPreview();
         ClearFacts();
         ConfigurationStatus.Text = result.Settings.Memory.Enabled
-            ? "Saved. Memory is on: Martlet will remember and recall lasting facts."
-            : "Saved. Memory is off: saved facts stay on this PC; turn memory on to review or delete them.";
+            ? "Memory is on and saved: Martlet will remember and recall lasting facts."
+            : "Memory is off and saved: your facts stay on this PC; turn memory on to review or delete them.";
         RenderResolvedDirectory();
         RenderActions();
         if (result.Settings.Memory.Enabled && !closed)
@@ -314,7 +314,7 @@ public partial class MemoryWindow : ThemedWindow
         if (exportPreview is not null && exportPreview.StoreRevision != inspection.StoreRevision)
         {
             DisposeExportPreview();
-            ExportStatus.Text = "Memory changed after the preview. Preview the export again.";
+            ExportStatus.Text = "Memory changed after the preview; preview the export again.";
         }
         facts = [.. spaces.SelectMany(s => s.Inspection.Facts)];
         elsewhere = spaces.Skip(1).SelectMany(s => s.Inspection.Facts.Select(f => (f.Id, s.Space)))
@@ -476,7 +476,7 @@ public partial class MemoryWindow : ThemedWindow
         if (games > 0) text += $"; {games} kept for {(current.Where(f => f.Activity is not null).Select(f => f.Activity!.ToLowerInvariant()).Distinct().Count() is var kinds && kinds == 1 ? "1 game or activity" : $"{kinds} games or activities")}";
         var replaced = facts.Count - current.Length;
         if (replaced > 0) text += $"; {replaced} replaced kept as history";
-        return text + (all ? "." : $". Showing {shown}.");
+        return text + (all ? "." : $"; showing {shown}.");
     }
 
     /// <summary>The name of the memory space a fact is kept in, or null for the active space.</summary>
@@ -535,7 +535,7 @@ public partial class MemoryWindow : ThemedWindow
         FactsList.UnselectAll();
         ResetEditor();
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact added. " + factsLine;
+        FactStatus.Text = "Fact added; " + factsLine;
     }
 
     private async void EditFact_Click(object sender, RoutedEventArgs e)
@@ -557,12 +557,12 @@ public partial class MemoryWindow : ThemedWindow
         await RunAsync(async token =>
             receipt = await service.EditFactAsync(
                 configurationRevision, fact, content, retention, voice, token, SpaceOf(fact), where).ConfigureAwait(false),
-            "Couldn't edit the fact. Refresh and try again.");
+            "Couldn't edit the fact; refresh and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact updated. " + factsLine;
+        FactStatus.Text = "Fact updated; " + factsLine;
     }
 
     private async void DeleteFact_Click(object sender, RoutedEventArgs e)
@@ -578,12 +578,12 @@ public partial class MemoryWindow : ThemedWindow
             MemoryDeleteReceipt? receipt = null;
             await RunAsync(async token =>
                 receipt = await service.DeleteFactAsync(configurationRevision, fact, token, SpaceOf(fact)).ConfigureAwait(false),
-                "Couldn't delete the fact. Refresh and try again.");
+                "Couldn't delete the fact; refresh and try again.");
             if (closed || receipt is null)
                 return;
             DisposeExportPreview();
             await RefreshFactsAsync();
-            FactStatus.Text = "Fact deleted. " + factsLine;
+            FactStatus.Text = "Fact deleted; " + factsLine;
         }
         else if (selected.Count > 1)
             await DeleteManyAsync(selected, $"Delete the {selected.Count} selected facts?", "Delete remembered facts");
@@ -596,7 +596,7 @@ public partial class MemoryWindow : ThemedWindow
         if (shown.Length == 0) return;
         var what = string.IsNullOrWhiteSpace(SearchBox.Text) && PersonFilter.SelectedItem is PersonOption { Kind: PersonKind.Voice, VoiceId: { } voice }
             ? $"all {shown.Length} of {ShortName(voice)}'s facts" : shown.Length == 1 ? "the 1 fact shown" : $"all {shown.Length} facts shown";
-        await DeleteManyAsync(shown, $"Delete {what}? This can't be undone.", "Delete remembered facts");
+        await DeleteManyAsync(shown, $"Delete {what} for good?", "Delete remembered facts");
     }
 
     /// <summary>Forgets everything in your own memories (on every computer the memory sync reaches); the household's memories
@@ -606,8 +606,8 @@ public partial class MemoryWindow : ThemedWindow
         var mine = facts.Where(f => !elsewhere.ContainsKey(f.Id)).ToArray();
         if (mine.Length == 0) return;
         await DeleteManyAsync(mine,
-            $"Delete everything Martlet remembers ({(mine.Length == 1 ? "1 fact" : $"{mine.Length} facts")}), about everyone? This can't be undone." +
-            (elsewhere.Count > 0 ? " The household's memories stay." : ""),
+            $"Delete everything Martlet remembers ({(mine.Length == 1 ? "1 fact" : $"{mine.Length} facts")}) about everyone, for good" +
+            (elsewhere.Count > 0 ? " (the household's memories stay)?" : "?"),
             "Delete all memories");
     }
 
@@ -624,13 +624,13 @@ public partial class MemoryWindow : ThemedWindow
                 deleted += (receipt = await service.DeleteFactsAsync(configurationRevision, [.. space], token, space.Key)
                     .ConfigureAwait(false)).DeletedFacts;
             receipt = receipt is null ? null : new(deleted, receipt.StoreRevision);
-        }, "Couldn't delete the facts. Refresh and try again.");
+        }, "Couldn't delete the facts; refresh and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         FactsList.UnselectAll();
         await RefreshFactsAsync();
-        FactStatus.Text = (receipt.DeletedFacts == 1 ? "Deleted 1 fact. " : $"Deleted {receipt.DeletedFacts} facts. ") + factsLine;
+        FactStatus.Text = (receipt.DeletedFacts == 1 ? "Deleted 1 fact; " : $"Deleted {receipt.DeletedFacts} facts; ") + factsLine;
     }
 
     private void NewFact_Click(object sender, RoutedEventArgs e)
@@ -665,7 +665,7 @@ public partial class MemoryWindow : ThemedWindow
         MemoryExportPreview? preview = null;
         await RunAsync(async token =>
             preview = await service.CreateExportPreviewAsync(configurationRevision, token).ConfigureAwait(false),
-            "Couldn't prepare the export. No file was created.");
+            "Couldn't prepare the export, so no file was created.");
         if (closed || preview is null)
             return;
         DisposeExportPreview();
@@ -675,7 +675,7 @@ public partial class MemoryWindow : ThemedWindow
         rendering = true;
         AcceptExport.IsChecked = false;
         rendering = false;
-        ExportStatus.Text = "Review the preview. Nothing has been exported.";
+        ExportStatus.Text = "Review the preview; nothing has been exported yet.";
         RenderActions();
     }
 
@@ -698,7 +698,7 @@ public partial class MemoryWindow : ThemedWindow
                 receipt = await service.ExportAsync(
                     configurationRevision, exportPreview, authorization,
                     destination, token).ConfigureAwait(false),
-                "Couldn't create the export. No file was created.");
+                "Couldn't create the export, so no file was created.");
         }
         catch (Exception error) when (error is MemoryException or ArgumentException or NotSupportedException)
         {
@@ -706,7 +706,7 @@ public partial class MemoryWindow : ThemedWindow
         }
         if (closed || receipt is null)
             return;
-        ExportStatus.Text = "Memory export created. It was not uploaded.";
+        ExportStatus.Text = "Memory export created on this PC; it was not uploaded.";
         DisposeExportPreview();
         RenderActions();
     }
@@ -861,7 +861,7 @@ public partial class MemoryWindow : ThemedWindow
         if (closed) return;
         if (operations.IsRunning)
         {
-            ConfigurationStatus.Text = "Another Martlet action is still finishing. Wait a moment and try again.";
+            ConfigurationStatus.Text = "Another Martlet action is still finishing; wait a moment and try again.";
             while (!closed && operations.IsRunning)
             {
                 RenderActions();
@@ -921,7 +921,7 @@ public partial class MemoryWindow : ThemedWindow
         RetryCleanupButton.IsEnabled = service.HasPendingCleanup;
         RetryCleanupButton.Visibility = service.HasPendingCleanup ? Visibility.Visible : Visibility.Collapsed;
         if (service.HasPendingCleanup)
-            ConfigurationStatus.Text = "Memory cleanup is pending. Check folder access, then retry cleanup.";
+            ConfigurationStatus.Text = "Memory cleanup is pending; check folder access, then choose Retry cleanup.";
         var enabled = CurrentEnabledConfiguration();
         // Refresh only reads, so it works while a reply holds the setup slot; it waits for this window's own action.
         ReloadButton.IsEnabled = active is null;
@@ -1001,7 +1001,7 @@ public partial class MemoryWindow : ThemedWindow
             return true;
         status.Text = loadedSettings?.Memory is { Enabled: false } && ConfigurationMatchesPersisted()
             ? "Turn memory on to add or change facts."
-            : "Your memory settings aren't saved yet. Finish the folder (press Enter) or wait a moment, then try again.";
+            : "Your memory settings aren't saved yet; finish the folder (press Enter) or wait a moment, then try again.";
         return false;
     }
 
@@ -1012,7 +1012,7 @@ public partial class MemoryWindow : ThemedWindow
         ClearFacts();
         ResetEditor();
         DisposeExportPreview();
-        FactStatus.Text = factsLine = "Memory settings changed. Facts show again once they are saved.";
+        FactStatus.Text = factsLine = "Memory settings changed; facts show again once they are saved.";
     }
 
     private void DisposeExportPreview()
@@ -1033,8 +1033,8 @@ public partial class MemoryWindow : ThemedWindow
         DesktopMemoryException app => app.Message,
         MemoryException memory => memory.Message,
         ContractException contract => contract.Message,
-        OperationCanceledException => "Memory action canceled. Reload if the window looks out of date.",
-        _ => "Memory storage is unavailable. Check the selected folder and free space."
+        OperationCanceledException => "Memory action canceled; choose Refresh if the window looks out of date.",
+        _ => "Memory storage is unavailable; check the selected folder and free space."
     };
 
     private static string RetentionText(MemoryRetention retention) =>

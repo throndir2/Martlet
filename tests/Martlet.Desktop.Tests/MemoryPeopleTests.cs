@@ -326,7 +326,7 @@ public sealed class MemoryPeopleTests
             var list = Control<ListBox>(window, "FactsList");
             await Until(() => !runner.IsRunning && list.Items.Count == 1);
             Assert.Equal($"Voice {other.Number} · Plays the cello.", list.Items[0]!.ToString());
-            Assert.Equal("2 facts remembered: 1 belongs to 1 person Martlet knows by voice, 1 to a forgotten voice. Showing 1.",
+            Assert.Equal("2 facts remembered: 1 belongs to 1 person Martlet knows by voice, 1 to a forgotten voice; showing 1.",
                 Text(window, "FactStatus"));
             Assert.Equal("MemoryFactStatus", AutomationProperties.GetAutomationId(Control<TextBlock>(window, "FactStatus")));
             Assert.Contains(Control<ComboBox>(window, "PersonFilter").Items.Cast<object>(), o => o.ToString() == "Forgotten voices");
@@ -343,8 +343,8 @@ public sealed class MemoryPeopleTests
             Click(window, "MemorySaveFact");
             // The list follows the change at once; the action's own line follows when it finishes.
             await Until(() => !runner.IsRunning && list.Items.Count == 3 &&
-                Text(window, "FactStatus").StartsWith("Fact added.", StringComparison.Ordinal));
-            Assert.StartsWith("Fact added. 3 facts remembered: 2 belong to 2 people", Text(window, "FactStatus"));
+                Text(window, "FactStatus").StartsWith("Fact added;", StringComparison.Ordinal));
+            Assert.StartsWith("Fact added; 3 facts remembered: 2 belong to 2 people", Text(window, "FactStatus"));
             var bus = list.Items.Cast<MemoryWindow.FactItem>().Single(i => i.Fact.Content == "Takes the bus to work.");
             Assert.Equal(sam.Id, bus.Fact.VoiceId);
 
@@ -473,7 +473,7 @@ public sealed class MemoryPeopleTests
             await Until(() => !runner.IsRunning && list.Items.Count == 0 &&
                 Text(window, "FactStatus").StartsWith("Deleted", StringComparison.Ordinal));
             Assert.Contains("all 2 of Sam's facts", questions[^1]);
-            Assert.StartsWith("Deleted 2 facts. 0 facts remembered", Text(window, "FactStatus"));
+            Assert.StartsWith("Deleted 2 facts; 0 facts remembered", Text(window, "FactStatus"));
 
             // Delete everything forgets every fact, whoever's it is.
             await memory.SaveFactAsync(revision, "Likes jazz.", MemoryRetention.UntilDeleted(), other.Id);

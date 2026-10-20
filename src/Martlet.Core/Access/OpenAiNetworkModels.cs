@@ -67,14 +67,14 @@ public static class OpenAiNetworkModels
     public static (string Message, bool Invalid) NoModel(string network, string path) => (network, path) switch
     {
         (Fast or Smart, OpenAiEndpoint.EmbeddingsPath) =>
-            ($"{network} picks a chat model, so it can't make embeddings. Name an embedding model, or {Any} for any embedding " +
+            ($"{network} picks a chat model, so it can't make embeddings; name an embedding model, or {Any} for any embedding " +
              "model of this Martlet network.", true),
         (Any, OpenAiEndpoint.EmbeddingsPath) =>
-            ("No host of this Martlet network runs an embedding model (for example nomic-embed-text) now. GET /v1/models lists " +
+            ("No host of this Martlet network runs an embedding model (for example nomic-embed-text) now; GET /v1/models lists " +
              "the models.", false),
-        (Any, _) => ("No host of this Martlet network runs a chat model now. GET /v1/models lists the models.", false),
+        (Any, _) => ("No host of this Martlet network runs a chat model now; GET /v1/models lists the models.", false),
         _ =>
             ($"No model of this Martlet network is rated {network[(network.IndexOf('@') + 1)..]} now (Martlet rates each model " +
-             $"Fast, Standard or Smart from its name). Use {Any}, or a name GET /v1/models lists.", false)
+             $"Fast, Standard or Smart from its name); use {Any}, or a name GET /v1/models lists.", false)
     };
 }

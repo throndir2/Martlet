@@ -14,6 +14,32 @@ Open **Companion › Thinking** and choose under **Where it runs**:
 
 **Recommended setup** on Home picks a model that fits all your computers and tells you when a better one is available.
 
+### Ollama on this PC
+
+Ollama runs the model on your own PC. Your messages stay on this PC, you need no API key, and there is no cost for each request.
+
+1. Open **Companion › Thinking › This PC**. The **Ollama on this PC** card shows your graphics card and the recommended model: the fastest one that fits. It also names the largest model that fits with room for a game and Martlet's character. Bigger models are smarter but slower.
+2. Choose a model. To type any Ollama name, choose **Another Ollama model**.
+3. If Ollama isn't installed, choose **Install Ollama and use it**. Martlet installs Ollama, downloads the model, switches Thinking to it and tests it.
+4. If Ollama is installed, choose **Check Ollama** to see which models are downloaded, then **Download model**.
+5. Choose **Test model** (see [Testing a model](#testing-a-model)), then **Use Ollama on this PC**.
+
+When you choose **Use Ollama on this PC** for a model that isn't downloaded yet, Martlet asks first. Then it downloads and loads the model in a window that shows each step. Thinking keeps using the model it has until the new one is ready, so a model that won't download or load leaves Thinking as it was. If you choose another model meanwhile, Thinking switches to the one you chose last. The model's own license applies.
+
+**Use a model file you downloaded...** adds a GGUF file (from Hugging Face, LM Studio's folder or anywhere else) to Ollama and switches Thinking to it. An mmproj file in the same folder comes too, so the model can see. Ollama keeps its own copy, which takes more disk space, so you can delete your file afterwards.
+
+If Ollama doesn't start or keeps stopping, see [Ollama on this PC doesn't answer](Troubleshooting#ollama-on-this-pc-doesnt-answer).
+
+### Free cloud keys
+
+When no cloud provider has a saved key, **Companion › Thinking**, Home and **Recommended setup** show **Add a free API key**. The key from NVIDIA Build costs nothing, and it lets Martlet reply when your computers are offline or have no room for thinking.
+
+1. Choose **Get a free key**. NVIDIA Build's key page opens in your browser. If the browser doesn't open, go to https://build.nvidia.com/settings/api-keys yourself.
+2. Sign in, create a key and copy it.
+3. Choose **Add your key** and paste the key.
+
+Where one of your computers can already think, the key goes to **If Thinking fails**, because a local model starts to answer sooner. Where no computer has room for Thinking, the key goes to Thinking itself, and Martlet thinks online. When Martlet uses the key, NVIDIA gets and logs what you say. Martlet keeps every key in Windows Credential Manager, never in its settings files.
+
 ## Use a model app you already run
 
 1. Start the app's local server. In LM Studio, use **Developer › Start server**.
@@ -31,11 +57,37 @@ Open **Companion › Thinking** and choose under **Where it runs**:
 - When a service retires your model, Home offers a replacement with a **Use** button.
 - A cloud model hears your voice only when you tick **Let Thinking hear my voice** on **Companion › Listening**.
 
+### Model facts
+
+Each model in a list shows facts. Point at a fact to see what it means.
+
+- **Smartness**: how smart the model is among the models that Martlet's model catalog scores. Martlet shows words, or LMArena's rating with its credit.
+- **Takes**: what the model takes in (text, pictures, sound and video), as Martlet's model catalog says. When the catalog doesn't know, Martlet counts it as no.
+- **Writes**: about how many words a second it writes. Martlet estimates this from the bytes the model reads for each word and the memory speed of the graphics card. Real speed can be lower.
+- **First sentence**: about how long until the model writes its first sentence. For an image, audio or reading model, the speed says how long one description or read takes; a reply never waits for it.
+- **Graphics memory** and **Fits this PC**: how much graphics memory the model holds, and whether your card holds it with room for a game and Martlet's character. Without a graphics card, a model runs on the processor, much slower.
+- **Context**: how much of the conversation the model reads at once. The graphics memory figure is for 8,192 tokens; a longer context takes more. **Test model** shows how much context Ollama gives the model. To give it more, raise Ollama's context length setting.
+- **On a host**: Martlet's host roles install only the models that they list. A newer Martlet on the host can offer more.
+- **API key**: what you need before a cloud model works. Martlet keeps a key in Windows Credential Manager.
+
+### Testing a model
+
+**Test model** on **Companion › Thinking › This PC** starts Ollama when it isn't running, checks that the model is downloaded, loads it and asks for a short reply. It shows each step in a window, with Ollama's own error text. Nothing leaves this PC. The result says one of these:
+
+- *works on this PC*: how long it took to load and to answer, and what else it supports (vision, tools).
+- *works once loaded, but loading took ...*: the model is fine, but the first reply after a load can time out. Try again after the model finishes loading.
+- *works, but starts too slowly for Martlet*: Martlet waits a limited time for the first words. Choose a smaller model.
+
+**Test tools**, **Test vision** and **Test hearing** each send the model one small request: a made-up tool, a picture of one word drawn on this PC, or a recording of one word made by Windows speech. They never send what you said, typed or showed. For a cloud model, the request uses your API key and may cost a little, so Martlet asks first. Choosing a model already asks its server what the model takes, when the server says.
+
+**Companion › Thinking** shows what Martlet knows about the Thinking model: whether it hears recordings, sees pictures, takes video and calls tools, and where each answer came from. *By its name* means Martlet guesses from the model's name; a test makes sure. Martlet also remembers when a model refuses a recording or a picture.
+
 ## When Thinking fails or is slow
 
 - **If Thinking fails** on **Companion › Thinking** is an optional backup model. It answers once when the main model fails before any words arrive. A good pair is NVIDIA Build first and Google Gemini as the backup.
 - **Backup Thinking** asks a second model when the first one is slow to start. It is off by default. On **Companion › Thinking pool › Backup for slow replies**, tick **Ask a machine in the pool too when a reply is slow to start**. Then tick **Backup for slow replies** on the machines it may use, ideally with the same model. The first one to start gives the reply.
 - Do you play games on a PC? Then while a game runs there, Martlet moves her thinking off that PC's graphics card to another computer. When the game ends, she moves it back.
+- Ollama on this PC doesn't answer or is slow to load? See [Ollama on this PC doesn't answer](Troubleshooting#ollama-on-this-pc-doesnt-answer).
 
 ## Reply settings
 
@@ -56,6 +108,109 @@ To see everything Martlet sent for a reply, click **What was sent** under that r
 - **Busy pool**: choose whether more important jobs may stop less important ones, and how often a failed job tries again.
 
 Ask Martlet to take her time and she thinks it over in the background while you talk, then brings it up when it's ready. The **Thinking requests** page in the side menu shows every job. Select one to see what it was for, where it ran, how long it took, and what it sent and answered.
+
+### Machines in the pool
+
+Each row in **Machines** is one machine: one graphics card on one of your computers, a model in Ollama on this PC, or a cloud provider or server.
+
+- **On**: untick it to stop using the machine. The machine keeps its settings and takes no jobs until you tick **On** again. With no machine on, the pool is off.
+- **Quick jobs** are the judges (are you done talking, did you interrupt) and the screen and sound summaries. They are short and need a fast answer.
+- **Long jobs** are thinking longer, research, a song's lyrics, touch zones, remembering, naming and check-ins. They can run for minutes.
+- **Smarts**: Martlet guesses it from the model name. Small models (about 4B or less) are **Fast**. Large models (about 26B or more, and big cloud models) are **Smart**. **Runs on** uses it.
+- **Slots**: how many jobs the machine runs at once. Each slot after the first needs room on the graphics card for the context of one more job.
+- **Model**: on a paired computer, a new model or slot count is set up there, and a run window shows the download. The old model keeps working until the new one is ready. For a cloud provider or server, type the model ID and press Enter (or leave the box) to save it. A model in Ollama on this PC can't be Thinking's own model, because that model can't think something over while it answers you.
+- The badges under a machine: **Waits while you talk** means that it shares the conversation's computer, so it starts no new pool work while you talk. **Costs money** is a paid cloud provider. **Offline** means that its computer doesn't answer now. **Limiting requests** means that its provider asked Martlet to slow down, so it gets fewer jobs for a while and its jobs wait instead of failing.
+
+**The conversation** is the first row. It is your own Thinking model and it is never in the pool, so no pool job waits in front of a reply and its model stays ready for you. Tick **Do thinking longer and research here when no machine in the pool takes long jobs** to use it when its provider answers several requests at once. Quick jobs then use their own simple rules.
+
+Martlet sets the order of the jobs: quick jobs go first. When the pool has two or more slots, long jobs leave one slot that takes quick jobs free. While you talk, the machines that share the conversation's computer start no new pool work. Summaries, remembering and thinking longer there stop and go on later. The judges still run there, and the other machines never wait.
+
+Cloud providers and servers in the pool, with their API keys, are the same on all your computers. So are **Backup for slow replies** and **Busy pool**. Paired computers join the pool of each PC by themselves. Models in Ollama on this PC stay with this PC.
+
+### Add a machine
+
+**Add a machine** is under the list. It has three forms:
+
+- **Another of your computers**: your paired computers with a Thinking model join the list by themselves. A computer joins with its Thinking pool role (one machine for each graphics card with a Thinking pool model), or with its Ollama when that Ollama doesn't do this PC's Thinking. To add a new computer, pair it on **Devices**, then add the **Thinking pool role** there.
+- **A model in Ollama on this PC**: a second model thinks here while Thinking's model answers you, such as a larger model beside a small, fast one. Ollama runs each model in its own process, so both answer at the same time, but only while both fit on the graphics card. Martlet checks before each think, and doesn't think it over when they don't fit. Replies may start a little later while it thinks.
+- **A cloud provider or server**: a strong reasoning model (for example on OpenRouter) thinks while your Thinking model keeps talking, even one on this PC. Paste its API key: Martlet saves it in Windows Credential Manager. A second model at the same provider uses the saved key again, so it needs no key. Tick the box to agree to what goes there (see [What leaves this PC](#what-leaves-this-pc)).
+
+The Thinking pool role is an Ollama of its own. So it works also on the computer that does Thinking for your conversation, but they share its graphics card and replies may start later. Without the role, a computer whose Ollama does Thinking for the conversation can't join: that Ollama answers one request at a time, and a pool job there would make your replies wait. Adding the role asks which model it runs and how many slots it has. **Change model** switches them later. A computer's model can only work as long as its Martlet allows, so update it to the same version for jobs over a minute.
+
+When you untick **On** or press **Remove** for a paired computer, it stays out of the pool. Tick **In the pool** on its row to add it again.
+
+We recommend one graphics card for each Thinking model. A Thinking pool model on the same card as a Thinking model shares it: while both run, each runs at about half speed, so replies can start later. Add another computer with its own graphics card, or a cloud provider, instead. On a computer with several graphics cards, press **Add a model** on the row of a free card: that card joins as a machine of its own, at full speed beside the other cards.
+
+### Runs on
+
+**Runs on** chooses which machines do each kind of job:
+
+- **Any member**: the free machine that shares least with the conversation.
+- **Prefer smart**: the smartest free machine. When none of the smartest machines comes free within a short wait (30 seconds at most), a less smart one takes the job. Thinking longer, research and lyrics take the smartest free machine at once.
+- **Smart only**: only a **Smart** machine. Without one, the job uses its simple fallback.
+- **These members**: only the machines you tick.
+
+Your conversation's own replies never change. Each check-in can choose its own **Runs on** on its card in **Companion › Check-ins**.
+
+### Backup for slow replies
+
+**Backup for slow replies** is off by default. When it is on and the conversation's Thinking model has no words after a short wait, the same request also goes to a machine that has **Backup for slow replies** ticked in its row. The machine that starts first gives the reply, and the other one stops at once. So a slow or busy model doesn't keep you waiting.
+
+- Choose machines with the same model as the conversation, or a similar one.
+- **Wait for first words** sets the wait. **Automatic** uses how fast recent replies began.
+- A paid cloud provider is asked only when you tick it, and only for a reply already taken. Each request there may cost money.
+
+### Busy pool
+
+When every slot is busy, a more important request can stop a less important one to go first. Tick **Higher priority requests may stop lower ones** to allow this.
+
+- The stopped request keeps its place at the front of its line and starts again when there is room.
+- If it keeps getting stopped, it becomes more important, so it finishes in the end. **More important after** sets after how many stops.
+- **Try a failed request again** sets how many times a failed request is tried again, at the importance it had.
+
+### Thinking longer
+
+Replies answer right away (Thinking steps are off by default). When a task really needs thought, such as song lyrics, a story, a plan, or tricky math or code, Martlet can say it'll think it over. It works on it in the background while you keep talking, then brings it up when it's done.
+
+- **Let Martlet think things over in the background** turns it on or off. When it is off, Martlet answers everything right away and never thinks in the background or researches. Your computers share this choice. Reload an open conversation after you change it.
+- A think uses Thinking steps, whatever replies use. One think runs on each free slot of a machine that takes long jobs, with no time limit and no limit on how many. When the pool has two or more slots, one slot that takes quick jobs stays free.
+- **Stop** (Esc) doesn't end a think. Its **Cancel** in the talk window or closing the conversation does.
+- A paid provider may charge for its thinking.
+- Your Thinking model hands the task off with a tool, so it must use tools: OpenAI or a Chat Completions endpoint, such as Ollama on this PC. A model on a Martlet host can't hand a task off.
+- When the pool can't think, add a machine or tick **Long jobs** on one.
+
+### What leaves this PC
+
+- A job's text goes to the machine that runs it. For a think, that is the conversation so far (as much as fits in 16 KiB) and the task. A paired computer gets it through its paired, pinned connection. While it works there, Thinking, the voice and listening keep working here at full speed.
+- A cloud provider gets the text of each job it takes. Its requests (with their hidden thinking) may cost money.
+- Check-ins, screen and sound summaries and other jobs can include a screenshot or a recording. A machine outside this PC and your paired computers gets them only when you tick **May receive pictures and recordings** in its row. Text-only jobs go to it either way.
+- **Web research**: your search words go to DuckDuckGo, and each page Martlet reads sees this PC's internet address. What the pages say goes to the pool machine that works on it, with the recent conversation. Martlet only connects to public websites, never to your own network. A quick look-up reads a few pages. Research reads more, one thing at a time and with no time limit, and an in-depth look reads the most. **Cancel** in the talk window stops it. The report and its sources are kept in [Creations](Pictures-and-Creations), and Martlet offers to show it in your browser.
+
+### When the Thinking model is busy
+
+**Companion › Thinking** has the list **When the Thinking model is busy**. A reply always tries the conversation's own model first, so nothing changes while it is free. Add computers that run the same model, and they take a reply when your model is busy. The list is empty by default: a reply then waits for its own model. Another computer starts without the conversation in its prompt cache, so its first word comes later.
+
+The other jobs (voice, listening and more) have a list of machines too. See [Each job has a list of machines](Multiple-Computers#each-job-has-a-list-of-machines).
+
+### Image and audio models
+
+The **Image models** list on **Companion › Vision** and the **Audio models** list on **Companion › Hearing** hold the models that describe your pictures or recordings in words for Thinking. See also [Image models](Vision#image-models) and [Audio model](Listening-and-Voice-ID#audio-model).
+
+- The lists are in order. The first model that sees (or hears) takes the pictures (or recordings). The next ones take one when it is busy or can't.
+- With an empty list, the line under it says which model takes each picture or recording instead. A reply never waits for an image or audio model.
+- To add a cloud provider or server, press **A cloud provider or server**. Choose a model that sees pictures (or hears recordings). It describes them in words for Thinking and never answers you itself. It goes at the end of the list: move it up with **Up**.
+- An API key that you paste is saved in Windows Credential Manager on this PC. To replace a saved key, paste a new one and press **Save**.
+
+The models in the Thinking pool that see or hear get your pictures or recordings too, for background work: screen summaries and PC sound descriptions as quick jobs, and touch zones, the character's eyes and check-ins as long jobs. Both pages list these models under **Also gets your pictures** (or recordings). You set them on **Companion › Thinking pool**.
+
+### Thinking requests
+
+The **Thinking requests** page in the side menu shows every request for the Thinking pool since Martlet started. The waiting and running requests come first, then the newest ones that ended.
+
+- Select a request to see its type, task, machine, tries and how long it waited and ran.
+- **Input** shows what it sent its model, after it is sent. **Output** shows what the model answered, after the request ends. Both stay on this PC: they are never in a log, a status file or MCP.
+- When no machine is in the pool, requests use their own simple fallbacks. Add machines on **Companion › Thinking pool**.
+- **Copy shown** copies the shown requests with their timings. When another app is using the clipboard, try again. **Clear finished** only forgets the requests that ended.
 
 ## Looking things up
 

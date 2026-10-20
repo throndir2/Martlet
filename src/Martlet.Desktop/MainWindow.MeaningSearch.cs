@@ -64,17 +64,17 @@ public partial class MainWindow
         model.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); };
         if (!meaning.Ready && !meaning.NeedsDownload) CheckMeaningSearchAsync(meaning).Forget();
         return Card(Heading("Finding by meaning"), status, on,
-            HelpTip.Explain("An embedding model turns each memory, guide section and report section into numbers that show what it " +
-                "means, so Martlet also finds the ones that say the same thing in other words (\"what should I cook?\" finds \"You are " +
-                "vegetarian\"). Martlet uses it only away from the start of its answers: when it remembers after a reply, when it " +
+            HelpTip.Explain("A small embedding model finds what says the same thing in other words. It turns each memory, guide " +
+                "section and report section into numbers that show what it means, so \"what should I cook?\" finds \"You are " +
+                "vegetarian\". Martlet uses it only away from the start of its answers: when it remembers after a reply, when it " +
                 "tidies your memories, and when it looks something up with its memory and guide search tools. It runs in Ollama on " +
                 "this PC's processor, so it never takes the graphics card from the conversation's model, and nothing leaves this PC. " +
                 "Without it, Martlet finds by words only. The choice is the same on all your computers.",
-                new Thickness(24, 2, 0, 0), "MeaningSearch", "finding by meaning"),
+                new Thickness(24, 2, 0, 0), "MeaningSearch", "finding by meaning", wiki: "Memory#finding-by-meaning"),
             model,
             HelpTip.Explain("The embedding model in Ollama. nomic-embed-text is small and quick on a processor; embeddinggemma also " +
                 "reads other languages well. Martlet asks before it downloads one.", new Thickness(0, 4, 0, 0), "MeaningSearchModelHelp",
-                "the embedding model"),
+                "the embedding model", wiki: "Memory#finding-by-meaning"),
             Row(meaningDownload, check));
     }
 
@@ -92,13 +92,13 @@ public partial class MainWindow
         var name = meaning.Choice.Model;
         if (LocalOllama.Executable() is null)
         {
-            ShowMeaningSearch(meaning, "Ollama isn't installed on this PC. Install it on Companion › Thinking first.");
+            ShowMeaningSearch(meaning, "Ollama isn't installed on this PC; install it on Companion › Thinking first.");
             return;
         }
         var size = name == MeaningSearchFile.DefaultModel ? $" ({MeaningSearchFile.DefaultModelSize})" : "";
         if (!ConfirmationDialog.Confirm(this,
-                $"Download {name}{size} with Ollama on this PC? Martlet then uses it to find memories, guide sections and reports by " +
-                "meaning, on this PC's processor. The model's own license applies.",
+                $"Download {name}{size} with Ollama on this PC to find memories, guide sections and reports by meaning " +
+                "(the model's own license applies)?",
                 "Download embedding model", "Download", questionId: "MeaningSearchDownloadQuestion"))
             return;
         var done = await HostRunWindow.RunAsync(this, $"Download {name}", async run =>
@@ -112,7 +112,7 @@ public partial class MainWindow
                 }
             if (models is null) throw new InvalidOperationException("Ollama didn't answer on this PC.");
             await LocalOllama.PullAsync(name, run.Status, run.Output, run.Token);
-            return $"{name} is downloaded. Martlet finds by meaning with it now.";
+            return $"{name} is downloaded, and Martlet finds by meaning with it now.";
         }, join: true);
         if (closing) return;
         await CheckMeaningSearchAsync(meaning);
@@ -125,7 +125,7 @@ public partial class MainWindow
     private void ShowMeaningSearch(MeaningSearch meaning, string? note = null)
     {
         if (closing || meaningStatus is null) return;
-        meaningStatus.Text = note is null ? meaning.Status : meaning.Status + " " + note;
+        meaningStatus.Text = note is null ? meaning.Status : meaning.Status.TrimEnd('.') + " — " + note;
         if (meaningDownload is not null) meaningDownload.Visibility = meaning.NeedsDownload ? Visibility.Visible : Visibility.Collapsed;
     }
 }

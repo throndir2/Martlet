@@ -158,8 +158,8 @@ internal static class CompanionPages
     /// with "Optional." and ends with what Off means (<see cref="OptionalExtras.OffMeans"/>).</summary>
     internal static string TabIntro(CompanionTab section) => section switch
     {
-        CompanionTab.Thinking => "Martlet needs Thinking to answer you. Choose where it thinks and which model it uses. This PC keeps conversations local, free and with no account.",
-        CompanionTab.DeepThinking => Extra(section, "Other models work out hard tasks and background jobs, ideally on another computer, so Thinking keeps talking at full speed. The machine list is the pool: turn each machine on or off, and with none on, the pool is off."),
+        CompanionTab.Thinking => "Martlet needs Thinking to answer you: choose where it thinks and which model it uses.",
+        CompanionTab.DeepThinking => Extra(section, "Other models work out hard tasks and background jobs, ideally on another computer, so Thinking keeps talking at full speed."),
         CompanionTab.Singing => Extra(section, "Martlet sings songs you ask for, in the voice it speaks with, on an NVIDIA graphics card."),
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
@@ -174,7 +174,7 @@ internal static class CompanionPages
         CompanionTab.Eyes => "Choose where the character looks. Martlet also finds its eyes, so that emotes drawn over them fit.",
         CompanionTab.Touch => "Choose what the character does when you click or stroke it: its touch zones, and how it feels about each touch.",
         CompanionTab.Personality => "Edit Martlet's personas.",
-        CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",
+        CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model, ready for you to edit.",
         CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
         CompanionTab.AppGuides => "Martlet reads up on the games and apps you use (their fan wikis and help pages) and answers your questions about them from what it read.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",

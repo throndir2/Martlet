@@ -26,6 +26,39 @@ Home says why. Common causes:
 
 The error *Gemma4Assistant requires ctx_other to be set … error loading model: vector* also means that the model doesn't fit in the free graphics memory.
 
+If Martlet can't start Ollama, start Ollama from the Start menu, then choose **Check Ollama** or **Test model** again.
+
+### The model loads slowly
+
+- Ollama unloads a model after five idle minutes, and loading it again can take from about 15 seconds to a few minutes. If **Test model** says *works once loaded, but loading took ...*, a reply right after a load can time out. Try again after the model finishes loading.
+- If **Test model** says *works, but starts too slowly for Martlet*, Martlet stops waiting before the first words come. Choose a smaller model.
+- If a model doesn't answer within two minutes, a game or another program probably uses the graphics card. Close it or choose a smaller model, then test again.
+
+### Ollama keeps stopping
+
+Home and **Companion › Thinking › This PC** show what Ollama itself says when it stops as it starts. Fix what Ollama says, or reinstall Ollama, then start it again.
+
+Ollama's logs (`server.log` and `app.log`) are in `%LOCALAPPDATA%\Ollama`. Martlet only reads them to tell you why Ollama stops.
+
+### Ollama's models folder moved
+
+Some Ollama versions refuse to use models through a link, for example when you moved the `.ollama\models` folder to another drive and left a link (a junction) in its place. Ollama then stops each time it starts. Martlet fixes this by itself once, or when you choose **Fix Ollama's models folder** on Home:
+
+1. Martlet stops Ollama.
+2. It backs up Ollama's app database to a `martlet-backup-...` folder beside it.
+3. It sets Ollama's model location (and your `OLLAMA_MODELS` setting, when it is empty or the link) to the real folder.
+4. It starts Ollama again and checks that Ollama answers and lists your models.
+
+Each change is in Martlet's local log. To undo it, stop Ollama and copy the backup files back.
+
+If Martlet can't change the model location itself (for example, your Ollama version keeps its settings differently):
+
+1. Open Ollama's settings.
+2. Set its model location to the folder that holds your models.
+3. Start Ollama again.
+
+If Martlet can't find your models at the end of the link, move the models folder back to `%USERPROFILE%\.ollama\models`, or set Ollama's model location to the folder that holds your models.
+
 ## A game is slow while Martlet runs
 
 The **Martlet on this PC** card on Home shows what Martlet keeps in memory now. **Free up this PC** ends the conversation, hides the character and unloads Martlet's models, so the game gets the memory back. Martlet rests until you talk to it again. With **Do you play games or use heavy apps on this PC?** set to **Yes**, **Recommended setup** keeps this PC's graphics card mostly free.

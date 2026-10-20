@@ -65,15 +65,15 @@ public sealed class SenseModelCardsTests
         Assert.StartsWith("qwen2.5vl:7b doesn't see pictures, as Martlet found out", MainWindow.SenseKnown(SenseKind.Image, diva, thinking, abilities));
 
         // The text model by its name, and an unknown model.
-        Assert.Equal("By its name, qwen3:8b doesn't see pictures. Test vision makes sure.", MainWindow.SenseKnown(SenseKind.Image, new(), thinking, abilities));
+        Assert.Equal("By its name, qwen3:8b doesn't see pictures; Test vision makes sure.", MainWindow.SenseKnown(SenseKind.Image, new(), thinking, abilities));
         var unknown = new SenseModels { Image = Own(Endpoint("https://api.example.com/v1", "acme/mystery")) };
-        Assert.StartsWith("Martlet doesn't know yet whether acme/mystery sees pictures.", MainWindow.SenseKnown(SenseKind.Image, unknown, thinking, abilities));
+        Assert.StartsWith("Martlet doesn't know yet whether acme/mystery sees pictures;", MainWindow.SenseKnown(SenseKind.Image, unknown, thinking, abilities));
         Assert.Null(MainWindow.SenseKnown(SenseKind.Image, new(), null, abilities));
         // A route that takes no recordings says so, not a name.
         Assert.Contains("gets no recordings on this route",
             MainWindow.SenseKnown(SenseKind.Audio, new(), Thinking("https://api.openai.com", "gpt-4.1-mini", SetupRouteType.OpenAi), abilities));
         // Ollama on one of the user's computers takes recordings: Gemma 4 E4B there hears by its name.
-        Assert.Equal("By its name, gemma4-e4b hears recordings. Test hearing makes sure.",
+        Assert.Equal("By its name, gemma4-e4b hears recordings; Test hearing makes sure.",
             MainWindow.SenseKnown(SenseKind.Audio, new(), Thinking("https://miku-host.local:9443", "gemma4-e4b", SetupRouteType.GatewayOllama), abilities));
     }
 
@@ -90,7 +90,7 @@ public sealed class SenseModelCardsTests
         Assert.Equal("Pictures of your screen or camera and a few lines of the conversation go to diva through its paired, pinned connection.",
             MainWindow.SenseSent(SenseKind.Image, Diva));
         Assert.Contains("are sent there, and requests may cost money.", MainWindow.SenseConsent(SenseKind.Audio, "OpenRouter", onThisPc: false));
-        Assert.StartsWith("I choose OpenRouter as the audio model. Recordings of your voice and of what this PC plays",
+        Assert.StartsWith("I choose OpenRouter as the audio model, so recordings of your voice and of what this PC plays",
             MainWindow.SenseConsent(SenseKind.Audio, "OpenRouter", onThisPc: false));
     }
 
@@ -98,16 +98,16 @@ public sealed class SenseModelCardsTests
     public void Thinking_says_it_is_the_text_model_and_where_pictures_and_recordings_go()
     {
         var omni = Thinking(GenerationSupport.LocalOllamaChatBaseUrl, "gemma4:e2b");
-        Assert.Equal("Thinking is the text model: it writes every reply. Pictures go to Thinking itself (Companion › Vision), and recordings " +
+        Assert.Equal("Thinking is the text model and writes every reply; pictures go to Thinking itself (Companion › Vision), and recordings " +
             "go to Thinking itself (Companion › Hearing).", MainWindow.TextModelText(new(), omni, null));
         var senses = new SenseModels { Image = Own(Endpoint(GenerationSupport.LocalOllamaChatBaseUrl, "qwen2.5vl:7b")) };
-        Assert.Contains("Pictures go to the image model, Ollama on this PC (qwen2.5vl:7b)", MainWindow.TextModelText(senses, omni, null));
+        Assert.Contains("pictures go to the image model, Ollama on this PC (qwen2.5vl:7b)", MainWindow.TextModelText(senses, omni, null));
         // A model of its own that is exactly Thinking's reads as the text model.
         var same = new SenseModels { Audio = Own(Endpoint(GenerationSupport.LocalOllamaChatBaseUrl, "gemma4:e2b")) };
         Assert.Contains("recordings go to Thinking itself", MainWindow.TextModelText(same, omni, null));
         // A text-only Thinking with no image or audio model: nothing takes them.
         var text = Thinking(GenerationSupport.LocalOllamaChatBaseUrl, "qwen3:8b");
-        Assert.Equal("Thinking is the text model: it writes every reply. Pictures go to no model, so Martlet can't see (Companion › Vision), " +
+        Assert.Equal("Thinking is the text model and writes every reply; pictures go to no model, so Martlet can't see (Companion › Vision), " +
             "and recordings go to no model, so Thinking gets the transcript only (Companion › Hearing).", MainWindow.TextModelText(new(), text, null));
         // Recordings to the same model as a paired computer's image model go nowhere: that model doesn't hear.
         var host = new SenseModels { Image = Own(Diva), Audio = new() { Source = SenseSource.OtherSense } };
@@ -131,7 +131,7 @@ public sealed class SenseModelCardsTests
         Assert.Contains("hears recordings: yes (Ollama on this PC,", known);
         Assert.Contains("takes video: no (Ollama on this PC,", known);
         Assert.Contains("calls tools: yes (found by a test request,", known);
-        Assert.DoesNotContain("To find out", known);
+        Assert.DoesNotContain("to find out", known);
         var gone = found.With(new() { Origin = gemma.Origin, ModelId = gemma.ModelId, Retired = at, Source = ModelAbility.GoneAnswer, CheckedAt = at });
         Assert.StartsWith("127.0.0.1 retired gemma4:e2b (an HTTP 410 Gone answer,", MainWindow.ThinkingAbilitiesText(gemma, gone));
     }
@@ -142,9 +142,9 @@ public sealed class SenseModelCardsTests
         Assert.Equal("Sends gemma4:e2b one made-up tool and asks it to call the tool with a test word (never anything you said or typed); it " +
             "stays on this PC.", MainWindow.ToolsTestAbout("gemma4:e2b", local: true, "Ollama on this PC"));
         Assert.Equal("Sends qwen2.5vl:7b one picture of a single word, drawn on this PC (never your screen), and asks which word it shows; " +
-            "it stays on this PC. Choosing a model already asks its server what it takes, when the server says.",
+            "it stays on this PC.",
             MainWindow.TestAbout(SenseKind.Image, "qwen2.5vl:7b", local: true, "Ollama on this PC"));
-        Assert.Contains("which word it heard, to OpenRouter. It's one small request that may cost a little.",
+        Assert.Contains("which word it heard, to OpenRouter (one small request that may cost a little).",
             MainWindow.TestAbout(SenseKind.Audio, "google/gemini-2.5-flash", local: false, "OpenRouter"));
     }
 
