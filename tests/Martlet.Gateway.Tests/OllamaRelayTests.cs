@@ -136,9 +136,9 @@ public sealed class OllamaRelayTests
 
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId);
         var text = new List<string>();
         await foreach (var delta in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
