@@ -88,7 +88,7 @@ internal sealed partial class ThinkingPoolPageModel
     internal string NowText => DeepThinkingNow(LongJobs, Route, LongPlan, On);
 
     /// <summary>The Now card's second line (DeepThinkingParallel): why thinking longer can or can't run now.</summary>
-    internal string WhyText => On ? LongPlan.Why : "Thinking longer is off. Turn it on under Thinking longer below.";
+    internal string WhyText => On ? LongPlan.Why : "Thinking longer is off; turn it on under Thinking longer below.";
 
     /// <summary>Whether <see cref="WhyText"/> is a warning.</summary>
     internal bool WhyIsWarning => On && !LongPlan.Available;
@@ -97,12 +97,12 @@ internal sealed partial class ThinkingPoolPageModel
     /// to and whether one can run there.</summary>
     internal static string DeepThinkingNow(ThinkingPoolSettings pool, SetupRoute? route, DeepThinkingPlan plan, bool on)
     {
-        if (!on) return "Off. Martlet answers everything right away and never thinks in the background.";
+        if (!on) return "Off: Martlet answers everything right away and never thinks in the background.";
         var where = pool.Members.Count > 0 ? pool.Places.DescribeAll()
             : !pool.UseConversationModelWhenEmpty ? "no member"
             : route is null ? "the conversation model (not set up yet)" : $"the conversation model ({route.ModelId}), until a machine in the pool takes long jobs";
         return plan.Available ? $"The Thinking pool thinks on {where}, in parallel with the conversation."
-            : $"On, but the pool can't think on {where}, so Martlet doesn't offer to think things over. Add a machine below, or tick Long jobs on one.";
+            : $"On, but the pool can't think on {where}, so Martlet doesn't offer to think things over; add a machine below, or tick Long jobs on one.";
     }
 
     // ---------- the machine list ----------
@@ -115,14 +115,15 @@ internal sealed partial class ThinkingPoolPageModel
     internal static string PoolSummary(ThinkingPoolSettings pool, int slots)
     {
         var off = pool.OffMembers.Count;
-        var offText = off == 0 ? "" : $" {off} machine{(off == 1 ? " is" : "s are")} turned off.";
         if (pool.Members.Count == 0)
-            return "The Thinking pool is off: no machine is on." + offText +
-                (pool.UseConversationModelWhenEmpty ? " Thinking longer and research use the conversation model meanwhile."
-                    : " The conversation model isn't used either, so Martlet doesn't think in the background.") +
-                (off == 0 ? " Add a machine below." : " Tick On to use one again.");
+            return "The Thinking pool is off: no machine is on" +
+                (off == 0 ? "" : $" and {off} machine{(off == 1 ? " is" : "s are")} turned off") +
+                (pool.UseConversationModelWhenEmpty ? ", so thinking longer and research use the conversation model meanwhile"
+                    : ", and the conversation model isn't used either, so Martlet doesn't think in the background") +
+                (off == 0 ? "; add a machine below." : "; tick On to use one again.");
         var on = pool.Members.Count;
-        return $"{on} machine{(on == 1 ? " is" : "s are")} on, with {slots} usable slot{(slots == 1 ? "" : "s")} in all." + offText;
+        return $"{on} machine{(on == 1 ? " is" : "s are")} on, with {slots} usable slot{(slots == 1 ? "" : "s")} in all" +
+            (off == 0 ? "." : $"; {off} {(off == 1 ? "is" : "are")} turned off.");
     }
 
     /// <summary>The conversation row's title: "The conversation" and its model.</summary>
@@ -130,8 +131,7 @@ internal sealed partial class ThinkingPoolPageModel
 
     /// <summary>The conversation row's line (ThinkingPoolConversation).</summary>
     internal string ConversationDetail => Route is null ? "Thinking isn't set up yet."
-        : "Answers you. Never in the pool: no pool job waits in front of a reply, and its model stays ready for the conversation, " +
-          "so replies start as fast as they can.";
+        : "Answers you and is never in the pool, so no pool job waits in front of a reply and replies start as fast as they can.";
 
     /// <summary>One machine in the list, as its row shows it.</summary>
     /// <param name="Index">Its place in the list, the end of its automation IDs (ThinkingPoolOn-0...).</param>
@@ -165,16 +165,17 @@ internal sealed partial class ThinkingPoolPageModel
         var slots = member.ThinksAtOnce;
         string[] reads = ["text", .. can.HasFlag(ThinkingCapability.Vision) ? ["pictures"] : Array.Empty<string>(),
             .. can.HasFlag(ThinkingCapability.Audio) ? ["sound"] : Array.Empty<string>()];
-        var detail = (on ? "" : "Off: it takes no jobs and keeps its settings. Tick On to use it again. ") +
-            $"Reads {(reads.Length == 1 ? reads[0] : string.Join(", ", reads[..^1]) + " and " + reads[^1])}; writes text" +
-            $"{(can.HasFlag(ThinkingCapability.Tools) ? " and calls tools" : "")}. " +
-            $"{slots} slot{(slots == 1 ? "" : "s")}{(member.OnHostRole && hostId is not null ? $", set on {hostId}" : "")}." +
-            (card > 1 ? $" Runs on {hostId}'s graphics card {card}, as a member of its own." : "") +
-            (on && PoolPlan.Find(key) is { Plan.Available: false } spot ? $" Can't run now: {spot.Plan.Why}" : "") +
+        // One sentence of facts, joined with semicolons.
+        var detail = (on ? "Reads " : "Off, with its settings kept (tick On to use it again); reads ") +
+            $"{(reads.Length == 1 ? reads[0] : string.Join(", ", reads[..^1]) + " and " + reads[^1])}; writes text" +
+            $"{(can.HasFlag(ThinkingCapability.Tools) ? " and calls tools" : "")}; " +
+            $"{slots} slot{(slots == 1 ? "" : "s")}{(member.OnHostRole && hostId is not null ? $", set on {hostId}" : "")}" +
+            (card > 1 ? $"; runs on {hostId}'s graphics card {card}, as a member of its own" : "") +
+            (on && PoolPlan.Find(key) is { Plan.Available: false } spot ? $"; can't run now: {spot.Plan.Why.TrimEnd('.')}" : "") +
             // A paired computer that stopped answering stays a member: its slots come back by themselves.
-            (on && offline ? $" Offline now: its slot{(slots == 1 ? "" : "s")} come{(slots == 1 ? "s" : "")} back when it answers again." : "") +
+            (on && offline ? $"; offline now: its slot{(slots == 1 ? "" : "s")} come{(slots == 1 ? "s" : "")} back when it answers again" : "") +
             // Its provider limited requests: it waits, or runs fewer jobs at once, and its jobs wait in line instead of failing.
-            (cooling is not null ? $" {cooling.Describe(DateTimeOffset.UtcNow)}." : "");
+            (cooling is not null ? $"; {cooling.Describe(DateTimeOffset.UtcNow)}" : "") + ".";
         string[] badges = [.. place is not null && Resources.Shares(place) ? ["Waits while you talk"] : Array.Empty<string>(),
             .. paid ? ["Costs money"] : Array.Empty<string>(), .. offline ? ["Offline"] : Array.Empty<string>(),
             .. cooling is not null ? ["Limiting requests"] : Array.Empty<string>()];
@@ -203,8 +204,8 @@ internal sealed partial class ThinkingPoolPageModel
                 var cannot = !services.ChangesRolesOn(host) ? $"Martlet can't set up roles on {hostId} from here."
                     : services.CannotHand(hostId, kind, "deep thinking");
                 var title = $"{hostId}, graphics card {card}";
-                var detail = "No Thinking pool model on this card yet. Add one and it joins the pool as a machine of its own, at full " +
-                    "speed beside the computer's other cards." + (cannot is null ? "" : $" {cannot}");
+                var detail = "No Thinking pool model on this card yet" + (cannot is null
+                    ? "; add one and it joins the pool as a machine of its own." : $": {cannot}");
                 yield return new(host, hostId, card, title, detail, cannot);
             }
         }
@@ -232,14 +233,14 @@ internal sealed partial class ThinkingPoolPageModel
         // What the auto-join rule does with it at its next check: join, or why not.
         var rule = check is { Reachable: true, Routes: { } routes } ? ThinkingPoolAutoJoin.For(Pool, MainWindow.PoolHost(host, routes),
             ThinkingHost, Sharing, WorkSharingRoster.Device, services.IsHost) : null;
-        string Joins(string offer) => rule is null or { Changed: true } ? $"{offer} It joins the pool by itself at its next check." : $"{offer} {rule.Why}";
+        string Joins(string offer) => rule is null or { Changed: true } ? $"{offer}; it joins the pool by itself at its next check." : $"{offer}; {rule.Why}";
+        var runs = own is not null ? $" (its Thinking pool role runs {own})" : ollama is not null ? $" (Ollama runs {ollama})" : "";
         var detail = Pool.Left(host.HostId)
-            ? (own is not null ? $"Its Thinking pool role runs {own}. " : ollama is not null ? $"Ollama runs {ollama}. " : "") +
-                "Kept out of the pool, because you unticked it. Tick In the pool to add it again."
-            : own is not null ? Joins($"Its Thinking pool role runs {own}.")
-            : ollama is not null && thinksThere ? $"Its Ollama ({ollama}) does Thinking for the conversation. Add the Thinking pool role " +
+            ? $"Kept out of the pool because you unticked it{runs}; tick In the pool to add it again."
+            : own is not null ? Joins($"Its Thinking pool role runs {own}")
+            : ollama is not null && thinksThere ? $"Its Ollama ({ollama}) does Thinking for the conversation; add the Thinking pool role " +
                 "there to join the pool beside it."
-            : ollama is not null ? Joins($"Ollama runs {ollama}.")
+            : ollama is not null ? Joins($"Ollama runs {ollama}")
             : check?.Reachable == true ? "Add the Thinking pool role there to join the pool."
             : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
         var shared = check?.Reachable == true ? DeepThinkingFit.SharedCard(host.HostId, services.HardwareOf(host.HostId), check.Offers) : null;
@@ -283,12 +284,15 @@ internal sealed partial class ThinkingPoolPageModel
         get
         {
             var left = Pool.LeftByOwner;
-            return "Your paired computers with a Thinking model join the list by themselves, on: their Thinking pool role " +
-                "(one machine for each graphics card with a Thinking pool model), or their Ollama when it doesn't do this PC's Thinking. " +
-                "Untick On on a machine to stop using it; it stays off until you tick it again." +
-                (left.Count == 0 ? "" : $" Kept out now: {string.Join(", ", left)}.");
+            return "Your paired computers with a Thinking model join the list by themselves, turned on" +
+                (left.Count == 0 ? "." : $"; kept out now: {string.Join(", ", left)}.");
         }
     }
+
+    /// <summary>The rest of <see cref="AutoJoinText"/>, behind its "?".</summary>
+    internal const string AutoJoinMore = "A computer joins with its Thinking pool role (one machine for each graphics card with a " +
+        "Thinking pool model), or with its Ollama when that doesn't do this PC's Thinking. Untick On on a machine to stop using it; it " +
+        "stays off until you tick it again.";
 
     /// <summary>Thinking's own model when it runs in Ollama on this PC, or null: a model in Ollama on this PC can't be the same one.</summary>
     internal string? LocalBeside => MainWindow.IsLocalOllama(Route) ? Route!.ModelId : null;
@@ -323,16 +327,16 @@ internal sealed partial class ThinkingPoolPageModel
     /// <summary>The key line of the A cloud provider or server form (DeepThinkingKeyStatus) for <paramref name="provider"/> at
     /// <paramref name="url"/>.</summary>
     internal string KeyStatus(MainWindow.CloudProvider provider, string url) => SavedKey(Pool.All, url) is { } saved
-            ? $"Its {provider.Name} key is saved (for {saved.Describe()}). Leave this empty to use it again, or paste a new key."
+            ? $"Its {provider.Name} key is saved (for {saved.Describe()}): leave this empty to use it again, or paste a new key."
         : Route is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && Route.Origin == url
             ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
-        : provider.NeedsKey ? $"Paste your {provider.Name} API key. Martlet saves it in Windows Credential Manager."
+        : provider.NeedsKey ? $"Paste your {provider.Name} API key (Martlet saves it in Windows Credential Manager)."
         : "Add a key only if your server needs one.";
 
     /// <summary>The consent box's text for <paramref name="provider"/>.</summary>
     internal static string CloudConsent(MainWindow.CloudProvider provider) =>
-        $"I add {provider.Name} to the Thinking pool. When it takes a job, the job's text (for a think, the recent conversation and " +
-        "the task) goes there, and requests (with their hidden thinking) may cost money.";
+        $"I add {provider.Name} to the Thinking pool: the text of each job it takes goes there (for a think, the recent " +
+        "conversation and the task), and its requests may cost money.";
 
     // ---------- Backup for slow replies and Busy pool ----------
 
@@ -356,17 +360,17 @@ internal sealed partial class ThinkingPoolPageModel
     internal static string PriorityLine(ThinkingPoolSettings pool, ThinkingPoolStatus? status)
     {
         var rules = pool.PreemptLowerPriority
-            ? $"More important requests may stop less important ones; a request stopped {Times(pool.RaisePriorityAfterStops)} becomes more important."
-            : "Requests wait for a free slot and never stop each other.";
+            ? $"More important requests may stop less important ones, and a request stopped {Times(pool.RaisePriorityAfterStops)} becomes more important"
+            : "Requests wait for a free slot and never stop each other";
         var retry = pool.RetriesOnFailure switch
         {
-            0 => " A failed request isn't tried again.",
-            1 => " A failed request is tried once more.",
-            var n => $" A failed request is tried up to {n} more times."
+            0 => "; a failed request isn't tried again",
+            1 => "; a failed request is tried once more",
+            var n => $"; a failed request is tried up to {n} more times"
         };
         var counts = status is null ? "" :
-            $" Since Martlet started: {status.StoppedForPriority} stopped, {status.Raised} made more important, {status.Retried} tried again.";
-        return rules + retry + counts;
+            $" (since Martlet started: {status.StoppedForPriority} stopped, {status.Raised} made more important, {status.Retried} tried again)";
+        return rules + retry + counts + ".";
 
         static string Times(int n) => n == 1 ? "once" : $"{n} times";
     }
@@ -379,15 +383,15 @@ internal sealed partial class ThinkingPoolPageModel
     {
         var route = Route;
         if (!settings.On) return ("Off: Martlet answers everything right away and never thinks in the background.", false);
-        if (route is null) return ("On, but set up Thinking so Martlet can use it.", true);
+        if (route is null) return ("On, but Thinking isn't set up yet; set it up so Martlet can use it.", true);
         if (route.RouteType is not (SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
-            return ("On, but your Thinking model can't use tools here (a Martlet host's model), so it can't hand a task off: use " +
-                "OpenAI or a Chat Completions endpoint (such as Ollama on this PC) for Thinking.", true);
+            return ("On, but a Martlet host's Thinking model can't use tools, so it can't hand a task off; use OpenAI or a " +
+                "Chat Completions endpoint (such as Ollama on this PC) for Thinking.", true);
         if (services.ToolsRefused(route))
-            return ($"On, but {route.ModelId} turned down tools, so it can't hand a task off: choose a Thinking model that can use tools.", true);
+            return ($"On, but {route.ModelId} turned down tools, so it can't hand a task off; choose a Thinking model that can use tools.", true);
         if (!LongPlan.Available)
-            return ($"On, but the Thinking pool has nowhere to think in parallel, so Martlet doesn't offer to think things over. {LongPlan.Why}", true);
-        return ($"On. When a task needs it, Martlet says it'll think it over and works on it in the background ({settings.HowHard} " +
+            return ("On, but the Thinking pool has nowhere to think in parallel, so Martlet doesn't offer to think things over (Now, above, says why).", true);
+        return ($"On: when a task needs it, Martlet says it'll think it over and works on it in the background ({settings.HowHard} " +
             "effort, no time limit, no limit on how many) while you keep talking, " +
             (settings.When == ThinkDelivery.WhenFree ? "then brings it up as soon as it's free." : "then brings it up when you talk next."), false);
     }
@@ -396,16 +400,16 @@ internal sealed partial class ThinkingPoolPageModel
     internal (string Text, bool Problem) WebResearchStatus()
     {
         var settings = ThinkLongerChoices;
-        if (!settings.On) return ("Off, because thinking longer is off. Turn it on under Thinking longer above to use web research.", false);
-        if (!settings.WebResearchOn) return ("Off. Martlet never searches the web or reads web pages.", false);
+        if (!settings.On) return ("Off, because thinking longer is off; turn it on under Thinking longer above to use web research.", false);
+        if (!settings.WebResearchOn) return ("Off: Martlet never searches the web or reads web pages.", false);
         var (thinking, problem) = ThinkLongerStatus(settings);
         if (problem)
         {
             var why = thinking.StartsWith("On, but ", StringComparison.Ordinal) ? thinking[8..]
-                : thinking.StartsWith("On. ", StringComparison.Ordinal) ? thinking[4..] : thinking;
+                : thinking.StartsWith("On: ", StringComparison.Ordinal) ? thinking[4..] : thinking;
             return ("On, but Martlet can't look things up yet: " + char.ToLowerInvariant(why[0]) + why[1..], true);
         }
-        return ($"On. Martlet checks a fact it doesn't know with a quick look-up (up to {WebResearch.QuickBudget.Pages} pages), and " +
+        return ($"On: Martlet checks a fact it doesn't know with a quick look-up (up to {WebResearch.QuickBudget.Pages} pages), and " +
             $"researches what you ask it to in the background (up to {WebResearch.Budget.Searches} searches and {WebResearch.Budget.Pages} " +
             "pages, more for in-depth research, no time limit), then offers the report.", false);
     }

@@ -37,10 +37,10 @@ public sealed class SensePoolUsersTests
         Assert.Equal("integrate.api.nvidia.com (acme/eyes-26b)", eyes.Name);
         Assert.True(eyes.External);
         Assert.True(eyes.Summaries);
-        Assert.Equal("A cloud provider or server in the Thinking pool. It gets your pictures for screen summaries, and touch zones, the " +
-            "character's eyes and check-ins with a screenshot. Requests there may cost money.", SensePoolUsers.Line(SenseKind.Image, eyes, false));
+        Assert.Equal("A cloud provider or server in the Thinking pool; it gets your pictures for screen summaries, and touch zones, the " +
+            "character's eyes and check-ins with a screenshot, and requests there may cost money.", SensePoolUsers.Line(SenseKind.Image, eyes, false));
         Assert.Contains("screen summaries when your image model can't take them", SensePoolUsers.Line(SenseKind.Image, eyes, true));
-        Assert.Equal("Your pictures also go to 1 model in the Thinking pool, for background work. They are set on Companion › Thinking pool.",
+        Assert.Equal("Your pictures also go to 1 model in the Thinking pool for background work, set on Companion › Thinking pool.",
             SensePoolUsers.Summary(SenseKind.Image, users));
     }
 
@@ -49,13 +49,13 @@ public sealed class SensePoolUsersTests
     {
         var noMedia = SensePoolUsers.For(SenseKind.Image, Pool with { MediaAllowed = [] }, Abilities);
         Assert.False(Assert.Single(noMedia).Gets);
-        Assert.EndsWith("It gets no pictures: May receive pictures and recordings is off for it there.",
+        Assert.EndsWith("; it gets no pictures: May receive pictures and recordings is off for it there.",
             SensePoolUsers.Line(SenseKind.Image, noMedia[0], false));
         Assert.Equal("The Thinking pool has 1 model that sees, but none of them gets your pictures now.",
             SensePoolUsers.Summary(SenseKind.Image, noMedia));
 
         var off = SensePoolUsers.For(SenseKind.Image, Pool.TurnOff(Eyes.Key), Abilities);
-        Assert.EndsWith("It is off there, so it gets no pictures.", SensePoolUsers.Line(SenseKind.Image, Assert.Single(off), false));
+        Assert.EndsWith("; it is off there, so it gets no pictures.", SensePoolUsers.Line(SenseKind.Image, Assert.Single(off), false));
 
         var noQuick = SensePoolUsers.For(SenseKind.Image, Pool.WithJobs(Eyes.Key, quick: false), Abilities);
         Assert.False(Assert.Single(noQuick).Summaries);
@@ -78,7 +78,7 @@ public sealed class SensePoolUsersTests
         var users = SensePoolUsers.For(SenseKind.Audio, Pool, Abilities);
         var ears = Assert.Single(users);
         Assert.Equal("integrate.api.nvidia.com (acme/ears-8b)", ears.Name);
-        Assert.Contains("It gets your recordings for descriptions of PC sounds, and check-ins with a recording.",
+        Assert.Contains("it gets your recordings for descriptions of PC sounds, and check-ins with a recording",
             SensePoolUsers.Line(SenseKind.Audio, ears, false));
     }
 
@@ -113,8 +113,8 @@ public sealed class SensePoolUsersTests
             Origin = GenerationSupport.LocalOllamaChatBaseUrl, ModelId = "gemma4:e4b", ConfigurationRevision = Guid.NewGuid()
         };
         var text = MainWindow.TextModelText(new(), thinking, Abilities, Pool);
-        Assert.EndsWith(" Background work also sends pictures to integrate.api.nvidia.com (acme/eyes-26b) in the Thinking pool. Background " +
-            "work also sends recordings to integrate.api.nvidia.com (acme/ears-8b) in the Thinking pool.", text);
-        Assert.DoesNotContain("Background work", MainWindow.TextModelText(new(), thinking, Abilities));
+        Assert.EndsWith("; background work also sends pictures to integrate.api.nvidia.com (acme/eyes-26b) and recordings to " +
+            "integrate.api.nvidia.com (acme/ears-8b) in the Thinking pool.", text);
+        Assert.DoesNotContain("background work", MainWindow.TextModelText(new(), thinking, Abilities));
     }
 }

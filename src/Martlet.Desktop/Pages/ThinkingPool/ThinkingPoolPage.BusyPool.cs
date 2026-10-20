@@ -17,12 +17,12 @@ internal sealed partial class ThinkingPoolPage
         var pool = model.Pool;
         var stack = new List<UIElement>
         {
-            Heading("Runs on"),
-            Note("Choose which machines do each kind of job. Prefer smart sends it to the smartest free machine; when none of the " +
-                "smartest comes free within a short wait (30 seconds at most), a less smart one takes it. Thinking longer, research " +
-                "and lyrics take the smartest free machine at once. Smart only waits for a Smart machine; without one, the job uses " +
-                "its simple fallback. These members uses only the machines you tick. Each machine's Smarts is above. Your " +
-                "conversation's own replies never change.", new Thickness(0, 0, 0, 8))
+            HelpTip.After(Heading("Runs on"), "Runs on", "Choose which machines do each kind of job. Prefer smart sends it to the smartest " +
+                "free machine; when none of the smartest comes free within a short wait (30 seconds at most), a less smart one takes it. " +
+                "Thinking longer, research and lyrics take the smartest free machine at once. Smart only waits for a Smart machine; " +
+                "without one, the job uses its simple fallback. These members uses only the machines you tick. Each machine's Smarts " +
+                "is above. Your conversation's own replies never change.", "ThinkingPoolRunsOn", wiki: "Thinking#runs-on"),
+            Note("Choose which machines do each kind of job.", new Thickness(0, 0, 0, 8))
         };
         foreach (var (kind, label) in ThinkingJobKinds.Rows.Select(row => (row.Key, row.Label)))
         {
@@ -78,11 +78,12 @@ internal sealed partial class ThinkingPoolPage
         var status = Note(model.BackupStatus, new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(status, "ThinkingPoolBackupStatus");
         return Card(Heading("Backup for slow replies"),
-            HelpTip.Explain("Off by default. When the conversation's Thinking model has no words after a short wait, the same request also goes " +
-                "to a machine you ticked for it (Backup for slow replies, on a machine above). Whichever starts first gives the reply, and the " +
+            HelpTip.Explain("When a reply is slow to start, a machine in the pool can answer too. This is off by default. When it is on and the " +
+                "conversation's Thinking model has no words after a short wait, the same request also goes to a machine you ticked for it " +
+                "(Backup for slow replies, on a machine above). Whichever starts first gives the reply, and the " +
                 "other stops at once, so a slow or busy model doesn't keep you waiting. Choose machines with the same model as the " +
                 "conversation, or a similar one. A paid cloud provider is asked only when you tick it, and only for a reply already " +
-                "taken.", new Thickness(0, 0, 0, 8), "ThinkingFill", "this setting"),
+                "taken.", new Thickness(0, 0, 0, 8), "ThinkingFill", "this setting", wiki: "Thinking#backup-for-slow-replies"),
             on, TerminalRow("Wait for first words", delay), status);
 
         static int IndexOf(IReadOnlyList<int> list, int value)
@@ -154,10 +155,10 @@ internal sealed partial class ThinkingPoolPage
         var status = Note(model.PriorityStatus, new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(status, "ThinkingPoolPriorityStatus");
         return Card(Heading("Busy pool"),
-            Note("When every slot is busy, a more important request can stop a less important one to go first. The stopped request " +
+            HelpTip.Explain("When every slot is busy, a more important request can stop a less important one to go first. The stopped request " +
                 "keeps its place at the front of its line and starts again when there's room. If it keeps getting stopped, it becomes " +
                 "more important so it finishes in the end. A request that fails can be tried again, at the importance it had.",
-                new Thickness(0, 0, 0, 8)),
+                new Thickness(0, 0, 0, 8), "BusyPool", "the busy pool", wiki: "Thinking#busy-pool"),
             preempt, TerminalRow("More important after", raise), TerminalRow("Try a failed request again", retries), status);
     }
 }

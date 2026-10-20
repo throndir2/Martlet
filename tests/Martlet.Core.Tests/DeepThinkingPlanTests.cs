@@ -182,7 +182,7 @@ public sealed class DeepThinkingPlanTests
         // Three slots in all: two thinks at once, because the last free slot stays free for quick jobs.
         Assert.StartsWith("Up to 2 thinks run at once alongside the conversation on its places (imouto, ripley and this PC)", pool.Plan.Why,
             StringComparison.Ordinal);
-        Assert.EndsWith("The last free slot stays free for quick jobs (judges and summaries).", pool.Plan.Why, StringComparison.Ordinal);
+        Assert.EndsWith("), each on the free place that shares least with the conversation.", pool.Plan.Why, StringComparison.Ordinal);
         Assert.Equal("ripley", pool.Find("host:ripley")!.Computer);
         // One place that can't think is the whole story when it is the only one.
         var only = DeepThinkingPool.For(Host("diva"), [divaThinks]);

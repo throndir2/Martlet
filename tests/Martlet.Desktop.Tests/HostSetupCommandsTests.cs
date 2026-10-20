@@ -697,7 +697,7 @@ public sealed class HostSetupCommandsTests
         Assert.NotNull(warning);
         Assert.Contains("gpu-a already runs a Thinking model (gemma4:e4b) on its only graphics card", warning);
         Assert.Contains("about half speed", warning);
-        Assert.Contains("one graphics card for each Thinking model", warning);
+        Assert.Contains("one graphics card for each Thinking model", DeepThinkingFit.SharedCardMore);
         // No Thinking model there, or a second graphics card for it: no warning.
         Assert.Null(DeepThinkingFit.SharedCard("gpu-a", hardware, new Dictionary<string, string>()));
         Assert.Null(DeepThinkingFit.SharedCard("gpu-a", hardware with { Gpus = [.. hardware.Gpus, hardware.Gpus[0]] }, thinking));

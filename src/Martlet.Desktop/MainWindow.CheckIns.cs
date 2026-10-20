@@ -121,7 +121,7 @@ public partial class MainWindow
         CheckIn? next = null;
         foreach (var checkIn in all)
         {
-            var wait = CheckIns.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now, homeSettings?.Prompts,
+            var wait = CheckInSchedule.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now, homeSettings?.Prompts,
                 checkInFired.GetValueOrDefault(checkIn.Id));
             if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs, checkIn.RunsOn))
                 wait = CheckInNoMember(checkIn);
@@ -257,9 +257,9 @@ public partial class MainWindow
     /// up the trigger it kept.</summary>
     private async Task RunCheckInAsync(CheckIn checkIn, CheckInState state, bool now, bool triggered = false)
     {
-        var focused = CheckIns.Focus(checkIn, state, now) with { Since = checkInRuns.GetValueOrDefault(checkIn.Id)?.Exchanged };
+        var focused = CheckInSchedule.Focus(checkIn, state, now) with { Since = checkInRuns.GetValueOrDefault(checkIn.Id)?.Exchanged };
         var prompts = homeSettings?.Prompts;
-        if (CheckIns.Prepare(checkIn, focused, prompts) is null)
+        if (CheckInPrompts.Prepare(checkIn, focused, prompts) is null)
         {
             checkInWaits[checkIn.Id] = "its prompt is empty";
             return;
@@ -301,7 +301,7 @@ public partial class MainWindow
             // Its tools are its work: without one that runs on this PC (memory off, no reminders here) it doesn't ask.
             else if (checkIn.Outcome == CheckInOutcome.Tools && tools is not { Tools.Count: > 0 })
                 result = "none of its tools works on this PC now";
-            else if (CheckIns.Prepare(checkIn, withInputs, prompts, tools) is not { } job) result = "its prompt is empty";
+            else if (CheckInPrompts.Prepare(checkIn, withInputs, prompts, tools) is not { } job) result = "its prompt is empty";
             else
             {
                 var done = CheckInFixture() is { } fixture
@@ -328,7 +328,7 @@ public partial class MainWindow
                     result = "another reply ended before its thoughts were ready, so they were dropped";
                 else
                 {
-                    var verdict = CheckIns.Read(checkIn, done.Text, withInputs);
+                    var verdict = CheckInAnswers.Read(checkIn, done.Text, withInputs);
                     kept = verdict is { Readable: true, Act: false } && used.Count == 0;
                     (result, acted) = await ActOnCheckInAsync(checkIn, verdict, prompts, callbackVersion);
                 }
@@ -371,7 +371,7 @@ public partial class MainWindow
             ReportAfterExchange(checkIn, broken);
         ErrorLog.Info($"Check-ins: {checkIn.Name}{(fired is null ? "" : $" (started by {fired.What})")}" +
             $"{(member is null ? "" : " ran on " + member)} in {elapsed.TotalSeconds:0.0} s" +
-            $"{(gathered is null ? "" : " with " + gathered)}: {result}{(uses.Count == 0 ? "" : " (" + CheckIns.ToolsText(uses) + ")")}.");
+            $"{(gathered is null ? "" : " with " + gathered)}: {result}{(uses.Count == 0 ? "" : " (" + CheckInPrompts.ToolsText(uses) + ")")}.");
     }
 
     /// <summary>The check-ins fixture's answer (<see cref="CheckInFixtureVariable"/>, never AI): its lines, except that each line
@@ -410,7 +410,7 @@ public partial class MainWindow
         {
             var ran = await TerminalRunner.RunAsync(new TerminalSettings { Shell = TerminalShell.WindowsPowerShell }, checkIn.Script!, token,
                 CheckIns.ScriptTimeout);
-            (output, var tookScript) = CheckIns.ScriptRan(ran.Problem, ran.TimedOut, ran.ExitCode, ran.Output, ran.Elapsed);
+            (output, var tookScript) = CheckInPrompts.ScriptRan(ran.Problem, ran.TimedOut, ran.ExitCode, ran.Output, ran.Elapsed);
             took.Add(tookScript);
         }
         BoundedImage? screenshot = null;
@@ -717,7 +717,7 @@ public partial class MainWindow
                     hours = c.Conditions.HasFlag(CheckInConditions.Between) ? $"{CheckIns.Clock(c.FromHour)}-{CheckIns.Clock(c.UntilHour)}" : null,
                     mostPerHour = c.MostPerHour == 0 ? (int?)null : c.MostPerHour,
                     lastHour = last?.Recent.Count(at => DateTimeOffset.Now - at < TimeSpan.FromHours(1)) ?? 0,
-                    nextAt = last is null ? (DateTimeOffset?)null : last.At + CheckIns.Pace(c, last, checkInExchanged),
+                    nextAt = last is null ? (DateTimeOffset?)null : last.At + CheckInSchedule.Pace(c, last, checkInExchanged),
                     runs = counts.Runs, acted = counts.Acted,
                     last = last is null ? null : new
                     {

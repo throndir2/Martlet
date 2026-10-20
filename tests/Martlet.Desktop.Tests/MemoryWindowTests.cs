@@ -88,7 +88,7 @@ public sealed class MemoryWindowTests
             Assert.Equal(
                 JsonDocument.Parse(exactPreview).RootElement.GetRawText(),
                 JsonDocument.Parse(await File.ReadAllTextAsync(scope.Export)).RootElement.GetRawText());
-            Assert.Contains("It was not uploaded", Text(window, "ExportStatus"));
+            Assert.Contains("it was not uploaded", Text(window, "ExportStatus"));
 
             list.SelectedIndex = 0;
             Click(window, "MemoryDeleteFact");
@@ -158,7 +158,7 @@ public sealed class MemoryWindowTests
             Click(window, "MemorySaveFact");
             await Until(() => !runner.IsRunning && list.Items.Count == 3);
             await Task.Delay(300);
-            Assert.Equal("Fact added. 3 facts remembered.", Text(window, "FactStatus"));
+            Assert.Equal("Fact added; 3 facts remembered.", Text(window, "FactStatus"));
         }
         finally
         {

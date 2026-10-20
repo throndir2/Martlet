@@ -109,7 +109,7 @@ public partial class MemoryWindow
             if (!move || shared < chosen.Length) return;
             foreach (var group in chosen.GroupBy(SpaceOf))
                 moved += (await service.DeleteFactsAsync(configurationRevision, [.. group], token, group.Key).ConfigureAwait(false)).DeletedFacts;
-        }, "Couldn't share the facts. Refresh and try again.");
+        }, "Couldn't share the facts; refresh and try again.");
         if (closed) return;
         var facts = shared == 1 ? "1 fact" : $"{shared} facts";
         ShareStatus.Text = shared == 0 ? "Nothing was shared."
@@ -130,7 +130,7 @@ public partial class MemoryWindow
             renderingShare = true;
             ShareAboutMeChoice.IsChecked = !on;
             renderingShare = false;
-            ShareStatus.Text = "Couldn't change this now. Try again in a moment.";
+            ShareStatus.Text = "Couldn't change this now; try again in a moment.";
             return;
         }
         ShareStatus.Text = on ? "New facts about you now go to the household's memories." : "New facts about you now stay in your own memories.";

@@ -40,31 +40,35 @@ public partial class MainWindow
             .ToList();
 
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
-            Text = (!installed ? "Ollama isn't installed on this PC yet."
+            Text = (!installed ? "Ollama isn't installed on this PC yet"
                 : ollamaModels is null && LocalOllamaRecovery.Last is { Stops: true, OllamaError: { } said }
-                    ? $"Ollama is installed, but it stops when it starts. Ollama says: \"{said.TrimEnd('.')}\". Check Ollama shows what to do."
-                : ollamaModels is null ? "Ollama is installed. Check it to see which models are downloaded."
-                : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet."
-                : $"Ollama is running with: {string.Join(", ", ollamaModels)}.") +
-                (inUse is not null ? $" Thinking uses {inUse}." : "") };
+                    ? $"Ollama is installed, but it stops when it starts (Ollama says: \"{said.TrimEnd('.')}\"); Check Ollama shows what to do"
+                : ollamaModels is null ? "Ollama is installed; choose Check Ollama to see which models are downloaded"
+                : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet"
+                : $"Ollama is running with: {string.Join(", ", ollamaModels)}") +
+                (inUse is not null ? $"; Thinking uses {inUse}." : ".") };
         AutomationProperties.SetAutomationId(status, "SetupOllamaStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
         var recommended = RecommendedLocalModel(machine.BestGpu?.MemoryGb);
         var smartest = LargestLocalModel(machine.BestGpu?.MemoryGb);
-        var suggestion = Note((machine.BestGpu is { } best ? $"This PC has {best.Describe()}" : "No dedicated graphics card was found, so models run on the processor") +
+        var suggestion = HelpTip.Explain($"Recommended for this PC: {recommended.Id}, the fastest. " +
+            (machine.BestGpu is { } best ? $"This PC has {best.Describe()}" : "No dedicated graphics card was found, so models run on the processor") +
             (smartest.Id != recommended.Id ? $": it fits up to {smartest.Id} with room for a game and Martlet's character. " : ". ") +
-            $"Recommended: {recommended.Id}, the fastest. Bigger models are smarter but slower.", new Thickness(0, 0, 0, 8));
+            "Bigger models are smarter but slower.", new Thickness(0, 0, 0, 8), "LocalRecommendation", "the recommended model",
+            wiki: "Thinking#ollama-on-this-pc");
         AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
 
         // Use a model file you downloaded: a GGUF from Hugging Face, LM Studio's folder or anywhere else becomes an Ollama model.
         var addFile = Row(PageButton("Use a model file you downloaded...", () => AddOllamaModelFileAsync().Forget(), id: "SetupAddModelFile"));
-        var addFileNote = Note("Choose a GGUF file on this PC. Martlet adds it to Ollama, with its mmproj file when it is in the same " +
-            "folder so the model can see, then thinks with it.", new Thickness(0, 4, 0, 8));
+        var addFileNote = HelpTip.Explain("Choose a GGUF model file on this PC, and Martlet adds it to Ollama and thinks with it. " +
+            "An mmproj file in the same folder comes too, so the model can see. Ollama keeps its own copy, so you can delete your " +
+            "file afterwards.", new Thickness(0, 4, 0, 8), "AddModelFile", "using a model file", wiki: "Thinking#ollama-on-this-pc");
         AutomationProperties.SetAutomationId(addFileNote, "SetupAddModelFileNote");
 
         return Card(Heading("Ollama on this PC"),
-            Note("Ollama runs a local conversation model. Your messages stay on this PC, with no API key or per-request cost.", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("Ollama runs a local conversation model. Your messages stay on this PC, with no API key or per-request cost.",
+                new Thickness(0, 0, 0, 8), "OllamaThisPc", "Ollama on this PC", wiki: "Thinking#ollama-on-this-pc"),
             status,
             suggestion,
             addFile,
@@ -79,7 +83,7 @@ public partial class MainWindow
     {
         if (Prerequisites.IsMissing(Prerequisites.Ollama))
         {
-            ActionText.Text = "Install Ollama first: choose a model below and Install Ollama and use it. Then add your model file.";
+            ActionText.Text = "Install Ollama first (choose a model below, then Install Ollama and use it), then add your model file.";
             return;
         }
         var dialog = new Microsoft.Win32.OpenFileDialog
@@ -101,10 +105,8 @@ public partial class MainWindow
         var gb = OllamaModelImport.Bytes(files) / 1e9;
         var names = string.Join(", ", files.Select(Path.GetFileName));
         if (!ConfirmationDialog.Confirm(this,
-                $"Add {names} to Ollama on this PC as {model}, then switch Thinking to it?" +
-                (projector is null ? "" : $"\n\n{Path.GetFileName(projector)} was in the same folder, so it comes too: it lets the model see.") +
-                $"\n\nOllama keeps its own copy (about {gb:0.0} GB more on this PC). You can delete your file afterwards. " +
-                "The model's own license applies.",
+                $"Add {names}{(projector is null ? "" : $" (with {Path.GetFileName(projector)}, so the model can see)")} to Ollama on this " +
+                $"PC as {model} and switch Thinking to it (Ollama keeps its own copy, about {gb:0.0} GB more; the model's own license applies)?",
                 "Add and switch", questionId: "AddModelFileQuestion"))
         {
             ActionText.Text = "Nothing changed.";
@@ -120,7 +122,7 @@ public partial class MainWindow
         if (closing) return;
         if (done is null)
         {
-            ActionText.Text = $"{model} wasn't added to Ollama. The run window says why.";
+            ActionText.Text = $"{model} wasn't added to Ollama; the run window says why.";
             return;
         }
         await CheckOllamaAsync(quiet: true);
@@ -154,7 +156,7 @@ public partial class MainWindow
         void ShowTest()
         {
             var last = localModelTest is { } outcome && outcome.Model == ModelId() ? outcome : null;
-            tested.Text = last?.Text ?? (ModelId().Length == 0 ? "" : $"{ModelId()} isn't tested yet. Test it before using it.");
+            tested.Text = last?.Text ?? (ModelId().Length == 0 ? "" : $"{ModelId()} isn't tested yet; test it before you use it.");
             tested.SetResourceReference(TextBlock.ForegroundProperty, last is null ? "MutedBrush" : last.Passed && !last.Warning ? "SuccessBrush"
                 : "WarningBrush");
         }
@@ -223,12 +225,12 @@ public partial class MainWindow
         {
             // The test loaded the model, so Ollama says exactly how much context it gives it.
             var context = await CheckLocalModelContextAsync(model);
-            var summary = result.Summary + (context?.ContextTokens is { } given
-                ? $" Ollama gives it {given:N0} tokens of context{(context.ModelMaximum is { } most && most > given ? $" of the {most:N0} it holds; raise Ollama's context length setting to give it more" : "")}."
-                : "");
+            var summary = result.Summary.TrimEnd('.') + (context?.ContextTokens is { } given
+                ? $"; Ollama gives it {given:N0} tokens of context{(context.ModelMaximum is { } most && most > given ? $" of the {most:N0} it holds (raise Ollama's context length setting to give it more)" : "")}."
+                : ".");
             if (closing) return;
             localModelTest = new(model, summary, true, result.Warning);
-            ActionText.Text = summary + (inUse ? "" : " Choose Use Ollama on this PC to use it.");
+            ActionText.Text = inUse ? summary : summary.TrimEnd('.') + "; choose Use Ollama on this PC to use it.";
             showContextStatus?.Invoke();
         }
         else if (failure is not null)
@@ -249,7 +251,7 @@ public partial class MainWindow
         var done = await HostRunWindow.RunAsync(this, $"Download {model}", async run =>
         {
             await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
-            return $"{model} is downloaded. Test it, then choose Use Ollama on this PC.";
+            return $"{model} is downloaded; test it, then choose Use Ollama on this PC.";
         }, join: true);
         if (closing) return;
         ActionText.Text = done ?? $"{model} was not downloaded.";
@@ -273,7 +275,7 @@ public partial class MainWindow
         if (closing) return;
         if (ollamaModels?.Contains(model, StringComparer.Ordinal) != true)
         {
-            ActionText.Text = $"Ollama is installed. Download {model} to use it.";
+            ActionText.Text = $"Ollama is installed; download {model} to use it.";
             return;
         }
         await SaveLocalThinkingAsync(model);
@@ -299,15 +301,16 @@ public partial class MainWindow
             {
                 try { models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(4), lifetime.Token); }
                 catch (OperationCanceledException) { return; }
-                if (models is not null && said.Length > 0) said += " ";
             }
         }
         ollamaModels = models?.Take(50).ToArray();
+        // After a repair, its summary already says that Ollama answers again and how many models it lists.
         if (!quiet)
             ActionText.Text = ollamaModels is null
-                ? said ?? "Ollama isn't installed on this PC yet. Install it first."
-                : said + (ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
-                    : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.");
+                ? said ?? "Ollama isn't installed on this PC yet; install it first."
+                : said is { Length: > 0 } ? said
+                : ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
+                : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.";
         if (!closing && openTab == CompanionTab.Thinking && !(quiet && tabEdited)) RenderTab();
     }
 
@@ -323,8 +326,8 @@ public partial class MainWindow
         if (closing) return false;
         var saved = await SaveSectionRouteAsync(HostJob.Thinking,
             settings => ChatCompletionsSetup.SelectRoute(settings, LocalOllamaBaseUrl, model), key: null,
-            $"Martlet now uses {model} in Ollama on this PC." +
-            (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $" Download {model} to use it." : ""));
+            $"Martlet now uses {model} in Ollama on this PC" +
+            (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $"; download {model} to use it." : "."));
         // Ollama says how much context it gives the model once it has loaded it (Test model does); nothing leaves this PC.
         if (!closing && IsLocalOllama(homeSettings.ThinkingRoute()))
             CheckNewModelContextAsync().Forget();
@@ -364,7 +367,7 @@ public partial class MainWindow
                 if (closing) return false;
                 if (models is null)
                 {
-                    ActionText.Text = (text.Length > 0 ? text : "Ollama didn't answer on this PC.") + " Thinking didn't change.";
+                    ActionText.Text = "Thinking didn't change: " + (text.Length > 0 ? text : "Ollama didn't answer on this PC.");
                     return false;
                 }
             }
@@ -377,8 +380,8 @@ public partial class MainWindow
             {
                 var size = LocalChatModels.FirstOrDefault(m => m.Id == model)?.Size;
                 if (!confirmed && !ConfirmationDialog.Confirm(this,
-                        $"{model} isn't downloaded on this PC yet. Download it with Ollama{(size is null ? "" : $" ({size})")}, load it and then " +
-                        $"switch Thinking to it?{keeps} The model's own license applies.",
+                        $"Download {model} with Ollama{(size is null ? "" : $" ({size})")}, load it and switch Thinking to it (the model's own " +
+                        "license applies)?",
                         "Download and switch", questionId: "LocalModelDownloadQuestion"))
                 {
                     ActionText.Text = "Thinking didn't change.";
@@ -391,14 +394,14 @@ public partial class MainWindow
                 if (keeps.Length > 0) run.Output.Report(keeps.Trim());
                 if (download) await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
                 var loaded = await LocalOllama.LoadAsync(model, run.Status, run.Output, run.Token, store?.DataDirectory);
-                return $"{model} is {(download ? "downloaded and " : "")}loaded{(loaded >= TimeSpan.FromSeconds(1) ? $" ({loaded.TotalSeconds:0.0} s)" : "")}. " +
-                    (localThinkingWanted == model ? "Thinking switches to it now." : $"You chose {localThinkingWanted} since, so Thinking doesn't switch to it.");
+                return $"{model} is {(download ? "downloaded and " : "")}loaded{(loaded >= TimeSpan.FromSeconds(1) ? $" ({loaded.TotalSeconds:0.0} s)" : "")}; " +
+                    (localThinkingWanted == model ? "Thinking switches to it now." : $"you chose {localThinkingWanted} since, so Thinking doesn't switch to it.");
             }, join: true);
             if (closing) return false;
             if (download) await CheckOllamaAsync(quiet: true);
             if (done is null)
             {
-                ActionText.Text = $"Thinking didn't change: {model} isn't ready. The run window says why.";
+                ActionText.Text = $"Thinking didn't change: {model} isn't ready (the run window says why).";
                 return false;
             }
             if (localThinkingWanted != model)

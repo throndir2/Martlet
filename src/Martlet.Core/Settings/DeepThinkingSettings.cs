@@ -172,7 +172,7 @@ public sealed record DeepThinkingSettings
                     HostSpkiFingerprint is { Length: > 0 and <= 200 } && HostDeviceId is { Length: > 0 and <= 128 } &&
                     HostCredentialId is { } pairing && pairing != Guid.Empty && CredentialId is null && Origin is null &&
                     (HostRouteId is null or SelfHostSetup.OllamaRouteId || SelfHostSetup.IsDeepThinkingRoute(HostRouteId)),
-                    "The paired computer in the Thinking pool is incomplete. Add it again.");
+                    "The paired computer in the Thinking pool is incomplete; add it again.");
                 ChatCompletionsSetup.ModelId(ModelId ?? "");
                 break;
             default:
@@ -276,18 +276,17 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
         if (deep.SameAs(thinking))
             return thinking is null ? new(false, "Set up Thinking first.")
                 : IsThisPc(thinking)
-                ? new(false, $"Thinking's model ({thinking.ModelId}) runs on this PC and can't think something over while it answers you. " +
-                    "Add a member to the Thinking pool: another model in Ollama on this PC, another of your computers or a cloud provider.")
+                ? new(false, $"Thinking's model ({thinking.ModelId}) runs on this PC and can't think something over while it answers you; " +
+                    "add another member to the Thinking pool.")
                 : thinking.RouteType == SetupRouteType.GatewayOllama
                     ? new(false, $"Thinking's model runs on {thinking.Gateway?.HostId ?? "a paired computer"} and can't think something over " +
-                        "while it answers you. Add the Thinking pool role there, or add another member to the Thinking pool.")
+                        "while it answers you; add the Thinking pool role there, or another member to the Thinking pool.")
                     : new(true, "Thinking's provider answers several requests at once, so a think runs alongside the conversation.", Rank: 2);
         if (deep.OnThisPc)
         {
             if (thinking is not null && IsThisPc(thinking) && SameServer(deep, thinking))
-                return new(true, $"It runs as a second model beside Thinking's {thinking.ModelId} on this PC, so a think runs alongside the " +
-                    "conversation. Before each think Martlet checks both fit on the graphics card together, and replies may start a " +
-                    "little later while it thinks.", ContextBudget.IsLocalOllama(SetupRouteType.ChatCompletions, deep.Origin) &&
+                return new(true, $"It runs as a second model beside Thinking's {thinking.ModelId} on this PC, and Martlet checks before " +
+                    "each think that both fit on the graphics card.", ContextBudget.IsLocalOllama(SetupRouteType.ChatCompletions, deep.Origin) &&
                     ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin), Rank: 3);
             var shared = routes.Where(r => r.Enabled != false && IsThisPc(r) && r.Role is SetupRole.Llm or SetupRole.Tts).ToArray();
             return shared.Length > 0
@@ -310,9 +309,8 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
             // A member on the computer's Ollama role uses the model that answers you. That server answers one request at a time and
             // keeps one conversation in its prompt cache, so a pool job there would make replies wait and start them from scratch.
             if (shared.ThinkingRoute() is not null)
-                return new(false, $"{deep.HostId} also answers you with this model (Thinking for the conversation), so Martlet keeps pool " +
-                    "jobs off it: it answers one request at a time, and a pool job there would make your replies wait. To think on " +
-                    $"{deep.HostId} too, add the Thinking pool role there (a second model beside it); otherwise untick In the pool.");
+                return new(false, $"{deep.HostId} also answers you with this model, and a pool job there would make your replies wait; " +
+                    "add the Thinking pool role there to think on it too, or untick In the pool.");
             return shared.Length > 0
                 ? new(true, $"{deep.HostId} also does {Jobs(shared)} for the conversation; a think runs there alongside it and shares its graphics card.", Rank: 1)
                 : new(true, $"{deep.HostId} does none of the conversation's jobs, so a think runs there alongside the conversation.");
@@ -405,8 +403,7 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
             var atOnce = AtOnce(usable.Sum(spot => spot.Settings.ThinksAtOnce));
             return new(true, (atOnce == 1 ? "One think runs at a time" : $"Up to {atOnce} thinks run at once") +
                 " alongside the conversation on its places (" + Names(names) +
-                "); each new one goes to a free place that shares least with the conversation and isn't kept for other work, " +
-                "and waits in line when every place is busy. The last free slot stays free for quick jobs (judges and summaries).",
+                "), each on the free place that shares least with the conversation.",
                 Rank: usable.Min(spot => spot.Plan.Rank));
         }
     }

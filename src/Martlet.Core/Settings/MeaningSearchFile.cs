@@ -107,7 +107,7 @@ public sealed partial record MeaningSearchFile
         (setting, _) =>
         {
             if (Parse(setting.Value) is not { } choice)
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
             try { Save(directory, choice); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {

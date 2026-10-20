@@ -32,20 +32,20 @@ public sealed class MemoryException(MemoryFailure failure) : Exception(MessageFo
         MemoryFailure.InvalidData => "Memory data is invalid.",
         MemoryFailure.UnsupportedVersion => "This memory store needs a newer Martlet.",
         MemoryFailure.InvalidPath => "Choose a local folder on this PC.",
-        MemoryFailure.ConsentRequired => "Memory is off. Review the location and turn it on first.",
-        MemoryFailure.ConsentMismatch => "Memory changed. Review it again before continuing.",
-        MemoryFailure.ConsentConsumed => "This approval was already used. Review and approve a fresh action.",
-        MemoryFailure.Busy => "Memory is in use. Try again in a moment.",
-        MemoryFailure.Closed => "Memory was closed. Reopen it and try again.",
+        MemoryFailure.ConsentRequired => "Memory is off; review the location and turn it on first.",
+        MemoryFailure.ConsentMismatch => "Memory changed; review it again before continuing.",
+        MemoryFailure.ConsentConsumed => "This approval was already used; review and approve a fresh action.",
+        MemoryFailure.Busy => "Memory is in use; try again in a moment.",
+        MemoryFailure.Closed => "Memory was closed; reopen it and try again.",
         MemoryFailure.LimitExceeded => "Memory is too large for this action.",
-        MemoryFailure.CorruptStore => "The memory store is damaged. Keep it and choose another location if needed.",
-        MemoryFailure.AccessDenied => "Memory storage access was denied. Choose a folder you can write to.",
-        MemoryFailure.Conflict => "Memory changed. Reload and try again.",
+        MemoryFailure.CorruptStore => "The memory store is damaged; keep it and choose another location if needed.",
+        MemoryFailure.AccessDenied => "Memory storage access was denied; choose a folder you can write to.",
+        MemoryFailure.Conflict => "Memory changed; reload and try again.",
         MemoryFailure.NotFound => "That memory fact was not found.",
-        MemoryFailure.QueryInvalidated => "Memory changed while Martlet was reading it. Try again.",
-        MemoryFailure.DestinationExists => "The selected export already exists. Choose a new filename; nothing was overwritten.",
-        MemoryFailure.CleanupPending => "A previous memory export still needs cleanup. Try again after cleanup finishes.",
-        _ => "Memory storage failed. Check the location and try again."
+        MemoryFailure.QueryInvalidated => "Memory changed while Martlet was reading it; try again.",
+        MemoryFailure.DestinationExists => "The selected export already exists, so nothing was overwritten; choose a new filename.",
+        MemoryFailure.CleanupPending => "A previous memory export still needs cleanup; try again after cleanup finishes.",
+        _ => "Memory storage failed; check the location and try again."
     };
 }
 

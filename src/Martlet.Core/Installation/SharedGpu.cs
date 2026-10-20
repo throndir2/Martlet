@@ -57,12 +57,11 @@ public static class SharedGpu
     public static string? Warning(string where, bool onWindows, string? voice, IReadOnlyList<string> others)
     {
         if (!onWindows || others.Count == 0) return null;
-        const string risk = "When the card's memory runs short, Windows quietly moves part of it into main memory instead of " +
-            "failing, and the voice can then start seconds late or pause mid-sentence.";
+        const string risk = "and the voice can start seconds late or pause mid-sentence when the card's memory runs short";
         var list = others.Count == 1 ? others[0] : string.Join(", ", others.Take(others.Count - 1)) + " and " + others[^1];
         return voice is null
-            ? $"{where} runs on Windows and already uses its graphics card for {list}. A voice engine there would share it. {risk}"
-            : $"{where} runs on Windows, so {voice} shares its graphics card with {list}. {risk} For a steady voice, give it " +
-              $"a card of its own: move {(others.Count == 1 ? "that job" : "those jobs")} or the voice to another computer.";
+            ? $"{where} runs on Windows and already uses its graphics card for {list}, so a voice engine there would share it, {risk}."
+            : $"{where} runs on Windows, so {voice} shares its graphics card with {list}, {risk}; for a steady voice, move " +
+              $"{(others.Count == 1 ? "that job" : "those jobs")} or the voice to another computer.";
     }
 }
