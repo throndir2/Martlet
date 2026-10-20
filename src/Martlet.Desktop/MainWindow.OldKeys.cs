@@ -37,8 +37,9 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Keys from before"),
-            Note($"When {HostJob.For(role)!.Title} stopped using these keys, Martlet kept them in Windows Credential Manager, so " +
-                "switching back needs no new key. Remove a key you don't need anymore.", new Thickness(0, 0, 0, 8))
+            HelpTip.Explain($"Martlet kept these keys when {HostJob.For(role)!.Title} stopped using them. Switching back needs no new " +
+                "key, and you can remove a key you don't need.", new Thickness(0, 0, 0, 8), "OldKeys-" + role, "keys from before",
+                wiki: "App-Settings-and-Updates#keys-from-before")
         };
         Border? card = null;
         var left = keys.Count;

@@ -95,7 +95,7 @@ public partial class App : Application
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or InvalidOperationException)
         {
-            error = "Martlet can't open its data folder. Launch normally, or choose an accessible folder.";
+            error = "Martlet can't open its data folder, so launch it normally or choose a folder you can open.";
         }
         var crashedLastTime = ErrorLog.Initialize(ErrorLog.DefaultDirectory(store?.DataDirectory), "desktop");
         try
@@ -239,7 +239,7 @@ public partial class App : Application
             }
             if (!ProblemDialog.Show(null, "Martlet couldn't start", "Martlet couldn't start",
                     $"{ex.Message}\n\nDetails were saved to:\n{log}\n\n{ex}", () => ErrorLog.OpenFolder()))
-                MessageBox.Show($"Martlet couldn't start.\n\n{ex.Message}\n\nDetails were saved to:\n{log}\n\n(Ctrl+C copies this message.)",
+                MessageBox.Show($"Martlet couldn't start: {ex.Message}\n\nDetails were saved to:\n{log}\n\n(Ctrl+C copies this message.)",
                     "Martlet couldn't start", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
             return;

@@ -7,7 +7,8 @@ Linux computers and Macs can also be **hosts** that lend their power to your oth
 ## What the early app can do
 
 - **Talk.** Type a message, or hold the **Hold to talk** button or your push-to-talk key while you speak. The default key is F8 on Linux and Control+Option+T on a Mac. Change it in **Settings**.
-- **Think.** Use OpenAI, or any OpenAI-compatible server. One click fills in **Ollama on this computer**, **LM Studio** or **Docker Model Runner**, and **Find model apps** looks for the model apps that run on this computer.
+- **Think.** Use OpenAI, or any OpenAI-compatible server. One click fills in **Ollama on this computer**, **LM Studio** or **Docker Model Runner**, and **Find model apps** looks for the model apps that run on this computer. If none answers, start Ollama, LM Studio or your app's local server, then look again. The **?** next to **Thinking** links here.
+  - On an Intel Mac, a model on this computer runs on the processor only. On Linux without an NVIDIA graphics card, it may run on the processor only too (AMD cards can work through Ollama's ROCm or Vulkan builds). Then use a small model (1-4B), a cloud provider or a paired host for faster replies. Martlet shows a warning under **Thinking** when this applies.
 - **Listen and speak** with OpenAI, after you add an OpenAI key and allow **Send what I type and say to the cloud provider I chose**. Without an OpenAI key, use a model app on this computer for Thinking, type your messages and read the replies.
 - **Show your character.** **Show character** puts your VRM or Live2D character on top of your windows. Its mouth moves with the voice's loudness. Without a model of your own, it shows the built-in Hiyori.
 - **Keep your keys safe** in your desktop's keyring (GNOME Keyring or KWallet) on Linux, or in the Keychain on a Mac.
@@ -68,7 +69,7 @@ Jobs that need an NVIDIA graphics card (voice cloning, singing, Picture making a
 - **No hands-free listening yet.** Use push-to-talk. Headphones help.
 - **Not in your Martlet network yet.** The early app can't pair with your hosts, so it doesn't use your other computers.
 - **No memory, Voice ID or watching your screen yet.** Most other features are on Windows only for now, for example App guides, tools, smart home, Discord, singing and Picture making.
-- **Listening and speaking need OpenAI.** Windows speech and Windows voices aren't available. Audio2Face and local voice cloning never run on a Mac.
+- **Listening and speaking need OpenAI.** Windows speech and Windows voices aren't available. Audio2Face and local voice cloning never run on a Mac. A cloud voice, such as ElevenLabs, runs on the provider's servers with your own account and key, and nothing of it runs on your computers.
 - **On an Intel Mac,** a model on this computer runs on the processor only. On Linux without an NVIDIA graphics card it may too (AMD cards can work through Ollama). Use a small model, or a cloud provider.
 - **Linux desktops differ.** On Wayland, the character runs through XWayland, and a full-screen Wayland game can cover it. On Wayland, the push-to-talk key works in every app only on desktops with global shortcuts (KDE Plasma, GNOME 48 or later). Without a compositor, the character's background shows black. On GNOME, the tray icon needs the AppIndicator extension. Without a keyring, keys are kept only until Martlet quits.
 - **No in-app updates.** To update, install the newer download.

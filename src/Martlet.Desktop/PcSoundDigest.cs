@@ -89,7 +89,7 @@ internal sealed class PcSoundDigest : IDisposable
         SoundJudgeKind.AudioModel => $"{judge}, the audio model, hears a short clip.",
         SoundJudgeKind.Pool => $"{judge} in the Thinking pool hears a short clip.",
         SoundJudgeKind.Cpu => "The CPU sound tagger on this PC names what it hears (no Thinking pool model can hear).",
-        _ => "No judge: no Thinking pool model can hear, and the CPU sound tagger is missing from Martlet's folder. Reinstall Martlet."
+        _ => "No judge: no Thinking pool model can hear, and the CPU sound tagger is missing from Martlet's folder (reinstall Martlet)."
     };
 
     /// <summary>The last line and how old it is, for Companion's status (never saved).</summary>

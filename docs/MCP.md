@@ -1403,7 +1403,13 @@ fails* has `Help-FallbackAbout` (`Thinking#when-thinking-fails-or-is-slow`); Com
 *What Martlet sends* (`VisionDisclosure`, its first sentence) has `Help-VisionSends` with all of
 it (`Vision#privacy`); and the Conversations page has `Help-HistoryAbout`
 (`#the-conversations-page`). The talk window's error lines are one sentence each; the wiki's
-`Talking-to-Martlet#messages-in-the-talk-window` lists what to do for each.
+`Talking-to-Martlet#messages-in-the-talk-window` lists what to do for each. A job page's *Keys from
+before* card has `Help-OldKeys-<role>` (`App-Settings-and-Updates#keys-from-before`). Settings'
+update, appearance, exit and troubleshooting status lines are one sentence each; the wiki's
+`App-Settings-and-Updates` and `Troubleshooting#the-troubleshooting-window` have the rest. The Linux
+and Mac Companion app has its own `HelpMark` (`src/Martlet.Companion/HelpMark.cs`):
+`Help-CompanionThinking` next to Settings › *Thinking* (`Linux-and-Mac#what-the-early-app-can-do`),
+with `-Card` and `-Wiki` IDs like `HelpTip`; MCP doesn't drive that app.
 
 Companion › Check-ins reads through `ui_snapshot`: `CheckInsNow` (how many are on
 and the member that takes them first, or why they can't run), `CheckInsLast`
@@ -4471,11 +4477,11 @@ Martlet then closes for the update, the helper switches folders and runs
 `/STAGE=finish`, so Martlet is back in about a second instead of after the whole
 install. It logs *Restarting into Martlet x.y.z, installed beside this one, ...*.
 If that install fails, the update installs the classic way. With automatic
-installs off, Install first asks *Install it now?* (Martlet installs it in the
-background), then asks `RestartIntoUpdateQuestion`, *Martlet x.y.z is installed.
-Restart Martlet now to start using it?*; `ConfirmationYes` (*Restart now*)
+installs off, Install first asks *Install Martlet x.y.z (... MB) now?* (Martlet installs it in the
+background), then asks `RestartIntoUpdateQuestion`, *Restart Martlet now to start
+using x.y.z?*; `ConfirmationYes` (*Restart now*)
 restarts and `ConfirmationNo` (*Later*) leaves `AppUpdateStatus` reading
-*Martlet x.y.z is installed. Restart Martlet to start using it (a few seconds),
+*Martlet x.y.z is installed, so restart Martlet to use it (a few seconds),
 or it switches over when Martlet exits.* `InstallAppUpdate` reads *Install x.y.z
 now*, then *Restart into x.y.z*; clicking it needs `--allow-ui-effects`. A
 development build has no program folder and installs the classic way. To
@@ -10458,7 +10464,7 @@ or turning vision on in Companion starts neither. Home's `HomeWarmupStatus`
 second: *Warming up: loading gemma4:e4b on this PC (12 s of about 20 s).
 Martlet answers once the model has loaded.*, with *getting the conversation
 ready*, *loading Parakeet TDT 0.6B v3 for listening* or *starting the
-character* for the other parts, then *Warmed up in 18 s. Martlet is ready to
+character* for the other parts, then *Warmed up in 18 s, and Martlet is ready to
 talk.* for 8 s; the desktop log says *Martlet is warming up: ...* and *Martlet
 warmed up in 18.0 s.*) and the talk window's `LiveWarmup` (the banner's line
 under its *Warming up* title: *Loading gemma4:e4b on this PC (3 s of about
@@ -11025,9 +11031,9 @@ by default, saves `background.json`, so toggling it needs
 `--allow-ui-effects`) with `GreetingStatus` under it (*Martlet greets you once
 a conversation has warmed up (Start talking or Start listening on Home).*,
 *Martlet greets you once it has warmed up.*, *Martlet greets you as soon as
-it's free. It knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
-5:08 PM and greeted you. It knew the time of day, your name, the update and 3
-open apps.*, *... and stayed quiet: your character wouldn't greet you. ...*,
+it's free, and it knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
+5:08 PM and greeted you, knowing the time of day, your name, the update and 3
+open apps.*, *... and stayed quiet because your character wouldn't greet you (...)*,
 or why it didn't: the greeting was off, you were already talking,
 or it was let go; counts only, never your name, app names, reminders or what was said;
 the talk window's task list shows the job as *Greeting* and the log says

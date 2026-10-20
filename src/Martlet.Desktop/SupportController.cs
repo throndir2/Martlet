@@ -63,10 +63,10 @@ internal sealed class SupportWork
             _ = completed.Exception;
             _ = cancellation.Exception;
             var result = completed.IsCompletedSuccessfully ? completed.Result :
-                new SupportResult("Troubleshooting failed. Retry cleanup.",
+                new SupportResult("Troubleshooting failed, so retry cleanup.",
                     SupportFailure.IoFailure);
             if (cancellation.IsFaulted)
-                result = result with { Message = result.Message + "\nCleanup failed. Retry cleanup.", Failure = SupportFailure.IoFailure };
+                result = result with { Message = result.Message + "\nCleanup failed, so retry cleanup.", Failure = SupportFailure.IoFailure };
             stop.Dispose();
             release(result);
             return result;
@@ -92,7 +92,7 @@ internal sealed class SupportController
     private long dropped, omitted;
     private long revision;
     private DoctorReport? report;
-    private string message = "Recording is off. No troubleshooting records have been opened.";
+    private string message = "Recording is off, and no troubleshooting records have been opened.";
     private string liveStatus = "No conversation activity recorded yet.";
     private string lastExport = "";
     internal string? Location { get; }
@@ -148,7 +148,7 @@ internal sealed class SupportController
     internal void Omit()
     {
         Interlocked.Increment(ref omitted);
-        lock (gate) message = "Some troubleshooting details were skipped. No conversation text was recorded.";
+        lock (gate) message = "Some troubleshooting details were skipped, and no conversation text was recorded.";
     }
 
     internal void Record(IReadOnlyList<DiagnosticEvent> events)
@@ -163,7 +163,7 @@ internal sealed class SupportController
             {
                 foreach (var value in copy) { backend.Append(journal!, value, token); acknowledged++; }
                 Interlocked.Increment(ref revision);
-                return new($"Recorded {acknowledged} troubleshooting event(s). Conversation text was not included.");
+                return new($"Recorded {acknowledged} troubleshooting event(s), without conversation text.");
             }
             finally
             {
@@ -193,7 +193,7 @@ internal sealed class SupportController
         {
             journal?.Close();
             lock (gate) journal = null;
-            return new("Troubleshooting recording stopped. Existing records stay on this PC.");
+            return new("Troubleshooting recording stopped; existing records stay on this PC.");
         });
     }
 
@@ -221,7 +221,7 @@ internal sealed class SupportController
             lock (gate) preview = new(frozen.Id, frozen.Digest, frozen.FrozenAtUtc, frozen.SelectedRange, frozen.Files,
                 contents.AsReadOnly(), "Status report" +
                 (includeLogs ? " and selected troubleshooting records" : " only"));
-            return new("Preview ready. Review the files before exporting.");
+            return new("Preview ready, so review the files before exporting.");
         });
     }
 
@@ -232,7 +232,7 @@ internal sealed class SupportController
         // The original owned token reaches both irreversible engine boundaries, not a linked substitute.
         var consent = snapshot.Approve(id, digest, destination, token);
         var receipt = backend.Export(snapshot, consent, destination, token);
-        return new($"Exported locally to {Path.GetFullPath(destination)}\n{receipt.ZipBytes} bytes. Nothing was uploaded.", Exported: true);
+        return new($"Exported locally to {Path.GetFullPath(destination)} ({receipt.ZipBytes} bytes), and nothing was uploaded.", Exported: true);
     });
 
     internal SupportWork? ClosePreview() => Begin(_ => { ClearSnapshot(); return new("Preview cleared."); });
@@ -245,7 +245,7 @@ internal sealed class SupportController
             retire = true;
             preview = null;
             work = active;
-            message = "Stopping troubleshooting. Cleanup may take a moment.";
+            message = "Stopping troubleshooting; cleanup may take a moment.";
             if (work is null) StartRetirement();
         }
         work?.Cancel();
@@ -253,7 +253,7 @@ internal sealed class SupportController
     internal SupportWork? RetryCleanup() => Begin(_ =>
     {
         CloseResources();
-        return new("Cleanup finished. Recording is off.");
+        return new("Cleanup finished, and recording is off.");
     }, cleanup: true);
 
     private void ClearSnapshot()
@@ -270,7 +270,7 @@ internal sealed class SupportController
     private void StartRetirement()
     {
         retire = false;
-        _ = Begin(_ => { CloseResources(); return new("Troubleshooting closed. Recording is off."); }, cleanup: true);
+        _ = Begin(_ => { CloseResources(); return new("Troubleshooting closed, and recording is off."); }, cleanup: true);
     }
     private SupportWork? Begin(Func<CancellationToken, SupportResult> action, bool requireRecording = false, bool cleanup = false)
     {
@@ -278,7 +278,7 @@ internal sealed class SupportController
         {
             if (active is not null || cleanupPending && !cleanup || requireRecording && !recording)
             {
-                if (!requireRecording) message = "Troubleshooting is busy or waiting for cleanup. Wait or retry cleanup.";
+                if (!requireRecording) message = "Troubleshooting is busy or waiting for cleanup, so wait or retry cleanup.";
                 return null;
             }
             var work = new SupportWork();

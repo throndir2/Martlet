@@ -23,7 +23,7 @@ public sealed class LocalModelChoiceTests
     public void Nothing_found_changes_nothing()
     {
         Assert.Null(LocalModelChoice.Pick([], "llama3.2"));
-        Assert.StartsWith("No model app answers on this computer.", LocalModelChoice.Describe([]), StringComparison.Ordinal);
+        Assert.StartsWith("No model app answers on this computer,", LocalModelChoice.Describe([]), StringComparison.Ordinal);
         // An app with no model loaded keeps what was typed.
         Assert.Equal(("http://127.0.0.1:8080/v1", "llama3.2"),
             LocalModelChoice.Pick([new("llama-cpp", "llama.cpp server", "http://127.0.0.1:8080/v1", [])], "llama3.2")!.Value);

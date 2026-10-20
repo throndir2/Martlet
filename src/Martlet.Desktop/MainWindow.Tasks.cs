@@ -152,7 +152,7 @@ public partial class MainWindow
                 run.Output.Report($"Simulated output line {second}.");
                 await Task.Delay(TimeSpan.FromSeconds(1), run.Token);
             }
-            return "The simulated task finished. Nothing was changed.";
+            return "The simulated task finished, and nothing was changed.";
         }).Forget();
     }
 }
