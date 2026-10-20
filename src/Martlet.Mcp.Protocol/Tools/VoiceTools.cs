@@ -429,7 +429,10 @@ internal sealed partial class McpServer
             "latency_report reads it (with voiceFailure none, ok also needs every step and steps adding up to the total). With " +
             "reply, that text is streamed instead, a word at a time like a model's tokens; the reply is broken into pieces with " +
             "speech breaks (dataDirectory's persona by name, else the one Martlet uses, else the defaults; breaks overrides stops) " +
-            "and voice.pieces lists exactly what the voice was asked to say. thinkingSteps (off or on) sends Companion > Replies > " +
+            "and voice.pieces lists exactly what the voice was asked to say. The reply may have line breaks; when it goes on into " +
+            "prompt text (a line that starts with \"User:\" or \"Owner:\", [MARTLET_NOTES] or a chat template token such as " +
+            "<|im_start|>), the reply stops before it as a desktop reply does: promptText.cutAt names the marker, and ok also " +
+            "needs it out of reply.text, voice.pieces and the captions, and the Thinking trace saying so. thinkingSteps (off or on) sends Companion > Replies > " +
             "Thinking steps with the reply; with refuseThinking the fixture endpoint refuses a request that carries it, as a model " +
             "that always thinks does, and ok needs the reply asked once more without it (thinking.sentControl [true, false], " +
             "reasoningRejected). With chattiness, the reply is offered the chattiness tags as it is while Companion > Vision > How " +

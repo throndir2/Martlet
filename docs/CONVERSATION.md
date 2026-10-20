@@ -301,6 +301,33 @@ them (92 %) from the model's prompt cache.* when the provider reports it
 Ollama on this PC for them), and the talk window's context line ends with
 *Last reply: 92% of its 568 input tokens came from the model's cache.*
 
+### Replies stop at prompt text
+
+Sometimes a model does not stop at the end of its turn. It then writes the
+next user message or copies the notes and instructions it was sent. Small
+local models and models with a wrong chat template do this most. A reply to
+you (a live reply, a screen or camera glance, a Discord reply) stops where the
+model starts to write prompt text, and Martlet does not show or speak that
+text (`PromptTextGuard`, turned on by `ConversationRequest.StopAtPromptText`):
+
+- anywhere: Martlet's notes label (`[MARTLET_NOTES]`) and chat template tokens
+  (`<|im_start|>`, `<|eot_id|>`, `[INST]`, `<start_of_turn>`, `</s>` and
+  others);
+- at the start of a line: a speaker label (`User:`, `Owner:`, `Human:`,
+  `Assistant:`, `System:`) or an instruction heading (`### Instruction`,
+  `### Response`).
+
+The reply keeps the words before the marker, and Martlet stops reading the
+stream there. Text that can still become a marker (for example a `U` at the
+start of a line) waits for the next token. The voice waits for a whole
+sentence anyway, so the first word comes at the same time. Martlet sends no
+stop sequences: some models refuse them, and a refused request costs a retry.
+Thinking pool jobs and background work keep their lines, because a character's
+example dialogue has `Owner:` lines on purpose. The Thinking trace says
+*answered, cut where the model began to write prompt text (User:)*, and MCP
+`spoken_reply_check` with a `reply` that has prompt text shows the cut
+(`promptText`).
+
 ## Context board
 
 The context board is where background sources keep their newest short note

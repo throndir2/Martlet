@@ -11,7 +11,8 @@ public sealed partial class ConversationTurn
     private enum RoundEnd { Completed, Refused, Failed, Invalid }
 
     private sealed record RoundResult(RoundEnd End, string Text, IReadOnlyList<TextToolCall> Calls,
-        ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null, TimeSpan? RetryAfter = null);
+        ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null, TimeSpan? RetryAfter = null,
+        string? PromptText = null);
 
     // One reply may take several requests: each tool round sends the calls and their results back to the model, until it
     // answers in text. Every request is separately authorized; text from every round is shown and spoken in order.
@@ -293,9 +294,33 @@ public sealed partial class ConversationTurn
             }
             if (backup is not null) run = await RaceAsync(run, backup, input).ConfigureAwait(false);
             var said = new StringBuilder();
+            var guard = request.StopAtPromptText ? new PromptTextGuard() : null;
+            // A piece of the reply's words: shown, captioned and handed to the voice.
+            async Task TakeAsync(string piece)
+            {
+                if (piece.Length == 0) return;
+                lock (Sync)
+                {
+                    CheckActive();
+                    // The chat and the saved conversation show words only; the voice gets its tags from the segmenter.
+                    if (shown.Push(piece) is { Length: > 0 } visible)
+                    {
+                        text.Append(visible);
+                        Emit(ConversationEventKind.Text, visible);
+                    }
+                }
+                said.Append(piece);
+                Caption(captions => captions.Push(piece));
+                if (segmenter is not null)
+                {
+                    TraceStaging(true);
+                    try { await StageAsync(segmenter.Push(piece), window).ConfigureAwait(false); }
+                    finally { TraceStaging(false); }
+                }
+            }
             // What the race already read from the stream that answers.
             var step = run.Step;
-            while (true)
+            while (guard?.Cut is null)
             {
                 if (step == RunStep.None)
                 {
@@ -322,24 +347,24 @@ public sealed partial class ConversationTurn
                         CheckActive();
                         firstTextAfter ??= Clock.GetElapsedTime(startedAt);
                         TraceWords(chunk!.Text.Length);
-                        // The chat and the saved conversation show words only; the voice gets its tags from the segmenter.
-                        if (shown.Push(chunk!.Text) is { Length: > 0 } visible)
-                        {
-                            text.Append(visible);
-                            Emit(ConversationEventKind.Text, visible);
-                        }
                     }
-                    said.Append(chunk.Text);
-                    Caption(captions => captions.Push(chunk.Text));
-                    if (segmenter is not null)
-                    {
-                        TraceStaging(true);
-                        try { await StageAsync(segmenter.Push(chunk.Text), window).ConfigureAwait(false); }
-                        finally { TraceStaging(false); }
-                    }
+                    await TakeAsync(guard is null ? chunk!.Text : guard.Push(chunk!.Text)).ConfigureAwait(false);
+                    if (guard?.Cut is not null) break;
                 }
             }
             Check(window);
+            // The model began to write prompt text: the reply is what came before it, and the rest of the stream is let go
+            // (disposing the run stops it), so nothing more is read, shown or spoken.
+            if (guard?.Cut is { } marker)
+            {
+                lock (Sync)
+                {
+                    textWindow = null;
+                    promptTextCut = marker;
+                }
+                return new(RoundEnd.Completed, said.ToString(), [], PromptText: marker);
+            }
+            if (guard is not null) await TakeAsync(guard.Finish()).ConfigureAwait(false);
             var end = run.Validator.EndOfInput().Snapshot;
             lock (Sync)
             {

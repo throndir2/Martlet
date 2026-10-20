@@ -100,7 +100,7 @@ public sealed partial class ConversationTurn
         audioRejected, imageRejected, reasoningRejected;
     private bool speechLimitReached, voiceMuted;
     private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
-    private string? activeTool, fellBackAfter;
+    private string? activeTool, fellBackAfter, promptTextCut;
     private long reservedSamples, accepted, submitted, consumed, eventSequence, dropped;
     private bool mayHavePlayed;
     // Paused for the user (Pause): the playing sentence's run, and every one started before Resume, is paused; synthesis and
@@ -136,6 +136,8 @@ public sealed partial class ConversationTurn
     /// <c>[nod]</c> or <c>*nods*</c>) and each sound or tone its voice performed (<c>[laugh]</c>); never shown or spoken as
     /// words.</summary>
     public IReadOnlyList<ReplyTag> Acted { get { lock (Sync) return [.. acted]; } }
+    /// <summary>The marker of prompt text where the reply was cut (<see cref="PromptTextGuard"/>), or null when it wasn't.</summary>
+    public string? PromptTextCut { get { lock (Sync) return promptTextCut; } }
 
     internal ConversationTurn(ConversationRuntime owner, ConversationRequest request,
         IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech, bool early = false,
