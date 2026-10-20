@@ -25,7 +25,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
-- Martlet on Linux and Mac is now the same Martlet as on your other computers: pair it with a host in Settings, and it uses the same personality, Thinking, Listening and Speaking (with their keys) and passes your changes on. Its push-to-talk key and character file stay its own, and a choice it can't run there keeps its own and says why. ([#1070](https://github.com/throndir2/Martlet/pull/1070))
+- Martlet on Linux and Mac is now the same Martlet as on your other computers: pair it with a host in Settings, and it uses the same personality, Thinking, Listening and Speaking (with their keys) and passes your changes on. Its push-to-talk key and character file stay its own, and a choice it can't run there keeps its own and says why. ([#1077](https://github.com/throndir2/Martlet/pull/1077))
 - The share link's Copied line and the VRoid Hub sign-in errors are one short sentence each. ([#1073](https://github.com/throndir2/Martlet/pull/1073))
 - The account, sign-in, sharing and shared-settings windows and dialogs say each thing in one short line; the details are behind a **?** with a link to the wiki. ([#1066](https://github.com/throndir2/Martlet/pull/1066))
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
