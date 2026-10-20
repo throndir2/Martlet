@@ -5080,7 +5080,7 @@ default), the *Adult content* prompt's `state`, and while it is on the
 remark (never in a Discord call), exactly as the desktop sends them.
 `RepliesAdultContent` reads the chosen option (*Off* or *On (18+)*; choosing
 one with `ui_select` saves it, so it needs `--allow-ui-effects`), and
-`RepliesNow` adds *Adult content is on.* while it is.
+`RepliesNow` adds *adult content is on* while it is.
 `personalContent` is Companion › Replies › *Personal content*: the `level`
 (`Private` by default, `Messages` or `Everything`), the `prompt` that fills
 `{private}` in the screen and camera prompts (*Personal content: private* or
@@ -5090,7 +5090,7 @@ private windows). `settings_set` with path `generation.personal_content` and
 value `"private"`, `"messages"` or `"everything"` changes it.
 `RepliesPersonalContent` reads the chosen option (*Keep private*, *Read my
 messages* or *Everything*; choosing one with `ui_select` saves it, so it needs
-`--allow-ui-effects`), and `RepliesNow` adds *Martlet may read your messages.*
+`--allow-ui-effects`), and `RepliesNow` adds *Martlet may read your messages*
 (and *see private windows* with *Everything*).
 On the page, `PromptsNow` reads how many prompts are edited or emptied,
 `PromptsTokens` the estimated tokens of all prompts together as typed
@@ -5700,7 +5700,7 @@ run: it stops Ollama's tray app and servers, backs up `db.sqlite` into
 it is empty or the linked folder) and the user's `OLLAMA_MODELS` (only when it
 isn't set or is the linked folder) to the real folder, starts Ollama and checks
 that it answers. Then `HealthIssue-ollama-fixed` reads *Good to know: Martlet
-fixed Ollama on this PC. ...* with the backup folder, and the local log has
+fixed Ollama on this PC — ...* with the backup folder, and the local log has
 each change. While it works, the item says so and `HealthFix-ollama-repair` is
 disabled (*Fixing Ollama...*). Otherwise `HealthFix-ollama-repair` (*Fix
 Ollama's models folder*, or *Try the fix again*) runs it again and
@@ -7060,7 +7060,7 @@ the browser and ends it after 90 seconds; and Recommended setup's three plans
 on a FIXTURE network. `ok` is true when every step passed.
 
 On the desktop, Companion › Thinking's *Now* card reads `ThinkingSituationNow`
-(*Situation: While gaming. A game (ELDEN RING) runs on this PC, so live
+(*Situation: While gaming — A game (ELDEN RING) runs on this PC, so live
 Thinking leaves its graphics card for gpu-box (qwen3:8b). ...*). To drive it
 without a game or a host that goes away, set `MARTLET_SIMULATE_SITUATION`
 before you launch the desktop (FIXTURE): `1` uses this PC's own setup;
@@ -8422,7 +8422,7 @@ device ID; `recommended_setup_status` with the same data directory reads them
 back under `preferences`) and shows the placement engine's suggestion planned
 with them: `WizardPlanSummary` (the three answers and whether Thinking goes
 online), `WizardPlanItem-Thinking`, `-Voice`,
-`-Listening` and `-LipSync` (what, where, *Uses 64% graphics memory, 5% memory,
+`-Listening` and `-LipSync` (what and where; their `help` adds *Uses 64% graphics memory, 5% memory,
 6% processor* and why, or why it's left out; a part that grows while it works
 reads *Uses 31-35% graphics memory*: what it usually holds, then the most),
 `WizardJoinSuggestion-<n>` after
@@ -9033,7 +9033,7 @@ part. `StageTitle` and `StageText` return the hero's headline and line,
 example *1 problem stops Martlet replying · 3 good to know.*) the list's
 heading, and `HealthAllClear` shows when nothing needs attention. Each item's
 title `HealthIssue-<id>` returns its level, title and detail (*Problem: Ollama
-isn't running on this PC. ...*); ids include `data-folder`, `settings`,
+isn't running on this PC — ...*); ids include `data-folder`, `settings`,
 `thinking-setup`, `thinking-retired`, `ollama`, `job-<job>` (coverage, for
 example `job-listening`), `host-service`, `failed-thinking`, `failed-listening`,
 `failed-voice` (a reply's text arrived but speaking it failed),

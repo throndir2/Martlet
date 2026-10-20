@@ -37,7 +37,7 @@ public sealed class LiveSituationsTests
 
         var never = LiveSituations.Decide(Gaming with { Game = "ELDEN RING", Away = ["gpu-box"], BackupAllowed = false });
         Assert.Equal((LivePlaceKind.ThisPc, true, false), (never.Place!.Kind, never.Place.CardKept, never.Moves));
-        Assert.Contains("Online services are set to Never", never.Why);
+        Assert.Contains("online services are set to Never", never.Why);
     }
 
     [Fact]
