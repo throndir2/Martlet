@@ -64,13 +64,13 @@ internal sealed partial class ThinkingPoolPage(IThinkingPoolPageServices service
         {
             IsChecked = model.On, Margin = new Thickness(0, 0, 0, 8),
             Content = new TextBlock { Text = onLabel, TextWrapping = TextWrapping.Wrap },
-            ToolTip = "Off: Martlet answers everything right away and never thinks in the background or researches. Your computers share this choice."
+            ToolTip = "Off: Martlet answers everything right away and never thinks in the background or researches."
         };
         AutomationProperties.SetAutomationId(turnOn, "ThinkLongerOn");
         AutomationProperties.SetName(turnOn, "Thinking longer: " + onLabel);
         // Checked/Unchecked rather than Click, so UI Automation's toggle (MCP ui_toggle) changes the choice too.
         turnOn.Checked += (_, _) => model.TurnDeepThinkingAsync(true, "Thinking longer is on.").Forget();
-        turnOn.Unchecked += (_, _) => model.TurnDeepThinkingAsync(false, "Thinking longer is off. Martlet answers everything right away.").Forget();
+        turnOn.Unchecked += (_, _) => model.TurnDeepThinkingAsync(false, "Thinking longer is off.").Forget();
         ComboBox Choice(string id, string name, IEnumerable<string> items, int selected)
         {
             var box = new ComboBox { Width = 260, ItemsSource = items.ToArray(), SelectedIndex = selected, HorizontalAlignment = HorizontalAlignment.Left };
@@ -104,14 +104,15 @@ internal sealed partial class ThinkingPoolPage(IThinkingPoolPageServices service
         return Card(Heading("Thinking longer"),
             HelpTip.Explain("Replies answer right away (Thinking steps are off by default). When a task really needs thought, such as writing " +
                 "song lyrics, a story or a plan, or tricky math or code, Martlet can say it'll think it over and work on it in the " +
-                "background while you keep talking, then bring it up when it's done.", new Thickness(0, 0, 0, 8), "ThinkingSteps", "Thinking steps"),
+                "background while you keep talking, then bring it up when it's done.", new Thickness(0, 0, 0, 8), "ThinkingSteps", "Thinking steps",
+                wiki: "Thinking#thinking-longer"),
             turnOn, status,
             TerminalRow("How hard", effort), TerminalRow("Share it", when),
-            Note("It thinks with Thinking steps on, whatever replies use; one think runs on each free slot of a machine that takes " +
-                "long jobs (when the pool has two or more slots, one that takes quick jobs stays free), with no time limit and no limit " +
-                "on how many. Stop (Esc) doesn't end it: its Cancel in the talk window or closing the conversation do. A paid " +
+            HelpTip.Explain("Each think runs on a free slot of a machine that takes long jobs, with no time limit. It thinks with Thinking " +
+                "steps on, whatever replies use, and no limit on how many; when the pool has two or more slots, one that takes quick jobs " +
+                "stays free. Stop (Esc) doesn't end it: its Cancel in the talk window or closing the conversation do. A paid " +
                 "provider may charge for its thinking.",
-                new Thickness(0, 8, 0, 0)));
+                new Thickness(0, 8, 0, 0), "ThinkLongerHow", "how a think runs", wiki: "Thinking#thinking-longer"));
     }
 
     // ---------- Web research (saved with the reply settings) ----------
@@ -138,7 +139,7 @@ internal sealed partial class ThinkingPoolPage(IThinkingPoolPageServices service
         allow.Checked += (_, _) => model.SetWebResearchAsync(true).Forget();
         allow.Unchecked += (_, _) => model.SetWebResearchAsync(false).Forget();
         var budget = WebResearch.Budget;
-        var disclosure = Note("What leaves this PC: your search words go to DuckDuckGo, and each page Martlet reads sees this PC's " +
+        var disclosure = HelpTip.Explain("What leaves this PC: your search words go to DuckDuckGo, and each page Martlet reads sees this PC's " +
             "internet address. What the pages say goes to the Thinking pool member that works on it, with the recent conversation. Martlet only " +
             "connects to public websites (never your own network). It answers what it knows at once. For one fact it doesn't know for " +
             $"sure (a price, a date, how to get something in a game) it does a quick look-up of up to {WebResearch.QuickBudget.Pages} pages. " +
@@ -147,12 +148,13 @@ internal sealed partial class ThinkingPoolPage(IThinkingPoolPageServices service
             "time limit, one thing at a time. It tells you as soon as it finds what you wanted, then checks the report's sources after " +
             "the report is ready. Cancel in the talk window stops it, and a paid provider may charge for its thinking. The report and " +
             "its sources are kept in Creations; Martlet offers to show it in your browser.",
-            new Thickness(0, 4, 0, 0));
+            new Thickness(0, 4, 0, 0), "WebResearchSent", "what leaves this PC", wiki: "Thinking#what-leaves-this-pc");
         AutomationProperties.SetAutomationId(disclosure, "WebResearchDisclosure");
         return Card(Heading("Web research"),
-            HelpTip.Explain("Ask Martlet something it doesn't know and it checks it quickly; ask it to research something and it says it'll " +
-                "look into it, searches the web and reads pages in the background while you keep talking, tells you as soon as it finds " +
-                "what you wanted, then offers the full report.", new Thickness(0, 0, 0, 4), "Research", "looking things up"),
+            HelpTip.Explain("Martlet can look things up on the web while you keep talking. Ask it something it doesn't know and it checks " +
+                "it quickly; ask it to research something and it says it'll look into it, searches the web and reads pages in the " +
+                "background, tells you as soon as it finds what you wanted, then offers the full report.", new Thickness(0, 0, 0, 4),
+                "Research", "looking things up", wiki: "Thinking#looking-things-up"),
             status, allow, disclosure);
     }
 }

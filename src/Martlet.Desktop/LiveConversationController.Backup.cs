@@ -220,16 +220,16 @@ internal sealed partial class LiveConversationController
     /// <summary>Companion › Thinking pool's Backup Thinking line (MCP reads it as ThinkingPoolBackupStatus).</summary>
     internal static string BackupLine(ThinkingPoolSettings pool, IReadOnlyList<string> answering, TimeSpan? automatic, int replies)
     {
-        if (!pool.BackupThinking) return "Off. Each reply waits for the conversation's own Thinking model.";
+        if (!pool.BackupThinking) return "Off: each reply waits for the conversation's own Thinking model.";
         if (answering.Count == 0)
-            return "On, but no machine is a backup for slow replies yet. Tick Backup for slow replies on a machine above.";
+            return "On, but no machine is a backup for slow replies yet; tick Backup for slow replies on a machine above.";
         var names = answering.Count == 1 ? answering[0] : string.Join(", ", answering.Take(answering.Count - 1)) + " and " + answering[^1];
         var wait = pool.BackupDelayMs is { } chosen
             ? string.Create(CultureInfo.InvariantCulture, $"{chosen} ms")
             : automatic is { } now
                 ? string.Create(CultureInfo.InvariantCulture, $"{now.TotalMilliseconds:0} ms (automatic, from {replies} recent repl{(replies == 1 ? "y" : "ies")})")
                 : "an automatic time (at least 900 ms)";
-        return $"On: when the conversation's model has no words after {wait}, {names} may answer instead. " +
-            "Whichever starts first gives the reply; the other stops at once.";
+        return $"On: when the conversation's model has no words after {wait}, {names} may answer instead, and " +
+            "whichever starts first gives the reply.";
     }
 }

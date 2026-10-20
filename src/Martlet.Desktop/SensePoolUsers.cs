@@ -80,11 +80,11 @@ internal static class SensePoolUsers
         var where = user.External ? "A cloud provider or server in the Thinking pool"
             : user.Member.Place == DeepThinkingPlace.Host ? "One of your computers in the Thinking pool"
             : "A model on this PC in the Thinking pool";
-        var state = !user.On ? $"It is off there, so it gets no {inputs}."
-            : !user.MayReceive ? $"It gets no {inputs}: May receive pictures and recordings is off for it there."
-            : !user.Gets ? $"It gets no {inputs}: it takes no quick jobs or long jobs there."
-            : $"It gets your {inputs} for {Uses(kind, user, senseModel)}." + (user.External ? " Requests there may cost money." : "");
-        return $"{where}. {state}";
+        var state = !user.On ? $"it is off there, so it gets no {inputs}"
+            : !user.MayReceive ? $"it gets no {inputs}: May receive pictures and recordings is off for it there"
+            : !user.Gets ? $"it gets no {inputs}: it takes no quick jobs or long jobs there"
+            : $"it gets your {inputs} for {Uses(kind, user, senseModel)}" + (user.External ? ", and requests there may cost money" : "");
+        return $"{where}; {state}.";
     }
 
     /// <summary>The line above the members (<c>Pool-vision-AlsoSummary</c>): how many Thinking pool models get the pictures (or
@@ -97,8 +97,8 @@ internal static class SensePoolUsers
         return users.Count == 0 ? $"No model in the Thinking pool {Takes(kind)}, so only the models above (or Thinking's own) get your {inputs}."
             : getting == 0 ? $"The Thinking pool has {users.Count} model{(users.Count == 1 ? "" : "s")} that {verb}, " +
                 $"but none of them gets your {inputs} now."
-            : $"Your {inputs} also go to {getting} model{(getting == 1 ? "" : "s")} in the Thinking pool, for background work. They are " +
-                "set on Companion › Thinking pool.";
+            : $"Your {inputs} also go to {getting} model{(getting == 1 ? "" : "s")} in the Thinking pool for background work, set on " +
+                "Companion › Thinking pool.";
     }
 
     /// <summary>Companion › Vision's "What Martlet sends" sentence on screen summaries, when Screen summary over time is

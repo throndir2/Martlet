@@ -22,7 +22,7 @@ internal static class RunsOnPicker
             "machine, else a less smart one after a short wait. Smart only: only Smart machines. These members: only the machines you tick.";
         var list = new ComboBox
         {
-            Width = 220, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = help,
+            Width = 220, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = "Which machines in the Thinking pool may take this job.",
             ItemsSource = inherit ? ["Like other check-ins", .. modes] : modes,
             SelectedIndex = start is null ? 0 : offset + (int)start.Mode
         };
@@ -53,7 +53,16 @@ internal static class RunsOnPicker
             save();
         };
         var view = new StackPanel();
-        view.Children.Add(TerminalRow(inherit ? "Runs on (Thinking pool)" : "Runs on", list));
+        // A check-in's card has no Runs on card above it, so its choice carries the "?" with what each one means.
+        UIElement choice = list;
+        if (inherit)
+        {
+            var tip = HelpTip.For("Runs on", help, "RunsOn-" + id, wiki: "Thinking#runs-on");
+            tip.Margin = new Thickness(6, 0, 0, 0);
+            tip.VerticalAlignment = VerticalAlignment.Center;
+            choice = new StackPanel { Orientation = Orientation.Horizontal, Children = { list, tip } };
+        }
+        view.Children.Add(TerminalRow(inherit ? "Runs on (Thinking pool)" : "Runs on", choice));
         view.Children.Add(chosen);
         return (view, () =>
         {

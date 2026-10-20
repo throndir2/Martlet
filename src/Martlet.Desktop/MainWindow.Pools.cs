@@ -14,9 +14,9 @@ internal sealed record PoolListOptions
 {
     public required PoolArea Area { get; init; }
     public string Heading { get; init; } = "Where it runs";
-    /// <summary>Text under the heading.</summary>
+    /// <summary>Text under the heading: the page shows its first sentence, and all of it behind a "?".</summary>
     public string? Intro { get; init; }
-    /// <summary>The wiki page and heading ("Singing#set-it-up") with the full instructions: the page then shows only the
+    /// <summary>The wiki page and heading ("Singing#set-it-up") with the full instructions; null: no link. The page shows only the
     /// <see cref="Intro"/>'s first sentence, with a "?" (Help-Pool-&lt;area&gt;-Intro) that has all of it and links there.</summary>
     public string? Wiki { get; init; }
     /// <summary>The member's state in plain words ("Runs Chatterbox", "Not reachable"...); null: nothing to add.</summary>
@@ -72,9 +72,7 @@ public partial class MainWindow
         var list = store is null ? new PoolList { Area = area.Id } : WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
         var stack = new List<UIElement> { Heading(options.Heading) };
         if (options.Intro is not null)
-            stack.Add(options.Wiki is not null
-                ? HelpTip.Explain(options.Intro, new Thickness(0, 0, 0, 8), id + "-Intro", options.Heading, options.Wiki)
-                : Note(options.Intro, new Thickness(0, 0, 0, 8)));
+            stack.Add(HelpTip.Explain(options.Intro, new Thickness(0, 0, 0, 8), id + "-Intro", options.Heading, options.Wiki));
         var summary = Note(PoolListSummary.Describe(area, list, list.NoneOn ? options.Instead?.Invoke() : null), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(summary, id + "-Summary");
         stack.Add(summary);
@@ -98,7 +96,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(onBox, $"{id}-On-{i}");
         AutomationProperties.SetName(onBox, $"Use {member.Name} for {area.Title}");
         onBox.Checked += (_, _) => SavePoolList(options, list, list.With(member with { Off = false }), $"{area.Title} uses {member.Name} again.");
-        onBox.Unchecked += (_, _) => SavePoolList(options, list, list.With(member with { Off = true }), $"{area.Title} no longer uses {member.Name}. Its settings are kept.");
+        onBox.Unchecked += (_, _) => SavePoolList(options, list, list.With(member with { Off = true }), $"{area.Title} no longer uses {member.Name}, but its settings are kept.");
         buttons.Children.Add(onBox);
         Button Small(string text, string automation, string name, bool enabled, Action run)
         {
@@ -137,8 +135,11 @@ public partial class MainWindow
             PoolMemberKind.Address => "a service you run",
             _ => "a cloud provider"
         };
-        row.Children.Add(NetworkRowText($"{id}-Member-{i}", $"{i + 1}. {member.Name}",
-            Capitalized(kind) + (facts.Count == 0 ? "." : "; " + string.Join("; ", facts) + ".")));
+        var detail = Capitalized(kind) + (facts.Count == 0 ? "." : "; " + string.Join("; ", facts) + ".");
+        var rowText = NetworkRowText($"{id}-Member-{i}", $"{i + 1}. {member.Name}", detail);
+        // Screen readers and MCP read the row as one sentence ("1: This PC: Each companion PC itself."), not "1. This PC. ...".
+        AutomationProperties.SetName(((Panel)rowText).Children[0], $"{i + 1}: {member.Name}: {detail}");
+        row.Children.Add(rowText);
         panel.Children.Add(row);
         if (companions.Count > 1 || member.OnlyFor.Count > 0)
         {
@@ -192,7 +193,7 @@ public partial class MainWindow
                     buttons.Add(PageButton($"{host.HostId}, card {card}", () => Add(PoolMember.Gpu(host.HostId, card)), id: $"{id}-AddGpu-{host.HostId}-{card}"));
             }
         if (buttons.Count == 0 && !area.Takes(PoolMemberKind.Address) && !area.Takes(PoolMemberKind.Cloud))
-            add.Children.Add(Note("Every machine that can do it is in the list already. Pair another computer on Devices to add more.", new Thickness(0, 0, 0, 0)));
+            add.Children.Add(Note("Every machine that can do it is in the list already; pair another computer on Devices to add more.", new Thickness(0, 0, 0, 0)));
         add.Children.Add(Row([.. buttons]));
         if (area.Takes(PoolMemberKind.Address))
         {
@@ -231,7 +232,7 @@ public partial class MainWindow
             return false;
         }
         ErrorLog.Info($"Pools: {done}");
-        ActionText.Text = done + (area.Shared ? " Your other computers follow it." : "");
+        ActionText.Text = area.Shared ? done.TrimEnd('.') + ", and your other computers follow it." : done;
         if (area.Shared) QueueSettingsSync();
         // Rebuilt after the click's own event finishes, so the control that changed isn't replaced under it.
         Dispatcher.InvokeAsync(async () =>
@@ -241,7 +242,7 @@ public partial class MainWindow
                 try { await saved(before, next); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException)
                 {
-                    ActionText.Text = $"{done} But {area.Title} couldn't follow it yet: {error.Message}";
+                    ActionText.Text = $"{done.TrimEnd('.')}, but {area.Title} couldn't follow it yet: {error.Message}";
                 }
             }
             if (!closing) (options.Rerender ?? RenderTab)();
@@ -453,17 +454,18 @@ public partial class MainWindow
             AutomationProperties.SetName(cloud, $"Add a cloud provider to {area.Title}: set it up below and choose Use");
             var line = Row(cloud);
             line.Margin = new Thickness(0, 4, 0, 0);
-            var why = Note("Set up the provider, its model and your key below. Choosing Use puts it first in the list; move it down with Down.",
-                new Thickness(0, 2, 0, 0));
+            var why = HelpTip.Explain("Set up the provider, its model and your key below. Choosing Use puts it first in the list; move it down with Down.",
+                new Thickness(0, 2, 0, 0), "PoolAddCloud-" + area.Id, "adding a cloud provider", wiki: "Multiple-Computers#each-job-has-a-list-of-machines");
             var stack = new StackPanel();
             stack.Children.Add(line);
             stack.Children.Add(why);
             return stack;
         }
-        return PoolListCard(new PoolListOptions
+        var options = new PoolListOptions
         {
             Area = area,
             Heading = area.ConversationFirst ? "When the Thinking model is busy" : "Where it runs",
+            Wiki = "Multiple-Computers#each-job-has-a-list-of-machines",
             Intro = area.ConversationFirst
                 ? "A reply always tries the conversation's own model first, so nothing changes while it is free. Add computers that run " +
                   "the same model to take a reply when it is busy. Empty: a reply waits for its own model. Another computer starts " +
@@ -475,6 +477,7 @@ public partial class MainWindow
             CanAdd = host => !area.ConversationFirst || host.HostId != routeMember?.HostId && Runs(host.HostId),
             AddCloud = area.ConversationFirst ? null : AddCloud,
             Saved = area.ConversationFirst ? null : (before, after) => LeadPoolAsync(area, role, before, after)
-        });
+        };
+        return PoolListCard(area.ConversationFirst ? options with { Wiki = "Thinking#when-the-thinking-model-is-busy" } : options);
     }
 }

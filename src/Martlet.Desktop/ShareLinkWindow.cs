@@ -57,7 +57,7 @@ internal sealed class ShareLinkWindow : ThemedWindow
             try
             {
                 Clipboard.SetText(link);
-                status.Text = "Copied. Send it to your friend in a private message; anyone with the link can use what it shares.";
+                status.Text = "Copied: send it to your friend in a private message, because anyone with the link can use what it shares.";
             }
             catch (System.Runtime.InteropServices.COMException) { status.Text = "Couldn't copy; select the link and copy it yourself."; }
         };

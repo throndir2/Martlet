@@ -372,14 +372,15 @@ internal sealed class DesktopConversationHistory
     {
         if (!Store.Loaded) Warm();
         var stats = Store.Loaded ? Store.Stats : null;
-        var held = stats is null ? "" : stats.Exchanges == 0 ? " Nothing is recorded yet."
-            : $" It holds {stats.Conversations} conversation{(stats.Conversations == 1 ? "" : "s")} ({stats.Exchanges} exchange" +
+        // One sentence (issue #995): how the record helps is in the wiki's Conversation history section.
+        var held = stats is null ? "." : stats.Exchanges == 0 ? "; nothing is recorded yet."
+            : $"; it holds {stats.Conversations} conversation{(stats.Conversations == 1 ? "" : "s")} ({stats.Exchanges} exchange" +
               $"{(stats.Exchanges == 1 ? "" : "s")}) since {PastConversations.When(stats.Oldest!.Value, zone)[..^6]}.";
         if (memory is not { Enabled: true })
-            return "Off while memory is off: nothing is recorded or recalled." + held;
+            return "Off while memory is off, so nothing is recorded or recalled" + held;
         if (!Preferences.Keep)
-            return "Martlet doesn't keep a record of new conversations." + held;
-        return "Martlet keeps a record of your conversations, the same on all your computers, and brings up what you talked about " +
-            "when you mention an earlier conversation." + (Preferences.Search ? " It may also search the record on its own." : "") + held;
+            return "Martlet doesn't keep a record of new conversations" + held;
+        return "Martlet keeps a record of your conversations on all your computers" +
+            (Preferences.Search ? " and may search it on its own" : "") + held;
     }
 }

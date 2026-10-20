@@ -85,7 +85,7 @@ public partial class LorebookWindow : ThemedWindow
         var unsaved = problem ?? saveError;
         SaveStateText.Text = !loaded ? busy ? "Loading your lorebooks..." : "Your lorebooks couldn't be loaded."
             : problem is not null ? "Not saved yet: " + problem
-            : saveError is not null ? "Not saved: " + saveError + " Martlet tries again with your next change."
+            : saveError is not null ? "Not saved (Martlet tries again with your next change): " + saveError
             : saving || autoSave.Pending ? "Saving..."
             : "All changes saved.";
         SaveStateText.SetResourceReference(TextBlock.ForegroundProperty, unsaved is null ? "MutedBrush" : "WarningBrush");
@@ -113,7 +113,7 @@ public partial class LorebookWindow : ThemedWindow
             savedSnapshot = loaded ? Snapshot(result.Library) : null;
             problem = saveError = null;
             ResultText.Text = result.Error ?? (books.Count == 0
-                ? "No lorebooks yet. Create one, or import a lorebook or character card."
+                ? "No lorebooks yet: create one, or import a lorebook or character card."
                 : $"{books.Count} {(books.Count == 1 ? "lorebook" : "lorebooks")} loaded.");
             RenderBooks(books.FirstOrDefault());
         }
@@ -143,7 +143,7 @@ public partial class LorebookWindow : ThemedWindow
         EntryPanel.Visibility = EntryList.SelectedItem is null ? Visibility.Collapsed : Visibility.Visible;
         EntryCount.Text = book is null ? "" : CollectionViewSource.GetDefaultView(book.Entries) is { } view && EntrySearch.Text.Length > 0
             ? $"{view.Cast<object>().Count()} of {book.Entries.Count} entries match."
-            : book.Entries.Count == 0 ? "No entries yet. Add one." : "";
+            : book.Entries.Count == 0 ? "No entries yet." : "";
         RenderSaveState();
     }
 
@@ -185,7 +185,7 @@ public partial class LorebookWindow : ThemedWindow
     {
         if (books.Count >= LorebookLibrary.MaximumBooks)
         {
-            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks:N0} lorebooks are supported. Delete one first.";
+            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks:N0} lorebooks are supported; delete one first.";
             return;
         }
         var book = new LorebookItem { Name = UniqueName("New lorebook") };
@@ -193,14 +193,14 @@ public partial class LorebookWindow : ThemedWindow
         book.Entries.Add(new LorebookEntryItem { Uid = 0, Title = "First entry" });
         books.Add(book);
         RenderBooks(book);
-        ResultText.Text = "New lorebook added. Add entries; they save as you go.";
+        ResultText.Text = "New lorebook added; its entries save as you go.";
         SaveNow();
     }
 
     private void DeleteBook_Click(object sender, RoutedEventArgs e)
     {
         if (BookChoice.SelectedItem is not LorebookItem book) return;
-        if (!ConfirmationDialog.Confirm(this, $"Delete \"{book.Name}\" and its entries? This can't be undone.",
+        if (!ConfirmationDialog.Confirm(this, $"Delete \"{book.Name}\" and its entries for good?",
             "Delete lorebook")) return;
         var index = books.IndexOf(book);
         books.Remove(book);
@@ -234,7 +234,7 @@ public partial class LorebookWindow : ThemedWindow
             SelectEntry(copy);
             SaveNow();
         }
-        catch (ContractException error) { ResultText.Text = "Fix this entry before duplicating. " + error.Message; }
+        catch (ContractException error) { ResultText.Text = "Fix this entry before duplicating: " + error.Message; }
     }
 
     private void DeleteEntry_Click(object sender, RoutedEventArgs e)
@@ -263,7 +263,7 @@ public partial class LorebookWindow : ThemedWindow
         if (path is null || !loaded || busy) return;
         if (books.Count >= LorebookLibrary.MaximumBooks)
         {
-            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks:N0} lorebooks are supported. Delete one first.";
+            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks:N0} lorebooks are supported; delete one first.";
             return;
         }
         busy = true;
@@ -282,15 +282,15 @@ public partial class LorebookWindow : ThemedWindow
             var constant = import.Book.Entries.Count(entry => entry.Constant);
             ResultText.Text = $"Imported \"{item.Name}\" with {import.Book.Entries.Count:N0} " +
                 $"{(import.Book.Entries.Count == 1 ? "entry" : "entries")}" + (constant > 0 ? $" ({constant:N0} always on)" : "") +
-                (import.SkippedEntries > 0 ? $". {import.SkippedEntries:N0} skipped" +
-                    (import.Book.Entries.Count >= Lorebook.MaximumEntries ? $": a lorebook keeps at most {Lorebook.MaximumEntries:N0} entries" : "") + "." : "") +
-                " It is on for every persona.";
+                (import.SkippedEntries > 0 ? $", {import.SkippedEntries:N0} skipped" +
+                    (import.Book.Entries.Count >= Lorebook.MaximumEntries ? $" (a lorebook keeps at most {Lorebook.MaximumEntries:N0} entries)" : "") : "") +
+                "; it is on for every persona.";
             imported = true;
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            ResultText.Text = "That file could not be read. Check that it exists and you can open it, then try again.";
+            ResultText.Text = "That file could not be read; check that it exists and you can open it.";
         }
         finally
         {
@@ -305,17 +305,17 @@ public partial class LorebookWindow : ThemedWindow
         if (BookChoice.SelectedItem is not LorebookItem item) return;
         Lorebook book;
         try { book = item.ToBook(); }
-        catch (ContractException error) { ResultText.Text = "Fix this lorebook before exporting it. " + error.Message; return; }
+        catch (ContractException error) { ResultText.Text = "Fix this lorebook before exporting it: " + error.Message; return; }
         var path = ChooseExport(book.Name);
         if (path is null) return;
         try
         {
             File.WriteAllBytes(path, SillyTavernLorebooks.Export(book));
-            ResultText.Text = $"Exported \"{book.Name}\". Import it into SillyTavern as World Info.";
+            ResultText.Text = $"Exported \"{book.Name}\" as SillyTavern World Info.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            ResultText.Text = "The lorebook could not be exported. Choose a folder you can write to, then try again.";
+            ResultText.Text = "The lorebook could not be exported; choose a folder you can write to.";
         }
     }
 
@@ -374,7 +374,7 @@ public partial class LorebookWindow : ThemedWindow
             if (!saved.Saved)
             {
                 saveError = saved.Revision != revision
-                    ? "Your lorebooks were changed somewhere else. Close Lorebooks and open it again to see them."
+                    ? "Your lorebooks were changed somewhere else; close Lorebooks and open it again to see them."
                     : saved.Error ?? "Your lorebooks couldn't be written.";
                 return true;
             }
@@ -385,7 +385,7 @@ public partial class LorebookWindow : ThemedWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
         {
-            saveError = error is ContractException ? error.Message : "Your lorebooks couldn't be written. Check access to your data folder.";
+            saveError = error is ContractException ? error.Message : "Your lorebooks couldn't be written; check access to your data folder.";
             return true;
         }
         finally
@@ -420,7 +420,7 @@ public partial class LorebookWindow : ThemedWindow
         if (result.ActiveBooks == 0) return "No lorebook is on for this persona.";
         var text = new StringBuilder();
         if (result.Included.Count == 0)
-            text.Append("No entries would be added. Martlet checks the last ").Append(library.ScanDepth)
+            text.Append("No entries would be added; Martlet checks the last ").Append(library.ScanDepth)
                 .Append(library.ScanDepth == 1 ? " message" : " messages").Append(library.MatchWholeWords ? " as whole words" : "")
                 .Append(library.MatchWordForms ? ", with other word forms" : "").Append('.');
         else

@@ -90,9 +90,9 @@ public partial class MainWindow
         var problems = totals.Sum(t => t.Problems);
         var averageWait = ended == 0 ? TimeSpan.Zero : TimeSpan.FromTicks(totals.Sum(t => t.Waited.Ticks) / ended);
         var averageRun = ended == 0 ? TimeSpan.Zero : TimeSpan.FromTicks(totals.Sum(t => t.Ran.Ticks) / ended);
-        ThinkingRequestsSummary.Text = (running == 0 && waiting == 0 ? "Nothing is waiting or running now." : $"{running} running, {waiting} waiting.") +
-            (ended == 0 ? " No request ended since Martlet started."
-                : $" {ended} ended since Martlet started ({problems} with a problem): they waited {ThinkingRequestWords.Time(averageWait)} " +
+        ThinkingRequestsSummary.Text = (running == 0 && waiting == 0 ? "Nothing is waiting or running now" : $"{running} running, {waiting} waiting") +
+            (ended == 0 ? "; no request ended since Martlet started."
+                : $"; {ended} ended since Martlet started ({problems} with a problem): they waited {ThinkingRequestWords.Time(averageWait)} " +
                   $"and ran {ThinkingRequestWords.Time(averageRun)} on average.");
         RenderPoolLine();
         RenderTiming(requests.Totals);
@@ -129,11 +129,11 @@ public partial class MainWindow
         var status = conversation.ThinkingPool.Status();
         var offline = status.Members.Count(m => !m.Online);
         ThinkingRequestsPool.Text = status.Members.Count == 0
-            ? "The Thinking pool has no member: requests use their own fallbacks. Add members in Companion › Thinking pool."
+            ? "The Thinking pool has no member, so requests use their own fallbacks; add members in Companion › Thinking pool."
             : $"Thinking pool: {status.Free} of {status.Slots} slot{(status.Slots == 1 ? "" : "s")} free on " +
               $"{status.Members.Count - offline} member{(status.Members.Count - offline == 1 ? "" : "s")}" +
               (offline > 0 ? $" ({offline} offline)" : "") + (status.KeepsFastSlot ? "; one stays free for quick jobs" : "") +
-              (status.Floor is { } floor && floor != "Idle" ? $". The conversation is {floor.ToLowerInvariant()} now." : ".");
+              (status.Floor is { } floor && floor != "Idle" ? $"; the conversation is {floor.ToLowerInvariant()} now." : ".");
     }
 
     private void RenderTiming(IReadOnlyDictionary<ThinkingJobKind, ThinkingRequestTotals> totals)
@@ -189,7 +189,7 @@ public partial class MainWindow
     internal static string InputLine(ThinkingRequestInfo request)
     {
         if (request.Input is not { } input)
-            return request.Active ? "Input: none yet. It shows here when the request is sent." : "Input: none. It wasn't sent.";
+            return request.Active ? "Input: none yet; it shows here when the request is sent." : "Input: none; it wasn't sent.";
         var line = new StringBuilder(string.Create(CultureInfo.CurrentCulture, $"Input: {input.Length:N0} character{(input.Length == 1 ? "" : "s")}"));
         if (input.LeftOut > 0) line.Append(CultureInfo.CurrentCulture, $", {input.LeftOut:N0} in the middle left out here");
         if (request.Attempts.Count == 0) line.Append(request.Active ? ", not sent yet" : ", never sent");
@@ -200,10 +200,10 @@ public partial class MainWindow
     /// <summary>The line over the selected request's output: how long it is, or why there is none (never the output itself).</summary>
     internal static string OutputLine(ThinkingRequestInfo request)
     {
-        if (request.Active) return "Output: none yet. It shows here when the request ends.";
+        if (request.Active) return "Output: none yet; it shows here when the request ends.";
         if (request.Output is not { } output)
-            return request.State == ThinkingRequestState.Succeeded ? "Output: none. The answer was empty."
-                : $"Output: none. It ended: {ThinkingRequestWords.State(request).ToLowerInvariant()}.";
+            return request.State == ThinkingRequestState.Succeeded ? "Output: none; the answer was empty."
+                : $"Output: none; it ended: {ThinkingRequestWords.State(request).ToLowerInvariant()}.";
         var length = request.AnswerLength is { } all && all > output.Length
             ? string.Create(CultureInfo.CurrentCulture, $"the first {output.Length:N0} of {all:N0} characters")
             : string.Create(CultureInfo.CurrentCulture, $"{output.Length:N0} character{(output.Length == 1 ? "" : "s")}");
@@ -275,7 +275,7 @@ public partial class MainWindow
         var text = string.Join(Environment.NewLine + Environment.NewLine, requestRows.Select(row => Describe(row.Request)));
         if (text.Length == 0) return;
         try { Clipboard.SetText(text); }
-        catch (System.Runtime.InteropServices.COMException) { ActionText.Text = "Couldn't copy: another app is using the clipboard. Try again."; }
+        catch (System.Runtime.InteropServices.COMException) { ActionText.Text = "Couldn't copy: another app is using the clipboard; try again."; }
     }
 
     /// <summary>Posts the simulated requests <see cref="SimulatedRequestsVariable"/> asks for, if any: they wait, run on made-up
@@ -297,14 +297,14 @@ public partial class MainWindow
                 {
                     Task = $"Simulated {ThinkingRequestWords.Kind(kind).ToLowerInvariant()}", Timeout = TimeSpan.FromSeconds(30),
                     MaxOutputTokens = 256, Reasoning = false,
-                    Input = ThinkingRequestInput.Of("Simulated instructions. No model is asked and nothing is sent.",
+                    Input = ThinkingRequestInput.Of("Simulated instructions; no model is asked and nothing is sent.",
                         $"Simulated request {number + 1} ({ThinkingRequestWords.Kind(kind).ToLowerInvariant()}): answer in one sentence.")
                 });
                 await Task.Delay(TimeSpan.FromMilliseconds(400 + number * 700));
                 request.Begin(number % 2 == 0 ? gpu : laptop);
                 await Task.Delay(TimeSpan.FromMilliseconds(900 + number % 4 * 600));
-                var answer = $"Simulated answer {number + 1} ({ThinkingRequestWords.Kind(kind).ToLowerInvariant()}). " +
-                    "No model was asked and nothing was sent.";
+                var answer = $"Simulated answer {number + 1} ({ThinkingRequestWords.Kind(kind).ToLowerInvariant()}); " +
+                    "no model was asked and nothing was sent.";
                 switch (number % 5)
                 {
                     case 1:
