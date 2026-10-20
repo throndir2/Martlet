@@ -364,24 +364,20 @@ internal sealed class GatewayLogStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayLogRoutes(GatewayHttpServices services) : GatewayRouteHandler(services)
 {
     internal const string LogsPath = "/martlet/v1/logs";
     internal const int DefaultLogPage = 500;
     internal const int MaximumLogPage = 1_000;
     private const int MaximumLogsResponseBytes = 524_288;
     private const int LogsResponseBudget = 458_752;
-    private const string RouteItem = "martlet.route", DeviceItem = "martlet.device";
-
-    internal GatewayLogStore Logs { get; }
-
     internal static bool IsLogsTarget(string rawTarget) =>
         rawTarget == LogsPath || rawTarget.StartsWith(LogsPath + "?", StringComparison.Ordinal);
 
     /// <summary>GET returns stored lines after <c>after</c> (a store position; every computer's lines) or this host's own
     /// lines after <c>own_after</c> (a sequence number), with an optional <c>limit</c>; POST stores a batch a desktop shares.
     /// Any paired device may do either over its signed, pinned connection.</summary>
-    private async ValueTask InvokeLogsAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeLogsAsync(HttpContext context, string rawTarget)
     {
         if (context.Request.Method == HttpMethods.Get)
         {
@@ -429,19 +425,6 @@ internal sealed partial class GatewayHttpApplication
             values[name] = long.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
         }
         return values;
-    }
-
-    /// <summary>Records a refused or failed request in this host's log: what was asked (the route and device for model
-    /// requests), the stable code and HTTP status, and the trace ID the desktop also shows. Never the request body.</summary>
-    private void LogFailure(HttpContext? context, Guid traceId, string code, int status)
-    {
-        var failure = GatewayFailures.Get(code);
-        var what = context?.Items[RouteItem] is string route
-            ? $"{route} request from {context.Items[DeviceItem] as string ?? "a paired device"}"
-            : context is null ? "A request" : $"{context.Request.Method} {context.Request.Path} from {GatewayRequestGuard.Address(context)}";
-        var level = code == "job.canceled" ? LogLevels.Info : status >= 500 ? LogLevels.Error : LogLevels.Warn;
-        Logs.Own(level, $"{what} failed: {code} (HTTP {status}). {failure.Summary} Trace {traceId}.",
-            repeatKey: $"{code}|{(context?.Items[RouteItem] as string) ?? context?.Request.Method}");
     }
 
     private sealed record LogsDocument

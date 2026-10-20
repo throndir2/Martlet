@@ -702,6 +702,31 @@ Adding a role that is already installed is a reconfiguration, not a reinstall:
 No new install script and no new method work: every method runs the same engine.
 Next in line, with its own relay worker and catalog entry: screen understanding (perception).
 
+## The engine's files
+
+`martlet-host` is the engine's entry point. It holds the settings, the help
+text and the command dispatch, and it sources its functions from the modules in
+`lib/` next to it:
+
+| Module | What it holds |
+| --- | --- |
+| `lib/common.sh` | Output, the engine journal, changes side by side (locks and holder records) and the answers of `--yes` runs |
+| `lib/roles.sh` | The role catalog (`role.conf`, variants, exclusive groups) and the commands `roles` and `describe` |
+| `lib/requirements.sh` | Docker, packages, CPU architecture, NVIDIA GPU and toolkit, GPU or CPU place, .NET SDK and the gateway build |
+| `lib/service.sh` | The gateway and its service: configuration, stop and start, service approval |
+| `lib/machine.sh` | The machine report and this host's address |
+| `lib/docker.sh` | The Docker method: network holder, keeper, engine sessions and the commands `hold`, `keep`, `home` and `serve` |
+| `lib/pairing.sh` | The commands `setup`, `pair`, `network-reset`, `exposure` and `console` |
+| `lib/role-changes.sh` | A role's Compose project, record and gateway route, and the commands `add` and `remove` |
+| `lib/upkeep.sh` | The commands `machine`, `update`, `warm` and `status` |
+
+The engine finds `lib/` through the real path of `martlet-host`, so the
+`~/.local/bin/martlet-host` link and the image's `/usr/local/bin/martlet-host`
+link work. Always copy all of `deploy/host`: a copy of `martlet-host` alone (or
+`bash -s < martlet-host`) stops and tells you that its modules are missing.
+Check the engine with `shellcheck -x deploy/host/martlet-host` (it follows the
+modules through `deploy/host/.shellcheckrc`) and `bash -n` on each file.
+
 ## Switching which computer does what
 
 A desktop can pair with any number of hosts. On its **Devices** page, *Who does
@@ -937,7 +962,7 @@ Smart home page instead of installing another one.
   gateway, `Martlet.Gateway.F5`, `martlet_f5_host.py` and the real worker. Not yet run:
   `martlet-host add f5` end to end, a Linux host, an NVIDIA GPU (warmup, latency, VRAM),
   real voice quality, or a live conversation turn against a real host.
-- **Update**: the engine script passes `bash -n` and the desktop's update
+- **Update**: the engine (`martlet-host` and `lib/*.sh`) passes `bash -n` and the desktop's update
   commands are covered by unit tests. `update` itself has not yet been run
   against a real Docker or native host.
 - **Machine report**: the collector was run natively in an Ubuntu 24.04 container

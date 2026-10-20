@@ -26,7 +26,8 @@ namespace Martlet.Gateway;
 /// and allow list; they need a signed request from a member desktop of this host's network (any paired desktop while the host
 /// is in no network) and never return a secret.
 /// </summary>
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewaySignInRoutes(GatewayHttpServices services, GatewaySignInService signIn, GatewayNetworkStore network,
+    GatewayAccountDirectoryStore accounts, IGatewayPairingExchange pairing, GatewayCredentialStore credentials) : GatewayRouteHandler(services)
 {
     internal const string SignInPath = "/martlet/v1/signin";
     internal const string SignInBeginPath = "/martlet/v1/signin/begin";
@@ -38,32 +39,37 @@ internal sealed partial class GatewayHttpApplication
     internal const string SignInRouteClass = "signin";
     private const int MaximumSignInRequestBytes = 16_384;
 
-    private GatewaySignInService? signIn;
-
-    internal TimeProvider Clock => clock;
+    private readonly IGatewayPairingExchange pairing = pairing;
+    private readonly GatewayCredentialStore credentials = credentials;
+    private GatewayNetworkStore Network { get; } = network;
+    private GatewayAccountDirectoryStore Accounts { get; } = accounts;
 
     /// <summary>The host's current TLS certificate with its private key, which signs account attestations (its key is the one
     /// the roster pins). Set when the listener starts; null before.</summary>
     internal Func<X509Certificate2>? SigningCertificate { get; set; }
 
-    internal GatewaySignInService SignIn => signIn ?? throw new InvalidOperationException("Sign-in is not initialized.");
+    internal GatewaySignInService SignIn { get; } = signIn;
 
-    internal void InitializeSignIn(GatewayCredentialStore credentials)
+    /// <summary>The sign-in service of a host: its providers, who is a member desktop and the owner account by default. A
+    /// friend's credential is allowed while its share link is.</summary>
+    internal static GatewaySignInService CreateService(GatewayHttpServices services, GatewayCredentialStore credentials,
+        GatewayNetworkStore network)
     {
-        var providers = new GatewaySignInProviders(clock);
-        signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message))
+        var providers = new GatewaySignInProviders(services.Clock);
+        var signIn = new GatewaySignInService(credentials, services.Clock, services.Crypto, (level, message) => services.Logs.Own(level, message))
         {
             Providers = providers.Create,
-            IsMember = deviceId => Network.Roster?.Desktop(deviceId) is { Removed: false },
-            DefaultOwnerAccount = () => Network.State == "bound" && Network.Roster is { } roster ? OwnerAccount.IdFor(roster.NetworkId) : null
+            IsMember = deviceId => network.Roster?.Desktop(deviceId) is { Removed: false },
+            DefaultOwnerAccount = () => network.State == "bound" && network.Roster is { } roster ? OwnerAccount.IdFor(roster.NetworkId) : null
         };
-        authenticator.FriendAllowed = principal => SignIn.FriendAllowed(principal.CredentialId);
+        services.Authenticator.FriendAllowed = principal => signIn.FriendAllowed(principal.CredentialId);
+        return signIn;
     }
 
-    private static bool IsSignInTarget(string rawTarget) =>
+    internal static bool IsSignInTarget(string rawTarget) =>
         rawTarget is SignInPath or SignInBeginPath or SignInCompletePath or SignInProvePath or SignInSettingsPath or SignInSharedPath;
 
-    private async ValueTask InvokeSignInAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeSignInAsync(HttpContext context, string rawTarget)
     {
         if (rawTarget == SignInSharedPath)
         {
@@ -179,7 +185,7 @@ internal sealed partial class GatewayHttpApplication
         GatewayRules.Require(context.Request.Method == HttpMethods.Post, "request.invalid");
         var body = await ReadInferenceBodyAsync(context.Request, MaximumSignInRequestBytes, context.RequestAborted).ConfigureAwait(false);
         var caller = authenticator.Authenticate(context.Request, crypto.Sha256(body));
-        var prove = ParseNetworkBody<SignInProveBody>(body);
+        var prove = GatewayNetworkRoutes.ParseNetworkBody<SignInProveBody>(body);
         prove.ProtocolVersion.Validate();
         GatewayRules.Require(Base64Url.TryDecode(prove.AttemptId, 16, out _), "request.invalid");
         var lifetime = prove.LifetimeSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : AccountAttestation.DefaultLifetime;
@@ -251,7 +257,7 @@ internal sealed partial class GatewayHttpApplication
         return request;
     }
 
-    private static string Subject(GatewaySignInIdentity who) => who.Provider + ":" + who.Subject;
+    internal static string Subject(GatewaySignInIdentity who) => who.Provider + ":" + who.Subject;
 
     private async ValueTask InvokeSignInSettingsAsync(HttpContext context)
     {
@@ -269,7 +275,7 @@ internal sealed partial class GatewayHttpApplication
             var body = await ReadInferenceBodyAsync(context.Request, MaximumSignInRequestBytes, context.RequestAborted).ConfigureAwait(false);
             caller = authenticator.Authenticate(context.Request, crypto.Sha256(body));
             RequireSignInOwner(caller);
-            var change = ParseNetworkBody<GatewaySignInChange>(body);
+            var change = GatewayNetworkRoutes.ParseNetworkBody<GatewaySignInChange>(body);
             GatewayRules.Require(GatewaySignInRoles.Allowed(Accounts.Current, caller.DeviceId, change, SignIn.Snapshot()), "signin.denied");
             if (change.Action == "link-login") RequireLinkAttestation(change, caller);
             codes = SignIn.Change(change, caller.Caller, context.RequestAborted);

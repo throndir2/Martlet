@@ -306,7 +306,7 @@ with the find question in `HostFind` (`src\Martlet.Core\Network\HostFind.cs`).
 `HostRegistry.Moved` (`src\Martlet.Desktop\HostControl.cs`) keeps the new
 address with the pairing (`movedTo`) and moves an SSH target that named the old
 one. On a host, `GatewayHomeListeners` (`src\Martlet.Gateway`) and the Docker
-keeper's `follow_home` (`deploy\host\martlet-host`) decide where it listens.
+keeper's `follow_home` (`deploy\host\lib\docker.sh`) decide where it listens.
 
 **Tests:** `HostFindTests` (Martlet.Core.Tests), `HostMoveTests`
 (Martlet.Avatar.Audio2Face.Tests), `HomeListenerTests` (Martlet.Gateway.Tests),
@@ -385,7 +385,7 @@ model a [network model name](OPENAI_ENDPOINT.md#network-model-names) runs on,
 how it ranks against the owner's work, whether and how long it waits for a
 free slot, and the context size it runs with.
 
-**Owner:** `GatewayHttpApplication.RelayOpenAiAsync` and `ListModelsAsync`
+**Owner:** `GatewayOpenAiRoutes.RelayOpenAiAsync` and `ListModelsAsync`
 (`src\Martlet.Gateway\GatewayOpenAi.cs`) for the key check, the model list and
 the order (this host's own model first, then the hosts of the roster that list
 the model; a host never sends a request on twice), and for where a request
@@ -422,7 +422,7 @@ door](OPENAI_ENDPOINT.md#the-front-door) (its public port) serves, what its web
 page shows to anyone and to a person signed in with a key, and when a web
 session ends.
 
-**Owner:** `GatewayHttpApplication.InvokeFrontDoorAsync` and
+**Owner:** `GatewayFrontDoorRoutes.InvokeFrontDoorAsync` and
 `GatewayFrontDoorSessions` (`src\Martlet.Gateway\GatewayFrontDoor.cs`) for the
 routes (`/v1`, `/`, `/portal/sign-in`, `/portal/sign-out`, `/health/live`;
 404 for the rest), sign-in and sessions; `GatewayFrontDoorPage.cs` for the
