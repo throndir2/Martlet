@@ -51,8 +51,8 @@ internal interface IScreenTextReader : IDisposable
 internal sealed class WindowsScreenTextReader : IScreenTextReader
 {
     internal const string NoLanguage =
-        "Windows can't read text yet: it has no text recognition (OCR) language. Add your language in Windows Settings › Time & " +
-        "language › Language & region (its Optical character recognition feature comes with it).";
+        "Windows can't read text yet, because it has no text recognition (OCR) language: add your language in Windows Settings › " +
+        "Time & language › Language & region.";
 
     // A full desktop has more lines than the 60 a prompt keeps; ScreenText.Order picks them in reading order.
     private readonly WindowsCallTextReader reader = new(maximumLines: ScreenText.MaximumLines * 4);
