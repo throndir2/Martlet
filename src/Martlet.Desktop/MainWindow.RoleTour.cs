@@ -112,7 +112,7 @@ public partial class MainWindow
     private StepCommand? OwnHostRepair()
     {
         if (hostState is not { Ready: false } state) return null;
-        var step = new[] { DockerStep(state), ServiceStep(state) }.FirstOrDefault(s => !s.Done);
+        var step = new[] { HostDashboard.DockerStep(state), HostDashboard.ServiceStep(state) }.FirstOrDefault(s => !s.Done);
         return step?.Commands.FirstOrDefault(c => c.Primary) ?? step?.Commands.FirstOrDefault();
     }
 
@@ -126,7 +126,7 @@ public partial class MainWindow
         await (hostProbe is { IsCompleted: false } reading ? reading : CheckThisPcHostAsync());
         if (ThisPcHost() is { } own) await CheckHostsAsync([own]);
         if (closing) return;
-        ActionText.Text = hostState is { } state ? HostServiceSentence(state) : "This PC's host service couldn't be read.";
+        ActionText.Text = hostState is { } state ? HostDashboard.ServiceSentence(state) : "This PC's host service couldn't be read.";
     }
 
     private void UseCompanion_Click(object sender, RoutedEventArgs e) { SetRole(DeviceRole.Companion); Navigate(NavHome); }
