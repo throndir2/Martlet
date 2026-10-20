@@ -474,12 +474,32 @@ public sealed class ConversationHistoryDesktopTests
     private static T Control<T>(FrameworkElement page, string name) where T : FrameworkElement => Assert.IsType<T>(page.FindName(name));
     private static void Click(FrameworkElement page, string name) => Control<Button>(page, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
+    // Each step's own limit: it says which step didn't happen. It polls with a dispatcher timer, so a busy thread pool (other
+    // tests' or other programs' work) can't hold the polling up.
     private static async Task Until(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!condition() && DateTime.UtcNow < deadline) await Task.Delay(10);
+        while (!condition() && DateTime.UtcNow < deadline) await Pause(TimeSpan.FromMilliseconds(10));
         Assert.True(condition(), "The bounded UI condition was not reached.");
     }
+
+    private static Task Pause(TimeSpan time)
+    {
+        var done = new TaskCompletionSource();
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = time };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            done.TrySetResult();
+        };
+        timer.Start();
+        return done.Task;
+    }
+
+    // Only a backstop for a hang: each step has its own limit (Until), and a test has up to four of them plus reading and
+    // writing the record on the thread pool, which a busy PC delays (#1124). A limit below their sum fired first and hid which
+    // step was slow.
+    private static readonly TimeSpan TestLimit = TimeSpan.FromSeconds(120);
 
     private static async Task OnDispatcher(Func<Task> action)
     {
@@ -504,7 +524,7 @@ public sealed class ConversationHistoryDesktopTests
         }) { IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await finished.Task.WaitAsync(TestLimit);
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
     }
 }
