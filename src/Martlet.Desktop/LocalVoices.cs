@@ -37,8 +37,8 @@ internal sealed record HeardVoices(IReadOnlyList<HeardVoice> Voices, bool Overla
 /// owner's computers.</summary>
 internal sealed class LocalVoices : IDisposable
 {
-    internal const string RosterFile = "voices.json";
-    internal const string EnabledFile = "voice-recognition.txt";
+    internal const string RosterFile = VoiceChoices.RosterFile;
+    internal const string EnabledFile = VoiceChoices.RecognitionFile;
     private readonly object gate = new();
     private readonly string? directory;
     private readonly string by;
@@ -74,7 +74,7 @@ internal sealed class LocalVoices : IDisposable
         RecognitionChanged += WriteStateSoon;
         Clips = new VoiceClips(directory);
         if (directory is null) return;
-        Enabled = ReadChoice(EnabledFile) ?? true;
+        Enabled = VoiceChoices.Recognition(directory);
         if (!Enabled) keeper.Pause();
         try
         {
@@ -109,7 +109,8 @@ internal sealed class LocalVoices : IDisposable
 
     internal void SetEnabled(bool on)
     {
-        WriteChoice(EnabledFile, on);
+        if (directory is null) throw new InvalidOperationException("Martlet's data folder isn't available.");
+        VoiceChoices.Write(directory, EnabledFile, on);
         Enabled = on;
         if (on) keeper.Resume();
         else
@@ -122,16 +123,7 @@ internal sealed class LocalVoices : IDisposable
     }
 
     /// <summary>When voice-recognition.txt last changed (null when the owner never chose).</summary>
-    internal DateTimeOffset? EnabledChangedAt
-    {
-        get
-        {
-            if (directory is null) return null;
-            var path = Path.Combine(directory, EnabledFile);
-            try { return File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) : null; }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
-        }
-    }
+    internal DateTimeOffset? EnabledChangedAt => directory is null ? null : VoiceChoices.ChangedAt(directory, EnabledFile);
 
     /// <summary>Who spoke in one utterance (16 kHz mono samples). Confident matches teach the voice a little more; a clearly new
     /// voice with enough clean speech joins the list as "Voice N"; anything in between stays unattributed, but waits up to 30
@@ -498,19 +490,6 @@ internal sealed class LocalVoices : IDisposable
             LoadError = "Couldn't save your voices, so changes last only until Martlet closes.";
             ErrorLog.Warn("Saving the voice list failed.", error);
         }
-    }
-
-    private bool? ReadChoice(string file)
-    {
-        try { return File.ReadAllText(Path.Combine(directory!, file)).Trim() switch { "on" => true, "off" => false, _ => null }; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
-    }
-
-    private void WriteChoice(string file, bool on)
-    {
-        if (directory is null) throw new InvalidOperationException("Martlet's data folder isn't available.");
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, file), on ? "on" : "off");
     }
 
     /// <summary>The voice engine is in memory now (it loads on the first utterance it checks).</summary>

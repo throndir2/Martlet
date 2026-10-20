@@ -849,7 +849,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Equal("none", none.GetProperty("state").GetString());
             Assert.False(none.GetProperty("telegram").GetProperty("connected").GetBoolean());
 
-            Assert.True(new MessagingPreferences
+            Assert.True(new Martlet.Messaging.MessagingPreferences
             {
                 Telegram = new()
                 {

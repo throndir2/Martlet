@@ -616,16 +616,8 @@ internal sealed partial class McpServer
         var directory = DataDirectory(arguments);
         var pc = PcFolder.For(directory);
         var separate = pc.Separate(directory);
-        static string? Role(string folder)
-        {
-            try
-            {
-                var path = Path.Combine(folder, "device-role.txt");
-                if (!File.Exists(path)) return null;
-                return File.ReadAllText(path).Trim() == "Host" ? "host" : "companion";
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return "unreadable"; }
-        }
+        static string? Role(string folder) => DeviceRoleFile.Describe(folder);
+
         var shared = Role(pc.Directory);
         var mine = separate ? Role(directory) : shared;
         var roles = ThisPcHostRoles.Load(pc.Directory);
@@ -755,9 +747,6 @@ internal sealed partial class McpServer
     private static object ClusterStatus(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
-        string? choice;
-        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
         object plan;
         var path = Path.Combine(directory, "cluster.json");
         if (!File.Exists(path)) plan = new { state = "none" };
@@ -782,7 +771,7 @@ internal sealed partial class McpServer
                 plan = new { state = "unreadable" };
             }
         }
-        return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
+        return new { sync = Martlet.Core.Cluster.ClusterSyncChoice.Describe(directory), plan };
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the
@@ -883,24 +872,13 @@ internal sealed partial class McpServer
     /// renewed, the last problem and whether this PC reached it from inside). Never an address. Null when none is open.</summary>
     private static object? RouterPortSummary(string directory)
     {
-        try
+        var state = Martlet.Core.Network.RouterPortFile.Load(directory, out var unreadable);
+        if (unreadable) return "unreadable";
+        return state is null ? null : new
         {
-            var path = Path.Combine(directory, "router-port.json");
-            if (!File.Exists(path)) return null;
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            var root = document.RootElement;
-            static string? Text(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-            static int? Number(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.TryGetInt32(out var n) ? n : null;
-            return new
-            {
-                hostId = Text(root, "host_id"), router = Text(root, "router_name"), externalPort = Number(root, "external_port"),
-                internalPort = Number(root, "internal_port"), openedAt = Text(root, "opened_at"), renewedAt = Text(root, "renewed_at"),
-                problem = Text(root, "problem"),
-                answeredFromInside = root.TryGetProperty("answered_from_inside", out var answered) && answered.ValueKind is JsonValueKind.True or JsonValueKind.False
-                    ? answered.GetBoolean() : (bool?)null
-            };
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
+            hostId = state.HostId, router = state.RouterName, externalPort = state.ExternalPort, internalPort = state.InternalPort,
+            openedAt = state.OpenedAt, renewedAt = state.RenewedAt, problem = state.Problem, answeredFromInside = state.AnsweredFromInside
+        };
     }
 
     /// <summary>household-signin.json: the household's sign-in providers as the desktop last read them from its hosts (each
@@ -911,8 +889,8 @@ internal sealed partial class McpServer
     {
         try
         {
-            var path = Path.Combine(directory, "household-signin.json");
-            return File.Exists(path) ? JsonSerializer.Deserialize<JsonElement>(File.ReadAllBytes(path)) : null;
+            var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.FileName);
+            return File.Exists(path) ? Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.Describe(Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.Read(directory)) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
     }

@@ -223,7 +223,8 @@ public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How, bool Tr
 
 /// <summary>Touch zones: the body zones Martlet knows, the vision model's request and how its answer is read, binding zones to a
 /// model's drawables or bones, matching a touch to a zone, the reaction it plays, and the per-model settings kept in
-/// character-touch-zones.json (snapshots in character-touch-zones\) on this PC.</summary>
+/// character-touch-zones.json (the same on all the owner's computers: <see cref="SharedKey"/>; snapshots in character-touch-zones\
+/// on the computer that made them).</summary>
 public static partial class CharacterTouchZones
 {
     public const string FileName = "character-touch-zones.json";
@@ -1113,6 +1114,62 @@ public static partial class CharacterTouchZones
             return settings;
         }
         finally { Gate.Release(); }
+    }
+
+    /// <summary>Saves the settings of every model at once (another computer's touch zones, <see cref="ReplaceAllAsync"/>).</summary>
+    private static async Task WriteAllAsync(string dataDirectory, IReadOnlyList<CharacterTouchZoneSettings> models, CancellationToken token)
+    {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(DocumentVersion, models), Json);
+        ContractRules.Require(bytes.Length <= MaximumListBytes, "The touch zones are too large.", ErrorCode.PayloadTooLarge);
+        Directory.CreateDirectory(dataDirectory);
+        var temporary = System.IO.Path.Combine(dataDirectory, $"character-touch-zones.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllBytesAsync(temporary, bytes, token);
+            File.Move(temporary, Path(dataDirectory), overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    // ---------- shared with the owner's other computers ----------
+
+    /// <summary>The household setting that carries every model's touch zones (found by vision, guessed, or drawn and changed by
+    /// the owner) to the owner's other computers, so the character reacts the same on all of them and each model is found once.
+    /// The pictures (the snapshot and what the vision model saw) stay on the computer that made them.</summary>
+    public const string SharedKey = "character-touch-zones";
+    /// <summary>The most the shared touch zones take: the newest models that fit (a model with 32 zones takes about 107 KB).</summary>
+    public const int MaximumShareBytes = 8 * 1024 * 1024;
+    private static readonly JsonSerializerOptions ShareJson = new(Json) { WriteIndented = false };
+
+    /// <summary>Every model's zones as they travel: the file's document, compact, sorted by model; the newest models that fit in
+    /// <see cref="MaximumShareBytes"/>.</summary>
+    public static string Share(string dataDirectory)
+    {
+        var models = LoadAll(dataDirectory).OrderByDescending(m => m.UpdatedAt).ToList();
+        while (true)
+        {
+            var text = JsonSerializer.Serialize(new Document(DocumentVersion, [.. models.OrderBy(m => m.ModelId, StringComparer.Ordinal)]), ShareJson);
+            if (models.Count == 0 || System.Text.Encoding.UTF8.GetByteCount(text) <= MaximumShareBytes) return text;
+            models.RemoveAt(models.Count - 1);
+        }
+    }
+
+    /// <summary>Takes another computer's touch zones (<see cref="Share"/>'s text) in place of this PC's. False when they were saved
+    /// by a newer Martlet or can't be read.</summary>
+    public static async Task<bool> ReplaceAllAsync(string dataDirectory, string shared, CancellationToken token = default)
+    {
+        Document? document;
+        try { document = JsonSerializer.Deserialize<Document>(shared, Json); }
+        catch (Exception error) when (error is JsonException or NotSupportedException) { return false; }
+        if (document is not { Version: 1 or DocumentVersion, Models: { } models }) return false;
+        var valid = models.Where(m => m is { ModelId: not null, Zones: not null } && m.Zones.All(z => z is { Id: not null, Box: not null } &&
+            (z.Areas is null || z.Areas.All(a => a is { Box: not null, Drawables: not null, Bones: not null, Nodes: not null }))) && Problem(m) is null);
+        CharacterTouchZoneSettings[] kept = [.. (document.Version == 1 ? valid.Select(UpgradedFromVersion1) : valid)
+            .OrderByDescending(m => m.UpdatedAt).Take(MaximumModels).OrderBy(m => m.ModelId, StringComparer.Ordinal)];
+        await Gate.WaitAsync(token);
+        try { await WriteAllAsync(dataDirectory, kept, token); }
+        finally { Gate.Release(); }
+        return true;
     }
 
     /// <summary>Where the pictures the vision model saw in the model's last detection are kept, with <see cref="SentFile"/>.</summary>

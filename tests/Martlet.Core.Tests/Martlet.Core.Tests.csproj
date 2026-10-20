@@ -9,6 +9,10 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
+    <!-- The two-computer tests of the shared character, Discord and messaging files (SharedFilesTwoComputersTests). -->
+    <ProjectReference Include="..\..\src\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Discord\Martlet.Discord.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Messaging\Martlet.Messaging.csproj" />
     <Using Include="Xunit" />
     <None Include="..\..\contracts\golden\**\*.json" Link="golden\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

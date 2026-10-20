@@ -55,13 +55,8 @@ internal static class SingingStatus
     /// song's music and voice match go, and whether the voice match is off (songs keep the music model's own singer).</summary>
     private static object Pool(string dataDirectory, IReadOnlyList<string> paired, IReadOnlyDictionary<string, SingerState?> states)
     {
-        string? saved = null;
-        try
-        {
-            using var choices = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "singing.json")));
-            if (choices.RootElement.TryGetProperty("host", out var host) && host.ValueKind == JsonValueKind.String) saved = host.GetString();
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
+        var saved = Martlet.Core.Singing.SingingPreferences.Load(dataDirectory).Host;
+
         ClusterPlan plan;
         try { plan = ClusterPlan.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "cluster.json"))); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { plan = ClusterPlan.Empty; }
