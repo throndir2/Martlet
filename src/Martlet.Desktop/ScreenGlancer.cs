@@ -164,7 +164,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
 
     /// <summary>What a look hides, for the Vision disclosures.</summary>
     internal static string HiddenText => SeesPrivateWindows
-        ? "Martlet greys out its own windows and skips minimized windows and protected video. Personal content is Everything, so it also sees password managers and private windows. "
+        ? "Martlet greys out its own windows and skips minimized windows and protected video, but Personal content is Everything, so it also sees password managers and private windows. "
         : "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. ";
 
     public GlanceResult Capture(ScreenScope scope) => Capture(scope, text: false);
