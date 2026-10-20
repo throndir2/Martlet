@@ -62,6 +62,22 @@ Your laptop can be a companion PC away from home while your hosts at home do the
 
 A host gets outside addresses only after you set up its sign-in. Every request from outside still needs a pairing, a sign-in or a share link. After a few wrong tries, the host makes each new try wait longer.
 
+### Outside addresses
+
+The **Outside access** dialog of a host lists the addresses that reach its gateway from outside your home.
+
+- Type up to four addresses, separated by commas, as `name:port`, `IPv4:port` or `[IPv6]:port`. Leave the box empty to remove them.
+- Desktops try the home address first. They use an outside address only when the home address doesn't answer. They always check the same host key, so a proxy that ends TLS (the encryption) doesn't work.
+- **Save and restart gateway** restarts the host's gateway. Your other computers learn the addresses on their next sync.
+- With outside addresses, the host also listens on its own Tailscale address and on the addresses that you name.
+- To forward a port by hand, open your router's settings and forward a TCP port to the host's home address. Then add your public address with that port.
+- **Let Martlet open a port on my router for it (UPnP)** asks your router to open a port. UPnP must be on in the router. Martlet first checks that your router has a real internet address. If your internet provider shares one address among many homes, use Tailscale instead. Windows asks once to let connections from outside your home through the firewall. Clear the box to close the port again.
+- If the host doesn't take the new settings, Martlet closes the router port again. If Windows Firewall still lets only your home network in, open **Outside access** again and agree to the Windows prompt.
+
+A host behind Docker can't tell a connection from home apart from one from outside. Keep **Treat every connection as coming from outside home** on when the port is reachable from outside. Typed pairing codes then need **Allow typed pairing codes from outside home**, also at home. Martlet pairing with its own host service doesn't need it.
+
+Until sign-in works on the host, the dialog says why and offers **Set up sign-in first**. You can still remove addresses and change how connections are treated. While sign-in is off on a host that has outside addresses, outside access is paused.
+
 ## Share your language models
 
 People who don't use Martlet can use the models your hosts run with Ollama (the Thinking and Thinking pool roles). They use any app that works with the OpenAI API, such as Open WebUI, SillyTavern or the OpenAI Python library.

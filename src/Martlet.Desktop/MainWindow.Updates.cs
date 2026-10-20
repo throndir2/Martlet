@@ -113,12 +113,12 @@ public partial class MainWindow
             try { updateChecksEnabled = UpdateCheckPreferences.Load(store.DataDirectory); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {
-                problem = "Couldn't load update settings. Automatic checks stay on until you save again.";
+                problem = "Couldn't load update settings, so automatic checks stay on until you save again.";
             }
             try { updatePreferences = UpdatePreferences.Load(store.DataDirectory); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {
-                problem = "Couldn't load update settings. Automatic installs stay off until you save again.";
+                problem = "Couldn't load update settings, so automatic installs stay off until you save again.";
             }
         }
         CurrentVersionText.Text = $"Current version: Martlet {Version}";
@@ -157,11 +157,11 @@ public partial class MainWindow
     {
         var every = UpdatePreferences.Describe(updatePreferences.IntervalMinutes);
         var text = updateChecksEnabled
-            ? $"Martlet {Version}. Checks every {every} while Martlet runs" +
-              (updatePreferences.AutoInstall ? " and installs updates as soon as they're downloaded." : ". You choose when to install.")
-            : $"Martlet {Version}. Automatic checks are off. Use Check for updates any time.";
-        if (updatePreferences.AutoUpdateHosts) text += $" Paired hosts update every {every}.";
-        return text;
+            ? $"Martlet {Version}: checks every {every} while Martlet runs" +
+              (updatePreferences.AutoInstall ? " and installs updates as soon as they're downloaded" : ", and you choose when to install")
+            : $"Martlet {Version}: automatic checks are off, but Check for updates works any time";
+        if (updatePreferences.AutoUpdateHosts) text += $", and paired hosts update every {every}";
+        return text + ".";
     }
 
     /// <summary>Runs after launch: reports the last install (and copies what its helper did into Martlet's log), removes
@@ -220,10 +220,10 @@ public partial class MainWindow
     {
         if (readyUpdate is not { } ready) return;
         installWaitingText = (UpdateStaged
-                ? $"Martlet {ready.Update.Version.ToString(3)} is installed beside this one. Martlet restarts into it, in a few " +
-                  "seconds, as soon as it isn't busy."
-                : $"Martlet {ready.Update.Version.ToString(3)} is downloaded and installs as soon as Martlet isn't busy.") +
-            (InstallBlocker() is { } why ? $" Waiting: {why}." : "");
+                ? $"Martlet {ready.Update.Version.ToString(3)} is installed beside this one, and Martlet restarts into it in a few " +
+                  "seconds once it isn't busy"
+                : $"Martlet {ready.Update.Version.ToString(3)} is downloaded and installs as soon as Martlet isn't busy") +
+            (InstallBlocker() is { } why ? $" (waiting: {why})." : ".");
         UpdateStatusText.Text = installWaitingText;
     }
 
@@ -324,7 +324,7 @@ public partial class MainWindow
             changingUpdateChoice = true;
             AutomaticUpdateCheck.IsChecked = updateChecksEnabled;
             changingUpdateChoice = false;
-            UpdateStatusText.Text = "Couldn't save update settings. Check access to Martlet's data folder.";
+            UpdateStatusText.Text = "Couldn't save update settings, so check access to Martlet's data folder.";
         }
     }
 
@@ -355,7 +355,7 @@ public partial class MainWindow
             UpdateIntervalChoice.SelectedItem = UpdateIntervalChoice.Items.OfType<ComboBoxItem>()
                 .First(item => (int)item.Tag == updatePreferences.IntervalMinutes);
             changingUpdateChoice = false;
-            UpdateStatusText.Text = "Couldn't save update settings. Check access to Martlet's data folder.";
+            UpdateStatusText.Text = "Couldn't save update settings, so check access to Martlet's data folder.";
         }
     }
 
@@ -415,7 +415,7 @@ public partial class MainWindow
             ShowInstallButton();
             if (result is null)
             {
-                UpdateStatusText.Text = $"You're up to date. Checked {DateTime.Now:t}.";
+                UpdateStatusText.Text = $"You're up to date (checked {DateTime.Now:t}).";
                 return;
             }
             UpdateStatusText.Text = UpdateStaged && !AutoInstalling
@@ -429,7 +429,7 @@ public partial class MainWindow
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (OperationCanceledException)
         {
-            if (!closing) UpdateStatusText.Text = "Update check timed out. Martlet will try again later.";
+            if (!closing) UpdateStatusText.Text = "Update check timed out, and Martlet tries again later.";
         }
         catch (Exception error) when (error is HttpRequestException or InvalidDataException or IOException)
         {
@@ -484,8 +484,8 @@ public partial class MainWindow
                         ? SimulatedAppUpdate.Write(directory, update)
                         : await AppUpdateInstaller.DownloadAsync(new GitHubReleaseClient(http), update, directory, cancellation.Token, received);
                     readyUpdate = (path, update);
-                    run.Output.Report("The download matches GitHub's SHA-256 digest. (The installer is not code-signed; the digest " +
-                        "detects a damaged download, not who published it.)");
+                    run.Output.Report("The download matches GitHub's SHA-256 digest, which detects a damaged download but not who " +
+                        "published it (the installer is not code-signed).");
                     if (!closing) UpdateStatusText.Text = $"Martlet {version} is ready to install.";
                     return $"Martlet {version} is downloaded and ready to install.";
                 }
@@ -533,7 +533,7 @@ public partial class MainWindow
     }
 
     private static string StagedText(string version) =>
-        $"Martlet {version} is installed. Restart Martlet to start using it (a few seconds), or it switches over when Martlet exits.";
+        $"Martlet {version} is installed, so restart Martlet to use it (a few seconds), or it switches over when Martlet exits.";
 
     /// <summary>Asks once, then downloads and verifies the installer. An installed Martlet then installs it beside itself while
     /// you keep using it and asks to restart, which takes a few seconds; a development build (or when that install fails)
@@ -559,14 +559,11 @@ public partial class MainWindow
             var busy = BusyReason();
             var work = HostWorkBlocker();
             if (!ConfirmationDialog.Confirm(this,
-                    $"Martlet {version} is available. Install it now?\n\n" +
+                    $"Install Martlet {version} ({Mib(update)}) now?\n\n" +
                     (beside
-                        ? $"The update is {Mib(update)}. Martlet installs it in the background while you keep using it, then asks " +
-                          "you to restart, which takes a few seconds."
-                        : $"The update is {Mib(update)}. Martlet will close, install it and restart." +
-                          (busy is null ? "" : $"\n\n{busy} will pause until Martlet restarts.") +
-                          (work is null ? "" : $"\n\nIt waits until this finishes: {work}.")) +
-                    (prompted ? "\n\nYou can also install it later from Settings." : ""),
+                        ? "It installs in the background while you keep using Martlet, then asks you to restart."
+                        : "Martlet closes, installs it and restarts" + (busy is null ? "" : $", and {busy} pauses until then") +
+                          (work is null ? "." : $" once this finishes: {work}.")),
                     "Install Martlet update"))
                 return;
             if (readyUpdate?.Update.Version != update.Version) await DownloadUpdateAsync(shown: true);
@@ -581,9 +578,9 @@ public partial class MainWindow
                 if (!UpdateStaged)
                 {
                     if (!ConfirmationDialog.Confirm(this,
-                            $"Martlet couldn't install {version} while it runs. Install it the usual way instead?\n\n" +
-                            "Martlet will close, install it and restart." +
-                            (BusyReason() is { } busyNow ? $"\n\n{busyNow} will pause until Martlet restarts." : ""),
+                            $"Martlet couldn't install {version} while it runs, so install it the usual way?\n\n" +
+                            "Martlet closes, installs it and restarts" +
+                            (BusyReason() is { } busyNow ? $", and {busyNow} pauses until then." : "."),
                             "Install Martlet update"))
                         return;
                 }
@@ -611,11 +608,9 @@ public partial class MainWindow
         var busy = BusyReason();
         var work = HostWorkBlocker();
         return ConfirmationDialog.Confirm(this,
-            $"Martlet {update.Version.ToString(3)} is installed. Restart Martlet now to start using it?\n\n" +
-            "The restart takes a few seconds." +
-            (busy is null ? "" : $"\n\n{busy} will pause until Martlet restarts.") +
-            (work is null ? "" : $"\n\nIt waits until this finishes: {work}.") +
-            "\n\nIf you restart later, Martlet switches to the new version when it exits.",
+            $"Restart Martlet now to start using {update.Version.ToString(3)}?\n\n" +
+            "The restart takes a few seconds" + (busy is null ? "" : $", and {busy} pauses until then") +
+            (work is null ? "." : $"; it waits until this finishes: {work}."),
             "Restart Martlet", yes: "_Restart now", no: "_Later", questionId: "RestartIntoUpdateQuestion");
     }
 
@@ -654,14 +649,14 @@ public partial class MainWindow
         var started = Stopwatch.StartNew();
         string? failure = null;
         BackgroundTask? task = null;
-        UpdateStatusText.Text = $"Installing Martlet {version} beside this one. Keep using Martlet; this takes a minute or less.";
+        UpdateStatusText.Text = $"Installing Martlet {version} beside this one, which takes a minute or less while you keep using Martlet.";
         await HostRunWindow.RunAsync(this, $"Install Martlet {version}", async run =>
         {
             task = run.BackgroundTask;
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, run.Token);
             run.Status(UpdateStatusText.Text);
             run.Output.Report($"Installing Martlet {version} into {AppUpdateStaging.StagedRoot(root)} while Martlet keeps running, " +
-                "with no installer window and at low priority. Then restarting into it takes a few seconds, not the whole install.");
+                "with no installer window and at low priority, so restarting into it takes only a few seconds.");
             try
             {
                 await besideCleanup;
@@ -675,8 +670,8 @@ public partial class MainWindow
                         : $". Last lines of its log ({AppUpdateStaging.StageLogFile} in the updates folder):\n" + string.Join("\n", tail)));
                 }
                 stagedVersion = ready.Update.Version;
-                ErrorLog.Info($"Installed Martlet {version} beside this one in {started.Elapsed.TotalSeconds:0} s. Restarting into it takes a few seconds.");
-                return $"Martlet {version} is installed. Restarting into it takes a few seconds.";
+                ErrorLog.Info($"Installed Martlet {version} beside this one in {started.Elapsed.TotalSeconds:0} s; restarting into it takes a few seconds.");
+                return $"Martlet {version} is installed, and restarting into it takes a few seconds.";
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or
@@ -693,7 +688,7 @@ public partial class MainWindow
         if (task?.State == BackgroundTaskState.Canceled)
         {
             stagingCanceledVersion = ready.Update.Version;
-            UpdateStatusText.Text = $"Installing Martlet {version} was canceled. Press Install to try again.";
+            UpdateStatusText.Text = $"Installing Martlet {version} was canceled, so press Install to try again.";
         }
         else if (failure is not null) UpdateStatusText.Text = failure;
         else if (!AutoInstalling) UpdateStatusText.Text = StagedText(version);
@@ -720,10 +715,10 @@ public partial class MainWindow
             : $"Installing Martlet {version} {(unattended ? "automatically, with no installer window" : "as you confirmed")}. " +
               "Martlet closes and restarts into it" + again);
         UpdateStatusText.Text = ActionText.Text = staged
-            ? $"Restarting into Martlet {version}. Martlet is back in a few seconds."
+            ? $"Restarting into Martlet {version}, back in a few seconds."
             : unattended
-                ? $"Installing Martlet {version} in the background, with no installer window. Martlet restarts by itself when it's done."
-                : $"Installing Martlet {version}. Martlet will restart when it's done.";
+                ? $"Installing Martlet {version} in the background with no installer window, and Martlet restarts by itself when it's done."
+                : $"Installing Martlet {version}, and Martlet restarts when it's done.";
         ExitMartlet();
     }
 
@@ -800,7 +795,7 @@ public partial class MainWindow
         try { Process.Start(new ProcessStartInfo(update.ReleasePage.AbsoluteUri) { UseShellExecute = true })?.Dispose(); }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
-            UpdateStatusText.Text = $"Couldn't open the release notes. Copy this URL into your browser: {update.ReleasePage}";
+            UpdateStatusText.Text = $"Couldn't open the release notes, so copy this URL into your browser: {update.ReleasePage}";
         }
     }
 
@@ -809,8 +804,8 @@ public partial class MainWindow
         InvalidDataException or ArgumentException => error.Message,
         HttpRequestException => "The update service could not be reached.",
         UpdateCleanupException => error.Message,
-        OperationCanceledException => "The download timed out. Martlet will try again later.",
-        UnauthorizedAccessException or IOException => "Martlet can't save the update. Check access and free space.",
+        OperationCanceledException => "The download timed out, and Martlet tries again later.",
+        UnauthorizedAccessException or IOException => "Martlet can't save the update, so check access and free space.",
         _ => "The update couldn't be checked or downloaded."
     };
 
@@ -832,7 +827,7 @@ public partial class MainWindow
         if (hostUpdatesRunning)
         {
             if (retrying) hostRetryAt = DateTimeOffset.UtcNow + HostRetryDelay;
-            else if (!automatic) UpdateStatusText.Text = "A host update is already running. Its result shows here and on each host's Devices card.";
+            else if (!automatic) UpdateStatusText.Text = "A host update is already running, and its result shows here and on each host's Devices card.";
             return;
         }
         hostUpdatesRunning = true;
@@ -893,7 +888,7 @@ public partial class MainWindow
                 }
                 if (!host.CanLaunch)
                 {
-                    hostUpdates.Note(host.HostId, "This host needs an update. Set how Martlet signs in over SSH, or choose Through Martlet on that computer.");
+                    hostUpdates.Note(host.HostId, "This host needs an update, so set how Martlet signs in over SSH or choose Through Martlet on that computer.");
                     failed++;
                     return;
                 }
@@ -987,14 +982,14 @@ public partial class MainWindow
         }
         catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
         {
-            hostUpdates.Note(host.HostId, $"Its host service is older than commands between computers. Open Martlet on {host.HostId} once: " +
-                "it brings its host service up to date by itself, and from then on this PC updates it from here.");
+            hostUpdates.Note(host.HostId, $"Its host service is older than commands between computers, so open Martlet on {host.HostId} once " +
+                "to bring it up to date (from then on this PC updates it from here).");
             return HostUpdateResult.Failed;
         }
         catch (Exception error) when (error is Audio2FaceHostException { Code: "host.unreachable" or "gateway.internal" } ||
             error is OperationCanceledException && !lifetime.IsCancellationRequested)
         {
-            hostUpdates.Note(host.HostId, $"{host.HostId}'s host service didn't answer (it may be restarting for an update). " +
+            hostUpdates.Note(host.HostId, $"{host.HostId}'s host service didn't answer (it may be restarting for an update), so " +
                 "Martlet asks it again in a few minutes.");
             return HostUpdateResult.Busy;
         }
@@ -1015,7 +1010,7 @@ public partial class MainWindow
     private async Task<HostUpdateResult> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string? sshHostKey = null, bool asked = false)
     {
         var waiting = asked
-            ? $"Updating to Martlet {Version}. If something else is changing that host, this waits for it to finish first..."
+            ? $"Updating to Martlet {Version} (if something else is changing that host, this waits for it to finish first)..."
             : $"Updating to Martlet {Version}...";
         hostUpdates.Note(id, waiting);
         RenderDevicePages();
@@ -1036,14 +1031,14 @@ public partial class MainWindow
             }
             catch (OperationCanceledException) when (run.Token.IsCancellationRequested && !closing)
             {
-                hostUpdates.Note(id, $"You canceled the update to Martlet {Version}. Press Update host to run it again.");
+                hostUpdates.Note(id, $"You canceled the update to Martlet {Version}, so press Update host to run it again.");
                 // This PC's own host service: keeping it current doesn't start the same update again by itself either.
                 if (target.Method == HostSetupMethod.ThisPcDocker) ownHost.Failed(Version);
                 throw;
             }
             catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
             {
-                hostUpdates.Note(id, $"Couldn't start the update: {error.Message}. Press Update host to run it from Martlet.");
+                hostUpdates.Note(id, $"Couldn't start the update ({error.Message.TrimEnd('.')}), so press Update host to run it from Martlet.");
                 throw;
             }
             var lines = ReadLog(log);
@@ -1052,12 +1047,12 @@ public partial class MainWindow
             {
                 hostUpdates.Note(id, HostUpdateTracker.BusyNote(Version, what, DateTime.Now));
                 result = HostUpdateResult.Busy;
-                return $"{name} is busy with another change ({what}), so nothing was changed. Martlet tries again in a few minutes.";
+                return $"{name} is busy with another change ({what}), so nothing was changed and Martlet tries again in a few minutes.";
             }
             if (code != 0)
             {
-                hostUpdates.Note(id, "The update needs your attention on that computer. Press Update host to finish it.");
-                throw new InvalidOperationException($"The update stopped on {name} (exit {code}). Press Update host on its Devices card to finish it.");
+                hostUpdates.Note(id, "The update needs your attention on that computer, so press Update host to finish it.");
+                throw new InvalidOperationException($"The update stopped on {name} (exit {code}), so press Update host on its Devices card to finish it.");
             }
             hostUpdates.Note(id, $"{HostUpdateTracker.UpdatedNote}{Version} at {DateTime.Now:t}.");
             result = HostUpdateResult.Updated;

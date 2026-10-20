@@ -110,8 +110,8 @@ public partial class MainWindow
         FreeUpText.Text = freeingUp ? "Freeing up…" : "Free up this PC";
         AutomationProperties.SetName(FreeUpButton, FreeUpText.Text);
         var tip = freeingUp ? "Martlet is freeing up this PC."
-            : canFree ? "End the conversation, hide the character and unload Martlet's models from this PC's memory and graphics card. " +
-                "Your settings stay. Start talking or Start listening loads them again."
+            : canFree ? "End the conversation, hide the character and unload Martlet's models from this PC's memory and graphics card " +
+                "(your settings stay, and Start talking or Start listening loads them again)."
             : "Martlet holds nothing to free on this PC now.";
         FreeUpButton.ToolTip = tip;
         AutomationProperties.SetHelpText(FreeUpButton, tip);

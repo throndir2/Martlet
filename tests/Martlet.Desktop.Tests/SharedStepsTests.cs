@@ -38,7 +38,7 @@ public sealed class SharedStepsTests
         }, status => waiting = status, output, CancellationToken.None);
 
         Assert.False(follower.IsCompleted);
-        Assert.Equal("Waiting: \"Start Docker Desktop\" is starting Docker Desktop. This continues once that's done...", waiting);
+        Assert.Equal("Waiting: \"Start Docker Desktop\" is starting Docker Desktop, and this continues once that's done...", waiting);
         Assert.Contains(output.All(), line => line.Contains("\"Start Docker Desktop\" is starting Docker Desktop already", StringComparison.Ordinal));
 
         release.SetResult(42);

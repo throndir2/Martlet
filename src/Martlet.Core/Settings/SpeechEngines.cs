@@ -58,7 +58,7 @@ public sealed record SpeechEngine(
     {
         get
         {
-            if (Cloud) return $"Runs on {Name}{(Name.EndsWith('s') ? "'" : "'s")} servers, with your own {Name} account and API key. Nothing runs on your computers.";
+            if (Cloud) return $"Runs on {Name}{(Name.EndsWith('s') ? "'" : "'s")} servers with your own {Name} account and API key, and nothing runs on your computers.";
             var options = Planning.FootprintCatalog.Default.For(Planning.PlanComponent.Voice)
                 .Where(option => option.IsLocal && option.ModelId == DefaultModel).ToArray();
             var gpu = options.FirstOrDefault(option => option.UsesGpu);

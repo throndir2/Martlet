@@ -88,7 +88,7 @@ public partial class MainWindow : ICheckInsPageServices
             }
             homeSettings = updated;
             saved();
-            ActionText.Text = "Check-in prompts saved. Check-ins use them from their next run.";
+            ActionText.Text = "Check-in prompts saved: check-ins use them from their next run.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)

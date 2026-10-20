@@ -71,7 +71,7 @@ public partial class MainWindow
         if (!await ConfirmInterruptionsAsync())
         {
             RefuseExit();
-            ActionText.Text = "Martlet stays open. Exit again when it's done, or to interrupt it.";
+            ActionText.Text = "Martlet stays open, so exit again when it's done or to interrupt it.";
             return;
         }
         await CloseMartletAsync();
@@ -135,8 +135,7 @@ public partial class MainWindow
             ErrorLog.Info($"Exit asks first: Martlet is still busy with {string.Join("; ", busy)}.");
             var confirmed = ConfirmationDialog.Confirm(this,
                 "Martlet is still busy with:\n" + string.Join("\n", busy.Select(item => "\u2022 " + item)) +
-                $"\n\nYou can still exit now, but that interrupts {them}: whatever isn't finished is canceled, so you may need to " +
-                $"do {them} again.\n\nExit anyway?",
+                $"\n\nExit anyway? Whatever isn't finished is canceled, so you may need to do {them} again.",
                 "Exit Martlet", yes: "E_xit anyway", no: "_Keep Martlet open", questionId: "ExitBusyQuestion");
             ErrorLog.Info(confirmed ? "Exiting anyway; that interrupts what Martlet was doing." : "Martlet stays open; nothing was interrupted.");
             // An update installed on the way out starts Martlet again where it was.
@@ -322,7 +321,7 @@ public partial class MainWindow
     private void RenderClosing()
     {
         ClosingStatusText.Text = char.ToUpperInvariant(closingStep[0]) + closingStep[1..] + "...";
-        ClosingSlowText.Text = "This is taking longer than usual. You can exit now without waiting, but that interrupts it." +
+        ClosingSlowText.Text = "This is taking longer than usual; exit now to stop waiting, which interrupts it." +
             (closingEffect.Length == 0 ? "" : " " + closingEffect);
         UpdateTray();
     }
@@ -368,8 +367,8 @@ public partial class MainWindow
         {
             RevealClosing();
             confirmed = ConfirmationDialog.Confirm(this,
-                $"Martlet is still {closingStep}.\n\nYou can exit now without waiting, but that interrupts it." +
-                (closingEffect.Length == 0 ? "" : " " + closingEffect) + "\n\nExit now?",
+                $"Martlet is still {closingStep}.\n\nExit now without waiting? That interrupts it." +
+                (closingEffect.Length == 0 ? "" : " " + closingEffect),
                 "Exit Martlet now", yes: "E_xit now", no: "_Keep waiting", questionId: "ExitNowQuestion");
         }
         finally { confirmingExitNow = false; }

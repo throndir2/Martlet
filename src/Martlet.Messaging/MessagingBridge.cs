@@ -164,14 +164,14 @@ public sealed class MessagingBridge
             {
                 allowed[message.ChatId] = message.ChatName;
                 Paired?.Invoke(new(message.ChatId, message.ChatName));
-                await SendAsync(message.ChatId, "Paired. You can talk to Martlet here now; it answers while Martlet runs on your PC.", cancellation).ConfigureAwait(false);
+                await SendAsync(message.ChatId, "Paired: you can talk to Martlet here now, and it answers while Martlet runs on your PC.", cancellation).ConfigureAwait(false);
                 return;
             }
             // Say how to pair once per chat while Martlet runs, so a stranger can't make the bot talk on and on.
             bool first;
             lock (gate) first = told.Count < MaximumToldChats && told.Add(message.ChatId);
             if (first)
-                await SendAsync(message.ChatId, "This Martlet answers only chats its owner paired. To pair this chat, open Martlet on your PC, " +
+                await SendAsync(message.ChatId, "This Martlet answers only chats its owner paired: to pair this chat, open Martlet on your PC, " +
                     "go to Companion › Messaging, press Pair a chat and send the code here.", cancellation).ConfigureAwait(false);
             return;
         }
@@ -183,7 +183,7 @@ public sealed class MessagingBridge
         if (text.Length == 0) return;
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase) || text.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
-            await SendAsync(message.ChatId, "This chat is paired with Martlet. Just write; Martlet answers the way it does on your PC, " +
+            await SendAsync(message.ChatId, "This chat is paired with Martlet, so just write: Martlet answers the way it does on your PC, " +
                 "with the same memory and personality.", cancellation).ConfigureAwait(false);
             return;
         }
@@ -193,11 +193,11 @@ public sealed class MessagingBridge
             limit.CancelAfter(AnswerLimit);
             var typing = KeepTypingAsync(message.ChatId, limit.Token);
             try { reply = await answer(message, limit.Token).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { reply = "Martlet took too long to answer. Try again in a moment."; }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { reply = "Martlet took too long to answer, so try again in a moment."; }
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 Failed?.Invoke(error);
-                reply = "Martlet couldn't answer that. Try again in a moment.";
+                reply = "Martlet couldn't answer that, so try again in a moment.";
             }
             finally
             {

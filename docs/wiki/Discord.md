@@ -39,7 +39,27 @@ Discord's rules and gets accounts banned. So:
    your user ID. Choose the **Home server** there too.
 
 Martlet keeps the bot token in Windows Credential Manager, never in settings
-files or logs. **Forget the bot** disconnects and removes it.
+files or logs. **Save and connect** first checks that the text looks like a bot
+token. If it doesn't, go to the **Bot** page in the Developer Portal, press
+**Reset Token** and copy the whole token. **Forget the bot** disconnects and
+removes the token, but keeps your chat modes and people. If the token may have
+leaked, reset it in the Developer Portal too.
+
+Turn off **Connect to Discord** to stop Martlet from connecting. Your bot token,
+chat modes and people are kept.
+
+### Who you are
+
+Martlet must know which Discord user is you:
+
+1. DM Martlet's bot, or write where the bot can see it.
+2. Under **People on Discord**, pick yourself and choose **That's me**.
+
+Or paste your user ID:
+
+1. In Discord, open **Settings › Advanced** and turn on **Developer Mode**.
+2. Right-click your name and choose **Copy User ID**.
+3. Paste the ID in Martlet. It is a long number.
 
 ## How often she joins in
 
@@ -119,6 +139,19 @@ What she hears from the call goes to Thinking as the call's words. It never
 counts as you, and it never goes into memory or voice recognition. She answers
 when someone says her name, and otherwise only now and then.
 
+### Her voice in calls
+
+Discord hears only your input device, so Martlet speaks through a virtual audio
+cable:
+
+1. Install a virtual audio cable yourself, for example VB-Audio Virtual Cable.
+2. In Martlet, choose its **CABLE Input** for **Martlet's voice in the call**.
+3. In Discord, open **User Settings › Voice & Video** and choose **CABLE Output**
+   as your input device.
+4. Make your own voice reach the cable too. Speak through Martlet's microphone
+   listening, or mix your microphone into the cable with Voicemeeter or the
+   Windows **Listen to this device** setting.
+
 ### Her camera
 
 She can be your webcam in the call:
@@ -131,12 +164,16 @@ She can be your webcam in the call:
    making](Pictures-and-Creations)).
 3. Frame her: drag her, zoom with the mouse wheel, or use **Bigger**,
    **Smaller**, **Left**, **Right**, **Up**, **Down** and **Reset framing**.
+   In the camera window, the arrow keys nudge her, **Home** resets the
+   framing and Shift+drag moves the window. OBS captures her as framed.
 4. In OBS (you install it), add a Window Capture of *Martlet camera*. For a
    color background, add a Chroma Key filter.
 5. In OBS, press **Start Virtual Camera**. In Discord, choose **OBS Virtual
    Camera** as your camera.
 
 Ask her for a new background during the call, and she changes it herself.
+When a paid picture provider draws the background, Martlet asks first, because
+it may cost money. Martlet installs no camera driver.
 
 ## History and privacy
 

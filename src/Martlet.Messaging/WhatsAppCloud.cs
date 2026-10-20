@@ -61,12 +61,12 @@ public sealed class WhatsAppCloud : IDisposable
         var debug = await GetAsync($"debug_token?input_token={Uri.EscapeDataString(secrets.AccessToken)}", appToken: false, cancellation).ConfigureAwait(false);
         var data = debug["data"] as JsonObject ?? throw new MessagingException(MessagingFailure.Protocol, "Meta didn't describe this access token.");
         if (data["is_valid"]?.GetValue<bool>() != true)
-            throw new MessagingException(MessagingFailure.Unauthorized, "Meta says this access token isn't valid (it may have expired). Make a new one.");
+            throw new MessagingException(MessagingFailure.Unauthorized, "Meta says this access token isn't valid (it may have expired), so make a new one.");
         var appId = (string?)data["app_id"] ?? throw new MessagingException(MessagingFailure.Protocol, "Meta didn't say which app this access token belongs to.");
         try { await GetAsync($"{appId}/subscriptions", appToken: true, cancellation, appId).ConfigureAwait(false); }
         catch (MessagingException error) when (error.Failure == MessagingFailure.Unauthorized)
         {
-            throw new MessagingException(MessagingFailure.Unauthorized, "The app secret doesn't belong to this access token's app. Copy it again from App settings › Basic.");
+            throw new MessagingException(MessagingFailure.Unauthorized, "The app secret doesn't belong to this access token's app, so copy it again from App settings › Basic.");
         }
         if (string.IsNullOrEmpty(businessAccountId))
         {
@@ -76,14 +76,14 @@ public sealed class WhatsAppCloud : IDisposable
                 .SelectMany(scope => (scope["target_ids"] as JsonArray ?? []).Select(id => (string?)id))
                 .FirstOrDefault(IsId);
             if (businessAccountId is null)
-                throw new MessagingException(MessagingFailure.Protocol, "This access token doesn't reach a WhatsApp Business account. Give it the " +
+                throw new MessagingException(MessagingFailure.Protocol, "This access token doesn't reach a WhatsApp Business account, so give it the " +
                     "whatsapp_business_management and whatsapp_business_messaging permissions, or type the account ID.");
         }
         if (string.IsNullOrEmpty(phoneNumberId))
         {
             var numbers = await GetAsync($"{businessAccountId}/phone_numbers?fields=id", appToken: false, cancellation).ConfigureAwait(false);
             phoneNumberId = (numbers["data"] as JsonArray ?? []).OfType<JsonObject>().Select(number => (string?)number["id"]).FirstOrDefault(IsId)
-                ?? throw new MessagingException(MessagingFailure.Protocol, "This WhatsApp Business account has no phone number yet. Add one in API Setup.");
+                ?? throw new MessagingException(MessagingFailure.Protocol, "This WhatsApp Business account has no phone number yet, so add one in API Setup.");
         }
         var phone = await GetAsync($"{phoneNumberId}?fields=display_phone_number,verified_name", appToken: false, cancellation).ConfigureAwait(false);
         var shown = (string?)phone["display_phone_number"] ?? "";
@@ -167,7 +167,7 @@ public sealed class WhatsAppCloud : IDisposable
         throw (statusCode, code) switch
         {
             (HttpStatusCode.Unauthorized, _) or (_, 190) or (_, 102) =>
-                new MessagingException(MessagingFailure.Unauthorized, $"Meta didn't accept the access token ({description}). Temporary tokens last 24 hours; " +
+                new MessagingException(MessagingFailure.Unauthorized, $"Meta didn't accept the access token ({description}): temporary tokens last 24 hours, so " +
                     "make a permanent one for a system user."),
             (HttpStatusCode.TooManyRequests, _) or (_, 4) or (_, 17) or (_, 80007) or (_, 130429) or (_, 131056) =>
                 new MessagingException(MessagingFailure.RateLimited, "WhatsApp asked Martlet to slow down.", TimeSpan.FromSeconds(30)),

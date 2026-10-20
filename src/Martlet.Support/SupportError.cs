@@ -18,18 +18,18 @@ public sealed class SupportException(SupportFailure failure) : Exception(Message
         SupportFailure.InvalidData => "Troubleshooting data is invalid.",
         SupportFailure.UnsupportedVersion => "This troubleshooting data needs a newer Martlet.",
         SupportFailure.InvalidPath => "Choose a local folder on this PC.",
-        SupportFailure.Busy => "Troubleshooting is busy. Try again in a moment.",
-        SupportFailure.Closed => "Troubleshooting was closed. Reopen it and try again.",
+        SupportFailure.Busy => "Troubleshooting is busy, so try again in a moment.",
+        SupportFailure.Closed => "Troubleshooting was closed, so reopen it and try again.",
         SupportFailure.LimitExceeded => "The selected troubleshooting range is too large.",
-        SupportFailure.CorruptJournal => "Troubleshooting records are damaged. Keep the folder for review.",
-        SupportFailure.AccessDenied => "Troubleshooting storage access was denied. Choose a folder you can write to.",
+        SupportFailure.CorruptJournal => "Troubleshooting records are damaged, so keep the folder for review.",
+        SupportFailure.AccessDenied => "Troubleshooting storage access was denied, so choose a folder you can write to.",
         SupportFailure.Canceled => "The action was canceled.",
-        SupportFailure.DeadlineExceeded => "The action took too long. Try again.",
+        SupportFailure.DeadlineExceeded => "The action took too long, so try again.",
         SupportFailure.ConsentMismatch => "Preview the export again before approving it.",
-        SupportFailure.ConsentConsumed => "This approval was already used. Review and approve a fresh local export.",
-        SupportFailure.DestinationExists => "The selected output already exists. Choose a new filename; nothing was overwritten.",
+        SupportFailure.ConsentConsumed => "This approval was already used, so review and approve a fresh local export.",
+        SupportFailure.DestinationExists => "The selected output already exists, so choose a new filename (nothing was overwritten).",
         SupportFailure.CleanupPending => "A previous troubleshooting export still needs cleanup.",
-        _ => "Troubleshooting storage failed. Check the location and try again."
+        _ => "Troubleshooting storage failed, so check the location and try again."
     };
 }
 

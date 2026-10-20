@@ -61,11 +61,11 @@ public sealed class CompanionGuardrails
         if (engineId == "chat-completions" && IsLoopback(baseUrl))
         {
             if (Info.CpuOnlyLocalModels)
-                warnings.Add("This Mac has an Intel processor: a model on this computer runs on the CPU only. Use a small 1-4B " +
-                    "model, or a cloud route or a paired host for faster replies.");
+                warnings.Add("This Mac has an Intel processor, so a model on this computer runs on the CPU only (use a small 1-4B " +
+                    "model, a cloud route or a paired host for faster replies).");
             else if (Info.Platform == DevicePlatform.Linux && Info.Gpus is { } gpus && gpus.Count == 0)
-                warnings.Add("No NVIDIA GPU was found: a model on this computer may run on the CPU only (AMD GPUs work through " +
-                    "Ollama's ROCm or Vulkan builds). Use a small model, or a cloud route or a paired host.");
+                warnings.Add("No NVIDIA GPU was found, so a model on this computer may run on the CPU only (use a small model, a " +
+                    "cloud route or a paired host).");
         }
         return warnings;
     }

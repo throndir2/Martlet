@@ -51,14 +51,14 @@ internal static class WindowsFirewall
         {
             script.Append($"Remove-NetFirewallRule -Name '{RuleName}' -ErrorAction SilentlyContinue;");
             script.Append($"New-NetFirewallRule -Name '{RuleName}' -DisplayName 'Martlet host' ");
-            script.Append("-Description 'Lets Martlet desktops on your private network reach this PC as a host. Added by Martlet.' ");
+            script.Append("-Description 'Lets Martlet desktops on your private network reach this PC as a host (added by Martlet).' ");
             script.Append($"-Direction Inbound -Action Allow -Protocol TCP -LocalPort {Port} -Profile Private,Domain -RemoteAddress LocalSubnet | Out-Null;");
         }
         foreach (var (name, protocol) in new[] { (NearbyTcpRule, "TCP"), (NearbyUdpRule, "UDP") })
         {
             script.Append($"Remove-NetFirewallRule -Name '{name}' -ErrorAction SilentlyContinue;");
             script.Append($"New-NetFirewallRule -Name '{name}' -DisplayName 'Martlet: find this PC ({protocol})' ");
-            script.Append("-Description 'Lets Martlet on your other computers find this PC and ask to use its hosts (each request needs your Allow here). Added by Martlet.' ");
+            script.Append("-Description 'Lets Martlet on your other computers find this PC and ask to use its hosts (each request needs your Allow here; added by Martlet).' ");
             script.Append($"-Direction Inbound -Action Allow -Protocol {protocol} -LocalPort {Nearby.Port} -Profile Private,Domain -RemoteAddress LocalSubnet | Out-Null;");
         }
         if (makePrivateInterface is { } index)
@@ -80,7 +80,7 @@ internal static class WindowsFirewall
         if (add)
         {
             script.Append($"New-NetFirewallRule -Name '{OutsideRuleName}' -DisplayName 'Martlet host (from outside your home)' ");
-            script.Append("-Description 'Lets friends and your own computers outside your home reach this PC''s Martlet host through the port your router forwards. Every request still needs a Martlet sign-in. Added by Martlet.' ");
+            script.Append("-Description 'Lets friends and your own computers outside your home reach this PC''s Martlet host through the port your router forwards; every request still needs a Martlet sign-in (added by Martlet).' ");
             script.Append($"-Direction Inbound -Action Allow -Protocol TCP -LocalPort {port} -Profile Private,Domain -RemoteAddress Any | Out-Null;");
         }
         return script.ToString();

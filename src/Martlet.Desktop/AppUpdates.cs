@@ -148,8 +148,8 @@ internal static class AppUpdateInstaller
             if (AppUpdateHelper.TakeResult(UpdatesDirectory(dataDirectory)) is not var (code, version)) return null;
             if (code == "0" && !AppVersions.IsOlder(running, version)) return ($"Martlet updated to {running}.", null);
             if (code == "wait")
-                return ($"The update to {version} couldn't start. Press Install to try again.", version);
-            return ($"The update to {version} didn't finish. Press Install to try again.", version);
+                return ($"The update to {version} couldn't start, so press Install to try again.", version);
+            return ($"The update to {version} didn't finish, so press Install to try again.", version);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
     }
@@ -217,7 +217,7 @@ internal static class SimulatedAppUpdate
                 new Uri($"https://github.com/throndir2/Martlet/releases/tag/v{version.ToString(3)}"))
             : null;
 
-    private static byte[] Content => "FIXTURE: a simulated Martlet update (MARTLET_SIMULATE_APP_UPDATE). Not a program."u8.ToArray();
+    private static byte[] Content => "FIXTURE: a simulated Martlet update (MARTLET_SIMULATE_APP_UPDATE), not a program."u8.ToArray();
 
     internal const string InstallRootVariable = "MARTLET_SIMULATE_INSTALL_ROOT";
 

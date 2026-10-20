@@ -105,7 +105,7 @@ public partial class MainWindow
 
     private void LogsOpenFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (!ErrorLog.OpenFolder()) ActionText.Text = "The logs folder isn't available. Check access to Martlet's data folder.";
+        if (!ErrorLog.OpenFolder()) ActionText.Text = "The logs folder isn't available, so check access to Martlet's data folder.";
     }
 
     private void LogsCopy_Click(object sender, RoutedEventArgs e)
@@ -125,7 +125,7 @@ public partial class MainWindow
         }
         catch (ExternalException)
         {
-            ActionText.Text = "Another app is using the clipboard. Try again.";
+            ActionText.Text = "Another app is using the clipboard, so try again.";
         }
     }
 
@@ -163,8 +163,7 @@ public partial class MainWindow
             ErrorLog.Info($"Saved {summary.Lines:N0} log lines from {summary.Computers} computer{(summary.Computers == 1 ? "" : "s")} to share " +
                 $"({summary.Bytes:N0} bytes).");
             ActionText.Text = $"Saved {summary.Lines:N0} lines from {summary.Computers} computer{(summary.Computers == 1 ? "" : "s")} in " +
-                $"{Path.GetFileName(path)}. Attach it to your message. It never holds keys or what you said, but can include local paths, " +
-                "computer names and provider error text.";
+                $"{Path.GetFileName(path)}, which can include local paths, computer names and provider errors but never keys or what you said.";
             try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = false })?.Dispose(); }
             catch (System.ComponentModel.Win32Exception) { }
         }
@@ -253,8 +252,8 @@ public partial class MainWindow
             var hosts = NetworkMap.Hosts(Inputs());
             if (hosts.Count == 0)
             {
-                logShareStatus = "No Martlet hosts are paired with this PC yet, so it shows only its own logs. Pair one in Devices › Add a computer " +
-                    "and every computer's logs are shared.";
+                logShareStatus = "No Martlet hosts are paired with this PC yet, so it shows only its own logs (pair one in Devices › Add a " +
+                    "computer to share every computer's logs).";
                 return;
             }
             peers = hosts.Select(h => new HostLogPeer(h.HostId, () => ClusterSync.Connect(h.Pairing))).ToArray();
@@ -456,6 +455,6 @@ public partial class MainWindow
         LogSummary.Text = (all.Count == 0 ? "No log lines yet." :
             $"Showing {shown.Count:N0} of {all.Count:N0} lines from {computers} computer{(computers == 1 ? "" : "s")}" +
             (matching.Count > shown.Count ? $" (the newest {ShownLogLimit:N0} that match)" : "") +
-            $". Last 24 hours: {errors:N0} error{(errors == 1 ? "" : "s")}, {warnings:N0} warning{(warnings == 1 ? "" : "s")}.");
+            $"; last 24 hours: {errors:N0} error{(errors == 1 ? "" : "s")}, {warnings:N0} warning{(warnings == 1 ? "" : "s")}.");
     }
 }

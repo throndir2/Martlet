@@ -105,7 +105,7 @@ internal static class SharedSteps
     /// its reason when it failed, or when this run is canceled.</summary>
     private static async Task<bool> FollowAsync(Step other, Action<string> status, IProgress<string>? output, CancellationToken token)
     {
-        status($"Waiting: \"{other.By}\" is {other.Doing}. This continues once that's done...");
+        status($"Waiting: \"{other.By}\" is {other.Doing}, and this continues once that's done...");
         output?.Report($"\"{other.By}\" is {other.Doing} already, so this run waits for it instead of doing it again.");
         try
         {

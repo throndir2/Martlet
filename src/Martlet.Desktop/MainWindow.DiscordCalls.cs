@@ -120,9 +120,9 @@ public partial class MainWindow
                 : "The camera view is on, but the character isn't showing yet; it opens there as soon as the character shows.",
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(cameraStatus, "DiscordCallCameraStatus");
-        var framing = Note($"Framing: {saved.CameraFraming}. In the camera window, drag the character to move it, use the mouse " +
-            "wheel to zoom it in or out and the arrow keys to nudge it; Home resets it and Shift+drag moves the window. " +
-            "OBS captures it as framed.", new Thickness(0, 4, 0, 2));
+        var framing = HelpTip.Explain($"Framing: {saved.CameraFraming}. In the camera window, drag the character to move it, use the mouse " +
+            "wheel to zoom it in or out and the arrow keys to nudge it; Home resets it and Shift+drag moves the window.",
+            new Thickness(0, 4, 0, 2), "DiscordCameraFraming", "framing the camera", wiki: "Discord#her-camera");
         AutomationProperties.SetAutomationId(framing, "DiscordCallCameraFraming");
         var framingOpen = discordCalls.CameraOpen && avatar.IsShowing;
         Button Frame(string label, string action, string id)
@@ -144,22 +144,22 @@ public partial class MainWindow
         return Card([Heading("Martlet in your Discord calls"), on, status,
             HelpTip.Explain("Join a DM, group DM or server call on your own Discord account as usual; Martlet takes part through this PC. " +
                 "Martlet never controls Discord (no clicks, typing or account access) and works while always listening runs. " +
-                "What it hears of the call is transcribed like Hear what this PC plays and goes to Thinking marked as the call's, " +
-                "never as you, never into memory or voice recognition. It answers when someone says its name, and otherwise " +
-                "only now and then.", new Thickness(0, 0, 0, 8), "DiscordCalls", "Discord calls"),
+                "What it hears of the call goes to Thinking marked as the call's, never as you, never into memory or voice recognition.",
+                new Thickness(0, 0, 0, 8), "DiscordCalls", "Discord calls", wiki: "Discord#martlet-in-your-discord-calls"),
             Note("Hear:", new Thickness(0, 0, 0, 0)), capture,
             see,
             Note("Your Discord display name (so your own tile lighting up is never taken for someone else):", new Thickness(0, 2, 0, 0)),
             owner, attribution,
             Note("Martlet's voice in the call:", new Thickness(0, 0, 0, 0)), output, outputStatus, also, bargeIn,
-            Note("To speak into the call, install a virtual audio cable yourself (for example VB-Audio Virtual Cable), choose its " +
-                "\"CABLE Input\" here and choose \"CABLE Output\" as your Input Device in Discord › User Settings › Voice & Video. " +
-                "Your own voice then needs to reach the cable too: speak through Martlet's microphone listening, or mix your " +
-                "microphone into the cable with Voicemeeter or Windows' Listen to this device.", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("To speak into the call, install a virtual audio cable (for example VB-Audio Virtual Cable), choose its " +
+                "\"CABLE Input\" here and choose \"CABLE Output\" as your input device in Discord. " +
+                "Discord's input device is in User Settings › Voice & Video. Your own voice must reach the cable too: speak through " +
+                "Martlet's microphone listening, or mix your microphone into the cable with Voicemeeter or Windows' Listen to this device.",
+                new Thickness(0, 0, 0, 8), "DiscordCallVoice", "Martlet's voice in the call", wiki: "Discord#her-voice-in-calls"),
             Heading("Webcam: the character"),
-            Note("Open the camera view, add it to OBS as a Window Capture of \"Martlet camera\", key out a color background with a " +
-                "Chroma Key filter (a picture needs none), then Start Virtual Camera in OBS and pick \"OBS Virtual Camera\" as your " +
-                "camera in Discord. Martlet installs no camera driver.", new Thickness(0, 0, 0, 4)),
+            HelpTip.Explain("Open the camera view, capture its \"Martlet camera\" window in OBS and choose \"OBS Virtual Camera\" as your " +
+                "camera in Discord. For a color background, add a Chroma Key filter in OBS (a picture needs none). Martlet installs no camera driver.",
+                new Thickness(0, 0, 0, 4), "DiscordCallWebcam", "the webcam", wiki: "Discord#her-camera"),
             Note("Background:", new Thickness(0, 0, 0, 0)), background, CallPicturePanel(saved), Row(camera), cameraStatus, framing, framingButtons,
             Row(check), doctor]);
     }
@@ -238,7 +238,7 @@ public partial class MainWindow
         var state = Note(callPictureState ?? (saved.CameraBackground == DiscordCameraBackground.Picture ? $"The camera shows {saved.CameraDescription}."
             : discordCalls.HasPicture ? "Choose Picture above to use the saved picture again."
             : dataDirectory is not null && PictureClient.IsSetUp(dataDirectory) ? "No picture chosen yet."
-            : "No picture chosen yet. Set up Companion › Picture making to have Martlet draw one."), new Thickness(0, 2, 0, 0));
+            : "No picture chosen yet: set up Companion › Picture making to have Martlet draw one."), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(state, "DiscordCallCameraPictureStatus");
         panel.Children.Add(state);
         return panel;
@@ -307,7 +307,7 @@ public partial class MainWindow
         }
         var dataDirectory = store.DataDirectory;
         if (PictureClient.FirstPaid(dataDirectory) is { } paid && !PictureClient.Fixture &&
-            !ConfirmationDialog.Confirm(this, $"Draw the camera background? It may go to {paid}, which may cost money.", "Draw a camera background", "Draw", "Cancel"))
+            !ConfirmationDialog.Confirm(this, $"Draw the camera background on {paid}, which may cost money?", "Draw a camera background", "Draw", "Cancel"))
             return;
         var thinking = homeSettings.ThinkingRoute();
         var maker = PictureClient.For(dataDirectory, homeSettings?.Profile.Id ?? Guid.Empty, thinking);
@@ -412,7 +412,7 @@ public partial class MainWindow
             var showing = await avatar.SetCameraAsync(open ? discordCalls.CameraView : null, CancellationToken.None);
             discordCalls.CameraOpen = open;
             ActionText.Text = !open ? "The camera view is closed."
-                : showing ? "The camera view is open. Capture the \"Martlet camera\" window in OBS."
+                : showing ? "The camera view is open: capture the \"Martlet camera\" window in OBS."
                 : "The camera view opens as soon as the character shows (Companion › Character).";
         }
         catch (Exception error) when (error is Martlet.Core.Contracts.ContractException or OperationCanceledException ||

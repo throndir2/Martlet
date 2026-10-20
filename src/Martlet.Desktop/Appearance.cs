@@ -48,11 +48,11 @@ internal static class Appearance
         {
             var theme = Load(directory);
             return (theme, theme == AppearanceTheme.Custom && File.Exists(CustomPath(directory)) && LoadCustom(directory) is null
-                ? "Couldn't load your custom palette. Using pink light colors for now." : null);
+                ? "Couldn't load your custom palette, so Martlet uses pink light colors for now." : null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            return (AppearanceTheme.Light, "Couldn't load your theme. Using pink light for now.");
+            return (AppearanceTheme.Light, "Couldn't load your theme, so Martlet uses pink light for now.");
         }
     }
 

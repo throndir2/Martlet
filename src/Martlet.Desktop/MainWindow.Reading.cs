@@ -454,38 +454,23 @@ public partial class MainWindow
             string? stopped = null;
             async Task<string> Continue(HostRunWindow run, PairedHost pc)
             {
-                var target = pc.Target(Version);
-                await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                target = await HostLocal.EngineForChangeAsync(target, HostRoles.Ocr, run);
-                var chosen = answers;
-                if (model.NeedsNvidia)
+                await InstallRoleHereAsync(run, pc, new(HostRoles.Ocr, "Reading", answers,
+                    changing ? $"Switching Reading on this PC to {model.Name}..." : $"Installing Reading with {model.Name} on this PC...",
+                    exit => $"Installing Reading stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped.TrimEnd('.'))}; the output has details.")
                 {
                     // Several graphics cards: the owner picks the one it reads on.
-                    run.Status("Checking this PC's graphics cards for Reading...");
-                    var inputs = await HostLocal.DescribeAsync(target, HostRoles.Ocr, run.Output, run.Token);
-                    chosen = HostInputDialog.WithGpu(run, "this PC", "Reading", inputs, answers) ?? throw new OperationCanceledException();
-                }
-                run.Status(changing ? $"Switching Reading on this PC to {model.Name}..." : $"Installing Reading with {model.Name} on this PC...");
-                var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Ocr], SetupProgress(run, "Reading", why => stopped ??= why),
-                    run.Token, answers: chosen);
-                if (exit != 0)
-                    throw new InvalidOperationException($"Installing Reading stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped.TrimEnd('.'))}; the output has details.");
+                    Questions = model.NeedsNvidia ? LocalRoleQuestions.Gpu : LocalRoleQuestions.None,
+                    QuestionsStatus = "Checking this PC's graphics cards for Reading...",
+                    Stopped = why => stopped ??= why,
+                });
                 run.Status("Checking Reading on this PC...");
                 if (await WaitForReadingAsync(pc, model.Model, run.Token) is { } why)
                     throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see {model.Name} yet ({why}), so check this PC in a minute.");
                 Dispatcher.Invoke(() => ReadingSetUpDone(null, model, "this PC"));
                 return $"Reading is ready on this PC with {model.Name}.";
             }
-            string? status;
-            if (thisPc is not null)
-                status = await HostRunWindow.RunAsync(this, $"{verb} Reading on this PC", run => Continue(run, thisPc)) ??
-                    (stopped is null ? "Reading wasn't set up; the run window has details." : $"Reading wasn't set up: {stopped}");
-            else
-            {
-                (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,
-                    text => ActionText.Text = text, lifetime.Token, Continue, "Set up Reading on this PC");
-                await ReadMachineAsync();
-            }
+            var status = await RunRoleSetupHereAsync(thisPc, $"{verb} Reading on this PC", "Set up Reading on this PC", Continue,
+                () => stopped is null ? "Reading wasn't set up; the run window has details." : $"Reading wasn't set up: {stopped}");
             if (!closing && status is not null)
             {
                 ActionText.Text = status;
@@ -509,31 +494,21 @@ public partial class MainWindow
     /// <summary>After martlet-host added (or changed) the role, checks <paramref name="host"/> (about a minute) until its gateway
     /// offers the reading route with <paramref name="model"/> and its reader answers ready. Returns null once it does, else what it
     /// saw last; at once when the reader failed to load.</summary>
-    private async Task<string?> WaitForReadingAsync(PairedHost host, string model, CancellationToken token)
+    private Task<string?> WaitForReadingAsync(PairedHost host, string model, CancellationToken token) => WaitForRoleAsync(host, async check =>
     {
-        for (var attempt = 0; ; attempt++)
+        var offer = check.Offers?.GetValueOrDefault(HostRoles.Ocr);
+        if (!string.IsNullOrEmpty(offer) && offer != model)
+            return new($"it still reads with {OptionalExtras.ReadingModelOf(offer)?.Name ?? offer}");
+        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.OcrRouteId) != true || store is null) return new(check.Text);
+        try
         {
-            var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, token);
-            hostChecks[host.HostId] = check;
-            var why = check.Text;
-            var offer = check.Offers?.GetValueOrDefault(HostRoles.Ocr);
-            if (!string.IsNullOrEmpty(offer) && offer != model)
-                why = $"it still reads with {OptionalExtras.ReadingModelOf(offer)?.Name ?? offer}";
-            else if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.OcrRouteId) == true && store is not null)
-            {
-                try
-                {
-                    var state = await PoolScreenTextReader.StatusAsync(host, token);
-                    if (state == "ready") return null;
-                    if (state == "failed") return "its reader failed to load; the Reading role's log on that computer says why";
-                    why = $"its reader is {state}";
-                }
-                catch (ScreenReadException error) { why = error.Message; }
-            }
-            if (attempt >= 12) return why;
-            await Task.Delay(TimeSpan.FromSeconds(5), token);
+            var state = await PoolScreenTextReader.StatusAsync(host, token);
+            if (state == "ready") return null;
+            if (state == "failed") return new("its reader failed to load; the Reading role's log on that computer says why", GiveUp: true);
+            return new($"its reader is {state}");
         }
-    }
+        catch (ScreenReadException error) { return new(error.Message); }
+    }, token);
 
     // ---------- Read my screen now ----------
 
