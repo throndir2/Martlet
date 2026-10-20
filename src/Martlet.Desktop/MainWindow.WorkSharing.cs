@@ -72,10 +72,10 @@ public partial class MainWindow
         if (hosts.Length == 0) return;
         var heading = new TextBlock { Text = "Keep a computer for one companion PC (Thinking pool)", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 0) };
         WorkSharingHostsPanel.Children.Add(heading);
-        var note = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 2, 0, 0),
-            Text = "A computer kept for one companion PC takes no Thinking pool work from the others. In the other lists, each machine " +
-                "has its own Every companion PC or Only choice." };
-        note.SetResourceReference(StyleProperty, "Muted");
+        var note = HelpTip.Explain("A computer kept for one companion PC takes no Thinking pool work from the others. In the other lists, each machine " +
+            "has its own Every companion PC or Only choice.", new Thickness(0, 2, 0, 0), "WorkSharingKeep", "keeping a computer for one companion PC",
+            wiki: "Multiple-Computers#each-job-has-a-list-of-machines");
+        note.FontSize = 12;
         WorkSharingHostsPanel.Children.Add(note);
         var companions = SharingCompanions();
         foreach (var host in hosts) WorkSharingHostsPanel.Children.Add(SharingKeepRow(settings, host, companions));
@@ -134,10 +134,10 @@ public partial class MainWindow
         var planned = SharingPlanned(job);
         var places = SharingPlaces(job);
         var detail = deep
-            ? "The Thinking pool works on the computers that joined it in Companion › Thinking pool. Untick one here to keep every companion PC's pool jobs off it."
+            ? "The Thinking pool works on the computers that joined it in Companion › Thinking pool; untick one here to keep every companion PC's pool jobs off it."
             : job == WorkSharingJobs.Thinking
-                ? "Off by default: another computer's model starts your conversation without its prompt cache, so its first word comes later, " +
-                  "and it pushes that computer's own conversation out of its cache. While off, a reply waits for its computer to finish another."
+                ? "Off by default, because another computer's model has no prompt cache for your conversation and answers later; while off, " +
+                  "a reply waits for its own computer."
                 : "When the computer doing it is busy with another companion PC, the next one in this order takes it; when all are busy it waits " +
                   "for whichever finishes first.";
         stack.Children.Add(NetworkRowText("WorkSharingJob-" + job, WorkSharingJobs.Title(job), detail));

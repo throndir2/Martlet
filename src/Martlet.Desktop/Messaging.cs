@@ -101,7 +101,7 @@ internal sealed class MessagingService : IDisposable
     {
         token = token.Trim();
         if (!TelegramTransport.IsToken(token))
-            throw new ArgumentException("That doesn't look like a bot token. BotFather gives one like 123456789:AAH...");
+            throw new ArgumentException("That doesn't look like a bot token: BotFather gives one like 123456789:AAH...");
         BotIdentity bot;
         using (var probe = telegram(token)) bot = await probe.ConnectAsync(cancellation).ConfigureAwait(false);
         Save(MessagingApp.Telegram, token, saved => ((TelegramPreferences)saved) with { BotName = bot.Name, BotUsername = bot.Username });
@@ -120,7 +120,7 @@ internal sealed class MessagingService : IDisposable
                 !(address.Scheme == Uri.UriSchemeHttps || address.IsLoopback && FixtureApi("MARTLET_WHATSAPP_API") is not null)))
             throw new ArgumentException("The public address must be an https:// address that forwards to this PC.");
         if (publicAddress.Length == 0 && Cloudflared is null)
-            throw new InvalidOperationException("Martlet needs Cloudflare's free cloudflared to give WhatsApp an address. Press Get cloudflared first.");
+            throw new InvalidOperationException("Martlet needs Cloudflare's free cloudflared to give WhatsApp an address, so press Get cloudflared first.");
         WhatsAppAccount account;
         using (var probe = cloud(secrets)) account = await probe.DescribeAsync(phoneNumberId, businessAccountId, cancellation).ConfigureAwait(false);
         var port = Preferences.WhatsApp.Port is > 0 and var kept ? kept : WhatsAppWebhook.FreePort();
@@ -289,7 +289,7 @@ internal sealed class MessagingService : IDisposable
     }
 
     private Task<string> AnswerAsync(MessagingApp app, InboundMessage message, CancellationToken cancellation) =>
-        Answer is { } answer ? answer(app, message, cancellation) : Task.FromResult("Martlet can't talk right now. Try again once it's running.");
+        Answer is { } answer ? answer(app, message, cancellation) : Task.FromResult("Martlet can't talk right now, so try again once it's running.");
 
     private void Update(Func<MessagingPreferences, MessagingPreferences> change)
     {

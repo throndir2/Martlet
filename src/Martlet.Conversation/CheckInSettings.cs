@@ -72,9 +72,11 @@ public sealed record CustomCheckIn
     public ThinkingRunsOn? RunsOn { get; init; }
 }
 
-/// <summary>Companion › Check-ins on this PC (check-ins.json in the data folder; never shared, because each PC shows its own
-/// character and runs its own conversation): the owner's choices for the built-in check-ins (absent: on, at their default
-/// pace) and their own check-ins. A file that can't be read leaves the defaults.</summary>
+/// <summary>Companion › Check-ins (check-ins.json in the data folder): the owner's choices for the built-in check-ins (absent: on,
+/// at their default pace) and their own check-ins. They are each person's, the same on every computer where that person is signed
+/// in (the account setting <see cref="SharedKey"/>); only a check-in's PowerShell script stays on the computer where it was
+/// written, because it runs commands as you on that PC. What a run did is in check-ins-status.json, never here. A file that can't
+/// be read leaves the defaults.</summary>
 public sealed record CheckInSettings
 {
     public const string FileName = "check-ins.json";
@@ -232,4 +234,58 @@ public sealed record CheckInSettings
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
+    // ---------- shared with the owner's other computers ----------
+
+    /// <summary>The account setting that carries the check-ins to the owner's other computers.</summary>
+    public const string SharedKey = Martlet.Core.Sync.SettingScopes.CheckIns;
+    private static readonly JsonSerializerOptions ShareJson = new(Json) { WriteIndented = false };
+
+    /// <summary>The check-ins as they travel: compact, without any script (a script stays on the computer where it was written).</summary>
+    public string Share() => JsonSerializer.Serialize(WithoutScripts(), ShareJson);
+
+    private CheckInSettings WithoutScripts() => this with
+    {
+        BuiltIn = BuiltIn.OrderBy(e => e.Key, StringComparer.Ordinal).ToDictionary(e => e.Key, e => e.Value with { Script = null }, StringComparer.Ordinal),
+        Custom = [.. Custom.Select(c => c with { Script = "" })]
+    };
+
+    /// <summary>Another computer's check-ins (<see cref="Share"/>'s text), or null when they are a newer Martlet's or can't be read.</summary>
+    public static CheckInSettings? Parse(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        try
+        {
+            var settings = JsonSerializer.Deserialize<CheckInSettings>(value, Json);
+            settings?.Validate();
+            return settings;
+        }
+        catch (Exception error) when (error is JsonException or NotSupportedException or ContractException or ArgumentException) { return null; }
+    }
+
+    /// <summary><paramref name="shared"/> with the scripts this computer keeps for the same check-ins.</summary>
+    public static CheckInSettings Follow(CheckInSettings local, CheckInSettings shared) => shared with
+    {
+        BuiltIn = shared.BuiltIn.ToDictionary(e => e.Key, e => e.Value with { Script = local.Choice(e.Key)?.Script }, StringComparer.Ordinal),
+        Custom = [.. shared.Custom.Select(c => c with { Script = local.Custom.FirstOrDefault(l => l.Id == c.Id)?.Script ?? "" })]
+    };
+
+    /// <summary>The account setting backed by check-ins.json in <paramref name="directory"/>. <paramref name="save"/> saves what this
+    /// computer takes the way it does (the desktop's check-ins, which follow at once); without it the file is written.</summary>
+    public static Martlet.Core.Sync.ISharedSection Section(string directory, Func<CheckInSettings, bool>? save = null) =>
+        new Martlet.Core.Sync.DelegateSection(SharedKey, "Check-ins", _ =>
+        {
+            var (settings, state) = Read(directory);
+            var path = Path.Combine(directory, FileName);
+            DateTimeOffset? changed = File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) : null;
+            return Task.FromResult<Martlet.Core.Sync.SharedLocal?>(state == "unreadable" ? null : new(settings.Share(), null, state == "none", changed));
+        }, (setting, _) =>
+        {
+            if (Parse(setting.Value) is not { } shared)
+                return Task.FromResult(Martlet.Core.Sync.SharedApply.Waiting("They were set up on a newer Martlet; update this PC to use them."));
+            var local = Load(directory);
+            if (local.Share() == shared.Share()) return Task.FromResult(Martlet.Core.Sync.SharedApply.Done);
+            var next = Follow(local, shared);
+            return Task.FromResult(save?.Invoke(next) ?? next.Save(directory)
+                ? Martlet.Core.Sync.SharedApply.Done : Martlet.Core.Sync.SharedApply.Waiting("They couldn't be saved on this PC."));
+        }, () => new CheckInSettings().Share());
 }

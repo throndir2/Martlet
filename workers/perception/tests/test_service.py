@@ -186,7 +186,8 @@ class WorkerServiceTests(unittest.TestCase):
             service = WorkerService(
                 environment.config,
                 emitter,
-                engine=DeterministicFakeEngine(delay_seconds=0.3),
+                # The job outlasts a slow cancel on a busy PC; cancel ends the wait early.
+                engine=DeterministicFakeEngine(delay_seconds=2),
             )
             try:
                 service.startup()
@@ -223,12 +224,13 @@ class WorkerServiceTests(unittest.TestCase):
             service = WorkerService(
                 environment.config,
                 emitter,
-                engine=DeterministicFakeEngine(delay_seconds=0.3),
+                engine=DeterministicFakeEngine(delay_seconds=2),
             )
             try:
                 service.startup()
                 warm_service(service, emitter, environment)
-                request = request_wire(environment, deadline_seconds=0.08)
+                # The deadline outlasts message parsing on a busy PC and ends before the compute.
+                request = request_wire(environment, deadline_seconds=0.5)
                 service.handle(request)
                 response = emitter.wait_for(
                     lambda item: item.get("type") == "response"
@@ -415,7 +417,7 @@ class WorkerServiceTests(unittest.TestCase):
 
                 def cleanup() -> None:
                     cleanup_started.set()
-                    release_cleanup.wait(2)
+                    release_cleanup.wait(10)
                     real_cleanup()
 
                 verified.cleanup = cleanup
@@ -428,7 +430,7 @@ class WorkerServiceTests(unittest.TestCase):
                     side_effect=blocking_verify,
                 ):
                     service.handle(warmup_wire(environment))
-                    self.assertTrue(cleanup_started.wait(2))
+                    self.assertTrue(cleanup_started.wait(10))
                     self.assertFalse(service.warmup_done.is_set())
                     self.assertNotEqual(service.state, "ready")
                     request = request_wire(environment)
@@ -457,13 +459,13 @@ class WorkerServiceTests(unittest.TestCase):
             service = WorkerService(environment.config, emitter)
             try:
                 service.startup()
-                offer = offer_wire(expires_seconds=0.06)
+                offer = offer_wire(expires_seconds=0.5)
                 service.handle(offer)
                 emitter.wait_for(lambda item: item.get("type") == "frame_owned")
                 retained = service.owned_frames[offer["reference_id"]].data
                 _wait_until(
                     lambda: offer["reference_id"] not in service.owned_frames,
-                    timeout=2,
+                    timeout=10,
                 )
                 self.assertTrue(all(value == 0 for value in retained))
             finally:
@@ -610,7 +612,7 @@ class WarmupMemoryErrorEngine(DeterministicFakeEngine):
         raise MemoryError
 
 
-def _wait_until(predicate, timeout: float = 3.0) -> None:  # type: ignore[no-untyped-def]
+def _wait_until(predicate, timeout: float = 10.0) -> None:  # type: ignore[no-untyped-def]
     deadline = time.monotonic() + timeout
     while not predicate():
         if time.monotonic() >= deadline:

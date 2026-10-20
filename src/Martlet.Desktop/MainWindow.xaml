@@ -1238,7 +1238,13 @@
                                         AutomationProperties.AutomationId="ReplayTour"/>
                             </WrapPanel>
                             <!-- Your other computers, each a companion or a host PC, switched from here (MainWindow.RoleRequests.cs) -->
-                            <TextBlock Text="Your other computers" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,4">
+                                <TextBlock Text="Your other computers" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <local:HelpTip Margin="6,0,0,0" VerticalAlignment="Center"
+                                               Text="The switch travels with the shared settings, so Keep Martlet the same on all my computers must be on. The other computer switches within a minute while Martlet runs there, or when Martlet starts there next, and this PC says when it has."
+                                               Wiki="Multiple-Computers#switch-another-computer-from-here"
+                                               AutomationProperties.AutomationId="Help-OtherRoles" AutomationProperties.Name="About switching your other computers"/>
+                            </StackPanel>
                             <TextBlock x:Name="OtherRolesText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,4"
                                        AutomationProperties.AutomationId="OtherRolesStatus" AutomationProperties.LiveSetting="Polite"/>
                             <StackPanel x:Name="OtherRolesPanel" AutomationProperties.Name="Your other computers: companion or host PC"/>

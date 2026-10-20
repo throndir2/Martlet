@@ -531,8 +531,8 @@ window ends it unless Martlet is listening or watching, which only hides it.
   - **Optional extras** (parts Martlet works without). The side list shows
     them in the priority list's order (`ComponentRanking`; a part it doesn't
     rank yet keeps its place in `OptionalExtras.FallbackOrder`). Each page's
-    intro starts with "Optional.", says what the part does and ends with
-    *Off:* and what Off means, in the priority list's words
+    intro starts with "Optional:", says what the part does and ends with
+    *Off:* and what Off means (behind the intro's *?*), in the priority list's words
     (`OptionalExtras.OffMeans`). Each page has the standard order: **Now**,
     then the main choice as an option picker whose first option is **Off**
     (the Thinking pool is the exception: its machine list is the main choice),

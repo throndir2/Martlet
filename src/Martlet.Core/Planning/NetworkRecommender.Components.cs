@@ -89,15 +89,15 @@ public static partial class NetworkRecommender
                 .Concat((request.OnlineThinkingPool ?? []).Select(m => $"{m}, online"))
                 .ToList();
             var suggestion = onlineDeep is { } deep
-                ? $" {deep.DisplayName} is smarter: add it in Companion › Thinking pool. What it thinks about goes to that service." : "";
-            if (places.Count > 0) return (true, $"Thinking pool: {List(places)}", "It thinks things over in the background, never on the reply path." + suggestion);
+                ? $"; {deep.DisplayName} online is smarter: add it in Companion › Thinking pool to send what it thinks about to that service" : "";
+            if (places.Count > 0) return (true, $"Thinking pool: {List(places)}", $"It thinks things over in the background, never on the reply path{suggestion}.");
             if (!Wants(part)) return (false, OffWhere(part), "Not planned.");
             var hosts = nodes.Any(n => n.Presence == Presence.Here && !n.Companion && n.CanHost);
             var card = nodes.Any(n => n.Presence == Presence.Here && n.Companion && n.Spec.Gpus.Count > 0);
             return (false, OffWhere(part), (hosts
-                ? "No host has a graphics card with room for a Deep thinking model beside the jobs that come first."
-                : card ? "It needs a host with a free graphics card: a companion PC's card is kept for Thinking and the voice."
-                : "It needs a host with a graphics card.") + suggestion);
+                ? "No host has a graphics card with room for a Deep thinking model beside the jobs that come first"
+                : card ? "It needs a host with a free graphics card: a companion PC's card is kept for Thinking and the voice"
+                : "It needs a host with a graphics card") + suggestion + ".");
         }
 
         /// <summary>Singing, pictures and motion: where they run, or why they are off (you turned them off, no room left beside the
@@ -128,8 +128,8 @@ public static partial class NetworkRecommender
             var choice = Choice(part);
             var runs = nodes.Where(n => n.Presence == Presence.Here && n.Roles.Any(r => r.Kind == VoiceRecognitionRole)).Select(n => n.Name).ToList();
             if (choice is { On: false })
-                return (false, OffWhere(part), $"Voice recognition is off. Turn it on in {page}." +
-                    (runs.Count > 0 ? $" Martlet's Voice recognition role stays on {List(runs)}." : ""));
+                return (false, OffWhere(part), "Voice recognition is off" +
+                    (runs.Count > 0 ? $" (Martlet's Voice recognition role stays on {List(runs)})" : "") + $"; turn it on in {page}.");
             var inApp = catalog.For(part).FirstOrDefault(o => o.IsLocal && o.RunsInApp);
             var here = $"{(inApp is null ? "WeSpeaker voice recognition" : Plain(inApp))} inside Martlet on {OwnPcs()}'s processor";
             const string beside = "It recognizes who is talking beside speech-to-text, so a reply never waits for it.";
@@ -138,15 +138,16 @@ public static partial class NetworkRecommender
             if (peopleFirst is { } first && NodeOf(first.HostId) is { } chosen &&
                 chosen.Roles.FirstOrDefault(r => r.Kind == VoiceRecognitionRole) is { } placed)
                 return (true, $"Martlet's Voice recognition role on {CardText(chosen, placed.Card)}", $"{beside} {first.Why} {fallback}");
-            if (choice?.HostId is not { } hostId) return (true, choice?.Where ?? here, $"{beside} Nothing leaves this PC.");
+            if (choice?.HostId is not { } hostId) return (true, choice?.Where ?? here,
+                "It recognizes who is talking beside speech-to-text without making a reply wait, and nothing leaves this PC.");
             if (NodeOf(hostId) is not { } node)
                 return (true, $"Martlet's Voice recognition role on {hostId}, else {here}", beside);
             if (node.Presence == Presence.Gone)
                 return (true, here, $"Martlet's Voice recognition role runs on {node.Name}, which isn't answering, so {OwnPcs()} recognizes voices itself.");
             if (node.Roles.FirstOrDefault(r => r.Kind == VoiceRecognitionRole) is not { } role)
-                return (true, here, $"{node.Name} doesn't run Martlet's Voice recognition role, so {OwnPcs()} recognizes voices itself. Set it up in {page}.");
+                return (true, here, $"{node.Name} doesn't run Martlet's Voice recognition role, so {OwnPcs()} recognizes voices itself until you set it up in {page}.");
             return (true, $"Martlet's Voice recognition role on {CardText(node, role.Card)}",
-                $"{beside} When it doesn't answer in time, {OwnPcs()}'s processor recognizes voices.");
+                $"It recognizes who is talking beside speech-to-text without making a reply wait; when it doesn't answer in time, {OwnPcs()}'s processor recognizes voices.");
         }
 
         /// <summary>The option that does Thinking in <paramref name="target"/>: the role its host runs, else the job's option.</summary>
@@ -170,26 +171,26 @@ public static partial class NetworkRecommender
             var choice = Choice(part);
             if (choice is { On: false })
                 return (false, OffWhere(part), vision
-                    ? $"Vision is off on this PC. Turn it on in {page}."
-                    : $"No model hears your voice on this PC: Thinking gets the transcript. Turn it on in {page}.");
+                    ? $"Vision is off on this PC; turn it on in {page}."
+                    : $"No model hears your voice on this PC, so Thinking gets the transcript; turn it on in {page}.");
             var own = Find(choice?.OptionId) is { UsesThinking: false } chosen ? chosen : null;
             if (own is null && choice?.Where is null && choice?.Model is null)
             {
                 var thinking = ThinkingOption(target);
                 bool? takes = thinking is null ? null : vision ? thinking.SeesImages : thinking.HearsAudio;
                 if (takes == false)
-                    return (false, OffWhere(part), $"{Plain(thinking!)} doesn't {(vision ? "see pictures" : "hear recordings")}. Choose an {kind} " +
-                        $"model of its own in {page}, or a Thinking model that {verb}.");
+                    return (false, OffWhere(part), $"{Plain(thinking!)} doesn't {(vision ? "see pictures" : "hear recordings")}, so choose an {kind} " +
+                        $"model of its own in {page} or a Thinking model that {verb}.");
                 return (true, thinking is null ? "Thinking's own model" : $"{Plain(thinking)}, Thinking's own model",
                     $"Thinking takes the {input}s in its own request, so nothing more runs.");
             }
             var where = choice?.Where
                 ?? (own is { IsLocal: false } ? $"{own.DisplayName}, online"
                     : $"{(own is null ? choice?.Model : Plain(own))} in Ollama on {(choice?.HostId is { } host ? NameOf(host) : "this PC")}");
-            var why = $"An {kind} model of its own puts each {input} into words for Thinking, and a reply never waits for it. Change it in {page}.";
+            var why = $"An {kind} model of its own puts each {input} into words for Thinking without making a reply wait; change it in {page}";
             if (own is { UsesGpu: true } && choice?.HostId is null)
-                why += " A companion PC's graphics card is for Thinking and the voice: a model on a host, or online, keeps games smooth.";
-            return (true, where, why);
+                why += ", but a companion PC's graphics card is for Thinking and the voice, so a model on a host or online keeps games smooth";
+            return (true, where, why + ".");
         }
 
         /// <summary>Reading: this PC's choice on its page (reading.json): Windows OCR inside Martlet by default, or Martlet's
@@ -202,8 +203,8 @@ public static partial class NetworkRecommender
             var choice = Choice(part);
             var runs = nodes.Where(n => n.Presence == Presence.Here && n.Roles.Any(r => r.Kind == ReadingRole)).Select(n => n.Name).ToList();
             if (choice is { On: false })
-                return (false, OffWhere(part), $"Reading is off on this PC. Turn it on in {page}." +
-                    (runs.Count > 0 ? $" Martlet's Reading role stays on {List(runs)} for your other companion PCs." : ""));
+                return (false, OffWhere(part), "Reading is off on this PC" +
+                    (runs.Count > 0 ? $" (Martlet's Reading role stays on {List(runs)} for your other companion PCs)" : "") + $"; turn it on in {page}.");
             var chosen = Find(choice?.OptionId);
             if (choice?.HostId is not null || chosen?.HostRoleKind == ReadingRole)
             {
@@ -214,7 +215,7 @@ public static partial class NetworkRecommender
                 if (node.Presence == Presence.Gone)
                     return (false, OffWhere(part), $"Martlet's Reading role runs on {node.Name}, which isn't answering.");
                 if (!node.Roles.Any(r => r.Kind == ReadingRole))
-                    return (false, OffWhere(part), $"{node.Name} doesn't run Martlet's Reading role. Set it up in {page}.");
+                    return (false, OffWhere(part), $"{node.Name} doesn't run Martlet's Reading role; set it up in {page}.");
                 var role = node.Roles.First(r => r.Kind == ReadingRole);
                 if (role.Model?.StartsWith("ppocrv5", StringComparison.Ordinal) != true)
                     return (true, $"Martlet's Reading role (RapidOCR) on {node.Name}'s processor",
@@ -243,10 +244,10 @@ public static partial class NetworkRecommender
             var where = hubs.Count > 0 ? $"Home Assistant on {List(hubs)}" : null;
             if (choice is { On: false } || choice is null && where is null)
                 return (false, OffWhere(part), where is null
-                    ? $"It isn't set up. Set it up in {page}."
-                    : $"Martlet isn't connected to Home Assistant on this PC. {where} still runs your home; connect in {page}.");
+                    ? $"It isn't set up yet: set it up in {page}."
+                    : $"Martlet isn't connected to Home Assistant on this PC, but {where} still runs your home; connect in {page}.");
             if (where is not null)
-                return (true, where, "Home Assistant runs your home all the time, and Martlet asks it to do things when you ask. Martlet never moves it.");
+                return (true, where, "Home Assistant runs your home all the time, and Martlet asks it to do things when you ask but never moves it.");
             return (true, choice?.Where ?? "Your own Home Assistant", "Martlet connects to the Home Assistant you already run.");
         }
     }

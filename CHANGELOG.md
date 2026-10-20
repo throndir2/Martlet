@@ -8,6 +8,13 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- The Devices map, the job pages, the Add a computer and Prepare a Linux PC windows, the run window and the host settings show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Multiple Computers and Setting Up a Host wiki pages have the full instructions. ([#1079](https://github.com/throndir2/Martlet/pull/1079))
+- Companion › Tools, Smart home, Discord, Messaging, App guides and Check-ins, the MCP windows and Outside access now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki has the full setup steps for Discord, Telegram, WhatsApp and Home Assistant. ([#1072](https://github.com/throndir2/Martlet/pull/1072))
+
+## [0.89.0] - 2026-10-19
+
 ### Added
 
 - Use models your apps already run now also works on host PCs: when LM Studio, llama.cpp, vLLM or another model app on a host serves a smarter model, Recommended setup adds the new **Thinking pool (your own app)** role, and that host's Thinking pool uses the model in your app. Nothing downloads, and replies stay as fast as before. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
@@ -24,6 +31,12 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Your Picture making, Vision and Hearing lists are now the same on all your computers, with each place's API key and custom workflow, so a new computer is set up at once. ([#1078](https://github.com/throndir2/Martlet/pull/1078))
+- Your check-ins, Chatterbox Original's style and the recommended setups you declined are now the same on all your computers. A check-in's PowerShell script stays on the computer where you wrote it. ([#1078](https://github.com/throndir2/Martlet/pull/1078))
+- Settings, updates, appearance, exiting, Diagnostics and Troubleshooting show one short line for each message, and the wiki has the rest; the Linux and Mac app gets a **?** with a wiki link next to Thinking. ([#1075](https://github.com/throndir2/Martlet/pull/1075))
+- Martlet on Linux and Mac is now the same Martlet as on your other computers: pair it with a host in Settings, and it uses the same personality, Thinking, Listening and Speaking (with their keys) and passes your changes on. Its push-to-talk key and character file stay its own, and a choice it can't run there keeps its own and says why. ([#1077](https://github.com/throndir2/Martlet/pull/1077))
+- The share link's Copied line and the VRoid Hub sign-in errors are one short sentence each. ([#1073](https://github.com/throndir2/Martlet/pull/1073))
+- The account, sign-in, sharing and shared-settings windows and dialogs say each thing in one short line; the details are behind a **?** with a link to the wiki. ([#1066](https://github.com/throndir2/Martlet/pull/1066))
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
 - The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
 - The speech host roles (XTTS, Dia, GPT-SoVITS, F5, Chatterbox, singing, Parakeet and voice recognition) now share one copy of their download and request code, so a request with a bad length gets a clear error instead of a dropped connection. The next host update rebuilds these roles once. ([#1061](https://github.com/throndir2/Martlet/pull/1061))
@@ -32,21 +45,17 @@ Each release's section here is also its notes on GitHub.
 - Martlet starts answering sooner: it no longer waits for Home Assistant or for tool servers that are still starting before it answers, and it reads memories and lorebooks at the same time. A tool from a server that is still starting waits for it only when Martlet uses that tool. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Tools from your MCP servers keep the same names (the server's name, then the tool's) while servers start, stop or restart, so replies on a local model stay quick after a server restarts. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Check-ins that use tools now work in several steps until they are done, like a coding agent: they look things up, read the result and keep going. When you say "that's for Minecraft, not Terraria!", Act on what was said finds every fact it touches and corrects each one. Learning names can also look up voices in more steps. ([#1033](https://github.com/throndir2/Martlet/pull/1033))
-
-### Changed
-
 - The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
 - Listening, Voice, People, Singing, *Microphone and speakers* and *Voice ID* now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki pages for listening, voices and singing have the full instructions. ([#1049](https://github.com/throndir2/Martlet/pull/1049))
+- The Thinking, Thinking pool, Prompts, Memory and Lorebook pages and the Memory and Lorebooks windows show one short line for each explanation and status. The details are behind a **?** that links to the wiki, and each prompt's **?** says when Martlet sends it. ([#1059](https://github.com/throndir2/Martlet/pull/1059))
 - Companion › Vision, Reading and Picture making, the Creations page and camera messages now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Vision and Pictures and Creations wiki pages have the full instructions, including what to do when a camera doesn't work. ([#1056](https://github.com/throndir2/Martlet/pull/1056))
-
-### Changed
-
 - Your character's touch zones (also the ones you drew or changed), its eye measurement, its VRoid Hub credit and its own changes to how it reacts to touches are now the same on all your computers, so each model is set up once. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
 - Your Discord setup (the bot and its token, the people Martlet knows, the chat modes and channel rules) and your Telegram and WhatsApp connections with their paired chats are now the same on all your computers. Each computer still chooses for itself whether it runs the bot. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
 - Keeping clips of voices you haven't named is now one choice for all your computers, and turning it off on one computer deletes the clips on every computer. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
 
 ### Fixed
 
+- Test vision no longer sends a blank picture when Windows fails to draw the test word, so it can't wrongly mark a model as unable to see; it says to try again instead. ([#1068](https://github.com/throndir2/Martlet/pull/1068))
 - Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Background tasks that wait for a free computer now start in the order you asked for them. Before, two that were asked at the same moment could swap places. ([#1047](https://github.com/throndir2/Martlet/pull/1047))
 - Each request to a host answers faster: the host saves the request's one-use number with one small write instead of saving all its pairings (about 3 ms instead of 27 ms on a fast disk, and more on slow disks). ([#1046](https://github.com/throndir2/Martlet/pull/1046))

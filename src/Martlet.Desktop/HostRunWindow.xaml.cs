@@ -398,11 +398,11 @@ internal static class HostActions
                 input = HostInputDialog.WithGpu(run, ssh.ToString(), role, inputs, input, recommended) ?? throw new OperationCanceledException();
             }
             else if (role is not null && !add && !confirmed && !ConfirmationDialog.Confirm(run,
-                         $"Remove {role} from {ssh}? Its saved data stays so you can add it again later.",
+                         $"Remove {role} from {ssh} (its saved data stays for later)?",
                          "Remove role"))
                 throw new OperationCanceledException();
             run.Status(role is null ? $"Working on {ssh}..." :
-                add ? (action.Changing ? $"Changing {role} on {ssh}. A new model can take a while to download..." : $"{role} is installing on {ssh}. This can take a while...")
+                add ? (action.Changing ? $"Changing {role} on {ssh}; a new model can take a while to download..." : $"{role} is installing on {ssh}; this can take a while...")
                     : $"Removing {role} from {ssh}...");
             var output = new EngineOutput(run.Output);
             var result = await remote.RunAsync(target, engine, action == HostAction.Setup, sudo, input, hostKey, output, run.Token,
@@ -436,7 +436,7 @@ internal static class HostActions
         {
             var input = answers;
             if (role is not null && !add && !confirmed && !ConfirmationDialog.Confirm(run,
-                    $"Remove {role} from this PC? Its saved data stays so you can add it again later.",
+                    $"Remove {role} from this PC (its saved data stays for later)?",
                     "Remove role"))
                 throw new OperationCanceledException();
             await HostLocal.EnsureDockerAsync(run, action.Verb == HostVerb.Setup ? ContinueSetupKind.HostService : ContinueSetupKind.Docker);
@@ -457,11 +457,11 @@ internal static class HostActions
             }
             run.Status(action.Verb switch
             {
-                HostVerb.Add when action.Changing => $"Changing {role} on this PC. A new model can take a while to download...",
-                HostVerb.Add => $"{role} is installing on this PC. This can take a while...",
+                HostVerb.Add when action.Changing => $"Changing {role} on this PC; a new model can take a while to download...",
+                HostVerb.Add => $"{role} is installing on this PC; this can take a while...",
                 HostVerb.Remove => $"Removing {role} from this PC...",
                 HostVerb.Setup => "Setting up this PC as a host...",
-                HostVerb.Update => "Updating this PC's host. Pairings and roles stay...",
+                HostVerb.Update => "Updating this PC's host; its pairings and roles stay...",
                 HostVerb.Exposure => "Saving how this PC's host is reached from outside home; its gateway restarts...",
                 _ => "Working on this PC..."
             });
@@ -474,7 +474,7 @@ internal static class HostActions
             {
                 HostVerb.Add => $"{role} is ready on this PC.",
                 HostVerb.Remove => $"{role} was removed from this PC.",
-                HostVerb.Setup => "This PC is set up as a host. Pair your main PC next.",
+                HostVerb.Setup => "This PC is set up as a host, so pair your main PC next.",
                 HostVerb.Update => "This PC's host is up to date.",
                 HostVerb.Exposure => "This PC's host is serving with its new outside access settings.",
                 _ => "Finished on this PC."
@@ -499,7 +499,7 @@ internal static class HostActions
                 {
                     shown = true;
                     run.ShowPairingCode(address, code);
-                    run.Status("Enter the address and code on your main PC. Waiting (Cancel withdraws the code)...");
+                    run.Status("Enter the address and code on your main PC; waiting (Cancel withdraws the code)...");
                 }), run.Output, run.Token);
             }
             finally { run.Dispatcher.Invoke(() => run.ShowPairingCode(null, null)); }

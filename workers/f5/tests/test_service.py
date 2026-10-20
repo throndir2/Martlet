@@ -84,7 +84,7 @@ class ServiceTests(unittest.TestCase):
             DeterministicFakeEngine(
                 sample_count=2_000,
                 fragment_samples=100,
-                delay_seconds=0.03,
+                delay_seconds=0.3,
             )
         )
         message = synthesize_message(self.fixture.worker)
@@ -115,20 +115,30 @@ class ServiceTests(unittest.TestCase):
         )
 
     def test_deadline_emits_failure_and_discards_late_output(self) -> None:
-        service, collector = self.service(
-            DeterministicFakeEngine(
-                sample_count=500,
-                fragment_samples=500,
-                delay_seconds=0.25,
-            )
-        )
-        message = synthesize_message(self.fixture.worker, deadline_seconds=0.08)
+        class LateEngine(DeterministicFakeEngine):
+            def __init__(self) -> None:
+                super().__init__()
+                self.late = threading.Event()
+
+            def synthesize(self, reference, text, cancel):
+                self.late.wait(30)
+                yield b"\x01\x00" * 500
+
+        engine = LateEngine()
+        self.addCleanup(engine.late.set)
+        service, collector = self.service(engine)
+        # The deadline only has to outlast message parsing on a busy PC; the engine yields its
+        # output after the deadline failure is seen, so the output is always late.
+        message = synthesize_message(self.fixture.worker, deadline_seconds=1)
         service.handle(message)
+        job_thread = service.active_job.thread
         terminal = self.terminal(collector)
         self.assertEqual("failed", terminal["kind"])
         self.assertEqual("deadline_exceeded", terminal["error"]["code"])
         terminal_index = collector.messages.index(terminal)
-        time.sleep(0.3)
+        engine.late.set()
+        job_thread.join(10)
+        self.assertFalse(job_thread.is_alive())
         self.assertFalse(
             any(
                 value.get("type") == "event"
@@ -161,7 +171,7 @@ class ServiceTests(unittest.TestCase):
             DeterministicFakeEngine(
                 sample_count=1_000,
                 fragment_samples=100,
-                delay_seconds=0.03,
+                delay_seconds=2,
             )
         )
         first = synthesize_message(self.fixture.worker)
@@ -193,7 +203,7 @@ class ServiceTests(unittest.TestCase):
             DeterministicFakeEngine(
                 sample_count=1_000,
                 fragment_samples=100,
-                delay_seconds=0.03,
+                delay_seconds=2,
             )
         )
         first = synthesize_message(self.fixture.worker)
@@ -227,31 +237,35 @@ class ServiceTests(unittest.TestCase):
                 runtime_observation=None,
             ):
                 inner_self.entered.set()
-                inner_self.release.wait(1)
+                inner_self.release.wait(30)
                 super(BlockingLoadEngine, inner_self).load(
                     artifact_paths,
-                    deadline_monotonic + 1,
+                    deadline_monotonic + 60,
                     runtime_observation,
                 )
 
         engine = BlockingLoadEngine()
+        self.addCleanup(engine.release.set)
         collector = OutputCollector()
         service = WorkerService(self.fixture.config, collector.emit, engine=engine)
         self.services.append(service)
-        started = time.monotonic()
-        service.handle(warmup_message(self.fixture.worker, seconds=0.08))
-        self.assertTrue(engine.entered.wait(1))
+        # The deadline must outlast the artifact checks before load (about 0.1 s alone, more on a
+        # busy PC); load then blocks until released, so only the watchdog can end the warmup.
+        service.handle(warmup_message(self.fixture.worker, seconds=2))
+        self.assertTrue(engine.entered.wait(10))
         failed = collector.wait(
             lambda value: value.get("type") == "worker_state"
             and value.get("state") == "failed",
-            timeout=0.5,
         )
-        self.assertLess(time.monotonic() - started, 0.4)
+        self.assertFalse(engine.release.is_set())
+        self.assertTrue(service.warmup_thread.is_alive())
         self.assertEqual("deadline_exceeded", failed["last_error"]["code"])
         engine.release.set()
         assert service.warmup_thread is not None
-        service.warmup_thread.join(1)
+        service.warmup_thread.join(10)
+        self.assertFalse(service.warmup_thread.is_alive())
         self.assertEqual("failed", service.state)
+        self.assertFalse(any(value.get("state") == "ready" for value in collector.messages))
 
     def test_not_ready_failure_starts_then_fails_for_managed_stream_validator(self) -> None:
         collector = OutputCollector()

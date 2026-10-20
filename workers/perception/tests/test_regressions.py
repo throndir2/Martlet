@@ -57,7 +57,7 @@ class RegressionTests(unittest.TestCase):
 
     def ready(self, service, emitter):
         warm_service(service, emitter, self.environment)
-        service.warmup_thread.join(2)
+        service.warmup_thread.join(10)
 
     def test_deep_json_surrogates_and_nonfinite_numbers_fail_redacted_and_recover(self):
         for data in (
@@ -233,7 +233,7 @@ class RegressionTests(unittest.TestCase):
             service.handle(request)
             job = service.active_job
             if job is not None:
-                job.thread.join(2)
+                job.thread.join(10)
             response = emitter.wait_for(lambda m: m.get("action_id") == request["action_id"])
             self.assertEqual("completed", response["outcome"])
         service.close()
@@ -262,7 +262,7 @@ class RegressionTests(unittest.TestCase):
         service, emitter = self.service(engine)
         self.ready(service, emitter)
         service.handle(request_wire(self.environment))
-        self.assertTrue(engine.entered.wait(2))
+        self.assertTrue(engine.entered.wait(10))
         job = service.active_job
         try:
             with mock.patch("martlet_perception_worker.service.MAX_CANCEL_SECONDS", 0.01):
@@ -273,7 +273,7 @@ class RegressionTests(unittest.TestCase):
             self.assertIs(job, service.active_job)
         finally:
             engine.release.set()
-            job.thread.join(2)
+            job.thread.join(10)
         self.assertFalse(job.thread.is_alive())
         self.assertTrue(engine.closed)
         self.assertEqual("stopped", service.state)
@@ -286,7 +286,7 @@ class RegressionTests(unittest.TestCase):
         self.ready(service, emitter)
         first = request_wire(self.environment)
         service.handle(first)
-        self.assertTrue(engine.entered.wait(2))
+        self.assertTrue(engine.entered.wait(10))
         job = service.active_job
         try:
             service.handle(cancel_wire(first))
@@ -297,7 +297,7 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual("busy", service.state)
         finally:
             engine.release.set()
-            job.thread.join(2)
+            job.thread.join(10)
         self.assertEqual(1, len([m for m in emitter.all("response")
                                  if m["action_id"] == first["action_id"]]))
 
@@ -311,7 +311,7 @@ class RegressionTests(unittest.TestCase):
         service, emitter = self.service(engine)
         with mock.patch.object(service, "_watch_warmup"):
             service.handle(warmup_wire(self.environment, deadline_seconds=0.08))
-            service.warmup_thread.join(2)
+            service.warmup_thread.join(10)
         self.assertEqual("failed", service.state)
         self.assertEqual("deadline_exceeded", service.last_error["code"])
         self.assertTrue(engine.closed)
@@ -326,7 +326,7 @@ class RegressionTests(unittest.TestCase):
         engine = PartialLoad()
         service, emitter = self.service(engine)
         service.handle(warmup_wire(self.environment))
-        service.warmup_thread.join(2)
+        service.warmup_thread.join(10)
         self.assertTrue(engine.closed)
         self.assertEqual("failed", service.state)
         self.assertNotIn("private", json.dumps(emitter.messages))
@@ -340,13 +340,13 @@ class RegressionTests(unittest.TestCase):
             def load(self, paths, deadline, observation=None):
                 self.paths = paths
                 self.entered.set()
-                self.release.wait(5)
+                self.release.wait(30)
                 self.loaded = True
 
         engine = BlockingLoad()
         service, emitter = self.service(engine)
         service.handle(warmup_wire(self.environment))
-        self.assertTrue(engine.entered.wait(2))
+        self.assertTrue(engine.entered.wait(10))
         try:
             with mock.patch("martlet_perception_worker.service.MAX_CANCEL_SECONDS", 0.01):
                 service.close()
@@ -355,7 +355,7 @@ class RegressionTests(unittest.TestCase):
             self.assertTrue(all(path.exists() for path in engine.paths.values()))
         finally:
             engine.release.set()
-            service.warmup_thread.join(2)
+            service.warmup_thread.join(10)
         self.assertEqual("stopped", service.state)
         self.assertTrue(engine.closed)
         self.assertFalse(any(path.exists() for path in engine.paths.values()))
@@ -374,7 +374,7 @@ class RegressionTests(unittest.TestCase):
         engine = DeniedLoad()
         service, emitter = self.service(engine, policy)
         service.handle(warmup_wire(self.environment))
-        service.warmup_thread.join(2)
+        service.warmup_thread.join(10)
         self.assertEqual("failed", service.state)
         self.assertEqual("execution_policy", service.last_error["stage"])
         self.assertTrue(engine.closed)
@@ -414,7 +414,7 @@ class RegressionTests(unittest.TestCase):
                     pass
             thread = threading.Thread(target=denied)
             thread.start()
-            thread.join(2)
+            thread.join(10)
             self.assertFalse(thread.is_alive())
             return original(*args, **kwargs)
 
@@ -510,7 +510,7 @@ for call in (lambda: socket.socket(), lambda: subprocess.Popen([sys.executable, 
 assert policy.denied.is_set()
 """
         result = subprocess.run(
-            [sys.executable, "-c", code], capture_output=True, timeout=5, check=False,
+            [sys.executable, "-c", code], capture_output=True, timeout=30, check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr.decode())
         self.assertEqual(b"", result.stdout)
@@ -530,7 +530,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
 """
         result = subprocess.run(
             [sys.executable, "-c", code, str(self.environment.config_path)],
-            input=b"", capture_output=True, timeout=5, check=False,
+            input=b"", capture_output=True, timeout=30, check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr.decode())
         self.assertEqual(b"", result.stderr)
@@ -595,5 +595,5 @@ class BlockingEngine(DeterministicFakeEngine):
     def infer(self, request, frame, cancel):
         self.frame = frame
         self.entered.set()
-        self.release.wait(5)
+        self.release.wait(30)
         return super().infer(request, frame, cancel)

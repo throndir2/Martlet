@@ -3,8 +3,16 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
+#if MARTLET_MCP
+using Martlet.Mcp.Logging;
+#endif
 
+// Also built into Martlet's MCP server, in its own namespace, so character_status reads the file as the desktop does.
+#if MARTLET_MCP
+namespace Martlet.Mcp.Shared;
+#else
 namespace Martlet.Desktop;
+#endif
 
 /// <summary>What one character profile (Companion › Profiles) keeps on this PC, as the owner left it while the profile was in
 /// use: where its character stands on the desktop (<see cref="Placement"/>: its spot, size, monitor and lock; null when no place
@@ -73,20 +81,25 @@ internal static class CharacterProfileLocalStore
     internal static CharacterProfilesHere Load(string? directory)
     {
         if (directory is null) return CharacterProfilesHere.Empty;
-        try
-        {
-            var path = Path.Combine(directory, FileName);
-            if (!File.Exists(path)) return CharacterProfilesHere.Empty;
-            var saved = JsonSerializer.Deserialize<Saved>(File.ReadAllText(path), Json);
-            var profiles = (saved?.Profiles ?? []).Where(entry => entry.Key != Guid.Empty && entry.Value is not null)
-                .ToDictionary(entry => entry.Key, entry => Clean(entry.Value));
-            return new(profiles, saved?.InUse is { } id && id != Guid.Empty ? id : null);
-        }
+        try { return Read(directory) ?? CharacterProfilesHere.Empty; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
         {
             ErrorLog.Warn("What your character profiles keep on this PC couldn't be read; switching profiles keeps the current place, eyes and touches.", error);
             return CharacterProfilesHere.Empty;
         }
+    }
+
+    /// <summary>What the profiles keep on this PC, or null without a file; throws <see cref="IOException"/>,
+    /// <see cref="UnauthorizedAccessException"/>, <see cref="JsonException"/> or <see cref="NotSupportedException"/> when it can't be
+    /// read.</summary>
+    internal static CharacterProfilesHere? Read(string directory)
+    {
+        var path = Path.Combine(directory, FileName);
+        if (!File.Exists(path)) return null;
+        var saved = JsonSerializer.Deserialize<Saved>(File.ReadAllText(path), Json);
+        var profiles = (saved?.Profiles ?? []).Where(entry => entry.Key != Guid.Empty && entry.Value is not null)
+            .ToDictionary(entry => entry.Key, entry => Clean(entry.Value));
+        return new(profiles, saved?.InUse is { } id && id != Guid.Empty ? id : null);
     }
 
     /// <summary>Saves what the profiles keep on this PC (with nothing kept and none in use, the file goes). False when it couldn't

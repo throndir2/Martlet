@@ -49,7 +49,7 @@ internal sealed partial class LiveConversationController
             var configured = utterance.Authorization.Configuration;
             var route = SenseRoute(SenseKind.Audio, configured);
             if (route is not { Described: true, Model: { } model } || !options.HearsWith(VoiceNotes.StaysOnThisPc(model))) return null;
-            if (!Hearable(recording, "the audio model")) return null;
+            if (!TurnCapture.Hearable(recording, "the audio model")) return null;
             // Emptied in Companion › Prompts: the audio model gets no recordings of the user's voice.
             if (PromptSettings.Fill(configured.Prompts, PromptCatalog.VoiceDescription) is not { } instructions) return null;
             string before;

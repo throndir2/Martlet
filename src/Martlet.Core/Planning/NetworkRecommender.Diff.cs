@@ -126,9 +126,9 @@ public static partial class NetworkRecommender
                 }
                 if (was is null)
                 {
-                    var summary = (role.OnDisk ? $"Start {name} again on {SplitText(node, role)}. It is already downloaded there."
-                        : $"Install {name} on {SplitText(node, role)}.") +
-                        (role.Kind == DeepThinkingRole ? $" {node.Name} then joins the Thinking pool by itself." : "");
+                    var summary = (role.OnDisk ? $"Start {name} again on {SplitText(node, role)}, where it is already downloaded"
+                        : $"Install {name} on {SplitText(node, role)}") +
+                        (role.Kind == DeepThinkingRole ? $"; {node.Name} then joins the Thinking pool by itself." : ".");
                     changes.Add(RoleChange(SetupChangeKind.AddRole, node, role, summary, role.Benefit, role.Why) with
                     {
                         Model = role.Model, GpuIndex = gpu, GpuIndexes = split, DownloadGb = Download(role), OnProcessor = processor
@@ -137,9 +137,9 @@ public static partial class NetworkRecommender
                 }
                 if (role.Model is not null && !Same(role.Model, was.Model))
                 {
-                    var summary = $"Switch {node.Name}'s {KindName(role.Kind)} from {was.Model ?? "its model"} to {name}." +
-                        (split is null ? "" : $" It is split across {SplitText(node, role)}.") +
-                        (role.OnDisk ? " It is already downloaded there." : "");
+                    var summary = $"Switch {node.Name}'s {KindName(role.Kind)} from {was.Model ?? "its model"} to {name}" +
+                        (split is null ? "" : $", split across {SplitText(node, role)}") +
+                        (role.OnDisk ? ", already downloaded there." : ".");
                     changes.Add(RoleChange(SetupChangeKind.ChangeModel, node, role, summary, role.Benefit, role.Why) with
                     {
                         Model = role.Model, FromModel = was.Model, DownloadGb = Download(role), OnProcessor = processor,
@@ -170,7 +170,7 @@ public static partial class NetworkRecommender
                 var role = node.Today.FirstOrDefault(r => !r.Native && r.Kind == was.Kind);
                 var (benefit, why) = role?.Leave ?? (SetupChangeBenefit.Minor, "Nothing uses it.");
                 changes.Add(new SetupChange(SetupChangeKind.RemoveRole, node.Id,
-                    $"Turn off {Label(role?.Option, was.Kind)} on {node.Name}. Its downloads stay, so turning it back on is quick.", why)
+                    $"Turn off {Label(role?.Option, was.Kind)} on {node.Name} (its downloads stay, so turning it back on is quick).", why)
                 {
                     Benefit = benefit, RoleKind = was.Kind, Model = was.Model, NeedsSomeoneThere = !node.Machine.Manageable
                 });

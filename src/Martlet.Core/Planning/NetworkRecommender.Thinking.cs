@@ -239,12 +239,12 @@ public static partial class NetworkRecommender
             var names = List([.. served.Take(3).Select(o => $"{Plain(o)} in {o.ServedBy}")]);
             if (now is { IsLocal: false })
             {
-                notes.Add($"You also run {names}. Choose it in Companion › Thinking to think with it instead of {now.DisplayName}.");
+                notes.Add($"You also run {names}; choose it in Companion › Thinking to think with it instead of {now.DisplayName}.");
                 return false;
             }
             if (nodes.FirstOrDefault(n => n.Presence == Presence.Here && !n.Companion) is { } host)
             {
-                notes.Add($"You also run {names}, but {host.Name} can think for you, so your companion PC stays light. Choose it in Companion › Thinking to think with it.");
+                notes.Add($"You also run {names}, but {host.Name} can think for you, so your companion PC stays light; choose it in Companion › Thinking to think with it.");
                 return false;
             }
             var here = nodes.Where(n => n.Presence == Presence.Here && n.Companion).ToList();
@@ -266,7 +266,7 @@ public static partial class NetworkRecommender
             }
             var benefit = now is null ? SetupChangeBenefit.Required : SetupChangeBenefit.Improvement;
             var why = $"You already run {Plain(slot.Option)} in {slot.Option.ServedBy}, so Martlet thinks with it on {CardText(slot)}" +
-                (now is null ? "." : $" instead of {Plain(now)}. Its first word may come later.");
+                (now is null ? "." : $" instead of {Plain(now)}, though its first word may come later.");
             Place(slot, ThinkingRole, job, benefit, why);
             Decide(job, null, slot.Option.Id, why, benefit);
             return true;

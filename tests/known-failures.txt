@@ -6,4 +6,3 @@
 # Entries tagged "env:" fail only on machines without a capability and are never reported as fixed.
 # One line per test method (all theory cases): the fully qualified name, or python:<worker>/<test id>.
 # Burn-down: https://github.com/throndir2/Martlet/issues/332
-python:f5/test_service.ServiceTests.test_blocking_warmup_fails_at_deadline_and_cannot_publish_late_ready  # fails on origin/main 510db88a without any change: the 0.08 s warmup deadline passes before the engine's load starts (#332)

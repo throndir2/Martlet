@@ -56,7 +56,7 @@ public partial class AccountWindow : ThemedWindow
     {
         if (host.VRoidHub is not { } hub) return;
         VRoidHubLinkButton.IsEnabled = false;
-        StatusText.Text = "Sign in on VRoid Hub's page in your browser and allow Martlet. Martlet waits up to 5 minutes.";
+        StatusText.Text = "Sign in on VRoid Hub's page in your browser and allow Martlet within 5 minutes.";
         try
         {
             var tokens = await hub.LinkAsync(lifetime.Token);
@@ -78,7 +78,7 @@ public partial class AccountWindow : ThemedWindow
         try
         {
             await hub.UnlinkAsync(lifetime.Token);
-            StatusText.Text = "VRoid Hub is unlinked. VRoid Hub characters can't show on this PC until you link it again.";
+            StatusText.Text = "VRoid Hub is unlinked, so its characters can't show on this PC until you link it again.";
         }
         catch (OperationCanceledException) { }
         finally { ShowVRoidHub(); }
@@ -105,7 +105,7 @@ public partial class AccountWindow : ThemedWindow
         var windows = !host.SignedInWithProve && (account is null || account.Login(ThisWindowsLogin) is not null);
         NameText.Text = $"{host.ActiveName} ({account?.Role ?? "not in your household's directory yet"})";
         LoginsText.Text = account is null
-            ? "Logins: this Windows login. The account reaches your household's directory once this PC is in your Martlet network."
+            ? "Logins: this Windows login; the account reaches your household's directory once this PC is in your Martlet network."
             : "Logins: " + Describe(account);
         PasswordSection.IsEnabled = WindowsSection.IsEnabled = MergeSection.IsEnabled = ProviderSection.IsEnabled = account is not null;
         LockStateText.Text = locks.NeedsUnlock(windows)
@@ -128,8 +128,8 @@ public partial class AccountWindow : ThemedWindow
         HelloCheck.IsEnabled = !locks.Encrypt;
         EncryptCheck.IsChecked = locks.Encrypt;
         EncryptText.Text = locks.Encrypt
-            ? "Your files on this PC are encrypted whenever you switch to another account or close Martlet. Your PIN" + (locks.Methods.Contains("password") ? " or password" : "") + " opens them."
-            : "Needs a PIN on this PC. Type it in the PIN box, then turn this on. Windows Hello can't open encrypted files.";
+            ? "Your files on this PC are encrypted whenever you switch to another account or close Martlet, and your PIN" + (locks.Methods.Contains("password") ? " or password" : "") + " opens them."
+            : "Needs a PIN: type it in the PIN box, then turn this on.";
         RememberCheck.IsChecked = locks.Remember;
         RememberCheck.Visibility = host.SignedInWithProve ? Visibility.Visible : Visibility.Collapsed;
         PinRemoveButton.IsEnabled = locks.HasPin;
@@ -162,7 +162,7 @@ public partial class AccountWindow : ThemedWindow
         if (Active is not { } account) return;
         if (host.Hosts.Count == 0)
         {
-            PasswordStateText.Text = "Your Martlet password is kept on your hosts. Pair a host of your network first.";
+            PasswordStateText.Text = "Your Martlet password is kept on your hosts: pair a host of your network under Devices first.";
             PasswordSaveButton.IsEnabled = AuthenticatorRemoveButton.IsEnabled = false;
             return;
         }
@@ -193,18 +193,19 @@ public partial class AccountWindow : ThemedWindow
         }
         if (user is not null && UserText.Text.Length == 0) UserText.Text = user;
         PasswordStateText.Text = set == 0
-            ? $"No Martlet password yet ({reached} of {host.Hosts.Count} host{(host.Hosts.Count == 1 ? "" : "s")} checked). Add one to sign in on other PCs and to unlock here."
+            ? $"No Martlet password yet ({reached} of {host.Hosts.Count} host{(host.Hosts.Count == 1 ? "" : "s")} checked): add one to sign in on other PCs and to unlock here."
             : $"Password set on {set} of {host.Hosts.Count} host{(host.Hosts.Count == 1 ? "" : "s")}" +
-              (authenticator == true ? ", with an authenticator." : ", without an authenticator.") +
-              (reached < host.Hosts.Count ? $" {host.Hosts.Count - reached} didn't answer." : "");
+              (authenticator == true ? ", with an authenticator" : ", without an authenticator") +
+              (reached < host.Hosts.Count ? $"; {host.Hosts.Count - reached} didn't answer." : ".");
         if (authenticator != true && !IsOwnersAccount(account)) AuthenticatorRemoveButton.IsEnabled = false;
     }
 
     private async Task ShowHelloAsync()
     {
         var availability = await WindowsHello.AvailabilityAsync(lifetime.Token);
-        HelloText.Text = WindowsHello.Describe(availability) +
-            " Windows Hello can't tell apart people who share this Windows login, so use it only if nobody else set up Windows Hello here.";
+        HelloText.Text = availability == WindowsHelloAvailability.Available
+            ? "Windows Hello is set up here, but it can't tell apart people who share this Windows login."
+            : WindowsHello.Describe(availability);
     }
 
     private void Authenticator_Changed(object sender, RoutedEventArgs e)
@@ -275,11 +276,11 @@ public partial class AccountWindow : ThemedWindow
                 CodeText.Clear();
                 ErrorLog.Info($"Account {account.Key}: Martlet password saved on {saved.Count} host(s){(withAuthenticator ? " with an authenticator" : "")}.");
             }
-            RecoveryText.Text = codes.Count == 0 ? "" : "Recovery codes, shown once. Each works once if you lose your phone; keep them somewhere safe.\n" +
+            RecoveryText.Text = codes.Count == 0 ? "" : "Recovery codes, shown only once: each works once if you lose your phone, so keep them somewhere safe.\n" +
                 string.Join("\n", codes);
             RecoveryText.Visibility = codes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-            Status((saved.Count > 0 ? $"Password saved on {string.Join(", ", saved)}; this PC unlocks you with it now." : "The password was not saved.") +
-                (failed.Count > 0 ? " Not saved on: " + string.Join("; ", failed) + "." : ""));
+            Status((saved.Count > 0 ? $"Password saved on {string.Join(", ", saved)}; this PC unlocks you with it now" : "The password was not saved") +
+                (failed.Count > 0 ? (saved.Count > 0 ? "; not saved on " : ": ") + string.Join("; ", failed) + "." : "."));
             Refresh();
             await ShowPasswordStateAsync();
         }
@@ -461,7 +462,7 @@ public partial class AccountWindow : ThemedWindow
     private async void Merge_Click(object sender, RoutedEventArgs e)
     {
         if (Active is not { } account || MergeChoice.SelectedItem is not MergeItem { Account: var other }) { Status("Choose the account to merge into this one."); return; }
-        if (other.Role == AccountRoles.Owner) { Status($"{other.Name} is the household owner's account. Merge this account into it instead (sign in as {other.Name})."); return; }
+        if (other.Role == AccountRoles.Owner) { Status($"{other.Name} is the household owner's account: sign in as {other.Name} and merge this account into it instead."); return; }
         // Prove both: the other account always, this one too when it has a Martlet password.
         var proveOther = new AccountProveWindow(host.Hosts, host.DataDirectory, $"Sign in as {other.Name}",
             $"To merge {other.Name} into {account.Name}, sign in as {other.Name}.", other.Id, offerRemember: false) { Owner = this };
@@ -494,7 +495,7 @@ public partial class AccountWindow : ThemedWindow
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is InvalidOperationException or ContractException || ClusterSync.IsHostFailure(error))
         {
-            Status($"The merge stopped: {error.Message} {other.Name} wasn't removed; try again.");
+            Status($"The merge stopped and {other.Name} wasn't removed, so try again: {error.Message}");
         }
         finally { MergeButton.IsEnabled = true; }
     }

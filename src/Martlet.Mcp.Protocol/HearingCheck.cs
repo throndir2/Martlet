@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Conversation;
@@ -147,12 +145,9 @@ internal static partial class HearingCheck
 
     private static async Task<object> FixtureAsync(string model, CancellationToken cancellation)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         var requests = new List<byte[]>();
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, requests, stop.Token);
+        var server = FixtureChat.Recording(requests);
+        var baseUrl = server.V1;
         try
         {
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
@@ -188,9 +183,7 @@ internal static partial class HearingCheck
         }
         finally
         {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 
@@ -238,74 +231,6 @@ internal static partial class HearingCheck
         double? seconds = valid ? Math.Round((wave!.Length - 44) / (2.0 * BitConverter.ToInt32(wave, 24)), 2) : null;
         return new(parts, parts.Contains("text"), wave is not null, false, format, valid, seconds, wave?.Length);
     }
-
-    // A minimal HTTP/1.1 endpoint: records each request body and streams one canned Chat Completions reply.
-    private static async Task ServeAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
-    {
-        while (!cancellation.IsCancellationRequested)
-        {
-            using var client = await listener.AcceptTcpClientAsync(cancellation);
-            await using var stream = client.GetStream();
-            var body = await ReadRequestAsync(stream, cancellation);
-            lock (requests) requests.Add(body);
-            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-            var events = "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"Fixture reply (not AI).\"},\"finish_reason\":null}]}\n\n" +
-                "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-            var payload = Encoding.UTF8.GetBytes(events);
-            var head = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n" +
-                $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(head, cancellation);
-            await stream.WriteAsync(payload, cancellation);
-            await stream.FlushAsync(cancellation);
-        }
-    }
-
-    internal static async Task<byte[]> ReadRequestAsync(NetworkStream stream, CancellationToken cancellation)
-    {
-        var buffer = new MemoryStream();
-        var one = new byte[8192];
-        int headerEnd;
-        while ((headerEnd = IndexOf(buffer.GetBuffer().AsSpan(0, (int)buffer.Length), "\r\n\r\n"u8)) < 0)
-        {
-            var read = await stream.ReadAsync(one, cancellation);
-            if (read == 0) throw new IOException("The request ended early.");
-            buffer.Write(one, 0, read);
-        }
-        var headers = Encoding.ASCII.GetString(buffer.GetBuffer(), 0, headerEnd).Split("\r\n");
-        var length = headers.Select(h => h.Split(':', 2)).Where(h => h.Length == 2 &&
-            h[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)).Select(h => int.Parse(h[1].Trim())).FirstOrDefault(-1);
-        var chunked = headers.Any(h => h.StartsWith("Transfer-Encoding:", StringComparison.OrdinalIgnoreCase) && h.Contains("chunked"));
-        var rest = new MemoryStream();
-        rest.Write(buffer.GetBuffer(), headerEnd + 4, (int)buffer.Length - headerEnd - 4);
-        async Task<bool> More()
-        {
-            var read = await stream.ReadAsync(one, cancellation);
-            if (read == 0) return false;
-            rest.Write(one, 0, read);
-            return true;
-        }
-        if (!chunked)
-        {
-            while (rest.Length < length) if (!await More()) break;
-            return rest.ToArray()[..Math.Max(0, Math.Min((int)rest.Length, length))];
-        }
-        // Chunked: size lines and data until the zero-size chunk.
-        var body = new MemoryStream();
-        var at = 0;
-        while (true)
-        {
-            int line;
-            while ((line = IndexOf(rest.GetBuffer().AsSpan(at, (int)rest.Length - at), "\r\n"u8)) < 0) if (!await More()) return body.ToArray();
-            var size = Convert.ToInt32(Encoding.ASCII.GetString(rest.GetBuffer(), at, line).Split(';')[0].Trim(), 16);
-            at += line + 2;
-            if (size == 0) return body.ToArray();
-            while (rest.Length - at < size + 2) if (!await More()) return body.ToArray();
-            body.Write(rest.GetBuffer(), at, size);
-            at += size + 2;
-        }
-    }
-
-    private static int IndexOf(ReadOnlySpan<byte> data, ReadOnlySpan<byte> value) => data.IndexOf(value);
 
     // 1.5 seconds of a 16 kHz speech-like signal: a 140 Hz pulse train shaped by vowel formants, three "syllables".
     internal static BoundedWaveAudio Clip()

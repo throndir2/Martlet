@@ -23,14 +23,14 @@ public static class HostAutoStart
         return stage switch
         {
             LocalHostServiceStage.DockerMissing => new(HostAutoStartStep.Skip,
-                "Docker Desktop isn't installed, so nothing started by itself. The Docker Desktop step installs it."),
+                "Docker Desktop isn't installed, so nothing started by itself; the Docker Desktop step installs it."),
             LocalHostServiceStage.NotSetUp => new(HostAutoStartStep.Skip,
-                "The host service isn't set up on this PC yet, so there is nothing to start. Set up host service does it."),
+                "The host service isn't set up on this PC yet, so there is nothing to start until you choose Set up host service."),
             _ when !hasRoles => new(HostAutoStartStep.Skip, known is null
                 ? "Martlet hasn't seen roles in this PC's host service yet, so it didn't start Docker Desktop by itself."
-                : "This PC's host service runs no roles yet, so there is nothing to warm up. Add roles below."),
+                : "This PC's host service runs no roles yet, so there is nothing to warm up until you add roles below."),
             LocalHostServiceStage.DockerNotRunning when windowsBlocked => new(HostAutoStartStep.Skip,
-                "Windows isn't ready for Docker Desktop, so Martlet didn't start it by itself. The Docker Desktop step shows what to do."),
+                "Windows isn't ready for Docker Desktop, so Martlet didn't start it by itself; the Docker Desktop step shows what to do."),
             LocalHostServiceStage.DockerNotRunning => new(HostAutoStartStep.StartDockerThenWarm,
                 $"Starting Docker Desktop, then this host's roles{names}, and loading their models."),
             _ => new(HostAutoStartStep.Warm, $"Starting this host's roles{names} and loading their models.")

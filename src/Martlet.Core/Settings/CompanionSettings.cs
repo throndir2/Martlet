@@ -353,7 +353,7 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             return new(PersonaTextFileOutcome.Unavailable, null,
-                "Persona text could not be read. Check the selected file, access and storage, then try again.");
+                "Persona text could not be read; check the selected file and your access to it, then try again.");
         }
     }
 
@@ -385,18 +385,18 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
                     File.Delete(temporary);
             }
             return new(PersonaTextFileOutcome.Exported, null,
-                "Persona text exported. Keep the file private.");
+                "Persona text exported; keep the file private.");
         }
         catch (ContractException error) { return Invalid(error.Message); }
         catch (IOException) when (File.Exists(path))
         {
             return new(PersonaTextFileOutcome.DestinationExists, null,
-                "The export destination already exists. Choose a new file; Martlet did not overwrite it.");
+                "That file already exists, so Martlet did not overwrite it; choose a new file.");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             return new(PersonaTextFileOutcome.Unavailable, null,
-                "Persona text could not be exported. Choose a writable new file and try again.");
+                "Persona text could not be exported; choose a new file in a folder you can write to.");
         }
     }
 
@@ -421,7 +421,7 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             return Task.FromResult(new CharacterCardFileResult(PersonaTextFileOutcome.Unavailable, null,
-                "The character card could not be read. Check the selected file and access, then try again."));
+                "The character card could not be read; check the selected file and your access to it, then try again."));
         }
     }
 

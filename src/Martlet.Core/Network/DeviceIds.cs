@@ -150,6 +150,8 @@ public static class DeviceIds
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
         try
         {
+            // Only the device ID an older Martlet kept for its lip-sync host (remote_host.device_id), when nothing else names one.
+            // avatar.json's store (Martlet.Avatar.Hosting.AvatarProfileStore) is above Core, so this one field is read here.
             using var document = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "avatar.json")));
             if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("remote_host", out var remote) &&
                 remote.ValueKind == JsonValueKind.Object && Text(remote, "device_id") is { } id && IsValid(id) &&

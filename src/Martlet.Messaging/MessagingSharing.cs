@@ -130,7 +130,7 @@ public static class MessagingSharing
         }, (setting, secret, _) =>
         {
             if (Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was set up on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was set up on a newer Martlet; update this PC to use it."));
             var (telegram, whatsApp) = Unpack(secret);
             var wantTelegram = shared.TelegramBot.BotUsername.Length > 0;
             var wantWhatsApp = shared.WhatsAppNumber.PhoneNumberId.Length > 0;

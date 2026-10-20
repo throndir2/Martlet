@@ -249,7 +249,7 @@ public sealed class ConversationHistoryDesktopTests
             Assert.True(wrong.IsError);
             Assert.Equal("invalid arguments", problem);
 
-            Assert.Contains("It holds 2 conversations (2 exchanges) since ", history.Describe(MemorySettingsOn()));
+            Assert.Contains("; it holds 2 conversations (2 exchanges) since ", history.Describe(MemorySettingsOn()));
             Assert.StartsWith("Off while memory is off", history.Describe(null));
         }
         finally
@@ -305,7 +305,8 @@ public sealed class ConversationHistoryDesktopTests
                 Assert.StartsWith("▶ ", Texts(Control<ListBox>(page, "MessagesList")));
 
                 Click(page, "DeleteButton");
-                await Until(() => history.Store.Stats.Exchanges == 1);
+                // The store changes a moment before the page ends its work; until then it ignores clicks (its buttons are off).
+                await Until(() => history.Store.Stats.Exchanges == 1 && Control<Button>(page, "ShowAllButton").IsEnabled);
                 Assert.Equal(["Delete conversation"], asked);
                 Click(page, "ShowAllButton");
                 Assert.Single(list.Items);

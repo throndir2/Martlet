@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
@@ -23,8 +21,13 @@ internal static class BackupThinkingCheck
     private const string Model = "fixture-model";
     private const string Conversation = "The conversation's model answered.";
     private const string Backup = "The backup member answered.";
-    // How far past its due time the backup may be asked here: the fixture runs in real time.
-    private const double Slack = 300;
+    // How far past its due time the backup may be asked here. The fixture runs in real time, and the wait counts from the
+    // conversation's own request; choosing the member and opening its stream come after it. On a busy PC that took 500 ms.
+    // Each scenario's outcome still shows the backup was asked before the conversation's model answered (Room is longer).
+    private const double Slack = 1_000;
+    // How long after the backup's due time the conversation's model answers or fails, in the scenarios that need the backup
+    // asked first: longer than Slack, so a late ask on a busy PC doesn't change who wins.
+    private const int Room = 1_200;
 
     internal static async Task<object> RunAsync(string? scenario, int? delayMs, CancellationToken cancellation)
     {
@@ -50,14 +53,14 @@ internal static class BackupThinkingCheck
                 // The conversation's model is slow (3 s to its first words); the member answers 100 ms after it is asked.
                 "backup-wins" => await TurnAsync(delay, conversationMs: 3_000, backupMs: 100, cancellation: cancellation),
                 "conversation-wins" => await TurnAsync(delay, conversationMs: 200, backupMs: 100, cancellation: cancellation),
-                // Asked at the delay, but the conversation's model starts 400 ms later, before the member (1.5 s).
-                "late-conversation" => await TurnAsync(delay, conversationMs: delay + 400, backupMs: 1_500, cancellation: cancellation),
+                // Asked at the delay, but the conversation's model starts Room later, before the member (Room + 1 s).
+                "late-conversation" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: Room + 1_000, cancellation: cancellation),
                 // The conversation's model fails after the member was asked; the member answers.
-                "conversation-fails" => await TurnAsync(delay, conversationMs: delay + 200, backupMs: 600, conversationFails: true,
+                "conversation-fails" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: Room + 600, conversationFails: true,
                     cancellation: cancellation),
-                "no-member" => await TurnAsync(delay, conversationMs: delay + 600, backupMs: 100, noMember: true, cancellation: cancellation),
+                "no-member" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: 100, noMember: true, cancellation: cancellation),
                 // A member is chosen, but its stream can't be opened (a wrong key, a network error): a failure, not "no member".
-                "open-fails" => await TurnAsync(delay, conversationMs: delay + 600, backupMs: 100, openFails: true, cancellation: cancellation),
+                "open-fails" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: 100, openFails: true, cancellation: cancellation),
                 // A reply started early, held for 1.5 s, with only a paid cloud member that may answer: asked once it is taken.
                 "held" => await TurnAsync(delay, conversationMs: 4_000, backupMs: 100, holdMs: 1_500, paidOnly: true, cancellation: cancellation),
                 // A reply started early and let go at 1.5 s, after its member (on the home network) was asked: both stop.
@@ -104,11 +107,9 @@ internal static class BackupThinkingCheck
         bool noMember = false, int? holdMs = null, bool paidOnly = false, bool letGo = false, bool openFails = false,
         CancellationToken cancellation = default)
     {
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         var clock = Stopwatch.StartNew();
         var primary = new Fixture(Conversation, conversationMs, conversationFails, clock);
         var second = new Fixture(Backup, backupMs, false, clock);
-        var serving = Task.WhenAll(primary.ServeAsync(stop.Token), second.ServeAsync(stop.Token));
         try
         {
             var voice = new HostSpeechTarget("https://127.0.0.1:9443", "fixture-host", "sha256:" + new string('0', 64), "desktop-fixture",
@@ -142,11 +143,8 @@ internal static class BackupThinkingCheck
         }
         finally
         {
-            await stop.CancelAsync();
-            primary.Stop();
-            second.Stop();
-            try { await serving; }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await primary.DisposeAsync();
+            await second.DisposeAsync();
         }
     }
 
@@ -230,87 +228,63 @@ internal static class BackupThinkingCheck
 
     // FIXTURE, NOT AI: a Chat Completions endpoint on 127.0.0.1 that sends its headers at once and its one sentence (or, failing,
     // an error) after a set wait, and notes when the client stopped the stream before that.
-    private sealed class Fixture(string words, int wordsMs, bool fails, Stopwatch clock)
+    private sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = Listen();
+        private readonly string words;
+        private readonly int wordsMs;
+        private readonly bool fails;
+        private readonly Stopwatch clock;
+        private readonly LoopbackHttpServer server;
         private int requests;
         private double? askedMs, stoppedMs;
         private bool answered, failed;
-        internal string BaseUrl => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
 
-        private static TcpListener Listen()
+        internal Fixture(string words, int wordsMs, bool fails, Stopwatch clock)
         {
-            var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            return listener;
+            (this.words, this.wordsMs, this.fails, this.clock) = (words, wordsMs, fails, clock);
+            server = new LoopbackHttpServer(AnswerAsync);
         }
+
+        internal string BaseUrl => server.V1;
 
         internal Endpoint Report()
         {
             lock (this) return new(requests, askedMs, stoppedMs, answered, failed);
         }
 
-        internal void Stop() => listener.Stop();
-
-        internal async Task ServeAsync(CancellationToken cancellation)
+        private async Task AnswerAsync(LoopbackExchange exchange)
         {
-            while (!cancellation.IsCancellationRequested)
+            lock (this)
             {
-                using var client = await listener.AcceptTcpClientAsync(cancellation);
-                await using var stream = client.GetStream();
-                await HearingCheck.ReadRequestAsync(stream, cancellation);
-                lock (this)
-                {
-                    requests++;
-                    askedMs ??= clock.Elapsed.TotalMilliseconds;
-                }
-                // The client stopping the stream closes the connection, which ends this read.
-                var closed = Closed(stream, cancellation);
-                if (!fails)
-                    await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                        cancellation);
-                if (await Task.WhenAny(closed, Task.Delay(wordsMs, cancellation)) == closed)
-                {
-                    lock (this) stoppedMs ??= clock.Elapsed.TotalMilliseconds;
-                    continue;
-                }
-                try
-                {
-                    if (fails)
-                    {
-                        await WriteAsync(stream, "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 2\r\n" +
-                            "Connection: close\r\n\r\n{}", cancellation);
-                        lock (this) failed = true;
-                        continue;
-                    }
-                    const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-                    await WriteAsync(stream, "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"" + words + "\"},\"finish_reason\":null}]}\n\n",
-                        cancellation);
-                    await WriteAsync(stream, "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", cancellation);
-                    lock (this) answered = true;
-                }
-                catch (IOException)
-                {
-                    lock (this) stoppedMs ??= clock.Elapsed.TotalMilliseconds;
-                }
+                requests++;
+                askedMs ??= clock.Elapsed.TotalMilliseconds;
             }
-        }
-
-        private static async Task Closed(NetworkStream stream, CancellationToken cancellation)
-        {
-            var buffer = new byte[256];
+            // The client stopping the stream closes the connection, which ends this read.
+            var closed = exchange.ClosedAsync();
+            if (!fails) await exchange.StartAsync();
+            if (await Task.WhenAny(closed, Task.Delay(wordsMs, exchange.Cancellation)) == closed)
+            {
+                lock (this) stoppedMs ??= clock.Elapsed.TotalMilliseconds;
+                return;
+            }
             try
             {
-                while (await stream.ReadAsync(buffer, cancellation) > 0) { }
+                if (fails)
+                {
+                    await exchange.RespondAsync(500, "{}");
+                    lock (this) failed = true;
+                    return;
+                }
+                await exchange.WriteAsync(FixtureChat.Content(words));
+                await exchange.WriteAsync(FixtureChat.Finish());
+                lock (this) answered = true;
             }
-            catch (IOException) { }
-            catch (ObjectDisposedException) { }
+            catch (IOException)
+            {
+                lock (this) stoppedMs ??= clock.Elapsed.TotalMilliseconds;
+            }
         }
 
-        private static async Task WriteAsync(NetworkStream stream, string text, CancellationToken cancellation)
-        {
-            await stream.WriteAsync(Encoding.UTF8.GetBytes(text), cancellation);
-            await stream.FlushAsync(cancellation);
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 }

@@ -47,10 +47,10 @@ public sealed class HostPairingChoiceTests
     {
         var forgotten = HostPairingCredential.MissingText("aibox02-host", false, CredentialError.Missing);
         Assert.Contains("isn't paired with it now", forgotten, StringComparison.Ordinal);
-        Assert.Contains("Add aibox02-host again (Devices › Add a computer)", forgotten, StringComparison.Ordinal);
+        Assert.Contains("until you add aibox02-host again (Devices › Add a computer)", forgotten, StringComparison.Ordinal);
 
         var lost = HostPairingCredential.MissingText("aibox02-host", true, CredentialError.Missing);
         Assert.Contains("can't be read from Windows Credential Manager (Missing)", lost, StringComparison.Ordinal);
-        Assert.Contains("Pair aibox02-host again", lost, StringComparison.Ordinal);
+        Assert.Contains("until you pair aibox02-host again", lost, StringComparison.Ordinal);
     }
 }

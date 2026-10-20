@@ -74,7 +74,7 @@ internal static class OptionalExtras
         Off(CompanionTab.Singing, !active),
         new("Role", "Martlet's Singing role",
             "ACE-Step 1.5 writes the music and SoulX-Singer sings it in the voice Martlet speaks with, on an NVIDIA graphics card on " +
-            "this PC or another of your computers. It frees the card when idle.")
+            "this PC or another of your computers.")
         {
             InUse = active,
             Badge = active ? "in use" : readySomewhere ? "ready" : null,
@@ -93,7 +93,7 @@ internal static class OptionalExtras
     internal static IReadOnlyList<PickerOption> VoiceMatches(Martlet.Core.Singing.SongVoiceMatch chosen) =>
     [
         new(nameof(Martlet.Core.Singing.SongVoiceMatch.SoulX), "SoulX-Singer",
-            "Keeps the tune and the words. It is set up with Singing.")
+            "Keeps the tune and the words, and it is set up with Singing.")
         {
             InUse = chosen == Martlet.Core.Singing.SongVoiceMatch.SoulX,
             Badge = chosen == Martlet.Core.Singing.SongVoiceMatch.SoulX ? "in use" : "recommended",
@@ -103,7 +103,7 @@ internal static class OptionalExtras
                 new("license", "License", "Apache-2.0: any use", "Any use"))
         },
         new(nameof(Martlet.Core.Singing.SongVoiceMatch.VevoSing), "VevoSing",
-            "A little closer to the voice and cleaner, but it may drift off-key. Personal, non-commercial use only.")
+            "A little closer to the voice and cleaner, but it may drift off-key; personal, non-commercial use only.")
         {
             InUse = chosen == Martlet.Core.Singing.SongVoiceMatch.VevoSing,
             Badge = chosen == Martlet.Core.Singing.SongVoiceMatch.VevoSing ? "in use" : null,
@@ -115,7 +115,7 @@ internal static class OptionalExtras
         .. new[] { Martlet.Core.Singing.SongVoiceMatch.Vevo2, Martlet.Core.Singing.SongVoiceMatch.SeedVc }.Select(match =>
         {
             var addOn = Martlet.Core.Singing.SingingModels.AddOn(match)!;
-            return new PickerOption(match.ToString(), addOn.Name, addOn.About + (addOn.NonCommercial ? " Personal, non-commercial use only." : ""))
+            return new PickerOption(match.ToString(), addOn.Name, addOn.NonCommercial ? addOn.About.TrimEnd('.') + "; personal, non-commercial use only." : addOn.About)
             {
                 InUse = chosen == match,
                 Badge = chosen == match ? "in use" : null,
@@ -194,7 +194,7 @@ internal static class OptionalExtras
                 new("runs-on", "Runs on", "the processor of this PC or another of your computers, in Docker: no graphics card needed",
                     "Processor (Docker)"),
                 new("speed", "Read time", "about 2 s for a 1920 x 1080 screenshot and 4 s for a 4K one (measured on a 24-thread processor)",
-                    "2-4 s a read", "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
+                    "2-4 s a read", "How long one screenshot takes to read; replies never wait for it.")
             ],
             new("download", "Download", "about 700 MB of packages and models", null),
             new("languages", "Languages", "Chinese, English and Japanese letters, digits and symbols (PaddleOCR PP-OCRv5)", null),
@@ -222,7 +222,7 @@ internal static class OptionalExtras
                 new("cpu", "Processor", "4 threads while it reads", "4 threads"),
                 new("download", "Download", "about 200 MB of packages and models", null),
                 new("speed", "Read time", "about 0.5 to 1 s a screenshot (0.9 s measured on a 24-thread processor)", "0.5-1 s a read",
-                    "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
+                    "How long one screenshot takes to read; replies never wait for it.")
             ],
             new("languages", "Languages", "Chinese and English letters, digits and symbols (PaddleOCR PP-OCRv4)", null),
             new("game-fonts", "Game fonts", "good: often better than Windows OCR", null),
@@ -238,7 +238,7 @@ internal static class OptionalExtras
     [
         Off(CompanionTab.Reading, saved == Martlet.Core.Reading.ReadingPlace.Off),
         new(nameof(Martlet.Core.Reading.ReadingPlace.ThisPc), "Windows OCR on this PC",
-            "Built into Windows. It reads a screenshot on this PC's processor in a fraction of a second, nothing leaves this PC, " +
+            "Built into Windows: it reads a screenshot on this PC's processor in a fraction of a second, nothing leaves this PC, " +
             "and it's free.")
         {
             InUse = saved == Martlet.Core.Reading.ReadingPlace.ThisPc,
@@ -249,7 +249,7 @@ internal static class OptionalExtras
                     new("runs-on", "Runs on", "the processor of this PC, inside Windows: no graphics card needed", "Processor (Windows)"),
                     new("download", "Download", "none: it is built into Windows", "No download"),
                     new("speed", "Read time", "about 140 ms for a full-size 1920 x 1080 screenshot", "0.14 s a read",
-                        "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
+                        "How long one screenshot takes to read; replies never wait for it.")
                 ],
                 new("download", "Download", "none: it is built into Windows", "No download"),
                 new("languages", "Languages", "your Windows languages that include text recognition", null),
@@ -258,7 +258,7 @@ internal static class OptionalExtras
                 new("data", "Your data", "nothing leaves this PC", null))
         },
         new(nameof(Martlet.Core.Reading.ReadingPlace.Host), "Martlet's Reading role",
-            "PP-OCRv5 or RapidOCR in Docker, on this PC or another of your computers. The most accurate, also with game fonts and " +
+            "PP-OCRv5 or RapidOCR in Docker, on this PC or another of your computers: the most accurate, also with game fonts and " +
             "small text on 4K screens.")
         {
             InUse = saved == Martlet.Core.Reading.ReadingPlace.Host,

@@ -204,9 +204,9 @@ public sealed class SharedHostsTests
         Assert.False(bob.Hosts.Single(h => h.HostId == "gpu-box").ProviderReady);
         Assert.Equal("discord-42", bob.Key);
         Assert.Equal("authentik-a_b_c", FriendsOverview.Key("authentik", "a b@c"));
-        Assert.StartsWith("You share 1 host with 1 friend; 1 person asked to use a host.", FriendsOverview.Status(friends, 2, 3), StringComparison.Ordinal);
+        Assert.StartsWith("You share 1 host with 1 friend; 1 person asked to use a host;", FriendsOverview.Status(friends, 2, 3), StringComparison.Ordinal);
         Assert.EndsWith("1 host didn't answer.", FriendsOverview.Status(friends, 2, 3), StringComparison.Ordinal);
-        Assert.StartsWith("You share no host with a friend yet.", FriendsOverview.Status([], 1, 1), StringComparison.Ordinal);
+        Assert.StartsWith("You share no host with a friend yet:", FriendsOverview.Status([], 1, 1), StringComparison.Ordinal);
         Assert.StartsWith("1 person asked to use one of your hosts", FriendsOverview.Status([bob], 1, 1), StringComparison.Ordinal);
 
         using var scope = new AvatarHostingTests.Scope();

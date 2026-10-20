@@ -205,7 +205,7 @@ internal sealed partial class LiveConversationController
                     try
                     {
                         await utterance.Authorization.ValidateSettingsAsync(token).ConfigureAwait(false);
-                        speech = await owner.CaptureSpeechAsync(utterance).ConfigureAwait(false);
+                        speech = await owner.turnCapture.CaptureSpeechAsync(utterance).ConfigureAwait(false);
                     }
                     catch (LiveActionException error) when (error.Code is "conversation.revoked" or "conversation.expired")
                     {
@@ -360,13 +360,13 @@ internal sealed partial class LiveConversationController
             {
                 await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                 BoundedWaveAudio? audio;
-                try { audio = owner.Screen(utterance, speech); }
+                try { audio = owner.turnCapture.Screen(utterance, speech); }
                 finally { CryptographicOperations.ZeroMemory(speech); }
                 if (audio is null) return;
                 if (utterance.Voiceprint is not null) utterance.LatencyTimeline?.Mark("Voice ID");
-                if (Hearable(audio) && GoesStraight(listening.Options, utterance))
+                if (TurnCapture.Hearable(audio) && GoesStraight(listening.Options, utterance))
                 {
-                    utterance.Heard = await owner.HeardAsync(utterance, token).ConfigureAwait(false);
+                    utterance.Heard = await owner.turnCapture.HeardAsync(utterance, token).ConfigureAwait(false);
                     if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
                     utterance.Recording = audio;
                     // A quick check while it was said over Martlet may already have decided that it stops Martlet.
@@ -392,7 +392,7 @@ internal sealed partial class LiveConversationController
                 if (pc) Volatile.Write(ref owner.pcSession.pcTranscribing, utterance);
                 else Volatile.Write(ref transcribing, utterance);
                 TranscriptionResult? result;
-                try { result = await owner.TranscribeAsync(utterance, audio, pc ? owner.pcSession.pcTranscription : listenTranscription, linked.Token).ConfigureAwait(false); }
+                try { result = await owner.turnCapture.TranscribeAsync(utterance, audio, pc ? owner.pcSession.pcTranscription : listenTranscription, linked.Token).ConfigureAwait(false); }
                 finally
                 {
                     if (pc) Interlocked.CompareExchange(ref owner.pcSession.pcTranscribing, null, utterance);
@@ -415,7 +415,7 @@ internal sealed partial class LiveConversationController
                         ErrorLog.Info($"Always listening ignored what it heard: {ignored.Reason} ({ignored.Kind}" +
                             (utterance.Voiced is { } voiced ? $", {voiced.TotalMilliseconds:0} ms of voice" : "") +
                             (utterance.Speech is { } spoken ? $" in {spoken.TotalMilliseconds:0} ms of speech" : "") +
-                            (result.Evidence is { } evidence ? ", " + Describe(evidence) : "") + $", word check {options.WordCheck}).");
+                            (result.Evidence is { } evidence ? ", " + TurnCapture.Describe(evidence) : "") + $", word check {options.WordCheck}).");
                     }
                     utterance.Publish(new("listen.ignored", Finished: true));
                     return;
@@ -431,10 +431,10 @@ internal sealed partial class LiveConversationController
                 // the note quotes everything that was said.
                 if (!options.Pc && !owner.StopSongIfAsked(utterance, result.Text, words, options.WordCheck) && utterance.StoppedSong)
                     owner.singing?.Heard(result.Text ?? "");
-                utterance.Heard = await owner.HeardAsync(utterance, linked.Token).ConfigureAwait(false);
+                utterance.Heard = await owner.turnCapture.HeardAsync(utterance, linked.Token).ConfigureAwait(false);
                 if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
                 var heardBy = utterance.Authorization.Configuration;
-                if (listening.Options.HearsWith(owner.senseSession.RecordingStaysOnThisPc(heardBy)) && owner.senseSession.ThinkingTakesVoice(heardBy) && Hearable(audio, "Thinking"))
+                if (listening.Options.HearsWith(owner.senseSession.RecordingStaysOnThisPc(heardBy)) && owner.senseSession.ThinkingTakesVoice(heardBy) && TurnCapture.Hearable(audio, "Thinking"))
                     utterance.Recording = audio;
                 utterance.Publish(new("listen.heard", Finished: true));
             }
@@ -487,7 +487,7 @@ internal sealed partial class LiveConversationController
                 var started = owner.clock.GetTimestamp();
                 Volatile.Write(ref transcribing, utterance);
                 TranscriptionResult? result;
-                try { result = await owner.TranscribeAsync(utterance, audio, listenTranscription, linked.Token).ConfigureAwait(false); }
+                try { result = await owner.turnCapture.TranscribeAsync(utterance, audio, listenTranscription, linked.Token).ConfigureAwait(false); }
                 finally { Interlocked.CompareExchange(ref transcribing, null, utterance); }
                 if (result is null)
                 {

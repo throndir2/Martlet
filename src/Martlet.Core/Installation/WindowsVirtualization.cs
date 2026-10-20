@@ -99,17 +99,17 @@ public sealed partial record WindowsVirtualization(bool? Firmware, bool? Hypervi
             ? "Ask the administrator of this virtual machine's host to enable nested virtualization, then check again."
             : FeaturesBeforeFirmware
                 ? "Let Martlet turn on the Windows features and WSL that Docker Desktop needs (administrator approval), then restart into this PC's " +
-                  "firmware settings (UEFI/BIOS) and turn on Intel VT-x or AMD SVM. That one restart finishes both."
+                  "firmware settings (UEFI/BIOS) and turn on Intel VT-x or AMD SVM; that one restart finishes both."
                 : "Turn on Intel VT-x or AMD SVM in this PC's firmware settings (UEFI/BIOS), then check again."
         : RestartRequired
-            ? "Restart Windows to finish setting up virtualization, then let Martlet continue setup. Restarting Docker Desktop alone cannot finish this Windows change."
+            ? "Restart Windows to finish setting up virtualization, then let Martlet continue setup (restarting only Docker Desktop can't finish this Windows change)."
         : NeedsChanges
-            ? "Let Martlet set up the Windows features and WSL that Docker Desktop needs. Windows asks for administrator approval and may need a restart."
+            ? "Let Martlet set up the Windows features and WSL that Docker Desktop needs (Windows asks for administrator approval and may need a restart)."
         : RuntimeUnavailable
-            ? "Restart Windows, then check again. If WSL 2 or its Windows services are still unavailable, repair Virtual Machine Platform and WSL through Windows setup; do not reset Docker's data."
+            ? "Restart Windows, then check again; if WSL 2 or its Windows services are still unavailable, repair Virtual Machine Platform and WSL through Windows setup, but don't reset Docker's data."
         : Ready
-            ? "Windows prerequisites are available. Start Docker Desktop and wait for its engine to answer."
-            : "Some Windows checks are unavailable. Check Docker Desktop's own error before changing Windows or firmware settings.";
+            ? "Windows prerequisites are available: start Docker Desktop and wait for its engine to answer."
+            : "Some Windows checks are unavailable, so check Docker Desktop's own error before you change Windows or firmware settings.";
 
     /// <summary>What stops Docker Desktop, in plain words; empty when nothing known does.</summary>
     public IReadOnlyList<string> Problems()
@@ -349,9 +349,9 @@ public sealed partial record WindowsVirtualization(bool? Firmware, bool? Hypervi
         "return ($c -in 3010,1641,-2147021886 -or $o -match 'until the system is rebooted')};" +
         "$m=[version]'" + MinimumWsl + "';$v=V;" +
         "if(-not $v -or $v -lt $m){" +
-        "if(-not $v){Say 'Installing WSL from Microsoft (wsl --install --no-distribution). This can take a few minutes...';" +
+        "if(-not $v){Say 'Installing WSL from Microsoft with wsl --install --no-distribution (this can take a few minutes)...';" +
         "if(W @('--install','--no-distribution')){$restart=$true;$wr=$true};$v=V};" +
-        "if(-not $v -or $v -lt $m){Say 'Updating WSL from Microsoft (wsl --update). This can take a few minutes...';" +
+        "if(-not $v -or $v -lt $m){Say 'Updating WSL from Microsoft with wsl --update (this can take a few minutes)...';" +
         "if(W @('--update')){$restart=$true;$wr=$true};$v=V};" +
         "if($v -and $v -ge $m){Say \"WSL $v is installed.\"};" +
         "if($wr){Say 'WSL says Windows must restart to finish installing it.'}" +

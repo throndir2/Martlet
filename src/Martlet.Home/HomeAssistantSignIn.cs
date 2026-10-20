@@ -36,7 +36,7 @@ public static class HomeAssistantSignIn
         try { code = await ReceiveCodeAsync(listener, state, timeout.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new HomeAssistantException(HomeAssistantFailure.Timeout, "The sign-in wasn't finished within 5 minutes. Try again.");
+            throw new HomeAssistantException(HomeAssistantFailure.Timeout, "The sign-in wasn't finished within 5 minutes: try again.");
         }
         var session = await client.ExchangeCodeAsync(baseUri, clientId, code, cancellationToken).ConfigureAwait(false);
         return await client.MintTokenAsync(baseUri, session, clientName, cancellationToken).ConfigureAwait(false);
@@ -56,13 +56,13 @@ public static class HomeAssistantSignIn
             if (query is null || !target!.StartsWith("/signed-in", StringComparison.Ordinal))
                 message = "This address belongs to Martlet's Home Assistant sign-in.";
             else if (query.GetValueOrDefault("state") != state)
-                message = "This sign-in doesn't match the one Martlet started. Start it again from Martlet.";
+                message = "This sign-in doesn't match the one Martlet started: start it again from Martlet.";
             else if (query.GetValueOrDefault("code") is { Length: > 0 and <= 512 } found)
             {
                 code = found;
-                message = "Signed in. You can close this tab and go back to Martlet.";
+                message = "Signed in: you can close this tab and go back to Martlet.";
             }
-            else message = "Home Assistant didn't sign you in. Go back to Martlet and try again.";
+            else message = "Home Assistant didn't sign you in: go back to Martlet and try again.";
             var html = "<!doctype html><meta charset=\"utf-8\"><title>Martlet</title>" +
                 "<body style=\"font-family:Segoe UI,sans-serif;margin:3em\"><h2>Martlet</h2><p>" + WebUtility.HtmlEncode(message) + "</p>";
             var body = Encoding.UTF8.GetBytes(html);

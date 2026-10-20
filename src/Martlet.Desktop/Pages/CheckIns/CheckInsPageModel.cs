@@ -42,15 +42,15 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
         var count = $"{on} check-in{(on == 1 ? " is" : "s are")} on";
         if (!services.IsCompanion) return $"{count}, but check-ins run only on a companion PC, and this PC is a Martlet host.";
         if (!services.CanTalk) return $"{count}, but they can't run: Martlet can't talk on this PC.";
-        if (services.UsesFixture) return $"{count}. FIXTURE - NOT AI: {MainWindow.CheckInFixtureVariable} answers them, not the Thinking pool.";
+        if (services.UsesFixture) return $"{count} (FIXTURE - NOT AI: {MainWindow.CheckInFixtureVariable} answers them, not the Thinking pool).";
         var pool = services.Pool!;
         if (pool.Find(ThinkingJobKind.CheckIn) is not { } member)
-            return $"{count}, but they wait: the Thinking pool has no member that can take them. Add one on Thinking pool.";
+            return $"{count}, but they wait: the Thinking pool has no member that can take them, so add one on Thinking pool.";
         var unable = All.Where(c => c.On && !pool.CanRun(ThinkingJobKind.CheckIn, c.Needs, c.RunsOn)).ToArray();
-        return $"{count}. They run on the Thinking pool ({member.Name}{(member.Model is { } model ? ", " + model : "")} first), never on the " +
-            "conversation's own Thinking model." + (unable.Length == 0 ? ""
-                : $" {string.Join(", ", unable.Select(c => c.Name))} {(unable.Length == 1 ? "waits" : "wait")} for a member that can take " +
-                  $"{(unable.Length == 1 ? CheckIns.Describe(unable[0].Needs) : "what they need")}.");
+        return $"{count} and run{(on == 1 ? "s" : "")} on the Thinking pool ({member.Name}{(member.Model is { } model ? ", " + model : "")} " +
+            "first), never on the conversation's own Thinking model" + (unable.Length == 0 ? ""
+                : $"; {string.Join(", ", unable.Select(c => c.Name))} {(unable.Length == 1 ? "waits" : "wait")} for a member that can take " +
+                  $"{(unable.Length == 1 ? CheckIns.Describe(unable[0].Needs) : "what they need")}") + ".";
     }
 
     /// <summary>The Now card's second line (CheckInsLast): the last check-in that ran since Martlet started.</summary>
@@ -63,16 +63,16 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
     {
         if (All.FirstOrDefault(c => c.Id == id) is not { } checkIn) return "";
         var state = services.RunState(id);
-        var now = state.Running ? "Checking now."
-            : !checkIn.On ? "Off."
-            : state.Wait is { Length: > 0 } wait ? $"Waits: {wait}."
-            : "Runs at the next chance.";
+        var now = state.Running ? "Checking now"
+            : !checkIn.On ? "Off"
+            : state.Wait is { Length: > 0 } wait ? $"Waits: {wait}"
+            : "Runs at the next chance";
         if (state.Fired is { } fired && !state.TriggeredRunning)
-            now += $" A trigger fired at {fired.At.ToLocalTime():t} ({fired.What}).";
-        if (state.Last is not { } last) return now + " It hasn't run since Martlet started.";
-        return $"{now} Last at {last.At.ToLocalTime():t}{(last.Member is { } member ? " on " + member : "")}" +
-            $"{(last.Trigger is { } trigger ? $" (started by {trigger})" : "")}: {last.Result}. " +
-            (last.Tools.Count > 0 ? $"Tools it called: {CheckIns.ToolsText(last.Tools)}. " : "") +
+            now += $" (a trigger fired at {fired.At.ToLocalTime():t}: {fired.What})";
+        if (state.Last is not { } last) return now + "; it hasn't run since Martlet started.";
+        return $"{now}; last at {last.At.ToLocalTime():t}{(last.Member is { } member ? " on " + member : "")}" +
+            $"{(last.Trigger is { } trigger ? $" (started by {trigger})" : "")}: {last.Result}; " +
+            (last.Tools.Count > 0 ? $"tools it called: {CheckInPrompts.ToolsText(last.Tools)}; " : "") +
             $"{state.Runs} run{(state.Runs == 1 ? "" : "s")} since Martlet started, {state.Acted} acted on.";
     }
 
@@ -173,11 +173,11 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
         if (saved.Custom.Count >= CheckIns.MaximumCustom || saved.NewId() is not { } newId)
         {
             services.ShowStatus($"{current.Name} not copied: you have {CheckIns.MaximumCustom} check-ins of your own, the most Martlet " +
-                "keeps. Remove one first.");
+                "keeps, so remove one first.");
             return;
         }
         var name = current.Name + " (copy)";
-        var task = CheckIns.Template(current, services.Prompts) ?? "";
+        var task = CheckInPrompts.Template(current, services.Prompts) ?? "";
         var copy = new CustomCheckIn
         {
             Id = newId, Name = name.Length > CheckIns.MaximumNameCharacters ? name[..CheckIns.MaximumNameCharacters] : name, On = false,
@@ -189,7 +189,7 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
             Script = current.Script ?? "", Triggers = current.Triggers, FromHour = current.FromHour, UntilHour = current.UntilHour,
             MostPerHour = current.MostPerHour, ToolSets = current.ToolSets, RunsOn = current.RunsOn
         };
-        if (services.Save(saved.With(copy), $"Copied {current.Name} as {copy.Name}, a check-in of your own. It's off until you turn it on."))
+        if (services.Save(saved.With(copy), $"Copied {current.Name} as {copy.Name}, a check-in of your own that stays off until you turn it on."))
             services.Redraw();
     }
 
@@ -203,7 +203,7 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
             Id = id, Name = "My check-in", On = false, EveryMinutes = 30, Task = "",
             Facts = CheckInFacts.Conversation | CheckInFacts.Persona, Outcome = CheckInOutcome.Note
         };
-        if (services.Save(saved.With(custom), "Added a check-in. Write what it checks, then turn it on.")) services.Redraw();
+        if (services.Save(saved.With(custom), "Added a check-in: write what it checks, then turn it on.")) services.Redraw();
     }
 
     /// <summary>Remove: takes your own check-in <paramref name="id"/> out, forgets its runs, then draws the page again.</summary>

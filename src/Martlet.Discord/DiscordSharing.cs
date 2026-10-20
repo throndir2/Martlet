@@ -137,7 +137,7 @@ public static class DiscordSharing
         }, (setting, secret, _) =>
         {
             if (Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was set up on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was set up on a newer Martlet; update this PC to use it."));
             var token = UnpackToken(secret);
             if (shared.ApplicationId != 0 && token is null) return Task.FromResult(SharedApply.Waiting("Its bot token hasn't reached this PC yet."));
             var local = DiscordPreferences.Load(directory);

@@ -42,14 +42,14 @@ public sealed class CompanionWarmupTests
     public void Warmup_advice_and_progress_follow_the_model()
     {
         IReadOnlyList<WarmupItem> thinking = [new(WarmupPart.Thinking, "gemma4:e4b", TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20))];
-        Assert.Equal("You can talk or type now. The first reply starts once the model has loaded.", CompanionWarmup.Advice(thinking, true));
+        Assert.Equal("You can talk or type now; the first reply starts once the model has loaded.", CompanionWarmup.Advice(thinking, true));
         Assert.Equal("Martlet answers once the model has loaded.", CompanionWarmup.Advice(thinking, false));
         Assert.Equal(0.5, CompanionWarmup.Progress(thinking));
         Assert.Equal(0.95, CompanionWarmup.Progress([new(WarmupPart.Thinking, "m", TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(20))]));
         Assert.Null(CompanionWarmup.Progress([new(WarmupPart.Thinking, "m", TimeSpan.FromSeconds(5))]));
         Assert.Equal("Martlet hears you once it has loaded.",
             CompanionWarmup.Advice([new(WarmupPart.Listening, "Parakeet", TimeSpan.FromSeconds(2))], false));
-        Assert.Equal("Warmed up in 18 s. Martlet is ready to talk.", CompanionWarmup.Done(TimeSpan.FromSeconds(18.4)));
+        Assert.Equal("Warmed up in 18 s, and Martlet is ready to talk.", CompanionWarmup.Done(TimeSpan.FromSeconds(18.4)));
     }
 
     [Fact]

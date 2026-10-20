@@ -33,6 +33,18 @@ public static class CharacterSharedSections
         () => CharacterReactionChanges.Load(directory).Count == 0, (value, token) => CharacterReactionChanges.ReplaceAllAsync(directory, value, token),
         hooks, defaultValue: () => CharacterReactionChanges.Share(Path.Combine(directory, AccountWorkingCopy.DirectoryName, "no-reaction-changes")));
 
+    /// <summary>Every model's emotes and motions (character-actions.json), so a model is named once for all computers.</summary>
+    public static ISharedSection Actions(string directory, Hooks? hooks = null) => Section("character-actions", "Emotes and motions",
+        CharacterActions.Path(directory), () => CharacterActions.Share(directory), () => !CharacterActions.HasAny(directory),
+        async (value, token) => { await CharacterActions.ReplaceAllAsync(directory, value, token).ConfigureAwait(false); return true; }, hooks, defaultValue: null);
+
+    /// <summary>Each persona's touch temperament, each person's: an account that never chose starts with none.</summary>
+    public static ISharedSection TouchTemperaments(string directory, Hooks? hooks = null) => Section(Martlet.Core.Sync.SettingScopes.TouchTemperament,
+        "Touch temperament", CharacterTouchTemperaments.Path(directory), () => CharacterTouchTemperaments.Share(directory),
+        () => !CharacterTouchTemperaments.HasAny(directory),
+        async (value, token) => { await CharacterTouchTemperaments.ReplaceAllAsync(directory, value, token).ConfigureAwait(false); return true; }, hooks,
+        defaultValue: () => CharacterTouchTemperaments.Share(Path.Combine(directory, AccountWorkingCopy.DirectoryName, "no-temperaments")));
+
     /// <summary>The household's per-model sections, then each person's.</summary>
     public static IReadOnlyList<ISharedSection> All(string directory, Hooks? touchZones = null, Hooks? eyes = null, Hooks? reactionChanges = null) =>
         [TouchZones(directory, touchZones), Eyes(directory, eyes), VRoidHub(directory), ReactionChanges(directory, reactionChanges)];
@@ -51,9 +63,9 @@ public static class CharacterSharedSections
             try
             {
                 if (!await replace(setting.Value, token).ConfigureAwait(false))
-                    return SharedApply.Waiting("It was saved by a newer Martlet. Update this PC to use it.");
+                    return SharedApply.Waiting("It was saved by a newer Martlet; update this PC to use it.");
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException or System.Text.Json.JsonException)
             {
                 return SharedApply.Waiting("It couldn't be saved on this PC: " + error.Message);
             }

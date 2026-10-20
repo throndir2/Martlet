@@ -85,7 +85,7 @@ internal sealed partial class McpServer
             "edits on both sides (different and the same setting; the later edit wins), a host that missed a change, a stale copy, a " +
             "newer Martlet's setting, a Parakeet model a new computer lacks, a new computer, the Thinking fallback and its key, lorebooks, " +
             "no keys in desktop files, an unsigned request refused, and the shared files (keeping voice clips, touch zones, VRoid Hub credits, " +
-            "Discord with its bot token, Telegram with its token) going from one desktop to another while running each bot stays on the first. Loopback only; the folder is deleted and the vault untouched.", new { },
+            "Discord with its bot token, Telegram with its token) going from one desktop to another while running each bot stays on the first, and the Vision list moved from pools-local.json with its API key, a check-in without its script and Chatterbox's style. A simulated Linux companion (Martlet.Companion's settings, guardrails, paired hosts and sync) takes a desktop's Thinking route, key and personality, keeps its push-to-talk key and character file, shares a persona edit back to the desktop and keeps its own listening, with the reason, when Parakeet is shared. Loopback only; the folder is deleted and the vault untouched.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "settings")),
         Tool("prompts_status", "Read Companion > Prompts from a data directory's settings.json: every internal prompt Martlet sends " +
             "to the Thinking model (id, group, title, placeholders) and whether it uses the built-in text, is edited or is emptied " +

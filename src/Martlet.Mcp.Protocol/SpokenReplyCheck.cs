@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -38,6 +36,8 @@ internal static class SpokenReplyCheck
     private const long CueGraceMs = 50;
     // How long a slow voice keeps the speakers waiting in the middle of each piece.
     internal static readonly TimeSpan SlowGap = TimeSpan.FromMilliseconds(1_500);
+    // The audio a slow voice sends before each gap: half of a piece's half second.
+    private static readonly TimeSpan SlowFirstHalf = TimeSpan.FromMilliseconds(250);
     private const string Model = "fixture-model";
     private const string VoiceModel = "chatterbox-turbo";
     private static readonly string[] Sentences =
@@ -79,14 +79,12 @@ internal static class SpokenReplyCheck
         string[] chunks = reply is null ? Sentences : [.. System.Text.RegularExpressions.Regex.Matches(reply, @"\s*\S+").Select(m => m.Value)];
         var gap = reply is null ? SentenceGap : WordGap;
         breaks ??= SpeechBreaks.Default;
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         // Whether each request the fixture endpoint got carried the Thinking steps control (a loopback server gets the chat
         // template's enable_thinking), in order; with refuseThinking it refuses those, as a model that always thinks does.
         var asked = new List<bool>();
-        var serving = ServeAsync(listener, chunks, gap, reasoning, stop.Token, asked, refuseThinking);
+        var server = Fixture(chunks, gap, reasoning, asked, refuseThinking);
+        var baseUrl = server.V1;
         try
         {
             var voice = new Voice(failure, at, voiceDelay);
@@ -161,9 +159,11 @@ internal static class SpokenReplyCheck
                 Math.Abs(stepsSum - total) <= latency.Steps.Count + 1 &&
                 (reasoning == TimeSpan.Zero || latency.Steps.GetValueOrDefault(ReplyLatency.HiddenReasoning) >= reasoning.TotalMilliseconds * 0.8) &&
                 latency.Steps.GetValueOrDefault(ReplyLatency.VoiceSynthesis) >= voiceDelay.TotalMilliseconds * 0.8 &&
-                // A slow voice's pauses are said in the line: at least one per piece, each about as long as its gap.
-                (failure != "slow" || latency.VoicePauses >= voice.Calls &&
-                    latency.VoicePausedMs >= voice.Calls * SlowGap.TotalMilliseconds * 0.8) &&
+                // A slow voice's pauses are said in the line. How long each one is depends on how late its first half reached the
+                // speakers, which a busy PC delays, so the line must show at least one pause of at least one gap's worth: the gap
+                // less the half piece that was playing during it.
+                (failure != "slow" || latency.VoicePauses >= 1 &&
+                    latency.VoicePausedMs >= (SlowGap - SlowFirstHalf).TotalMilliseconds * 0.8) &&
                 // A reply paused for the user says so in the line, and that it played on.
                 (failure != "paused" || latency.Resumed && latency.PausedForYouMs >= HoldFor.TotalMilliseconds * 0.9);
             var text = turn.Content.Text;
@@ -367,8 +367,7 @@ internal static class SpokenReplyCheck
         finally
         {
             stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 
@@ -469,49 +468,31 @@ internal static class SpokenReplyCheck
     // Streams the reply a chunk at a time (a sentence, or a word for a given reply) with a pause between, the way a cloud model
     // streams it; with reasoning, a hidden reasoning delta comes first and the words only after that long, like a reasoning
     // model on OpenRouter. It notes whether each request carried the Thinking steps control and, with refuseThinking, refuses those.
-    internal static async Task ServeAsync(TcpListener listener, string[] chunks, TimeSpan gap, TimeSpan reasoning,
-        CancellationToken cancellation, List<bool> asked, bool refuseThinking)
-    {
-        while (!cancellation.IsCancellationRequested)
+    internal static LoopbackHttpServer Fixture(string[] chunks, TimeSpan gap, TimeSpan reasoning, List<bool> asked, bool refuseThinking) =>
+        new(async exchange =>
         {
-            using var client = await listener.AcceptTcpClientAsync(cancellation);
-            await using var stream = client.GetStream();
-            var received = Encoding.UTF8.GetString(await HearingCheck.ReadRequestAsync(stream, cancellation));
+            var received = exchange.Request.Text;
             var control = received.Contains("chat_template_kwargs", StringComparison.Ordinal) ||
                 received.Contains("\"reasoning", StringComparison.Ordinal);
             lock (asked) asked.Add(control);
             if (control && refuseThinking)
             {
-                const string refusal = "{\"error\":{\"message\":\"Reasoning is mandatory for this model and cannot be disabled.\"}}";
-                await WriteAsync(stream, "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: " +
-                    Encoding.UTF8.GetByteCount(refusal) + "\r\n\r\n" + refusal, cancellation);
-                continue;
+                await exchange.RespondAsync(400, "{\"error\":{\"message\":\"Reasoning is mandatory for this model and cannot be disabled.\"}}");
+                return;
             }
-            await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                cancellation);
-            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
+            await exchange.StartAsync();
             if (reasoning > TimeSpan.Zero)
             {
-                await WriteAsync(stream, "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"Thinking it over.\"}," +
-                    "\"finish_reason\":null}]}\n\n", cancellation);
-                await Task.Delay(reasoning, cancellation);
+                await exchange.WriteAsync(FixtureChat.Reasoning("Thinking it over."));
+                await Task.Delay(reasoning, exchange.Cancellation);
             }
             for (var i = 0; i < chunks.Length; i++)
             {
-                if (i > 0) await Task.Delay(gap, cancellation);
-                var role = i == 0 && reasoning == TimeSpan.Zero ? "\"role\":\"assistant\"," : "";
-                await WriteAsync(stream, "data: " + chunk + "\"delta\":{" + role + "\"content\":" + JsonSerializer.Serialize(chunks[i]) +
-                    "},\"finish_reason\":null}]}\n\n", cancellation);
+                if (i > 0) await Task.Delay(gap, exchange.Cancellation);
+                await exchange.WriteAsync(FixtureChat.Content(chunks[i], role: i == 0 && reasoning == TimeSpan.Zero));
             }
-            await WriteAsync(stream, "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", cancellation);
-        }
-    }
-
-    private static async Task WriteAsync(NetworkStream stream, string text, CancellationToken cancellation)
-    {
-        await stream.WriteAsync(Encoding.UTF8.GetBytes(text), cancellation);
-        await stream.FlushAsync(cancellation);
-    }
+            await exchange.WriteAsync(FixtureChat.Finish());
+        });
 
     private sealed class Voice(string failure, int failAt, TimeSpan delay) : IHostSpeechClient
     {

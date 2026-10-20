@@ -133,7 +133,7 @@ public partial class MainWindow
         var kept = await SyncHomeShareAsync(value);
         if (kept == 0 || homeShared?.Revision != revision)
         {
-            if (!quiet) ActionText.Text = "No Martlet host took the connection. Check that your hosts are on and up to date.";
+            if (!quiet) ActionText.Text = "No Martlet host took the connection, so check that your hosts are on and up to date.";
             return false;
         }
         smartHome.MarkShared(revision);

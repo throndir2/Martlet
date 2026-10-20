@@ -100,8 +100,7 @@ internal static class BackgroundTasks
     /// <summary>Asks before canceling a task (owner, task); true cancels. Tests replace it.</summary>
     internal static Func<Window, BackgroundTask, bool> Confirm { get; set; } = (owner, task) =>
         ConfirmationDialog.Confirm(owner,
-            $"Cancel \"{task.Title}\"?\n\nWhatever it hasn't finished stops now, so you may need to start it again.\n\n" +
-            "Keep running lets it finish. Hiding its window doesn't stop it: it stays in Background tasks.",
+            $"Cancel \"{task.Title}\" and stop what it hasn't finished (you may need to start it again)?",
             "Cancel task", yes: "_Cancel task", no: "_Keep running", questionId: "CancelTaskQuestion");
 
     internal static BackgroundTask Start(string title, Action cancel) => Add(new BackgroundTask(title, cancel));

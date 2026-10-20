@@ -1,6 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <InternalsVisibleTo Include="Martlet.Mcp.Protocol" />
     <!-- MessageSplitter is shared with Discord. -->

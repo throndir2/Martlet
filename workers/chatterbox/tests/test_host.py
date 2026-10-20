@@ -108,31 +108,41 @@ class ChatterboxHostTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix="chatterbox-host-", dir=os.getcwd())
-        cls.port = free_port()
+        cls.addClassCleanup(cls.tmp.cleanup)
         cls.env = os.environ.copy()
         cls.env["MARTLET_CHATTERBOX_ROOT"] = cls.tmp.name
-        cls.env["MARTLET_CHATTERBOX_PORT"] = str(cls.port)
         subprocess.run([sys.executable, str(HOST), "provision", "--fixture"], env=cls.env, cwd=ROOT.parents[1], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        cls.proc = subprocess.Popen([sys.executable, str(HOST), "serve"], env=cls.env, cwd=ROOT.parents[1], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        deadline = time.time() + 10
-        while time.time() < deadline:
-            try:
-                status, body, _ = http_json(cls.port, "GET", "/status", timeout=1)
-                if status == 200 and body.get("ready"):
-                    return
-            except OSError:
-                pass
-            time.sleep(0.1)
-        raise RuntimeError("service did not become ready")
+        # Another process can take the free port before the service binds it, so a service that exits is started again on a
+        # new port. Its output goes to a file: a pipe nobody reads fills up and stops the service. A busy PC can take many
+        # seconds to start Python and load the fixture.
+        log = open(Path(cls.tmp.name) / "serve.log", "wb")
+        cls.addClassCleanup(log.close)
+        for _ in range(3):
+            cls.port = free_port()
+            cls.env["MARTLET_CHATTERBOX_PORT"] = str(cls.port)
+            cls.proc = subprocess.Popen([sys.executable, str(HOST), "serve"], env=cls.env, cwd=ROOT.parents[1], stdout=log, stderr=subprocess.STDOUT)
+            cls.addClassCleanup(cls._stop, cls.proc)
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline and cls.proc.poll() is None:
+                try:
+                    status, body, _ = http_json(cls.port, "GET", "/status", timeout=1)
+                    if status == 200 and body.get("ready"):
+                        return
+                except OSError:
+                    pass
+                time.sleep(0.1)
+            if cls.proc.poll() is None:
+                break
+        raise RuntimeError("service did not become ready: " + (Path(cls.tmp.name) / "serve.log").read_text(errors="replace")[-2000:])
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.proc.terminate()
+    @staticmethod
+    def _stop(proc):
+        proc.terminate()
         try:
-            cls.proc.wait(timeout=5)
+            proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            cls.proc.kill()
-        cls.tmp.cleanup()
+            proc.kill()
+            proc.wait(timeout=10)
 
     def test_status(self):
         status, body, _ = http_json(self.port, "GET", "/status")
@@ -170,25 +180,32 @@ class ChatterboxHostTests(unittest.TestCase):
         self.assertEqual(events[-1]["error"]["code"], "reference_too_short")
 
     def test_busy_wait_returns_busy_or_succeeds_after_wait(self):
-        first = request_body(chunks=[{"index": 0, "chunk_id": "slow", "text": "x" * 1200}], deadline_seconds=20)
+        first = request_body(chunks=[{"index": 0, "chunk_id": "slow", "text": "x" * 1200}], deadline_seconds=30)
+        second = request_body(chunks=[{"index": 0, "chunk_id": "second", "text": "second"}], deadline_seconds=20)
         result = {}
         def run_first():
-            result["first"] = synthesize(self.port, first, timeout=30)
+            result["first"] = synthesize(self.port, first, timeout=60)
         thread = threading.Thread(target=run_first)
         thread.start()
-        time.sleep(0.1)
-        second = request_body(chunks=[{"index": 0, "chunk_id": "second", "text": "second"}], deadline_seconds=2)
+        # The second request must find the first one running, however late a busy PC starts it.
+        busy_by = time.monotonic() + 10
+        while http_json(self.port, "GET", "/status")[1].get("state") != "busy":
+            self.assertLess(time.monotonic(), busy_by, "the first reply never started")
+            time.sleep(0.02)
         start = time.time()
-        status, body, _ = synthesize(self.port, second, timeout=10)
+        # The service waits up to half the second request's time for the first to end, and keeps the rest for the work.
+        status, body, _ = synthesize(self.port, second, timeout=60)
         elapsed = time.time() - start
-        self.assertGreater(elapsed, 0.2)
+        thread.join(timeout=60)
+        self.assertFalse(thread.is_alive())
         if status == 503:
             self.assertEqual(body["error"], "worker.busy")
+            self.assertGreater(elapsed, 5)
         else:
             self.assertEqual(status, 200)
             self.assertEqual(body[-1]["kind"], "completed")
-        thread.join(timeout=10)
-        self.assertFalse(thread.is_alive())
+            # It was admitted only after the first reply ended.
+            self.assertEqual(result["first"][1][-1]["kind"], "completed")
 
 
 class EngineFailureTests(unittest.TestCase):

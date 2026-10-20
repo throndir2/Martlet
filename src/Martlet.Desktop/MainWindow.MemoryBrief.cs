@@ -42,7 +42,7 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(box, "MemoryBriefText");
         AutomationProperties.SetName(box, "Memory brief");
-        InputHint.SetText(box, "Alex is a nurse in Leeds and vegetarian. Sam is Alex's sister; they go hiking most weekends.");
+        InputHint.SetText(box, "Alex is a vegetarian nurse in Leeds; Sam is Alex's sister, and they go hiking most weekends.");
         memoryBriefBox = box;
         memoryBriefShown = box.Text;
         Button? save = null, again = null;
@@ -64,15 +64,16 @@ public partial class MainWindow
         on.Checked += (_, _) => Turn(true);
         on.Unchecked += (_, _) => Turn(false);
         return Card(Heading("Memory brief"), status, on,
-            HelpTip.Explain("Martlet keeps a short profile of you and the people you talk about, written in the background from " +
-                "what it remembers, and sends it with the first message of each conversation, so it knows the important things " +
-                "about you even when nothing you said matches them. It is written again when your memories change, on a Thinking " +
-                "pool member (or the Thinking model in the cloud, once you aren't talking), never while Martlet answers you. It is " +
-                "the same on all your computers. Change how it is written in Companion › Prompts › Writing the memory brief.",
-                new Thickness(24, 2, 0, 0), "MemoryBrief", "the memory brief"),
+            HelpTip.Explain("Martlet writes it in the background from what it remembers about you and the people you talk about. " +
+                "It goes with the first message of each conversation, so Martlet knows the important things about you even when " +
+                "nothing you said matches them. It is written again when your memories change, on a Thinking pool member (or the " +
+                "Thinking model in the cloud, once you aren't talking), never while Martlet answers you. It is the same on all your " +
+                "computers. Change how it is written in Companion › Prompts › Writing the memory brief.",
+                new Thickness(24, 2, 0, 0), "MemoryBrief", "the memory brief", wiki: "Memory#memory-brief"),
             box,
             HelpTip.Explain("You can change it. Your own text stays as you wrote it until you choose Write it again; clear it and " +
-                "save to let Martlet write it from your memories.", new Thickness(0, 4, 0, 0), "MemoryBriefEdit", "changing the brief"),
+                "save to let Martlet write it from your memories.", new Thickness(0, 4, 0, 0), "MemoryBriefEdit", "changing the brief",
+                wiki: "Memory#memory-brief"),
             Row(save, again));
     }
 
@@ -98,7 +99,7 @@ public partial class MainWindow
     {
         if (closing || memoryBriefStatus is null) return;
         var line = brief.Status(homeSettings?.Memory?.Enabled == true);
-        memoryBriefStatus.Text = problem is null ? line : line + " " + problem;
+        memoryBriefStatus.Text = problem is null ? line : line.TrimEnd('.') + " — " + problem;
         if (memoryBriefBox is { IsKeyboardFocusWithin: false } box && box.Text == memoryBriefShown)
         {
             memoryBriefShown = brief.Current.Text ?? "";

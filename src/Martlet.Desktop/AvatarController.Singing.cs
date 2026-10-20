@@ -18,20 +18,20 @@ internal sealed partial class AvatarController : ISongFace
     // The renderer's reset/apply playback identity has one owner at a time: a reply's Audio2Face frames or a song's mouth.
     private readonly SemaphoreSlim faceGate = new(1, 1);
     private object? faceOwner;
-    private AutoAudio2Face? automaticNow;
+    private Audio2FaceMapping? automaticNow;
     private SongFace? songFace;
     private string? songLipSync;
 
     /// <summary>How the song's mouth reached the character last: "mapped mouth shapes" or "mouth opening", or null.</summary>
     public string? Route => Volatile.Read(ref songLipSync);
 
-    private sealed class SongFace(RendererIdentity identity, PlaybackFrameGate gate, AvatarComposition composition, AutoAudio2Face automatic,
+    private sealed class SongFace(RendererIdentity identity, PlaybackFrameGate gate, AvatarComposition composition, Audio2FaceMapping automatic,
         CorrelationIds ids, long epoch)
     {
         internal RendererIdentity Identity { get; } = identity;
         internal PlaybackFrameGate Gate { get; } = gate;
         internal AvatarComposition Composition { get; } = composition;
-        internal AutoAudio2Face Automatic { get; } = automatic;
+        internal Audio2FaceMapping Automatic { get; } = automatic;
         internal CorrelationIds Ids { get; } = ids;
         internal long Epoch { get; } = epoch;
         internal long Sequence { get; set; }
@@ -90,26 +90,14 @@ internal sealed partial class AvatarController : ISongFace
 
     // A playback identity and composition for the song's mouth channels on the character's mapping (only the mapped channels it
     // has), or null when the mapping uses none of them.
-    private SongFace? NewSongFace(IAvatarRenderer target, AutoAudio2Face automatic, IEnumerable<string> names, long epoch)
+    private SongFace? NewSongFace(IAvatarRenderer target, Audio2FaceMapping automatic, IEnumerable<string> names, long epoch)
     {
         var channels = names.ToHashSet(StringComparer.Ordinal);
         try
         {
-            var settings = automatic.Settings with
-            {
-                MappingProfiles = [.. automatic.Settings.MappingProfiles.Select(p => p with
-                {
-                    Mappings = [.. p.Mappings.Where(m => m.Source.Blendshape is { } name && channels.Contains(name))]
-                })]
-            };
-            if (settings.MappingProfiles.All(p => p.Mappings.Count == 0)) return null;
-            var model = new ModelCapabilities { ModelId = target.Capabilities!.ModelId, Renderer = profile!.Renderer,
-                MetadataKnown = true, Readiness = RuntimeReadiness.Available, Parameters = automatic.Targets };
-            var source = new SourceCapabilities { SourceId = SourceId, Backend = AvatarBackend.Audio2Face,
-                ChannelsKnown = true, Readiness = RuntimeReadiness.Available,
-                Channels = [.. channels.Select(name => new ChannelReference { Blendshape = name })] };
-            var result = AvatarComposer.Create(settings, model, [source]);
-            if (result.Composition is not { } composition) return null;
+            if (automatic.Settings.MappingProfiles.All(p => !p.Mappings.Any(m => m.Source.Blendshape is { } name && channels.Contains(name))))
+                return null;
+            if (Compose(automatic, channels, target).Composition is not { } composition) return null;
             var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
             var bounded = Math.Clamp(epoch, 0, int.MaxValue);
             var gate = new PlaybackFrameGate(new PlaybackBinding { Ids = ids, Epoch = bounded, SourceId = SourceId, SampleRate = 48_000 });

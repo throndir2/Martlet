@@ -52,11 +52,11 @@ public partial class MainWindow
         switch (step)
         {
             case OwnHostStep.NotFound:
-                ShowOwnHost("This PC's host service isn't running (Docker Desktop is stopped, or it isn't set up). When it runs, " +
-                    $"Martlet brings it to Martlet {Version} by itself.");
+                ShowOwnHost("This PC's host service isn't running (Docker Desktop is stopped, or it isn't set up), and Martlet brings it " +
+                    $"to Martlet {Version} by itself when it runs.");
                 break;
             case OwnHostStep.Stopped:
-                ShowOwnHost($"This PC's host service is stopped and runs {reported}. Martlet updates it to {Version} by itself " +
+                ShowOwnHost($"This PC's host service is stopped and runs {reported}, so Martlet updates it to {Version} by itself " +
                     "once it runs again.");
                 break;
             case OwnHostStep.Current:
@@ -70,11 +70,10 @@ public partial class MainWindow
                     "or a command from another computer).");
                 break;
             case OwnHostStep.AppUpdateFirst:
-                ShowOwnHost($"This PC's host service runs {reported}. Martlet installs its own update first; the host service " +
-                    "follows that version right after.");
+                ShowOwnHost($"This PC's host service runs {reported} and follows Martlet's own update right after Martlet installs it.");
                 break;
             case OwnHostStep.Conversation:
-                ShowOwnHost($"This PC's host service runs {reported}. Martlet updates it to {Version} once it isn't replying or " +
+                ShowOwnHost($"This PC's host service runs {reported}, and Martlet updates it to {Version} once it isn't replying or " +
                     "hearing you.");
                 break;
             case OwnHostStep.Update:
@@ -93,8 +92,8 @@ public partial class MainWindow
         var updating = hostUpdates.Begin(ThisPcHostId);
         var started = DateTimeOffset.UtcNow;
         ErrorLog.Info($"Updating this PC's host service from {from} to {Version} in the background.");
-        ShowOwnHost($"Updating this PC's host service from {from} to {Version} in the background. Martlet stays usable; the " +
-            "host service restarts at the end, so it stops answering for a moment.");
+        ShowOwnHost($"Updating this PC's host service from {from} to {Version} in the background; it stops answering for a moment " +
+            "when it restarts at the end.");
         RenderHost();
         var updated = false;
         var busy = false;
@@ -124,8 +123,7 @@ public partial class MainWindow
                     ownHost.Failed(Version);
                     ErrorLog.Warn($"Couldn't update this PC's host service to {Version}", error);
                     if (!closing)
-                        ShowOwnHost($"Couldn't update this PC's host service to Martlet {Version}: {error.Message} Update hosts (above) or the " +
-                            "host dashboard's Update host service tries again.");
+                        ShowOwnHost($"Couldn't update this PC's host service to Martlet {Version} (Update hosts above tries again): {error.Message}");
                     throw;
                 }
                 run.Output.Report($"--- exit {exit}");
@@ -136,8 +134,8 @@ public partial class MainWindow
                     ownHost.Busy(DateTimeOffset.UtcNow);
                     var again = ownHost.RetryAt!.Value.ToLocalTime();
                     ErrorLog.Info($"This PC's host service is busy ({what}); updating it to {Version} waits until {again:t}.");
-                    var text = $"This PC's host service is busy ({what}), so updating it to Martlet {Version} waits; nothing was changed. " +
-                        $"Martlet tries again at {again:t}.";
+                    var text = $"This PC's host service is busy ({what}), so nothing was changed and updating it to Martlet {Version} " +
+                        $"waits until {again:t}.";
                     ShowOwnHost(text);
                     return text;
                 }
@@ -145,8 +143,8 @@ public partial class MainWindow
                 {
                     ownHost.Failed(Version);
                     ErrorLog.Warn($"Updating this PC's host service from {from} to {Version} stopped (exit {exit}); the host-runs log shows why.");
-                    ShowOwnHost($"Updating this PC's host service to Martlet {Version} stopped (exit {exit}); the host-runs log shows why. " +
-                        "Update hosts (above) or the host dashboard's Update host service tries again.");
+                    ShowOwnHost($"Updating this PC's host service to Martlet {Version} stopped (exit {exit}); the host-runs log shows why, " +
+                        "and Update hosts (above) tries again.");
                     throw new InvalidOperationException($"Updating this PC's host service to Martlet {Version} stopped (exit {exit}). " +
                         "The output shows why.");
                 }
@@ -161,16 +159,16 @@ public partial class MainWindow
                 }
                 ErrorLog.Info($"Updated this PC's host service from {from} to {Version} in the background " +
                     $"({(DateTimeOffset.UtcNow - started).TotalSeconds:0} s).");
-                ShowOwnHost($"Updated this PC's host service from {from} to {Version} at {DateTime.Now:t}. Martlet keeps it on this " +
-                    "app's version after every update.");
+                ShowOwnHost($"Updated this PC's host service from {from} to {Version} at {DateTime.Now:t}, and Martlet keeps it on this " +
+                    "app's version.");
                 return $"This PC's host service runs Martlet {Version}.";
             }, hidden: true);
             // You canceled it (Background tasks): it doesn't start again by itself for this version.
             if (done is null && !closing && !updated && !busy && task?.State == BackgroundTaskState.Canceled)
             {
                 ownHost.Failed(Version);
-                ShowOwnHost($"You canceled updating this PC's host service to Martlet {Version}; nothing more changes by itself. " +
-                    "Update hosts (above) or the host dashboard's Update host service runs it again.");
+                ShowOwnHost($"You canceled updating this PC's host service to Martlet {Version}, so it waits until you choose Update " +
+                    "hosts (above).");
             }
             if (busy && task is not null) BackgroundTasks.Discard(task);
         }
@@ -202,8 +200,7 @@ public partial class MainWindow
     }
 
     private void ShowOwnHostCurrent(string version) =>
-        ShowOwnHost($"This PC's host service runs Martlet {version}, like this app. Martlet keeps it on this app's version after " +
-            "every update.");
+        ShowOwnHost($"This PC's host service runs Martlet {version}, like this app, and Martlet keeps it on this app's version.");
 
     /// <summary>Settings › App updates' line about this PC's own host service (hidden while this PC runs none).</summary>
     private void ShowOwnHost(string text)

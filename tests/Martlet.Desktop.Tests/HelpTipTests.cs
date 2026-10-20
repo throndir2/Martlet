@@ -66,20 +66,24 @@ public sealed partial class HelpTipTests
         Assert.Throws<ArgumentException>(() => HelpTip.For("x", "One line.", "Bad", "thinking page"));
     });
 
-    /// <summary>Every wiki value a page gives a HelpTip (written as wiki: "Page#anchor" or Wiki="Page#anchor") is a page in
-    /// docs/wiki/ with a heading that has that anchor, the way GitHub makes heading anchors.</summary>
+    /// <summary>Every wiki value a page gives a HelpTip (written as wiki: "Page#anchor" or Wiki="Page#anchor"), in the Windows app
+    /// and in the Linux and Mac Companion app's HelpMark, is a page in docs/wiki/ with a heading that has that anchor, the way GitHub
+    /// makes heading anchors.</summary>
     [Fact]
     public void EveryWikiLinkGoesToAPageAndHeadingInTheWiki()
     {
         var root = RepositoryRoot();
         var wiki = Path.Combine(root, "docs", "wiki");
-        var values = Directory.EnumerateFiles(Path.Combine(root, "src", "Martlet.Desktop"), "*.*", SearchOption.AllDirectories)
-            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal) || path.EndsWith(".xaml", StringComparison.Ordinal))
+        var values = new[] { "Martlet.Desktop", "Martlet.Companion" }
+            .SelectMany(project => Directory.EnumerateFiles(Path.Combine(root, "src", project), "*.*", SearchOption.AllDirectories))
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal) || path.EndsWith(".xaml", StringComparison.Ordinal) ||
+                path.EndsWith(".axaml", StringComparison.Ordinal))
             .Where(path => !path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
                 !path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-            .SelectMany(path => WikiValues().Matches(File.ReadAllText(path)).Select(match => (Path.GetFileName(path), Value: match.Groups[1].Value)))
+            .SelectMany(path => WikiValues().Matches(File.ReadAllText(path)).Select(match => (File: Path.GetFileName(path), Value: match.Groups[1].Value)))
             .ToArray();
         Assert.Contains(values, value => value.Value == "Thinking#check-ins");
+        Assert.Contains(values, value => value.File == "MainWindow.axaml");
         var wrong = new List<string>();
         foreach (var (file, value) in values)
         {

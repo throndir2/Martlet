@@ -18,13 +18,17 @@ internal sealed partial class McpServer
             "detected about the computer (OS, architecture, Apple silicon vs Intel, NVIDIA, Wayland/X11), which platform services " +
             "work, and the platform-catalog guardrails (engines offered per job, the rest with the catalog's reason, local-model " +
             "warnings). platform simulates linux-x64, linux-nvidia, linux-arm64, macos-arm64 or macos-x64 from this computer; " +
-            "settingsFile checks a settings.json from another device against it and returns what is refused and why. No audio, " +
-            "network or window. Build src/Martlet.Companion first (building Martlet.Mcp builds it).", new
+            "settingsFile checks a settings.json from another device against it and returns what is refused and why. sync: " +
+            "whether it keeps its settings the same as the owner's other computers, its device ID, its paired hosts, who last changed " +
+            "each shared setting (thinking, listening, speaking, companion) and what stays with this computer, from dataDirectory (default " +
+            "its own data folder); never a key. No audio, network or window. Build src/Martlet.Companion first (building Martlet.Mcp builds it).", new
         {
             platform = new { type = "string", @enum = new[] { "linux-x64", "linux-nvidia", "linux-arm64", "macos-arm64", "macos-x64" } },
-            settingsFile = new { type = "string" }
+            settingsFile = new { type = "string" },
+            dataDirectory = new { type = "string" }
         },
-            async (arguments, cancellation) => await CompanionStatusAsync(OptionalString(arguments, "platform"), OptionalString(arguments, "settingsFile"), cancellation)),
+            async (arguments, cancellation) => await CompanionStatusAsync(OptionalString(arguments, "platform"), OptionalString(arguments, "settingsFile"),
+                OptionalString(arguments, "dataDirectory"), cancellation)),
         Tool("doctor_status", "Read local diagnostic status without starting audio or network.", new
         {
             dataDirectory = new { type = "string" }
@@ -117,7 +121,7 @@ internal sealed partial class McpServer
     ];
 
     /// <summary>companion_status: Martlet.Companion --status [--as platform] [--import file] from this checkout's build.</summary>
-    private static async Task<object> CompanionStatusAsync(string? platform, string? settingsFile, CancellationToken cancellation)
+    private static async Task<object> CompanionStatusAsync(string? platform, string? settingsFile, string? dataDirectory, CancellationToken cancellation)
     {
         if (platform is not null && platform is not ("linux-x64" or "linux-nvidia" or "linux-arm64" or "macos-arm64" or "macos-x64"))
             throw new ArgumentException("platform is linux-x64, linux-nvidia, linux-arm64, macos-arm64 or macos-x64.");
@@ -137,6 +141,7 @@ internal sealed partial class McpServer
         start.ArgumentList.Add("--status");
         if (platform is not null) { start.ArgumentList.Add("--as"); start.ArgumentList.Add(platform); }
         if (settingsFile is not null) { start.ArgumentList.Add("--import"); start.ArgumentList.Add(settingsFile); }
+        if (dataDirectory is not null) { start.ArgumentList.Add("--data"); start.ArgumentList.Add(dataDirectory); }
         using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start Martlet.Companion.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         limit.CancelAfter(TimeSpan.FromSeconds(30));

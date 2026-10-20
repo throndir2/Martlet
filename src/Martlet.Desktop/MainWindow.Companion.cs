@@ -251,7 +251,8 @@ public partial class MainWindow
         AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level1);
         AutomationProperties.SetAutomationId(heading, "CompanionPageTitle");
         page.Children.Add(heading);
-        var intro = Note(TabIntro(section), new Thickness(0, 4, 0, 18));
+        // The page shows the intro's first sentence; the rest (on an optional page, what Off means) is behind its "?".
+        var intro = HelpTip.Explain(TabIntro(section), new Thickness(0, 4, 0, 18), "CompanionIntro", TabTitle(section));
         AutomationProperties.SetAutomationId(intro, "CompanionIntro");
         page.Children.Add(intro);
 

@@ -196,7 +196,7 @@ public sealed class VRoidHub(HttpClient http)
         try { code = await ReceiveCodeAsync(listener, state, timeout.Token); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new VRoidHubException("The VRoid Hub sign-in wasn't finished within 5 minutes. Try again.");
+            throw new VRoidHubException("The VRoid Hub sign-in wasn't finished within 5 minutes; try again.");
         }
         var tokens = await TokenAsync(new Dictionary<string, string>
         {
@@ -251,7 +251,7 @@ public sealed class VRoidHub(HttpClient http)
         {
             var failure = await FailureAsync(response, token);
             throw response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized
-                ? new VRoidHubException("VRoid Hub didn't accept the sign-in. Link your account again.", HttpStatusCode.Unauthorized, failure)
+                ? new VRoidHubException("VRoid Hub didn't accept the sign-in; link your account again.", HttpStatusCode.Unauthorized, failure)
                 : failure;
         }
         using var document = JsonDocument.Parse(await ReadBoundedAsync(response, MaximumJsonBytes, token));

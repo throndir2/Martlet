@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Settings;
@@ -61,12 +59,9 @@ internal static class ContextCheck
     /// cached tokens are read, and a growing conversation that outgrows a small context keeps the same start for many replies.</summary>
     private static async Task<object> CacheAsync(CancellationToken cancellation)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         var requests = new List<byte[]>();
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeCacheAsync(listener, requests, stop.Token);
+        var server = CacheFixture(requests);
+        var baseUrl = server.V1;
         try
         {
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
@@ -112,9 +107,7 @@ internal static class ContextCheck
         }
         finally
         {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 
@@ -178,37 +171,21 @@ internal static class ContextCheck
         return new { ok = quarterMoves > 0 && quarterMoves * 3 <= slidingMoves, replies = 60, contextTokens = budget.Tokens, startMovedLettingGoAQuarter = quarterMoves, startMovedOneAtATime = slidingMoves };
     }
 
-    // A minimal HTTP/1.1 endpoint: records each request and streams a canned reply, then a usage chunk with cached tokens.
-    internal static async Task ServeCacheAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
+    // A loopback Chat Completions model: records each request and streams a canned reply, then a usage chunk with cached tokens.
+    internal static LoopbackHttpServer CacheFixture(List<byte[]> requests) => FixtureChat.Recording(requests, _ =>
     {
-        while (!cancellation.IsCancellationRequested)
-        {
-            using var client = await listener.AcceptTcpClientAsync(cancellation);
-            await using var stream = client.GetStream();
-            var body = await HearingCheck.ReadRequestAsync(stream, cancellation);
-            lock (requests) requests.Add(body);
-            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",";
-            var events = "data: " + chunk + "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Fixture reply (not AI).\"},\"finish_reason\":null}]}\n\n" +
-                "data: " + chunk + "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
-                "data: " + chunk + "\"choices\":[],\"usage\":{\"prompt_tokens\":1300,\"prompt_tokens_details\":{\"cached_tokens\":1200},\"completion_tokens\":5,\"total_tokens\":1305}}\n\n" +
-                "data: [DONE]\n\n";
-            var payload = Encoding.UTF8.GetBytes(events);
-            var head = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n" +
-                $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(head, cancellation);
-            await stream.WriteAsync(payload, cancellation);
-            await stream.FlushAsync(cancellation);
-        }
-    }
+        const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",";
+        return FixtureChat.Content(FixtureChat.Words) +
+            "data: " + chunk + "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+            "data: " + chunk + "\"choices\":[],\"usage\":{\"prompt_tokens\":1300,\"prompt_tokens_details\":{\"cached_tokens\":1200},\"completion_tokens\":5,\"total_tokens\":1305}}\n\n" +
+            "data: [DONE]\n\n";
+    });
 
     private static async Task<object> ProbeAsync(CancellationToken cancellation)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var origin = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
         var seen = new List<(string Path, bool Key)>();
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, seen, stop.Token);
+        var server = Fixture(seen);
+        var origin = server.Origin;
         try
         {
             using var client = ModelContextProbe.CreateClient(loopback: true);
@@ -250,9 +227,7 @@ internal static class ContextCheck
         }
         finally
         {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 
@@ -335,25 +310,19 @@ internal static class ContextCheck
         return new { ok = results.All(Ok), exchanges = history.Count / 2, routes = results };
     }
 
-    // A minimal HTTP/1.1 server: each path answers like the service it stands in for.
-    private static async Task ServeAsync(TcpListener listener, List<(string Path, bool Key)> seen, CancellationToken cancellation)
+    // A loopback server: each path answers like the service it stands in for.
+    private static LoopbackHttpServer Fixture(List<(string Path, bool Key)> seen)
     {
         var loaded = new HashSet<string> { "gemma4:e4b" };
-        while (!cancellation.IsCancellationRequested)
+        return new(exchange =>
         {
-            using var client = await listener.AcceptTcpClientAsync(cancellation);
-            await using var stream = client.GetStream();
-            var (method, path, key, body) = await ReadAsync(stream, cancellation);
-            lock (seen) seen.Add((path, key));
-            var (status, json) = Answer(method, path, body, loaded);
-            var payload = Encoding.UTF8.GetBytes(json);
-            var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\nContent-Type: application/json\r\n" +
-                (status.StartsWith("302", StringComparison.Ordinal) ? "Location: /followed/v1/models\r\n" : "") +
-                $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(head, cancellation);
-            await stream.WriteAsync(payload, cancellation);
-            await stream.FlushAsync(cancellation);
-        }
+            var request = exchange.Request;
+            var key = request.Header("Authorization")?.StartsWith("Bearer " + FixtureKey, StringComparison.OrdinalIgnoreCase) == true;
+            lock (seen) seen.Add((request.Target, key));
+            var (status, json) = Answer(request.Method, request.Target, request.Text, loaded);
+            return exchange.RespondAsync(int.Parse(status[..3], System.Globalization.CultureInfo.InvariantCulture), json, "application/json",
+                status.StartsWith("302", StringComparison.Ordinal) ? [("Location", "/followed/v1/models")] : []);
+        });
     }
 
     private static (string Status, string Json) Answer(string method, string path, string body, HashSet<string> loaded)
@@ -395,30 +364,4 @@ internal static class ContextCheck
         }
     }
 
-    private static async Task<(string Method, string Path, bool Key, string Body)> ReadAsync(NetworkStream stream, CancellationToken cancellation)
-    {
-        var buffer = new MemoryStream();
-        var one = new byte[8192];
-        int headerEnd;
-        while ((headerEnd = buffer.GetBuffer().AsSpan(0, (int)buffer.Length).IndexOf("\r\n\r\n"u8)) < 0)
-        {
-            var read = await stream.ReadAsync(one, cancellation);
-            if (read == 0) throw new IOException("The request ended early.");
-            buffer.Write(one, 0, read);
-        }
-        var lines = Encoding.ASCII.GetString(buffer.GetBuffer(), 0, headerEnd).Split("\r\n");
-        var start = lines[0].Split(' ');
-        var length = lines.Select(h => h.Split(':', 2)).Where(h => h.Length == 2 &&
-            h[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)).Select(h => int.Parse(h[1].Trim())).FirstOrDefault(0);
-        var key = lines.Any(h => h.StartsWith("Authorization: Bearer " + FixtureKey, StringComparison.OrdinalIgnoreCase));
-        var body = new MemoryStream();
-        body.Write(buffer.GetBuffer(), headerEnd + 4, (int)buffer.Length - headerEnd - 4);
-        while (body.Length < length)
-        {
-            var read = await stream.ReadAsync(one, cancellation);
-            if (read == 0) break;
-            body.Write(one, 0, read);
-        }
-        return (start[0], start.Length > 1 ? start[1] : "/", key, Encoding.UTF8.GetString(body.ToArray()));
-    }
 }

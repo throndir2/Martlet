@@ -22,7 +22,7 @@ internal sealed partial class ThinkingPoolPageModel
         try
         {
             var next = change(ThinkingPoolSettings.Load(directory));
-            if (!next.Save(directory)) throw new InvalidOperationException("Couldn't save the Thinking pool. Check access to Martlet's data folder.");
+            if (!next.Save(directory)) throw new InvalidOperationException("Couldn't save the Thinking pool; check access to Martlet's data folder.");
             services.ReloadThinkingPool();
             ErrorLog.Info($"Thinking pool: {done}");
             services.ShowStatus(done);
@@ -43,7 +43,7 @@ internal sealed partial class ThinkingPoolPageModel
         var gone = old.All.FirstOrDefault(m => m.Key == key);
         // A paired computer stays out until it is ticked again; otherwise it would join again by itself at its next check.
         if (gone is { Place: DeepThinkingPlace.Host, HostId: { } hostId })
-            await SavePoolAsync(p => p.TakeOut(hostId), $"{name} left the Thinking pool and stays out. Tick In the pool to add it again.");
+            await SavePoolAsync(p => p.TakeOut(hostId), $"{name} left the Thinking pool and stays out; tick In the pool to add it again.");
         else await SavePoolAsync(p => p.Remove(key), $"{name} left the Thinking pool.");
         var profile = services.Settings?.Profile.Id ?? Guid.Empty;
         if (gone?.CredentialId is { } oldKey && profile != Guid.Empty &&
@@ -116,7 +116,7 @@ internal sealed partial class ThinkingPoolPageModel
             var check = await services.CheckHostAsync(host);
             if (check.Reachable != true)
             {
-                services.ShowStatus($"{host.HostId} didn't join the Thinking pool. It didn't respond ({check.Text}).");
+                services.ShowStatus($"{host.HostId} didn't join the Thinking pool: it didn't respond ({check.Text}).");
                 services.Redraw();
                 return;
             }
@@ -125,8 +125,8 @@ internal sealed partial class ThinkingPoolPageModel
             if (ThinkingPoolAutoJoin.Route(seen, NetworkMap.ThinkingHost(services.Settings)) is not { } route)
             {
                 services.ShowStatus(seen.Offers.Count > 0
-                    ? $"{host.HostId}'s Ollama does Thinking for the conversation. Add the Thinking pool role there; it then joins by itself."
-                    : $"{host.HostId} doesn't run the Thinking pool role yet. Add the role there; it then joins by itself.");
+                    ? $"{host.HostId}'s Ollama does Thinking for the conversation; add the Thinking pool role there and it joins by itself."
+                    : $"{host.HostId} doesn't run the Thinking pool role yet; add the role there and it joins by itself.");
                 services.Redraw();
                 return;
             }
@@ -136,7 +136,7 @@ internal sealed partial class ThinkingPoolPageModel
                 .Where(m => !current.IsOff(m.Key)).ToArray();
             if (cards.Length == 0)
             {
-                services.ShowStatus($"{host.HostId} is turned off in the Thinking pool. Tick On on its row to use it again.");
+                services.ShowStatus($"{host.HostId} is turned off in the Thinking pool; tick On on its row to use it again.");
                 services.Redraw();
                 return;
             }
@@ -177,8 +177,8 @@ internal sealed partial class ThinkingPoolPageModel
     /// <summary>Adds <paramref name="id"/> in Ollama on this PC to the pool.</summary>
     internal Task AddLocalAsync(string id) =>
         SaveDeepThinkingAsync(new() { Place = DeepThinkingPlace.Endpoint, Origin = MainWindow.LocalOllamaBaseUrl, ModelId = id, ChosenAt = DateTimeOffset.Now },
-            null, $"{id} in Ollama on this PC joined the Thinking pool." +
-            (services.OllamaModels is { } known && !LocalOllama.Serves(known, id) ? $" Download {id} on Thinking to use it." : ""));
+            null, $"{id} in Ollama on this PC joined the Thinking pool" +
+            (services.OllamaModels is { } known && !LocalOllama.Serves(known, id) ? $"; download {id} on Thinking to use it." : "."));
 
     /// <summary>Adds a cloud provider or any OpenAI-compatible server (HTTPS, or a server on this PC) to the list, with its own key
     /// (<paramref name="takeKey"/> takes it from the form, or null when none was pasted) or Thinking's. A provider already in the
@@ -205,8 +205,8 @@ internal sealed partial class ThinkingPoolPageModel
             };
             if (key is null && provider.NeedsKey && keep is null && !next.UsesThinkingKey(thinking))
                 throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
-            await SaveDeepThinkingAsync(next, key, $"{provider.Name} ({model}) joined the Thinking pool." +
-                (key is null ? "" : " Its API key is saved in Windows Credential Manager."));
+            await SaveDeepThinkingAsync(next, key, $"{provider.Name} ({model}) joined the Thinking pool" +
+                (key is null ? "." : ", and its API key is saved in Windows Credential Manager."));
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException)
         {
@@ -238,7 +238,7 @@ internal sealed partial class ThinkingPoolPageModel
                 written = binding;
             }
             var pool = old.Add(next);
-            if (!pool.Save(directory)) throw new InvalidOperationException("Couldn't save the Thinking pool. Check access to Martlet's data folder.");
+            if (!pool.Save(directory)) throw new InvalidOperationException("Couldn't save the Thinking pool; check access to Martlet's data folder.");
             written = null;
             foreach (var gone in old.All.Where(m => m.CredentialId is { } k && pool.All.All(p => p.CredentialId != k)))
                 if (profile != Guid.Empty)
@@ -250,8 +250,8 @@ internal sealed partial class ThinkingPoolPageModel
             var plan = pool.Plan(services.Settings?.Setup?.Routes ?? [], WorkSharingRoster.Shared.Settings(services.DataDirectory), WorkSharingRoster.Device).Plan;
             ErrorLog.Info($"Thinking pool: now {pool.Places.DescribeAll()}; {(plan.Available ? "in parallel with the conversation" : "can't run there")}. {plan.Why}");
             var turnedOn = !ThinkLongerSettings.Of(services.Settings?.Generation).On && await SetThinkLongerAsync(true);
-            services.ShowStatus(done + (turnedOn ? " Thinking longer is on again." : "") +
-                (plan.Available ? " It works alongside the conversation." : " " + plan.Why));
+            services.ShowStatus(done.TrimEnd('.') + (turnedOn ? ", and Thinking longer is on again" : "") +
+                (plan.Available ? "." : "; " + plan.Why));
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
@@ -275,7 +275,7 @@ internal sealed partial class ThinkingPoolPageModel
         if (await SetThinkLongerAsync(on))
         {
             ErrorLog.Info($"Thinking pool: thinking longer turned {(on ? "on" : "off")}.");
-            services.ShowStatus(done + " Reload an open conversation to use it.");
+            services.ShowStatus(done.TrimEnd('.') + "; reload an open conversation to use it.");
         }
         services.RedrawIfOpen();
     }
@@ -320,7 +320,7 @@ internal sealed partial class ThinkingPoolPageModel
             var now = next ?? new();
             ErrorLog.Info($"Thinking longer: {now.HowHard} effort, no time or hourly limit, " +
                 $"shares {(now.When == ThinkDelivery.WhenFree ? "as soon as Martlet is free." : "when you talk next.")}");
-        }, "Thinking longer saved. Reload an open conversation to use it.");
+        }, "Thinking longer saved; reload an open conversation to use it.");
     }
 
     /// <summary>Saves whether Martlet may research on the web into the newest reply settings (your computers share it).</summary>
@@ -333,7 +333,7 @@ internal sealed partial class ThinkingPoolPageModel
             saved = await services.SaveRepliesAsync(loaded => GenerationSettings.Normalize((loaded ?? new()) with
             {
                 ThinkLonger = ThinkLongerSettings.Normalize((loaded?.ThinkLonger ?? new()) with { WebResearch = on })
-            }), _ => { }, on ? "Web research is on. Reload an open conversation to use it." : "Web research is off.");
+            }), _ => { }, on ? "Web research is on; reload an open conversation to use it." : "Web research is off.");
             if (!saved)
                 try { await Task.Delay(TimeSpan.FromMilliseconds(250), services.Lifetime); }
                 catch (OperationCanceledException) { return; }

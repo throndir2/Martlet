@@ -133,7 +133,7 @@ public sealed class MessagingTests
         await run.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Contains(MessagingState.Retrying, states);
-        Assert.Equal([("7", "Martlet couldn't answer that. Try again in a moment."), ("7", "pong")], transport.Sent);
+        Assert.Equal([("7", "Martlet couldn't answer that, so try again in a moment."), ("7", "pong")], transport.Sent);
         Assert.Contains(failures, error => error is InvalidOperationException { Message: "broken answer" });
         Assert.Contains(failures, error => error is InvalidOperationException { Message: "receive broke" });
         Assert.Equal(MessagingState.Off, bridge.Status.State);

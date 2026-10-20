@@ -69,7 +69,7 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             ClusterSyncChoice.IsChecked = clusterEnabled;
-            ActionText.Text = $"Couldn't save sync setting. Sync stays {(clusterEnabled ? "on" : "off")}.";
+            ActionText.Text = $"Couldn't save the sync setting, so sync stays {(clusterEnabled ? "on" : "off")}.";
             return;
         }
         clusterEnabled = on;
@@ -94,7 +94,7 @@ public partial class MainWindow
             SyncHomeShareAsync().Forget();
         }
         ActionText.Text = on ? "Martlet is now the same on all your computers: who does what, its settings, memories, people, voices, characters, creations and Home Assistant stay in sync."
-            : "Sync is off. This PC keeps its own choices, settings and memories. The people Martlet recognizes by voice stay shared with your computers.";
+            : "Sync is off: this PC keeps its own choices, settings and memories; the people Martlet recognizes by voice stay shared.";
         ShowClusterStatus();
         ShowSettingsStatus();
         ShowMemorySyncStatus();
@@ -172,9 +172,9 @@ public partial class MainWindow
                 "your other computers.";
         if (local.HostId == host) return local.Here ? $"Your other computers use this PC for {job}, through {host}." : null;
         var by = assignment.UpdatedBy == ClusterDevice ? "" : $", as chosen on {assignment.UpdatedBy}";
-        return $"Your Martlet network does {job} on {host}{by}. " + (clusterFollow.TryGetValue(job, out var why)
-            ? "This PC switches to it as soon as it can: " + why
-            : "This PC switches to it on its next check.");
+        return $"Your Martlet network does {job} on {host}{by}, and this PC switches to it " + (clusterFollow.TryGetValue(job, out var why)
+            ? "as soon as it can: " + why
+            : "on its next check.");
     }
 
     /// <summary>Marks a forgotten host as removed in the shared plan, so its entry does not return from an older copy.</summary>
@@ -197,9 +197,8 @@ public partial class MainWindow
         // A job on a host a friend shares is this PC's own: failover concerns what your network chose.
         var owner = current is null ? local.Shared ? new LocalJob(null, false) : local : new LocalJob(current.HostId, current.Off);
         if (on && !ConfirmationDialog.Confirm(this,
-                $"Turn on failover for {ClusterSync.Title(job).ToLowerInvariant()}? If {(owner.HostId is { } host ? host : "its host")} stops responding, " +
-                "Martlet moves it to another paired host that can handle it. That host will receive this job's data." +
-                (job == ClusterJobs.Speaking ? " The selected voice goes with it." : ""),
+                $"Turn on failover for {ClusterSync.Title(job).ToLowerInvariant()}, so that Martlet moves it to another paired host, which gets " +
+                $"this job's data{(job == ClusterJobs.Speaking ? " and the selected voice" : "")}, if {(owner.HostId is { } host ? host : "its host")} stops responding?",
                 "Turn on failover"))
         {
             RenderMap();
@@ -219,7 +218,7 @@ public partial class MainWindow
         try { ClusterSync.SavePlan(store.DataDirectory, clusterPlan); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
         {
-            ActionText.Text = "Couldn't save device sync. Hosts keep their last copy.";
+            ActionText.Text = "Couldn't save device sync, so hosts keep their last copy.";
         }
     }
 
@@ -549,27 +548,27 @@ public partial class MainWindow
         if (!clusterEnabled)
         {
             ClusterStatusText.Text = store is null ? "Device sync is unavailable."
-                : "Sync is off. This PC keeps its own choices.";
+                : "Sync is off, so this PC keeps its own choices.";
             return;
         }
         if (clusterCheckedAt is not { } checkedAt)
         {
-            ClusterStatusText.Text = "Sync is on. Checking hosts...";
+            ClusterStatusText.Text = "Sync is on; checking hosts...";
             return;
         }
         var probes = clusterProbes.Values.ToList();
         if (probes.Count == 0)
         {
-            ClusterStatusText.Text = "Sync is on. Add a computer to share choices.";
+            ClusterStatusText.Text = "Sync is on: pair a host to share choices with your other computers.";
             return;
         }
         var digest = clusterPlan.Digest();
         var current = probes.Count(p => p.Plan?.Digest() == digest);
         var down = probes.Count(p => !p.Reachable && !hostAnswers.Answering(p.HostId));
         var old = probes.Count(p => p.Reachable && !p.Shares);
-        ClusterStatusText.Text = $"Sync is on. {current}/{probes.Count} hosts are up to date; checked {checkedAt.ToLocalTime():t}." +
-            (down > 0 ? $" {down} not responding." : "") +
-            (old > 0 ? $" Update {(old == 1 ? "one host" : old + " hosts")} to sync choices." : "");
+        ClusterStatusText.Text = $"Sync is on: {current} of {probes.Count} hosts up to date, checked {checkedAt.ToLocalTime():t}" +
+            (down > 0 ? $", {down} not responding" : "") +
+            (old > 0 ? $"; update {(old == 1 ? "one host" : old + " hosts")} to sync choices" : "") + ".";
     }
 
     /// <summary>The failover choice and sync notes under a job's row while Keep in sync is on, or null (sync off, or no
@@ -610,17 +609,19 @@ public partial class MainWindow
         if (clusterEnabled && local is { Here: true, HostId: { } own } && assignment?.HostId == own &&
             clusterProbes.GetValueOrDefault(own) is { Reachable: true } ownProbe && !ownProbe.Serves(job))
             parts.Add($"Your other computers use this PC for {job} through {own}, which doesn't run " +
-                $"{HostRoles.Get(ClusterSync.RoleKind(job)).Name} yet. Add it to {own} so they can.");
+                $"{HostRoles.Get(ClusterSync.RoleKind(job)).Name} yet, so add it to {own}.");
         else if (clusterEnabled && local.HostId is { } host && clusterProbes.ContainsKey(host) &&
             clusterMisses.GetValueOrDefault(host + "/" + job) > 0)
         {
-            parts.Add(assignment?.Failover != true ? $"{host} isn't handling this right now. Turn on failover to move it automatically."
+            parts.Add(assignment?.Failover != true ? $"{host} isn't handling this right now; turn on failover to move it automatically."
                 : ClusterSync.FailoverTarget(clusterPlan, job, host, clusterProbes.Values, HardwareStore?.Load() ?? []) is null
                     ? $"{host} isn't handling this, and no other paired host can take over."
-                    : $"{host} isn't handling this. Martlet will move it if this continues.");
+                    : $"{host} isn't handling this, so Martlet will move it if this continues.");
         }
         if (assignment is { MovedFrom: { } from } && assignment.HostId == local.HostId && assignment.HostId is not null)
-            parts.Add($"Moved from {from} after it stopped responding. Choose {from} to move it back.");
-        return parts.Count == 0 ? null : string.Join(" ", parts);
+            parts.Add($"Moved from {from} after it stopped responding; choose {from} to move it back.");
+        // Two notes at once join into one sentence.
+        return parts.Count == 0 ? null
+            : string.Join("; ", parts.Select((p, i) => (i == 0 ? p : char.ToLowerInvariant(p[0]) + p[1..]).TrimEnd('.'))) + ".";
     }
 }

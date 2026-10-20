@@ -343,7 +343,7 @@ public sealed class RecommendedSetupTests
 
         // A saved key (OpenRouter here): no prompt, and the problem points to Companion › Thinking.
         Assert.False(RecommendedSetupReview.From(recommendation, Build(Plan())).OffersFreeKey);
-        Assert.EndsWith("Choose where Thinking runs in Companion › Thinking.", FreeKeyPrompt.Problem(offerKey: false), StringComparison.Ordinal);
+        Assert.EndsWith("choose where Thinking runs in Companion › Thinking.", FreeKeyPrompt.Problem(offerKey: false), StringComparison.Ordinal);
         // The recommender says whether Martlet can reply; the review doesn't read its sentences.
         Assert.False(RecommendedSetupReview.From(recommendation with { CannotReplyNote = null }, build).CannotReply);
     }
@@ -643,7 +643,7 @@ public sealed class RecommendedSetupTests
         Assert.Equal(SetupAskStep.Nothing, SetupAskRule.Decide(minor, memory, companion: true, active).Step);
         Assert.Equal(SetupAskStep.Nothing, SetupAskRule.Decide(optimal, memory, companion: true, active).Step);
         var declined = memory.Decline(worth.Fingerprint, Now);
-        Assert.Equal((SetupAskStep.Nothing, "you declined this setup on this PC before"), SetupAskRule.Decide(worth, declined, companion: true, active));
+        Assert.Equal((SetupAskStep.Nothing, "you declined this setup before"), SetupAskRule.Decide(worth, declined, companion: true, active));
         // Something changed: a new recommended setup is asked about again.
         Assert.Equal(SetupAskStep.Ask, SetupAskRule.Decide(worth with { Fingerprint = "def456" }, declined, companion: true, active).Step);
     }

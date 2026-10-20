@@ -584,12 +584,12 @@ internal sealed class MemoryBriefService : IDisposable
         var text = !memoryOn ? "Memory is off, so Martlet writes and sends no brief."
             : !brief.On ? "Off: Martlet doesn't write or send a brief."
             : busyWriting ? "Writing the brief from your memories now."
-            : brief.Text is null ? $"Not written yet. Martlet writes it once it remembers at least {MemoryBriefWriter.MinimumFacts} things."
-            : brief.Owned ? "Your own text. Martlet sends it with the first message of each conversation and doesn't change it on its own."
+            : brief.Text is null ? $"Not written yet: Martlet writes it once it remembers at least {MemoryBriefWriter.MinimumFacts} things."
+            : brief.Owned ? "Your own text: Martlet sends it with the first message of each conversation and doesn't change it on its own."
             : !fine ? "Waiting: a memory it was written from changed or went, so Martlet doesn't send it until it writes it again."
-            : $"Martlet sends it with the first message of each conversation. Written {MemoryBriefWriter.Ago(brief.WrittenAt ?? now, now)} " +
-              $"from {brief.Facts} memor{(brief.Facts == 1 ? "y" : "ies")}.";
-        return trouble is null || !memoryOn || !brief.On ? text : text + " " + trouble;
+            : $"Written {MemoryBriefWriter.Ago(brief.WrittenAt ?? now, now)} from {brief.Facts} memor{(brief.Facts == 1 ? "y" : "ies")}; " +
+              "Martlet sends it with the first message of each conversation.";
+        return trouble is null || !memoryOn || !brief.On ? text : text.TrimEnd('.') + " — " + trouble;
     }
 
     public void Dispose()

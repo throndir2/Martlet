@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using Martlet.Core.Settings;
 using Martlet.Providers;
@@ -144,79 +142,20 @@ internal static class LocalModelServersCheck
     /// <summary>An HTTP/1.1 server on 127.0.0.1 (a free port) that answers each request with the canned status, type and body.</summary>
     internal sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
-        private readonly Task serving;
+        private readonly LoopbackHttpServer server;
         internal readonly List<Request> Requests = [];
 
-        internal Fixture(Func<Request, (int Status, string Type, string Body)> answer)
+        internal Fixture(Func<Request, (int Status, string Type, string Body)> answer) => server = new(exchange =>
         {
-            listener.Start();
-            serving = ServeAsync(answer);
-        }
+            var request = new Request(exchange.Request.Method, exchange.Request.Target, exchange.Request.Header("Authorization"),
+                exchange.Request.Text);
+            lock (Requests) Requests.Add(request);
+            var (status, type, body) = answer(request);
+            return exchange.RespondAsync(status, body, type);
+        });
 
-        internal int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
+        internal int Port => server.Port;
 
-        private async Task ServeAsync(Func<Request, (int Status, string Type, string Body)> answer)
-        {
-            while (!stop.IsCancellationRequested)
-            {
-                TcpClient client;
-                try { client = await listener.AcceptTcpClientAsync(stop.Token); }
-                catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { return; }
-                using (client)
-                {
-                    try
-                    {
-                        await using var stream = client.GetStream();
-                        var request = await ReadAsync(stream, stop.Token);
-                        lock (Requests) Requests.Add(request);
-                        var (status, type, body) = answer(request);
-                        var payload = Encoding.UTF8.GetBytes(body);
-                        var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\nContent-Type: {type}\r\n" +
-                            $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-                        await stream.WriteAsync(head, stop.Token);
-                        await stream.WriteAsync(payload, stop.Token);
-                    }
-                    catch (Exception error) when (error is IOException or OperationCanceledException or SocketException) { }
-                }
-            }
-        }
-
-        private static async Task<Request> ReadAsync(NetworkStream stream, CancellationToken token)
-        {
-            var buffer = new MemoryStream();
-            var one = new byte[8192];
-            int end;
-            while ((end = buffer.GetBuffer().AsSpan(0, (int)buffer.Length).IndexOf("\r\n\r\n"u8)) < 0)
-            {
-                var read = await stream.ReadAsync(one, token);
-                if (read == 0) throw new IOException("The request ended early.");
-                buffer.Write(one, 0, read);
-            }
-            var lines = Encoding.ASCII.GetString(buffer.GetBuffer(), 0, end).Split("\r\n");
-            var first = lines[0].Split(' ');
-            var headers = lines.Skip(1).Select(h => h.Split(':', 2)).Where(h => h.Length == 2)
-                .ToDictionary(h => h[0].Trim(), h => h[1].Trim(), StringComparer.OrdinalIgnoreCase);
-            var length = headers.TryGetValue("Content-Length", out var value) && int.TryParse(value, out var parsed) ? parsed : 0;
-            var body = new MemoryStream();
-            body.Write(buffer.GetBuffer(), end + 4, (int)buffer.Length - end - 4);
-            while (body.Length < length)
-            {
-                var read = await stream.ReadAsync(one, token);
-                if (read == 0) break;
-                body.Write(one, 0, read);
-            }
-            return new(first[0], first.Length > 1 ? first[1] : "/", headers.GetValueOrDefault("Authorization"),
-                Encoding.UTF8.GetString(body.ToArray()));
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 }

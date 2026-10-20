@@ -177,7 +177,7 @@ public sealed class OllamaRecoveryTests : IDisposable
         var gone = OllamaRecovery.Diagnose(Facts(Loop(Now), folder: LinkedFolder with { RealPathUsable = false }), Places);
         Assert.True(gone.KnownCause);
         Assert.False(gone.CanRepair);
-        Assert.Contains("Move the models folder back", gone.Guidance, StringComparison.Ordinal);
+        Assert.Contains("move the models folder back", gone.Guidance, StringComparison.Ordinal);
 
         var notLinked = OllamaRecovery.Diagnose(Facts(Loop(Now), folder: new(@"C:\Users\owner\.ollama\models", null, null,
             @"C:\Users\owner\.ollama\models", false)), Places);

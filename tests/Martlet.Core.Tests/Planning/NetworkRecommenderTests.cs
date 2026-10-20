@@ -543,7 +543,7 @@ public sealed class NetworkRecommenderTests
             var remove = off.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == kind);
             Assert.StartsWith("You turned", remove.Why, StringComparison.Ordinal);
             Assert.StartsWith("Turn off ", remove.Summary, StringComparison.Ordinal);
-            Assert.Contains("Its downloads stay", remove.Summary, StringComparison.Ordinal);
+            Assert.Contains("(its downloads stay", remove.Summary, StringComparison.Ordinal);
         }
         var parts = off.Components.ToDictionary(c => c.Component);
         Assert.True(parts[PlanComponent.Singing].OwnerOff);

@@ -48,7 +48,7 @@ public sealed class ConfigurationRecoveryDispatcherTests
         {
             confirmations++;
             Assert.Contains("Restore the settings shown in the preview?", text);
-            Assert.Contains("API keys, permissions and audio tests will not be restored", text);
+            Assert.Contains("API keys, permissions and audio tests aren't restored", text);
             return consent;
         });
         try
