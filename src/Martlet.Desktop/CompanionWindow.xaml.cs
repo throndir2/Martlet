@@ -86,7 +86,7 @@ public partial class CompanionWindow : ThemedWindow
         if (closed) return;
         if (result?.Loaded is not { } loaded)
         {
-            ResultText.Text = "Your personas couldn't be read. Close Personality and open it again.";
+            ResultText.Text = "Your personas couldn't be read; close Personality and open it again.";
             RenderState();
             return;
         }
@@ -112,7 +112,7 @@ public partial class CompanionWindow : ThemedWindow
                 if (operation is not null) break;
                 if (waited == 100)
                 {
-                    ResultText.Text = "Another Martlet action is still finishing. Try again in a moment.";
+                    ResultText.Text = "Another Martlet action is still finishing; try again in a moment.";
                     return null;
                 }
                 await Task.Delay(100);
@@ -121,7 +121,7 @@ public partial class CompanionWindow : ThemedWindow
             var result = await operation.Completion;
             if (closed) return null;
             if (result.Outcome == SetupWorkOutcome.Completed) return result;
-            ResultText.Text = result.Outcome == SetupWorkOutcome.Canceled ? "Canceled." : "That didn't work. Try again.";
+            ResultText.Text = result.Outcome == SetupWorkOutcome.Canceled ? "Canceled." : "That didn't work; try again.";
             return null;
         }
         finally
@@ -282,7 +282,7 @@ public partial class CompanionWindow : ThemedWindow
             var updated = companion!.Add(UniqueName(companion, "New persona"));
             companion = updated;
             RenderPersonas(updated.ActivePersonaId);
-            ResultText.Text = "New persona added, and Martlet uses it now. Give it a name and describe it.";
+            ResultText.Text = "New persona added and in use; give it a name and describe it.";
             SaveNow();
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
@@ -308,7 +308,7 @@ public partial class CompanionWindow : ThemedWindow
         if (companion is null || working || editingId is not { } id) return;
         var selected = companion.Personas.Single(persona => persona.Id == id);
         if (companion.Personas.Count > 1 && !ConfirmationDialog.Confirm(this,
-                $"Delete the persona \"{selected.Name}\"? This can't be undone.", "Delete persona"))
+                $"Delete the persona \"{selected.Name}\" for good?", "Delete persona"))
             return;
         try
         {
@@ -327,7 +327,7 @@ public partial class CompanionWindow : ThemedWindow
     {
         if (companion is null || working) return;
         var path = chooseImport();
-        if (path is null) { ResultText.Text = "Import canceled. Nothing changed."; return; }
+        if (path is null) { ResultText.Text = "Import canceled; nothing changed."; return; }
         var backend = service;
         var result = await ObserveAsync(async token => new(SetupWorkOutcome.Completed,
             PersonaFile: await backend.ImportTextAsync(path, token).ConfigureAwait(false)));
@@ -340,7 +340,7 @@ public partial class CompanionWindow : ThemedWindow
     {
         if (!ReadyForChange() || editingId is not { } id) return;
         var path = chooseExport();
-        if (path is null) { ResultText.Text = "Export canceled. No file was created."; return; }
+        if (path is null) { ResultText.Text = "Export canceled; no file was created."; return; }
         var text = companion!.Personas.Single(persona => persona.Id == id).Text;
         var backend = service;
         var result = await ObserveAsync(async token => new(SetupWorkOutcome.Completed,
@@ -357,7 +357,7 @@ public partial class CompanionWindow : ThemedWindow
     {
         if (!ReadyForChange()) return;
         path ??= chooseCard();
-        if (path is null) { ResultText.Text = "Character card import canceled. Nothing changed."; return; }
+        if (path is null) { ResultText.Text = "Character card import canceled; nothing changed."; return; }
         var backend = service;
         var result = await ObserveAsync(async token => new(SetupWorkOutcome.Completed,
             CardFile: await backend.ImportCardAsync(path, token).ConfigureAwait(false)));
@@ -371,7 +371,7 @@ public partial class CompanionWindow : ThemedWindow
     {
         if (companion is null) return "Close Personality and open it again before importing a character card.";
         if (companion.Personas.Count >= CompanionSettings.MaximumPersonas)
-            return $"At most {CompanionSettings.MaximumPersonas} personas are supported. Delete one, or update an existing persona.";
+            return $"At most {CompanionSettings.MaximumPersonas} personas are supported; delete one, or update an existing persona.";
         var (characters, bytes) = CardRoom(companion, except: null);
         if (characters < MinimumCardCharacters) return NoRoom;
         var persona = card.ToPersona(Path.GetFileNameWithoutExtension(path), characters, bytes);
@@ -409,7 +409,7 @@ public partial class CompanionWindow : ThemedWindow
     }
 
     private const string NoRoom =
-        "There isn't enough room for this card. Shorten or delete another persona, then try again.";
+        "There isn't enough room for this card; shorten or delete another persona, then try again.";
 
     /// <summary>Room for a card's persona text: the per-persona limit, or less when the other personas' texts leave less of
     /// the combined settings limit.</summary>

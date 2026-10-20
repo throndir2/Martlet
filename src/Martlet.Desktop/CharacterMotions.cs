@@ -237,7 +237,7 @@ internal sealed class CharacterMotions(string? dataDirectory, Func<string?> crea
             if (failed.Count == 0) MarkStarters(folder, "made");
             return starters = failed.Count == 0
                 ? $"Martlet made its starter motions ({made} new) at {DateTime.Now:t}."
-                : $"Martlet made {made} starter motion{(made == 1 ? "" : "s")}; {string.Join(", ", failed)} didn't work. It tries again later.";
+                : $"Martlet made {made} starter motion{(made == 1 ? "" : "s")}; {string.Join(", ", failed)} didn't work, and it tries again later.";
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { return starters = "Making the starter motions was stopped."; }
         finally { Volatile.Write(ref startersRunning, 0); }

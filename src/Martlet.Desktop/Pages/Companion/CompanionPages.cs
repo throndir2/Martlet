@@ -171,7 +171,7 @@ internal static class CompanionPages
         CompanionTab.Character => "Choose Martlet's character, and its size and position on your desktop.",
         CompanionTab.SpeechBubbles => "Show Martlet's spoken words in a bubble beside the character, or as subtitles.",
         CompanionTab.Emotes => "Choose the emotes and motions that Martlet's replies can play on the character, and make combos of them.",
-        CompanionTab.Eyes => "Choose where the character looks. Martlet also finds its eyes, so that emotes drawn over them fit.",
+        CompanionTab.Eyes => "Choose where the character looks; Martlet also finds its eyes, so that emotes drawn over them fit.",
         CompanionTab.Touch => "Choose what the character does when you click or stroke it: its touch zones, and how it feels about each touch.",
         CompanionTab.Personality => "Edit Martlet's personas.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",

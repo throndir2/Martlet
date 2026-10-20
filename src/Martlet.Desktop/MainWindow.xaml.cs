@@ -674,12 +674,12 @@ public partial class MainWindow : ThemedWindow
         var where = saved is { } spot ? $"{spot.Left:0}, {spot.Top:0}" + (spot.Screen is { } device ? $" on {CharacterScreen(device)}" : "") : "";
         return (saved, avatar.IsShowing) switch
         {
-            ({ Locked: true } at, true) => $"Position locked at {where} ({at.Width:0} × {at.Height:0}). The character can't be dragged, moved or resized until you unlock it; zoom still works.",
-            ({ Locked: true }, false) => $"Position locked at {where}. The character shows there when it opens, until you unlock it.",
-            ({ }, true) => $"Position unlocked, remembered at {where} on this PC, even after a restart or update. Drag the character where you want it, then lock it here or from its right-click menu.",
-            ({ }, false) => $"Position unlocked. The character shows where you left it, at {where}. Reset position if it's lost: it then shows at the lower-right.",
-            (null, true) => "Position unlocked. Drag the character where you want it; Martlet remembers where on this PC, even after a restart or update. Lock it here or from its right-click menu.",
-            _ => "Position unlocked. The character shows at the lower-right; show it to place and lock it."
+            ({ Locked: true } at, true) => $"Position locked at {where} ({at.Width:0} × {at.Height:0}): the character can't be dragged, moved or resized until you unlock it, but zoom still works.",
+            ({ Locked: true }, false) => $"Position locked at {where}, where the character shows when it opens until you unlock it.",
+            ({ }, true) => $"Position unlocked and remembered at {where} on this PC: drag the character where you want it, then lock it here or from its right-click menu.",
+            ({ }, false) => $"Position unlocked: the character shows where you left it, at {where} (Reset position puts it at the lower-right).",
+            (null, true) => "Position unlocked: drag the character where you want it, then lock it here or from its right-click menu.",
+            _ => "Position unlocked: the character shows at the lower-right, and you can place and lock it once it shows."
         };
     }
 

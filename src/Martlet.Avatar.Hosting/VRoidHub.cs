@@ -434,10 +434,10 @@ public sealed class VRoidHub(HttpClient http)
         var status = response.StatusCode;
         return new VRoidHubException(status switch
         {
-            HttpStatusCode.Unauthorized => "VRoid Hub signed Martlet out. Link your VRoid Hub account again.",
+            HttpStatusCode.Unauthorized => "VRoid Hub signed Martlet out; link your VRoid Hub account again.",
             HttpStatusCode.Forbidden => "VRoid Hub doesn't let Martlet use this model" + (message is null ? "." : $": {Clip(message, 200)}"),
             HttpStatusCode.NotFound => "VRoid Hub doesn't have this model any more.",
-            HttpStatusCode.TooManyRequests => "VRoid Hub asked Martlet to slow down. Try again in a minute.",
+            HttpStatusCode.TooManyRequests => "VRoid Hub asked Martlet to slow down; try again in a minute.",
             _ => $"VRoid Hub answered {(int)status}" + (message is null ? "." : $": {Clip(message, 200)}")
         }, status);
     }
@@ -476,13 +476,13 @@ public sealed class VRoidHub(HttpClient http)
             if (query is null || !target!.StartsWith("/vroid-hub/callback", StringComparison.Ordinal))
                 message = "This address belongs to Martlet's VRoid Hub sign-in.";
             else if (query.GetValueOrDefault("state") != state)
-                message = "This sign-in doesn't match the one Martlet started. Start it again from Martlet.";
+                message = "This sign-in doesn't match the one Martlet started; start it again from Martlet.";
             else if (query.GetValueOrDefault("code") is { Length: > 0 and <= 512 } found)
             {
                 code = found;
-                message = "VRoid Hub is linked. You can close this tab and go back to Martlet.";
+                message = "VRoid Hub is linked; you can close this tab and go back to Martlet.";
             }
-            else message = "VRoid Hub didn't link Martlet. Go back to Martlet and try again.";
+            else message = "VRoid Hub didn't link Martlet; go back to Martlet and try again.";
             var html = "<!doctype html><meta charset=\"utf-8\"><title>Martlet</title>" +
                 "<body style=\"font-family:Segoe UI,sans-serif;margin:3em\"><h2>Martlet</h2><p>" + WebUtility.HtmlEncode(message) + "</p>";
             var body = Encoding.UTF8.GetBytes(html);

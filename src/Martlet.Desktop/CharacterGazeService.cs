@@ -204,11 +204,11 @@ internal sealed class CharacterGazeService
                     _ => " (Martlet's default until its personality decides)"
                 };
                 var now = settings.Changed
-                    ? $"The character {Describe(settings.Mode)}: it chose that at {chosenAt.ToLocalTime():t}. Usually it {usual}."
-                    : $"The character {usual}.";
-                if (Attending) now += $" Right now it looks at your mouse after {attendWhy}.";
-                else if (Holding && holding is { } spot) now += $" Right now it looks at the {spot.Place} of your screen.";
-                return now + (settings.Free ? " It may change where it looks in its replies." : " It keeps this; it can't change where it looks.");
+                    ? $"The character {Describe(settings.Mode)} (it chose that at {chosenAt.ToLocalTime():t}; usually it {usual})"
+                    : $"The character {usual}";
+                if (Attending) now += $", and right now it looks at your mouse after {attendWhy}";
+                else if (Holding && holding is { } spot) now += $", and right now it looks at the {spot.Place} of your screen";
+                return now + (settings.Free ? "; it may change where it looks in its replies." : "; it keeps this and can't change where it looks.");
             }
         }
     }
@@ -255,7 +255,7 @@ internal sealed class CharacterGazeService
                 if (!decides) return $"The character {Describe(mode)}.";
                 if (!avatar.IsShowing) return "Martlet decides where the character looks once the character shows.";
                 if (observedAt is not { } at || clock.GetElapsedTime(at) > Watching)
-                    return $"Martlet decides where the character looks while vision watches your screen. Until then it {Describe(mode)}.";
+                    return $"Martlet decides where the character looks while vision watches your screen; until then it {Describe(mode)}.";
                 var now = Attending ? $"Looking at your mouse after {attendWhy}."
                     : Holding && holding is { } spot
                     ? spot.Reason == GazeReason.Thinking

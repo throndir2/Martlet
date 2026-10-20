@@ -57,7 +57,7 @@ public partial class MainWindow
             _ when measured => "measured with vision",
             _ => showing ? "being read" : "read when the character shows"
         };
-        return $"Where it looks: {gaze}{(free ? "; replies may change it" : "")}. Eyes: {eyes}.";
+        return $"Where it looks: {gaze}{(free ? "; replies may change it" : "")}; eyes: {eyes}.";
     }
 
     /// <summary>Companion › Touch: how many touch zones are on and who placed them, and what a touch does while Martlet talks.</summary>

@@ -202,7 +202,7 @@ public sealed class OptionalExtrasTests
             MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: false));
         Assert.StartsWith("Off. ", MainWindow.MotionNow(listed: false, noneOn: false,
             new Martlet.Core.Motion.MotionSettings { Place = Martlet.Core.Motion.MotionPlace.Off }, [], fixture: false));
-        Assert.StartsWith("Not set up yet.", MainWindow.MotionNow(listed: false, noneOn: false, older, [], fixture: false));
+        Assert.StartsWith("Not set up yet:", MainWindow.MotionNow(listed: false, noneOn: false, older, [], fixture: false));
         Assert.StartsWith("No computer in the list can make motions", MainWindow.MotionNow(listed: true, noneOn: false, older, [], fixture: false));
         Assert.Contains("FIXTURE - NOT AI", MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: true));
         Assert.Contains("Live2D", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Live2D));

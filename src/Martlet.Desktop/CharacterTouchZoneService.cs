@@ -128,7 +128,7 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
         Volatile.Write(ref busy, true);
         Volatile.Write(ref estimating, true);
         Report(FirstGuessDrawing);
-        const string Again = " Open this page again to try once more, or press Detect zones.";
+        const string Again = "; open this page again to try once more, or press Detect zones.";
         try
         {
             if (await character() is not { } profile)
@@ -137,12 +137,12 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
                 return "";
             }
             if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot)
-                return Report("Martlet couldn't draw the character for its first zones." + Again);
+                return Report("Martlet couldn't draw the character for its first zones" + Again);
             ZonePixels snapshot;
             try { snapshot = await Task.Run(() => TouchZoneImages.Decode(shot.Png), token); }
             catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or InvalidOperationException or IOException)
             {
-                return Report("The character's picture couldn't be used for its first zones." + Again);
+                return Report("The character's picture couldn't be used for its first zones" + Again);
             }
             var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
             var hints = TouchZoneDetection.Hints(shot.Probe, crop);
@@ -152,7 +152,7 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
             // Another model loaded, or zones made, while the picture was taken: those stay as they are.
             if (ModelId != id || Current is { Zones.Count: > 0 }) return Detection ?? "";
             if (result.Zones is not { Count: > 0 } zones)
-                return Report("Martlet couldn't place any zones on the character's picture. Press Detect zones to have your Thinking model find them.");
+                return Report("Martlet couldn't place any zones on the character's picture; press Detect zones to have your Thinking model find them.");
             try
             {
                 await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, shot.Png, token);
@@ -192,7 +192,7 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
         Func<string, string, string, BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask, CancellationToken token)
     {
         if (Estimating) return Detection ?? "";
-        if (ModelId is not { } id) return Report("Martlet is still reading the character. Try again in a moment.");
+        if (ModelId is not { } id) return Report("Martlet is still reading the character; try again in a moment.");
         Volatile.Write(ref busy, true);
         Report("Taking a picture of the character...");
         var fixture = Environment.GetEnvironmentVariable(FixtureVariable) is { Length: > 0 } file ? file : null;
@@ -206,7 +206,7 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
         var pictureKept = false;
         try
         {
-            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot) return Report("Martlet couldn't take a picture of the character. Try again.");
+            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot) return Report("Martlet couldn't take a picture of the character; try again.");
             ZonePixels snapshot;
             try { snapshot = await Task.Run(() => TouchZoneImages.Decode(shot.Png), token); }
             catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or InvalidOperationException or IOException)
@@ -274,27 +274,27 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
             {
                 // A request failed (the model, or the computer it runs on, stopped answering): finding zones stopped there.
                 ErrorLog.Warn($"Finding touch zones stopped at request {requests}: {failure}.");
-                var stopped = tag + $"Finding zones stopped at request {requests}: couldn't ask the Thinking model ({failure}).";
+                var stopped = tag + $"Finding zones stopped at request {requests}: couldn't ask the Thinking model ({failure})";
                 if (before is { Zones.Count: > 0 } earlier)
                 {
                     // The zones found so far were saved over the earlier ones as they came: those, and their picture, go back.
                     if (pictureKept && await RestoreAsync(earlier, earlierPicture, earlierProbe) is { } lost)
-                        return Report(stopped + " The zones from before couldn't be put back: " + lost);
+                        return Report(stopped + "; the zones from before couldn't be put back: " + lost);
                     pictureKept = false;
                     var n = earlier.Zones.Count;
                     return Report(stopped + (earlier.DetectedBy == CharacterTouchZoneSettings.ByEstimate
-                        ? $" The {Zones(n)} of the first guess {(n == 1 ? "is" : "are")} kept."
-                        : $" Your {Zones(n)} from before {(n == 1 ? "is" : "are")} kept.") + " Try again when it answers.");
+                        ? $"; the {Zones(n)} of the first guess {(n == 1 ? "is" : "are")} kept"
+                        : $"; your {Zones(n)} from before {(n == 1 ? "is" : "are")} kept") + ", so try again when it answers.");
                 }
                 if (result.Zones is not { Count: > 0 } partial) return Report(tag + $"Couldn't ask the Thinking model ({failure}).");
                 if (await KeepAsync(id, before, partial, pictureKept ? null : shot.Png, crop, shot.Probe, token) is { } unsaved)
                     return Report("The zones were found but couldn't be saved: " + unsaved);
                 pictureKept = true;
-                return Report(stopped + $" The {Zones(partial.Count)} found until then {(partial.Count == 1 ? "is" : "are")} kept. " +
-                    "Press Detect again to find the rest.");
+                return Report(stopped + $"; the {Zones(partial.Count)} found until then {(partial.Count == 1 ? "is" : "are")} kept, " +
+                    "and Detect again finds the rest.");
             }
             if (result.Zones is null)
-                return Report(tag + "The Thinking model's answers had no zones Martlet could read. Try again, or choose a model that can see (Companion › Vision).");
+                return Report(tag + "The Thinking model's answers had no zones Martlet could read; try again, or choose a model that can see (Companion › Vision).");
             if (await KeepAsync(id, before, result.Zones, pictureKept ? null : shot.Png, crop, shot.Probe, token) is { } why)
                 return Report("The zones were found but couldn't be saved: " + why);
             pictureKept = true;
@@ -313,7 +313,7 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            return Report("Finding zones was stopped. The zones found until then are kept.");
+            return Report("Finding zones was stopped, and the zones found until then are kept.");
         }
         finally
         {
