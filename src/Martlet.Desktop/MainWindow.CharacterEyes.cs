@@ -83,7 +83,7 @@ public partial class MainWindow
     /// <see cref="SenseJobKind.HelperPicture"/>: a Thinking pool member that can see, else the image model of its own while pictures
     /// go to it, else the Thinking model unless it is known to be text-only (or a FIXTURE - NOT AI stand-in answers).</summary>
     private (bool CanSee, string Line, string? Off) EyesSight() =>
-        TouchZonesSight(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings.ThinkingRoute(),
+        TouchZonesPageModel.SightOf(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings.ThinkingRoute(),
             SavedModelAbilities(), CharacterEyeService.Fixture);
 
     private string EyesStatusText() => characterEyes.ModelId is null ? "Reading the character..."
@@ -183,7 +183,7 @@ public partial class MainWindow
         {
             try
             {
-                var bitmap = PictureAt(path, decodeHeight: 0, decodeWidth: 480);
+                var bitmap = PictureFiles.At(path, decodeHeight: 0, decodeWidth: 480);
                 var picture = new Image { Source = bitmap, Width = 240, Height = 240 * bitmap.PixelHeight / Math.Max(1, bitmap.PixelWidth),
                     Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 4) };
                 AutomationProperties.SetAutomationId(picture, "CharacterEyesPicture");
@@ -193,7 +193,7 @@ public partial class MainWindow
                 stack.Add(EyesLegend());
             }
             catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { }
-            var open = PageButton("Open the pictures and answers", () => OpenTouchZonePictures(Path.GetDirectoryName(path)!), id: "CharacterEyesOpen");
+            var open = PageButton("Open the pictures and answers", () => PictureFiles.OpenFolder(Path.GetDirectoryName(path)!), id: "CharacterEyesOpen");
             AutomationProperties.SetHelpText(open, "Opens the folder with each picture sent to the Thinking model and, beside it, a text file with " +
                 "the exact instructions, message and answer.");
             stack.Add(Row(open));
