@@ -2658,8 +2658,12 @@ answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
 throttled entries with their source, plus `StoresHealthy`, `FailingStores` and
 the authority save counts `AuthorityCommits`, `AuthorityCommitAverageMs` and
-`AuthorityCommitLongestMs`; the first step fails when a store is not healthy)
-and the host log lines naming each source.
+`AuthorityCommitLongestMs` and the nonce save counts `NonceSaves`,
+`NonceSaveAverageMs` and `NonceSaveLongestMs`; the first step fails when a store is not healthy)
+and the host log lines naming each source. A host on its real pairing store
+(a temporary directory) then pairs a desktop that makes 20 signed audit reads:
+the step passes when they took 20 nonce saves (journal appends) and at most
+one full save, and reports their times.
 Then outside addresses, played by other loopback ports: with the home address
 closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it

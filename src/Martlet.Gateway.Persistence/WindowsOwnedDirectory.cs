@@ -90,7 +90,7 @@ internal sealed class WindowsOwnedDirectory : IOwnedAuthorityDirectory
         foreach (var entry in Directory.EnumerateFileSystemEntries(Path))
         {
             var name = System.IO.Path.GetFileName(entry);
-            if (name is not ("owner.lock" or "authority.bin" or "running" or "pending.bin" or "staging.bin"))
+            if (name is not ("owner.lock" or "authority.bin" or "running" or "pending.bin" or "staging.bin" or NonceJournal.Name))
                 throw Error(GatewayPersistenceFailure.RecoveryRequired);
             if (name != "owner.lock")
                 CheckFile(entry, user);
@@ -125,6 +125,19 @@ internal sealed class WindowsOwnedDirectory : IOwnedAuthorityDirectory
 
     public void Validate(string name) => CheckFile(FilePath(name), user);
 
+    public void Append(string name, long expectedLength, ReadOnlySpan<byte> bytes, Action? written = null)
+    {
+        var path = FilePath(name);
+        using var file = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None, 0, FileOptions.None);
+        CheckHandle(file.SafeFileHandle);
+        if (file.Length != expectedLength)
+            throw Error(GatewayPersistenceFailure.InvalidState);
+        file.Seek(0, SeekOrigin.End);
+        file.Write(bytes);
+        written?.Invoke();
+        file.Flush(flushToDisk: true);
+    }
+
     public bool Exists(string name)
     {
         try { _ = File.GetAttributes(FilePath(name)); return true; }
@@ -152,6 +165,7 @@ internal sealed class WindowsOwnedDirectory : IOwnedAuthorityDirectory
 
     public void RemoveUnpreparedStage() => File.Delete(FilePath("staging.bin"));
     public void RemoveRunning() => File.Delete(FilePath("running"));
+    public void RemoveJournal() => File.Delete(FilePath(NonceJournal.Name));
 
     private static void ValidatePath(string path)
     {

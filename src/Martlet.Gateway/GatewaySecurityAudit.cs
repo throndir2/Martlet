@@ -37,7 +37,8 @@ internal sealed partial class GatewayHttpApplication
             Events = Guard.Recent(),
             StoresHealthy = StoreHealth.Healthy,
             Stores = StoreHealth.Snapshot(),
-            AuthorityCommits = AuthorityCommits(credentials.CommitStats)
+            AuthorityCommits = AuthorityCommits(credentials.CommitStats),
+            NonceSaves = AuthorityCommits(credentials.NonceStats)
         }).ConfigureAwait(false);
     }
 
@@ -71,8 +72,10 @@ internal sealed partial class GatewayHttpApplication
         public required bool StoresHealthy { get; init; }
         /// <summary>Each store that failed since the gateway started: what failed last, how often, when and why.</summary>
         public required IReadOnlyList<GatewayStoreStatus> Stores { get; init; }
-        /// <summary>How long saving the pairing authority takes; every signed request waits for one save.</summary>
+        /// <summary>How long full saves of the pairing authority take (pairing changes and the first request after a restart).</summary>
         public required AuthorityCommitDocument AuthorityCommits { get; init; }
+        /// <summary>How long nonce saves take: one append and one flush to the nonce journal; every signed request waits for one.</summary>
+        public required AuthorityCommitDocument NonceSaves { get; init; }
     }
 
     private static AuthorityCommitDocument AuthorityCommits(GatewayAuthorityCommitStats stats) => new()
