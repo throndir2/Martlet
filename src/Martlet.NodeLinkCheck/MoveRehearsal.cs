@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Network;
 using Martlet.Gateway;
 
@@ -56,13 +56,13 @@ internal static class MoveRehearsal
         {
             var port = host.Port;
             var pairedOrigin = $"https://{Paired}:{port}";
-            Audio2FaceHostPairing? saved = null;
+            HostPairing? saved = null;
             string? secret = null;
 
             await Run("A desktop pairs with the host over pinned TLS", async () =>
             {
                 var card = host.Server.Pairing.OpenWindow(new() { DeviceId = "lab-desktop", DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-                (saved, secret) = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, "lab-desktop",
+                (saved, secret) = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, "lab-desktop",
                     card.PairingId, card.Token.Reveal(), token);
                 return (saved.HostId == host.HostId, $"paired {saved.DeviceId} with {saved.HostId} (pin {saved.SpkiFingerprint[..15]}...)");
             });
@@ -93,7 +93,7 @@ internal static class MoveRehearsal
             {
                 // As HostRegistry.Load does for every paired host: its ID, pinned key and no new address yet.
                 HostRoutes.Remember(pairedOrigin, host.HostId, saved!.SpkiFingerprint, null);
-                using var desktop = new Audio2FaceHostConnection(saved with { Origin = pairedOrigin }, secret);
+                using var desktop = new HostConnection(saved with { Origin = pairedOrigin }, secret);
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 var routes = await desktop.ReadRoutesAsync(token);
                 var ms = clock.ElapsedMilliseconds;
@@ -110,7 +110,7 @@ internal static class MoveRehearsal
             await Run("Next time the desktop dials the new address at once, never waiting on the old one", async () =>
             {
                 // A new pool of kept connections (its own clock), so this dials again rather than reuse the one just made.
-                using var desktop = new Audio2FaceHostConnection(saved! with { Origin = pairedOrigin }, secret, new FreshPool());
+                using var desktop = new HostConnection(saved! with { Origin = pairedOrigin }, secret, new FreshPool());
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 await desktop.ReadRoutesAsync(token);
                 var ms = clock.ElapsedMilliseconds;
@@ -130,10 +130,10 @@ internal static class MoveRehearsal
                 var impostorOrigin = $"https://{ImpostorPaired}:{impostor.Port}";
                 HostRoutes.Find = (wanted, window, find) => HostFind.FindAsync(wanted, window, find, [ImpostorAt], impostorAnswers.Port);
                 HostRoutes.Remember(impostorOrigin, host.HostId, saved!.SpkiFingerprint, null);
-                using var desktop = new Audio2FaceHostConnection(saved with { Origin = impostorOrigin }, secret);
+                using var desktop = new HostConnection(saved with { Origin = impostorOrigin }, secret);
                 string? code = null, message = null;
                 try { await desktop.ReadRoutesAsync(token); }
-                catch (Audio2FaceHostException error) { (code, message) = (error.Code, error.Message); }
+                catch (HostConnectionException error) { (code, message) = (error.Code, error.Message); }
                 var route = HostRoutes.For(impostorOrigin, saved.SpkiFingerprint);
                 return (code == "host.unreachable" && route?.MovedTo is null && impostorAnswers.Answered > 0,
                     $"the other computer answered {impostorAnswers.Answered} find(s); the desktop got {code} ({message}); moved to {route?.MovedTo ?? "nowhere"}");
@@ -144,7 +144,7 @@ internal static class MoveRehearsal
                 HostRoutes.Find = (wanted, window, find) => HostFind.FindAsync(wanted, window, find, [Now], answers.Port);
                 // Paired at 127.0.0.3 (where it answers again) and last found at an address where nothing answers now.
                 HostRoutes.Remember(host.Origin, host.HostId, saved!.SpkiFingerprint, $"127.0.0.9:{port}");
-                using var desktop = new Audio2FaceHostConnection(saved, secret, new FreshPool());
+                using var desktop = new HostConnection(saved, secret, new FreshPool());
                 await desktop.ReadRoutesAsync(token);
                 var route = HostRoutes.For(host.Origin, saved.SpkiFingerprint);
                 HostMove[] seen;

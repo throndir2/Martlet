@@ -10,6 +10,6 @@
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
     <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
     <!-- The paired host client: pairing with a code, and reading and merging a host's copy of the shared settings. -->
-    <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
+    <ProjectReference Include="..\Martlet.HostClient\Martlet.HostClient.csproj" />
   </ItemGroup>
 </Project>

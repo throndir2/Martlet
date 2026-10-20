@@ -191,7 +191,7 @@ another role's change may read the same one. Read-only commands (`roles`,
   stops at once and says so; run the command again.
 
 MCP's `host_engine_check` runs this engine in a disposable `ubuntu:24.04`
-container and checks all of the above ([MCP](../../docs/MCP.md#local-mcp-control-windows)).
+container and checks all of the above ([MCP](../../docs/mcp/start-here.md#local-mcp-control-windows)).
 
 ### What the host tells Martlet
 

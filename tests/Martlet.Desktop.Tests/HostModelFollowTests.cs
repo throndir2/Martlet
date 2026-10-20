@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Settings;
 using Martlet.Desktop;
 
@@ -44,7 +44,7 @@ public sealed class HostModelFollowTests
             Snapshot(SetupRouteType.GatewayStt, "small"));
 
         // Thinking's model changed there; Listening's didn't.
-        HostRoute[] routes = [Route(HostRoute.OllamaChatRouteId, "gemma4-26b"), Route(Audio2FaceHostConnection.TranscriptionRouteId, "small")];
+        HostRoute[] routes = [Route(HostRoute.OllamaChatRouteId, "gemma4-26b"), Route(HostConnection.TranscriptionRouteId, "small")];
         var (saved, now) = Assert.Single(HostModelFollow.Jobs(settings, "diva", routes));
         Assert.Equal((SetupRole.Llm, "gemma4-e4b", "gemma4-26b"), (saved.Role, saved.GatewaySnapshot!.ModelId, now.ModelId));
         Assert.Same(HostJob.Thinking, HostModelFollow.JobFor(saved));

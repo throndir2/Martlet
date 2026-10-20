@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Gateway.Stt;
 
@@ -36,7 +36,7 @@ internal static class ListeningEngineCheck
         {
             await using var host = await VoiceEngineCheck.LiveHost.StartAsync(new SttRelayWorker(endpoint, routeModel));
             using var connection = await host.PairAsync("listening-check-desktop", token);
-            var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == Audio2FaceHostConnection.TranscriptionRouteId);
+            var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == HostConnection.TranscriptionRouteId);
             revision = route.ModelRevision;
             foreach (var (name, pcm) in clips)
             {
@@ -45,12 +45,12 @@ internal static class ListeningEngineCheck
                 var text = await connection.TranscribeAsync(route, ids, 0, DateTimeOffset.UtcNow.AddSeconds(60), pcm, token);
                 heard.Add(new
                 {
-                    clip = name, seconds = Math.Round(pcm.Length / 2.0 / Audio2FaceHostConnection.TranscriptionSampleRate, 2), text,
+                    clip = name, seconds = Math.Round(pcm.Length / 2.0 / HostConnection.TranscriptionSampleRate, 2), text,
                     transcribeMs = Math.Round(watch.Elapsed.TotalMilliseconds, 1)
                 });
             }
         }
-        catch (Audio2FaceHostException error)
+        catch (HostConnectionException error)
         {
             failure = error.Code;
             problem = error.Message;
@@ -63,7 +63,7 @@ internal static class ListeningEngineCheck
         var ok = failure is null && heard.Count == clips.Length;
         return (ok, new
         {
-            ok, endpoint = endpoint.ToString(), route = Audio2FaceHostConnection.TranscriptionRouteId, model = routeModel,
+            ok, endpoint = endpoint.ToString(), route = HostConnection.TranscriptionRouteId, model = routeModel,
             modelRevision = revision, status, clips = heard, failure, problem
         });
     }

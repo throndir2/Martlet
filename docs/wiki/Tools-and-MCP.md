@@ -172,4 +172,4 @@ also shows on the Tools page, managed by Smart home.
 Martlet also has its own MCP server, which lets AI assistants such as GitHub
 Copilot, Claude and VS Code set her up. See [Martlet MCP Server](Martlet-MCP-Server).
 
-More detail: [MCP](https://github.com/throndir2/Martlet/blob/main/docs/MCP.md#tools-while-you-talk-mcp-client), [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md#reminders), [Smart home](https://github.com/throndir2/Martlet/blob/main/docs/SMART_HOME.md).
+More detail: [MCP](https://github.com/throndir2/Martlet/blob/main/docs/mcp/apps.md#tools-while-you-talk-mcp-client), [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md#reminders), [Smart home](https://github.com/throndir2/Martlet/blob/main/docs/SMART_HOME.md).

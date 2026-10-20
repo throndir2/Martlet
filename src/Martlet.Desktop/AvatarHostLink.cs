@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -21,7 +21,7 @@ internal interface IAvatarHostLink : IDisposable
     void Invalidate();
 }
 
-internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection, TimeProvider? clock = null) : IAvatarHostLink
+internal sealed class GatewayAvatarHostLink(HostConnection connection, TimeProvider? clock = null) : IAvatarHostLink
 {
     private static readonly TimeSpan Recheck = TimeSpan.FromSeconds(30);
     private readonly TimeProvider time = clock ?? TimeProvider.System;
@@ -40,9 +40,9 @@ internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection,
             var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
             // Which cards serve the relay, for the live floor (HostRouteGpus).
             HostRouteGpus.Note(connection.Pairing.HostId, routes);
-            Volatile.Write(ref route, Audio2FaceHostConnection.Audio2FaceRoute(routes));
+            Volatile.Write(ref route, HostConnection.Audio2FaceRoute(routes));
         }
-        catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException ||
+        catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException ||
             error is OperationCanceledException && !token.IsCancellationRequested)
         {
             Volatile.Write(ref route, null);
@@ -71,11 +71,11 @@ internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection,
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null) return null;
         IAvatarHostLink? link = null;
-        read.Secret.Use(secret => link = new GatewayAvatarHostLink(new Audio2FaceHostConnection(Pairing(host), secret)));
+        read.Secret.Use(secret => link = new GatewayAvatarHostLink(new HostConnection(Pairing(host), secret)));
         return link;
     }
 
-    internal static Audio2FaceHostPairing Pairing(AvatarRemoteHost host) => new()
+    internal static HostPairing Pairing(AvatarRemoteHost host) => new()
     {
         Origin = host.Origin, HostId = host.HostId, SpkiFingerprint = host.SpkiFingerprint,
         DeviceId = host.DeviceId, CredentialId = host.CredentialId

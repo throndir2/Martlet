@@ -2,7 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Windows;
 using Martlet.Core.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Network;
 
 namespace Martlet.Desktop;
@@ -138,7 +138,7 @@ public partial class MainWindow
             audit = await connection.ReadSecurityAuditAsync(quick.Token);
             networkSecurity[host.HostId] = (audit, DateTimeOffset.UtcNow);
         }
-        catch (Audio2FaceHostException error) when (error.Code == "outside.paused") { pausedFromHere = true; }
+        catch (HostConnectionException error) when (error.Code == "outside.paused") { pausedFromHere = true; }
         catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { }
         catch (Exception error) when (ClusterSync.IsHostFailure(error) || error is InvalidOperationException) { }
         if (closing) return;

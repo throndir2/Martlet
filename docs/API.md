@@ -168,7 +168,7 @@ Keys belong to your Martlet network, like the [shared who does what](CLUSTER.md)
 | --- | --- |
 | Key list, format and merge rules | `Martlet.Core.Access` (`ApiKeyList`, `ApiKeyToken`, `ApiKeyScopes`) |
 | Host side | `Martlet.Gateway` `GatewayApiKeys.cs` (store, bearer checks, `/martlet/v1/api-keys`); scopes per endpoint in `GatewayHttp.cs`, `GatewayCommands.cs`, `GatewayLogs.cs`, `GatewayCluster.cs`, `GatewayInferenceHttp.cs`; `api-keys.json` on Linux hosts (`ControlApiKeyStorage`) |
-| Desktop client | `Martlet.Avatar.Audio2Face` `Remote/HostApiKeys.cs` |
+| Desktop client | `Martlet.HostClient` `HostApiKeys.cs` |
 | Desktop UI and sync | `MainWindow.ApiKeys.cs`, `ApiKeyDialogs.cs`; the **Apps and API keys** card on Share |
 | MCP | `api_keys_status` (this PC's list, never a key) and `api_selftest` (`Martlet.NodeLinkCheck api`); card IDs in [MCP](MCP.md) |
 

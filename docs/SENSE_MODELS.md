@@ -347,7 +347,7 @@ files.
 screen in 1.4 s (...)` and `Picture path: described (...)` with times only.
 `image-model-status.json` counts described replies, replies that went without,
 looks and descriptions. MCP's `image_model_check` reads both and rehearses the
-pipeline against fixture endpoints ([MCP](MCP.md#image-and-audio-models)).
+pipeline against fixture endpoints ([MCP](mcp/thinking.md#image-and-audio-models)).
 Code: `PictureDescriptions.cs` (shared with MCP), `SenseSession.Pictures.cs` (with
 `PictureMoment`, which decides when a picture is described ahead of time),
 `LiveConversationWindow.Pictures.cs` and `ImageModelScreenDigestThinker`
@@ -418,7 +418,7 @@ the default (the text model) nothing below runs and no request changes.
   *Voice path: described by the audio model (...)* and, for late words,
   *Voice description: ready N ms after you stopped ...* (times only, never the
   words). MCP `hearing_check`, `sound_digest_check` and `audio_model_check`
-  show it ([MCP](MCP.md#image-and-audio-models)).
+  show it ([MCP](mcp/thinking.md#image-and-audio-models)).
 
 ## Helper jobs with a picture
 
@@ -745,7 +745,7 @@ Without a data folder, a refusal is kept in memory only.
   kind's pool and the desktop's status file. `sense_models_check` rehearses
   the routing, the order of each job (`job-routing`), the lines and the pools
   with a simulated runner and members
-  ([MCP](MCP.md#image-and-audio-models)).
+  ([MCP](mcp/thinking.md#image-and-audio-models)).
   `image_model_check` and `audio_model_check` rehearse the picture and voice
   paths against fixture endpoints on 127.0.0.1 with the production code.
   `model_ability_check` rehearses Test vision and Test hearing, and

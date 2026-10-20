@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Audio;
@@ -134,13 +132,13 @@ internal static class ModelAbilityCheck
         return new { ok, rows };
     }
 
-    /// <summary>Whether a paired computer's Thinking route takes a recording (<see cref="Martlet.Avatar.Audio2Face.Remote.HostRoute.CarriesAudio"/>):
+    /// <summary>Whether a paired computer's Thinking route takes a recording (<see cref="Martlet.HostClient.HostRoute.CarriesAudio"/>):
     /// a host of this version advertises room for one; an older host's route (room for a screen image only) gets the transcript and
     /// should be updated.</summary>
     private static object HostRouteAudio()
     {
         const int olderBytes = 1_497_432;
-        static Martlet.Avatar.Audio2Face.Remote.HostRoute Route(string id, string path, int bytes) =>
+        static Martlet.HostClient.HostRoute Route(string id, string path, int bytes) =>
             new(id, path, "martlet.ollama-chat", "1", "ollama", "ollama", "1", "gemma4-e4b", "1", new string('0', 64),
                 new string('0', 64), bytes, 98_304, 65_536, 4_096, 4_096, 1_048_576, TimeSpan.FromMinutes(5), "request_abort");
         var rows = new
@@ -233,81 +231,21 @@ internal static class ModelAbilityCheck
     /// (server-sent events) answer when the body starts with <c>data:</c>.</summary>
     internal sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener;
-        private readonly CancellationTokenSource stop = new();
-        private readonly Task serving;
+        private readonly LoopbackHttpServer server;
         internal readonly List<Request> Requests = [];
 
         /// <param name="port">The port on 127.0.0.1; 0 (the default) takes a free one.</param>
-        internal Fixture(Func<Request, (int Status, string Body)> answer, int port = 0)
+        internal Fixture(Func<Request, (int Status, string Body)> answer, int port = 0) => server = new(exchange =>
         {
-            listener = new(IPAddress.Loopback, port);
-            listener.Start();
-            serving = ServeAsync(answer);
-        }
+            var request = new Request(exchange.Request.Method, exchange.Request.Target, exchange.Request.Body);
+            lock (Requests) Requests.Add(request);
+            var (status, body) = answer(request);
+            return exchange.RespondAsync(status, body, body.StartsWith("data:", StringComparison.Ordinal) ? "text/event-stream" : "application/json");
+        }, port: port);
 
-        internal string Origin => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
+        internal string Origin => server.Origin;
 
-        private async Task ServeAsync(Func<Request, (int Status, string Body)> answer)
-        {
-            while (!stop.IsCancellationRequested)
-            {
-                TcpClient client;
-                try { client = await listener.AcceptTcpClientAsync(stop.Token); }
-                catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { return; }
-                using (client)
-                {
-                    try
-                    {
-                        await using var stream = client.GetStream();
-                        var request = await ReadAsync(stream, stop.Token);
-                        lock (Requests) Requests.Add(request);
-                        var (status, body) = answer(request);
-                        var payload = Encoding.UTF8.GetBytes(body);
-                        var type = body.StartsWith("data:", StringComparison.Ordinal) ? "text/event-stream" : "application/json";
-                        var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\nContent-Type: {type}\r\n" +
-                            $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-                        await stream.WriteAsync(head, stop.Token);
-                        await stream.WriteAsync(payload, stop.Token);
-                    }
-                    catch (Exception error) when (error is IOException or OperationCanceledException or SocketException) { }
-                }
-            }
-        }
-
-        private static async Task<Request> ReadAsync(NetworkStream stream, CancellationToken token)
-        {
-            var buffer = new MemoryStream();
-            var one = new byte[8192];
-            int end;
-            while ((end = buffer.GetBuffer().AsSpan(0, (int)buffer.Length).IndexOf("\r\n\r\n"u8)) < 0)
-            {
-                var read = await stream.ReadAsync(one, token);
-                if (read == 0) throw new IOException("The request ended early.");
-                buffer.Write(one, 0, read);
-            }
-            var lines = Encoding.ASCII.GetString(buffer.GetBuffer(), 0, end).Split("\r\n");
-            var first = lines[0].Split(' ');
-            var length = lines.Skip(1).Select(h => h.Split(':', 2)).Where(h => h.Length == 2 &&
-                h[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)).Select(h => int.Parse(h[1].Trim())).FirstOrDefault(0);
-            var body = new MemoryStream();
-            body.Write(buffer.GetBuffer(), end + 4, (int)buffer.Length - end - 4);
-            while (body.Length < length)
-            {
-                var read = await stream.ReadAsync(one, token);
-                if (read == 0) break;
-                body.Write(one, 0, read);
-            }
-            return new(first[0], first.Length > 1 ? first[1] : "/", body.ToArray());
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 
     private static (int, string) NotFound => (404, "{\"error\":\"not found\"}");

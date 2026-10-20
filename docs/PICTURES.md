@@ -120,7 +120,7 @@ local Thinking model get it back.
 
 `MARTLET_PICTURES_FIXTURE=1` before Martlet starts makes it draw with the FIXTURE - NOT AI gradient maker (automated
 checks). MCP: `pictures_status` (with the Picture making list and the places a picture tries now) and `pictures_check` (with
-`place` `pool`, a rehearsal of the list's routing on simulated ComfyUI computers) ([MCP](MCP.md#picture-making)).
+`place` `pool`, a rehearsal of the list's routing on simulated ComfyUI computers) ([MCP](mcp/thinking.md#picture-making)).
 
 ## Use
 

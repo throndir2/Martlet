@@ -901,7 +901,7 @@ $build = Join-Path $WorkDirectory 'negative-build'
 Invoke-Dotnet $sdk (@('msbuild', $project, '-t:GenerateRestoreGraphFile', "-p:RestoreGraphOutputPath=$graph",
     '-p:RuntimeIdentifier=win-x64', '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties) -WorkingDirectory $source
 foreach ($projectName in @('Martlet.Conversation', 'Martlet.Memory', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support',
-        'Martlet.Avatars', 'Martlet.Avatar.Hosting', 'Martlet.Avatar.Audio2Face', 'Martlet.Avatar.RendererHost')) {
+        'Martlet.Avatars', 'Martlet.Avatar.Hosting', 'Martlet.Avatar.Audio2Face', 'Martlet.HostClient', 'Martlet.Avatar.RendererHost')) {
     $projectLock = Join-Path $packaging "locks\$projectName.packages.lock.json"
     $projectLockBytes = [IO.File]::ReadAllBytes($projectLock)
     try {

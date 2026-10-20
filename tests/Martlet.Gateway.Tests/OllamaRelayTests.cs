@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Gateway.Ollama;
 using Microsoft.AspNetCore.Builder;
@@ -61,12 +61,12 @@ public sealed class OllamaRelayTests
 
     private static CorrelationIds NewIds() => new() { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
 
-    private static async Task<(Audio2FaceHostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
+    private static async Task<(HostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
     {
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        var connection = new HostConnection(pairing, secret, host.Clock);
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.OllamaChatRouteId);
         return (connection, route);
     }
@@ -147,7 +147,7 @@ public sealed class OllamaRelayTests
         Assert.Equal(jpeg, Assert.Single(messages[^1].GetProperty("images").EnumerateArray()).GetString());
 
         // Not a JPEG/PNG: rejected at the gateway before it reaches Ollama.
-        await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "(Screen glance.)", 0.7, 64, 4_096, [Convert.ToBase64String(new byte[64])])) { }
@@ -185,14 +185,14 @@ public sealed class OllamaRelayTests
         Assert.Equal(new[] { jpeg, wave }, messages[^1].GetProperty("images").EnumerateArray().Select(i => i.GetString()!).ToArray());
 
         // Not a WAV, or longer than a check-in's minute: rejected at the gateway before it reaches Ollama.
-        var notWave = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var notWave = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: Convert.ToBase64String(new byte[64]))) { }
         });
         Assert.Equal("request.invalid", notWave.Code);
         var tooLong = Martlet.Providers.BoundedWaveAudio.FromPcm(format with { SampleRate = 16_000 }, new byte[16_000 * 2 * 61]).ToBase64();
-        var tooLarge = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var tooLarge = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 3, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: tooLong)) { }
@@ -219,7 +219,7 @@ public sealed class OllamaRelayTests
         };
         var wave = Martlet.Providers.BoundedWaveAudio.FromPcm(format, new byte[3_200]).ToBase64();
 
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: wave)) { }
@@ -241,14 +241,14 @@ public sealed class OllamaRelayTests
         };
         var wave = Martlet.Providers.BoundedWaveAudio.FromPcm(format, new byte[3_200]).ToBase64();
 
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: wave)) { }
         });
         Assert.Equal("request.invalid", failure.Code);
         // Without a recording the same error is the model's own failure.
-        var plain = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var plain = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "Hello", 0.7, 64, 4_096)) { }
@@ -306,7 +306,7 @@ public sealed class OllamaRelayTests
         Assert.Equal(-0.5, options.GetProperty("presence_penalty").GetDouble());
 
         // Out of range (a context window no larger than the reply budget): rejected at the gateway before it reaches Ollama.
-        var invalid = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var invalid = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "Hello", 0.7, 4_096, 4_096, null, new() { ContextTokens = 4_096 })) { }
@@ -323,9 +323,9 @@ public sealed class OllamaRelayTests
         await using var worker = OllamaRelayWorker.DeepThinking(ollama.Endpoint, "gemma4:e2b");
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.DeepThinkingRouteId);
         // What a Thinking pool job (remembering, 1,024 output tokens) asked for in 0.54.0: a budget of its input bound plus its
         // output, and the role's largest window so the model stays loaded. The gateway refused that pair as request.invalid.
@@ -430,7 +430,7 @@ public sealed class OllamaRelayTests
             (options.GetProperty("num_ctx").GetInt32(), options.GetProperty("num_predict").GetInt32()));
 
         // A message too long for it on its own fails with what to do.
-        var tooLong = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var tooLong = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], new string('x', 20_000), 0.7, 64, 4_096)) { }
@@ -478,7 +478,7 @@ public sealed class OllamaRelayTests
         using var owned = connection;
         Assert.True(300 * piece.Length > route.MaximumOutputBytes);
 
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(60),
                 null, [], "Hello", 0.7, 8_192, 16_384)) { }
@@ -502,7 +502,7 @@ public sealed class OllamaRelayTests
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
         var (connection, route) = await ConnectAsync(host);
         using var owned = connection;
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 0, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "Hello", 0.7, 64, 4_096)) { }
@@ -548,10 +548,10 @@ public sealed class OllamaRelayTests
 
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [thinking, deepWorker]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var replies = new Audio2FaceHostConnection(pairing, secret, host.Clock);
-        using var thinks = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var replies = new HostConnection(pairing, secret, host.Clock);
+        using var thinks = new HostConnection(pairing, secret, host.Clock);
         var routes = await replies.ReadRoutesAsync();
         var replyRoute = Assert.Single(routes, r => r.RouteId == HostRoute.OllamaChatRouteId);
         var deepRoute = Assert.Single(routes, r => r.RouteId == HostRoute.DeepThinkingRouteId);
@@ -629,9 +629,9 @@ public sealed class OllamaRelayTests
 
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [card1, card2]);
         var pairingCard = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, pairingCard.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, pairingCard.HostId,
             pairingCard.SpkiFingerprint, "desktop-test", pairingCard.PairingId, pairingCard.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var routes = await connection.ReadRoutesAsync();
         var one = Assert.Single(routes, r => r.RouteId == HostRoute.DeepThinkingRouteId);
         var two = Assert.Single(routes, r => r.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteIdFor(2));
@@ -677,9 +677,9 @@ public sealed class OllamaRelayTests
 
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [deepWorker]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        var connections = Enumerable.Range(0, 3).Select(_ => new Audio2FaceHostConnection(pairing, secret, host.Clock)).ToArray();
+        var connections = Enumerable.Range(0, 3).Select(_ => new HostConnection(pairing, secret, host.Clock)).ToArray();
         try
         {
             var route = Assert.Single(await connections[0].ReadRoutesAsync(), r => r.RouteId == HostRoute.DeepThinkingRouteId);
@@ -699,7 +699,7 @@ public sealed class OllamaRelayTests
             await Task.WhenAll(started.Select(s => s.Task)).WaitAsync(TimeSpan.FromSeconds(20));
             Assert.All(thinks, t => Assert.False(t.IsCompleted));
 
-            var busy = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+            var busy = await Assert.ThrowsAsync<HostConnectionException>(async () =>
             {
                 await foreach (var _ in connections[2].StreamChatAsync(route, NewIds(), 3, host.Clock.GetUtcNow().AddSeconds(30),
                     null, [], "One more", 0.7, 64, 4_096)) { }

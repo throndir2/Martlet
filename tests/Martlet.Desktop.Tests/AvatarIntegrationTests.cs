@@ -193,12 +193,12 @@ public sealed class AvatarIntegrationTests
         internal bool Disposed { get; private set; }
         public string Authority => Name;
         public Task<bool> ReadyAsync(CancellationToken token) => Task.FromResult(true);
-        public async IAsyncEnumerable<Martlet.Avatar.Audio2Face.Remote.RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch,
+        public async IAsyncEnumerable<Martlet.HostClient.RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch,
             int sampleRate, ReadOnlyMemory<byte> pcm, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
         {
             Requests.Enqueue((pcm.Length / 2, ids));
             await Task.Yield();
-            if (Busy) throw new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.busy", "The host is busy.");
+            if (Busy) throw new Martlet.HostClient.HostConnectionException("job.busy", "The host is busy.");
             yield return new(0, new Dictionary<string, double> { ["jawOpen"] = 0.6, ["unknownShape"] = 0.9 });
             yield return new(480, new Dictionary<string, double> { ["jawOpen"] = 0.3 });
         }
@@ -356,7 +356,7 @@ public sealed class AvatarIntegrationTests
     }
 
     private static IAvatarHostLink GatewayLink(AvatarRemoteHost host) => new GatewayAvatarHostLink(
-        new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), new string('A', 43)));
+        new Martlet.HostClient.HostConnection(GatewayAvatarHostLink.Pairing(host), new string('A', 43)));
 
     [Fact]
     public async Task Character_shows_with_loudness_lip_sync_when_the_paired_host_does_not_answer()

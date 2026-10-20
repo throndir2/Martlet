@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text.Json;
 using Martlet.Conversation;
 using Martlet.Mcp.Shared;
@@ -35,12 +33,9 @@ internal static class ContextBoardCheck
         if (text is not null)
             posted = board.Post(source!, text, now.AddSeconds(-(ageSeconds ?? 0)), TimeSpan.FromSeconds(maxAgeSeconds ?? 60), consume == true);
 
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         var requests = new List<byte[]>();
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ContextCheck.ServeCacheAsync(listener, requests, stop.Token);
+        var server = ContextCheck.CacheFixture(requests);
+        var baseUrl = server.V1;
         try
         {
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
@@ -122,9 +117,7 @@ internal static class ContextBoardCheck
         }
         finally
         {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 }

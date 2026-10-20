@@ -3,7 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Nodes;
 using static Martlet.NodeLinkCheck.CheckHelpers;
 
@@ -24,8 +24,8 @@ internal static class CommandMailboxCheck
         await using var host = await LoopbackHost.StartAsync(certificate, storage, token);
         var (requesterPairing, requesterSecret) = await host.PairAsync("check-requester");
         var (agentPairing, agentSecret) = await host.PairAsync("check-agent");
-        using var asker = new Audio2FaceHostConnection(requesterPairing, requesterSecret);
-        using var agentConnection = new Audio2FaceHostConnection(agentPairing, agentSecret);
+        using var asker = new HostConnection(requesterPairing, requesterSecret);
+        using var agentConnection = new HostConnection(agentPairing, agentSecret);
         var runner = new FixtureRunner();
         var agent = new NodeCommandAgent(_ => Task.FromResult<string?>(token), "9.9.9", runner);
 
@@ -105,7 +105,7 @@ internal static class CommandMailboxCheck
         await using (var restartedHa = await LoopbackHost.StartAsync(certificate, storage, Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32))))
         {
             var (haAfterPairing, haAfterSecret) = await restartedHa.PairAsync("check-ha-restart");
-            using var haAfterConnection = new Audio2FaceHostConnection(haAfterPairing, haAfterSecret);
+            using var haAfterConnection = new HostConnection(haAfterPairing, haAfterSecret);
             var haAfterRestart = await haAfterConnection.ReadHomeAssistantAsync();
             Step("home-assistant-restart", SameHomeAssistant(haBeforeRestart, haRestartValue) &&
                 SameHomeAssistant(haAfterRestart, haRestartValue) && haAfterRestart?.UpdatedBy == "check-requester",
@@ -178,7 +178,7 @@ internal static class CommandMailboxCheck
         // Commands side by side: the agent takes every command it may start and runs each in the background on its own
         // connection. Changes to other roles, status and reading a role run at once; a second change to one role waits for the
         // first, and an update waits for what runs and holds the commands sent after it.
-        Audio2FaceHostConnection ConnectAgent() => new(agentPairing, agentSecret);
+        HostConnection ConnectAgent() => new(agentPairing, agentSecret);
         async Task<NodeCommandState> StateAsync(string id) => (await asker.ReadCommandAsync(id)).State;
         var slow = await asker.SendCommandAsync(NodeCommandKinds.DescribeRole, new Dictionary<string, string> { ["role"] = "slow-role" });
         var holdA = await asker.SendCommandAsync(NodeCommandKinds.AddRole, new Dictionary<string, string> { ["role"] = "hold-a" });
@@ -283,7 +283,7 @@ internal static class CommandMailboxCheck
         var kept = await asker.SendCommandAsync(NodeCommandKinds.Status, new Dictionary<string, string>());
         await using var restarted = await LoopbackHost.StartAsync(certificate, storage, Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
         var (afterPairing, afterSecret) = await restarted.PairAsync("check-requester");
-        using var afterAsker = new Audio2FaceHostConnection(afterPairing, afterSecret);
+        using var afterAsker = new HostConnection(afterPairing, afterSecret);
         var restored = (await afterAsker.ReadCommandsAsync()).Commands;
         var stillUpdate = restored.FirstOrDefault(c => c.Id == update.Id);
         var lostSecrets = restored.FirstOrDefault(c => c.Kind == NodeCommandKinds.AddRole && c.Arguments["role"] == "later-role");

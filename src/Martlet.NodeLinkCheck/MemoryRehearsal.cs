@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;
 using Martlet.Core.Network;
@@ -405,7 +405,7 @@ internal static class MemoryRehearsal
             await read();
             return false;
         }
-        catch (Audio2FaceHostException error) when (error.Code == "memories.space_denied")
+        catch (HostConnectionException error) when (error.Code == "memories.space_denied")
         {
             return true;
         }
@@ -419,7 +419,7 @@ internal static class MemoryRehearsal
     /// sync engine, opened and wired the way the desktop's memory service and sync do.</summary>
     private sealed class LabDesktop
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly string dataDirectory;
         private string memoryDirectory;
         internal string DeviceId { get; }
@@ -442,14 +442,14 @@ internal static class MemoryRehearsal
         internal async Task PairAsync(LabHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = DeviceId, DisplayName = DeviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
-        private Audio2FaceHostConnection Connect(LabHost host)
+        private HostConnection Connect(LabHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
 
         internal async Task<SharedMemories> ReadAsync(LabHost host, CancellationToken token)
@@ -534,14 +534,14 @@ internal static class MemoryRehearsal
                     copies.Add(await ReadSpaceAsync(host, space, token));
                     reachable.Add((host, false));
                 }
-                catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or OperationCanceledException) { }
+                catch (Exception error) when (error is HttpRequestException or HostConnectionException or IOException or OperationCanceledException) { }
                 if (!oldDocument) continue;
                 try
                 {
                     copies.Add(await ReadAsync(host, token));
                     reachable.Add((host, true));
                 }
-                catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or OperationCanceledException) { }
+                catch (Exception error) when (error is HttpRequestException or HostConnectionException or IOException or OperationCanceledException) { }
             }
             var node = new MemorySyncNode(MemorySpaceFolders.Sync(dataDirectory, space), DeviceId, LabCapacity);
             var result = await WithStoreAsync(store => node.SyncAsync(copies, read => ReadLocalAsync(store, read),
@@ -625,7 +625,7 @@ internal static class MemoryRehearsal
                     copies.Add(await ReadAsync(host, token));
                     reachable.Add(host);
                 }
-                catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or OperationCanceledException) { }
+                catch (Exception error) when (error is HttpRequestException or HostConnectionException or IOException or OperationCanceledException) { }
             }
             var result = await WithStoreAsync(store => Node.SyncAsync(copies,
                 async read =>

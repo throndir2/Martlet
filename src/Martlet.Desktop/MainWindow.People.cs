@@ -90,7 +90,7 @@ public partial class MainWindow
                     var linked = true;
                     VoiceRoster copy;
                     try { copy = await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.ReadVoicesAsync(lifetime.Token, linked: true)); }
-                    catch (Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+                    catch (Martlet.HostClient.HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
                     {
                         linked = false;
                         copy = await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.ReadVoicesAsync(lifetime.Token));
@@ -103,7 +103,7 @@ public partial class MainWindow
                     return (host.HostId, Ok: true, Old: false, Linked: linked);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
-                catch (Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+                catch (Martlet.HostClient.HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
                 {
                     return (host.HostId, Ok: false, Old: true, Linked: false);
                 }

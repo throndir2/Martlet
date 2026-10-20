@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using Martlet.Core.Planning;
 using Martlet.Providers.LocalModels;
@@ -341,56 +339,17 @@ internal static class ModelCatalogCheck
     /// <summary>A one-request-per-connection HTTP server on 127.0.0.1 that answers GETs with <c>answer(path)</c>.</summary>
     private sealed class FixtureServer : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
-        private readonly Task serving;
+        private readonly LoopbackHttpServer server;
 
-        internal FixtureServer(Func<string, (int Status, string Body)> answer)
+        internal FixtureServer(Func<string, (int Status, string Body)> answer) => server = LoopbackHttpServer.Answering(request =>
         {
-            listener.Start();
-            serving = ServeAsync(answer);
-        }
+            var (status, body) = answer(request.Target);
+            return (status, "text/plain; charset=utf-8", body);
+        }, concurrent: true);
 
-        internal string Origin => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
+        internal string Origin => server.Origin;
 
-        private async Task ServeAsync(Func<string, (int Status, string Body)> answer)
-        {
-            while (!stop.IsCancellationRequested)
-            {
-                TcpClient client;
-                try { client = await listener.AcceptTcpClientAsync(stop.Token); }
-                catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { return; }
-                _ = Task.Run(async () =>
-                {
-                    using (client)
-                    {
-                        try
-                        {
-                            await using var stream = client.GetStream();
-                            var head = new StringBuilder();
-                            var one = new byte[1];
-                            while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await stream.ReadAsync(one, stop.Token) == 1)
-                                head.Append((char)one[0]);
-                            var path = head.ToString().Split(' ') is { Length: > 1 } parts ? parts[1] : "/";
-                            var (status, body) = answer(path);
-                            var payload = Encoding.UTF8.GetBytes(body);
-                            await stream.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\n" +
-                                $"Content-Type: text/plain; charset=utf-8\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n"), stop.Token);
-                            await stream.WriteAsync(payload, stop.Token);
-                        }
-                        catch (Exception error) when (error is IOException or OperationCanceledException or SocketException) { }
-                    }
-                });
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 
     /// <summary>Small copies of each source, shaped like the real ones on 2026-10-10 (FIXTURE).</summary>

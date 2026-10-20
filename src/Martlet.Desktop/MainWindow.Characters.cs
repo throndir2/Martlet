@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Characters;
@@ -327,8 +327,8 @@ public partial class MainWindow
         var token = lifetime.Token;
         var before = characterModelStatus;
         var changed = false;
-        var connections = new Dictionary<string, Audio2FaceHostConnection>(StringComparer.Ordinal);
-        Audio2FaceHostConnection Connection(PairedHost host) =>
+        var connections = new Dictionary<string, HostConnection>(StringComparer.Ordinal);
+        HostConnection Connection(PairedHost host) =>
             connections.TryGetValue(host.HostId, out var open) ? open : connections[host.HostId] = ClusterSync.Connect(host.Pairing);
         try
         {
@@ -341,7 +341,7 @@ public partial class MainWindow
                     return (Host: host, Copy: (HostCharacterModels?)copy, Old: false);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-                catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+                catch (HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
                 {
                     return (host, null, true);
                 }

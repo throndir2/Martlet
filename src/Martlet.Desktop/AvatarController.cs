@@ -6,7 +6,7 @@ using System.Threading.Channels;
 using System.Windows;
 using Martlet.Audio;
 using Martlet.Avatar.Audio2Face;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Conversation;

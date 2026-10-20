@@ -1376,6 +1376,20 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task AnAreasOwnExceptionsBecomeExpectedFailuresAndOthersKeepTheirType()
+    {
+        McpTool Throwing(Exception error) => new("t", "", new { }, [], ToolPermission.None, (_, _) => throw error);
+        var wrapped = McpServer.Expecting([Throwing(new System.Runtime.InteropServices.COMException("The window went away."))],
+            error => error is System.Runtime.InteropServices.COMException)[0];
+        var expected = await Assert.ThrowsAsync<McpToolException>(() => wrapped.Run(default, CancellationToken.None));
+        Assert.Equal("The window went away.", expected.Message);
+        Assert.True(McpToolException.IsExpected(expected));
+        var other = McpServer.Expecting([Throwing(new FormatException("bad"))], error => error is System.Runtime.InteropServices.COMException)[0];
+        await Assert.ThrowsAsync<FormatException>(() => other.Run(default, CancellationToken.None));
+        Assert.False(McpToolException.IsExpected(new FormatException("bad")));
+    }
+
+    [Fact]
     public async Task McpServersStatusHidesLiteralSecretsInArgumentsButKeepsReferences()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Servers." + Guid.NewGuid().ToString("N"));

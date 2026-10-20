@@ -506,7 +506,7 @@ settings. A running Martlet follows the changes at once. To connect your
 assistants, run `scripts\Register-MartletMcp.ps1` from a copy of this
 repository.
 
-📖 [Martlet MCP Server](https://github.com/throndir2/Martlet/wiki/Martlet-MCP-Server) · [Use Martlet from an AI assistant](docs/MCP.md#use-martlet-from-an-ai-assistant)
+📖 [Martlet MCP Server](https://github.com/throndir2/Martlet/wiki/Martlet-MCP-Server) · [Use Martlet from an AI assistant](docs/mcp/start-here.md#use-martlet-from-an-ai-assistant)
 
 ### 🎀 And all the little things
 

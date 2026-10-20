@@ -1,5 +1,5 @@
 using Martlet.Audio;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Planning;

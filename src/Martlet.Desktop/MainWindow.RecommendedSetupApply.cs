@@ -1,7 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Nodes;
 using Martlet.Core.Planning;
@@ -486,7 +486,7 @@ public partial class MainWindow
         }
 
         /// <summary>Runs through Martlet on that computer (the host's paired gateway), after checking Martlet there takes commands.</summary>
-        private static async Task<T> ThroughAgentAsync<T>(PairedHost host, Func<Audio2FaceHostConnection, Task<T>> run, CancellationToken cancel)
+        private static async Task<T> ThroughAgentAsync<T>(PairedHost host, Func<HostConnection, Task<T>> run, CancellationToken cancel)
         {
             try
             {
@@ -498,7 +498,7 @@ public partial class MainWindow
                     return await run(connection);
                 });
             }
-            catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+            catch (HostConnectionException error) when (error.Code == "request.invalid")
             {
                 throw new InvalidOperationException($"{host.HostId}'s host service is older than commands between computers. Open Martlet on " +
                     $"{host.HostId} once: it brings its host service up to date by itself.");
@@ -517,7 +517,7 @@ internal static class SetupHostCommands
     /// <summary>How long the host may stay unreachable while a command runs (its gateway restarts during some changes).</summary>
     private static readonly TimeSpan UnreachablePatience = TimeSpan.FromMinutes(15);
 
-    internal static async Task<Martlet.Core.Nodes.NodeCommand> RunAsync(Audio2FaceHostConnection connection, string host, string kind,
+    internal static async Task<Martlet.Core.Nodes.NodeCommand> RunAsync(HostConnection connection, string host, string kind,
         IReadOnlyDictionary<string, string> arguments, IReadOnlyDictionary<string, string>? secrets, TimeSpan patience,
         Action<string> status, CancellationToken cancel)
     {
@@ -543,14 +543,14 @@ internal static class SetupHostCommands
                     command = await connection.ReadCommandAsync(command.Id, cancel);
                     unreachableSince = null;
                 }
-                catch (Exception error) when (error is Audio2FaceHostException { Code: "host.unreachable" or "auth.clock" or "gateway.internal" } ||
+                catch (Exception error) when (error is HostConnectionException { Code: "host.unreachable" or "auth.clock" or "gateway.internal" } ||
                     error is OperationCanceledException && !cancel.IsCancellationRequested)
                 {
                     unreachableSince ??= DateTimeOffset.UtcNow;
                     if (DateTimeOffset.UtcNow - unreachableSince > UnreachablePatience)
                         throw new InvalidOperationException($"{host}'s host service stopped answering for {UnreachablePatience.TotalMinutes:0} minutes.");
                 }
-                catch (Audio2FaceHostException error) when (error.Code == "command.not_found")
+                catch (HostConnectionException error) when (error.Code == "command.not_found")
                 {
                     throw new InvalidOperationException($"{host} no longer has this command (its host service restarted).");
                 }
@@ -564,14 +564,14 @@ internal static class SetupHostCommands
         }
     }
 
-    private static async Task WithdrawAsync(Audio2FaceHostConnection connection, string id)
+    private static async Task WithdrawAsync(HostConnection connection, string id)
     {
         try
         {
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await connection.CancelCommandAsync(id, limit.Token);
         }
-        catch (Exception error) when (error is Audio2FaceHostException or OperationCanceledException or System.Net.Http.HttpRequestException or IOException) { }
+        catch (Exception error) when (error is HostConnectionException or OperationCanceledException or System.Net.Http.HttpRequestException or IOException) { }
     }
 }
 

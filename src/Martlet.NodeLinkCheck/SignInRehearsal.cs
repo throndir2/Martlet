@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Core.Network;
 using Martlet.Gateway;
@@ -230,7 +230,7 @@ internal static class SignInRehearsal
                 await home.ChangeAsync(host.HostId, change, token);
                 refused = null;
             }
-            catch (Audio2FaceHostException error)
+            catch (HostConnectionException error)
             {
                 refused = error.Code;
                 message = error.Message;
@@ -376,7 +376,7 @@ internal static class SignInRehearsal
     private static async Task<string?> FailureAsync<T>(Func<Task<T>> action)
     {
         try { await action(); return null; }
-        catch (Audio2FaceHostException error) { return error.Code; }
+        catch (HostConnectionException error) { return error.Code; }
     }
 
     private sealed record Step(string Name, bool Ok, string Detail);
@@ -490,18 +490,18 @@ internal static class SignInRehearsal
 
     internal sealed class LabDesktop(NetworkKey key, string name)
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly NetworkSyncEngine engine = new(key, name);
         internal NetworkLocalState State { get; private set; } = NetworkLocalState.Empty;
 
         internal async Task PairByCodeAsync(LabHost host, CancellationToken token)
         {
             var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
-            var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), key.DeviceId, name, token);
+            var (pairing, secret) = await HostTransport.PairWithCodeAsync(host.Origin, card.Code.Reveal(), key.DeviceId, name, token);
             Keep(pairing, secret);
         }
 
-        internal void Keep(Audio2FaceHostPairing pairing, string secret)
+        internal void Keep(HostPairing pairing, string secret)
         {
             pairings[pairing.HostId] = (pairing, secret);
             State = State.WithAdopted(pairing.HostId);
@@ -514,7 +514,7 @@ internal static class SignInRehearsal
         internal async Task<NetworkSyncResult> SyncAsync(CancellationToken token)
         {
             var result = await engine.SyncAsync(State, pairings.Values.Select(p => p.Pairing).ToArray(),
-                pairing => new Audio2FaceHostConnection(pairing, pairings[pairing.HostId].Secret), token);
+                pairing => new HostConnection(pairing, pairings[pairing.HostId].Secret), token);
             foreach (var (pairing, secret) in result.Paired) pairings[pairing.HostId] = (pairing, secret);
             foreach (var id in result.Forget) pairings.Remove(id);
             State = NetworkLocalState.Parse(result.State.Write());
@@ -530,18 +530,18 @@ internal static class SignInRehearsal
 
         internal async Task<HostSignInSettings> ChangeAsync(string hostId, JsonObject change, CancellationToken token)
         {
-            using var connection = new Audio2FaceHostConnection(pairings[hostId].Pairing, pairings[hostId].Secret);
+            using var connection = new HostConnection(pairings[hostId].Pairing, pairings[hostId].Secret);
             return await connection.ChangeSignInSettingsAsync(change, token);
         }
 
         internal async Task<HostSignInSettings> ReadAsync(string hostId, CancellationToken token)
         {
-            using var connection = new Audio2FaceHostConnection(pairings[hostId].Pairing, pairings[hostId].Secret);
+            using var connection = new HostConnection(pairings[hostId].Pairing, pairings[hostId].Secret);
             return await connection.ReadSignInSettingsAsync(token);
         }
 
         /// <summary>A signed connection to a host this desktop is paired with (dispose it).</summary>
-        internal Audio2FaceHostConnection Connect(string hostId) => new(pairings[hostId].Pairing, pairings[hostId].Secret);
+        internal HostConnection Connect(string hostId) => new(pairings[hostId].Pairing, pairings[hostId].Secret);
 
         internal async Task<bool> CanUseAsync(string hostId, CancellationToken token) => await FailureCodeAsync(hostId, token) is null;
 
@@ -549,7 +549,7 @@ internal static class SignInRehearsal
         internal async Task<IReadOnlyList<(string Route, string? Code)>> RefusalsAsync(string hostId, CancellationToken token)
         {
             var (pairing, secret) = pairings[hostId];
-            using var c = new Audio2FaceHostConnection(pairing, secret);
+            using var c = new HostConnection(pairing, secret);
             (string, Func<Task<object?>>)[] calls =
             [
                 ("network", async () => await c.ReadNetworkAsync(token)),
@@ -578,7 +578,7 @@ internal static class SignInRehearsal
             if (!pairings.TryGetValue(hostId, out var pairing)) return "not-paired";
             return await FailureAsync(async () =>
             {
-                using var connection = new Audio2FaceHostConnection(pairing.Pairing, pairing.Secret);
+                using var connection = new HostConnection(pairing.Pairing, pairing.Secret);
                 return await connection.ReadRoutesAsync(token);
             });
         }

@@ -416,12 +416,12 @@ public sealed class HelperJobsTests
     [Fact]
     public void A_hosts_refusal_for_a_live_turn_is_preempted_not_busy_or_a_failure()
     {
-        var held = new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.busy", "busy") { Detail = "live" };
+        var held = new Martlet.HostClient.HostConnectionException("job.busy", "busy") { Detail = "live" };
         Assert.True(held.HeldForLive);
         Assert.Equal(Martlet.Core.Cluster.WorkRefusal.Preempted, WorkSharingRoster.Classify(held));
         Assert.Equal(Martlet.Core.Cluster.WorkRefusal.Preempted,
-            WorkSharingRoster.Classify(new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.preempted", "stopped")));
+            WorkSharingRoster.Classify(new Martlet.HostClient.HostConnectionException("job.preempted", "stopped")));
         Assert.Equal(Martlet.Core.Cluster.WorkRefusal.Busy,
-            WorkSharingRoster.Classify(new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.busy", "busy")));
+            WorkSharingRoster.Classify(new Martlet.HostClient.HostConnectionException("job.busy", "busy")));
     }
 }

@@ -1,5 +1,5 @@
 using System.IO;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -117,10 +117,10 @@ public sealed class WorkSharingRosterTests
     [Fact]
     public void Busy_and_unreachable_refusals_move_on_and_others_fail()
     {
-        Assert.Equal(WorkRefusal.Busy, WorkSharingRoster.Classify(new Audio2FaceHostException("job.busy", "busy")));
-        Assert.Equal(WorkRefusal.Unavailable, WorkSharingRoster.Classify(new Audio2FaceHostException("host.unreachable", "gone")));
+        Assert.Equal(WorkRefusal.Busy, WorkSharingRoster.Classify(new HostConnectionException("job.busy", "busy")));
+        Assert.Equal(WorkRefusal.Unavailable, WorkSharingRoster.Classify(new HostConnectionException("host.unreachable", "gone")));
         Assert.Equal(WorkRefusal.Unavailable, WorkSharingRoster.Classify(new HostTextException(ProviderFailureCode.ModelNotFound)));
-        Assert.Equal(WorkRefusal.None, WorkSharingRoster.Classify(new Audio2FaceHostException("request.invalid", "bad")));
+        Assert.Equal(WorkRefusal.None, WorkSharingRoster.Classify(new HostConnectionException("request.invalid", "bad")));
         Assert.Equal(WorkRefusal.None, WorkSharingRoster.Classify(new HostTextException(ProviderFailureCode.Authentication)));
     }
 }

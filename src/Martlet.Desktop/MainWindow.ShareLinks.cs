@@ -2,7 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Network;
 
@@ -101,7 +101,7 @@ public partial class MainWindow
             catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { problems[host.HostId] = "didn't answer in time"; }
             catch (Exception error) when (ClusterSync.IsHostFailure(error))
             {
-                problems[host.HostId] = error is Audio2FaceHostException { Code: "request.invalid" or "signin.unsupported" or "signin.unavailable" }
+                problems[host.HostId] = error is HostConnectionException { Code: "request.invalid" or "signin.unsupported" or "signin.unavailable" }
                     ? "runs an older Martlet without share links; update it" : error.Message;
             }
         }));
@@ -178,7 +178,7 @@ public partial class MainWindow
             }
             catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { lock (problems) problems.Add($"{host.HostId} didn't answer"); }
             // Hosts older than share links never kept it.
-            catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "signin.unsupported") { }
+            catch (HostConnectionException error) when (error.Code is "request.invalid" or "signin.unsupported") { }
             catch (Exception error) when (ClusterSync.IsHostFailure(error)) { lock (problems) problems.Add($"{host.HostId}: {error.Message}"); }
         }));
         if (closing) return;
@@ -251,7 +251,7 @@ public partial class MainWindow
                 ErrorLog.Info($"Share links: {(change.Add ? "added" : "removed")} the link for {change.Link.Name} {(change.Add ? "to" : "from")} {change.HostId}.");
             }
             catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { }
-            catch (Audio2FaceHostException error) when (error.Code == "signin.link_removed")
+            catch (HostConnectionException error) when (error.Code == "signin.link_removed")
             {
                 // Stopped on another of your computers after this PC's last read: stop it here too.
                 SaveShareLinks(shareLinks with
@@ -370,7 +370,7 @@ public partial class MainWindow
                     kept.Add(invite.HostId);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
-                catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or ContractException or
+                catch (Exception error) when (error is HostConnectionException or InvalidOperationException or IOException or ContractException or
                     OperationCanceledException or System.Net.Sockets.SocketException)
                 {
                     problems.Add($"{invite.HostId}: {error.Message}");

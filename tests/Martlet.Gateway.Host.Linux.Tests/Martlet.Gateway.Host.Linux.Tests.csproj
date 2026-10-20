@@ -10,6 +10,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Martlet.Gateway.Host.Linux\Martlet.Gateway.Host.Linux.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.HostClient\Martlet.HostClient.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

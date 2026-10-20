@@ -1,0 +1,58 @@
+using System.Net;
+using System.Text.Json;
+using Martlet.Core.Contracts;
+using Martlet.Core.Speakers;
+
+namespace Martlet.HostClient;
+
+/// <summary>The host's copy of the shared voice list (the people the owner's computers recognize by voice).</summary>
+public sealed partial class HostConnection
+{
+    private const string VoicesPath = "/martlet/v1/voices";
+    private const string LinkedVoicesPath = VoicesPath + "/linked";
+
+    /// <summary>Reads the host's copy of the voice list; <paramref name="linked"/> asks for each voice's account link too.
+    /// Hosts older than voice sharing (or, for <paramref name="linked"/>, older than account links) refuse with code
+    /// <c>request.invalid</c> (or answer not found).</summary>
+    public async Task<VoiceRoster> ReadVoicesAsync(CancellationToken cancellationToken = default, bool linked = false)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + (linked ? LinkedVoicesPath : VoicesPath));
+        Sign(request, []);
+        return await VoicesAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Merges <paramref name="roster"/> into the host's copy and returns the merged list, which may include changes
+    /// another computer made. Without <paramref name="linked"/> the list goes and comes back without account links, as a host
+    /// older than account links reads it.</summary>
+    public async Task<VoiceRoster> MergeVoicesAsync(VoiceRoster roster, CancellationToken cancellationToken = default, bool linked = false)
+    {
+        ArgumentNullException.ThrowIfNull(roster);
+        var body = (linked ? roster : roster.WithoutLinks()).Write();
+        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + (linked ? LinkedVoicesPath : VoicesPath))
+        {
+            Content = HostTransport.JsonContent(body)
+        };
+        Sign(request, body);
+        return await VoicesAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<VoiceRoster> VoicesAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+        using var document = await HostTransport.ReadJson(response, VoiceRoster.MaximumBytes + 4096, timeout.Token).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK) throw HostTransport.Remote(document.RootElement);
+        try
+        {
+            var root = document.RootElement;
+            if (root.GetProperty("host_id").GetString() != pairing.HostId)
+                throw new HostConnectionException("response.invalid", "The host identity changed; pair again.");
+            return VoiceRoster.Parse(JsonSerializer.SerializeToUtf8Bytes(root.GetProperty("roster")));
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or ContractException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's copy of the voice list was invalid.");
+        }
+    }
+}

@@ -59,4 +59,18 @@ internal sealed partial class McpServer
     private static McpTool Tool(string name, string description, object properties, string[] required,
         Func<JsonElement, CancellationToken, Task<object>> run, ToolPermission permission = ToolPermission.None) =>
         new(name, description, properties, required, permission, run);
+
+    /// <summary>The tools of an area, each turning the exceptions the area expects (<paramref name="expected"/>) into
+    /// <see cref="McpToolException"/>, so the assistant gets their message as the tool's error.</summary>
+    internal static McpTool[] Expecting(McpTool[] tools, Func<Exception, bool> expected) =>
+    [
+        .. tools.Select(tool => tool with
+        {
+            Run = async (arguments, cancellation) =>
+            {
+                try { return await tool.Run(arguments, cancellation); }
+                catch (Exception error) when (expected(error)) { throw new McpToolException(error.Message, error); }
+            }
+        })
+    ];
 }

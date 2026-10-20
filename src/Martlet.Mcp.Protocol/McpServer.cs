@@ -15,13 +15,18 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
     private const int MaxLineLength = 1024 * 1024;
 
     /// <summary>Every tool, by martlet_guide area, in the order of the guide's areas. Tools\<Area>Tools.cs holds the tools of one
-    /// area: their definitions, handlers and permissions, and the code only they use.</summary>
+    /// area: their definitions, handlers and permissions, and the code only they use. An area whose code throws exceptions of its
+    /// own projects names them here, so they come back as expected failures (<see cref="McpToolException"/>).</summary>
     private (string Area, McpTool[] Tools)[] ToolGroups() =>
     [
         ("Start here", StartTools()),
-        ("Characters", CharacterTools()),
+        // The character finders (character_find_looks, character_find_on_web, a look key in character_create) go online.
+        ("Characters", Expecting(CharacterTools(), error => error is Martlet.Core.Settings.CharacterCardException or
+            Martlet.Avatar.Hosting.VRoidHubException or Martlet.Conversation.WebResearchException)),
         ("Settings", SettingsTools()),
-        ("The app's window", UiTools()),
+        // UI Automation fails when a window or control goes away while a tool reads or drives it.
+        ("The app's window", Expecting(UiTools(), error => error is System.ComponentModel.Win32Exception or
+            System.Runtime.InteropServices.COMException or System.Windows.Automation.ElementNotAvailableException)),
         ("Diagnostics and logs", DiagnosticsTools()),
         ("Voice and listening", VoiceTools()),
         ("Thinking and models", ThinkingTools()),
@@ -174,11 +179,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         var text = ex switch
         {
             OperationCanceledException or TimeoutException => "The tool took too long: " + ex.Message,
-            ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or
-                System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
-                System.Windows.Automation.ElementNotAvailableException or Martlet.Core.Contracts.ContractException or
-                Martlet.Core.Settings.CharacterCardException or System.Net.Http.HttpRequestException or
-                Martlet.Avatar.Hosting.VRoidHubException or Martlet.Conversation.WebResearchException => ex.Message,
+            _ when McpToolException.IsExpected(ex) => ex.Message,
             _ => $"{ex.GetType().Name}: {ex.Message}"
         };
         if (text.Length > 2000) text = text[..2000] + "...";
