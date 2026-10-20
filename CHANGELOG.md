@@ -10,8 +10,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- On computers with big graphics cards, Recommended setup gives Deep thinking a bigger, smarter model from Martlet's model catalog when a card has room, and your host PCs can now install any model from the catalog, not only Martlet's short list. Replies stay as fast as before: the conversation keeps its fast model. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
-- Doctor now warns when Martlet's model catalog hasn't refreshed fully for over a week. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- On computers with big graphics cards, Recommended setup gives Deep thinking a bigger, smarter model from Martlet's model catalog when a card has room, and your host PCs can now install any model from the catalog, not only Martlet's short list. Replies stay as fast as before: the conversation keeps its fast model. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
+- Doctor now warns when Martlet's model catalog hasn't refreshed fully for over a week. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - While you play a game, Martlet gets a short *While you play* note (Companion › Prompts) that names the game and keeps what it remembers from that game to that game, and a lorebook entry with the game's name as a keyword joins in on every reply, so you can give Martlet its own instructions for one game. ([#1043](https://github.com/throndir2/Martlet/pull/1043))
 - Read more adds new pages to a game's guide from the same wiki, each time you use it, even without a Thinking pool helper and after Martlet restarts. It is next to Read again on Companion › App guides, in the talk window's header, and as a button in the character's speech bubble for a little while after Martlet answers from a guide. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - Martlet keeps what you say in a game for that game: tell it Chillet is your favorite while playing Palworld, and it brings that up in Palworld (or when you ask about Palworld), not in other games. Facts about you still come up everywhere. In Companion › Memory, *Where it matters* shows and changes this for each memory. ([#1030](https://github.com/throndir2/Martlet/pull/1030))
@@ -34,7 +34,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Background tasks that wait for a free computer now start in the order you asked for them. Before, two that were asked at the same moment could swap places. ([#1047](https://github.com/throndir2/Martlet/pull/1047))
 - Each request to a host answers faster: the host saves the request's one-use number with one small write instead of saving all its pairings (about 3 ms instead of 27 ms on a fast disk, and more on slow disks). ([#1046](https://github.com/throndir2/Martlet/pull/1046))
 - A background task (such as a think or a song) that couldn't start no longer stays "running" forever and blocks new ones until a restart; it ends as failed and the log says why. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
