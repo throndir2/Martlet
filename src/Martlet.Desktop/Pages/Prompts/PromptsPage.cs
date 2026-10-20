@@ -1,22 +1,22 @@
-using System.IO;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Presentation;
+using static Martlet.Desktop.PromptsPageModel;
 
 namespace Martlet.Desktop;
 
-/// <summary>The Companion page's Prompts tab: every internal prompt Martlet sends to the Thinking model (persona wrapper, styles,
+/// <summary>Companion › Prompts, the UI only: every internal prompt Martlet sends to the Thinking model (persona wrapper, styles,
 /// reply length, always listening, tools, voices, lore, memory, screen and camera glances, remembering, learning names and the
-/// smart home notes), each editable. Saved edits replace the built-in text everywhere it is used.</summary>
-public partial class MainWindow
+/// smart home notes), each editable. Saved edits replace the built-in text everywhere it is used. What each line says is in
+/// <see cref="PromptsPageModel"/>; what the page needs from the app is <see cref="IPromptsPageServices"/>.</summary>
+internal sealed class PromptsPage(IPromptsPageServices services)
 {
-    private void RenderPromptsTab(Panel page)
+    /// <summary>Draws the page's cards into <paramref name="page"/>.</summary>
+    internal void Render(Panel page)
     {
-        var saved = homeSettings?.Prompts;
+        var saved = services.Saved;
         var now = Note(DescribePrompts(saved), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(now, "PromptsNow");
         var total = Note(DescribePromptTokens(PromptCatalog.All.Select(p => PromptSettings.Text(saved, p.Id))), new Thickness(0, 4, 0, 0));
@@ -37,13 +37,13 @@ public partial class MainWindow
         var boxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);
         var states = new List<Action>();
         // There is no Save button: edits save a moment after typing stops, into the newest saved settings.
-        var autoSave = new AutoSave(() => SavePromptsFromAsync(boxes, prompts =>
+        var autoSave = new AutoSave(() => services.SaveAsync(boxes.ToDictionary(b => b.Key, b => b.Value.Text, StringComparer.Ordinal), prompts =>
         {
             saved = prompts;
             now.Text = DescribePrompts(prompts);
             foreach (var show in states) show();
         }));
-        tabAutoSave = autoSave;
+        services.UseAutoSave(autoSave);
         foreach (var group in PromptCatalog.All.GroupBy(p => p.Group))
         {
             var children = new List<UIElement> { Heading(group.Key) };
@@ -69,7 +69,7 @@ public partial class MainWindow
                 states.Add(ShowState);
                 box.TextChanged += (_, _) =>
                 {
-                    tabEdited = true;
+                    services.MarkEdited();
                     ShowState();
                     total.Text = DescribePromptTokens(boxes.Values.Select(b => b.Text));
                     autoSave.Changed();
@@ -94,92 +94,5 @@ public partial class MainWindow
             HelpTip.Explain("Your edits save on their own and apply to every new reply, glance and memory check. Reload an open conversation " +
                 "to use them.", new Thickness(0, 0, 0, 4), "PromptsBuiltIn", "built-in prompts", wiki: "Personality-and-Characters#prompts"),
             Row(defaults)));
-    }
-
-    /// <summary>A prompt's state in words, against what is saved: built in, edited, empty (sent as nothing), its estimated tokens,
-    /// and whether it is still saving.</summary>
-    internal static string PromptState(PromptDefinition prompt, string text, PromptSettings? saved)
-    {
-        var sent = text.Replace("\r\n", "\n", StringComparison.Ordinal);
-        var state = string.IsNullOrWhiteSpace(text) ? "Empty: nothing is sent for this prompt"
-            : (text == prompt.Default ? "Built-in text, about " : "Edited, about ") + Tokens(PromptTokens(sent));
-        return (sent == PromptSettings.Text(saved, prompt.Id) ? state : state + ", saving") + ".";
-    }
-
-    /// <summary>The estimated tokens of every prompt together, as typed: what all of them would add if one request sent them all.</summary>
-    internal static string DescribePromptTokens(IEnumerable<string> texts) =>
-        "All prompts together: about " + Tokens(texts.Sum(t => string.IsNullOrWhiteSpace(t) ? 0
-            : PromptTokens(t.Replace("\r\n", "\n", StringComparison.Ordinal)))) +
-        " (each request sends only the prompts it needs).";
-
-    /// <summary>A prompt's estimated tokens by Martlet's own request-size rule (see <see cref="Martlet.Providers.BoundedTextInput"/>).</summary>
-    internal static int PromptTokens(string text) => Martlet.Providers.BoundedTextInput.TextTokens(text);
-
-    private static string Tokens(int count) =>
-        count.ToString("N0", System.Globalization.CultureInfo.CurrentCulture) + (count == 1 ? " token" : " tokens");
-
-    internal static string DescribePrompts(PromptSettings? prompts)
-    {
-        var total = PromptCatalog.All.Count;
-        if (prompts is null) return $"All {total} prompts use Martlet's built-in text.";
-        var empty = prompts.Overrides.Count(o => string.IsNullOrWhiteSpace(o.Value));
-        var edited = prompts.Overrides.Count - empty;
-        var parts = new List<string>();
-        if (edited > 0) parts.Add($"{edited} of {total} prompts edited");
-        if (empty > 0) parts.Add($"{empty} emptied (not sent)");
-        return string.Join(", ", parts) + "; the rest use Martlet's built-in text.";
-    }
-
-    /// <summary>The Prompts page's auto-save: validates the edits and writes them into the newest saved settings, after any change
-    /// still saving. Returns false to be tried again shortly when another window saved the settings meanwhile; a prompt that
-    /// can't be saved says why.</summary>
-    private async Task<bool> SavePromptsFromAsync(IReadOnlyDictionary<string, TextBox> boxes, Action<PromptSettings?> saved)
-    {
-        PromptSettings? prompts;
-        try
-        {
-            prompts = PromptSettings.Normalize(boxes.ToDictionary(b => b.Key, b => b.Value.Text.Replace("\r\n", "\n", StringComparison.Ordinal),
-                StringComparer.Ordinal));
-            prompts?.Validate();
-        }
-        catch (ContractException error)
-        {
-            ActionText.Text = "Prompts not saved yet: " + error.Message;
-            return true;
-        }
-        if (store is null || setupService is null) return true;
-        // Closing has begun: the change is not saved, so it still counts as waiting.
-        if (closing) return false;
-        ChangeTurns.Turn? turn = null;
-        var token = lifetime.Token;
-        try
-        {
-            turn = await ChangeTurnAsync();
-            var loaded = await setupService.LoadAsync(token);
-            if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
-            var updated = SetupSettings.Begin(loaded.Settings) with { Prompts = prompts };
-            updated.Validate();
-            var result = await setupService.SaveAsync(updated, loaded.Revision, token);
-            if (!result.Save.Saved)
-            {
-                if (result.Save.Error?.Code == ErrorCode.SettingsConflict) return false;
-                throw new InvalidOperationException(result.Summary);
-            }
-            homeSettings = updated;
-            saved(prompts);
-            ActionText.Text = "Prompts saved; reload an open conversation to use them.";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
-        {
-            ActionText.Text = "Prompts not saved: " + error.Message;
-        }
-        finally
-        {
-            turn?.Dispose();
-            // The page stays as typed (tabEdited); only Home and the other summaries refresh.
-            if (!closing) RenderHome();
-        }
-        return true;
     }
 }

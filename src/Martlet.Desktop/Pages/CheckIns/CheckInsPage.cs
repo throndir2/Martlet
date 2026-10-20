@@ -143,7 +143,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
             InputHint.SetText(box, "What this check-in asks the Thinking pool");
             var state = Note("", new Thickness(0, 2, 0, 0));
             AutomationProperties.SetAutomationId(state, "CheckInPromptState-" + id);
-            void ShowState() => state.Text = MainWindow.PromptState(prompt, box.Text, services.Prompts);
+            void ShowState() => state.Text = PromptsPageModel.PromptState(prompt, box.Text, services.Prompts);
             ShowState();
             promptStates.Add(ShowState);
             promptBoxes[promptId] = box;

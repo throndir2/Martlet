@@ -11,28 +11,28 @@ public sealed class PromptsTabTextTests
     public void PromptStatesAreOneSentence()
     {
         var prompt = PromptCatalog.All[0];
-        var builtIn = MainWindow.PromptState(prompt, prompt.Default, null);
+        var builtIn = PromptsPageModel.PromptState(prompt, prompt.Default, null);
         Assert.StartsWith("Built-in text, about ", builtIn, StringComparison.Ordinal);
         Assert.Equal(1, Sentences.Count(builtIn));
 
-        var saving = MainWindow.PromptState(prompt, "My own text.", null);
+        var saving = PromptsPageModel.PromptState(prompt, "My own text.", null);
         Assert.StartsWith("Edited, about ", saving, StringComparison.Ordinal);
         Assert.EndsWith(", saving.", saving, StringComparison.Ordinal);
         Assert.Equal(1, Sentences.Count(saving));
 
-        Assert.Equal("Empty: nothing is sent for this prompt, saving.", MainWindow.PromptState(prompt, "  ", null));
+        Assert.Equal("Empty: nothing is sent for this prompt, saving.", PromptsPageModel.PromptState(prompt, "  ", null));
     }
 
     [Fact]
     public void PromptSummariesAreOneSentence()
     {
-        Assert.Equal(1, Sentences.Count(MainWindow.DescribePromptTokens(PromptCatalog.All.Select(p => p.Default))));
+        Assert.Equal(1, Sentences.Count(PromptsPageModel.DescribePromptTokens(PromptCatalog.All.Select(p => p.Default))));
         var edited = PromptSettings.Normalize(new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [PromptCatalog.All[0].Id] = "My own text.",
             [PromptCatalog.All[1].Id] = ""
         });
-        var summary = MainWindow.DescribePrompts(edited);
+        var summary = PromptsPageModel.DescribePrompts(edited);
         Assert.Contains("edited", summary, StringComparison.Ordinal);
         Assert.Equal(1, Sentences.Count(summary));
     }
