@@ -156,13 +156,12 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.89.0
+## 🆕 What's new in 0.90.0
 
-- 🎮 **Remembers each game for itself**: what you say while you play a game stays with that game, a *While you play* note names the game, and a lorebook entry with the game's name joins in for it.
-- 🧹 **Memory care**: a new hourly check-in keeps facts for the right game and person, merges duplicates and fixes facts that turned out wrong, and keeps the earlier version of each.
-- 📚 **Read more**: add new pages to a game's guide from the same wiki whenever you want, also after Martlet restarts.
-- 🧠 **Bigger thinking models**: Recommended setup can give Deep thinking a bigger model on big graphics cards, and you can think with a GGUF model file you downloaded.
-- ⚡ **Answers sooner and the same everywhere**: Martlet no longer waits for Home Assistant or starting tool servers, and touch zones, Discord, Telegram and WhatsApp setups are the same on all your computers.
+- 🤫 **No more spoken prompt text**: when a model goes on past its reply and starts to write a "User:" line, Martlet's notes or a chat template token, the reply stops before it, so you never hear it.
+- 🖥️ **Your own model app on host PCs**: when LM Studio, llama.cpp, vLLM or another model app on a host serves a smarter model, that host's Thinking pool can use it. Nothing downloads.
+- 🧭 **Shorter, clearer pages**: the Devices map, job pages, host settings, Tools, Smart home, Discord, Messaging and more show one short line each, with the details behind a **?** that links to the wiki.
+- 🛠️ **Steadier for assistants and older PCs**: assistants that drive Martlet through MCP no longer time out or miss buttons, and a PC without Direct3D 9 gets a clear message instead of a crash.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
