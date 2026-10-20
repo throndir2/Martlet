@@ -702,12 +702,22 @@ to end with the marker, `saidAloud` to be the start of the reply's words and
 `saidAloud` and `unsaid` together to be all of them.
 Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
-spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
+spoken piece. With `reply` (up to 1,024 characters of text; line breaks are
+allowed) that text
 is streamed a word at a time instead, like a model's tokens, and spoken with
 speech breaks chosen like `voice_tags`' (`dataDirectory`'s `persona`, else the
 one Martlet uses, else the defaults; `breaks` on top); `voice.pieces` lists
 exactly what the voice was asked to say, in order, with `voice.persona` and
-`voice.breaks`. Use `voiceFailure` `none` to hear every piece. With `slow`,
+`voice.breaks`. When the `reply` goes on into prompt text (a line that starts
+with `User:` or `Owner:`, `[MARTLET_NOTES]` or a chat template token such as
+`<|im_start|>`), the reply stops before it, as a desktop reply does
+([Replies stop at prompt text](../CONVERSATION.md#replies-stop-at-prompt-text)):
+`promptText` returns `cutAt` (the marker), `streamedCharacters` and
+`keptCharacters`, and `promptText.ok` (part of `ok`) needs the marker out of
+`reply.text` and `voice.pieces` and the Thinking trace saying so. For example
+`"reply":"Sounds fun! Let's play a round tonight.\nUser: okay and what about
+tomorrow?"` returned `cutAt` `User:`, the text *Sounds fun! Let's play a round
+tonight.* and two spoken pieces. Use `voiceFailure` `none` to hear every piece. With `slow`,
 `ok` needs every piece spoken whole, nothing stopped, and the reply latency
 line saying *The voice paused N times for X ms in all, waiting for its next
 audio.* with at least one pause, together at least about one gap (the gap

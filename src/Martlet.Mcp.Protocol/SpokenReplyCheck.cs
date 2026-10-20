@@ -70,8 +70,8 @@ internal static class SpokenReplyCheck
         var voiceDelay = TimeSpan.FromMilliseconds(voiceDelayMs ?? 0);
         if (reasoning < TimeSpan.Zero || reasoning > TimeSpan.FromSeconds(5)) throw new ArgumentException("'reasoningMs' must be 0 through 5000.");
         if (voiceDelay < TimeSpan.Zero || voiceDelay > TimeSpan.FromSeconds(5)) throw new ArgumentException("'voiceDelayMs' must be 0 through 5000.");
-        if (reply is not null && (string.IsNullOrWhiteSpace(reply) || reply.Length > 1024 || reply.Any(char.IsControl)))
-            throw new ArgumentException("'reply' must be 1-1024 characters of one-line text.");
+        if (reply is not null && (string.IsNullOrWhiteSpace(reply) || reply.Length > 1024 || reply.Any(c => char.IsControl(c) && c != '\n')))
+            throw new ArgumentException("'reply' must be 1-1024 characters of text (line breaks allowed).");
         if (characterTags is { Count: > 0 } && (characterTags.Count > ConversationRequest.MaximumCharacterTags ||
             characterTags.Any(tag => tag is not { Length: >= 3 and <= 64 } || tag[0] != '{' || tag[^1] != '}' || tag.Any(char.IsControl))))
             throw new ArgumentException("'characterTags' must be up to 128 {tags} of 3-64 characters, such as \"{nod}\".");
@@ -107,7 +107,7 @@ internal static class SpokenReplyCheck
                 new ConversationLimits { MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000 },
                 speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: textOnly ? null : target, speechBreaks: breaks,
                 generation: thinkingSteps is null ? null : new GenerationSettings { Reasoning = thinkingSteps == "on" },
-                controlTags: chattiness ? ChattinessTags.All : null, characterTags: characterTags);
+                controlTags: chattiness ? ChattinessTags.All : null, characterTags: characterTags) { StopAtPromptText = true };
             // What the speech bubble and subtitles are given: each line as its playback starts, or, once the voice failed, each
             // sentence it couldn't say, shown one after another for its reading time.
             var captions = new SpokenTextFeed();
@@ -167,7 +167,13 @@ internal static class SpokenReplyCheck
                 // A reply paused for the user says so in the line, and that it played on.
                 (failure != "paused" || latency.Resumed && latency.PausedForYouMs >= HoldFor.TotalMilliseconds * 0.9);
             var text = turn.Content.Text;
-            var served = string.Concat(chunks);
+            var streamed = string.Concat(chunks);
+            // A reply that goes on into prompt text (a "User:" line, Martlet's notes label) stops before it (PromptTextGuard).
+            var served = PromptTextGuard.Before(streamed);
+            var promptCut = turn.PromptTextCut;
+            var promptOk = (served.Length == streamed.Length) == (promptCut is null) && (promptCut is null ||
+                !text.Contains(promptCut, StringComparison.OrdinalIgnoreCase) &&
+                !voice.Pieces.Any(piece => piece.Contains(promptCut, StringComparison.OrdinalIgnoreCase)));
             // The chat and captions never show a tag: the engines' own, any the reply was offered, or another spelling of one.
             var expectedText = VoiceTags.Strip(served, characterTags, chattiness ? ChattinessTags.All : null);
             var full = text == expectedText;
@@ -256,10 +262,11 @@ internal static class SpokenReplyCheck
             var traceOk = trace.Any(line => line.Contains(" started: Chat Completions ", StringComparison.Ordinal)) &&
                 trace.Any(line => line.Contains(": request 1 (first) ", StringComparison.Ordinal)) &&
                 trace.Any(line => line.Contains($" ended at ", StringComparison.Ordinal) && line.Contains($" ms: {terminal.State}", StringComparison.Ordinal));
+            promptOk &= promptCut is null || trace.Any(line => line.Contains("began to write prompt text", StringComparison.Ordinal));
             return new
             {
                 ok = (stopped || terminal.State == ConversationState.Completed && terminal.TextComplete && full && captionsComplete) &&
-                    voiceOk && latencyOk && thinkingOk && tagsHidden && characterOk && cutOk && traceOk,
+                    voiceOk && latencyOk && thinkingOk && tagsHidden && characterOk && cutOk && traceOk && promptOk,
                 voiceFailure = failure,
                 failAt = everyPiece || failure == "text-only" ? (int?)null : at,
                 endpoint = baseUrl,
@@ -330,6 +337,14 @@ internal static class SpokenReplyCheck
                     characters = text.Length,
                     servedCharacters = served.Length,
                     text
+                },
+                // Where the reply was cut because the model began to write prompt text (PromptTextGuard), or null.
+                promptText = new
+                {
+                    ok = promptOk,
+                    cutAt = promptCut,
+                    streamedCharacters = streamed.Length,
+                    keptCharacters = served.Length
                 },
                 voice = new
                 {

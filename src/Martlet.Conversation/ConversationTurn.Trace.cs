@@ -195,6 +195,8 @@ public sealed partial class ConversationTurn
     {
         var outcome = result switch
         {
+            { End: RoundEnd.Completed, PromptText: { } marker } =>
+                $"answered, cut where the model began to write prompt text ({marker}); the rest was not shown or spoken",
             { End: RoundEnd.Completed, Calls.Count: > 0 } => $"answered with {Count(result.Calls.Count, "tool call")}",
             { End: RoundEnd.Completed } => "answered",
             { End: RoundEnd.Refused } => "was refused",

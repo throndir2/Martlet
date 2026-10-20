@@ -558,7 +558,10 @@ internal sealed class LiveConversationConfiguration
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
                         characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags, audio is null ? null : spokenWords)
-                        { Backup = backup, ElevenLabsVoice = voice ? ElevenLabsVoiceTarget() : null, Parts = new(instructionParts, noteParts, contextParts) };
+                        {
+                            Backup = backup, ElevenLabsVoice = voice ? ElevenLabsVoiceTarget() : null,
+                            Parts = new(instructionParts, noteParts, contextParts), StopAtPromptText = true
+                        };
                 }
             }
         }
