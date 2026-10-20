@@ -19,7 +19,7 @@ internal sealed record SpeechDisplayPreferences(bool SpeechBubbles = true, bool 
         Math.Clamp(double.IsFinite(BubbleOffsetX) ? BubbleOffsetX : 0, -MaximumOffset, MaximumOffset),
         Math.Clamp(double.IsFinite(BubbleOffsetY) ? BubbleOffsetY : 0, -MaximumOffset, MaximumOffset));
 
-    private const string FileName = "speech-display.json";
+    internal const string FileName = "speech-display.json";
 
     internal static SpeechDisplayPreferences Load(string? directory)
     {

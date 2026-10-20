@@ -26,6 +26,8 @@
     <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
+    <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
+    <ProjectReference Include="..\Martlet.Messaging\Martlet.Messaging.csproj" />
     <!-- memories (memory_sync_selftest) keeps real memory stores the same through the hosts. -->
     <ProjectReference Include="..\Martlet.Memory\Martlet.Memory.csproj" />
     <!-- conversations (conversation_sync_selftest) keeps real records of conversations the same through the hosts. -->

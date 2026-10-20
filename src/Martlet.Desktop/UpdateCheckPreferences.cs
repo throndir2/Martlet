@@ -2,11 +2,15 @@ using System.IO;
 
 namespace Martlet.Desktop;
 
+/// <summary>Settings › Updates › Look for updates (update-checks.txt: On or Off; missing means on). It travels with the rest of
+/// the updates choices as the household setting updates.</summary>
 internal static class UpdateCheckPreferences
 {
+    internal const string FileName = "update-checks.txt";
+
     internal static bool Load(string directory)
     {
-        var path = Path.Combine(directory, "update-checks.txt");
+        var path = Path.Combine(directory, FileName);
         try
         {
             using var reader = new StreamReader(path);
@@ -27,7 +31,7 @@ internal static class UpdateCheckPreferences
     internal static void Save(string directory, bool enabled)
     {
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "update-checks.txt");
+        var path = Path.Combine(directory, FileName);
         var temporary = Path.Combine(directory, $"update-checks.{Guid.NewGuid():N}.tmp");
         try
         {

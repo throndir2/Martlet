@@ -11,12 +11,12 @@ internal sealed record VoiceClip(string Path, DateTimeOffset At, double Seconds)
 /// <summary>The last few things a voice said, kept only until the owner says who it is, so People can play them to help tell.
 /// Each voice keeps at most <see cref="MaximumClips"/> clips of at most <see cref="MaximumSeconds"/> seconds in
 /// voice-clips\&lt;voice ID&gt;\ in Martlet's data folder, on this PC only (never synced or sent). Naming the voice, marking it
-/// as the owner's, forgetting it or turning clips off deletes them. Whether clips are kept (voice-clips.txt) is this PC's
-/// choice, on unless the owner turned it off.</summary>
+/// as the owner's, forgetting it or turning clips off deletes them. Whether clips are kept (voice-clips.txt,
+/// <see cref="VoiceChoices"/>) is the household's choice, the same on all the owner's computers (the shared setting voice-clips);
+/// on unless the owner turned it off.</summary>
 internal sealed class VoiceClips
 {
     internal const string Folder = "voice-clips";
-    internal const string ChoiceFile = "voice-clips.txt";
     internal const int MaximumClips = 20;
     internal const double MaximumSeconds = 30;
     private const int SampleRate = 16_000;
@@ -28,8 +28,7 @@ internal sealed class VoiceClips
     {
         this.directory = directory;
         root = directory is null ? null : Path.Combine(directory, Folder);
-        try { Enabled = directory is null || File.ReadAllText(Path.Combine(directory, ChoiceFile)).Trim() != "off"; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Enabled = true; }
+        Enabled = directory is null || VoiceChoices.KeepClips(directory);
     }
 
     internal bool Enabled { get; private set; }
@@ -40,8 +39,7 @@ internal sealed class VoiceClips
     internal void SetEnabled(bool on)
     {
         if (directory is null) throw new InvalidOperationException("Martlet's data folder isn't available.");
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, ChoiceFile), on ? "on" : "off");
+        VoiceChoices.Write(directory, VoiceChoices.ClipsFile, on);
         Enabled = on;
         if (!on) DeleteAll();
     }
