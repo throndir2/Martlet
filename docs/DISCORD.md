@@ -43,7 +43,10 @@ anyone may DM it, and per-channel rules picked from the connected bot's servers.
 
 - `src\Martlet.Discord` (`net10.0`, NetCord): `DiscordBot` (the gateway connection, its status and events),
   `DiscordPreferences` (`discord.json` in the data directory: application ID, credential reference, people, chat modes, channel
-  rules, home server), `DiscordInvite` (portal and invite links, permission bits) and the reply contract
+  rules, home server), `DiscordSharing` (the `discord` shared setting: everything in `discord.json` and the call choices in
+  `discord-calls.json` that aren't about this PC, with the bot token as its secret, so a new computer has the same Discord setup;
+  whether the bot connects, the credential reference, and in calls the call mode, capture, output and camera background stay on
+  each PC, see [CLUSTER](CLUSTER.md#what-stays-with-each-computer)), `DiscordInvite` (portal and invite links, permission bits) and the reply contract
   (`IDiscordReplyEngine`, `DiscordTurn`, `DiscordChatRules`).
 - `src\Martlet.Desktop\DiscordService*.cs`: the desktop host. `DiscordService.cs` owns the preferences, the token in
   `WindowsCredentialStore` (`Martlet/v3/discord-bot/<id>`) and the bot's lifetime (connects at start when enabled). Text chat,

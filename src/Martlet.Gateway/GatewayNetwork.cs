@@ -309,7 +309,8 @@ internal sealed record GatewayMemberPairingProof
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayNetworkRoutes(GatewayHttpServices services, GatewayNetworkStore network, IGatewayPairingExchange pairing,
+    GatewayCredentialStore credentials, GatewaySignInService signIn) : GatewayRouteHandler(services)
 {
     internal const string NetworkPath = "/martlet/v1/network";
     internal const string NetworkJoinPath = "/martlet/v1/network/join";
@@ -318,9 +319,13 @@ internal sealed partial class GatewayHttpApplication
     private const int MaximumNetworkResponseBytes = NetworkRoster.MaximumBytes + 16_384;
     private const int MaximumNetworkRequestBytes = 4_096;
 
-    internal GatewayNetworkStore Network { get; }
+    internal GatewayNetworkStore Network { get; } = network;
 
-    private static bool IsNetworkTarget(string rawTarget) => rawTarget is NetworkPath or NetworkJoinPath or NetworkDenyPath;
+    private readonly IGatewayPairingExchange pairing = pairing;
+    private readonly GatewayCredentialStore credentials = credentials;
+    private GatewaySignInService SignIn { get; } = signIn;
+
+    internal static bool IsNetworkTarget(string rawTarget) => rawTarget is NetworkPath or NetworkJoinPath or NetworkDenyPath;
 
     /// <summary>
     /// GET network: this host's roster, the computers paired with it (with when each was last seen) and, for a member
@@ -328,7 +333,7 @@ internal sealed partial class GatewayHttpApplication
     /// paired desktop asks to join. POST network/deny: a member turns a request down. All over the caller's signed, pinned
     /// connection; none of it is secret.
     /// </summary>
-    private async ValueTask InvokeNetworkAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeNetworkAsync(HttpContext context, string rawTarget)
     {
         if (rawTarget == NetworkPath && context.Request.Method == HttpMethods.Get)
         {
@@ -413,7 +418,7 @@ internal sealed partial class GatewayHttpApplication
         }, MaximumNetworkResponseBytes);
     }
 
-    private static T ParseNetworkBody<T>(byte[] bytes) where T : class
+    internal static T ParseNetworkBody<T>(byte[] bytes) where T : class
     {
         try
         {
@@ -427,7 +432,7 @@ internal sealed partial class GatewayHttpApplication
         }
     }
 
-    private void LogMemberPaired(IssuedDeviceCredential credential) =>
+    internal void LogMemberPaired(IssuedDeviceCredential credential) =>
         Logs.Own(LogLevels.Info, $"Paired network member {credential.DeviceId} by its network key (roles: {string.Join(", ", credential.Roles).ToLowerInvariant()}).");
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

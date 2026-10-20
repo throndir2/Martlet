@@ -476,16 +476,8 @@ internal sealed partial class McpServer
         var directory = DataDirectory(arguments);
         var pc = PcFolder.For(directory);
         var separate = pc.Separate(directory);
-        static string? Role(string folder)
-        {
-            try
-            {
-                var path = Path.Combine(folder, "device-role.txt");
-                if (!File.Exists(path)) return null;
-                return File.ReadAllText(path).Trim() == "Host" ? "host" : "companion";
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return "unreadable"; }
-        }
+        static string? Role(string folder) => DeviceRoleFile.Describe(folder);
+
         var shared = Role(pc.Directory);
         var mine = separate ? Role(directory) : shared;
         var roles = ThisPcHostRoles.Load(pc.Directory);

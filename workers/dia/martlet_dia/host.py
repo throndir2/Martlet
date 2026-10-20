@@ -22,7 +22,6 @@ HTTP (127.0.0.1 only):
 from __future__ import annotations
 
 import argparse
-import hashlib
 import http.server
 import json
 import os
@@ -39,6 +38,12 @@ from typing import Any
 
 from martlet_dia import pins
 
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside martlet_dia)
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "common"))
+    import martlet_worker_host as shared
+
 ROOT = Path(os.environ.get("MARTLET_DIA_ROOT", "/opt/martlet-dia"))
 MODELS = ROOT / "models"
 CONFIG = MODELS / "worker-config.json"
@@ -46,7 +51,6 @@ PORT = int(os.environ.get("MARTLET_DIA_PORT", "50084"))
 MODEL = os.environ.get("DIA_MODEL", pins.DEFAULT_MODEL)
 DEVICE = os.environ.get("MARTLET_DIA_DEVICE", "cuda:0")
 WORKER_ID = "martlet-dia-host"
-MAX_BODY_BYTES = 6 * 1024 * 1024
 WARMUP_SECONDS = 600
 REQUEST_SECONDS = 90
 BUSY_WAIT_SECONDS = 30
@@ -58,48 +62,8 @@ def _log(message: str) -> None:
     print(message, flush=True)
 
 
-def _sha256_file(path: Path) -> tuple[int, str]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        while chunk := stream.read(1_048_576):
-            size += len(chunk)
-            digest.update(chunk)
-    return size, digest.hexdigest()
-
-
-def _download(url: str, target: Path, size: int, sha256: str, agent: str = "martlet-dia-host") -> None:
-    if target.is_file():
-        if _sha256_file(target) == (size, sha256):
-            _log(f"{target.name}: already downloaded and verified.")
-            return
-        target.unlink()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    digest = hashlib.sha256()
-    received = 0
-    shown = -1
-    request = urllib.request.Request(url, headers={"User-Agent": agent})
-    with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as output:
-        while chunk := response.read(1_048_576):
-            received += len(chunk)
-            if received > size:
-                partial.unlink(missing_ok=True)
-                raise SystemExit(f"{target.name} is larger than its pinned size; stopped.")
-            digest.update(chunk)
-            output.write(chunk)
-            percent = received * 100 // size
-            if size > 10_000_000 and percent != shown:
-                shown = percent
-                sys.stdout.write(f"\r{target.name}: {percent}% of {size // 1_048_576} MiB")
-                sys.stdout.flush()
-    if size > 10_000_000:
-        sys.stdout.write("\n")
-    if received != size or digest.hexdigest() != sha256:
-        partial.unlink(missing_ok=True)
-        raise SystemExit(f"{target.name} does not match its pinned SHA-256; nothing was installed.")
-    partial.replace(target)
-    _log(f"{target.name}: verified (SHA-256 {sha256[:12]}...).")
+def _download(url: str, target: Path, size: int, sha256: str) -> None:
+    shared.fetch_pinned(url, target, size, sha256, agent="martlet-dia-host")
 
 
 # ------------------------------------------------------------------ image build and provisioning
@@ -164,18 +128,15 @@ def warm() -> None:
 # ------------------------------------------------------------------ the worker process
 
 
-class Worker:
+class Worker(shared.ModelProcess):
     """Owns one worker process; only one synthesis runs at a time."""
 
+    name = "dia"
+    stopped_error = "The Dia worker process stopped; it restarts with the next reply."
+    unavailable_states = frozenset({"not_provisioned", "failed"})
+
     def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.write_lock = threading.Lock()
-        self.changed = threading.Condition(self.lock)
-        self.process: subprocess.Popen[bytes] | None = None
-        self.identity: dict[str, Any] | None = None
-        self.state = "not_provisioned" if not CONFIG.is_file() else "stopped"
-        self.error: str | None = None
-        self.pending: dict[str, queue.Queue[dict[str, Any] | None]] = {}
+        super().__init__("not_provisioned" if not CONFIG.is_file() else "stopped")
 
     def status(self) -> dict[str, Any]:
         with self.lock:
@@ -183,8 +144,8 @@ class Worker:
                     "ready": self.state == "ready", "state": self.state, "worker": self.identity,
                     "worker_pid": self.process.pid if self.running() else None}
 
-    def running(self) -> bool:
-        return self.process is not None and self.process.poll() is None
+    def settled(self) -> bool:
+        return self.state not in LOADING
 
     def start(self) -> None:
         with self.lock:
@@ -208,72 +169,22 @@ class Worker:
                 self.process = process
                 self.identity = config["worker"]
                 self.state, self.error = "starting", None
-                threading.Thread(target=self._read, args=(process,), name="dia-worker-reader", daemon=True).start()
+                self.read_in_background(process)
             if self.state not in {"ready", "busy"}:
                 self.state = "starting"
         self.send({"type": "warmup"})
 
-    def send(self, message: dict[str, Any]) -> bool:
-        process = self.process
-        if process is None or process.stdin is None:
-            return False
-        try:
-            with self.write_lock:
-                process.stdin.write(json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n")
-                process.stdin.flush()
-            return True
-        except (BrokenPipeError, OSError):
-            return False
-
-    def _read(self, process: subprocess.Popen[bytes]) -> None:
-        assert process.stdout is not None
-        for line in process.stdout:
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            if message.get("type") == "state":
-                with self.lock:
-                    if self.process is process:
-                        state = str(message.get("state"))
-                        # "cold" is the process announcing itself; the warmup already queued behind it decides.
-                        if state != "cold":
-                            self.state, self.error = state, message.get("error")
-                        self.changed.notify_all()
-            elif message.get("type") == "event":
-                request_id = str((message.get("ids") or {}).get("request_id"))
-                with self.lock:
-                    target = self.pending.get(request_id)
-                if target is not None:
-                    target.put(message)
-        with self.lock:
-            if self.process is process:
-                self.state = "failed"
-                self.error = self.error or "The Dia worker process stopped; it restarts with the next reply."
-                self.changed.notify_all()
-            waiting = list(self.pending.values())
-        for target in waiting:
-            target.put(None)
-
-    def wait_settled(self, seconds: float) -> dict[str, Any]:
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while self.state in LOADING:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
-        return self.status()
-
-    def wait_admissible(self, seconds: float) -> None:
-        """Wait (bounded) until the worker is ready with no reply in flight, or has settled into a failed state."""
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while (self.state != "ready" or self.pending) and self.state not in {"not_provisioned", "failed"}:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
+    def on_message(self, process: subprocess.Popen[bytes], message: dict[str, Any]) -> None:
+        if message.get("type") == "state":
+            with self.lock:
+                if self.process is process:
+                    state = str(message.get("state"))
+                    # "cold" is the process announcing itself; the warmup already queued behind it decides.
+                    if state != "cold":
+                        self.state, self.error = state, message.get("error")
+                    self.changed.notify_all()
+        elif message.get("type") == "event":
+            self.deliver(message)
 
 
 WORKER = Worker()
@@ -283,34 +194,8 @@ def _deadline(value: Any) -> datetime:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "martlet-dia-host"
-    sys_version = ""
-
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        return
-
-    def _json(self, status: int, value: dict[str, Any]) -> None:
-        body = json.dumps(value, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _body(self) -> dict[str, Any] | None:
-        length = int(self.headers.get("Content-Length") or "0")
-        if not 0 < length <= MAX_BODY_BYTES:
-            self._json(413, {"error": "request.too_large"})
-            return None
-        try:
-            value = json.loads(self.rfile.read(length))
-        except ValueError:
-            value = None
-        if not isinstance(value, dict):
-            self._json(400, {"error": "request.invalid"})
-            return None
-        return value
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/status":

@@ -721,10 +721,16 @@ preferences, Martlet reads the choice this PC saved before
   finds, on 127.0.0.1 only, for their model lists. It skips an app that wants
   an API key. It skips models that Thinking can't use: embedding, speech and
   picture models.
-- **How big a model is.** Ollama says each model's download size. For other
-  apps, Martlet estimates the size from the model's name (for example *32b*).
-  The planner adds the same context and headroom as for its own models
+- **How big a model is.** Ollama (`/api/tags`) and LM Studio
+  (`/api/v1/models`, or the older `/api/v0/models` with its quantization) say
+  each model's size. For other apps, Martlet takes the parameters from its
+  model catalog, else from the model's name (for example *32b*). The planner
+  adds the same context and headroom as for its own models
   ([Resource footprints](RESOURCE_FOOTPRINTS.md)).
+- **A model that is loaded already.** Martlet also asks what each app has
+  loaded now (Ollama's `/api/ps`, LM Studio's loaded state). The graphics
+  memory in use already holds a loaded model, so *Set it all up for me* counts
+  only the rest and doesn't count that model twice.
 - **When Martlet uses one.** Each served chat model becomes a Thinking choice
   (`served:<model>`). On a PC alone, and on a companion PC that plans Thinking
   for itself, Martlet picks the best served model that fits the graphics card

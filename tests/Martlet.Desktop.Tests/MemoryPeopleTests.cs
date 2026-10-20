@@ -230,7 +230,7 @@ public sealed class MemoryPeopleTests
         var error = await Assert.ThrowsAsync<MemoryException>(() => memory.RememberAsync(revision, [],
             [new MemoryCaptureOperation(MemoryCaptureKind.Remember, Content: "Sam's dog is called Biscuit.")]));
         Assert.Equal(MemoryFailure.LimitExceeded, error.Failure);
-        Assert.Equal("Memory is full. Delete some facts in Companion › Memory.",
+        Assert.Equal("Memory is full, so delete some facts in Companion › Memory.",
             LiveConversationWindow.MemoryFailureReason("memory." + error.Failure, null));
         var facts = (await memory.InspectAsync(revision)).Facts;
         Assert.Equal(MemoryLimits.MaximumFacts, facts.Count);

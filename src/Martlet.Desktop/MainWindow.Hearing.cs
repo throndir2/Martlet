@@ -35,7 +35,7 @@ public partial class MainWindow
             ? PageButton("Turn hearing off", () =>
             {
                 SaveTalk(Talk with { HearVoice = false }, render: true);
-                ActionText.Text = "Hearing is off. Thinking gets only the transcript of what you say.";
+                ActionText.Text = "Hearing is off, so Thinking gets only the transcript of what you say.";
             }, primary: true, id: "HearingToggle")
             : Talk.HearVoice != false ? null : PageButton("Turn hearing on", () =>
             {
@@ -58,10 +58,10 @@ public partial class MainWindow
 
     /// <summary>Companion › Hearing's Now line (HearingNow).</summary>
     internal static string HearingNow(bool on, bool? choice, SetupRoute? thinking, SenseRoute audio) =>
-        !on ? $"Off. {OptionalExtras.OffMeans(CompanionTab.Hearing)}." + (choice is not null ? ""
-            : thinking is null && audio.Model is null ? " Set up Thinking first."
-            : " Your recording would leave this PC, so it waits for your tick below.")
-        : audio.Model is { } own ? $"On. The audio model, {own.Describe()}, hears how you say things and describes it for Thinking."
+        !on ? $"Off: {OptionalExtras.OffMeans(CompanionTab.Hearing)}" + (choice is not null ? "."
+            : thinking is null && audio.Model is null ? "; set up Thinking first."
+            : "; your recording would leave this PC, so it waits for your tick below.")
+        : audio.Model is { } own ? $"On: the audio model, {own.Describe()}, hears how you say things and describes it for Thinking."
         : thinking is null ? "On, but Thinking isn't set up yet."
-        : $"On. Thinking ({thinking.ModelId}) hears your recording itself.";
+        : $"On: Thinking ({thinking.ModelId}) hears your recording itself.";
 }

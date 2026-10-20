@@ -174,7 +174,7 @@ public partial class MainWindow
         stack.Add(Row(measure, forget));
         if (!sight.CanSee)
         {
-            var off = Warning("Measure the face is off: no model that can see pictures is set up. Choose a vision-capable model in " +
+            var off = Warning("Measure the face is off: no model that can see pictures is set up; choose a vision-capable model in " +
                 "Companion › Thinking or Companion › Thinking pool.");
             AutomationProperties.SetAutomationId(off, "CharacterEyesNote");
             stack.Add(off);

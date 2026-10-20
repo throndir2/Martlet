@@ -9,18 +9,19 @@ namespace Martlet.Mcp;
 
 internal sealed partial class McpServer
 {
-    /// <summary>Voice recognition (Companion › People) and Parakeet as the desktop keeps them in a data directory (the file
-    /// names match Martlet.Desktop's LocalVoices). Counts only: names and voiceprints are personal and never returned.</summary>
+    /// <summary>Voice recognition (Companion › People) and Parakeet as the desktop keeps them in a data directory, read through
+    /// their stores (Martlet.Core.Speakers.VoiceChoices and VoiceRoster). Counts only: names and voiceprints are personal and
+    /// never returned.</summary>
     private static object VoicesStatus(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
-        string? Choice(string file)
+        // "on", "off", or "on (default)" when the owner never chose (both choices are the household's, the same on every computer).
+        string Choice(string file) => Martlet.Core.Speakers.VoiceChoices.Read(directory, file) switch
         {
-            try { return File.ReadAllText(Path.Combine(directory, file)).Trim(); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
-        }
+            true => "on", false => "off", null => "on (default)"
+        };
         object roster;
-        var path = Path.Combine(directory, "voices.json");
+        var path = Path.Combine(directory, Martlet.Core.Speakers.VoiceChoices.RosterFile);
         if (!File.Exists(path)) roster = new { state = "none" };
         else
         {
@@ -61,7 +62,7 @@ internal sealed partial class McpServer
         var martlet = MartletDirectory(arguments);
         return new
         {
-            recognition = Choice("voice-recognition.txt") ?? "on (default)",
+            recognition = Choice(Martlet.Core.Speakers.VoiceChoices.RecognitionFile),
             // People are always shared with the household: the voice list travels to every paired host of yours whatever
             // "Keep Martlet the same on all my computers" says, and never to a host a friend shares.
             sharing = VoiceSharing(directory),
@@ -86,7 +87,7 @@ internal sealed partial class McpServer
             int[] counts;
             try { counts = Directory.Exists(root) ? Directory.GetDirectories(root).Select(d => Directory.GetFiles(d, "*.wav").Length).Where(n => n > 0).ToArray() : []; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { counts = []; }
-            return new { keep = Choice("voice-clips.txt") ?? "on (default)", voices = counts.Length, clips = counts.Sum() };
+            return new { keep = Choice(Martlet.Core.Speakers.VoiceChoices.ClipsFile), voices = counts.Length, clips = counts.Sum() };
         }
     }
 
@@ -97,7 +98,7 @@ internal sealed partial class McpServer
         var tool = OptionalString(arguments, "tool") ?? Martlet.Conversation.PeopleTools.List;
         if (tool is not (Martlet.Conversation.PeopleTools.List or Martlet.Conversation.PeopleTools.Lately))
             throw new ArgumentException($"tool must be {Martlet.Conversation.PeopleTools.List} or {Martlet.Conversation.PeopleTools.Lately}.");
-        var path = Path.Combine(directory, "voices.json");
+        var path = Path.Combine(directory, Martlet.Core.Speakers.VoiceChoices.RosterFile);
         Martlet.Core.Speakers.VoiceRoster list;
         string state;
         try

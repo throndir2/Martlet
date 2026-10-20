@@ -84,7 +84,8 @@ internal sealed partial class McpServer
             "other PC still on NVIDIA Build becomes the companion and takes OpenRouter, its model and key), model and key changes, offline " +
             "edits on both sides (different and the same setting; the later edit wins), a host that missed a change, a stale copy, a " +
             "newer Martlet's setting, a Parakeet model a new computer lacks, a new computer, the Thinking fallback and its key, lorebooks, " +
-            "no keys in desktop files and an unsigned request refused. Loopback only; the folder is deleted and the vault untouched.", new { },
+            "no keys in desktop files, an unsigned request refused, and the shared files (keeping voice clips, touch zones, VRoid Hub credits, " +
+            "Discord with its bot token, Telegram with its token) going from one desktop to another while running each bot stays on the first. Loopback only; the folder is deleted and the vault untouched.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "settings")),
         Tool("prompts_status", "Read Companion > Prompts from a data directory's settings.json: every internal prompt Martlet sends " +
             "to the Thinking model (id, group, title, placeholders) and whether it uses the built-in text, is edited or is emptied " +
@@ -139,7 +140,8 @@ internal sealed partial class McpServer
             "companion PC whose two hosts haven't answered for 155 minutes, or with fixture \"served\", from a PC alone with an " +
             "RTX 5090 whose model apps serve qwen3-32b and llama3.3:70b, or with fixture \"hostmodels\", from a host with an RTX " +
             "4090 that keeps qwen2.5:14b downloaded while Prefer models your hosts already have is on, or with fixture \"better\", from a " +
-            "host with an RTX 4090 that thinks with Gemma 4 E2B and made-up measurements (all NOT real computers), runs the production " +
+            "host with an RTX 4090 that thinks with Gemma 4 E2B and made-up measurements, or with fixture \"bighost\", from a host with " +
+            "five RTX 5090s whose Deep thinking gets a bigger model from the model catalog (all NOT real computers), runs the production " +
             "recommender (NetworkRecommender) and lists the computers (kind, planned or left as they are, manageable), today's jobs " +
             "and Thinking pool, the chat models your model apps serve (servedModels: Use models your apps already run, on unless " +
             "recommended-setup.json turns it off), the chat models your hosts run or keep downloaded (hostModels: Prefer models " +
@@ -167,7 +169,7 @@ internal sealed partial class McpServer
             "credit, never a rank number.", new
         {
             dataDirectory = new { type = "string" },
-            fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels", "better" } },
+            fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels", "better", "bighost" } },
             catalog = new { type = "string", @enum = new[] { "models", "seed" } },
             lookOnThisPc = new { type = "boolean" },
             preferences = new
@@ -305,10 +307,7 @@ internal sealed partial class McpServer
     private static object SettingsSyncStatus(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
-        string? choice;
-        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
-        var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
+        var sync = Martlet.Core.Cluster.ClusterSyncChoice.Describe(directory);
         // Each account's settings (docs/ACCOUNTS.md): the account whose settings the data folder's files hold, its own copy, and
         // the accounts that have a folder here (IDs only).
         var marker = Martlet.Core.Sync.AccountWorkingCopy.Load(directory);

@@ -144,7 +144,7 @@ public partial class AvatarWindow : ThemedWindow
         });
         SpeechDisplayStatus.Text = saved
             ? "Saved. Changes apply the next time Martlet speaks."
-            : "Changes applied for now, but couldn't be saved. Check your data folder.";
+            : "Changes apply for now but couldn't be saved; check access to your data folder.";
     }
     private void Window_Closed(object? sender, EventArgs e)
     {
@@ -248,7 +248,7 @@ public partial class AvatarWindow : ThemedWindow
         if (loadedSettings.Settings is null)
         {
             profileId = Guid.Empty;
-            ResultText.Text = "You can show the character now. Finish Setup once, and your choices save on their own.";
+            ResultText.Text = "You can show the character now; finish Setup once and your choices save on their own.";
             RenderSaveState();
             return;
         }
@@ -368,7 +368,7 @@ public partial class AvatarWindow : ThemedWindow
             InvalidOperationException or ArgumentException or JsonException)
         {
             saveError = error is IOException or UnauthorizedAccessException
-                ? "Martlet couldn't write the character settings file. Check access to your data folder." : error.Message;
+                ? "Martlet couldn't write the character settings file; check access to your data folder." : error.Message;
             busy = saving = false;
             if (!lifetime.IsCancellationRequested) RenderSaveState();
             return true;
@@ -420,8 +420,8 @@ public partial class AvatarWindow : ThemedWindow
     private AvatarRemoteHost? remoteHost;
 
     private void ShowRemoteHost() => HostStatusText.Text = remoteHost is { } host
-        ? $"Lip-sync can use host {host.HostId}. Change this on the Lip-sync page or the Devices map."
-        : "No host is selected for lip-sync. Set one up on the Lip-sync page or the Devices map.";
+        ? $"Lip-sync can use host {host.HostId}; change it on the Lip-sync page or the Devices map."
+        : "No host is selected for lip-sync; set one up on the Lip-sync page or the Devices map.";
 
     private async void Hosts_Click(object sender, RoutedEventArgs e)
     {
@@ -508,7 +508,7 @@ public partial class AvatarWindow : ThemedWindow
                 Assignments = aspects.Select(a => new AspectAssignment { Aspect = a, SourceId = AvatarController.SourceId,
                     MappingId = "user-mapping", AcceptReduced = ReducedChoice.IsChecked == true }).ToArray()
             });
-            ResultText.Text = "Mapping added. Review it, then activate lip-sync.";
+            ResultText.Text = "Mapping added; review it, then activate lip-sync.";
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException) { ResultText.Text = error.Message; }
     }
@@ -551,7 +551,7 @@ public partial class AvatarWindow : ThemedWindow
             var bytes = await LocalAvatarFiles.ReadBoundedAsync(profiles.FilePath, AvatarProfile.MaximumBytes, lifetime.Token);
             await using var destination = new FileStream(dialog.FileName, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             await destination.WriteAsync(bytes, lifetime.Token);
-            ResultText.Text = "Avatar settings exported. Model files and activation permission aren't included.";
+            ResultText.Text = "Avatar settings exported, without the model files and the activation permission.";
         });
     }
 
@@ -603,7 +603,7 @@ public partial class AvatarWindow : ThemedWindow
         var prior = File.Exists(profiles.FilePath)
             ? await LocalAvatarFiles.ReadBoundedAsync(profiles.FilePath, AvatarProfile.MaximumBytes, lifetime.Token) : null;
         if (!ConfirmationDialog.Confirm(this,
-            "Restore these avatar settings? Martlet keeps a local backup. Inspect and activate lip-sync again afterward.",
+            "Restore these avatar settings and inspect and activate lip-sync again after (Martlet keeps a backup)?",
             "Restore avatar settings")) return;
         autoSave.Cancel();
         await controller.StopAsync();

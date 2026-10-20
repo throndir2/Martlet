@@ -224,7 +224,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(sync, "CreationSync");
         CreationDetail.Children.Add(sync);
         var ask = Note(kind is null
-                ? $"This Martlet doesn't know {creation.Kind} creations yet. Update Martlet to use it here; it is kept for your other computers."
+                ? $"This Martlet doesn't know {creation.Kind} creations yet, so update Martlet to use it here (it is kept for your other computers)."
                 : $"Ask Martlet to {kind.Verb} it.", new Thickness(0, 10, 0, 6));
         ask.FontWeight = FontWeights.SemiBold;
         AutomationProperties.SetAutomationId(ask, "CreationAsk");
@@ -311,8 +311,8 @@ public partial class MainWindow
     {
         if (store is null || closing) return;
         var noun = CreationRegistry.Shared.Find(creation.Kind)?.Noun ?? "creation";
-        if (!ConfirmationDialog.Confirm(this, $"Delete '{creation.Title}'?\n\nMartlet deletes this {noun} on this PC and all your other Martlet " +
-                "computers. It can't be brought back.", "Delete " + noun, "Delete", "Keep it"))
+        if (!ConfirmationDialog.Confirm(this, $"Delete '{creation.Title}' on all your Martlet computers (you can't bring it back)?",
+                "Delete " + noun, "Delete", "Keep it"))
             return;
         try
         {

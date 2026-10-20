@@ -110,7 +110,7 @@ public partial class MainWindow
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 ErrorLog.Warn("Couldn't save the custom palette", error);
-                if (!closing) AppearanceStatus.Text = "Your colors apply now, but they could not be saved. Check access to Martlet's data folder.";
+                if (!closing) AppearanceStatus.Text = "Your colors apply now but couldn't be saved; check access to Martlet's data folder.";
             }
         if (!closing && SelectedTheme == AppearanceTheme.Custom) await UpdateCharacterOverlayThemeAsync();
     }
@@ -315,7 +315,7 @@ public partial class MainWindow
         if (basis.FromCharacter() && characterThemes.Colors(basis) is null)
         {
             AppearanceStatus.Text = characterThemes.Problem is { } problem ? "Martlet couldn't read your character's colors: " + problem
-                : "Martlet is still reading your character's colors. Try again in a moment.";
+                : "Martlet is still reading your character's colors; try again in a moment.";
             return;
         }
         var next = PaletteColors(basis);
@@ -327,7 +327,7 @@ public partial class MainWindow
         // Colors the owner chose are asked about first; a palette that is still a copy of another one is simply replaced.
         var edited = !Appearance.Choices.Where(choice => choice.Theme != AppearanceTheme.Custom).Any(choice => Same(colors, PaletteColors(choice.Theme)));
         if (edited && !ConfirmationDialog.Confirm(this,
-                $"Replace all twelve colors of your custom palette with the colors of {basis.Name()}? The colors you chose are lost.",
+                $"Replace all twelve colors of your custom palette with the colors of {basis.Name()}, and lose the colors you chose?",
                 "Start from " + basis.Name(), yes: "_Use its colors", no: "_Keep my colors", questionId: "CustomThemeStartFromQuestion"))
             return;
         foreach (var role in AppearancePalette.Roles) colors[role] = next[role];

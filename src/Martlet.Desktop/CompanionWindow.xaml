@@ -22,8 +22,10 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="20">
                 <TextBlock Text="Personality" FontSize="24" FontWeight="SemiBold"/>
-                <TextBlock TextWrapping="Wrap" Margin="0,8"
-                           Text="Choose the persona Martlet uses and edit it. Changes save as you go, and Martlet's next reply uses them."/>
+                <TextBlock TextWrapping="Wrap" Margin="0,8"><Run Text="Choose the persona Martlet uses and edit it."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                               Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CompanionAbout" AutomationProperties.Name="About personas"
+                               Wiki="Personality-and-Characters#personas"
+                               Text="Changes save as you go, and Martlet's next reply uses them."/></InlineUIContainer></TextBlock>
                 <StackPanel x:Name="EditorPanel">
                     <Label Target="{Binding ElementName=PersonaChoice}" Content="_Persona Martlet uses"/>
                     <ComboBox x:Name="PersonaChoice" MinHeight="30" DisplayMemberPath="Name"
@@ -40,8 +42,10 @@
                         <Button Content="_Update from card..." Click="CardUpdate_Click" Padding="10,6" Margin="0,0,8,6"
                                 AutomationProperties.AutomationId="CompanionCardUpdate"/>
                     </WrapPanel>
-                    <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                               Text="Character cards (PNG, JSON or CHARX) add a persona or update this one. You can also drop a card on this window."/>
+                    <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"><Run Text="Character cards (PNG, JSON or CHARX) add a persona or update this one."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                               Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CompanionCards" AutomationProperties.Name="About character cards"
+                               Wiki="Personality-and-Characters#character-cards"
+                               Text="You can also drop a card on this window. Use the original PNG from SillyTavern or Chub: a resaved or converted copy loses the card."/></InlineUIContainer></TextBlock>
                     <Label Target="{Binding ElementName=PersonaName}" Content="Persona na_me" Margin="0,8,0,0"/>
                     <TextBox x:Name="PersonaName" MaxLength="64" TextChanged="Editor_Changed"
                              AutomationProperties.AutomationId="CompanionName" presentation:InputHint.Text="Luna"/>
@@ -49,10 +53,12 @@
                     <TextBox x:Name="PersonaText" MaxLength="100000" AcceptsReturn="True" TextWrapping="Wrap"
                              Height="220" VerticalScrollBarVisibility="Auto" TextChanged="Editor_Changed"
                              AutomationProperties.AutomationId="CompanionText"
-                             presentation:InputHint.Text="You are Luna, a warm and curious companion. Keep your replies short and kind."/>
+                             presentation:InputHint.Text="You are Luna, a warm and curious companion who keeps replies short and kind."/>
                     <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,6,0,0"
-                               AutomationProperties.AutomationId="CompanionTextHelp"
-                               Text="This is the character's part of the system prompt. Martlet adds its own instructions after it (reply length, tools, what it hears) and tells the model to treat your headings and rules as the character's own. You don't need a separate system prompt: see or edit Martlet's part in Companion › Prompts › Persona. Martlet greets you in character when it starts, and Check-ins › Staying in character reminds it when it drifts."/>
+                               AutomationProperties.AutomationId="CompanionTextHelp" AutomationProperties.Name="This is the character's part of the system prompt."><Run Text="This is the character's part of the system prompt."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                               Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CompanionTextHelp" AutomationProperties.Name="About the persona instructions"
+                               Wiki="Personality-and-Characters#personas"
+                               Text="Martlet adds its own instructions after it (reply length, tools, what it hears) and tells the model to treat your headings and rules as the character's own. You don't need a separate system prompt: see or edit Martlet's part in Companion › Prompts › Persona. Martlet greets you in character when it starts, and Check-ins › Staying in character reminds it when it drifts."/></InlineUIContainer></TextBlock>
                     <WrapPanel Margin="0,8">
                         <Button Content="Import te_xt..." Click="Import_Click" Padding="10,6" Margin="0,0,8,0"
                                 AutomationProperties.AutomationId="CompanionImport"/>
@@ -60,8 +66,10 @@
                                 AutomationProperties.AutomationId="CompanionExport"/>
                     </WrapPanel>
                     <TextBlock Text="Where the voice pauses" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,14,0,4"/>
-                    <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                               Text="Martlet speaks a reply a piece at a time while it's written, so the voice starts sooner. Each piece is said on its own, so a break in the wrong place can sound awkward. Choose which sentence ends this persona's voice may break at; commas, semicolons and dashes never break it."/>
+                    <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"><Run Text="Choose which sentence ends this persona's voice may pause at."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                               Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CompanionVoicePauses" AutomationProperties.Name="About where the voice pauses"
+                               Wiki="Personality-and-Characters#where-the-voice-pauses"
+                               Text="Martlet speaks a reply a piece at a time while it's written, so the voice starts sooner. Each piece is said on its own, so a break in the wrong place can sound awkward; commas, semicolons and dashes never break it."/></InlineUIContainer></TextBlock>
                     <CheckBox x:Name="BreakPeriods" Content="Pe_riods" Margin="0,8,0,0" Checked="Break_Changed" Unchecked="Break_Changed"
                               AutomationProperties.AutomationId="CompanionBreakPeriods"/>
                     <CheckBox x:Name="BreakQuestions" Content="_Question marks" Margin="0,6,0,0" Checked="Break_Changed" Unchecked="Break_Changed"
@@ -78,8 +86,10 @@
                         <ComboBoxItem Content="Up to 4 words"/>
                         <ComboBoxItem Content="Up to 5 words"/>
                     </ComboBox>
-                    <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,6,0,0"
-                               Text="For example, &quot;That was a wonderful idea. Cutie!&quot; is said in one go instead of pausing before &quot;Cutie!&quot; A piece that has grown long still breaks at the next sentence end, so the voice can say it."/>
+                    <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,6,0,0"><Run Text="A short ending such as &quot;Cutie!&quot; is then said in one go with the sentence before it."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                               Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CompanionShortEnding" AutomationProperties.Name="About short endings"
+                               Wiki="Personality-and-Characters#where-the-voice-pauses"
+                               Text="A piece that has grown long still breaks at the next sentence end, so the voice can say it."/></InlineUIContainer></TextBlock>
                 </StackPanel>
                 <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="60" Margin="0,14,0,0"
                          AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="CompanionResult"/>

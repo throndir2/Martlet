@@ -27,6 +27,7 @@ internal static class RecommendedSetupStatus
     internal const string ServedFixtureName = "served";
     internal const string HostModelsFixtureName = "hostmodels";
     internal const string BetterFixtureName = "better";
+    internal const string BigHostFixtureName = "bighost";
 
     /// <summary>The made-up measurements of the "better" fixture: Gemma 4 E2B on gpu-box.</summary>
     private static (MeasuredModelMemory Memory, MeasuredFirstWords Speed) BetterMeasurements(DateTimeOffset now)
@@ -85,7 +86,14 @@ internal static class RecommendedSetupStatus
                     "0.18 s over 3 replies and Ollama held it in 3.6 GB on the card. A smarter model fits there, so Thinking gets a suggestion " +
                     "(pass preferences.locks [{ job: \"thinking\", locked: false }] to let Martlet choose it)";
             }
-            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\" or \"{BetterFixtureName}\".");
+            else if (fixture == BigHostFixtureName)
+            {
+                sources = RecommendedSetupInputs.BigHostFixture(DateTimeOffset.UtcNow);
+                source = "fixture bighost (NOT real computers): this PC (a companion PC without a graphics card) and big-box (a Linux host " +
+                    "with five RTX 5090s, 32 GB each) that thinks with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B; it plans with the " +
+                    "model catalog, so Deep thinking gets a bigger model while live Thinking stays fast";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\", \"{BetterFixtureName}\" or \"{BigHostFixtureName}\".");
         }
         else
         {
@@ -191,7 +199,12 @@ internal static class RecommendedSetupStatus
                 found = build.Request.ServedModels.Select(m => new
                 {
                     model = m.ModelId, app = m.AppName, address = m.BaseUrl, computer = Name(m.MachineId), chat = ServedModels.Chats(m.ModelId),
-                    downloadGb = m.SizeGb, estimatedGb = ServedModels.Gb(m), option = ServedModels.OptionId(m.ModelId)
+                    downloadGb = m.SizeGb, estimatedGb = ServedModels.Gb(m, PlanningCatalog.Models), option = ServedModels.OptionId(m.ModelId),
+                    // Loaded now (Ollama /api/ps, LM Studio's loaded state) and the graphics memory it holds: the card's memory in
+                    // use counts it already, so the first-run plan adds only newGb.
+                    loaded = m.LoadedGb is not null, loadedGb = m.LoadedGb,
+                    newGb = ServedModels.Gb(m, PlanningCatalog.Models) is { } planned ? ServedModels.Extra(m, planned) : (double?)null,
+                    sizeFrom = ServedModels.Option(m, PlanningCatalog.Models).Source
                 }),
                 // The review's explicit choices (Think with it, RecommendedSetupUseServed-<n>), in its order.
                 choices = chosen.UseServedModels
@@ -441,10 +454,7 @@ internal static class RecommendedSetupStatus
             : thinking.RouteType == SetupRouteType.OpenAi ? ["openai"]
             : ChatCompletionsEndpointCatalog.Named(thinking.Origin)?.Id is { } id ? new[] { id } : [];
         var speaking = routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
-        string? chosen = null;
-        try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        var voice = SpeechEngines.ForRoute(speaking?.GatewaySnapshot?.RouteId) ?? SpeechEngines.ForKey(chosen) ?? SpeechEngines.Default;
+        var voice = SpeechEngines.ForRoute(speaking?.GatewaySnapshot?.RouteId) ?? SpeakingEngineFile.Read(directory) ?? SpeechEngines.Default;
         var poolSettings = ThinkingPoolSettings.Read(directory, save: false).Settings;
         var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return new SetupSources(computers)
@@ -464,24 +474,11 @@ internal static class RecommendedSetupStatus
     private static IReadOnlyList<PartChoice> Choices(string directory, string? own)
     {
         var talk = TalkPreferences.Load(directory);
-        var home = Json(directory, "smart-home.json")?["Address"] is JsonValue a && a.TryGetValue<string>(out var address) ? address : null;
+        var home = Martlet.Home.HomePreferences.Load(directory).Address is { Length: > 0 } address ? address : null;
         var reading = PoolSettings.LoadFor(directory, PoolAreas.Reading) is { } list
             ? Martlet.Core.Reading.ReadingPool.Choice(list, own) : Martlet.Core.Reading.ReadingSettings.Load(directory);
-        string? recognition;
-        try { recognition = File.ReadAllText(Path.Combine(directory, "voice-recognition.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { recognition = null; }
         return RecommendedSetupInputs.Choices(talk.Watch, talk.HearVoice, SenseSetup.Read(directory).Senses, reading, home,
-            recognizeVoices: recognition != "off", voiceRecognition: PoolSettings.LoadFor(directory, PoolAreas.VoiceRecognition));
-    }
-
-    private static JsonObject? Json(string directory, string file)
-    {
-        try
-        {
-            var path = Path.Combine(directory, file);
-            return File.Exists(path) && new FileInfo(path).Length <= 262_144 ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
+            recognizeVoices: Martlet.Core.Speakers.VoiceChoices.Recognition(directory), voiceRecognition: PoolSettings.LoadFor(directory, PoolAreas.VoiceRecognition));
     }
 
     private static ClusterPlan? Plan(string directory)

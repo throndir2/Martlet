@@ -47,7 +47,8 @@ public sealed record CharacterReactionChange
 
 /// <summary>
 /// The character's own changes to how it reacts to touches (docs/CONVERSATION.md#how-i-react): kept in
-/// character-reaction-changes.json on this PC, never shared, never written over the owner's zones or temperament. Each change is
+/// character-reaction-changes.json, the same on every computer where the person is signed in (<see cref="SharedKey"/>), never
+/// written over the owner's zones or temperament. Each change is
 /// bounded: at most <see cref="MaximumPerRun"/> in one check-in run and <see cref="MaximumPerDay"/> in a day, at most
 /// <see cref="MaximumActive"/> at once, each lasts <see cref="MinimumHours"/> to <see cref="MaximumHours"/> hours, and a feeling
 /// moves at most <see cref="MaximumShift"/> steps from what the owner's temperament says. The owner sees and undoes them on
@@ -330,5 +331,29 @@ public static class CharacterReactionChanges
             return next;
         }
         finally { Gate.Release(); }
+    }
+
+    // ---------- shared with the owner's other computers ----------
+
+    /// <summary>The account setting that carries the character's changes to the owner's other computers where that person is
+    /// signed in: they are made per personality, which each account keeps.</summary>
+    public const string SharedKey = Martlet.Core.Sync.SettingScopes.CharacterReactionChanges;
+    private static readonly JsonSerializerOptions ShareJson = new(Json) { WriteIndented = false };
+
+    /// <summary>Every change kept, as it travels: the file's document, compact.</summary>
+    public static string Share(string dataDirectory) => JsonSerializer.Serialize(new Document(FileVersion, Load(dataDirectory)), ShareJson);
+
+    /// <summary>Takes another computer's changes (<see cref="Share"/>'s text) in place of this PC's. False when they were saved by
+    /// a newer Martlet or can't be read.</summary>
+    public static async Task<bool> ReplaceAllAsync(string dataDirectory, string shared, CancellationToken token = default)
+    {
+        Document? document;
+        try { document = JsonSerializer.Deserialize<Document>(shared, Json); }
+        catch (Exception error) when (error is JsonException or NotSupportedException) { return false; }
+        if (document is not { Version: FileVersion, Changes: { } changes }) return false;
+        IReadOnlyList<CharacterReactionChange> valid = [.. changes.Where(c => c is not null && Problem([c]) is null).OrderBy(c => c.At).TakeLast(MaximumKept)];
+        try { await UpdateAsync(dataDirectory, _ => valid, token); }
+        catch (ContractException) { return false; }
+        return true;
     }
 }

@@ -115,24 +115,21 @@ internal sealed partial class McpServer
             // Singing on the hosts this desktop is paired with, through their own gateways (as the card reads it).
             if (Path.IsPathFullyQualified(directory) && File.Exists(Path.Combine(directory, "hosts.json")))
                 paired = await NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, ["singing-status", directory]);
-            var path = Path.Combine(directory, "singing.json");
-            try
+            // singing.json through its store (Martlet.Core.Singing.SingingPreferences).
+            if (!File.Exists(Path.Combine(directory, Martlet.Core.Singing.SingingPreferences.FileName)))
+                choices = new { olderVoiceMatch = (string?)null, saved = false };
+            else
             {
-                using var saved = JsonDocument.Parse(File.ReadAllBytes(path));
-                var host = saved.RootElement.TryGetProperty("host", out var h) && h.ValueKind == JsonValueKind.String ? h.GetString() : null;
+                var saved = Martlet.Core.Singing.SingingPreferences.Load(directory);
                 choices = new
                 {
                     // The voice match the page chose before each computer had its own (the voice match list is made from it once);
                     // the quality and the model are now each pool member's settings (pool.members and pool.voiceMatch.members).
-                    olderVoiceMatch = saved.RootElement.TryGetProperty("voiceMatch", out var m) ? m.GetString() : null,
+                    olderVoiceMatch = saved.OlderVoiceMatch == Martlet.Core.Singing.SongVoiceMatch.VevoSing ? "vevosing" : null,
                     // The computer the desktop last saw running Singing; set up (SongClient.IsSetUp) while it is still paired.
-                    host,
-                    setUp = host is not null && PairedHostIds(directory).Contains(host)
+                    host = saved.Host,
+                    setUp = saved.Host is not null && PairedHostIds(directory).Contains(saved.Host)
                 };
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-            {
-                choices = new { olderVoiceMatch = (string?)null, saved = false };
             }
         }
         return new { endpoint = uri.GetLeftPart(UriPartial.Authority) + "/", route = "martlet.gateway.song.v1", port = 50085, service, choices, paired };

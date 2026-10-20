@@ -58,18 +58,18 @@ public sealed class LocalModelAppTests
         Assert.Null(MainWindow.LocalServerHealth(route, Answer(LocalServerAnswerKind.Models, "qwen/qwen3-8b"), "LM Studio"));
         // An app that lists nothing may load the model when asked.
         Assert.Null(MainWindow.LocalServerHealth(route, Answer(LocalServerAnswerKind.Models), "LM Studio"));
-        Assert.Equal("Thinking uses qwen/qwen3-8b in LM Studio on this PC, but nothing answers at http://127.0.0.1:1234/v1. " +
-            "Start LM Studio's server, or choose another way to think.",
+        Assert.Equal("Thinking uses qwen/qwen3-8b in LM Studio on this PC, but nothing answers at http://127.0.0.1:1234/v1: " +
+            "start LM Studio's server, or choose another way to think.",
             MainWindow.LocalServerHealth(route, Answer(LocalServerAnswerKind.NoAnswer), "LM Studio"));
         Assert.Contains("doesn't list it now (it lists gemma)",
             MainWindow.LocalServerHealth(route, Answer(LocalServerAnswerKind.Models, "gemma"), "LM Studio"), StringComparison.Ordinal);
-        Assert.EndsWith("Start the app's server, or choose another way to think.", MainWindow.LocalServerHealth(Chat("http://127.0.0.1:8080/v1"),
+        Assert.EndsWith("start the app's server, or choose another way to think.", MainWindow.LocalServerHealth(Chat("http://127.0.0.1:8080/v1"),
             Answer(LocalServerAnswerKind.NoAnswer), "the model app on port 8080"), StringComparison.Ordinal);
         Assert.Contains("asks for an API key", MainWindow.LocalServerHealth(route, Answer(LocalServerAnswerKind.NeedsKey), "LM Studio"),
             StringComparison.Ordinal);
         // With a key saved, an app that wants one is fine (Home asks without it).
         Assert.Null(MainWindow.LocalServerHealth(route with { CredentialId = Guid.NewGuid() }, Answer(LocalServerAnswerKind.NeedsKey), "LM Studio"));
-        Assert.Contains("Another program may be using its port",
+        Assert.Contains("another program may be using its port",
             MainWindow.LocalServerHealth(route, Answer(LocalServerAnswerKind.NotAModelServer), "LM Studio"), StringComparison.Ordinal);
     }
 

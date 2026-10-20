@@ -117,13 +117,14 @@ public partial class MainWindow
         IEnumerable<UIElement> WhisperDetails(bool gpu)
         {
             if (advice is not null)
-                yield return Note(advice.GpuNote + $" For Whisper, {(advice.UseGpu ? "the graphics card" : "the processor")} suits this PC best, " +
-                    $"because {advice.Reason}.", new Thickness(0, 4, 0, 0));
+                yield return HelpTip.Explain($"For Whisper, {(advice.UseGpu ? "the graphics card" : "the processor")} suits this PC best, " +
+                    $"because {advice.Reason}. " + advice.GpuNote, new Thickness(0, 4, 0, 0), gpu ? "ListeningWhisperGpu" : "ListeningWhisperCpu",
+                    "Whisper on this PC", wiki: "Listening-and-Voice-ID#listening");
             if (thisPc is null)
-                yield return Note((machine.DockerRunning ? "Docker Desktop is running. "
-                        : machine.DockerInstalled ? "Docker Desktop is installed. Martlet starts it when needed. "
-                        : "Docker Desktop isn't installed yet. Martlet installs it first. ") +
-                    "The first setup may take a while.", new Thickness(0, 4, 0, 0));
+                yield return Note(machine.DockerRunning ? "Docker Desktop is running; the first setup may take a while."
+                        : machine.DockerInstalled ? "Docker Desktop is installed; Martlet starts it when needed, and the first setup may take a while."
+                        : "Docker Desktop isn't installed yet; Martlet installs it first, and the first setup may take a while.",
+                    new Thickness(0, 4, 0, 0));
             if (inUse && running is null && gpu)
                 yield return Note(LocalSpeechSetup.IsParakeetModel(route!.ModelId)
                     ? $"In use: {ParakeetName(route.ModelId)} in this PC's host service."
@@ -164,7 +165,8 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("How it listens on this PC"),
-            Note("Choose a speech recognizer. Speech stays on this PC and recordings aren't saved.", new Thickness(0, 0, 0, 6)),
+            HelpTip.Explain("Choose a speech recognizer. With Parakeet or Whisper on this PC, speech stays on this PC and recordings aren't saved.",
+                new Thickness(0, 0, 0, 6), "ListeningRecognizer", "speech recognizers", wiki: "Listening-and-Voice-ID#listening"),
             OptionPickerBody("Listening", options)
         };
         stack.Add(Row(
@@ -187,9 +189,9 @@ public partial class MainWindow
     /// downloaded here (the owner downloads it in Listening; nothing downloads by itself) or a newer Martlet chose it. Null when
     /// it can.</summary>
     internal static string? SharedParakeetWaiting(string modelId, Func<string, bool> installed) =>
-        ParakeetModels.Find(modelId) is not { } model ? "It was chosen on a newer Martlet. Update this PC to use it."
+        ParakeetModels.Find(modelId) is not { } model ? "It was chosen on a newer Martlet; update this PC to use it."
         : installed(model.Id) ? null
-        : $"{model} isn't downloaded on this PC yet. Download it in Companion › Listening › Parakeet in Martlet.";
+        : $"{model} isn't downloaded on this PC yet: download it in Companion › Listening › Parakeet in Martlet.";
 
     // ---------- Listening › When Listening's own choice can't hear you ----------
 
@@ -212,8 +214,8 @@ public partial class MainWindow
         var line = new TextBlock
         {
             Text = standIn is not null
-                ? $"If {where} can't hear you, {ParakeetName(standIn)} hears you on this PC's processor instead. Nothing is sent anywhere."
-                : $"If {where} can't hear you, Martlet can't either. Download {download} and this PC's processor hears you instead.",
+                ? $"If {where} can't hear you, {ParakeetName(standIn)} hears you on this PC's processor instead, and nothing is sent anywhere."
+                : $"If {where} can't hear you, Martlet can't either, unless you download {download} so this PC's processor hears you instead.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0)
         };
         line.SetResourceReference(StyleProperty, "Muted");
@@ -266,9 +268,8 @@ public partial class MainWindow
         {
             var size = SherpaComponents.Megabytes(model.DownloadBytes);
             if (!confirmed && !ConfirmationDialog.Confirm(this, use
-                    ? $"Download {model} ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved."
-                    : $"Download {model} ({size}) so this PC's processor hears you when Listening's own choice can't?\n\n" +
-                        "Listening doesn't change. Speech stays on this PC and recordings aren't saved.",
+                    ? $"Download {model} ({size}) and use it to listen on this PC, with no recordings saved or sent?"
+                    : $"Download {model} ({size}) so this PC's processor hears you when Listening's own choice can't, without changing Listening?",
                     use ? "Download and use" : "Download"))
                 return false;
             installingParakeet = model.Id;
@@ -306,8 +307,9 @@ public partial class MainWindow
                 if (done is null)
                 {
                     if (!closing)
-                        ActionText.Text = task?.State == BackgroundTaskState.Canceled ? $"The download of {model.Name} was canceled. Listening didn't change."
-                            : $"Couldn't download {model.Name}. {problem ?? task?.Status} Listening didn't change.";
+                        ActionText.Text = task?.State == BackgroundTaskState.Canceled ? $"The download of {model.Name} was canceled, so Listening didn't change."
+                            : (problem ?? task?.Status) is { Length: > 0 } why ? $"Couldn't download {model.Name}, so Listening didn't change: {why}"
+                            : $"Couldn't download {model.Name}, so Listening didn't change.";
                     return false;
                 }
             }
@@ -322,13 +324,13 @@ public partial class MainWindow
         if (!use)
         {
             // Not loaded now: the stand-in loads it the first time Listening's own route fails.
-            ActionText.Text = $"{model} is downloaded. This PC's processor hears you with it when Listening's own choice can't.";
+            ActionText.Text = $"{model} is downloaded, so this PC's processor hears you with it when Listening's own choice can't.";
             RenderHome();
             return true;
         }
         parakeet.WarmAsync(model.Id).Forget();
         var saved = await SaveSectionRouteAsync(HostJob.Listening, settings => LocalSpeechSetup.SelectParakeet(settings, model.Id), key: null,
-            $"Martlet now listens with {model} on this PC. Speech stays on this PC.");
+            $"Martlet now listens with {model} on this PC.");
         if (!closing && openTab == CompanionTab.Listening) RenderTab();
         return saved;
     }
@@ -355,11 +357,9 @@ public partial class MainWindow
             return;
         }
         if (!confirmed && !ConfirmationDialog.Confirm(this,
-                $"Listen with Whisper {where}? " +
-                (thisPc is null ? "Martlet will set up Docker Desktop on this PC first. " : "") +
-                $"Martlet will download the {model} speech model and switch listening to it. " +
-                (gpu ? "" : "The graphics card stays free. ") +
-                "Speech stays on this PC and recordings aren't saved.",
+                $"Download the {model} speech model and listen with Whisper {where}" +
+                (thisPc is null ? ", after Martlet sets up Docker Desktop on this PC," : "") +
+                " with no recordings saved or sent?",
                 "Set it up"))
             return;
         await SetUpJobHereAsync(job, advice.InstallAnswers(gpu), $"Listen with Whisper {where}");
@@ -409,7 +409,7 @@ public partial class MainWindow
                 using (await changes.TakeAsync(run.Token))
                 {
                     if (pendingJobHosts.GetValueOrDefault(job.Role) != mark)
-                        return $"{job.Engine} is ready on this PC. {job.Title} keeps what you chose for it meanwhile.";
+                        return $"{job.Engine} is ready on this PC, but {job.Title} keeps what you chose for it meanwhile.";
                     await SaveJobHostAsync(job, host, route, voice);
                     pendingJobHosts.Remove(job.Role);
                     switched = true;
@@ -423,7 +423,7 @@ public partial class MainWindow
             if (ThisPcHost() is { } thisPc)
             {
                 var done = await HostRunWindow.RunAsync(this, title, run => Continue(run, thisPc));
-                status = done ?? $"{job.Title} didn't change. The run window has details.";
+                status = done ?? $"{job.Title} didn't change; the run window has details.";
             }
             else
             {

@@ -137,7 +137,7 @@ internal sealed class GatewayMemorySpaces
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed partial class GatewayMemoryRoutes
 {
     internal const string MemorySpacesPath = MemoriesPath + "/spaces/";
     private const string MemorySpaceDigestSuffix = "/digest";
@@ -145,8 +145,6 @@ internal sealed partial class GatewayHttpApplication
     /// <summary>Most facts one gift may carry.</summary>
     internal const int MaximumGivenFacts = 64;
     private const int MaximumGiveBytes = MaximumGivenFacts * (SharedMemories.MaximumFactBytes + 1_024);
-
-    internal GatewayMemorySpaces MemorySpaces { get; } = new();
 
     private static bool IsMemorySpaceTarget(string rawTarget) => rawTarget.StartsWith(MemorySpacesPath, StringComparison.Ordinal);
 

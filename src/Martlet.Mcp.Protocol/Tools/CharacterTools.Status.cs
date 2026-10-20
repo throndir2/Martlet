@@ -85,21 +85,14 @@ internal sealed partial class McpServer
             voice = CharacterVoice(directory), lorebooks };
     }
 
-    /// <summary>character-click-through.json in a data directory (Martlet.Desktop's CharacterClickThroughStore): whether clicks
-    /// pass through the character on this PC. No file means it catches clicks.</summary>
+    /// <summary>character-click-through.json in a data directory, read through its store (Martlet.Avatar.Hosting's
+    /// CharacterClickThroughFile): whether clicks pass through the character on this PC. No file means it catches clicks.</summary>
     private static object CharacterClickThrough(string directory)
     {
-        var path = Path.Combine(directory, "character-click-through.json");
-        if (!File.Exists(path)) return new { state = "none", on = false };
+        if (!File.Exists(Path.Combine(directory, Martlet.Avatar.Hosting.CharacterClickThroughFile.FileName))) return new { state = "none", on = false };
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            if (document.RootElement.ValueKind != JsonValueKind.Object) return new { state = "unreadable", on = false, problem = "NotAnObject" };
-            return new
-            {
-                state = "loaded",
-                on = document.RootElement.TryGetProperty("ClickThrough", out var on) && on.ValueKind == JsonValueKind.True
-            };
+            return new { state = "loaded", on = Martlet.Avatar.Hosting.CharacterClickThroughFile.Read(directory) };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {

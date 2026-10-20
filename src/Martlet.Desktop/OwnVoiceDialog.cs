@@ -36,7 +36,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
     {
         Content = new TextBlock
         {
-            Text = "This is my own voice. Martlet may record it on this PC and keep it as a voice, shared with my paired Martlet computers.",
+            Text = "This is my own voice, and Martlet may record it on this PC and keep it as a voice, shared with my paired Martlet computers.",
             TextWrapping = TextWrapping.Wrap
         },
         Margin = new Thickness(0, 10, 0, 0)
@@ -88,14 +88,10 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         var heading = new TextBlock { Text = "Record your own voice", TextWrapping = TextWrapping.Wrap };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
-        var about = new TextBlock
-        {
-            Text = $"Read each of the {OwnVoiceScript.Lines.Count} lines out loud in your normal voice, at your normal pace. Together " +
-                "they hold nearly every sound of spoken English, so Martlet can copy your voice well. Use a quiet room and the " +
-                "microphone you talk to Martlet with. Recording stops by itself when you pause at the end of a line. Together " +
-                $"the lines must stay under {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds.",
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0)
-        };
+        var about = HelpTip.Explain($"Read each of the {OwnVoiceScript.Lines.Count} lines out loud in your normal voice and pace, " +
+            $"in less than {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds in all. Use a quiet room and the " +
+            "microphone you talk to Martlet with. Recording stops by itself when you pause at the end of a line.",
+            new Thickness(0, 4, 0, 0), "OwnVoiceAbout", "recording your own voice", wiki: "Voices#record-your-own-voice");
         AutomationProperties.SetAutomationId(about, "OwnVoiceAbout");
         root.Children.Add(about);
         AutomationProperties.SetAutomationId(consent, "OwnVoiceConsent");
@@ -214,7 +210,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         recording = VoiceSampleRecording.Start(operations, devices, input, clock, VoiceSampleRecording.Line);
         if (recording is null)
         {
-            recorder.Text = "Another Martlet task is using the microphone. Let it finish, then try again.";
+            recorder.Text = "Another Martlet task is using the microphone; let it finish, then try again.";
             return;
         }
         recordingLine = line;
@@ -237,7 +233,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         level.Value = 0;
         if (active.Pcm is not { } pcm)
         {
-            recorder.Text = active.Error ?? "Recording failed. Try again.";
+            recorder.Text = active.Error ?? "Recording failed; try again.";
             Render();
             return;
         }
@@ -255,24 +251,24 @@ internal sealed class OwnVoiceDialog : ThemedWindow
     private void Keep(Line line, byte[] pcm, bool reachedLimit)
     {
         var take = OwnVoiceTake.From(pcm);
-        var earlier = line.Take is null ? "" : " Your earlier recording of it is kept.";
+        var earlier = line.Take is null ? "." : "; your earlier recording of it is kept.";
         if (take is null || take.SpeechSeconds < OwnVoiceTake.MinimumSpeechSeconds)
         {
-            recorder.Text = $"Only {take?.SpeechSeconds ?? 0:0.0} seconds of speech was heard on line {line.Number}. " +
-                "Move closer to the microphone or speak up, then record it again." + earlier;
+            recorder.Text = $"Only {take?.SpeechSeconds ?? 0:0.0} seconds of speech was heard on line {line.Number}, so move closer to " +
+                "the microphone or speak up and record it again" + earlier;
             return;
         }
         if (reachedLimit)
         {
             recorder.Text = $"Line {line.Number} went on for {VoiceSampleRecording.Line.MaximumDuration.TotalSeconds:0} seconds without " +
-                "a pause, so it may be cut off. Record it again and pause when you finish." + earlier;
+                "a pause and may be cut off, so record it again and pause when you finish" + earlier;
             return;
         }
         line.Take = take;
         var next = lines.FirstOrDefault(l => l.Take is null);
         recorder.Text = next is null
-            ? $"Line {line.Number} recorded. All the lines are recorded: play them, then add the voice."
-            : $"Line {line.Number} recorded. Next, record line {next.Number}.";
+            ? $"Line {line.Number} recorded, and all the lines are done: play them, then add the voice."
+            : $"Line {line.Number} recorded; next, record line {next.Number}.";
     }
 
     private void PlayLine(Line line)
@@ -325,8 +321,8 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         var milliseconds = OwnVoiceTake.JoinedMilliseconds(lines.Select(l => l.Take!).ToArray());
         if (milliseconds <= SpeakingVoiceLibrary.MaximumDurationMilliseconds) return null;
         var longest = lines.MaxBy(l => l.Take!.DurationMilliseconds)!;
-        return $"Together the lines last {milliseconds / 1000d:0.#} seconds, and a voice may last at most " +
-            $"{SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds. Record line {longest.Number} again a little faster.";
+        return $"Together the lines last {milliseconds / 1000d:0.#} seconds, more than the {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} " +
+            $"seconds a voice may last, so record line {longest.Number} again a little faster.";
     }
 
     /// <summary>The recordings of <see cref="OwnVoiceScript.Lines"/>, in order, joined into one voice whose transcript is the
@@ -374,7 +370,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         {
             if (F5Voices.View(dataDirectory).Live.Count >= SpeakingVoiceLibrary.MaximumVoices)
             {
-                Show($"The voice list is full ({SpeakingVoiceLibrary.MaximumVoices:N0} voices). Remove one you no longer use first.");
+                Show($"The voice list is full ({SpeakingVoiceLibrary.MaximumVoices:N0} voices), so remove one you no longer use first.");
                 return;
             }
             added = await AddVoiceAsync(dataDirectory, destination, name.Text.Trim(), lines.Select(l => l.Take!).ToArray(),
@@ -385,7 +381,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
             // These messages usually name a path, and the problem line is returned to automation.
-            Show("Martlet couldn't save the voice on this PC. Check that there is free disk space, then try again.");
+            Show("Martlet couldn't save the voice on this PC; check that the disk has free space, then try again.");
         }
         catch (Exception failure) when (failure is ArgumentException or ContractException) { Show(failure.Message); }
         finally
@@ -413,7 +409,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         }
         var done = lines.Count(l => l.Take is not null);
         var milliseconds = OwnVoiceTake.JoinedMilliseconds(lines.Where(l => l.Take is not null).Select(l => l.Take!).ToArray());
-        summary.Text = done == 0 ? $"No lines recorded yet. Record all {lines.Count} lines to make your voice."
+        summary.Text = done == 0 ? $"No lines recorded yet; record all {lines.Count} lines to make your voice."
             : $"{done} of {lines.Count} lines recorded, {milliseconds / 1000d:0.0} seconds together with the pauses" +
               (milliseconds > SpeakingVoiceLibrary.MaximumDurationMilliseconds
                   ? $": more than {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds, so record the longest line again a little faster."

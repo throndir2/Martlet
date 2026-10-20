@@ -104,7 +104,7 @@ class DownloadTests(unittest.TestCase):
         self.assertTrue(all(url.startswith("https://huggingface.co/owner/repo/resolve/0123abcd/") for url in self.requests))
         self.assertEqual(b"encoder", (folder / "a.onnx").read_bytes())
         self.assertEqual("Test notice\n", (self.root / "Parakeet-Test-NOTICE.txt").read_text(encoding="utf-8"))
-        self.assertFalse(any(path.suffix == ".part" for path in folder.iterdir()))
+        self.assertFalse(any(path.suffix == ".partial" for path in folder.iterdir()))
         host.ensure_model(self.model, self.root, self.opener(self.content), report=lambda _: None)
         self.assertEqual(4, len(self.requests))
 
@@ -115,7 +115,7 @@ class DownloadTests(unittest.TestCase):
         self.assertIn("SHA-256", str(stopped.exception))
         folder = self.root / "parakeet-test"
         self.assertFalse((folder / "b.onnx").exists())
-        self.assertFalse((folder / "b.onnx.part").exists())
+        self.assertFalse((folder / "b.onnx.partial").exists())
         served["b.onnx"] = b"decoder-and-more"
         with mock.patch.object(host.time, "sleep"), self.assertRaises(SystemExit) as stopped:
             host.ensure_model(self.model, self.root, self.opener(served), report=lambda _: None)

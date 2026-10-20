@@ -29,7 +29,7 @@ public sealed class PcSoundDigestTests
         var on = new TalkPreferences() with { HearPc = true };
         var cpu = (CpuSoundJudge.Label, (SoundJudgeKind?)SoundJudgeKind.Cpu);
         Assert.Equal("Works while Hear what this PC plays is on.", MainWindow.SoundDigestStatus(new TalkPreferences(), true, null, cpu, clock));
-        Assert.Equal("Off. Only the words this PC plays reach Thinking.",
+        Assert.Equal("Off: only the words this PC plays reach Thinking.",
             MainWindow.SoundDigestStatus(on with { DescribePcSounds = false }, true, null, cpu, clock));
         Assert.Equal("Martlet can't hear what this PC plays here.", MainWindow.SoundDigestStatus(on, false, null, cpu, clock));
         var idle = MainWindow.SoundDigestStatus(on, true, null, cpu, clock);

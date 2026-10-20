@@ -59,15 +59,15 @@ internal sealed class GatewayClusterStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayClusterRoutes(GatewayHttpServices services, GatewayClusterStore cluster) : GatewayRouteHandler(services)
 {
     internal const string ClusterPath = "/martlet/v1/cluster";
 
-    internal GatewayClusterStore Cluster { get; } = new();
+    internal GatewayClusterStore Cluster { get; } = cluster;
 
     /// <summary>GET returns this host's copy of the cluster plan; POST merges a desktop's copy into it and returns the
     /// merged result. Any paired device may do either; the plan holds no secrets and grants no authority.</summary>
-    private async ValueTask InvokeClusterAsync(HttpContext context)
+    internal async ValueTask InvokeClusterAsync(HttpContext context)
     {
         ClusterPlan result;
         if (context.Request.Method == HttpMethods.Get)

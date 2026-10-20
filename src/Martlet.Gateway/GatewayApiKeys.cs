@@ -192,25 +192,15 @@ internal sealed class GatewayApiKeyStore(string hostId, TimeProvider clock) : IG
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayApiKeyRoutes(GatewayHttpServices services) : GatewayRouteHandler(services)
 {
     internal const string ApiKeysPath = "/martlet/v1/api-keys";
     private const int MaximumApiKeysResponseBytes = ApiKeyList.MaximumBytes + 8_192;
 
-    internal GatewayApiKeyStore ApiKeys { get; }
-
-    /// <summary>A paired device (signed request; a friend's only where <paramref name="access"/> admits friends) or, when
-    /// <paramref name="access"/> admits it, an API key.</summary>
-    private GatewayPrincipal Authorize(HttpRequest request, GatewayApiAccess access, GatewayRole? role = null) =>
-        GatewayApiKeyStore.IsBearer(request) ? ApiKeys.Authenticate(request, access, role) : authenticator.Authenticate(request, access.Friends);
-
-    private GatewayPrincipal Authorize(HttpRequest request, ReadOnlySpan<byte> bodyHash, GatewayApiAccess access, GatewayRole? role = null) =>
-        GatewayApiKeyStore.IsBearer(request) ? ApiKeys.Authenticate(request, access, role) : authenticator.Authenticate(request, bodyHash, access.Friends);
-
     /// <summary>GET returns this host's copy of the network's API keys (verifiers, never secrets) and when each was last
     /// used here; POST merges a desktop's copy into it and returns the merged result. Paired devices only: an API key can
     /// never read or change keys.</summary>
-    private async ValueTask InvokeApiKeysAsync(HttpContext context)
+    internal async ValueTask InvokeApiKeysAsync(HttpContext context)
     {
         ApiKeyList result;
         if (context.Request.Method == HttpMethods.Get)

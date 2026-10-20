@@ -312,6 +312,7 @@ links that change permissions, automatic reinstall, secret collection or uploads
 | `host.unavailable` | Not configured | `host.setup` |
 | `planning.catalog_daily`, `planning.catalog_snapshot` | Passed (where Recommended setup's options come from; files only) | `planning.review` |
 | `planning.seed_only` | Warning (the model catalog can't be read; Martlet's own list only) | `planning.review` |
+| `planning.catalog_refresh_failing` | Warning (the daily refresh tried this week, but no refresh read every source for over a week; the last good copy is used) | `planning.review` |
 | `probe.not_run` | Skipped, catalog only | `diagnostics.refresh` |
 | `probe.running` | Running, not completed evidence | `diagnostics.wait` |
 | `probe.effects_blocked` | Skipped, callback never invoked | `diagnostics.refresh` |

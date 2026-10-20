@@ -9,14 +9,14 @@
 services:
   singing:
     build:
-      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/singing
-      dockerfile: host/Dockerfile
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers
+      dockerfile: singing/host/Dockerfile
       args:
         SINGING_HEARTMULA: ${SINGING_HEARTMULA:-no}
         SINGING_DIFFRHYTHM: ${SINGING_DIFFRHYTHM:-no}
         SINGING_YUE: ${SINGING_YUE:-no}
         SINGING_SEEDVC: ${SINGING_SEEDVC:-no}
-    image: martlet-singing:5
+    image: martlet-singing:6
     pull_policy: build
     restart: unless-stopped
     environment:

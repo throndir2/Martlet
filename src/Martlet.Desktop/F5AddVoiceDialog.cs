@@ -25,8 +25,7 @@ namespace Martlet.Desktop;
 /// to check and correct.</summary>
 internal sealed class F5AddVoiceDialog : ThemedWindow
 {
-    private const string RecordingHint = "MP3, M4A, WAV, FLAC, OGG, Opus, the sound of a video and most other audio files work. " +
-        "Martlet converts the recording for you.";
+    private const string RecordingHint = "MP3, M4A, WAV, FLAC, OGG, Opus, the sound of a video and most other audio files work.";
     private readonly string dataDirectory;
     private readonly string destination;
     private readonly RecordingTranscriber? transcriber;
@@ -114,19 +113,13 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         var heading = new TextBlock { Text = "Add a voice", TextWrapping = TextWrapping.Wrap };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
-        var about = new TextBlock
-        {
-            Text = (transcriber is null
-                    ? "Choose a clear recording, in almost any audio format, and type its exact words: F5-TTS, GPT-SoVITS and Dia read " +
-                        "them along with it. With Parakeet downloaded in Companion › Listening, Martlet fills them in for you. "
-                    : $"Choose a clear recording, in almost any audio format, and Martlet fills in its words with {transcriber.Name}. " +
-                        "Check them and fix anything it misheard: F5-TTS, GPT-SoVITS and Dia read them along with it. ") +
-                "You can add several recordings of the same voice: XTTS-v2 and GPT-SoVITS learn from each one, and the other engines " +
-                $"hear them joined, one after another with a short pause ({SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} " +
-                "seconds in all). Martlet keeps a copy and shares it with your paired Martlet computers, so any of them can speak " +
-                "with this voice.",
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
-        };
+        var about = HelpTip.Explain((transcriber is null
+                ? "Choose a clear recording and type its exact words, or download Parakeet in Companion › Listening to fill them in. "
+                : $"Choose a clear recording, and Martlet fills in its words with {transcriber.Name}. Check the words and fix " +
+                    "anything it misheard. ") +
+            $"Add more recordings of the same voice if you have them, up to {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} " +
+            "seconds in all. Martlet keeps a copy and shares it with your paired Martlet computers.",
+            new Thickness(0, 4, 0, 6), "F5AddVoiceAbout", "adding a voice", wiki: "Voices#clone-a-voice");
         AutomationProperties.SetAutomationId(about, "F5AddVoiceAbout");
         root.Children.Add(about);
 
@@ -215,7 +208,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         row.FileLabel.Target = row.Path;
         row.WordsLabel.Target = row.Transcript;
         InputHint.SetText(row.Path, @"C:\Voices\my-voice.wav");
-        InputHint.SetText(row.Transcript, "The exact words in the recording, for example: Hi! It's lovely to meet you.");
+        InputHint.SetText(row.Transcript, "The exact words in the recording, such as \"Hi, it's lovely to meet you.\"");
         var pick = new DockPanel();
         DockPanel.SetDock(row.Drop, Dock.Right);
         DockPanel.SetDock(row.Play, Dock.Right);
@@ -258,7 +251,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         row.Listening?.Cancel();
         if (ready.DurationMilliseconds > transcriber.MaximumMilliseconds)
         {
-            row.Say($"This recording is too long for {transcriber.Name} to fill in its words. Type them.");
+            row.Say($"This recording is too long for {transcriber.Name} to fill in its words, so type them.");
             return;
         }
         using var stop = new CancellationTokenSource();
@@ -274,20 +267,20 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             var text = await transcriber.TranscribeAsync(ready.Wave, stop.Token);
             stop.Token.ThrowIfCancellationRequested();
             if (row.Transcript.Text != before) row.Say("Kept the words you typed.");
-            else if (text.Length == 0) row.Say($"{transcriber.Name} heard no words in this recording. Type them.");
-            else if (!SpeakingVoiceLibrary.IsTranscript(text)) row.Say($"{transcriber.Name} heard more words than a voice can keep. Type them.");
+            else if (text.Length == 0) row.Say($"{transcriber.Name} heard no words in this recording, so type them.");
+            else if (!SpeakingVoiceLibrary.IsTranscript(text)) row.Say($"{transcriber.Name} heard more words than a voice can keep, so type them.");
             else
             {
                 row.Transcript.Text = row.Filled = text;
                 var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-                row.Say($"Filled in by {transcriber.Name}: {words} word{(words == 1 ? "" : "s")}. Check them and fix anything it misheard.");
+                row.Say($"Filled in by {transcriber.Name}: {words} word{(words == 1 ? "" : "s")}; check them and fix anything it misheard.");
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
         catch (Exception error) when (error is not OperationCanceledException && !ErrorLog.IsFatal(error))
         {
             ErrorLog.Warn($"Filling in a voice recording's words with {transcriber.Name} failed.", error);
-            row.Say($"Couldn't fill in the words with {transcriber.Name}: {RecordingTranscriber.Reason(error)}. Type them.");
+            row.Say($"Couldn't fill in the words with {transcriber.Name}: {RecordingTranscriber.Reason(error)}; type them.");
         }
         finally
         {
@@ -402,7 +395,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             ErrorLog.Warn("Couldn't read a recording for Add a voice", failure);
             if (token.IsCancellationRequested) return null;
             (row.Failed, row.Reading, row.Found.Text) = (true, false,
-                "Martlet couldn't read this recording. Try an MP3, M4A, WAV, FLAC or OGG recording.");
+                "Martlet couldn't read this recording; try an MP3, M4A, WAV, FLAC or OGG file.");
             Summarize();
             return null;
         }
@@ -454,7 +447,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
                         ? $"One recording, {seconds:0.#} seconds: a voice from one recording needs at least " +
                             $"{SpeakingVoiceLibrary.MinimumDurationMilliseconds / 1000} second."
                         : $"One recording, {seconds:0.#} seconds."
-                    : "One recording. Add more recordings of the same voice if you have them."
+                    : "One recording."
                 : $"{count} recordings make one voice" + (chosen ? $", {seconds:0.#} seconds joined with the pauses" +
                     (milliseconds > SpeakingVoiceLibrary.MaximumDurationMilliseconds
                         ? $": more than {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds, so leave some out." : ".")
@@ -535,8 +528,8 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         var problem = missing >= 0 ? several ? $"Choose recording {missing + 1}, or remove it." : "Choose the recording."
             : name.Text.Trim().Length == 0 ? "Give the voice a name."
             : unsaid >= 0 && (recordings[unsaid].Listening is not null || transcriber is not null && recordings[unsaid].Reading)
-                ? several ? $"Martlet is still filling in the words of recording {unsaid + 1}. Wait a moment, or type them."
-                    : "Martlet is still filling in the words. Wait a moment, or type them."
+                ? several ? $"Martlet is still filling in the words of recording {unsaid + 1}; wait a moment or type them."
+                    : "Martlet is still filling in the words; wait a moment or type them."
             : unsaid >= 0 ? several ? $"Type exactly what recording {unsaid + 1} says." : "Type exactly what the recording says."
             : rights.IsChecked != true ? "Confirm that you may use this voice."
             : null;
@@ -550,7 +543,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         {
             if (F5Voices.View(dataDirectory).Live.Count >= SpeakingVoiceLibrary.MaximumVoices)
             {
-                Show($"The voice list is full ({SpeakingVoiceLibrary.MaximumVoices:N0} voices). Remove one you no longer use first.");
+                Show($"The voice list is full ({SpeakingVoiceLibrary.MaximumVoices:N0} voices), so remove one you no longer use first.");
                 return;
             }
             byte[] wave;
@@ -594,7 +587,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
             // These messages usually name a path, and the problem line is returned to automation.
-            Show("Martlet couldn't save the voice on this PC. Check that there is free disk space, then try again.");
+            Show("Martlet couldn't save the voice on this PC; check that the disk has free space, then try again.");
         }
         catch (Exception failure) when (failure is ArgumentException or ContractException)
         {

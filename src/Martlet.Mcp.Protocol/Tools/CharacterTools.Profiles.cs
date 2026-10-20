@@ -306,10 +306,8 @@ internal sealed partial class McpServer
         }
         var fallback = Martlet.F5.F5BundledVoices.Default;
         // The self-hosted voice engines (F5-TTS, XTTS-v2, GPT-SoVITS, Dia) and the one chosen on this desktop (speaking-engine.txt, the file
-        // Martlet.Desktop's SpeakingEngineChoice keeps; a speaking route on a host's engine wins over it).
-        string? chosen = null;
-        try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        // Martlet.Core.Settings.SpeakingEngineFile keeps; a speaking route on a host's engine wins over it).
+        var chosen = Martlet.Core.Settings.SpeakingEngineFile.ReadKey(directory);
         var engines = Martlet.Core.Settings.SpeechEngines.All.Select(engine => new
         {
             key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,

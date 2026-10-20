@@ -253,7 +253,7 @@ public sealed class CharacterGazeModeTests
         Assert.Equal(GazeMode.Window, renderer.Gazes[2].Mode);
         Assert.True(gaze.Settings.Changed);
         Assert.Contains("watch the window the user is working in", gaze.Prompt(null)!.Looking);
-        Assert.Contains("Usually it follows your mouse when it's near", gaze.Looking);
+        Assert.Contains("usually it follows your mouse when it's near", gaze.Looking);
         avatar.Cues.Post([new CharacterCue("{look usual}", TimeSpan.Zero)], Task.CompletedTask);
         await Until(() => renderer.Gazes.Length == 4);
         Assert.Equal(GazeMode.Near, renderer.Gazes[3].Mode);
@@ -263,7 +263,7 @@ public sealed class CharacterGazeModeTests
         gaze.Attend(3, "a touch on groin");
         await Until(() => renderer.Gazes.Length == 5);
         Assert.Equal(new RendererGaze(Seconds: 3, Mouse: true), renderer.Gazes[4]);
-        Assert.Contains("Right now it looks at your mouse after a touch on groin.", gaze.Looking);
+        Assert.Contains("right now it looks at your mouse after a touch on groin;", gaze.Looking);
         gaze.Attend(0, "nothing");
         gaze.Attend(double.NaN, "nothing");
 
@@ -278,7 +278,7 @@ public sealed class CharacterGazeModeTests
         avatar.Cues.Post([new CharacterCue("{look mouse}", TimeSpan.Zero)], Task.CompletedTask);
         await Task.Delay(100);
         Assert.Equal(7, renderer.Gazes.Length);
-        Assert.Contains("It keeps this; it can't change where it looks.", gaze.Looking);
+        Assert.Contains("it keeps this and can't change where it looks.", gaze.Looking);
         Assert.True(changes > 0);
         Assert.Contains("usual gaze near", gaze.LastLookText);
         await avatar.StopAsync();
