@@ -102,7 +102,7 @@ image model and Companion › Hearing for the audio model
 
 Companion › Vision and Companion › Hearing are Optional extras with the
 standard page order (`MainWindow.SenseModels.cs`, `MainWindow.SensePools.cs`,
-`MainWindow.Hearing.cs`):
+`Pages\Hearing\`):
 
 1. **Now** says what takes the input now: the list in words (`ImageModelNow`:
    the first model and how many more take a job when it is busy), where the

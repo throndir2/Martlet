@@ -154,10 +154,10 @@ public sealed class OptionalExtrasTests
         Assert.Equal("Martlet gets only the words you say, not how you say them", OptionalExtras.OffMeans(CompanionTab.Hearing));
         var none = new Martlet.Conversation.SenseRoute(SenseKind.Audio, Martlet.Conversation.SensePath.None, null, "");
         Assert.Equal("Off: Martlet gets only the words you say, not how you say them; set up Thinking first.",
-            MainWindow.HearingNow(false, null, null, none));
-        Assert.EndsWith("so it waits for your tick below.", MainWindow.HearingNow(false, null, Thinking("gemma4:e2b"), none));
-        Assert.Equal("Off: Martlet gets only the words you say, not how you say them.", MainWindow.HearingNow(false, false, Thinking("gemma4:e2b"), none));
-        Assert.Equal("On: Thinking (gemma4:e2b) hears your recording itself.", MainWindow.HearingNow(true, null, Thinking("gemma4:e2b"), none));
+            HearingPageModel.Now(false, null, null, none));
+        Assert.EndsWith("so it waits for your tick below.", HearingPageModel.Now(false, null, Thinking("gemma4:e2b"), none));
+        Assert.Equal("Off: Martlet gets only the words you say, not how you say them.", HearingPageModel.Now(false, false, Thinking("gemma4:e2b"), none));
+        Assert.Equal("On: Thinking (gemma4:e2b) hears your recording itself.", HearingPageModel.Now(true, null, Thinking("gemma4:e2b"), none));
     }
 
     [Fact]
