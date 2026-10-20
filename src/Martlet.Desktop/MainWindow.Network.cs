@@ -794,7 +794,7 @@ public partial class MainWindow
         var heading = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
         // The heading carries the whole row for UI Automation (and MCP snapshots): who it is and what it means.
         AutomationProperties.SetAutomationId(heading, automationId);
-        AutomationProperties.SetName(heading, $"{title}. {detail}");
+        AutomationProperties.SetName(heading, $"{title}: {detail}");
         text.Children.Add(heading);
         var line = new TextBlock { Text = detail, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
         line.SetResourceReference(StyleProperty, "Muted");

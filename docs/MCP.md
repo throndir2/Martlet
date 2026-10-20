@@ -6512,7 +6512,7 @@ it is busy (a free first computer speaks at once and the cloud member is never
 asked); and the `pools` shared setting's round trip. `ok` is true when every step
 passed. On the desktop, `ui_snapshot` reads `WorkSharingStatus` (how many of
 this PC's requests another computer took since Martlet started), each area's
-`WorkSharingPool-<area>` line ("Speaking. In order: This PC, m3-host.") with
+`WorkSharingPool-<area>` line ("Speaking: In order: This PC, m3-host.") with
 its `WorkSharingOpen-<area>` button (opens the area's page; a safe click), the
 Thinking pool's `WorkSharingJob-deep-thinking`, `WorkSharingPlace-deep-thinking-<host>`
 and `WorkSharingUse-deep-thinking-<host>`, and `WorkSharingHost-<host>` and
