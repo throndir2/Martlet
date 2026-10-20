@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Desktop;
 using Martlet.Memory;
@@ -147,6 +148,33 @@ public sealed class MemoryActivityTests
 
         Assert.Equal((true, MemoryActivity.Gaming, (string?)null), MemoryTools.Where("games", null));
         Assert.Equal((false, (string?)null, (string?)null), MemoryTools.Where(null, Palworld));
+    }
+
+    [Fact]
+    public async Task WhileYouPlayGoesInTheNotesOncePerGameAndNeverChangesTheInstructions()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var configuration = LiveConversationConfiguration.From(loaded)!;
+        ConversationRequest Ask(IReadOnlyList<TextHistoryMessage> history, string? activity, LiveConversationConfiguration? with = null) =>
+            (with ?? configuration).Request(new("What now?"), false, history, null, null, out _, out _, out _, activity: activity);
+
+        var plain = Ask([], null);
+        var playing = Ask([], Palworld);
+        Assert.Equal(plain.Input.Personality, playing.Input.Personality);
+        Assert.Contains("The user is playing Palworld right now.", playing.Input.Notes);
+        Assert.DoesNotContain("playing", plain.Input.Notes ?? "");
+        Assert.Equal("While you play", Assert.Single(playing.Parts!.Notes, part => part.Text.Contains("Palworld", StringComparison.Ordinal)).Name);
+
+        // Carried by the conversation sent, it isn't sent again; another game is.
+        TextHistoryMessage[] history = [new(TextHistoryRole.User, playing.Input.KeptUserText), new(TextHistoryRole.Assistant, "Go catch pals!")];
+        Assert.DoesNotContain("right now", Ask(history, Palworld).Input.Notes ?? "");
+        Assert.Contains("The user is playing ELDEN RING right now.", Ask(history, Elden).Input.Notes);
+        Assert.DoesNotContain("right now", Ask([], MemoryActivity.Gaming).Input.Notes ?? "");
+
+        var emptied = LiveConversationConfiguration.From(loaded with { Settings = loaded.Settings! with { Prompts = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.WhilePlaying] = "" } } } })!;
+        Assert.DoesNotContain("right now", Ask([], Palworld, emptied).Input.Notes ?? "");
+        fixture.NoEffects();
     }
 
     [Fact]

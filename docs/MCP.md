@@ -261,10 +261,19 @@ would run it:
   which deletes its entry and the secrets only it used.
 
 **When servers run.** Nothing starts when Martlet starts. Enabled servers start in
-the background when you open a talk window (or press *Start servers now*), and a
-reply waits at most 10 seconds for servers still starting. Servers that stopped are
+the background when you open a talk window (or press *Start servers now*). A reply
+never waits for them: a server that is still starting (or stopped) offers the tools
+it listed last in this session, so the tool list stays the same while servers come
+and go, and a call to it waits at most 10 seconds for it to start or tells the
+model that it isn't running. A server whose tools were never listed yet offers
+none until it is ready. Servers that stopped are
 retried when a talk window opens again or from the Tools page. Each server's state,
 tools and recent error output are on the Tools page.
+
+**Tool names.** Each server tool is offered as `<server>_<tool>` (made safe for
+function calling), for example `home-assistant_HassTurnOn`. The name never
+depends on which other servers run, so the start of every request stays the same
+for prompt caches.
 
 **Which replies get tools.** Only replies to what you say or type (and Martlet's
 own reply bringing up finished background work), and only when
@@ -687,7 +696,9 @@ one of 500-3000, 900 by default) rehearses the production race in
 (`ThinkingBackupMembers`) with two fixture Chat Completions endpoints on
 127.0.0.1 (canned words, NOT AI), which note when the client stopped their
 stream. Scenarios: `backup-wins`, `conversation-wins`, `late-conversation`
-(the member asked, then stopped), `conversation-fails`, `no-member`, `held`
+(the member asked, then stopped), `conversation-fails`, `no-member`,
+`open-fails` (a member is chosen but its stream can't be opened: `Failed` with
+the reason in `why`, not "no member"), `held`
 (only a paid cloud member: asked once the reply is taken), `let-go` (a reply
 started early and let go stops its member's stream too) and `members` (the
 rules). Each turn reports its outcome, the member, when it was asked, the
@@ -1819,8 +1830,8 @@ Companion › Voice shows) and `abilities`, the rundown Companion › Voice show
 `cloning` and `sounds` (true or false), `emotions` (`None`, `WhisperOnly`,
 `Intensity` or `Tags`), `items` (`Voice cloning`, `Laughs & sighs` and
 `Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
-`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
-Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
+`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes;
+Laughs & sighs: yes; Emotions: whispering only." for Chatterbox Turbo, whose
 tones other than `[whispering]` don't change the voice and whose `[whispering]`
 the model itself whispers only now and then). `otherVoices` gives the
 same `abilities` and `runsOn` for the `openai` (online) voice, which doesn't
@@ -2080,7 +2091,10 @@ and not outside games; a search without the filter (the Memory window,
 as the store; a game's fact travels with `activity` while a fact for
 everywhere is written exactly as before; a correction keeps where a fact
 matters and choosing it moves the fact; an activity of the wrong form is
-refused; and game names compare without regard to case or spacing. With
+refused; a lorebook entry keyed by the game played now joins in though the
+words don't name it (`LorebookScanner` in `src\Martlet.Core`); the *While you
+play* prompt names the game; and game names compare without regard to case or
+spacing. With
 `query`, `asked.recalled` lists the sample facts (by key) those words recall
 while `activity` is played (none: no game). It never opens the owner's memory
 and contacts nothing.
@@ -2673,8 +2687,12 @@ answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
 throttled entries with their source, plus `StoresHealthy`, `FailingStores` and
 the authority save counts `AuthorityCommits`, `AuthorityCommitAverageMs` and
-`AuthorityCommitLongestMs`; the first step fails when a store is not healthy)
-and the host log lines naming each source.
+`AuthorityCommitLongestMs` and the nonce save counts `NonceSaves`,
+`NonceSaveAverageMs` and `NonceSaveLongestMs`; the first step fails when a store is not healthy)
+and the host log lines naming each source. A host on its real pairing store
+(a temporary directory) then pairs a desktop that makes 20 signed audit reads:
+the step passes when they took 20 nonce saves (journal appends) and at most
+one full save, and reports their times.
 Then outside addresses, played by other loopback ports: with the home address
 closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
@@ -4867,7 +4885,8 @@ as `[hidden]`: the value after a flag such as `--token`, `--api-key` or
 address, and tokens such as `sk-...`, `ghp_...` or a long random string), `host` for HTTP servers, `env`
 and `headers` names, `disabled`, `autoApproveAll`, `autoApprove`, the MCP
 directory `registry` and `registryVersion` it was installed from, the `secrets`
-names it uses and its `problem`. It starts no server and reads no credentials.
+names it uses, `toolNames` (how a reply names its tools: always
+`<server>_<tool>`, whatever else runs) and its `problem`. It starts no server and reads no credentials.
 
 `terminal_status` reads Companion › Tools › Terminal from a data directory's
 `terminal.json` (optional absolute `dataDirectory`, default the current user's):
@@ -6059,12 +6078,14 @@ On Companion › Voice › *A cloud provider*, *Cloud voice* is an option picker
 `Picker-CloudVoice-openai` (OpenAI's voices) and `Picker-CloudVoice-elevenlabs`.
 ElevenLabs' details are readable: its facts (`PickerFact-CloudVoice-<fact>`:
 voice cloning, laughs and sighs, emotions, streaming, languages, cost),
-`ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
-your cloned voice. Key saved.*, and whether ElevenLabs asked to verify the
+`ElevenLabsStatus` (*Not in use yet: ...* or *In use: Eleven v4 Turbo with
+your cloned voice; key saved.*, and whether ElevenLabs asked to verify the
 voice; never the voice's name), `ElevenLabsKeyStatus` (what the key field will
 do; never the key) and `ElevenLabsModel` (the chosen model). Its abilities read
 through `VoiceEngineAbilities-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
-so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs.
+so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs. The *?* marks `Help-ElevenLabsAbout`,
+`Help-ElevenLabsModel`, `Help-ElevenLabsCosts` and `Help-ElevenLabsConsent` (the rights statement of the box) link to the
+wiki's *ElevenLabs* and *What you agree to*.
 `ElevenLabsSave` uploads a recording and saves the route, so it needs
 `--allow-ui-effects`. Never press it in a check: it would contact ElevenLabs.
 
@@ -7421,7 +7442,8 @@ is refused). `memory care: a built-in check-in that works on memory in several
 steps` checks the built-in Memory care check-in: on, every hour, *Its tools
 act* with the Memory set, its job offering all ten Memory tools for 16 rounds
 with 8 minutes and 2,048 tokens a request, its message saying it works in
-steps, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
+steps and keeps facts for the right game, the three tools that save or correct
+facts taking `where`, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
 rules list `maximumToolRounds`, `maximumToolCalls`, `maximumToolOutputTokens`,
 `toolTimeoutSeconds` and `hardMaxToolRounds`. `tools: background work takes over the reply's think_longer and
 research` checks the `background-work` set: its two tools take the reply's
@@ -7479,7 +7501,13 @@ past the fixture's time limit, `requestTimeHours` 24); and `fullLine`: on three
 one-slot places, Deep thinking's own kind lets six thinks run or wait
 (`runningOrWaiting`, `maxActive`) and runs two at once (`atOnce`), and a seventh
 is refused as `busy` with those real numbers (`message`: *Martlet already has 6
-thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`). `plans`: the production `DeepThinkingPlan`
+thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`);
+`startFailure`: a job waiting in line whose seating throws (a clock that fails,
+as at shutdown) ends `Failed` (*it couldn't start on this PC*) and is
+`reported` through `BackgroundJobs.Faulted` (the desktop log's warning), so
+its kind is never blocked; and `waitingTrimmed`: finished jobs that wait to be
+brought up stay at most `limit` (`BackgroundJobs.KeptWaiting`), the oldest
+dropped. `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
@@ -8276,7 +8304,10 @@ its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavShare`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavThinkingRequests`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). Many pages keep their longer
-explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
+explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`; Listening, Voice, People,
+Singing, *Microphone and speakers* and *Voice ID* have, for example, `Help-ListeningRecognizer`,
+`Help-VoicesAbout`, `Help-ElevenLabsConsent`, `Help-PeopleRecognize`, `Help-SingingAbout`,
+`Help-AudioSetupIntro` and `Help-VoiceIdAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
 explanation as `help`, and `ui_click` on it only opens a small card with that
 text (passive, no `--allow-ui-effects`). While the card is open, `ui_snapshot`
@@ -9963,7 +9994,7 @@ voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
 voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
 use (a starter voice's name, "one of your recordings", or "a voice no longer in
-the list"), for example "6 voices. None chosen yet; Martlet starts with Jenny
+the list"), for example "6 voices; none chosen yet, so Martlet starts with Jenny
 (Dioco)." `F5VoicesShared` reads whether the list is shared with the
 paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
 voices still copying to this PC, hosts to update, or "No other Martlet computers
@@ -10017,7 +10048,7 @@ speech-to-text (and may send the recording to the Listening host), so it needs
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
 `F5RecordVoice` (passive: it only opens the dialog) opens *Record your own
 voice* (`OwnVoiceDialog`); `OwnVoiceCancel` (passive) closes it. `OwnVoiceAbout`
-returns its intro. `OwnVoiceConsent` is the box that says it is the owner's own
+returns its intro (one sentence; `Help-OwnVoiceAbout` has the rest and links to the wiki's *Record your own voice*). `OwnVoiceConsent` is the box that says it is the owner's own
 voice; its checked state is readable, and `ui_toggle` on it needs
 `--allow-ui-effects`. Each line has its fixed words (`OwnVoiceLine-<n>`, for
 example "“Would you enjoy a quiet cup of cocoa while we measure the
@@ -10026,10 +10057,10 @@ treasure?”"), its state (`OwnVoiceLineState-<n>`: "Not recorded yet.",
 (`OwnVoiceRecord-<n>`, readable as "Record line 2", "Stop recording line 2" or
 "Record line 2 again"; off until the box is ticked). `OwnVoiceRecorder` returns
 what the microphone is doing or why a line wasn't kept ("Press Record beside a
-line, then read it out loud.", "Line 2 recorded. Next, record line 3.", "Only
-0.8 seconds of speech was heard on line 1. ..."), `OwnVoiceSummary` how many
-lines are recorded and how long they are together ("No lines recorded yet.
-Record all 4 lines to make your voice.", "2 of 4 lines recorded, 11.6 seconds
+line, then read it out loud.", "Line 2 recorded; next, record line 3.", "Only
+0.8 seconds of speech was heard on line 1, so ..."), `OwnVoiceSummary` how many
+lines are recorded and how long they are together ("No lines recorded yet;
+record all 4 lines to make your voice.", "2 of 4 lines recorded, 11.6 seconds
 together with the pauses.") and `OwnVoiceProblem` why `OwnVoiceOk` (Add voice)
 couldn't add the voice ("Record line 1 first.", or that together the lines are
 longer than 30 seconds and which line to read again). Record uses the
@@ -10055,7 +10086,7 @@ sighs, emotions, streaming, languages, your recordings, license and whether it
 allows commercial use, numbers), `PickerState-VoiceEngine` where it stands
 ("Speaking on this PC.", "Ready on gpu-pc.", "Setting up on gpu-pc...", or why
 it can't run there), `VoiceEngineAbilities-<key>` the rundown of what it can do
-("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only."; shown
+("Voice cloning: yes; Laughs & sighs: yes; Emotions: whispering only."; shown
 as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in `f5_voices`),
 `VoiceEngineFeatures-<key>` its other needs as chips ("Docker, 5 s+ samples,
 English" for Chatterbox Turbo; the same list as `features` in `f5_voices`), and
@@ -10090,17 +10121,20 @@ voice engine there, or says one would share the card before one is set up.
 
 Companion › Singing (`CompanionTab-Singing`, under *Optional extras*;
 [Singing](SINGING.md)) has the standard order. `SingingNow` says whether and
-where Martlet sings ("Off. Martlet doesn't sing: no computer in the music list
-is on. Singing stays set up on your computers.", "Not set up yet. ...",
+where Martlet sings, in one sentence ("Off: Martlet doesn't sing, because no computer in the music list
+is on; Singing stays set up on your computers.", "Not set up yet: add one of your computers ...",
 "Martlet writes the music on gpu-pc (or the first free one of 2 computers) in
-high quality, and matches the voice on gpu-pc with SoulX-Singer.", or "... Voice
-match is off: songs keep the music model's own singer."). A song has two
+high quality, and matches the voice on gpu-pc with SoulX-Singer.", or "..., but voice
+match is off, so songs keep the music model's own singer."). `Help-SingingAbout` (*?*) explains what asking
+for a song does and links to the wiki's *How a song is made*. A song has two
 parts, each with its own shared pool list
 ([the two singing pools](SINGING.md#the-two-singing-pools)): *Music: where
 Martlet writes songs* (`Pool-singing-...`; with none on, Martlet doesn't sing)
 and *Voice match: where Martlet matches the singing to its voice*
 (`Pool-voice-match-...`; with none on, songs keep the music model's own
-singer). Each list has the shared IDs (summary, each member's line with its
+singer). Each list's intro shows one sentence with `Help-Pool-singing-Intro` and
+`Help-Pool-voice-match-Intro` (the whole intro, with a link to the wiki's *The music and voice match lists*).
+Each list has the shared IDs (summary, each member's line with its
 state, such as "1. gpu-pc. A paired computer; runs Singing with SoulX-Singer and
 VevoSing; high quality." or "...; SoulX-Singer.", On, Up, Down, Remove,
 Settings, kept-for and the Add buttons; only computers that aren't shared by
@@ -10126,7 +10160,8 @@ model not set up there: `Pool-singing-AddXl-`, `Pool-singing-AddHeartMuLa-`, `Po
 `SingingCloudKeyStatus-<area>`, `SingingCloudConsent-<area>` (what goes to the provider and that it may cost money),
 `SingingCloudAdd-<area>` (needs `--allow-ui-effects`) and `SingingCloudState-<area>`. A cloud member's settings show
 `Pool-<area>-CloudKeyStatus-<member key>`, a key box with `Pool-<area>-CloudSaveKey-<member key>` and, for Mureka,
-`Pool-singing-OwnVoice-<member key>` (*Sing in Martlet's voice*). A voice
+`Pool-singing-OwnVoice-<member key>` (*Sing in Martlet's voice*) and `Help-Pool-<area>-CloudModel-<member key>`
+(how to use another model of the provider; wiki *Cloud providers*). A voice
 match member adds `Pool-voice-match-AddVevo-<member key>` (*Add VevoSing here*
 where it runs without VevoSing) and `Pool-voice-match-Model-<member key>`
 (*SoulX-Singer*, the default, or *VevoSing*: that computer's own model, saved in
@@ -10138,13 +10173,14 @@ voice match list, it makes the voice match list from the music list. *What
 Singing is* shows the role's details only (`Picker-Singing-Role`): its facts
 (`PickerFact-Singing-<fact>`: `vram`, `download`, `song`, `license`, `cost`,
 `data`) and `SingingGpu` (fixed text: its first sentence, with all of it in
-`help`), which answers whether Singing needs a graphics card of its own. *Voice
-match models* compares the two models: `Picker-SingingVoiceMatch-SoulX` and
+`help` and in `Help-SingingGpu`, which links to the wiki's *Hardware*), which answers whether Singing needs a graphics card of its own. *Voice
+match models* has `Help-SingingVoiceMatchModels` (wiki *More choices*) and compares the two models: `Picker-SingingVoiceMatch-SoulX` and
 `Picker-SingingVoiceMatch-VevoSing` (passive; *in use* is the first voice match
 computer's model) compare their footprint and license
 (`PickerFact-SingingVoiceMatch-license`: VevoSing is "CC-BY-NC-ND-4.0:
 personal, non-commercial use only ..."). *Set up Singing here* asks one
-confirmation naming the downloads, licences and terms and sets the role up
+confirmation: the question and one sentence with the graphics card, the download size, the licences and the
+voice rule (the wiki's *What each part downloads* lists every model) and sets the role up
 through `martlet-host add singing` (a run window on this PC whose
 `HostRunStatus` follows the image build, the service starting and each model
 file's download, for example "Singing: downloading model-svc.pt, 45% of 2730

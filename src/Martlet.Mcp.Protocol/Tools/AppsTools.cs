@@ -143,7 +143,8 @@ internal sealed partial class McpServer
             "transport, program and raw arguments (${env:...} and ${secret:...} references are kept, never their values; a literal " +
             "value that looks secret, such as the value after --token or --api-key, a key=value with a secret name, a password in a " +
             "web address or a token such as sk-... or ghp_..., shows as [hidden]), environment and " +
-            "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
+            "header names, on/off, auto-approve, the MCP directory entry it was installed from, the secret names it uses and how a " +
+            "reply names its tools (toolNames: always <server>_<tool>, whatever else runs). " +
             "Read-only; starts no server and reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
@@ -432,7 +433,8 @@ internal sealed partial class McpServer
             "synthetic facts in a disposable store: a fact made while playing Palworld recalled while playing Palworld or when the " +
             "words name it, never in another game or outside games; a fact for any game in every game; a fact for everywhere " +
             "always; a game's fact travelling with its activity while a fact for everywhere is written exactly as before; a " +
-            "correction keeping where a fact matters; an activity of the wrong form refused. Optional query (with activity, a " +
+            "correction keeping where a fact matters; an activity of the wrong form refused; a lorebook entry keyed by the game " +
+            "played now joining in (Martlet.Core's LorebookScanner) and the While you play prompt naming the game. Optional query (with activity, a " +
             "game's name, or none for no game) recalls those words against the sample facts. Never opens your memory. Nothing " +
             "leaves this PC.", new
         {
@@ -494,6 +496,8 @@ internal sealed partial class McpServer
                     registry = server.Registry,
                     registryVersion = server.RegistryVersion,
                     secrets = server.Secrets,
+                    // How a reply offers its tools: always <prefix>_<tool> (McpToolNames), whatever else runs.
+                    toolNames = McpToolNames.Safe(server.Name) + "_<tool>",
                     problem = server.Problem
                 };
             }).ToArray()

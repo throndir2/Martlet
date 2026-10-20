@@ -266,9 +266,9 @@ public partial class MainWindow
         children.Add(voiceId);
         var enrolled = voiceIdentity.Current;
         var status = voiceIdentity.LoadError ?? (enrolled is not null
-            ? $"Your voice is enrolled ({enrolled.CreatedAt.LocalDateTime:d}). Martlet checks it on this PC and ignores other voices."
+            ? $"Your voice is enrolled ({enrolled.CreatedAt.LocalDateTime:d}), so Martlet checks it on this PC and ignores other voices."
             : prefs.VoiceId ? "Set up Voice ID to use this."
-            : "Optional. Set up Voice ID so Martlet ignores other voices.");
+            : "Optional: set up Voice ID so Martlet ignores other voices.");
         children.Add(prefs.VoiceId && enrolled is null ? Warning(status) : Note(status, new Thickness(0, 0, 0, 0)));
         children.Add(Row(PageButton(enrolled is null ? "Set up Voice ID" : "Set up Voice ID again", SetUpVoiceId,
             primary: prefs.VoiceId && enrolled is null, id: "SetupVoiceId")));
@@ -278,7 +278,7 @@ public partial class MainWindow
     private void SetUpVoiceId()
     {
         if (closing) return;
-        if (setupOperations.IsRunning) { ActionText.Text = "Martlet is busy with another task. Try again when it finishes."; return; }
+        if (setupOperations.IsRunning) { ActionText.Text = "Martlet is busy with another task; try again when it finishes."; return; }
         if (voiceIdentity.DataDirectory is null) { ActionText.Text = "Voice ID needs Martlet's data folder."; return; }
         new VoiceIdWindow(voiceIdentity, setupOperations, audioSessionEvents, homeSettings?.Audio?.Input) { Owner = this }.ShowDialog();
         RenderTab();

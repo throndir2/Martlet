@@ -143,16 +143,20 @@ public partial class MainWindow
     /// voices you haven't named.</summary>
     private Border RecognitionCard()
     {
-        var children = new List<UIElement> { Heading("Recognize voices") };
+        var children = new List<UIElement>
+        {
+            HelpTip.After(Heading("Recognize voices"), "recognizing voices",
+                "Voice matching happens on this PC; the voiceprints come from this PC or a computer in the Where it runs list.",
+                "PeopleRecognize", wiki: "Listening-and-Voice-ID#people")
+        };
         if (!localVoices.Available)
         {
             children.Add(Warning("Voice recognition needs Martlet's data folder, which isn't available."));
             return Card([.. children]);
         }
         children.AddRange(OnOffChoices("PeopleRecognize", "PeopleRecognizeOff", "Recognize voices in conversations",
-            "Martlet learns people's voices and names as you talk. Voice matching happens on this PC; the voiceprints come from " +
-            "this PC or a computer in the list below.",
-            "Martlet doesn't check who is talking. Saved voices are kept.", localVoices.Enabled,
+            "Martlet learns people's voices and names as you talk.",
+            "Martlet doesn't check who is talking, and saved voices are kept.", localVoices.Enabled,
             localVoices.Included ? null : "Reinstall Martlet to recognize voices: its voice recognition files are missing.",
             on => { if (on != localVoices.Enabled) SetRecognition(on); }));
         children.Add(VoiceRecognitionWhere());
@@ -175,8 +179,8 @@ public partial class MainWindow
         {
             localVoices.SetEnabled(on);
             QueueSettingsSync();
-            ActionText.Text = on ? "Voice recognition is on. Open conversations use it from your next message."
-                : "Voice recognition is off. Saved voices are kept.";
+            ActionText.Text = on ? "Voice recognition is on, and open conversations use it from your next message."
+                : "Voice recognition is off, and saved voices are kept.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -206,9 +210,9 @@ public partial class MainWindow
         var syncStatus = Note(voiceSyncStatus, new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(syncStatus, "PeopleSyncStatus");
         return Card(Heading("Your computers"),
-            Note("The people Martlet recognizes by voice, and their names, are always shared with all your computers, so Martlet " +
-                "learns everyone's voice everywhere. This doesn't depend on Keep Martlet the same on all my computers, and hosts a " +
-                "friend shares never get them. Whether Martlet recognizes voices is shared with your other settings.", new Thickness(0, 0, 0, 0)),
+            HelpTip.Explain("The people Martlet recognizes by voice, and their names, are always shared with all your computers. " +
+                "This doesn't depend on Keep Martlet the same on all my computers, and hosts a friend shares never get them.",
+                new Thickness(0, 0, 0, 0), "PeopleSharing", "sharing voices", wiki: "Listening-and-Voice-ID#sharing-with-your-computers"),
             syncStatus,
             Row(sync));
     }
@@ -222,11 +226,12 @@ public partial class MainWindow
         var children = new List<UIElement> { heading };
         if (voices.Length == 0)
         {
-            children.Add(Note("None yet. Turn recognition on and talk to Martlet. New voices will appear here.", new Thickness(0, 0, 0, 0)));
+            children.Add(Note("None yet: talk to Martlet with recognition on, and new voices appear here.", new Thickness(0, 0, 0, 0)));
             return Card([.. children]);
         }
-        children.Add(Note("Type a name to say who a voice is, and add as many other names as they go by. Click a name to make it the " +
-            "one Martlet uses; a name with ? was only heard in conversation. Changes sync to your computers.", new Thickness(0, 0, 0, 4)));
+        children.Add(HelpTip.Explain("Type a name to say who a voice is, and add any other names they go by. " +
+            "Click a name to make it the one Martlet uses; a name with ? was only heard in conversation.",
+            new Thickness(0, 0, 0, 4), "PeopleNames", "naming voices", wiki: "Listening-and-Voice-ID#people"));
         var links = Note(PeopleLinkStatus(voices.Length, voices.Count(v => v.Account is not null), voices.Count(localVoices.IsYours),
             localVoices.Account is not null), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(links, "PeopleLinkStatus");
@@ -239,10 +244,9 @@ public partial class MainWindow
     /// <summary>People's link line: how many voices link to people's accounts and how many are yours. Counts only, no names.
     /// Before the desktop knows its account, only whether a voice is marked as yours.</summary>
     internal static string PeopleLinkStatus(int voices, int linked, int yours, bool accounts) =>
-        !accounts ? yours == 0 ? "No voice is marked as yours yet. Tick This is me on yours." : "Martlet knows which voice is yours."
-        : $"{linked} of {voices} voice{(voices == 1 ? "" : "s")} {(linked == 1 ? "is" : "are")} linked to people's accounts. " +
-          (yours == 0 ? "None is yours yet: tick This voice is ... on yours." : $"Your account has {yours} voice{(yours == 1 ? "" : "s")}.") +
-          " A voice only tells Martlet who is talking: it never signs anyone in.";
+        !accounts ? yours == 0 ? "No voice is marked as yours yet: tick This is me on yours." : "Martlet knows which voice is yours."
+        : $"{linked} of {voices} voice{(voices == 1 ? "" : "s")} {(linked == 1 ? "is" : "are")} linked to people's accounts; " +
+          (yours == 0 ? "none is yours yet, so tick This voice is ... on yours." : $"your account has {yours} voice{(yours == 1 ? "" : "s")}.");
 
     private Border VoiceEntry(KnownVoice voice, IReadOnlyList<KnownVoice> all)
     {
@@ -257,8 +261,8 @@ public partial class MainWindow
         var twins = all.Where(other => other.Id != voice.Id && other.Named && voice.Named &&
             string.Equals(other.DisplayName, voice.DisplayName, StringComparison.OrdinalIgnoreCase)).ToArray();
         if (twins.Length > 0)
-            stack.Add(Warning($"{string.Join(", ", twins.Select(t => $"Voice {t.Number}"))} also goes by {voice.DisplayName}. " +
-                "If they're the same person, merge them below."));
+            stack.Add(Warning($"{string.Join(", ", twins.Select(t => $"Voice {t.Number}"))} also goes by {voice.DisplayName}, " +
+                "so merge them below if they're the same person."));
         stack.Add(VoiceNames(voice));
         if (VoiceClipRow(voice) is { } clips) stack.Add(clips);
         stack.Add(VoiceActions(voice, all));
@@ -379,7 +383,7 @@ public partial class MainWindow
         var you = localVoices.Account is { } signedIn ? VoiceAccountName(signedIn) : null;
         var owner = new CheckBox { Content = you is null ? "This is me" : $"This voice is {you}", IsChecked = localVoices.IsYours(voice),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 6),
-            ToolTip = "Links this voice to your account, so Martlet knows it's you talking. A voice never signs anyone in." };
+            ToolTip = "Links this voice to your account, so Martlet knows it's you talking (a voice never signs anyone in)." };
         AutomationProperties.SetName(owner, "This voice is mine");
         AutomationProperties.SetAutomationId(owner, "PeopleLink-" + voice.Number);
         owner.Checked += (_, _) => LinkVoice(voice, true);
@@ -469,8 +473,8 @@ public partial class MainWindow
         var current = localVoices.Roster.Resolve(voice.Id);
         if (current is null) return;
         if (yours && current.Account is { } other && other != localVoices.Account &&
-            !ConfirmationDialog.Confirm(this, $"{current.DisplayName} is {VoiceAccountName(other) ?? "someone else"}'s voice.\n\n" +
-                "Make it yours instead? Martlet will treat this voice as you on all your computers.", "Make it mine"))
+            !ConfirmationDialog.Confirm(this, $"{current.DisplayName} is {VoiceAccountName(other) ?? "someone else"}'s voice: " +
+                "make it yours instead, on all your computers?", "Make it mine"))
         {
             Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.People) RenderTab(); });
             return;
@@ -484,7 +488,7 @@ public partial class MainWindow
     private void MergeVoices(KnownVoice from, KnownVoice into)
     {
         if (!ConfirmationDialog.Confirm(this,
-                $"Merge {from.DisplayName} into {into.DisplayName}?\n\nMartlet will treat them as one person on all your computers. This can't be undone.",
+                $"Merge {from.DisplayName} into {into.DisplayName} as one person on all your computers (you can't undo this)?",
                 "Merge"))
             return;
         localVoices.Join(from.Id, into.Id);
@@ -495,8 +499,7 @@ public partial class MainWindow
     private void ForgetVoice(KnownVoice voice)
     {
         if (!ConfirmationDialog.Confirm(this,
-                $"Forget {voice.DisplayName}?\n\nIts saved voice and names will be deleted from all your computers. If Martlet hears it again, it will appear as new. " +
-                "What Martlet remembers about them stays in Memory under Forgotten voices, where you can delete it.",
+                $"Forget {voice.DisplayName} and delete its saved voice and names from all your computers?",
                 "Forget"))
             return;
         localVoices.Forget(voice.Id);
@@ -507,8 +510,7 @@ public partial class MainWindow
     private void ForgetAllVoices()
     {
         if (!ConfirmationDialog.Confirm(this,
-                "Forget every voice?\n\nSaved voices and names will be deleted from all your computers. Recognition stays on and starts over. " +
-                "What Martlet remembers about them stays in Memory under Forgotten voices, where you can delete it.",
+                "Forget every voice and delete all saved voices and names from all your computers?",
                 "Forget all"))
             return;
         localVoices.ForgetAll();

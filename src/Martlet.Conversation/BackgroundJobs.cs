@@ -318,6 +318,8 @@ public sealed class BackgroundJobs : IDisposable
 {
     /// <summary>How many finished jobs are kept for status and delivery.</summary>
     public const int Kept = 16;
+    /// <summary>How many finished jobs are kept at most, also ones still waiting to be brought up (the oldest are dropped).</summary>
+    public const int KeptWaiting = 2 * Kept;
     private readonly object gate = new();
     private readonly TimeProvider clock;
     private readonly List<BackgroundJob> jobs = [];
@@ -435,7 +437,10 @@ public sealed class BackgroundJobs : IDisposable
             });
             if (job.Place is { } place) job.Request.Begin(place);
         }
-        _ = Task.Run(() => RunAsync(job, run));
+        // A job that waits joins the place line here, on the caller's thread, so jobs started one after another wait in the order
+        // they were started (on a pool thread they would race for their place in line).
+        var seated = SeatAsync(job);
+        _ = Task.Run(() => RunAsync(job, run, seated));
         Notify();
         if (job.Queued is not { } line) return new(job);
         var held = Places.HeldForConversation(line, kind.Demand(line));
@@ -492,35 +497,56 @@ public sealed class BackgroundJobs : IDisposable
         finally { Places.Changed -= Line; }
     }
 
-    private async Task RunAsync(BackgroundJob job, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run)
+    private async Task RunAsync(BackgroundJob job, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run, Task<bool> seated)
     {
-        if (!await SeatAsync(job).ConfigureAwait(false))
-        {
-            Notify();
-            return;
-        }
-        if (job.Queued is not null) job.Report(BackgroundJobState.Running);
-        using var limit = job.Kind.TimeLimit is { } time ? new CancellationTokenSource(time, clock) : new CancellationTokenSource();
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, limit.Token);
+        // Every path ends the job: one whose seating or start fails ends Failed, so it never stays running and blocks its kind.
         try
         {
-            var outcome = await run(job, linked.Token).ConfigureAwait(false);
-            if (linked.IsCancellationRequested && outcome.Result is null) throw new OperationCanceledException(linked.Token);
-            job.Finish(outcome.Result is not null ? BackgroundJobState.Succeeded : BackgroundJobState.Failed,
-                outcome.Result is null && outcome.Problem is null ? outcome with { Problem = "it came back empty" } : outcome, null);
+            if (!await seated.ConfigureAwait(false)) return;
+            if (job.Queued is not null) job.Report(BackgroundJobState.Running);
+            using var limit = job.Kind.TimeLimit is { } time ? new CancellationTokenSource(time, clock) : new CancellationTokenSource();
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, limit.Token);
+            try
+            {
+                var outcome = await run(job, linked.Token).ConfigureAwait(false);
+                if (linked.IsCancellationRequested && outcome.Result is null) throw new OperationCanceledException(linked.Token);
+                job.Finish(outcome.Result is not null ? BackgroundJobState.Succeeded : BackgroundJobState.Failed,
+                    outcome.Result is null && outcome.Problem is null ? outcome with { Problem = "it came back empty" } : outcome, null);
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
+            {
+                if (job.Cancellation.IsCancellationRequested) job.Finish(BackgroundJobState.Canceled, null, Volatile.Read(ref job.cancelReason));
+                else job.Finish(BackgroundJobState.TimedOut, BackgroundJobOutcome.Failed(
+                    $"it ran into the {Duration(job.Kind.TimeLimit!.Value)} time limit"), null);
+            }
+            catch (Exception error)
+            {
+                // A runner can fail arbitrarily; the conversation only hears that it failed, never the exception text.
+                job.Finish(BackgroundJobState.Failed, BackgroundJobOutcome.Failed("it failed on this PC"), null);
+                Fault(job, error);
+            }
         }
-        catch (OperationCanceledException) when (linked.IsCancellationRequested)
+        catch (Exception error)
         {
-            if (job.Cancellation.IsCancellationRequested) job.Finish(BackgroundJobState.Canceled, null, Volatile.Read(ref job.cancelReason));
-            else job.Finish(BackgroundJobState.TimedOut, BackgroundJobOutcome.Failed(
-                $"it ran into the {Duration(job.Kind.TimeLimit!.Value)} time limit"), null);
+            if (job.Cancellation.IsCancellationRequested && error is OperationCanceledException or ObjectDisposedException)
+                job.Finish(BackgroundJobState.Canceled, null, Volatile.Read(ref job.cancelReason));
+            else
+            {
+                job.Finish(BackgroundJobState.Failed, BackgroundJobOutcome.Failed("it couldn't start on this PC"), null);
+                Fault(job, error);
+            }
         }
-        catch (Exception)
-        {
-            // A runner can fail arbitrarily; the conversation only hears that it failed, never the exception text.
-            job.Finish(BackgroundJobState.Failed, BackgroundJobOutcome.Failed("it failed on this PC"), null);
-        }
-        Notify();
+        finally { Notify(); }
+    }
+
+    /// <summary>Raised on any thread when a job failed with an error (its runner threw, or it couldn't be seated or started): the
+    /// job's ID and the error, for the log (never the job's label or result). The job is already finished as Failed.</summary>
+    public event Action<string, Exception>? Faulted;
+
+    private void Fault(BackgroundJob job, Exception error)
+    {
+        try { Faulted?.Invoke(job.Id, error); }
+        catch (Exception) { }
     }
 
     /// <summary>Stops job <paramref name="id"/> (null: the newest of <paramref name="kind"/>) if it is still running;
@@ -615,12 +641,29 @@ public sealed class BackgroundJobs : IDisposable
         starts.RemoveAll(start => start.At <= hourAgo);
     }
 
-    // Finished jobs that were delivered (or dropped) go first once more than Kept are finished.
+    // Finished jobs that were delivered (or dropped) go first, oldest first, once more than Kept are finished. Past KeptWaiting, the
+    // oldest still waiting to be brought up go too (dropped: never brought up), so a long session's list stays small.
     private void Trim()
     {
-        while (jobs.Count(job => job.Finished) > Kept &&
-            jobs.FirstOrDefault(job => job.Finished && job.Delivery is BackgroundDeliveryState.Delivered or BackgroundDeliveryState.Dropped) is { } old)
-            jobs.Remove(old);
+        var finished = jobs.Count(job => job.Finished);
+        for (var i = 0; i < jobs.Count && finished > Kept;)
+        {
+            if (jobs[i].Finished && jobs[i].Delivery is BackgroundDeliveryState.Delivered or BackgroundDeliveryState.Dropped)
+            {
+                jobs.RemoveAt(i);
+                finished--;
+            }
+            else i++;
+        }
+        for (var i = 0; i < jobs.Count && finished > KeptWaiting;)
+        {
+            if (jobs[i].Finished && jobs[i].MoveDelivery(BackgroundDeliveryState.Pending, BackgroundDeliveryState.Dropped))
+            {
+                jobs.RemoveAt(i);
+                finished--;
+            }
+            else i++;
+        }
     }
 
     /// <summary>"1 min 42 s", "40 s", "5 minutes".</summary>

@@ -643,7 +643,7 @@ internal static partial class AutomationPolicy
         new("F5AddVoiceAbout", "Companion › Voice › Voices", "Shows Add a voice's intro, which names the speech-to-text that fills in the words, or how to get one."),
         // F5AddVoiceRecording-2 and the next recordings, and each recording's F5AddVoiceHeard line, read through SafeValuePrefixes.
         new("OwnVoiceAbout", "Companion › Voice › Record your own voice", "Shows the intro of Record your own voice. Never the recordings or the typed name."),
-        new("OwnVoiceRecorder", "Companion › Voice › Record your own voice", "Shows what the microphone does or why the last line was not kept, such as 'Line 2 recorded. Next, record line 3.' Never the recordings."),
+        new("OwnVoiceRecorder", "Companion › Voice › Record your own voice", "Shows what the microphone does or why the last line was not kept, such as 'Line 2 recorded; next, record line 3.' Never the recordings."),
         new("OwnVoiceSummary", "Companion › Voice › Record your own voice", "Shows how many lines are recorded and how long they are together, such as '2 of 4 lines recorded, 11.6 seconds together with the pauses.'"),
         new("OwnVoiceProblem", "Companion › Voice › Record your own voice", "Shows why Add voice could not add the voice. Never the recordings or the typed name."),
         new("OwnVoiceConsent", "Companion › Voice › Record your own voice", "Shows whether the own-voice box is ticked, as its checked state."),

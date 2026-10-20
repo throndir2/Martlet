@@ -55,14 +55,14 @@ internal sealed class Authority : IDisposable
     internal IssuedDeviceCredential Issue(string device = "fixture-device") =>
         Credentials.Issue(device, "Fixture", [GatewayRole.Voice]);
 
-    internal GatewaySignedRequest Sign(IssuedDeviceCredential credential)
+    internal GatewaySignedRequest Sign(IssuedDeviceCredential credential, DateTimeOffset? at = null)
     {
         Assert.True(Base64Url.TryDecode(credential.Secret.Reveal(), 32, out var secret));
         var key = SHA256.HashData(secret);
         CryptographicOperations.ZeroMemory(secret);
         try
         {
-            var timestamp = DateTimeOffset.FromUnixTimeSeconds(clock.GetUtcNow().ToUnixTimeSeconds());
+            var timestamp = DateTimeOffset.FromUnixTimeSeconds((at ?? clock.GetUtcNow()).ToUnixTimeSeconds());
             var nonce = Base64Url.Encode(RandomNumberGenerator.GetBytes(24));
             var bytes = GatewayRequestSigner.Canonical(Identity.HostId, credential.CredentialId,
                 "GET", "/martlet/v1/version", "voice", timestamp.ToUnixTimeSeconds(), nonce, SHA256.HashData([]));
@@ -196,13 +196,137 @@ public sealed class BackendTests
             call.StartsWith("rename:", StringComparison.Ordinal)).ToArray();
         Assert.Equal(["fsync:file", "fsync:directory",
             "rename:staging.bin:pending.bin:False", "fsync:directory",
-            "rename:pending.bin:authority.bin:True", "fsync:file", "fsync:directory"], operations);
+            "rename:pending.bin:authority.bin:True", "fsync:file", "fsync:directory",
+            // A new, empty nonce journal replaces the old one.
+            "fsync:file", "fsync:directory"], operations);
+    }
+
+    [Fact]
+    public void Nonce_save_appends_with_one_file_flush_and_no_full_save()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        using var host = new Authority(fs, new Clock(), true);
+        var credential = host.Issue();
+        var authority = fs.Store.Children["authority.bin"].Bytes.ToArray();
+        fs.Calls.Clear();
+        host.Credentials.Authenticate(host.Sign(credential));
+        Assert.Equal(["fsync:file"], fs.Calls.Where(call => call.StartsWith("fsync:", StringComparison.Ordinal) ||
+            call.StartsWith("rename:", StringComparison.Ordinal) || call.StartsWith("unlink:", StringComparison.Ordinal)));
+        Assert.Equal(authority, fs.Store.Children["authority.bin"].Bytes);
+        Assert.Equal(NonceJournal.HeaderBytes + NonceJournal.RecordBytes, fs.Store.Children[NonceJournal.Name].DurableBytes.Length);
+        Assert.Equal(1, host.Credentials.NonceStats.Commits);
+    }
+
+    [Theory]
+    [InlineData((int)StoreStep.NonceAppending, false)]
+    [InlineData((int)StoreStep.NonceWritten, false)]
+    [InlineData((int)StoreStep.NonceWritten, true)]
+    [InlineData((int)StoreStep.NonceAppended, false)]
+    [InlineData((int)StoreStep.NonceAppended, true)]
+    public void Interrupted_nonce_save_never_admits_and_a_durable_nonce_still_refuses_replay(int step, bool crash)
+    {
+        using var fs = new FakeLinuxFileSystem();
+        var clock = new Clock();
+        IssuedDeviceCredential credential;
+        GatewaySignedRequest request;
+        var armed = false;
+        using (var host = new Authority(fs, clock, true, fault: observed =>
+        {
+            if (armed && (int)observed == step) throw new IOException("Synthetic interruption.");
+        }))
+        {
+            credential = host.Issue();
+            request = host.Sign(credential);
+            armed = true;
+            Assert.Equal("auth.storage", Assert.Throws<GatewayProtocolException>(() => host.Credentials.Authenticate(request)).Failure.Code);
+        }
+        if (crash) fs.Crash();
+        using var recovered = new Authority(fs, clock);
+        var durable = (StoreStep)step == StoreStep.NonceAppended || (StoreStep)step == StoreStep.NonceWritten && !crash;
+        if (durable)
+            Assert.Equal("auth.replay", Assert.Throws<GatewayProtocolException>(() => recovered.Credentials.Authenticate(request)).Failure.Code);
+        else
+            recovered.Credentials.Authenticate(request);
+        recovered.Credentials.Authenticate(recovered.Sign(credential));
+    }
+
+    [Theory]
+    [InlineData("torn")]
+    [InlineData("flipped")]
+    [InlineData("header")]
+    public void Damaged_nonce_journal_refuses_requests_signed_before_the_restart_until_the_skew_passes(string kind)
+    {
+        using var fs = new FakeLinuxFileSystem();
+        var clock = new Clock();
+        IssuedDeviceCredential credential;
+        GatewaySignedRequest kept, lost;
+        using (var host = new Authority(fs, clock, true))
+        {
+            credential = host.Issue();
+            kept = host.Sign(credential);
+            host.Credentials.Authenticate(kept);
+            lost = host.Sign(credential);
+            host.Credentials.Authenticate(lost);
+        }
+        var journal = fs.Store.Children[NonceJournal.Name];
+        if (kind == "torn") journal.Bytes = journal.Bytes[..^5];
+        if (kind == "flipped") journal.Bytes[^1] ^= 1;
+        if (kind == "header") journal.Bytes[3] ^= 1;
+        journal.DurableBytes = journal.Bytes.ToArray();
+        clock.Advance(TimeSpan.FromSeconds(5));
+        using (var recovered = new Authority(fs, clock))
+        {
+            // Records before the damage still count.
+            Assert.Equal(kind != "header", Assert.Single(recovered.Store.Initial.Credentials).Nonces.Any(nonce => nonce.Nonce == kept.Nonce));
+            Assert.Equal("auth.replay", Assert.Throws<GatewayProtocolException>(() => recovered.Credentials.Authenticate(lost)).Failure.Code);
+            // A client clock up to the allowed skew ahead could have signed a lost request; those times stay refused.
+            var ahead = recovered.Sign(credential, clock.GetUtcNow() + GatewayCredentialStore.RequestClockSkew);
+            Assert.Equal("auth.replay", Assert.Throws<GatewayProtocolException>(() => recovered.Credentials.Authenticate(ahead)).Failure.Code);
+            // The refusal is saved before the damaged journal is replaced, so a clean restart keeps it.
+            recovered.Credentials.Complete();
+        }
+        Assert.Equal(NonceJournal.HeaderBytes, fs.Store.Children[NonceJournal.Name].Bytes.Length);
+        clock.Advance(TimeSpan.FromSeconds(5));
+        using (var restarted = new Authority(fs, clock))
+        {
+            Assert.Equal("auth.replay", Assert.Throws<GatewayProtocolException>(() => restarted.Credentials.Authenticate(lost)).Failure.Code);
+            Assert.Equal("auth.replay", Assert.Throws<GatewayProtocolException>(() => restarted.Credentials.Authenticate(restarted.Sign(credential))).Failure.Code);
+            clock.Advance(GatewayCredentialStore.RequestClockSkew + GatewayCredentialStore.MaximumClockStepBack);
+            restarted.Credentials.Authenticate(restarted.Sign(credential));
+        }
+    }
+
+    [Fact]
+    public void A_short_journal_header_from_an_interrupted_creation_holds_nothing_and_is_replaced()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        var clock = new Clock();
+        IssuedDeviceCredential credential;
+        using (var host = new Authority(fs, clock, true)) credential = host.Issue();
+        fs.Put(NonceJournal.Name, NonceJournal.Header(Guid.NewGuid())[..10]);
+        using var recovered = new Authority(fs, clock);
+        recovered.Credentials.Authenticate(recovered.Sign(credential));
+        Assert.Equal(1, recovered.Credentials.CommitStats.Commits);
+        recovered.Credentials.Authenticate(recovered.Sign(credential));
+        Assert.Equal(1, recovered.Credentials.NonceStats.Commits);
+    }
+
+    [Fact]
+    public void A_journal_from_another_store_is_preserved_and_needs_recovery()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        using (var host = new Authority(fs, new Clock(), true)) host.Issue();
+        var foreign = NonceJournal.Header(Guid.NewGuid());
+        fs.Put(NonceJournal.Name, foreign);
+        Failure(GatewayPersistenceFailure.RecoveryRequired, () => new Authority(fs, new Clock()));
+        Assert.Equal(foreign, fs.Store.Children[NonceJournal.Name].Bytes);
     }
 
     public static IEnumerable<object[]> InterruptionCases()
     {
         foreach (var step in Enum.GetValues<LinuxStoreStep>())
-        foreach (var operation in new[] { "issue", "revoke", "rotate", "nonce" })
+        // Nonce saves append to the nonce journal and cross none of these steps; see the nonce save tests.
+        foreach (var operation in new[] { "issue", "revoke", "rotate" })
         foreach (var crash in new[] { false, true })
             yield return [(int)step, operation, crash];
     }

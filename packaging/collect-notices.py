@@ -32,13 +32,6 @@ AUTHORED = {
     "Martlet.F5.dll": ["src/Martlet.F5/BundledVoices/NOTICES.txt"],
     "Martlet.Sherpa.dll": ["src/Martlet.Sherpa/VOICE-RECOGNITION-NOTICES.txt"],
     "Martlet.Discord.dll": ["src/Martlet.Discord/DISCORD-VOICE-NOTICES.txt"],
-    "Martlet.LocalStt.dll": ["src/Martlet.LocalStt/THIRD-PARTY-NOTICES.txt"],
-    "Martlet.VoiceActivity.dll": ["src/Martlet.VoiceActivity/THIRD-PARTY-NOTICES.txt",
-                                  "src/Martlet.VoiceActivity/Notices/OnnxRuntime-LICENSE",
-                                  "src/Martlet.VoiceActivity/Notices/OnnxRuntime-ThirdPartyNotices.txt",
-                                  "src/Martlet.VoiceActivity/Notices/Silero-VAD-LICENSE.txt",
-                                  "src/Martlet.VoiceActivity/Notices/Tensors-LICENSE.TXT",
-                                  "src/Martlet.VoiceActivity/Notices/Tensors-THIRD-PARTY-NOTICES.TXT"],
 }
 
 

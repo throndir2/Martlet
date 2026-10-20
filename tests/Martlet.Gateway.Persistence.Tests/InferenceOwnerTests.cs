@@ -61,8 +61,8 @@ public sealed partial class OwnerTests
     }
 
     [Theory]
-    [InlineData((int)StoreStep.PendingFlushed)]
-    [InlineData((int)StoreStep.CheckpointCommitted)]
+    [InlineData((int)StoreStep.NonceWritten)]
+    [InlineData((int)StoreStep.NonceAppended)]
     public async Task Failed_body_nonce_commit_never_dispatches_and_recovery_keeps_replay(int faultStep)
     {
         var clock = new Clock();

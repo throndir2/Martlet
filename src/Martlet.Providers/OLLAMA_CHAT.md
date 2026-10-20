@@ -5,7 +5,7 @@
 NDJSON response path for Ollama native `POST /api/chat`. It is not an
 OpenAI-compatible `/v1` client, model manager, gateway, CLI command, or universal
 Ollama adapter. Existing OpenAI behavior, Core contracts, project references,
-dependency locks and HostArtifacts eligibility are unchanged.
+and dependency locks are unchanged.
 
 No production authorization source is provided. Production integration remains
 blocked on a reviewed host authority, trusted runtime and model selection,
@@ -21,10 +21,8 @@ speaker or Ubuntu host was accessed to validate this adapter.
 ## Source contract and limits of the local selector
 
 Source was inspected on 2026-09-15 at Ollama v0.34.0 commit
-`d8ab4b4f0ca24b51d3a46b3bf4f462e58ce66b1f`. The same source candidate is recorded
-in the metadata-only [H02a catalog](../../deploy/ubuntu/artifacts/host-artifacts.v1.json).
-Neither that metadata nor its expected archive hash is executed-runtime evidence
-or permission. No upstream implementation/model assets are copied here.
+`d8ab4b4f0ca24b51d3a46b3bf4f462e58ce66b1f`. That source record is not
+executed-runtime evidence or permission. No upstream implementation/model assets are copied here.
 
 | Frozen primary source | Source-observed fact |
 | --- | --- |
@@ -108,9 +106,8 @@ permit constructor does not authenticate human consent.
 A future reviewed host source must supply fresh authenticated action ownership,
 trusted runtime/host/model policy, actual permission, budget and dispatch lease,
 revocation/original cancellation and independently qualified deployment/rights.
-An OpenAI permit, H03 status credential, HostArtifacts report/hash/role,
+An OpenAI permit, H03 status credential, artifact report/hash/role,
 profile, model name or callback returning true cannot be converted into a permit.
-HostArtifacts candidates remain ineligible and are not consulted by this adapter.
 
 ## Exact request and transport
 
