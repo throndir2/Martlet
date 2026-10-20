@@ -101,7 +101,7 @@ public sealed class SenseJobAgreementTests
 
         // Touch zones and the eyes: Companion › Touch's line names the model, and so does the helper job's fallback.
         var helper = controller.SenseDecision(SenseJobKind.HelperPicture);
-        var sight = MainWindow.TouchZonesSight(helper, thinking, abilities, fixture: false);
+        var sight = TouchZonesPageModel.SightOf(helper, thinking, abilities, fixture: false);
         Assert.Equal(helper.Taker != SenseTaker.Nobody, sight.CanSee);
         if (helper.Taker is SenseTaker.PoolMember or SenseTaker.SenseModel) Assert.Contains(helper.Name!, sight.Line);
 

@@ -135,7 +135,7 @@
                                         <Button x:Name="PrimaryStageButton" Style="{DynamicResource PrimaryButton}" Content="Set up thinking"
                                                 Click="PrimaryStage_Click" Padding="22,12" FontSize="15" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="PrimaryStageAction"/>
-                                        <!-- A new PC: join your other computers first and use their hosts (MainWindow.Health.cs) -->
+                                        <!-- A new PC: join your other computers first and use their hosts (MainWindow.HealthView.cs) -->
                                         <Button x:Name="ConnectComputersButton" Content="Connect to your other computers" Click="ConnectComputers_Click"
                                                 Padding="20,12" FontSize="15" Margin="0,0,12,8" Visibility="Collapsed"
                                                 AutomationProperties.AutomationId="HomeConnectComputers"/>
@@ -291,7 +291,7 @@
                             </DockPanel>
                         </Border>
 
-                        <!-- What needs attention: problems, warnings and good-to-know items, each with its fixes (MainWindow.Health.cs) -->
+                        <!-- What needs attention: problems, warnings and good-to-know items, each with its fixes (MainWindow.HealthView.cs) -->
                         <Border x:Name="AttentionCard" Style="{DynamicResource CardStyle}">
                             <StackPanel>
                                 <DockPanel Margin="0,0,0,10">
@@ -749,7 +749,7 @@
             </Grid>
 
             <!-- Conversations: the record of every conversation, from this PC and the messaging apps, to read, search, edit and
-                 delete (ConversationsView.xaml; MainWindow.Shell.cs shows it). -->
+                 delete (ConversationsView.xaml; MainWindow.Navigation.cs shows it). -->
             <local:ConversationsView x:Name="ConversationsPage" Visibility="Collapsed" MaxWidth="1200"/>
 
             <!-- Creations: everything Martlet made, kept the same on all the owner's computers (MainWindow.Creations.cs, docs/CREATIONS.md).

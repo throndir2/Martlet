@@ -276,6 +276,8 @@ record_downloads() {
     record="$(installed_file "${role}")"
     model="$(conf_value "${record}" model)"
     [[ -n "$(conf_value "${record}" kind)" && "${model}" =~ ${DOWNLOAD_MODEL} ]] || continue
+    # The owner's own model app keeps its models; Martlet keeps no download for a relay to it.
+    [[ -z "$(conf_value "${record}" api)" ]] || continue
     file="${DOWNLOADS_DIR}/${role}"
     [[ "$(tail -n 1 "${file}" 2>/dev/null || true)" != "${model}" ]] || continue
     mkdir -p "${DOWNLOADS_DIR}"

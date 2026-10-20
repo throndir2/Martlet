@@ -131,6 +131,17 @@ public static partial class NetworkRecommender
             foreach (var placement in node.Machine.Roles.Where(r => r?.Kind is { Length: > 0 }).GroupBy(r => r.Kind, StringComparer.Ordinal)
                 .Select(g => g.First()).OrderBy(r => r.Kind, StringComparer.Ordinal))
             {
+                // A Thinking pool place relayed to the owner's own app there (deep-thinking-app): the owner's choice, kept as it is.
+                if (placement.Kind == DeepThinkingRole && AppServed(node, placement.Model) is { } app)
+                {
+                    var relay = new Role
+                    {
+                        Kind = placement.Kind, Model = placement.Model, Option = AppOption(app), Was = placement, App = true, Fixed = true
+                    };
+                    node.Today.Add(relay);
+                    if (node.Presence != Presence.Gone) node.Roles.Add(relay);
+                    continue;
+                }
                 var option = OptionFor(placement.Kind, placement.Model, node);
                 int? card = null;
                 int[]? span = null;
@@ -169,6 +180,24 @@ public static partial class NetworkRecommender
                 node.Today.Add(role);
                 (role.Fixed ? node.Roles : node.Pending).Add(role);
             }
+        }
+
+        /// <summary>The chat model <paramref name="model"/> that a model app on <paramref name="node"/> serves (its machine report's
+        /// served models), or null.</summary>
+        private ServedModel? AppServed(Node node, string? model) => model is null ? null
+            : (request.ServedModels ?? []).FirstOrDefault(m => m?.MachineId == node.Id && Same(m.ModelId, model));
+
+        /// <summary>The Thinking pool option for <paramref name="served"/> relayed by the deep-thinking-app role: how smart it is from
+        /// the model catalog (else its name), and none of Martlet's room (the app keeps the model's memory).</summary>
+        private ComponentOption AppOption(ServedModel served)
+        {
+            var known = ServedModels.Option(served, catalog.Models);
+            return known with
+            {
+                Id = "deep-thinking-app:" + served.ModelId, Component = PlanComponent.DeepThinking, HostRoleKind = AppDeepThinkingRole,
+                DisplayName = $"{served.ModelId} in {(served.AppName.Length > 0 ? served.AppName : "your model app")}",
+                Gpu = GpuRequirement.None, Steady = new(0, 0, 0, 0), Peak = new(0, 0, 0, 0), FirstWordMs = null
+            };
         }
 
         /// <summary>A Thinking pool model no single card here has room for, on a computer with several NVIDIA cards, runs split

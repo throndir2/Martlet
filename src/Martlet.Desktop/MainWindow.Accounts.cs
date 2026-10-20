@@ -26,7 +26,7 @@ public partial class MainWindow
     private string accountsSyncStatus = "Accounts: not synced yet.";
 
     /// <summary>The session App opened at start, or (in tests, without App) one opened here.</summary>
-    private static AccountSession? OpenAccounts(Martlet.Core.Settings.SettingsStore? store)
+    internal static AccountSession? OpenAccounts(Martlet.Core.Settings.SettingsStore? store)
     {
         if (store is null) return null;
         if (Application.Current is App { Accounts: { } opened } && opened.HouseholdFolder == store.DataDirectory) return opened;

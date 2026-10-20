@@ -27,7 +27,7 @@
                 <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16">Answer three quick questions, and Martlet suggests a setup.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Nothing changes until you choose an action on the last step." Wiki="First-Steps#4-use-the-suggested-setup" AutomationProperties.AutomationId="Help-AdvisorIntro" AutomationProperties.Name="About the setup advisor"/></InlineUIContainer></TextBlock>
 
                 <StackPanel x:Name="GoalStep">
-                    <TextBlock Text="1. What matters most to you?" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock Text="Step 1: What matters most to you?" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10">The conversation model (Thinking) is the biggest choice.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Martlet runs it free on your own computers, with no account. An online model can be smarter, but it needs a sign-up and may cost money." Wiki="First-Steps#4-use-the-suggested-setup" AutomationProperties.AutomationId="Help-AdvisorGoal" AutomationProperties.Name="About the conversation model"/></InlineUIContainer></TextBlock>
                     <RadioButton x:Name="BalancedGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalBalanced"
                                  AutomationProperties.Name="Balanced, recommended">
@@ -64,7 +64,7 @@
                 </StackPanel>
 
                 <StackPanel x:Name="FeatureStep" Visibility="Collapsed">
-                    <TextBlock Text="2. What should Martlet do?" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock Text="Step 2: What should Martlet do?" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
                         Text="Choose how you want to use Martlet (you can also just type and read replies)."/>
                     <CheckBox x:Name="VoiceInputChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureVoiceInput"
@@ -86,7 +86,7 @@
                 </StackPanel>
 
                 <StackPanel x:Name="HardwareStep" Visibility="Collapsed">
-                    <TextBlock Text="3. Your computers" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock Text="Step 3: Your computers" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
                         Text="Martlet recommends where each part should run based on available GPUs."/>
                     <Label Target="{Binding ElementName=ThisPcGpuChoice}" Content="_Graphics card (GPU) in this PC"/>

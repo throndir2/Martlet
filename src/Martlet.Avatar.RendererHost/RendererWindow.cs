@@ -73,6 +73,8 @@ internal sealed partial class RendererWindow : Window
     private readonly RendererFailureLatch failure = new();
     // Why the browser couldn't load the selected model (a bounded Live2D/VRM reason), reported back to Martlet.
     private volatile string? modelRejection;
+    // Why this PC can't draw the character at all (no Direct3D 9 device for the composition WebView2), reported back to Martlet.
+    private string? graphicsProblem;
     private string? userData;
 
     internal RendererWindow(Stream input, Stream output, Stream? requests = null, bool still = false)

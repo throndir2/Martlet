@@ -41,6 +41,24 @@ public sealed record GatewayMachineDownload
     public required string Model { get; init; }
 }
 
+/// <summary>A chat model that a model app on this host serves on its loopback (LM Studio, llama.cpp, vLLM and the others
+/// <see cref="Martlet.Providers.LocalModelServers"/> finds), for the host's machine report (<c>served_models</c>), so paired
+/// desktops can plan with it. The <c>deep-thinking-app</c> role relays the Thinking pool to one of them.</summary>
+public sealed record GatewayServedModel
+{
+    /// <summary>The app's id (lm-studio, llama-cpp, vllm...).</summary>
+    public required string App { get; init; }
+    public required string AppName { get; init; }
+    public required int Port { get; init; }
+    /// <summary>The app's API path: /v1, /api/v1 or /engines/v1.</summary>
+    public required string Path { get; init; }
+    public required string Model { get; init; }
+    /// <summary>The download size in bytes, when the app says it.</summary>
+    public long? Bytes { get; init; }
+    /// <summary>The app has the model loaded now: the graphics memory it holds in bytes (0: loaded, amount not said); null: not loaded.</summary>
+    public long? LoadedBytes { get; init; }
+}
+
 /// <summary>What a host machine is like, collected by <c>martlet-host</c> on the host itself and served to paired
 /// desktops so they can plan which computer runs which role. Unauthenticated host-reported facts, not a
 /// qualification or readiness claim.</summary>

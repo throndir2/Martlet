@@ -13,7 +13,12 @@ internal sealed class HostEofException : Exception;
 /// <paramref name="Slots"/> is how many requests it runs at once (only a deep-thinking role runs more than one).
 /// <paramref name="Gpus"/> is where it runs, from gpus.json (the role's card, or "cpu"); null when that doesn't say, which
 /// counts as the whole host.</summary>
-internal sealed record HostRole(string Kind, Uri Endpoint, string Model, int Slots = 1, IReadOnlyList<string>? Gpus = null);
+internal sealed record HostRole(string Kind, Uri Endpoint, string Model, int Slots = 1, IReadOnlyList<string>? Gpus = null)
+{
+    /// <summary>The deep-thinking-app role: the owner's own model app's OpenAI-compatible API path (/v1, /api/v1 or /engines/v1)
+    /// on <see cref="Endpoint"/>; null for a role Martlet runs itself.</summary>
+    public string? AppPath { get; init; }
+}
 
 /// <summary>gpus.json beside host.json, written by martlet-host: which graphics cards each route role runs on, for the
 /// gateway's GPU priority (live turn first): {"schemaVersion":1,"roles":{"ollama":["GPU-..."],"stt":["cpu"]}}. A role
@@ -56,7 +61,10 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
     internal const int MaximumRoles = 12;
     internal const string Backend = "linuxServicePermissions";
     /// <summary>Role kinds with a gateway relay worker. Every role is declared the same way in host.json.</summary>
-    internal static readonly IReadOnlySet<string> RoleKinds = new HashSet<string>(StringComparer.Ordinal) { "audio2face", "ollama", "deep-thinking", "deep-thinking-2", "deep-thinking-3", "deep-thinking-4", "stt", "f5", "xtts", "gpt-sovits", "chatterbox", "chatterbox-original", "chatterbox-nano", "dia", "singing", "pictures", "ocr", "motion", "voice-recognition" };
+    internal static readonly IReadOnlySet<string> RoleKinds = new HashSet<string>(StringComparer.Ordinal) { "audio2face", "ollama", "deep-thinking", "deep-thinking-2", "deep-thinking-3", "deep-thinking-4", "deep-thinking-app", "stt", "f5", "xtts", "gpt-sovits", "chatterbox", "chatterbox-original", "chatterbox-nano", "dia", "singing", "pictures", "ocr", "motion", "voice-recognition" };
+
+    /// <summary>The role that relays the Thinking pool (card 1's route) to the owner's own model app on this host.</summary>
+    internal const string AppDeepThinkingKind = "deep-thinking-app";
 
     internal static HostConfiguration Parse(byte[] bytes)
     {
@@ -101,17 +109,30 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
                 // A Thinking pool role (deep-thinking, or deep-thinking-2... on another graphics card) may say how many thinks its Ollama
                 // runs at once (OLLAMA_NUM_PARALLEL); one otherwise.
                 var hasSlots = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("slots", out _);
+                // The deep-thinking-app role relays the Thinking pool to the owner's own model app instead of an Ollama of Martlet's:
+                // "api":"openai" and the app's "path" (it must have them, and no other role may).
+                var hasApp = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("api", out _);
+                if (hasSlots && hasApp) throw new HostInputException();
                 if (hasSlots) StrictJson.Properties(item, "kind", "endpoint", "model", "slots");
+                else if (hasApp) StrictJson.Properties(item, "kind", "endpoint", "model", "api", "path");
                 else StrictJson.Properties(item, "kind", "endpoint", "model");
+                string? appPath = null;
+                if (hasApp)
+                {
+                    appPath = StrictJson.Text(item, "path");
+                    if (StrictJson.Text(item, "api") != "openai" || appPath is not ("/v1" or "/api/v1" or "/engines/v1"))
+                        throw new HostInputException();
+                }
                 var kind = StrictJson.Text(item, "kind");
                 var model = StrictJson.Text(item, "model");
                 var slots = hasSlots ? StrictJson.Number(item, "slots") : 1;
                 if (!RoleKinds.Contains(kind) || roles.Any(role => role.Kind == kind) || !ModelToken(model) ||
                     !Uri.TryCreate(StrictJson.Text(item, "endpoint"), UriKind.Absolute, out var endpoint) ||
                     !LoopbackRoot(endpoint) || slots < 1 || slots > Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots ||
-                    hasSlots && Martlet.Core.Settings.SelfHostSetup.DeepThinkingCardOfRole(kind) is null)
+                    hasSlots && Martlet.Core.Settings.SelfHostSetup.DeepThinkingCardOfRole(kind) is null ||
+                    hasApp != (kind == AppDeepThinkingKind))
                     throw new HostInputException();
-                roles.Add(new(kind, endpoint, model, (int)slots));
+                roles.Add(new(kind, endpoint, model, (int)slots) { AppPath = appPath });
             }
         }
         return new(id, state, selected, uid, gid, Convert.ToHexStringLower(SHA256.HashData(bytes)), roles);

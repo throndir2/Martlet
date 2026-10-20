@@ -135,7 +135,7 @@ public sealed class LiveConversationTests
         {
             Settings = paired with { Generation = new() { ContextTokens = 2_048 } }
         })!.TextLimits.MaxOutputTokens);
-        Assert.Contains("Maximum length is 4096 tokens, including any hidden thinking",
+        Assert.Contains("maximum length is 4096 tokens, including any hidden thinking",
             MainWindow.DescribeGeneration(null, paired.Setup!.Routes.Single(r => r.Role == SetupRole.Llm)));
         Assert.Contains("your Martlet host fixture-host", configuration.Disclosure(false));
         var request = configuration.Request(new("Hello host"), false, [], null, null, out _, out _, out _);
@@ -1356,8 +1356,8 @@ public sealed class LiveConversationTests
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
         // MainWindow's statics need WPF's pack: scheme, which a test that shows no window hasn't registered yet.
         _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
-        Assert.Contains("Spoken replies don't start with a short first sentence.", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
-        Assert.Contains("Spoken replies start with a short first sentence.", MainWindow.DescribeGeneration(null));
+        Assert.Contains("spoken replies don't start with a short first sentence", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
+        Assert.Contains("spoken replies start with a short first sentence", MainWindow.DescribeGeneration(null));
     }
 
     [Fact]
@@ -1851,6 +1851,10 @@ public sealed class LiveConversationTests
         var pc = new PcSourceFixture();
         await using var fixture = await LiveFixture.Create(pcAudio: pc,
             pcActivity: clock => new PcActivityMonitor(() => new AppsFixture(), clock, manual: true));
+        // Each line's start is the clock when its speech was found, less the audio before it, and a start at or before 0 counts
+        // as unknown (PcEcho.Speakers), so the two lines would never match. The fixture clock starts at 0; a minute on, as on a
+        // real PC, a busy PC that reads the audio before the clock has moved far still gives both lines a real start.
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
         fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json($$"""{"text":"{{Weather}}"}"""));
         fixture.Answer("Ha.");
         var window = fixture.Open(new TalkPreferences(SpeakReplies: false, HearPc: true));

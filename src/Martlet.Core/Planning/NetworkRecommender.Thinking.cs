@@ -233,7 +233,8 @@ public static partial class NetworkRecommender
                 Decide(job, null, now!.Id, $"{Plain(now)} in {now.ServedBy} on {OwnPcs()}, as you chose.");
                 return true;
             }
-            var served = catalog.For(PlanComponent.Thinking).Where(o => o.ServedOn is not null).ToList();
+            // A model an app on a host serves goes to that host's Thinking pool place (AppDeep), not to live Thinking.
+            var served = catalog.For(PlanComponent.Thinking).Where(o => o.ServedOn is not null && NodeOf(o.ServedOn) is not { Companion: false }).ToList();
             if (served.Count == 0) return false;
             var names = List([.. served.Take(3).Select(o => $"{Plain(o)} in {o.ServedBy}")]);
             if (now is { IsLocal: false })

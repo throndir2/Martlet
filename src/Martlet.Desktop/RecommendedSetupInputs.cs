@@ -161,9 +161,26 @@ internal static class RecommendedSetupInputs
             Off = [.. sources.Off.Where(c => ComponentRanking.CanBeOff(c) && !ComponentRanking.SetOnPage(c)).Distinct()],
             Choices = [.. sources.Choices.Where(c => c is not null && ComponentRanking.SetOnPage(c.Component)).DistinctBy(c => c.Component)],
             CompanionPcs = sources.Computers.DistinctBy(c => c.Id).Count(c => c.Kind == NetworkMachineKind.Companion),
-            ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc })]
+            ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc }), .. HostServed(sources)]
         }.With(sources.Preferences);
         return new(request, notes, names) { Preferences = sources.Preferences, Games = GamesComputers(sources) };
+    }
+
+    /// <summary>Use models your apps already run, on host PCs (#1053): the chat models the model apps on each paired host serve, as
+    /// its machine report says, on that host (their address is that host's 127.0.0.1). None while the choice is off, and none from
+    /// a host that isn't answering.</summary>
+    internal static IReadOnlyList<ServedModel> HostServed(SetupSources sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        if (!sources.Preferences.UseServedModels) return [];
+        return [.. sources.Computers.Where(c => !c.ThisPc && c.HasHostService && c.Reachable != false && c.Hardware?.Served is { Count: > 0 })
+            .DistinctBy(c => c.Id)
+            .SelectMany(c => c.Hardware!.Served!.Where(s => ServedModels.Chats(s.Model)).Select(s =>
+                new ServedModel(c.Id, s.App, s.AppName, $"http://127.0.0.1:{s.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}{s.Path}", s.Model)
+                {
+                    SizeGb = s.Bytes is > 0 and var bytes ? Math.Round(bytes / 1e9, 2) : null,
+                    LoadedGb = s.LoadedBytes is >= 0 and var held ? Math.Round(held / 1e9, 2) : null
+                }))];
     }
 
     /// <summary>The companion PCs whose games answer Recommended setup and Settings show (each with a device ID), this PC first:
@@ -475,6 +492,36 @@ internal static class RecommendedSetupInputs
         ])
         {
             Plan = plan, Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind
+        };
+    }
+
+    /// <summary>FIXTURE hostserved (NOT real computers or apps): this PC (no graphics card) and lab-box, a Linux host with an RTX 4060
+    /// (8 GB) and 128 GB of memory, installed natively, that runs Deep thinking with Gemma 4 E4B. LM Studio on lab-box serves
+    /// openai/gpt-oss-120b (loaded, in main memory) and an embedding model, so its Thinking pool place goes to gpt-oss-120b through
+    /// the deep-thinking-app role (#1053).</summary>
+    internal static SetupSources HostServedFixture(DateTimeOffset now)
+    {
+        var report = new HostHardware("lab-box", "https://lab-box.lan:8443", now, now, "native", "Ubuntu 24.04", "6.8.0", "Fixture processor",
+            32, 128, "docker", "yes", [new HostGpu("NVIDIA GeForce RTX 4060", "nvidia", 8 * 1024, "580")])
+        {
+            Platform = "linux",
+            Served =
+            [
+                new HostServedModel("lm-studio", "LM Studio", 1234, "/v1", "openai/gpt-oss-120b", 63_400_000_000, 0),
+                new HostServedModel("lm-studio", "LM Studio", 1234, "/v1", "text-embedding-nomic-embed-text-v1.5", 84_000_000)
+            ]
+        };
+        return new SetupSources(
+        [
+            new("desk", "This PC", NetworkMachineKind.Companion) { Specs = MachineSpecs.ThisPc([], 16, 8, diskFreeGb: 200), ThisPc = true, Device = "fixture-desk" },
+            new("lab-box", "lab-box", NetworkMachineKind.Host)
+            {
+                Hardware = report, HasHostService = true, Reachable = true,
+                Offers = new Dictionary<string, string> { ["deep-thinking"] = "gemma4:e4b" }
+            }
+        ])
+        {
+            Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind
         };
     }
 

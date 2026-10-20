@@ -60,6 +60,15 @@ public sealed class AvatarOverlayTests
         finally { window.Close(); }
     });
 
+    /// <summary>#1083 and #1088: the renderer checks Direct3D 9 with WebView2's own helper before the composition WebView2 makes
+    /// its image, so a PC without it gets a clean stop instead of a crash from the image's finalizer.</summary>
+    [Fact]
+    public void TheDirect3DCheckUsesWebView2sHelperAndNamesTheProblem()
+    {
+        Assert.True(RendererGraphics.CanCheck, "WebView2's Direct3DHelper.CreateD3D9Device is gone: update RendererGraphics.");
+        Assert.StartsWith("Direct3D 9 isn't available", RendererGraphics.Direct3D9Problem(IntPtr.Zero, simulated: true));
+    }
+
     [Fact]
     public void ThemeMessagePreservesExplicitDarkChoice()
     {

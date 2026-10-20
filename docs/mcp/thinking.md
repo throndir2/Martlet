@@ -1249,7 +1249,7 @@ run: it stops Ollama's tray app and servers, backs up `db.sqlite` into
 it is empty or the linked folder) and the user's `OLLAMA_MODELS` (only when it
 isn't set or is the linked folder) to the real folder, starts Ollama and checks
 that it answers. Then `HealthIssue-ollama-fixed` reads *Good to know: Martlet
-fixed Ollama on this PC. ...* with the backup folder, and the local log has
+fixed Ollama on this PC — ...* with the backup folder, and the local log has
 each change. While it works, the item says so and `HealthFix-ollama-repair` is
 disabled (*Fixing Ollama...*). Otherwise `HealthFix-ollama-repair` (*Fix
 Ollama's models folder*, or *Try the fix again*) runs it again and
