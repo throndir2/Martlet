@@ -2380,7 +2380,11 @@ host serves the same directory from its saved `accounts.json`; and an unsigned
 request is refused (HTTP 401). Synthetic accounts, loopback only. A friend's
 credential is covered by `Martlet.Gateway.Tests` (`AccountDirectoryRouteTests`).
 
-`settings_sync_selftest` (no arguments) rehearses shared settings end to end
+`settings_sync_selftest` (no arguments) rehearses shared settings end to end,
+including a simulated Linux companion (`Martlet.Companion.Platform`'s settings,
+guardrails, `hosts.json` and `CompanionSync`) that takes a desktop's Thinking route,
+key and personality, shares a persona edit back and keeps its own listening, with
+the catalog's reason, when Parakeet is shared,
 with the production code (`src\Martlet.NodeLinkCheck`, mode `settings`,
 `SettingsRehearsal.cs`, run as its own process like `node_link_check`; returns
 `{exitCode, report}`): two real gateways (`lab-settings-1`, `lab-settings-2`;
@@ -11226,7 +11230,13 @@ verdict and reason, plus local-model warnings. `platform` (`linux-x64`,
 `linux-nvidia`, `linux-arm64`, `macos-arm64`, `macos-x64`) computes all of it for
 that platform from any computer (`simulated: true`). `settingsFile` checks a
 settings.json from another device against it and returns `import.refusals` (each
-with the catalog's reason) and the engines kept. No audio, network or window.
+with the catalog's reason) and the engines kept. `sync` reports how the companion keeps
+its settings the same as the owner's other computers (#980): on or off, its device
+ID, its paired hosts and, for `thinking`, `listening`, `speaking` and `companion`,
+which computer changed it last and when (from `dataDirectory`, default the
+companion's own data folder), plus what stays on that computer. Never a key. The
+companion's Settings tab shows the same in `SyncStatus` (a safe value). No audio,
+network or window.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[{"name":"companion_status","arguments":{"platform":"macos-x64","settingsFile":"C:\\temp\\windows-settings.json"}}]'

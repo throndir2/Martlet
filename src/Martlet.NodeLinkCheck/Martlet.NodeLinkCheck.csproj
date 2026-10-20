@@ -34,5 +34,7 @@
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <!-- logs (logs_share_selftest) reads real log folders and saves the share bundle. -->
     <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
+    <!-- settings (settings_sync_selftest) also syncs the Linux and macOS companion's settings through the hosts (#980). -->
+    <ProjectReference Include="..\Martlet.Companion.Platform\Martlet.Companion.Platform.csproj" />
   </ItemGroup>
 </Project>

@@ -1,118 +1,25 @@
 import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
-import { type EyeFields, eyeFrame, type EyeHint, type EyesFrom, eyeShape, hintEye, hintMiddle, irisBox, meshEyes, type MeshEye,
-  meshMisses, pinEye, readEyeHint } from "./eyes.js";
-import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatures, faceFromBox, faceFromHint, faceFromLayout,
-  type FaceHint, faceSkin, faceSource, type FaceSource, type FeatureOffsets, bounds, HEAD_ANGLES, headRoll, measuredFeatures,
-  type Pin, pinFace, type PinnedFace, type Point, POSE_PARAMETERS, skinCarriers, trackFace, turnFace } from "./face.js";
+import { type EyeFields, eyeFrame, type EyeHint, type EyesFrom, eyeShape, hintEye, hintMiddle, irisBox, meshMisses, pinEye,
+  readEyeHint } from "./eyes.js";
+import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatures, faceFromBox, faceFromHint, type FaceHint,
+  faceSkin, type FaceSource, type FeatureOffsets, bounds, headRoll, measuredFeatures, pinFace, type PinnedFace, type Point,
+  trackFace, turnFace } from "./face.js";
 import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isBlush, isGesture, supportedGestures } from "./gestures.js";
 import { CHAIN_LIMITS, findSwingingChains, type SwingingChain } from "./chains.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 import { HAIR_PART, hitTestModel, type Live2DHit } from "./touch.js";
-
-export interface RenderIdentity {
-  readonly sessionId: string;
-  readonly turnId: string;
-  readonly requestId: string;
-  readonly sourceId: string;
-  readonly epoch: number;
-}
-
-/** In-process sink after host validation, playback-time gating and aspect composition; not a wire contract. */
-export interface ComposedFrame {
-  readonly identity: RenderIdentity;
-  readonly sequence: number;
-  readonly configurationId: string;
-  readonly channels: Readonly<Record<string, number>>;
-}
-
-export interface ComposedParameters {
-  readonly identity: RenderIdentity;
-  readonly sequence: number;
-  readonly configurationId: string;
-  readonly parameters: Readonly<Record<string, number>>;
-}
-
-export interface FrameResult {
-  readonly accepted: boolean;
-  readonly diagnostics: readonly Diagnostic[];
-}
-
-export interface BrowserServices {
-  /** Decodes a PNG, resized to `size` when given. */
-  decodeTexture(bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal,
-    size?: { readonly width: number; readonly height: number }): Promise<ImageBitmap>;
-  requestFrame(callback: FrameRequestCallback): number;
-  cancelFrame(handle: number): void;
-  now(): number;
-}
-
-/** What the loaded model drives, after Martlet's fallbacks, for status and diagnostics. */
-export interface ModelSummary {
-  readonly textures: number;
-  readonly textureDivisor: number;
-  readonly eyeBlink: readonly string[];
-  readonly lipSync: readonly string[];
-  readonly motionGroups: readonly string[];
-  readonly expressions: number;
-  readonly physics: boolean;
-  readonly animated: boolean;
-}
-
-/** How long the voice keeps the character's mouth after its last sound, in seconds, so the pauses between its words and
- *  sentences don't give the mouth back to the emotes. */
-export const VOICE_HOLD_SECONDS = 1;
-
-/** Who moves the mouth now (Live2DAdapter.mouthReading). Each opening is 0 at the model's rest and 1 fully open. */
-export interface MouthReading {
-  /** The parameter read: ParamMouthOpenY when the model has it, otherwise its first lip-sync parameter. */
-  readonly parameter: string;
-  /** 0 to 1: how much the voice has the mouth now; it eases in when the voice starts and out after VOICE_HOLD_SECONDS. */
-  readonly voice: number;
-  /** The voice (or a composed frame) moved the mouth within the last VOICE_HOLD_SECONDS. */
-  readonly speaking: boolean;
-  /** The voice's loudness on the mouth now (0 to 1). */
-  readonly level: number;
-  /** How far the emotes (expressions, gestures such as mouth_open, motions) open the mouth before the voice takes it. */
-  readonly emote: number;
-  /** How far the mouth is open now. */
-  readonly open: number;
-}
+import { checkGl, type EyeState, findCarriers, findEyesSafely, findFace, findSkin, NO_EYES, validateGeometry, visibleTop }
+  from "./modelProbe.js";
+import { type BrowserServices, browserServices, type ComposedFrame, type ComposedParameters, type FrameResult, type ModelSummary,
+  type MouthReading, type RenderIdentity, sameIdentity, validateIdentity, VOICE_HOLD_SECONDS } from "./contract.js";
+export { type BrowserServices, browserServices, type ComposedFrame, type ComposedParameters, type FrameResult, type ModelSummary,
+  type MouthReading, type RenderIdentity, VOICE_HOLD_SECONDS } from "./contract.js";
 
 // How far a mouth parameter's value opens the mouth: 0 at the model's rest, 1 at its maximum.
 const opening = (parameter: Parameter, value: number): number =>
   parameter.maximum > parameter.neutral ? Math.max(0, Math.min(1, (value - parameter.neutral) / (parameter.maximum - parameter.neutral))) : 0;
-
-export const browserServices: BrowserServices = {
-  decodeTexture(bytes, signal, size) {
-    requireCondition(typeof createImageBitmap === "function", "MISSING_IMAGE_DECODER",
-      "This runtime requires createImageBitmap PNG decoding.");
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (error?: Error, image?: ImageBitmap) => {
-        if (settled) { image?.close(); return; }
-        settled = true;
-        clearTimeout(timer);
-        signal.removeEventListener("abort", abort);
-        if (error) reject(error);
-        else if (image) resolve(image);
-      };
-      const abort = () => finish(new Live2DError("LOAD_CANCELLED", "Model load was cancelled."));
-      const timer = setTimeout(() => finish(new Live2DError("TEXTURE_TIMEOUT", "PNG decode exceeded 20 seconds.")), 20_000);
-      signal.addEventListener("abort", abort, { once: true });
-      if (signal.aborted) { abort(); return; }
-      createImageBitmap(new Blob([bytes], { type: "image/png" }), {
-        premultiplyAlpha: "premultiply", colorSpaceConversion: "none", imageOrientation: "none",
-        ...(size ? { resizeWidth: size.width, resizeHeight: size.height, resizeQuality: "high" as const } : {}),
-      }).then(image => finish(undefined, image),
-        error => finish(new Live2DError("INVALID_TEXTURE", `PNG decode failed: ${String(error)}`)));
-    });
-  },
-  requestFrame: callback => requestAnimationFrame(callback),
-  cancelFrame: handle => cancelAnimationFrame(handle),
-  now: () => performance.now(),
-};
 
 interface Resources {
   readonly gl: WebGLRenderingContext;
@@ -126,51 +33,6 @@ interface Resources {
 }
 
 let activeAdapter: Live2DAdapter | undefined;
-
-/** The eyes found at load (see eyes.ts) and from vision: the face at rest they are measured on, the eyes the meshes draw
- *  (`found`) and the ones in use (`mesh`: those that don't clearly miss the measured eye), the hinted ones, each eye's middle
- *  pinned to the face's carriers, and how long finding them took. */
-interface EyeState {
-  readonly face?: Face;
-  readonly found?: { readonly left?: MeshEye; readonly right?: MeshEye };
-  readonly mesh: { readonly left?: MeshEye; readonly right?: MeshEye };
-  readonly meshPins: { readonly left?: Pin; readonly right?: Pin };
-  readonly hint?: EyeHint;
-  readonly hintPins: { readonly left?: Pin; readonly right?: Pin };
-  readonly milliseconds: number;
-}
-const NO_EYES: EyeState = Object.freeze({ mesh: {}, meshPins: {}, hintPins: {}, milliseconds: 0 });
-
-function validateIdentity(identity: RenderIdentity): void {
-  requireCondition(identity !== null && typeof identity === "object", "INVALID_IDENTITY", "Render identity is required.");
-  for (const key of ["sessionId", "turnId", "requestId"] as const) {
-    requireCondition(typeof identity[key] === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity[key]) &&
-      identity[key] !== "00000000-0000-0000-0000-000000000000",
-    "INVALID_IDENTITY", `${key} must be a nonempty UUID.`);
-  }
-  boundedInteger(identity.epoch, 2_147_483_647, "epoch");
-  requireCondition(typeof identity.sourceId === "string" && identity.sourceId.trim().length > 0 &&
-    identity.sourceId.length <= 256 && !/[\u0000-\u001f]/.test(identity.sourceId),
-  "INVALID_IDENTITY", "sourceId must be a bounded nonempty host-selected binding.");
-}
-
-function sameIdentity(a: RenderIdentity, b: RenderIdentity): boolean {
-  return a.epoch === b.epoch && a.sessionId.toLowerCase() === b.sessionId.toLowerCase() &&
-    a.turnId.toLowerCase() === b.turnId.toLowerCase() && a.requestId.toLowerCase() === b.requestId.toLowerCase() &&
-    a.sourceId === b.sourceId;
-}
-
-/** Highest vertex of the visible meshes in model units (y up), or undefined when nothing is visible. */
-function visibleTop(model: CubismModel): number | undefined {
-  let top = Number.NEGATIVE_INFINITY;
-  for (let i = 0; i < model.getDrawableCount(); i++) {
-    if (!model.getDrawableDynamicFlagIsVisible(i) || model.getDrawableOpacity(i) < 0.05) continue;
-    const vertices = model.getDrawableVertices(i);
-    for (let v = 1; v < vertices.length; v += 2) top = Math.max(top, vertices[v]!);
-  }
-  return Number.isFinite(top) ? top : undefined;
-}
 
 export class Live2DAdapter {
   readonly #canvas: HTMLCanvasElement;
@@ -671,7 +533,7 @@ export class Live2DAdapter {
       requireCondition(model, "MODEL_CREATE_FAILED", "Core could not create this model.");
       resources.model = model;
       this.#parameters = inspectParameters(model, bundle.description);
-      this.#validateGeometry(model, bundle.description.textures.length);
+      validateGeometry(model, bundle.description.textures.length);
       const renderer = new sdk.CubismRenderer_WebGL();
       resources.renderer = renderer;
       renderer.initialize(model, 1);
@@ -705,7 +567,7 @@ export class Live2DAdapter {
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-          this.#checkGl(gl);
+          checkGl(gl);
           renderer.bindTexture(slot, texture);
         } finally {
           image.close();
@@ -729,18 +591,18 @@ export class Live2DAdapter {
       this.#modelTop = visibleTop(model);
       this.#rest = Array.from({ length: model.getDrawableCount() }, (_, i) => Float32Array.from(model.getDrawableVertices(i)));
       this.#hair = this.#hairDrawables(model);
-      this.#faceSource = this.#findFace(model, bundle);
+      this.#faceSource = findFace(model, bundle);
       const rest = this.#restFace(model);
       const started = this.#services.now();
       // Pinned to the face's skin when a drawable holds the face, else to the vertices that ride the head.
-      const skin = rest ? this.#findSkin(model, rest) : undefined, onSkin = rest && skin ? pinFace(rest, skin.carriers) : undefined;
+      const skin = rest ? findSkin(model, rest) : undefined, onSkin = rest && skin ? pinFace(rest, skin.carriers) : undefined;
       if (skin && onSkin) [this.#carriers, this.#skin, this.#pinned] = [skin.carriers, skin.id, onSkin];
       else {
-        this.#carriers = rest ? this.#findCarriers(model, rest) : [];
+        this.#carriers = rest ? findCarriers(model, rest, this.#parameters) : [];
         this.#pinned = rest ? pinFace(rest, this.#carriers) : undefined;
       }
       this.#faceProbeMilliseconds = this.#services.now() - started;
-      this.#eyes = rest ? this.#findEyesSafely(model, rest) : NO_EYES;
+      this.#eyes = rest ? findEyesSafely(model, rest, this.#parameters, this.#carriers, () => this.#services.now()) : NO_EYES;
       return this.#plan.capabilities;
     } catch (error) {
       if (this.#resources === resources) this.#release();
@@ -888,7 +750,7 @@ export class Live2DAdapter {
     gl.clear(gl.COLOR_BUFFER_BIT);
     renderer.setRenderState(null, [0, 0, this.#canvas.width, this.#canvas.height]);
     renderer.drawModel();
-    this.#checkGl(gl);
+    checkGl(gl);
   }
 
   startClock(): void {
@@ -1034,19 +896,6 @@ export class Live2DAdapter {
     return Math.min(2 / model.getCanvasHeight(), 2 * frameAspect / model.getCanvasWidth());
   }
 
-  /** How to find the face (see face.ts): from the model's resting pose, which the fixed estimate is measured in. */
-  #findFace(model: CubismModel, bundle: LocalModelBundle): FaceSource | undefined {
-    const count = model.getDrawableCount();
-    const ids: string[] = [];
-    if (model.getDrawableId) for (let i = 0; i < count; i++) ids.push(model.getDrawableId(i).getString().s);
-    return faceSource(bundle.description.hitAreas, ids, () => {
-      const visible: Float32Array[] = [];
-      for (let i = 0; i < count; i++)
-        if (model.getDrawableDynamicFlagIsVisible(i) && model.getDrawableOpacity(i) >= 0.05) visible.push(model.getDrawableVertices(i));
-      return faceFromLayout(visible);
-    });
-  }
-
   /** The face in the pose the model has now (at load: at rest), from how it was found. */
   #restFace(model: CubismModel): Face | undefined {
     const source = this.#faceSource;
@@ -1056,189 +905,11 @@ export class Live2DAdapter {
     return box && faceFromBox(source.kind, box);
   }
 
-  /**
-   * The face's skin around `face` (see faceSkin): its ID and every vertex of it as carriers, which the face then follows as
-   * Core deforms the skin, whatever moves the head (its angles, or parameters that physics drives from them). Undefined when
-   * no drawable holds the face.
-   */
-  #findSkin(model: CubismModel, face: Face): { id: string; carriers: Carrier[] } | undefined {
-    const orders = model.getDrawableRenderOrders();
-    const skin = faceSkin(face, {
-      count: model.getDrawableCount(),
-      shown: i => model.getDrawableDynamicFlagIsVisible(i) && model.getDrawableOpacity(i) >= 0.05,
-      vertices: i => model.getDrawableVertices(i),
-      indices: i => model.getDrawableVertexIndices(i),
-      order: i => orders[i] ?? i,
-    });
-    return skin === undefined ? undefined
-      : { id: model.getDrawableId(skin).getString().s, carriers: skinCarriers(skin, model.getDrawableVertices(skin)) };
-  }
-
-  /**
-   * The vertices around `face` that ride the head rigidly. Live2D reports every mesh as it deforms it, so the model is asked:
-   * each head angle is moved in turn (what moves is the head), then every other parameter at once to its maximum and to its
-   * minimum (what moves then deforms on its own: hair physics, blinking, the eyes' gaze, the mouth, the brows). Every
-   * parameter is put back. A parameter that moves the whole head (a model's own position or head parameter) would leave
-   * nothing, so then each is tried alone and those are skipped. Empty when the model can't tell.
-   */
-  #findCarriers(model: CubismModel, face: Face): Carrier[] {
-    const read = model.getParameterValueByIndex?.bind(model);
-    if (!read) return [];
-    const reach = (1.5 * face.width) ** 2, candidates: Carrier[] = [];
-    for (let i = 0; i < model.getDrawableCount(); i++) {
-      if (!model.getDrawableDynamicFlagIsVisible(i) || model.getDrawableOpacity(i) < 0.05) continue;
-      const vertices = model.getDrawableVertices(i);
-      for (let v = 0; 2 * v + 1 < vertices.length; v++) {
-        const x = vertices[2 * v]!, y = vertices[2 * v + 1]!;
-        if ((x - face.x) ** 2 + (y - face.y) ** 2 <= reach) candidates.push({ drawable: i, vertex: v, x, y });
-      }
-    }
-    if (candidates.length < 3 || candidates.length > 60_000) return [];
-    const parameters = this.#parameters, base = parameters.map(p => read(p.index));
-    // How far each candidate moves with these parameters (positions in `parameters`) set, from the pose now.
-    const probe = (values: ReadonlyMap<number, number>): Float64Array => {
-      for (const [k, value] of values) model.setParameterValueByIndex(parameters[k]!.index, value);
-      model.update();
-      const moved = new Float64Array(candidates.length);
-      let last = -1, vertices: Float32Array | undefined;
-      candidates.forEach((c, n) => {
-        if (c.drawable !== last) { vertices = model.getDrawableVertices(c.drawable); last = c.drawable; }
-        moved[n] = Math.hypot(vertices![2 * c.vertex]! - c.x, vertices![2 * c.vertex + 1]! - c.y);
-      });
-      for (const k of values.keys()) model.setParameterValueByIndex(parameters[k]!.index, base[k]!);
-      return moved;
-    };
-    const turns = 0.02 * face.width, deforms = 0.01 * face.width;
-    const head = new Float64Array(candidates.length);
-    try {
-      for (const id of HEAD_ANGLES) {
-        const k = parameters.findIndex(p => p.id === id);
-        if (k < 0) continue;
-        const p = parameters[k]!, far = p.maximum - base[k]! >= base[k]! - p.minimum ? p.maximum : p.minimum;
-        probe(new Map([[k, far]])).forEach((d, n) => { head[n] = Math.max(head[n]!, d); });
-      }
-      const riding = head.filter(d => d > turns).length;
-      if (riding < 3) return [];
-      const others = parameters.flatMap((p, k) => POSE_PARAMETERS.has(p.id) || !(p.maximum > p.minimum) ? [] : [k]);
-      const rigid = new Uint8Array(candidates.length).fill(1);
-      const mark = (moved: Float64Array) => moved.forEach((d, n) => { if (d > deforms) rigid[n] = 0; });
-      mark(probe(new Map(others.map(k => [k, parameters[k]!.maximum]))));
-      mark(probe(new Map(others.map(k => [k, parameters[k]!.minimum]))));
-      if (candidates.filter((_, n) => head[n]! > turns && rigid[n]).length < 12 && others.length <= 256) {
-        rigid.fill(1);
-        for (const k of others)
-          for (const value of [parameters[k]!.maximum, parameters[k]!.minimum]) {
-            if (value === base[k]) continue;
-            const moved = probe(new Map([[k, value]]));
-            if (moved.filter((d, n) => d > deforms && head[n]! > turns).length >= 0.5 * riding) continue;
-            mark(moved);
-          }
-      }
-      return candidates.filter((_, n) => head[n]! > turns && rigid[n]);
-    } finally {
-      parameters.forEach((p, k) => model.setParameterValueByIndex(p.index, base[k]!));
-      model.update();
-    }
-  }
-
-  /** #findEyes, where a model that breaks it only gets no eyes from its meshes (the eye hint still works). */
-  #findEyesSafely(model: CubismModel, face: Face): EyeState {
-    try { return this.#findEyes(model, face); }
-    catch {
-      try { model.update(); } catch { }
-      return Object.freeze({ face, mesh: {}, meshPins: {}, hintPins: {}, milliseconds: 0 });
-    }
-  }
-
-  /**
-   * The eyes the model's meshes draw (see eyes.ts): ParamEyeBallX and ParamEyeBallY are each moved to their far end in turn
-   * and put back, and a visible drawable near the face whose vertices all move together by at least 0.5% of the face's width
-   * is an iris or one of its highlights (an eyelid or eye white that only bends is left out). Each eye found has its middle
-   * pinned to the face's carriers. No eyes when the model has no eyeball parameters or no clipping masks.
-   */
-  #findEyes(model: CubismModel, face: Face): EyeState {
-    const started = this.#services.now();
-    const done = (state: Omit<EyeState, "milliseconds">): EyeState =>
-      Object.freeze({ ...state, milliseconds: Math.max(0, this.#services.now() - started) });
-    const read = model.getParameterValueByIndex?.bind(model);
-    const masks = model.getDrawableMasks?.(), counts = model.getDrawableMaskCounts?.();
-    const balls = this.#parameters.filter(p => (p.id === "ParamEyeBallX" || p.id === "ParamEyeBallY") && p.maximum > p.minimum);
-    if (!read || !masks || !counts || !balls.length) return done({ face, mesh: {}, meshPins: {}, hintPins: {} });
-    const count = model.getDrawableCount();
-    const shown = (i: number) => model.getDrawableDynamicFlagIsVisible(i) && model.getDrawableOpacity(i) >= 0.05;
-    const reach = (1.5 * face.width) ** 2, near: number[] = [], rest: Float32Array[] = [];
-    for (let i = 0; i < count; i++) {
-      if (!shown(i)) continue;
-      const vertices = model.getDrawableVertices(i), n = Math.floor(vertices.length / 2);
-      let x = 0, y = 0;
-      for (let v = 0; v < n; v++) { x += vertices[2 * v]!; y += vertices[2 * v + 1]!; }
-      if (n > 0 && (x / n - face.x) ** 2 + (y / n - face.y) ** 2 <= reach) { near.push(i); rest.push(Float32Array.from(vertices)); }
-    }
-    // The least any vertex of each drawable moved, the most over both parameters.
-    const moved = new Float64Array(near.length);
-    try {
-      for (const p of balls) {
-        const base = read(p.index), far = p.maximum - base >= base - p.minimum ? p.maximum : p.minimum;
-        try {
-          model.setParameterValueByIndex(p.index, far);
-          model.update();
-          near.forEach((d, n) => {
-            const now = model.getDrawableVertices(d), before = rest[n]!;
-            let least = Infinity;
-            for (let v = 0; v + 1 < now.length && v + 1 < before.length; v += 2)
-              least = Math.min(least, Math.hypot(now[v]! - before[v]!, now[v + 1]! - before[v + 1]!));
-            if (Number.isFinite(least)) moved[n] = Math.max(moved[n]!, least);
-          });
-        } finally { model.setParameterValueByIndex(p.index, base); }
-      }
-    } finally { model.update(); }
-    const mesh = meshEyes(face, near.filter((_, n) => moved[n]! >= 0.005 * face.width), {
-      vertices: d => model.getDrawableVertices(d),
-      indices: d => model.getDrawableVertexIndices(d),
-      masks: d => Array.from(masks[d]?.subarray(0, Math.max(0, counts[d] ?? 0)) ?? []).filter(m => m >= 0 && m < count && m !== d),
-      shown,
-    });
-    const pin = (side: "left" | "right") => {
-      const eye = mesh[side], pinned = eye && pinEye(eye.middle, this.#carriers, face);
-      return pinned ? { [side]: pinned } : {};
-    };
-    return done({ face, found: mesh, mesh, meshPins: { ...pin("left"), ...pin("right") }, hintPins: {} });
-  }
-
   #validateCanvas(): void {
     for (const dimension of [this.#canvas.width, this.#canvas.height]) {
       boundedInteger(dimension, LIMITS.canvasDimension, "canvas dimension");
       requireCondition(dimension > 0, "RESOURCE_LIMIT", "Canvas dimensions must be positive.");
     }
-  }
-
-  #validateGeometry(model: CubismModel, textureCount: number): void {
-    for (const value of [model.getCanvasWidth(), model.getCanvasHeight()]) {
-      requireCondition(Number.isFinite(value) && value >= 0.001 && value <= 10_000,
-        "INVALID_MODEL_GEOMETRY", "Core returned invalid canvas dimensions.");
-    }
-    const count = model.getDrawableCount();
-    boundedInteger(count, LIMITS.drawables, "drawable count");
-    requireCondition(count > 0, "INVALID_MODEL_GEOMETRY", "The model has no drawable meshes.");
-    let vertices = 0;
-    let indices = 0;
-    for (let i = 0; i < count; i++) {
-      const vertexCount = model.getDrawableVertexCount(i);
-      const indexCount = model.getDrawableVertexIndexCount(i);
-      boundedInteger(vertexCount, LIMITS.vertices, "mesh vertices");
-      boundedInteger(indexCount, LIMITS.indices, "mesh indices");
-      vertices += vertexCount;
-      indices += indexCount;
-      boundedInteger(vertices, LIMITS.vertices, "model vertices");
-      boundedInteger(indices, LIMITS.indices, "model indices");
-      const texture = model.getDrawableTextureIndex(i);
-      boundedInteger(texture, textureCount - 1, "drawable texture index");
-    }
-  }
-
-  #checkGl(gl: WebGLRenderingContext): void {
-    const error = gl.getError();
-    requireCondition(error === gl.NO_ERROR, "WEBGL_ERROR", `Live2D WebGL operation failed (0x${error.toString(16)}).`);
   }
 
   #release(): void {
