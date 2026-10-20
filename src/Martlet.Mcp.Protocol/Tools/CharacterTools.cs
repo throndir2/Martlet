@@ -901,10 +901,8 @@ internal sealed partial class McpServer
         }
         var fallback = Martlet.F5.F5BundledVoices.Default;
         // The self-hosted voice engines (F5-TTS, XTTS-v2, GPT-SoVITS, Dia) and the one chosen on this desktop (speaking-engine.txt, the file
-        // Martlet.Desktop's SpeakingEngineChoice keeps; a speaking route on a host's engine wins over it).
-        string? chosen = null;
-        try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        // Martlet.Core.Settings.SpeakingEngineFile keeps; a speaking route on a host's engine wins over it).
+        var chosen = Martlet.Core.Settings.SpeakingEngineFile.ReadKey(directory);
         var engines = Martlet.Core.Settings.SpeechEngines.All.Select(engine => new
         {
             key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,
@@ -1044,21 +1042,14 @@ internal sealed partial class McpServer
             voice = CharacterVoice(directory), lorebooks };
     }
 
-    /// <summary>character-click-through.json in a data directory (Martlet.Desktop's CharacterClickThroughStore): whether clicks
-    /// pass through the character on this PC. No file means it catches clicks.</summary>
+    /// <summary>character-click-through.json in a data directory, read through its store (Martlet.Avatar.Hosting's
+    /// CharacterClickThroughFile): whether clicks pass through the character on this PC. No file means it catches clicks.</summary>
     private static object CharacterClickThrough(string directory)
     {
-        var path = Path.Combine(directory, "character-click-through.json");
-        if (!File.Exists(path)) return new { state = "none", on = false };
+        if (!File.Exists(Path.Combine(directory, Martlet.Avatar.Hosting.CharacterClickThroughFile.FileName))) return new { state = "none", on = false };
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            if (document.RootElement.ValueKind != JsonValueKind.Object) return new { state = "unreadable", on = false, problem = "NotAnObject" };
-            return new
-            {
-                state = "loaded",
-                on = document.RootElement.TryGetProperty("ClickThrough", out var on) && on.ValueKind == JsonValueKind.True
-            };
+            return new { state = "loaded", on = Martlet.Avatar.Hosting.CharacterClickThroughFile.Read(directory) };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {

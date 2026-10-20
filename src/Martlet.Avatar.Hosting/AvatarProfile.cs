@@ -105,11 +105,13 @@ public sealed record AvatarProfileLoad(AvatarProfile? Profile, string? Revision)
 
 public sealed class AvatarProfileStore
 {
+    /// <summary>The character profile file; the character shown travels as each person's shared setting character.</summary>
+    public const string FileName = "avatar.json";
     public string FilePath { get; }
     public AvatarProfileStore(string dataDirectory)
     {
         LocalAvatarFiles.ValidatePath(dataDirectory);
-        FilePath = Path.Combine(dataDirectory, "avatar.json");
+        FilePath = Path.Combine(dataDirectory, FileName);
     }
 
     public async Task<AvatarProfileLoad> LoadAsync(Guid profileId, CancellationToken token = default)

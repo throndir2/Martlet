@@ -34,6 +34,12 @@ Each release's section here is also its notes on GitHub.
 - The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
 - Listening, Voice, People, Singing, *Microphone and speakers* and *Voice ID* now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki pages for listening, voices and singing have the full instructions. ([#1049](https://github.com/throndir2/Martlet/pull/1049))
 
+### Changed
+
+- Your character's touch zones (also the ones you drew or changed), its eye measurement, its VRoid Hub credit and its own changes to how it reacts to touches are now the same on all your computers, so each model is set up once. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Your Discord setup (the bot and its token, the people Martlet knows, the chat modes and channel rules) and your Telegram and WhatsApp connections with their paired chats are now the same on all your computers. Each computer still chooses for itself whether it runs the bot. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Keeping clips of voices you haven't named is now one choice for all your computers, and turning it off on one computer deletes the clips on every computer. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+
 ### Fixed
 
 - Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#1052](https://github.com/throndir2/Martlet/pull/1052))

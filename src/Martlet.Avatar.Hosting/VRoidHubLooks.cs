@@ -14,13 +14,33 @@ public sealed record VRoidHubLook(string Id, string Name, string Author, string 
         new(candidate.Id, candidate.Name, candidate.Author, candidate.PageUrl, candidate.Conditions, candidate.CreditRequired, candidate.ThumbnailUrl, now);
 }
 
-/// <summary>The VRoid Hub looks this PC used (vroid-hub-looks.json in the data folder), newest first; never shared.</summary>
+/// <summary>The VRoid Hub looks used on the owner's computers (vroid-hub-looks.json in the data folder), newest first: the same on
+/// all of them (the household setting <see cref="SharedKey"/>), so a VRoid Hub character shows its credit on every computer.</summary>
 public static class VRoidHubLooks
 {
     public const string FileName = "vroid-hub-looks.json";
+    public const string SharedKey = "vroid-hub-looks";
     public const int MaximumLooks = 64;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private static readonly JsonSerializerOptions ShareJson = new(JsonSerializerDefaults.Web);
     private static readonly object Gate = new();
+
+    /// <summary>The looks as they travel: compact, newest first.</summary>
+    public static string Share(string dataDirectory) => JsonSerializer.Serialize(Load(dataDirectory), ShareJson);
+
+    /// <summary>Takes another computer's looks (<see cref="Share"/>'s text) in place of this PC's. False when they can't be read.</summary>
+    public static bool ReplaceAll(string dataDirectory, string shared)
+    {
+        VRoidHubLook[]? looks;
+        try { looks = JsonSerializer.Deserialize<VRoidHubLook[]>(shared, Json); }
+        catch (JsonException) { return false; }
+        if (looks is null) return false;
+        lock (Gate) Write(dataDirectory, [.. Valid(looks).OrderByDescending(l => l.UsedAt).Take(MaximumLooks)]);
+        return true;
+    }
+
+    private static IEnumerable<VRoidHubLook> Valid(IEnumerable<VRoidHubLook> looks) =>
+        looks.Where(l => l is not null && RemoteCharacterModels.IsVRoidHubId(l.Id) && l.Name is { Length: > 0 } && l.Conditions is not null);
 
     public static IReadOnlyList<VRoidHubLook> Load(string? dataDirectory)
     {
@@ -29,8 +49,7 @@ public static class VRoidHubLooks
         {
             var path = System.IO.Path.Combine(dataDirectory, FileName);
             if (!File.Exists(path) || new FileInfo(path).Length > 1024 * 1024) return [];
-            return JsonSerializer.Deserialize<VRoidHubLook[]>(File.ReadAllBytes(path), Json)?
-                .Where(l => l is not null && RemoteCharacterModels.IsVRoidHubId(l.Id) && l.Name is { Length: > 0 } && l.Conditions is not null).ToArray() ?? [];
+            return JsonSerializer.Deserialize<VRoidHubLook[]>(File.ReadAllBytes(path), Json) is { } looks ? [.. Valid(looks)] : [];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return []; }
     }

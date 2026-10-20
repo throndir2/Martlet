@@ -161,7 +161,7 @@ public partial class MainWindow
         var reading = Martlet.Core.Reading.ReadingPool.Choice(ReadingList.Load(directory), ThisPcHost()?.HostId);
         var model = reading.HostId is { } host ? hostChecks.GetValueOrDefault(host)?.Offers?.GetValueOrDefault(HostRoles.Ocr) : null;
         return RecommendedSetupInputs.Choices(Talk.Watch, Talk.HearVoice, SavedSenses(), reading,
-            HomePreferences.Load(directory).Address, model, localVoices.Enabled, PoolSettings.LoadFor(directory, PoolAreas.VoiceRecognition));
+            Martlet.Home.HomePreferences.Load(directory).Address, model, localVoices.Enabled, PoolSettings.LoadFor(directory, PoolAreas.VoiceRecognition));
     }
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
