@@ -1007,7 +1007,15 @@ runs `compose up -d --no-build` for every installed role, then the warm step of
 step is not run again), reports `fixture-cold`, whose port never answers, as
 *Not ready* and exits 1 (`warm-starts-and-warms-roles`); with `fixture-warm`'s
 role lock held by another change it leaves that role alone (*Another change is
-working on fixture-warm now*; `warm-leaves-held-role`). Without Docker or the
+working on fixture-warm now*; `warm-leaves-held-role`). The real
+`deep-thinking-app` role's files (copied into the container) are read with a
+fake `curl` that answers as LM Studio on 127.0.0.1:1234: `describe` offers
+`APP_PORT`, `APP_PATH` and the open `APP_MODEL` choice and no GPU option
+(`app-role-describe`); an add for `qwen3-32b` runs no `docker compose` step,
+writes the role record with `api=openai` and `path=/v1`, and the gateway
+configuration names it (`app-role-relays-to-the-app`); an add for a model the
+app doesn't list stops and keeps the record (`app-role-checks-the-app`); and
+remove takes only the record away (`app-role-remove`). Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 

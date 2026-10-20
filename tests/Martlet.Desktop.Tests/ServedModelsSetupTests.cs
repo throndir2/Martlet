@@ -156,4 +156,26 @@ public sealed class ServedModelsSetupTests
         Assert.Equal(0, ServedModels.Extra(loaded with { LoadedGb = 23 }, ServedModels.Gb(loaded)!.Value));
         Assert.Contains("loaded there now", DefaultSetup.WithServed(plan, [loaded], gpus, windows, 16, English, 64).Describe(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Models_the_apps_on_a_host_serve_are_planned_on_that_host()
+    {
+        var sources = RecommendedSetupInputs.HostServedFixture(DateTimeOffset.UtcNow);
+        var served = RecommendedSetupInputs.HostServed(sources);
+        // The embedding model is left out; the chat model is on lab-box, at lab-box's own loopback.
+        var model = Assert.Single(served);
+        Assert.Equal(("lab-box", "LM Studio", "http://127.0.0.1:1234/v1", "openai/gpt-oss-120b", (double?)63.4, (double?)0),
+            (model.MachineId, model.AppName, model.BaseUrl, model.ModelId, model.SizeGb, model.LoadedGb));
+        Assert.Contains(RecommendedSetupInputs.Request(sources).Request.ServedModels, m => m.MachineId == "lab-box");
+        // Use models your apps already run off, or the host not answering: none.
+        Assert.Empty(RecommendedSetupInputs.HostServed(sources with { Preferences = sources.Preferences with { UseServedModels = false } }));
+        Assert.Empty(RecommendedSetupInputs.HostServed(sources with
+        {
+            Computers = [.. sources.Computers.Select(c => c.Id == "lab-box" ? c with { Reachable = false } : c)]
+        }));
+        // The host's role list offers the Thinking pool with your own app only where the report lists served models.
+        var app = HostRoles.All.Single(r => r.Kind == HostRoles.AppDeepThinking);
+        Assert.False(HostRoles.OfferedOn(app, 1));
+        Assert.True(HostRoles.OfferedOn(app, 1, servesModels: true));
+    }
 }

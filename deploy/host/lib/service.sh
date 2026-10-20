@@ -13,16 +13,20 @@ settings_value() { conf_value "${CONF}/host.env" "$1"; }
 
 # host.json is generated from the host settings plus one fragment per installed role.
 render_config() {
-  local roles=() file kind endpoint model slots binding
+  local roles=() file kind endpoint model slots binding api path
   for file in "${CONF}/roles"/*.role; do
     [[ -e "${file}" ]] || continue
     kind="$(conf_value "${file}" kind)"
     [[ -n "${kind}" ]] || continue
     endpoint="$(conf_value "${file}" endpoint)"; model="$(conf_value "${file}" model)"; slots="$(conf_value "${file}" slots)"
+    api="$(conf_value "${file}" api)"; path="$(conf_value "${file}" path)"
     [[ "${kind}" =~ ^[a-z0-9-]+$ && "${endpoint}" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/$ && "${model}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ &&
-       ( -z "${slots}" || "${slots}" =~ ^[1-9]$ ) ]] ||
+       ( -z "${slots}" || "${slots}" =~ ^[1-9]$ ) && ( -z "${api}" || ( "${api}" == openai && "${path}" =~ ^(/v1|/api/v1|/engines/v1)$ ) ) ]] ||
       fail "Invalid role record ${file}."
-    if [[ -n "${slots}" && "${slots}" != 1 ]]; then
+    if [[ -n "${api}" ]]; then
+      # A relay to the owner's own model app (the deep-thinking-app role).
+      roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\",\"api\":\"${api}\",\"path\":\"${path}\"}")
+    elif [[ -n "${slots}" && "${slots}" != 1 ]]; then
       roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\",\"slots\":${slots}}")
     else
       roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\"}")

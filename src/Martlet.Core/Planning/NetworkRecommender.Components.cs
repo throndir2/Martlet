@@ -85,7 +85,7 @@ public static partial class NetworkRecommender
             const PlanComponent part = PlanComponent.DeepThinking;
             if (IsOff(part)) return (false, OffWhere(part), "You turned Deep thinking off.");
             var places = nodes.Where(n => n.Presence == Presence.Here && target.ThinkingPool.Contains(n.Id))
-                .SelectMany(n => n.Roles.Where(r => r.Kind == DeepThinkingRole).Select(r => $"{Label(r.Option, r.Kind)} on {CardText(n, r.Card)}"))
+                .SelectMany(n => n.Roles.Where(r => r.Kind == DeepThinkingRole).Select(r => r.App ? $"{Label(r.Option, r.Kind)} on {n.Name}" : $"{Label(r.Option, r.Kind)} on {CardText(n, r.Card)}"))
                 .Concat((request.OnlineThinkingPool ?? []).Select(m => $"{m}, online"))
                 .ToList();
             var suggestion = onlineDeep is { } deep

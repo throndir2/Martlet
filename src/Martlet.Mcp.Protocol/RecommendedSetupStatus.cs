@@ -29,6 +29,7 @@ internal static class RecommendedSetupStatus
     internal const string BetterFixtureName = "better";
     internal const string BigHostFixtureName = "bighost";
     internal const string BigSplitFixtureName = "bigsplit";
+    internal const string HostServedFixtureName = "hostserved";
 
     /// <summary>The made-up measurements of the "better" fixture: Gemma 4 E2B on gpu-box.</summary>
     private static (MeasuredModelMemory Memory, MeasuredFirstWords Speed) BetterMeasurements(DateTimeOffset now)
@@ -100,7 +101,14 @@ internal static class RecommendedSetupStatus
                 source = "fixture bigsplit (NOT real computers): the bighost network, but big-box runs Deep thinking with llama3.3:70b " +
                     "(about 46 GB), which no single 32 GB card has room for, so it runs split across two cards no live job uses (tensor split)";
             }
-            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\", \"{BetterFixtureName}\", \"{BigHostFixtureName}\" or \"{BigSplitFixtureName}\".");
+            else if (fixture == HostServedFixtureName)
+            {
+                sources = RecommendedSetupInputs.HostServedFixture(DateTimeOffset.UtcNow);
+                source = "fixture hostserved (NOT real computers or apps): this PC (a companion PC without a graphics card) and lab-box (a Linux " +
+                    "host with an RTX 4060, 8 GB, and 128 GB of memory, installed natively) that runs Deep thinking with Gemma 4 E4B; LM Studio " +
+                    "on lab-box serves openai/gpt-oss-120b (loaded) and an embedding model";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\", \"{BetterFixtureName}\", \"{BigHostFixtureName}\", \"{BigSplitFixtureName}\" or \"{HostServedFixtureName}\".");
         }
         else
         {
@@ -260,6 +268,8 @@ internal static class RecommendedSetupStatus
                     kind = c.Kind.ToString(), computer = Name(c.MachineId), summary = c.Summary, why = c.Why, away = c.Away, benefit = c.Benefit.ToString(),
                     roleKind = c.RoleKind, model = c.Model, job = c.Job, needsSomeoneThere = c.NeedsSomeoneThere, downloadGb = c.DownloadGb,
                     onProcessor = c.OnProcessor, gpuIndex = c.GpuIndex,
+                    // More choices the role is installed with (the deep-thinking-app role's APP_PORT and APP_PATH).
+                    choices = c.Choices,
                     // A model split across several cards (tensor split): every card it runs on.
                     gpuIndexes = c.GpuIndexes
                 }),

@@ -30,6 +30,11 @@ public sealed record HostDownload(string Role, string Model);
 /// says: <paramref name="Bytes"/> in all and <paramref name="GraphicsBytes"/> of that on the graphics card.</summary>
 public sealed record HostLoadedModel(string Role, string Model, long Bytes, long GraphicsBytes, int? ContextTokens = null, string? Digest = null);
 
+/// <summary>A chat model that a model app on the host serves on that host's loopback (LM Studio, llama.cpp, vLLM...), as its
+/// machine report says (<c>served_models</c>): the app (<paramref name="App"/>, <paramref name="AppName"/>), its port and API
+/// path, the model, its download size and, when loaded, the graphics memory it holds (0: loaded, amount not said).</summary>
+public sealed record HostServedModel(string App, string AppName, int Port, string Path, string Model, long? Bytes = null, long? LoadedBytes = null);
+
 /// <summary>What a paired Martlet host reported about itself (collected by martlet-host on that machine and
 /// served over the pinned, paired connection). Host-reported facts, not measurements or qualification.</summary>
 public sealed record HostHardware(
@@ -57,6 +62,9 @@ public sealed record HostHardware(
     /// <summary>What the host's Ollama roles had loaded when Martlet asked (newer hosts only; null otherwise). Not kept in
     /// host-hardware.json: Martlet keeps the measured memory in model-memory.json.</summary>
     [JsonIgnore] public IReadOnlyList<HostLoadedModel>? Loaded { get; init; }
+    /// <summary>The chat models the model apps on the host serve (newer hosts installed natively; null otherwise), for
+    /// Recommended setup's Use models your apps already run.</summary>
+    public IReadOnlyList<HostServedModel>? Served { get; init; }
 
     [JsonIgnore] public HostGpu? BestGpu => Gpus.OrderByDescending(g => g.IsNvidia).ThenByDescending(g => g.MemoryMb ?? 0).FirstOrDefault();
 
