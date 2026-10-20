@@ -10,7 +10,7 @@ internal enum DeviceRole { Companion, Host }
 /// <summary>Reads and writes device-role.txt in one folder: the welcome-tour choice. Absent means not chosen yet.</summary>
 internal static class DeviceRolePreference
 {
-    internal const string FileName = "device-role.txt";
+    internal const string FileName = DeviceRoleFile.FileName;
 
     internal static DeviceRole? Load(string directory)
     {
@@ -44,16 +44,9 @@ internal static class DeviceRolePreference
         }
     }
 
-    private static string Read(string directory)
-    {
-        // Shared for writing and deleting, so another Windows user's Martlet can replace the file while this one reads it.
-        using var stream = new FileStream(Path.Combine(directory, FileName), FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(stream);
-        var buffer = new char[16];
-        var count = reader.ReadBlock(buffer, 0, buffer.Length);
-        return new string(buffer, 0, count);
-    }
+    // Shared for writing and deleting, so another Windows user's Martlet can replace the file while this one reads it.
+    private static string Read(string directory) => DeviceRoleFile.ReadText(directory);
+
 
     private static DeviceRole? Parse(string text) => text.Trim() switch
     {

@@ -31,7 +31,7 @@ internal sealed record ReviewChoice(string Job, string Title, string Today, JobL
             JobLockState.Unlocked => "Unlocked: Martlet may choose a clearly better model when you reconfigure.",
             JobLockState.Locked => "Locked: Martlet keeps your choice and only suggests.",
             JobLockState.ChangedByHand => "Locked: you changed it by hand, so Martlet keeps it and only suggests.",
-            _ => "Locked: Martlet keeps what runs today and only suggests. Unlock it to let Martlet choose."
+            _ => "Locked: Martlet keeps what runs today and only suggests; unlock it to let Martlet choose."
         };
 }
 
@@ -203,14 +203,13 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         var places = recommendation.Changes.Select(c => c.MachineId).Where(id => id.Length > 0).Distinct(StringComparer.Ordinal).Count();
         var computersCount = request.Machines.Count;
         var summary = recommendation.AlreadyOptimal
-            ? $"Martlet checked {Count(computersCount, "computer")} against the recommended setup. Nothing needs to change."
-            : $"{Count(count, "change")}{(places > 0 ? $" on {Count(places, "computer")}" : "")}. Companion PCs stay light so games keep their graphics card, " +
-              "and each graphics card runs at most one language model. Nothing changes until you choose Reconfigure.";
+            ? $"Martlet checked {Count(computersCount, "computer")} against the recommended setup, and nothing needs to change."
+            : $"{Count(count, "change")}{(places > 0 ? $" on {Count(places, "computer")}" : "")}; nothing changes until you choose Reconfigure.";
         var better = recommendation.AlreadyOptimal && recommendation.BetterSetupAvailable;
         if (better)
-            summary = $"Your computers use the recommended setup. Martlet found a clearly better choice for " +
+            summary = $"Your computers use the recommended setup, but Martlet found a clearly better choice for " +
                 $"{string.Join(" and ", recommendation.Suggestions.Select(s => ClusterSync.Title(s.Job).ToLowerInvariant()))}, which you keep locked: " +
-                "see Your choices. Nothing changes unless you choose Use the suggestion or unlock the job.";
+                "see Your choices.";
         return new(better ? BetterTitle : recommendation.AlreadyOptimal ? OptimalTitle : "A better setup is ready for your computers", summary, computers, jobs,
             changes, notes, downloadText, manual, recommendation.AlreadyOptimal, recommendation.Fingerprint, cannotReply,
             FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()))

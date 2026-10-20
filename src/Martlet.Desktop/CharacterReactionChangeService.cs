@@ -5,7 +5,7 @@ using Martlet.Core.Contracts;
 namespace Martlet.Desktop;
 
 /// <summary>The character's own changes to how it reacts to touches (Companion › Touch › Changes the character made), made by the
-/// How I react check-in through the Touch reactions tools and kept in character-reaction-changes.json on this PC. A touch, a
+/// How I react check-in through the Touch reactions tools and kept in character-reaction-changes.json (the same on the person's computers). A touch, a
 /// stroke and the touch line use them over the owner's zones and temperament while they last
 /// (<see cref="Temperament"/>, <see cref="Zone"/>); the owner undoes them on the Touch page or with Reset.</summary>
 internal sealed class CharacterReactionChangeService(string? dataDirectory)
@@ -14,6 +14,13 @@ internal sealed class CharacterReactionChangeService(string? dataDirectory)
     private IReadOnlyList<CharacterReactionChange>? saved;
 
     internal event Action? Changed;
+
+    /// <summary>Reads the file again (after another computer's changes were taken).</summary>
+    internal void Reload()
+    {
+        lock (gate) saved = null;
+        Changed?.Invoke();
+    }
 
     /// <summary>Every change kept: read once, then kept up to date by each change made here.</summary>
     internal IReadOnlyList<CharacterReactionChange> Saved

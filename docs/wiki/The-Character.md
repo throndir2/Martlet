@@ -42,6 +42,9 @@ On **Companion › Speech bubbles**, choose speech bubbles beside her, subtitles
 
 Her mouth follows her voice. NVIDIA **Audio2Face** moves it more naturally, on this PC or on any of your computers that runs it. Put them in order on **Companion › Lip-sync**: when the first one is busy, the next one takes over. With none on, the mouth follows the loudness of Martlet's voice. Lip-sync uses no microphone, and the voice never waits for the animation.
 
+- Until Audio2Face is ready, the mouth follows the loudness of the voice. Martlet shows the install progress.
+- A friend can share lip-sync with you. Only this PC uses it, and your other computers keep theirs. The generated voice audio goes to the friend's computer and isn't kept there. The friend's own work comes first, so lip-sync can pause while their computer is busy; the voice goes on.
+
 ## Emotes, gestures and combos
 
 A reply can write a tag such as `{blush}` or `{nod}`. Martlet removes the tag from the text, and the character does it at that point in the sentence.

@@ -41,7 +41,7 @@ internal static class BackgroundDuties
             ? [.. SongClient.Members(dataDirectory)
                 .Concat(SongClient.VoiceMatchOff(dataDirectory) ? [] : SongClient.Members(dataDirectory, Martlet.Core.Cluster.PoolAreas.VoiceMatch))
                 .Select(m => m.Host?.HostId).OfType<string>().Distinct(StringComparer.Ordinal)]
-            : SingingPreferences.Load(dataDirectory).Host is { } host ? [host] : [];
+            : Martlet.Core.Singing.SingingPreferences.Load(dataDirectory).Host is { } host ? [host] : [];
 
     /// <summary>Paired computer <paramref name="host"/> as the place of a song it makes (the singing pool gave it the song).</summary>
     internal static BackgroundPlace? SingerOn(string host) => Computer(host, Singing);

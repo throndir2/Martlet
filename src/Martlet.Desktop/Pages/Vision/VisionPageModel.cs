@@ -12,9 +12,8 @@ internal sealed class VisionPageModel
     /// <summary>What Martlet can look at, in the order of the What Martlet looks at choices.</summary>
     internal static readonly (WatchKind Kind, string Title, string Detail)[] Sources =
     [
-        (WatchKind.ActiveWindow, "My active window", "The window you're using. Martlet skips its own windows, password managers and private browsers."),
-        (WatchKind.ActiveScreen, "My whole screen", "Every monitor, with the taskbar and pop-up notifications. Martlet greys out its own windows, " +
-            "password managers and private browsers, and looks right away when a notification pops up or a taskbar button flashes."),
+        (WatchKind.ActiveWindow, "My active window", "The window you're using, without Martlet's own windows, password managers and private browsers."),
+        (WatchKind.ActiveScreen, "My whole screen", "Every monitor with the taskbar and pop-ups, without Martlet's own windows, password managers and private browsers."),
         (WatchKind.Camera, "A camera", "A webcam, a capture card or your phone connected as a webcam."),
         (WatchKind.Url, "A phone or network camera address", "A snapshot or video stream address on your network.")
     ];
@@ -64,8 +63,8 @@ internal sealed class VisionPageModel
 
     /// <summary>The Now card's first line (VisionNow).</summary>
     internal string NowText => Prefs.Watch
-        ? $"On. Martlet looks at {Source.Label} occasionally. Comments: {CommentsLabel(Chattiness)}."
-        : $"Off. {OptionalExtras.OffMeans(CompanionTab.Vision)}.";
+        ? $"On: Martlet looks at {Source.Label} now and then (comments: {CommentsLabel(Chattiness)})."
+        : $"Off: {OptionalExtras.OffMeans(CompanionTab.Vision)}.";
 
     /// <summary>What to choose before vision can look, or null.</summary>
     internal string? SourceMissing => Prefs.Watch && !Chosen
@@ -92,10 +91,13 @@ internal sealed class VisionPageModel
     {
         var usual = services.UsualGaze;
         if (!Prefs.DecideGaze) return usual;
-        if (!Prefs.Watch) return "Vision is off, so the character keeps its usual gaze. Turn vision on above. " + usual;
-        if (SourceOf(Prefs, services.TypedAddress) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character keeps its usual gaze. " + usual;
+        if (!Prefs.Watch) return "Turn vision on above so Martlet can decide; until then, " + Lowered(usual);
+        if (SourceOf(Prefs, services.TypedAddress) is { IsScreen: false }) return "Martlet decides only while it watches your screen, so with a camera, " + Lowered(usual);
         return services.GazeNow;
     }
+
+    // "The character follows your mouse." in the middle of a sentence.
+    private static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
 
     /// <summary>Which model makes the screen summaries (<see cref="SenseJobRouting"/>): the image model, else a Thinking pool
     /// model that sees.</summary>
@@ -104,15 +106,15 @@ internal sealed class VisionPageModel
     /// <summary>The screen summary's status, from the decision of which model makes them (<paramref name="decision"/>): it names
     /// that model and, when it is the image model, the Thinking pool model that takes over when it can't.</summary>
     internal static string ScreenSummaryStatus(bool on, bool vision, SenseDecision decision) =>
-        !on ? "Off. Replies know only the newest picture."
-        : !vision ? "On, but vision is off. Turn vision on above."
+        !on ? "Off: replies know only the newest picture."
+        : !vision ? "On, but nothing is summed up until you turn vision on above."
         : decision.Taker switch
         {
-            SenseTaker.SenseModel => $"On. While Martlet watches, your image model ({decision.Name}) sums up what changed for your next message." +
-                (decision.Then is { Taker: SenseTaker.PoolMember } then ? $" When it can't, the Thinking pool does it ({then.Name})." : ""),
-            SenseTaker.PoolMember => $"On. While Martlet watches, a Thinking pool model that sees ({decision.Name}) sums up what changed for your next message.",
-            _ => "Off for now: no image model and no Thinking pool model that sees takes them. Choose an image model above, or add one " +
-                "that sees in Companion › Thinking pool."
+            SenseTaker.SenseModel => $"On: while Martlet watches, your image model ({decision.Name}) sums up what changed for your next message" +
+                (decision.Then is { Taker: SenseTaker.PoolMember } then ? $", and the Thinking pool does it when it can't ({then.Name})." : "."),
+            SenseTaker.PoolMember => $"On: while Martlet watches, a Thinking pool model that sees ({decision.Name}) sums up what changed for your next message.",
+            _ => "Off for now: no image model and no Thinking pool model that sees takes them, so choose an image model above or add " +
+                "one that sees in Companion › Thinking pool."
         };
 
     /// <summary>What Martlet captures and where it goes (VisionDisclosure), for what it looks at and how chatty it is, with the
@@ -144,7 +146,7 @@ internal sealed class VisionPageModel
     internal void SetWatch(bool on)
     {
         services.SaveTalk(services.Talk with { Watch = on }, render: true);
-        services.ShowStatus(on ? "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look."
+        services.ShowStatus(on ? "Vision is on: press Start watching on Home or in the talk window when you want Martlet to look."
             : "Vision is off.");
     }
 

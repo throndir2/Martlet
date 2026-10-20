@@ -33,8 +33,8 @@ Anyone who has the link can use what it shares. Send it only to your friend.
 
 **Share › Hosts shared with this PC** lists each host a friend shares with you. It shows the engines and the language models that the host offers.
 
-- Choose **Use for thinking**, **Use for listening**, **Use for speaking**, **Use for lip-sync** or **Use for reading** to give a job to it. This choice is for this PC only.
-- **Forget** gives the jobs back and removes the host.
+- Choose **Use for thinking**, **Use for listening**, **Use for speaking**, **Use for lip-sync** or **Use for reading** to give a job to it. This choice is for this PC only. This PC uses only the host's engines.
+- **Forget** gives the jobs back and removes the host. A shared host that you forget on one PC stays in your Martlet network for your other computers, and this PC doesn't pair with it again by itself.
 - Your friend's own work comes first. When they need their host, your Martlet uses your own computers or tries again later.
 - Your friend's host sees the requests that this PC sends there, but never your settings or memories.
 

@@ -210,15 +210,21 @@ These parts carry the shared settings and must agree with `SettingsFiles`:
 | --- | --- |
 | Shared sections of `settings.json` and `lorebooks.json` (Thinking, Listening, Speaking, the Thinking pool and others); `settings.json` is not a `SettingsFiles` row | `AppSettingsSections` (`src\Martlet.Core\Sync\AppSettingsSections.cs`) |
 | Shared sections of the desktop's own files (`talk`, `character`, `model-abilities`, `work-sharing` and others) | `DesktopSections()` (`src\Martlet.Desktop\MainWindow.SettingsSync.cs`) |
+| The per-model character files (touch zones, eyes, VRoid Hub credits, the character's own reaction changes) | `CharacterSharedSections` (`src\Martlet.Avatar.Hosting\CharacterSharedSections.cs`) |
+| Keeping clips of unnamed voices | `VoiceChoices.ClipsSection` (`src\Martlet.Core\Speakers\VoiceChoices.cs`) |
+| Discord (with its bot token) and Telegram and WhatsApp (with their secrets) | `DiscordSharing` (`src\Martlet.Discord\DiscordSharing.cs`), `MessagingSharing` (`src\Martlet.Messaging\MessagingSharing.cs`) |
 | Household or each person | `SettingScopes` (`src\Martlet.Core\Sync\SettingScopes.cs`) |
 | Pool lists: `pools.json` (shared) or `pools-local.json` (this PC) | `PoolArea.Shared` (`src\Martlet.Core\Cluster\Pools.cs`) |
 
 The rule is in [AGENTS.md](../AGENTS.md#martlet-is-one-app-configuration-is-shared):
 share by default; keep a setting local only when it describes the computer.
 A new settings file gets a `SettingsFiles` row, a store and, when it is not
-shared, a row in CLUSTER.md.
+shared, a row in CLUSTER.md. A file that holds no choice (status, cache,
+record) is named in `SettingsFiles.NotSettings` instead.
 
-**Tests:** `SettingsFilesTests` (every local file has its CLUSTER.md row),
+**Tests:** `SettingsFilesTests` (every local file has its CLUSTER.md row, and
+every file name a store declares is registered or named as not a setting),
+`SharedFilesTwoComputersTests`,
 `AccountSettingsTests` and `ThinkingPoolShareTests` (Martlet.Core.Tests);
 `SettingsFileStoreTests` and `ClusterSyncTests` (Martlet.Desktop.Tests).
 

@@ -40,7 +40,7 @@ public partial class AudioSetupWindow : ThemedWindow
     private string? reloadHint;
     private string? micResult, outputResult;
     private bool micProblem;
-    private string stages = "Microphone: not tested. Speakers: not tested.";
+    private string stages = "Microphone and speakers: not tested.";
     private string discoveryStage = "Devices: not checked.";
     private string microphoneStage = "Microphone: not tested.";
     private string outputStage = "Speakers: not tested.";
@@ -88,8 +88,8 @@ public partial class AudioSetupWindow : ThemedWindow
     {
         if (closed) return false;
         if (!busy && !operations.IsRunning && !locked) return true;
-        ResultText.Text = "Another setup task is still finishing, or Windows is locked. Try again in a moment.";
-        Say(locked ? "Tests are paused while Windows is locked." : "Another setup task is still finishing. Try again in a moment.");
+        ResultText.Text = "Another setup task is still finishing, or Windows is locked; try again in a moment.";
+        Say(locked ? "Tests are paused while Windows is locked." : "Another setup task is still finishing; try again in a moment.");
         return false;
     }
 
@@ -106,14 +106,14 @@ public partial class AudioSetupWindow : ThemedWindow
         finally { loading = false; }
         if (result?.Loaded is not { } loaded)
         {
-            if (!closed) reloadHint = "Could not load your settings. Click Reload to try again.";
+            if (!closed) reloadHint = "Could not load your settings; click Reload to try again.";
             return;
         }
         draft = loaded.Error is null ? SetupSettings.Begin(loaded.Settings) : null;
         persisted = loaded.Settings?.Audio;
         revision = loaded.Revision;
         needsReload = loaded.Error is not null;
-        reloadHint = loaded.Error is { } error ? $"Could not load your settings: {error.Summary} Click Reload to try again." : null;
+        reloadHint = loaded.Error is { } error ? $"Could not load your settings ({error.Summary.TrimEnd('.')}); click Reload to try again." : null;
         saveQueued = false;
         confirmableOutput = null;
         devices = null;
@@ -121,8 +121,7 @@ public partial class AudioSetupWindow : ThemedWindow
         MicMeter.Value = 0;
         DevicesText.Text = "Looking for microphones and speakers...";
         if (draft is not null) draft = draft with { Audio = draft.Audio ?? AudioSettings.Create() };
-        ResultText.Text = loaded.Error?.Summary ??
-            "Settings loaded. Devices are listed automatically, and choices save as you go.";
+        ResultText.Text = loaded.Error?.Summary ?? "Settings loaded.";
         message = "";
         RenderChoices();
         RenderStatus();
@@ -167,8 +166,8 @@ public partial class AudioSetupWindow : ThemedWindow
         if (next.Input != choices.Input) { micResult = null; MicMeter.Value = 0; }
         if (next.Output != choices.Output) { confirmableOutput = null; outputResult = null; }
         draft = draft with { Audio = next };
-        ResultText.Text = "Choice saved. Test it any time to check that it works.";
-        message = "Changed. Test it any time to check that it works.";
+        ResultText.Text = "Choice saved; test it any time to check that it works.";
+        message = "Changed; test it any time to check that it works.";
         QueueSave();
         RenderStatus();
         RenderActions();
@@ -220,12 +219,12 @@ public partial class AudioSetupWindow : ThemedWindow
         var input = action == AudioSetupAction.Microphone;
         var choice = input ? choices.Input : choices.Output;
         if (action != AudioSetupAction.Discovery && !Confirm(input
-                ? $"Test {Named(choice, true)}?{Environment.NewLine}{Environment.NewLine}Talk or hum for up to 5 seconds. Nothing is saved or sent."
-                : $"Play a short, quiet sound on {Named(choice, false)}?{Environment.NewLine}{Environment.NewLine}Check your volume first. Martlet will not change it.",
+                ? $"Test {Named(choice, true)} by talking or humming for up to 5 seconds, with nothing saved or sent?"
+                : $"Play a short, quiet sound on {Named(choice, false)} at your current volume (check it first)?",
             input ? "Test microphone" : "Play test sound"))
         {
-            ResultText.Text = "Test canceled. Nothing was opened.";
-            Say("Test canceled. Nothing was opened.");
+            ResultText.Text = "Test canceled, so nothing was opened.";
+            Say("Test canceled, so nothing was opened.");
             return;
         }
         if (!MayStart()) return;
@@ -265,21 +264,22 @@ public partial class AudioSetupWindow : ThemedWindow
                     devices = found;
                     RenderChoices();
                 }
-                ResultText.Text = $"Found {found.Inputs.Count} microphone(s) and {found.Outputs.Count} speaker(s). Open a device list to refresh it." +
-                    (found.Inputs.Count == 0 || found.Outputs.Count == 0 ? " Reconnect or enable the missing device in Windows Sound settings." : "");
+                ResultText.Text = $"Found {found.Inputs.Count} microphone(s) and {found.Outputs.Count} speaker(s)" +
+                    (found.Inputs.Count == 0 || found.Outputs.Count == 0 ? "; reconnect or enable the missing device in Windows Sound settings."
+                        : "; open a device list to refresh it.");
                 DevicesText.Text = Found(found);
             }
             else
             {
                 ResultText.Text = "Audio action could not finish: " + status.Stage + ". " + AudioSetupDiagnostics.Remedy(status.Error);
-                if (devices is null) DevicesText.Text = "Couldn't list devices. Martlet uses your Windows defaults; open a list to look again.";
-                if (result.Outcome != SetupWorkOutcome.Canceled) message = "Couldn't list devices. " + Problem(status.Error, input: true);
+                if (devices is null) DevicesText.Text = "Couldn't list devices, so Martlet uses your Windows defaults; open a list to look again.";
+                if (result.Outcome != SetupWorkOutcome.Canceled) message = "Couldn't list devices: " + Problem(status.Error, input: true);
             }
         }
         else if (result.Outcome == SetupWorkOutcome.Canceled)
         {
             ResultText.Text = "Audio action could not finish: " + status.Stage + ". " + AudioSetupDiagnostics.Remedy(status.Error);
-            message = "Test stopped. Nothing changed.";
+            message = "Test stopped; nothing changed.";
         }
         else
         {
@@ -291,14 +291,14 @@ public partial class AudioSetupWindow : ThemedWindow
                     : current with { Output = current.Output with { Checkpoint = checkpoint } } };
             if (checkpoint is not null)
             {
-                if (input) { micResult = "Working. Martlet picked up sound from this microphone."; micProblem = false; }
+                if (input) { micResult = "Working: Martlet picked up sound from this microphone."; micProblem = false; }
                 else confirmableOutput = checkpoint.ConfigurationRevision;
                 ResultText.Text = status.Stage;
             }
             else if (input && status.Signal is { } signal and (AudioInputSignal.NoFrames or AudioInputSignal.BelowAdvisoryThreshold
                 or AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude))
             {
-                ResultText.Text = $"Microphone test needs attention: {status.Stage}. " + InputSignalRemedy(signal);
+                ResultText.Text = $"Microphone test needs attention ({status.Stage.TrimEnd('.')}): " + LowerFirst(InputSignalRemedy(signal));
                 micResult = SignalProblem(signal);
                 micProblem = true;
             }
@@ -306,7 +306,7 @@ public partial class AudioSetupWindow : ThemedWindow
             {
                 ResultText.Text = "Audio action could not finish: " + status.Stage + ". " + AudioSetupDiagnostics.Remedy(status.Error);
                 if (input) { micResult = Problem(status.Error, input: true); micProblem = true; }
-                else outputResult = "The test sound did not play. " + Problem(status.Error, input: false);
+                else outputResult = "The test sound did not play: " + Problem(status.Error, input: false);
             }
             ownedAudio = null;
             QueueSave();
@@ -319,34 +319,35 @@ public partial class AudioSetupWindow : ThemedWindow
     private static string Found(AudioDeviceList list)
     {
         static string Count(int count, string one, string many) => count == 1 ? "1 " + one : $"{count} {many}";
-        const string remedy = " Plug it in or turn it on in Windows Sound settings, then open the list again.";
+        const string remedy = ": plug it in or turn it on in Windows Sound settings, then open the list again.";
         var inputs = Count(list.Inputs.Count, "microphone", "microphones");
         var outputs = Count(list.Outputs.Count, "speaker or headset", "speakers or headsets");
-        return list.Inputs.Count == 0 && list.Outputs.Count == 0 ? "No microphones or speakers found." + remedy
-            : list.Inputs.Count == 0 ? $"Found {outputs}, but no microphone." + remedy
-            : list.Outputs.Count == 0 ? $"Found {inputs}, but no speakers or headset." + remedy
-            : $"Found {inputs} and {outputs}. Martlet uses your Windows defaults unless you pick another below.";
+        return list.Inputs.Count == 0 && list.Outputs.Count == 0
+                ? "No microphones or speakers found: plug them in or turn them on in Windows Sound settings, then open the list again."
+            : list.Inputs.Count == 0 ? $"Found {outputs}, but no microphone" + remedy
+            : list.Outputs.Count == 0 ? $"Found {inputs}, but no speakers or headset" + remedy
+            : $"Found {inputs} and {outputs}.";
     }
 
     private static string SignalProblem(AudioInputSignal signal) => signal switch
     {
-        AudioInputSignal.NoFrames => "No sound came through. Check that the microphone is plugged in and that Windows lets desktop apps use it (Settings > Privacy & security > Microphone).",
-        AudioInputSignal.BelowAdvisoryThreshold => "Too quiet. Check that the microphone is not muted and its Windows input level is up, then try again.",
-        AudioInputSignal.InsufficientFrames => "The microphone stopped sending sound partway through. Check its connection, then test again.",
-        AudioInputSignal.IntermittentAmplitude => "Only a short sound came through. Keep talking or humming during the test, then try again.",
+        AudioInputSignal.NoFrames => "No sound came through: check that the microphone is plugged in and that Windows lets desktop apps use it.",
+        AudioInputSignal.BelowAdvisoryThreshold => "Too quiet: check that the microphone isn't muted and its Windows input level is up.",
+        AudioInputSignal.InsufficientFrames => "The microphone stopped sending sound partway through; check its connection, then test again.",
+        AudioInputSignal.IntermittentAmplitude => "Only a short sound came through; keep talking or humming during the test.",
         _ => throw new ArgumentOutOfRangeException(nameof(signal))
     };
 
     private static string Problem(ErrorCode? code, bool input) => code switch
     {
-        ErrorCode.AudioAccessDenied => "Windows is blocking the microphone. Open Settings > Privacy & security > Microphone and let desktop apps use it.",
-        ErrorCode.AudioDeviceBusy => "Another app is using this device. Close that app, then try again.",
-        ErrorCode.AudioFormatUnsupported => "This device uses an audio format Martlet can't open. Pick another device.",
+        ErrorCode.AudioAccessDenied => "Windows is blocking the microphone: let desktop apps use it in Settings > Privacy & security > Microphone.",
+        ErrorCode.AudioDeviceBusy => "Another app is using this device; close that app, then try again.",
+        ErrorCode.AudioFormatUnsupported => "This device uses an audio format Martlet can't open, so pick another device.",
         ErrorCode.AudioDeviceUnavailable or ErrorCode.AudioDeviceLost or ErrorCode.AudioDeviceChanged =>
-            "The device was unplugged or changed. Reconnect it, then pick it again from the list.",
-        ErrorCode.DeadlineExceeded => "The test took too long. Try again.",
-        ErrorCode.AudioCaptureFailed or ErrorCode.AudioPlaybackFailed => "The device stopped responding. If tests stay unavailable, restart Martlet.",
-        _ => input ? "The test didn't finish. Check the microphone, then try again." : "Check that your speakers or headset are connected and turned up, then try again."
+            "The device was unplugged or changed; reconnect it, then pick it again from the list.",
+        ErrorCode.DeadlineExceeded => "The test took too long; try again.",
+        ErrorCode.AudioCaptureFailed or ErrorCode.AudioPlaybackFailed => "The device stopped responding; if tests stay unavailable, restart Martlet.",
+        _ => input ? "The test didn't finish; check the microphone, then try again." : "Check that your speakers or headset are connected and turned up, then try again."
     };
 
     private async Task<SetupWorkResult?> ObserveAsync(SetupOperation worker, TimeSpan timeout)
@@ -368,10 +369,10 @@ public partial class AudioSetupWindow : ThemedWindow
                 if (ReferenceEquals(worker, ownedSettings))
                 {
                     needsReload = true;
-                    reloadHint = "Saving or loading didn't finish. Click Reload to check your choices.";
+                    reloadHint = "Saving or loading didn't finish; click Reload to check your choices.";
                 }
-                else if (timedOut) message = "The device didn't respond in time. Wait a moment, then try again.";
-                ResultText.Text = "Audio action stopped or timed out. Wait for the device to finish, then try again.";
+                else if (timedOut) message = "The device didn't respond in time; wait a moment, then try again.";
+                ResultText.Text = "Audio action stopped or timed out; wait for the device to finish, then try again.";
                 RetireAudioObservation();
                 ownedAudio = null;
                 confirmableOutput = null;
@@ -381,8 +382,8 @@ public partial class AudioSetupWindow : ThemedWindow
             if (result.Outcome != SetupWorkOutcome.Completed && ReferenceEquals(worker, ownedSettings))
             {
                 needsReload = true;
-                reloadHint = "Saving or loading didn't finish. Click Reload to check your choices.";
-                ResultText.Text = "Settings could not be saved. Reload and review your choices.";
+                reloadHint = "Saving or loading didn't finish; click Reload to check your choices.";
+                ResultText.Text = "Settings could not be saved; reload and review your choices.";
             }
             return result;
         }
@@ -407,7 +408,7 @@ public partial class AudioSetupWindow : ThemedWindow
         var remedy = status.Signal is AudioInputSignal.NoFrames or AudioInputSignal.BelowAdvisoryThreshold
             or AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude
             ? InputSignalRemedy(status.Signal.Value) : AudioSetupDiagnostics.Remedy(status.Error);
-        var stage = $"{status.Action}: {status.Stage}. " + remedy;
+        var stage = $"{status.Action}: {status.Stage.TrimEnd('.')}" + (string.IsNullOrEmpty(remedy) ? "." : "; " + LowerFirst(remedy));
         switch (status.Action)
         {
             case AudioSetupAction.Discovery: discoveryStage = stage; break;
@@ -425,10 +426,10 @@ public partial class AudioSetupWindow : ThemedWindow
             else if (status.Peak is { } peak && status.Rms is { } rms)
             {
                 var label = status.Finished ? "Final microphone check" : "Live microphone check";
-                var summary = status.Signal == AudioInputSignal.BelowAdvisoryThreshold ? "Too quiet. " :
-                    status.Signal is AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude ? "Needs more steady sound. " :
-                    status.Signal == AudioInputSignal.DetectableAmplitude ? "Level is strong enough. " : "";
-                LevelText.Text = $"{label}: peak {peak:P0}; average {rms:P0}. {summary}This checks volume only, not speech recognition.";
+                var summary = status.Signal == AudioInputSignal.BelowAdvisoryThreshold ? "; too quiet" :
+                    status.Signal is AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude ? "; needs more steady sound" :
+                    status.Signal == AudioInputSignal.DetectableAmplitude ? "; level is strong enough" : "";
+                LevelText.Text = $"{label}: peak {peak:P0}; average {rms:P0}{summary} (volume only, not speech recognition).";
                 MicMeter.Value = Meter(rms);
             }
             else if (status.Finished)
@@ -440,16 +441,19 @@ public partial class AudioSetupWindow : ThemedWindow
         RenderStatus();
     }
 
+    /// <summary><paramref name="text"/> with a small first letter, to go after a colon or semicolon.</summary>
+    private static string LowerFirst(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
+
     private static string InputSignalRemedy(AudioInputSignal signal) => signal switch
     {
         AudioInputSignal.NoFrames =>
-            "Check the selected microphone, its connection and Windows microphone privacy settings. Open the device list again, then test it.",
+            "Check the selected microphone, its connection and Windows microphone privacy settings, then open the device list and test it again.",
         AudioInputSignal.BelowAdvisoryThreshold =>
             "Check the selected microphone, hardware mute, Windows input level and microphone privacy settings, then test it again.",
         AudioInputSignal.InsufficientFrames =>
             "Check the microphone connection and Windows microphone privacy settings, then open the device list and test it again.",
         AudioInputSignal.IntermittentAmplitude =>
-            "A brief click is not enough. Check the microphone and input level, then keep talking or humming during the next test.",
+            "A brief click isn't enough: check the microphone and input level, then keep talking or humming during the next test.",
         _ => throw new ArgumentOutOfRangeException(nameof(signal))
     };
 
@@ -478,12 +482,12 @@ public partial class AudioSetupWindow : ThemedWindow
         HeardButton.IsEnabled = available && confirmable;
         HeardButton.Visibility = confirmable ? Visibility.Visible : Visibility.Collapsed;
         ActivityText.Text = operations.IsRunning
-            ? "Another setup task is active. You can stop or close this window."
-            : locked ? "Windows is locked. Unlock it, then start a new test."
-            : "Ready. No test is running.";
+            ? "Another setup task is active; you can stop or close this window."
+            : locked ? "Windows is locked; unlock it, then start a new test."
+            : "Ready, with no test running.";
         MessageText.Text = locked ? "Tests are paused while Windows is locked."
             : needsReload && reloadHint is not null ? reloadHint
-            : operations.IsRunning && !busy && !saving ? "Another setup task is still finishing. Tests come back when it's done."
+            : operations.IsRunning && !busy && !saving ? "Another setup task is still finishing; tests come back when it's done."
             : message;
         RenderDevices(confirmable);
     }
@@ -501,34 +505,34 @@ public partial class AudioSetupWindow : ThemedWindow
             ShowState(MicBadge, micProblem ? "Needs attention" : "Working", micProblem ? "WarningBrush" : "SuccessBrush", MicText, micResult);
         else if (choices is not null && AudioDeviceList.Present(choices.Input, devices?.Inputs) == false)
             ShowState(MicBadge, "Not found", "WarningBrush", MicText, choices.Input.EndpointId is null
-                ? "No microphone found. Plug one in or turn it on in Windows Sound settings, then open the list above. You can still type."
-                : $"{Named(choices.Input, true)} isn't connected. Plug it in, or pick another microphone above.");
+                ? "No microphone found: plug one in or turn it on in Windows Sound settings, then open the list above."
+                : $"{Named(choices.Input, true)} isn't connected; plug it in, or pick another microphone above.");
         else if (choices?.Input.Checkpoint is { } heard)
-            ShowState(MicBadge, "Working", "SuccessBrush", MicText, $"Working. Last tested {heard.TestedAt.ToLocalTime():d}.");
+            ShowState(MicBadge, "Working", "SuccessBrush", MicText, $"Working, last tested {heard.TestedAt.ToLocalTime():d}.");
         else if (checking)
             ShowState(MicBadge, "Checking", null, MicText, "Looking for your microphone...");
         else
             ShowState(MicBadge, "Ready", "SuccessBrush", MicText,
-                $"Using {Named(choices?.Input ?? AudioChoice.Default(true), true)}. Test it any time to check that Martlet hears you.");
+                $"Using {Named(choices?.Input ?? AudioChoice.Default(true), true)}; test it any time to check that Martlet hears you.");
 
         if (running == AudioSetupAction.Output)
             ShowState(OutputBadge, "Testing", "AccentBrush", OutputText, "Playing a short beep...");
         else if (confirmable)
             ShowState(OutputBadge, "Did you hear it?", "AccentBrush", OutputText,
-                "Did you hear a short beep? If not, check your volume and the device picked above, then play it again.");
+                "Click Yes, I heard it if you heard a short beep, or check your volume and the device above, then play it again.");
         else if (outputResult is not null)
             ShowState(OutputBadge, "Needs attention", "WarningBrush", OutputText, outputResult);
         else if (choices is not null && AudioDeviceList.Present(choices.Output, devices?.Outputs) == false)
             ShowState(OutputBadge, "Not found", "WarningBrush", OutputText, choices.Output.EndpointId is null
-                ? "No speakers or headset found. Plug them in or turn them on in Windows Sound settings, then open the list above."
-                : $"{Named(choices.Output, false)} isn't connected. Plug it in, or pick other speakers above.");
+                ? "No speakers or headset found: plug them in or turn them on in Windows Sound settings, then open the list above."
+                : $"{Named(choices.Output, false)} isn't connected; plug it in, or pick other speakers above.");
         else if (choices?.Output.Checkpoint is { Outcome: LocalAudioOutcome.Heard } played)
-            ShowState(OutputBadge, "Working", "SuccessBrush", OutputText, $"Working. You heard the test sound on {played.TestedAt.ToLocalTime():d}.");
+            ShowState(OutputBadge, "Working", "SuccessBrush", OutputText, $"Working: you heard the test sound on {played.TestedAt.ToLocalTime():d}.");
         else if (checking)
             ShowState(OutputBadge, "Checking", null, OutputText, "Looking for your speakers...");
         else
             ShowState(OutputBadge, "Ready", "SuccessBrush", OutputText,
-                $"Using {Named(choices?.Output ?? AudioChoice.Default(false), false)}. Play a test sound any time to check that you can hear Martlet.");
+                $"Using {Named(choices?.Output ?? AudioChoice.Default(false), false)}; play a test sound any time to check that you can hear Martlet.");
     }
 
     private static void ShowState(TextBlock badge, string state, string? brush, TextBlock detail, string text)
@@ -545,7 +549,7 @@ public partial class AudioSetupWindow : ThemedWindow
         draft = draft with { Audio = choices with { Output = choices.Output with { Checkpoint = checkpoint with { Outcome = LocalAudioOutcome.Heard } } } };
         confirmableOutput = null;
         outputResult = null;
-        ResultText.Text = "Thanks. Martlet saved that you heard the test sound.";
+        ResultText.Text = "Thanks, Martlet saved that you heard the test sound.";
         message = "";
         QueueSave();
         RenderStatus();
@@ -583,7 +587,7 @@ public partial class AudioSetupWindow : ThemedWindow
                 if (!saved.Save.Saved)
                 {
                     needsReload = true;
-                    reloadHint = "Couldn't save because your settings changed in another window. Click Reload, then pick again.";
+                    reloadHint = "Couldn't save because your settings changed in another window; click Reload, then pick again.";
                     ResultText.Text = saved.Summary;
                     return;
                 }
@@ -606,7 +610,7 @@ public partial class AudioSetupWindow : ThemedWindow
         confirmableOutput = null;
         if (ownedAudio is null) return;
         if (Discovering) discoveryQueued = devices is null;
-        else message = "Test stopped. Nothing changed.";
+        else message = "Test stopped; nothing changed.";
         ownedAudio.Stop();
         observation?.Cancel();
         RetireAudioObservation();
@@ -615,7 +619,7 @@ public partial class AudioSetupWindow : ThemedWindow
     private void RetireAudioObservation()
     {
         if (ownedAudio is not { } operation) return;
-        var stage = $"{operation.Status.Action}: stopped. Waiting for the device to finish.";
+        var stage = $"{operation.Status.Action}: stopped, waiting for the device to finish.";
         switch (operation.Status.Action)
         {
             case AudioSetupAction.Discovery: discoveryStage = stage; break;

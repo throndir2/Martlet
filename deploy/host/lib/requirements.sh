@@ -294,10 +294,11 @@ gpu_sharing_note() {
 # its options (a variant's own choice only when that variant runs; installs from before the role had variants run its
 # profile_legacy), and "accelerator|gpu" or "accelerator|cpu" for a role with a gpu entry. Nothing when it isn't installed.
 role_current() {
-  local role="$1" file="${PROJECTS}/$1/.env" conf condition line var label options default value from legacy when
+  local role="$1" file="${PROJECTS}/$1/.env" conf condition line var label options default value from legacy when open
   [[ -f "$(installed_file "${role}")" && -f "${file}" ]] || return 0
   conf="$(role_dir "${role}")/role.conf"
   from="$(conf_value "${conf}" profile_from)"; legacy="$(conf_value "${conf}" profile_legacy)"
+  open=" $(conf_values "${conf}" choice_open | tr '\n' ' ') "
   while IFS=$'\t' read -r condition line; do
     [[ "${line%%=*}" == choice ]] || continue
     IFS='|' read -r var label options default <<< "${line#*=}"
@@ -309,7 +310,9 @@ role_current() {
     fi
     value="$(conf_value "${file}" "${var}")"
     if [[ -z "${value}" && -n "${from}" && "${var}" == "${from}" ]]; then value="${legacy}"; fi
-    if [[ -n "${value}" && " ${options} " == *" ${value} "* ]]; then printf 'choice|%s|%s\n' "${var}" "${value}"; fi
+    if [[ -n "${value}" ]] && { [[ " ${options} " == *" ${value} "* ]] || { [[ "${open}" == *" ${var} "* ]] && open_value "${value}"; }; }; then
+      printf 'choice|%s|%s\n' "${var}" "${value}"
+    fi
   done < <(conf_lines "${conf}")
   value="$(conf_value "${file}" MARTLET_ACCELERATOR)"
   if [[ "${value}" == gpu || "${value}" == cpu ]]; then printf 'accelerator|%s\n' "${value}"; fi

@@ -95,8 +95,8 @@ internal static class F5Voices
 
     /// <summary>What to tell the owner when <paramref name="count"/> voices didn't fit this PC's voice list.</summary>
     internal static string FullText(int count) =>
-        $"{count} voice{(count == 1 ? "" : "s")} didn't fit: Martlet keeps {SpeakingVoiceLibrary.MaximumVoices:N0} voices on each computer. " +
-        "Remove voices you no longer use under Companion > Voice > Voices.";
+        $"{count} voice{(count == 1 ? "" : "s")} didn't fit (Martlet keeps {SpeakingVoiceLibrary.MaximumVoices:N0} voices on each computer), so " +
+        "remove voices you no longer use under Companion > Voice > Voices.";
 
     /// <summary>The voice to speak with on <paramref name="destination"/> when the owner has not picked one there: the voice
     /// chosen on all computers, else the one applied here, else the first in the list. Never a recording Martlet no longer
@@ -117,7 +117,7 @@ internal static class F5Voices
             ?? library.Live.Select(v => result.Local.GetValueOrDefault(v.Id)).OfType<F5ReferenceSnapshot>().FirstOrDefault(Usable)
             ?? throw new InvalidOperationException(engine is null || result.Local.Count == 0
                 ? "Add a voice under Companion > Voice > Voices first."
-                : $"None of your voices suits {engine.Name}. Add a recording it can use under Companion > Voice > Voices.");
+                : $"None of your voices suits {engine.Name}, so add a recording it can use under Companion > Voice > Voices.");
         if (library.ChosenVoice is null) Commit(dataDirectory, library.Choose(F5SharedVoices.Id(voice), by, DateTimeOffset.UtcNow));
         return voice;
     }
@@ -232,15 +232,15 @@ internal static class F5Voices
 
     internal static string Describe(F5Exception error) => error.Failure switch
     {
-        F5Failure.SourceMissing => "That recording is no longer where you chose it. Choose it again.",
-        F5Failure.SourceChanged => "That recording changed while Martlet was reading it. Try again.",
-        F5Failure.InvalidAudio => "That recording can't be used. Choose a clear recording of 1 to 30 seconds.",
+        F5Failure.SourceMissing => "That recording is no longer where you chose it, so choose it again.",
+        F5Failure.SourceChanged => "That recording changed while Martlet was reading it; try again.",
+        F5Failure.InvalidAudio => "That recording can't be used; choose a clear recording of 1 to 30 seconds.",
         F5Failure.RightsRequired => "Confirm that you may use this voice.",
-        F5Failure.Busy => "Martlet is busy with your voices. Try again in a moment.",
-        F5Failure.LimitExceeded => "The voice list is full. Remove one you no longer use first.",
-        F5Failure.Conflict => "Martlet speaks with this voice now. Switch to another voice first, then remove it.",
+        F5Failure.Busy => "Martlet is busy with your voices; try again in a moment.",
+        F5Failure.LimitExceeded => "The voice list is full, so remove one you no longer use first.",
+        F5Failure.Conflict => "Martlet speaks with this voice now, so switch to another voice before you remove it.",
         F5Failure.NotFound => "That voice is no longer in your list.",
-        F5Failure.CorruptStore => "Martlet's copy of this voice is damaged. Remove it and add the recording again.",
+        F5Failure.CorruptStore => "Martlet's copy of this voice is damaged, so remove it and add the recording again.",
         _ => $"Couldn't use this voice ({error.Failure})."
     };
 }

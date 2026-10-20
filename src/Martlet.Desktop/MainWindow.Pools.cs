@@ -16,6 +16,9 @@ internal sealed record PoolListOptions
     public string Heading { get; init; } = "Where it runs";
     /// <summary>Text under the heading.</summary>
     public string? Intro { get; init; }
+    /// <summary>The wiki page and heading ("Singing#set-it-up") with the full instructions: the page then shows only the
+    /// <see cref="Intro"/>'s first sentence, with a "?" (Help-Pool-&lt;area&gt;-Intro) that has all of it and links there.</summary>
+    public string? Wiki { get; init; }
     /// <summary>The member's state in plain words ("Runs Chatterbox", "Not reachable"...); null: nothing to add.</summary>
     public Func<PoolMember, string?>? Status { get; init; }
     /// <summary>The area's settings editor for one member (engine, model, workflow...); null: the member has none. Shown under the
@@ -68,7 +71,10 @@ public partial class MainWindow
         var id = "Pool-" + area.Id;
         var list = store is null ? new PoolList { Area = area.Id } : WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
         var stack = new List<UIElement> { Heading(options.Heading) };
-        if (options.Intro is not null) stack.Add(Note(options.Intro, new Thickness(0, 0, 0, 8)));
+        if (options.Intro is not null)
+            stack.Add(options.Wiki is not null
+                ? HelpTip.Explain(options.Intro, new Thickness(0, 0, 0, 8), id + "-Intro", options.Heading, options.Wiki)
+                : Note(options.Intro, new Thickness(0, 0, 0, 8)));
         var summary = Note(PoolListSummary.Describe(area, list, list.NoneOn ? options.Instead?.Invoke() : null), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(summary, id + "-Summary");
         stack.Add(summary);

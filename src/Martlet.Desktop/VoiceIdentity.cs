@@ -57,7 +57,7 @@ internal sealed class VoiceIdentity
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
         {
             lock (gate) current = null;
-            LoadError = "Couldn't read your Voice ID. Enroll again or check file access.";
+            LoadError = "Couldn't read your Voice ID; enroll again or check file access.";
         }
         Changed?.Invoke();
     }

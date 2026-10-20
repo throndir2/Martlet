@@ -55,7 +55,7 @@ public partial class MainWindow
         voice &= routes.All(r => r.Role != SetupRole.Tts);
         if (!thinking && !listening && !voice)
         {
-            ActionText.Text = "Thinking, listening and voice are already set up. Change them in Companion.";
+            ActionText.Text = "Thinking, listening and voice are already set up; change them in Companion.";
             return true;
         }
         settingUpDefaults = true;
@@ -113,7 +113,7 @@ public partial class MainWindow
                     yes = ConfirmationDialog.Confirm(this, question, "Set it all up for me", "Set it up", "Not now", questionId: "DefaultSetupQuestion");
                 if (!yes)
                 {
-                    ActionText.Text = "Nothing changed. Set up each job in Companion whenever you like.";
+                    ActionText.Text = "Nothing changed; set up each job in Companion whenever you like.";
                     return false;
                 }
                 break;
@@ -126,7 +126,7 @@ public partial class MainWindow
             if (listening && !closing)
             {
                 if (parakeetModel is null || parakeet is null || SherpaComponents.RuntimeDirectory() is null)
-                    ActionText.Text = "Parakeet isn't available in this Martlet. Choose how it listens in Companion › Listening.";
+                    ActionText.Text = "Parakeet isn't available in this Martlet: choose how it listens in Companion › Listening.";
                 else await UseParakeetAsync(parakeetModel, confirmed: true);
             }
             // Then the voice (on the graphics card, or Chatterbox Nano on the processor) and Whisper on the card.
@@ -167,9 +167,9 @@ public partial class MainWindow
         var ready = routes.ThinkingRoute() is not null;
         var mute = routes.All(r => r.Role != SetupRole.Tts) && pendingJobHosts.GetValueOrDefault(SetupRole.Tts) is null;
         return string.Join(" · ", Job(SetupRole.Llm, "Thinking"), Job(SetupRole.Stt, "Listening"), Job(SetupRole.Tts, "Voice")) +
-            (!ready ? ". Set up Thinking in Companion to start talking."
-                : mute ? ". Martlet can't speak yet: set up a voice in Companion › Voice. Chatterbox Nano runs on an NVIDIA card or on the processor."
-                : ". Press Start listening or Start talking, and Show character.");
+            (!ready ? "; set up Thinking in Companion to start talking."
+                : mute ? "; Martlet can't speak until you set up a voice in Companion › Voice."
+                : "; press Start listening or Start talking, and Show character.");
     }
 
 }

@@ -70,8 +70,8 @@ public static class OptionFacts
             facts.Add(new("words", "Writes", $"about {words.ToString("0", CultureInfo.InvariantCulture)} words a second (estimate)", null,
                 "Estimated from the bytes the model reads for each word and the graphics card's memory speed. Real speed can be lower."));
         if (option.NativeOnly)
-            facts.Add(new("hosts", "On a host", "not yet: Martlet's host roles don't offer it, so it runs in this PC's own Ollama", null,
-                "Martlet's host roles install only the models they list. A newer Martlet on the host can offer more."));
+            facts.Add(new("hosts", "On a host", "no: Martlet's host roles can't install this name, so it runs in this PC's own Ollama", null,
+                "Martlet's host roles install any Ollama tag or hf.co/{repo}:{quant} model."));
         if (!option.IsLocal)
             facts.Add(new("cost", "Cost", option.FreeTier ? "free tier" + (option.NeedsSignup ? ", needs a free account and key" : "")
                     : option.NeedsSignup ? "paid, needs an account and key" : "paid",
