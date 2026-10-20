@@ -245,7 +245,7 @@ public partial class MainWindow
     {
         object? Tag(string id, NodeKind kind) =>
             id == selectedNode ? "Selected" : kind is NodeKind.Add or NodeKind.Missing || DeviceOverview.IsMore(id) ? "Ghost" : null;
-        foreach (var element in mapElements)
+        foreach (var element in DevicesMap.Elements)
             element.Card.Tag = Tag(element.Node.Id, element.Node.Kind);
         markingDevice = true;
         try { DeviceList.SelectedItem = deviceListRows.FirstOrDefault(r => r.Id == selectedNode).Row; }
