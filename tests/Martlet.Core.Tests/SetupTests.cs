@@ -313,7 +313,7 @@ public sealed class SetupTests : IDisposable
         var failed = await Service.ReplaceCredentialAsync(Configured(), null, SetupRole.Stt, secret, cancellation.Token);
         Assert.False(failed.Save.Saved);
         Assert.Equal(CredentialError.AccessDenied, failed.CredentialError);
-        Assert.Contains("Reload", failed.Summary);
+        Assert.Contains("reload", failed.Summary, StringComparison.OrdinalIgnoreCase);
         Assert.Single(native.Keys);
         var resumed = await Service.LoadAsync();
         Assert.Single(resumed.Settings!.Setup!.PendingRemovals);
@@ -353,7 +353,7 @@ public sealed class SetupTests : IDisposable
             native.OnDelete = () => blocker = new FileStream(Store.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var failed = await Service.RemoveDetachedAsync(detached.Settings, detached.Save.Revision, detached.Settings.Setup!.PendingRemovals.Single());
             Assert.False(failed.Save.Saved);
-            Assert.Contains("The key was removed, but Martlet could not save the cleanup.", failed.Summary);
+            Assert.Contains("The key was removed, but Martlet could not save the cleanup;", failed.Summary);
             Assert.Empty(native.Keys);
             Assert.Single((await Store.LoadAsync()).Settings!.Setup!.PendingRemovals);
         }

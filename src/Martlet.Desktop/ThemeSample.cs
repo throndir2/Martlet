@@ -104,7 +104,7 @@ internal static class ThemeSample
         var heroText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         heroText.Children.Add(Styled(new TextBlock { Text = title.ToUpperInvariant() }, "Eyebrow"));
         heroText.Children.Add(Styled(new TextBlock { Text = "Good evening", FontSize = 24, Margin = new Thickness(0, 4, 0, 0) }, "HeroTitle"));
-        heroText.Children.Add(Styled(new TextBlock { Text = "Your companion is ready. Start talking or show the character.", Margin = new Thickness(0, 6, 0, 12) }, "Muted"));
+        heroText.Children.Add(Styled(new TextBlock { Text = "Your companion is ready: start talking or show the character.", Margin = new Thickness(0, 6, 0, 12) }, "Muted"));
         var actions = new WrapPanel();
         actions.Children.Add(Styled(new Button { Content = "Start talking", Margin = new Thickness(0, 0, 10, 0) }, "PrimaryButton"));
         actions.Children.Add(new Button { Content = "Show character" });

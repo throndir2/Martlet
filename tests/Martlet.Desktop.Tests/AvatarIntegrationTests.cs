@@ -98,7 +98,7 @@ public sealed class AvatarIntegrationTests
         await using var harness = new Harness(device, generatedSpeech: controller.Observer);
         harness.Answer("Actual generated PCM test.");
         var turn = harness.Start();
-        await Harness.Until(() => controller.Status.Contains("Voice continues", StringComparison.Ordinal) ||
+        await Harness.Until(() => controller.Status.Contains("voice continues", StringComparison.Ordinal) ||
             renderer.Messages.Any(m => m.Kind == "apply"));
         Assert.True(rendererFails || renderer.Messages.Any(m => m.Kind == "apply"), controller.Status);
         Assert.False(turn.Completion.IsCompleted);
@@ -166,7 +166,7 @@ public sealed class AvatarIntegrationTests
         var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"]), new("blink", 0, 1, 0, ["Expression"])] };
         await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
         await controller.ShowAsync(scope.Profile(backend.Endpoint.AbsoluteUri), default);
-        Assert.Contains("Lip-sync is using Audio2Face at", controller.Status, StringComparison.Ordinal);
+        Assert.Contains("with lip-sync from Audio2Face at", controller.Status, StringComparison.Ordinal);
         var configured = RendererProtocol.Data<RendererConfiguration>(renderer.Messages.Single(m => m.Kind == "configure"));
         Assert.Equal("aa", Assert.Single(configured.Targets).Target);
         var device = new ControlledDevice { AutoConsume = false };
@@ -374,7 +374,7 @@ public sealed class AvatarIntegrationTests
                 openHost: GatewayLink);
             await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/") with { RemoteHost = remote }, default);
             Assert.True(controller.IsShowing);
-            Assert.Contains($"Host {new Uri(remote.Origin).Authority} isn't ready", controller.Status, StringComparison.Ordinal);
+            Assert.Contains($"host {new Uri(remote.Origin).Authority} isn't ready", controller.Status, StringComparison.Ordinal);
             var device = new ControlledDevice { AutoConsume = false };
             await using var harness = new Harness(device, generatedSpeech: controller.Observer);
             harness.Answer("Actual generated PCM test.");

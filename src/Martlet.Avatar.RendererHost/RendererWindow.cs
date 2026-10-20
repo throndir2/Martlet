@@ -1940,7 +1940,7 @@ internal sealed partial class RendererWindow : Window
                 if (activation != Guid.Empty)
                     await replyWriter.WriteAsync(RendererProtocol.Message("error", activation, modelRejection is { Length: > 0 } rejected
                         ? new { code = "avatar.model_rejected", message = $"This model can't be shown: {rejected}" }
-                        : new { code = "avatar.renderer_unavailable", message = "Renderer/runtime/resource operation failed. Inspect local prerequisites and retry explicitly." }))
+                        : new { code = "avatar.renderer_unavailable", message = "The character renderer failed; check what it needs on this PC and try again." }))
                         .WaitAsync(TimeSpan.FromSeconds(1));
             }
             catch (Exception failure) when (failure is IOException or ObjectDisposedException or TimeoutException) { }

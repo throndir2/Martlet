@@ -70,21 +70,23 @@ internal sealed class GatewayAccountDirectoryStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayAccountRoutes(GatewayHttpServices services, GatewayAccountDirectoryStore accounts, GatewayNetworkStore network) : GatewayRouteHandler(services)
 {
     internal const string AccountsPath = "/martlet/v1/accounts";
     internal const string AccountsDigestPath = AccountsPath + "/digest";
     private const int MaximumAccountsResponseBytes = AccountDirectory.MaximumBytes + 4_096;
 
-    internal GatewayAccountDirectoryStore Accounts { get; } = new();
+    internal GatewayAccountDirectoryStore Accounts { get; } = accounts;
 
-    private static bool IsAccountsTarget(string rawTarget) => rawTarget is AccountsPath or AccountsDigestPath;
+    private GatewayNetworkStore Network { get; } = network;
+
+    internal static bool IsAccountsTarget(string rawTarget) => rawTarget is AccountsPath or AccountsDigestPath;
 
     /// <summary>GET /accounts returns this host's copy of the account directory and POST merges a member desktop's copy into it
     /// (only entries signed by an active member desktop of this host's network count) and returns the merged copy and how many
     /// entries were refused; GET /accounts/digest returns only the copy's digest. Paired devices only, over their signed,
     /// pinned connection; friends and API keys are refused.</summary>
-    private async ValueTask InvokeAccountsAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeAccountsAsync(HttpContext context, string rawTarget)
     {
         if (rawTarget == AccountsDigestPath)
         {

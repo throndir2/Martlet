@@ -21,7 +21,6 @@ HTTP (127.0.0.1 only):
 from __future__ import annotations
 
 import argparse
-import hashlib
 import http.server
 import json
 import os
@@ -33,17 +32,15 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from . import pins, wire
-from .worker import CONFIG, MODELS, sha256_file
+from .worker import CONFIG, MODELS, shared
 
 PORT = int(os.environ.get("MARTLET_GPT_SOVITS_PORT", "50082"))
 MODEL = os.environ.get("GPT_SOVITS_MODEL", pins.MODEL_ID)
 DEVICE = os.environ.get("MARTLET_GPT_SOVITS_DEVICE", "cuda:0")
 DEBUG = os.environ.get("MARTLET_GPT_SOVITS_DEBUG") == "1"
-MAX_BODY_BYTES = 6 * 1024 * 1024
 WARMUP_SECONDS = 290
 REQUEST_SECONDS = 90
 BUSY_WAIT_SECONDS = 30
@@ -58,36 +55,6 @@ def _log(text: str) -> None:
 # ------------------------------------------------------------------ provisioning (post-start role step)
 
 
-def _download(url: str, target: Path, size: int, sha256: str) -> None:
-    if target.is_file():
-        if sha256_file(target) == (size, sha256):
-            _log(f"{target.name}: already downloaded and verified.")
-            return
-        target.unlink()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    digest, received, shown = hashlib.sha256(), 0, -1
-    request = urllib.request.Request(url, headers={"User-Agent": "martlet-gpt-sovits-host"})
-    with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as output:
-        while block := response.read(1_048_576):
-            received += len(block)
-            if received > size:
-                raise SystemExit(f"{target.name} is larger than its pinned size; stopped.")
-            digest.update(block)
-            output.write(block)
-            percent = received * 100 // size
-            if percent != shown:
-                shown = percent
-                sys.stdout.write(f"\r{target.name}: {percent}% of {size // 1_048_576 or 1} MiB")
-                sys.stdout.flush()
-    sys.stdout.write("\n")
-    if received != size or digest.hexdigest() != sha256:
-        partial.unlink(missing_ok=True)
-        raise SystemExit(f"{target.name} does not match its pinned SHA-256; nothing was installed.")
-    partial.replace(target)
-    _log(f"{target.name}: verified (SHA-256 {sha256[:12]}...).")
-
-
 def provision(fixture: bool) -> None:
     if fixture:
         _log("FIXTURE - NOT AI: provisioning the deterministic fake engine (no model, no GPU).")
@@ -99,7 +66,7 @@ def provision(fixture: bool) -> None:
              f"huggingface.co/{pins.WEIGHTS_REPOSITORY} at {pins.WEIGHTS_REVISION[:12]}.")
         for item in pins.ARTIFACTS:
             _log(f"Model file {item.artifact_id} ({item.license_id})")
-            _download(item.source_url, MODELS / item.path, item.bytes, item.sha256)
+            shared.fetch_pinned(item.source_url, MODELS / item.path, item.bytes, item.sha256, agent="martlet-gpt-sovits-host")
         engine = "gpt-sovits"
     MODELS.mkdir(parents=True, exist_ok=True)
     staged = CONFIG.with_name(CONFIG.name + ".partial")
@@ -124,25 +91,18 @@ def warm() -> None:
 # ------------------------------------------------------------------ the worker process
 
 
-class Worker:
+class Worker(shared.ModelProcess):
     """Owns one worker process. Only one synthesis runs at a time; loading happens once per process."""
 
+    name = "gpt-sovits"
+    settled_states = SETTLED
+    stopped_error = "The GPT-SoVITS worker process stopped; it restarts with the next reply."
+
     def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.write_lock = threading.Lock()
-        self.changed = threading.Condition(self.lock)
-        self.process: subprocess.Popen[bytes] | None = None
-        self.identity: dict[str, Any] | None = None
-        self.state = "cold" if CONFIG.is_file() else "not_provisioned"
-        self.error: str | None = None
-        self.pending: dict[str, queue.Queue[dict[str, Any] | None]] = {}
+        super().__init__("cold" if CONFIG.is_file() else "not_provisioned")
 
-    def status(self) -> dict[str, Any]:
-        with self.lock:
-            return {"error": self.error, "ready": self.state == "ready", "state": self.state, "worker": self.identity}
-
-    def running(self) -> bool:
-        return self.process is not None and self.process.poll() is None
+    def encode(self, message: dict[str, Any]) -> bytes:
+        return wire.canonical(message)
 
     def start(self) -> None:
         with self.lock:
@@ -173,102 +133,19 @@ class Worker:
         with self.lock:
             self.process = process
             self.changed.notify_all()
-        threading.Thread(target=self._read, args=(process,), name="gpt-sovits-reader", daemon=True).start()
+        self.read_in_background(process)
         self.send({"type": "warmup"})
 
-    def wait_settled(self, seconds: float) -> dict[str, Any]:
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while self.state not in SETTLED:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
-        return self.status()
-
-    def wait_admissible(self, seconds: float) -> None:
-        """Wait (bounded) until the worker is ready with no reply in flight, or has settled into a non-loading state."""
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while (self.state != "ready" or self.pending) and self.state not in {"not_provisioned", "failed", "stopped"}:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
-
-    def send(self, message: dict[str, Any]) -> bool:
-        process = self.process
-        if process is None or process.stdin is None:
-            return False
-        try:
-            with self.write_lock:
-                process.stdin.write(wire.canonical(message) + b"\n")
-                process.stdin.flush()
-            return True
-        except (BrokenPipeError, OSError):
-            return False
-
-    def _read(self, process: subprocess.Popen[bytes]) -> None:
-        assert process.stdout is not None
-        for line in process.stdout:
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            kind = message.get("type")
-            if kind == "worker_state":
-                with self.lock:
-                    if self.process is process:
-                        self.state = "ready" if message.get("ready") else str(message.get("state"))
-                        self.error = (message.get("error") or {}).get("summary")
-                        self.identity = message.get("worker") or self.identity
-                        self.changed.notify_all()
-            elif kind == "event":
-                with self.lock:
-                    target = self.pending.get(str((message.get("ids") or {}).get("request_id")))
-                if target is not None:
-                    target.put(message)
-        with self.lock:
-            if self.process is process:
-                self.state = "failed"
-                self.error = self.error or "The GPT-SoVITS worker process stopped; it restarts with the next reply."
-                self.changed.notify_all()
-            waiting = list(self.pending.values())
-        for target in waiting:
-            target.put(None)
+    def on_worker_state(self, message: dict[str, Any]) -> None:
+        super().on_worker_state(message)
+        self.identity = message.get("worker") or self.identity
 
 
 WORKER = Worker()
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "martlet-gpt-sovits-host"
-    sys_version = ""
-
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        return
-
-    def _json(self, status: int, value: dict[str, Any]) -> None:
-        body = json.dumps(value, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _body(self) -> dict[str, Any] | None:
-        length = int(self.headers.get("Content-Length") or "0")
-        if not 0 < length <= MAX_BODY_BYTES:
-            self._json(413, {"error": "request.too_large"})
-            return None
-        try:
-            value = json.loads(self.rfile.read(length))
-        except ValueError:
-            value = None
-        if not isinstance(value, dict):
-            self._json(400, {"error": "request.invalid"})
-            return None
-        return value
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/status":

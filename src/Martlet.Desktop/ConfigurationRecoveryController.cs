@@ -12,7 +12,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
     private ConfigurationRecoveryReceipt? receipt;
     private string? cleanup;
     private long presentation;
-    private string message = "No backup has been read or written. Choose a local file and action.";
+    private string message = "No backup has been read or written yet.";
     internal bool IsBusy => operations.IsRunning;
     internal bool HasResources { get { lock (gate) return active is { Completion.IsCompleted: false } || cleanup is not null; } }
     internal bool NeedsCleanup { get { lock (gate) return cleanup is not null; } }
@@ -20,7 +20,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
     internal ConfigurationRecoveryReceipt? Receipt { get { lock (gate) return receipt; } }
     internal string Message { get { lock (gate) return message +
         (active is { Completion.IsCompletedSuccessfully: true } && active.Completion.Result.Outcome == SetupWorkOutcome.Failed
-            ? "\nThe last action failed. Review the result before trying again." : ""); } }
+            ? "\nThe last action failed: review the result before you try again." : ""); } }
 
     internal void ClearPreview()
     {
@@ -45,7 +45,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
             {
                 if (presentation != version || token.IsCancellationRequested) return;
                 preview = plan;
-                message = "Restore preview ready. Nothing has been changed.";
+                message = "Restore preview ready; nothing has changed yet.";
             }
         });
     }
@@ -56,7 +56,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
         {
             if (!ReferenceEquals(preview, plan))
             {
-                message = "Preview changed. Read and review a fresh snapshot; confirmation was rejected.";
+                message = "The preview changed, so the restore was refused: read and review a fresh preview.";
                 return null;
             }
         }
@@ -67,7 +67,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
             lock (gate)
             {
                 receipt = restored;
-                message = "Settings restored. Reload setup and review destinations, keys and devices.";
+                message = "Settings restored: reload setup and check destinations, keys and devices.";
             }
         });
     }
@@ -78,7 +78,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
         lock (gate) path = cleanup;
         if (path is null) throw new RecoveryException(RecoveryFailure.Conflict);
         store.RetryRecoveryCleanup(path);
-        lock (gate) { cleanup = null; message = "Cleanup finished. Read a fresh preview before trying again."; }
+        lock (gate) { cleanup = null; message = "Cleanup finished: read a fresh preview before you try again."; }
         return Task.CompletedTask;
     }, isCleanup: true);
 
@@ -94,7 +94,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
         {
             if (operations.IsRunning || (cleanup is not null && !isCleanup))
             {
-                message = "Another action is still finishing, or cleanup is pending. Wait, then retry cleanup or read a fresh preview.";
+                message = "Another action is still finishing, or cleanup is pending: wait, then retry cleanup or read a fresh preview.";
                 return null;
             }
             active = operations.TryStart(async token =>
@@ -117,7 +117,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
-                    lock (gate) { preview = null; message = "Recovery canceled. Wait for the action to finish, then read a fresh preview."; }
+                    lock (gate) { preview = null; message = "Recovery canceled: wait for the action to finish, then read a fresh preview."; }
                     return new(SetupWorkOutcome.Canceled);
                 }
             });

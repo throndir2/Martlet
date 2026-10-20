@@ -9,9 +9,9 @@
 services:
   gpt-sovits:
     build:
-      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/gpt-sovits
-      dockerfile: host/Dockerfile
-    image: martlet-gpt-sovits:1
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers
+      dockerfile: gpt-sovits/host/Dockerfile
+    image: martlet-gpt-sovits:2
     pull_policy: build
     restart: unless-stopped
     environment:

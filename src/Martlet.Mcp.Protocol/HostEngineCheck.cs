@@ -6,7 +6,8 @@ using Martlet.Core.Nodes;
 
 namespace Martlet.Mcp;
 
-/// <summary>host_engine_check: runs this checkout's real martlet-host engine (deploy\host\martlet-host) in one disposable
+/// <summary>host_engine_check: runs this checkout's real martlet-host engine (deploy\host\martlet-host and its modules in
+/// deploy\host\lib) in one disposable
 /// ubuntu:24.04 container (no network, never pulled, removed afterwards; it never touches Martlet's own host containers or
 /// volumes) and checks that a host runs changes side by side and makes only colliding ones wait: a change holds and records
 /// its locks, read-only commands still run, status names the holders, an automatic run (no terminal, no --yes) stops at
@@ -43,7 +44,12 @@ internal static class HostEngineCheck
         var script = new StringBuilder()
             .Append("mkdir -p /m/deploy/host\nbase64 -d > /m/deploy/host/martlet-host <<'MARTLET_ENGINE'\n")
             .Append(Convert.ToBase64String(await File.ReadAllBytesAsync(engine, cancellation), Base64FormattingOptions.InsertLineBreaks).Replace("\r\n", "\n"))
-            .Append("\nMARTLET_ENGINE\nchmod 755 /m/deploy/host/martlet-host\n");
+            .Append("\nMARTLET_ENGINE\nchmod 755 /m/deploy/host/martlet-host\nmkdir -p /m/deploy/host/lib\n");
+        // The engine's modules (deploy/host/lib/*.sh), which martlet-host sources from the folder next to it.
+        foreach (var module in Directory.GetFiles(Path.Combine(Path.GetDirectoryName(engine)!, "lib"), "*.sh").Order(StringComparer.Ordinal))
+            script.Append($"base64 -d > /m/deploy/host/lib/{Path.GetFileName(module)} <<'MARTLET_ENGINE'\n")
+                .Append(Convert.ToBase64String(await File.ReadAllBytesAsync(module, cancellation), Base64FormattingOptions.InsertLineBreaks).Replace("\r\n", "\n"))
+                .Append("\nMARTLET_ENGINE\n");
         // A real role's files, as the host image has them (deploy/host/roles), for the steps that check the engine reads them.
         foreach (var role in RealRoles)
         {
@@ -343,10 +349,11 @@ internal static class HostEngineCheck
         #!/bin/bash
         S=/tmp/fake
         case "$1" in
-          info|volume) exit 0 ;;
+          info) [[ -f $S/desktop && "$*" == *OperatingSystem* ]] && echo "Docker Desktop"; exit 0 ;;
+          volume) exit 0 ;;
           ps) [[ -f $S/engine ]] && printf 'e1 martlet-host-add-20261003-021239-9052\n'; exit 0 ;;
           rm|run) echo "$*" >> $S/calls; [[ "$*" == "rm -f martlet-host-net"* ]] && printf 'holder-2' > $S/holder
-            [[ "$*" == "run -d --name martlet-host-keeper "* ]] && : > $S/keeper; exit 0 ;;
+            [[ "$*" =~ ^run\ -d\ --name\ martlet-host-keeper\ .*--network\ ([a-z]+) ]] && printf %s "${BASH_REMATCH[1]}" > $S/keeper; exit 0 ;;
           start) echo "$*" >> $S/calls; [[ -f $S/startfails ]] && exit 1; printf true > $S/running; : > $S/error; exit 0 ;;
           logs) echo "Network holder ready."; exit 0 ;;
           container)
@@ -359,9 +366,12 @@ internal static class HostEngineCheck
               *State.Running*) cat $S/running 2>/dev/null || echo true; echo ;;
               *State.Error*) cat $S/error 2>/dev/null; echo ;;
               *martlet.home*) cat $S/label 2>/dev/null; echo ;;
-              *PortBindings*Config.Image*) echo "$(cat $S/binding 2>/dev/null || echo 192.168.1.20:9443) $(cat $S/image 2>/dev/null || echo martlet-host:old)" ;;
-              *PortBindings*) cat $S/binding 2>/dev/null || echo 192.168.1.20:9443 ;;
-              *Config.Image*) echo "martlet-host:new" ;;
+              # The gateway port's binding as the engine asks for it: "<port>/tcp=<address>:<port>" (":<port>" on every address).
+              *PortBindings*) echo "9443/tcp=$(cat $S/binding 2>/dev/null || echo 192.168.1.20:9443)" ;;
+              # The keeper: its image and network (the Docker host's network on Docker Engine; none on Docker Desktop).
+              *Config.Image*NetworkMode*) echo "martlet-host:new $(cat $S/keeper)" ;;
+              # The holder runs the image in $S/image (an older one unless set); this engine's own container runs martlet-host:new.
+              *Config.Image*) if [[ "${3:-}" == martlet-host-net ]]; then echo "$(cat $S/image 2>/dev/null || echo martlet-host:old)"; else echo "martlet-host:new"; fi ;;
               *Config.Cmd*) echo "--yes add chatterbox" ;;
               *MARTLET_ENGINE*) echo "container:$(cat $S/engine-net) inner" ;;
               *NetworkMode*) echo "container:$(cat $S/engine-net)" ;;
@@ -436,8 +446,12 @@ internal static class HostEngineCheck
         keeper="$(grep -m1 '^run -d --name martlet-host-keeper ' /tmp/fake/calls || true)"
         D timeout 30 "$E" --yes update </dev/null >/tmp/keeper-again.out 2>&1
         again="$(grep -c '^run -d --name martlet-host-keeper ' /tmp/fake/calls || true)"
-        [[ $rc == 0 && "$keeper" == *"--restart unless-stopped --network none "* && "$keeper" == *" keep" && $again == 1 ]] && ok=1 || ok=0
-        step update-adds-keeper "$ok" "update (exit $rc): ${keeper:-no keeper}; keeper runs after a second update: $again"
+        : > /tmp/fake/desktop; : > /tmp/fake/calls
+        D timeout 30 "$E" --yes update </dev/null >/tmp/keeper-desktop.out 2>&1
+        desktop="$(grep -m1 '^run -d --name martlet-host-keeper ' /tmp/fake/calls || true)"; rm -f /tmp/fake/desktop
+        [[ $rc == 0 && "$keeper" == *"--restart unless-stopped --network host "* && "$keeper" == *" keep" && $again == 1 &&
+          "$desktop" == *"--restart unless-stopped --network none "* ]] && ok=1 || ok=0
+        step update-adds-keeper "$ok" "update (exit $rc): ${keeper:-no keeper}; keeper runs after a second update: $again; on Docker Desktop: ${desktop:-not replaced}"
 
         : > /tmp/fake/calls; printf false > /tmp/fake/running; printf '%s' "$boot" > /tmp/fake/error
         D timeout 3 "$E" keep </dev/null >/tmp/keep.out 2>&1

@@ -63,6 +63,12 @@ from typing import Any
 
 from martlet_singing import audio, pins
 
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside the package)
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "common"))
+    import martlet_worker_host as shared
+
 ROOT = Path(os.environ.get("MARTLET_SINGING_ROOT", "/opt/martlet-singing"))
 MODELS = ROOT / "models"
 CONFIG = MODELS / "worker-config.json"
@@ -73,7 +79,7 @@ IDLE_SECONDS = float(os.environ.get("MARTLET_SINGING_IDLE_SECONDS", "300"))
 JOB_SECONDS = float(os.environ.get("MARTLET_SINGING_JOB_SECONDS", "1800"))
 KEEP_SECONDS = float(os.environ.get("MARTLET_SINGING_KEEP_SECONDS", "1800"))
 WORKER_ID = "martlet-singing-host"
-MAX_BODY_BYTES = 6 * 1024 * 1024
+MAX_BODY_BYTES = shared.MAX_BODY_BYTES
 MAX_WAITING = 4
 MAX_KEPT = 6
 PAGE_BYTES = 4_800_000
@@ -94,45 +100,8 @@ def _log(message: str) -> None:
     print(message, flush=True)
 
 
-def _sha256_file(path: Path) -> tuple[int, str]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        while chunk := stream.read(1_048_576):
-            size += len(chunk)
-            digest.update(chunk)
-    return size, digest.hexdigest()
-
-
 def _download(url: str, target: Path, size: int, sha256: str) -> None:
-    if target.is_file():
-        if target.stat().st_size == size and _sha256_file(target) == (size, sha256):
-            _log(f"{target.name}: already downloaded and verified.")
-            return
-        target.unlink()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    digest = hashlib.sha256()
-    received = 0
-    shown = -1
-    request = urllib.request.Request(url, headers={"User-Agent": "martlet-singing-host"})
-    with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as output:
-        while chunk := response.read(1_048_576):
-            received += len(chunk)
-            if received > size:
-                partial.unlink(missing_ok=True)
-                raise SystemExit(f"{target.name} is larger than its pinned size; stopped.")
-            digest.update(chunk)
-            output.write(chunk)
-            percent = received * 100 // size
-            if size > 50_000_000 and percent != shown and percent % 5 == 0:
-                shown = percent
-                _log(f"{target.name}: {percent}% of {size // 1_048_576} MiB")
-    if received != size or digest.hexdigest() != sha256:
-        partial.unlink(missing_ok=True)
-        raise SystemExit(f"{target.name} does not match its pinned SHA-256; nothing was installed.")
-    partial.replace(target)
-    _log(f"{target.name}: verified (SHA-256 {sha256[:12]}...).")
+    shared.fetch_pinned(url, target, size, sha256, agent="martlet-singing-host", progress="lines")
 
 
 # ------------------------------------------------------------------ provisioning
@@ -639,34 +608,11 @@ def _validate(body: dict[str, Any]) -> dict[str, Any]:
 SERVICE = Service()
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "martlet-singing-host"
-    sys_version = ""
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        return
-
-    def _json(self, status: int, value: dict[str, Any]) -> None:
-        body = json.dumps(value, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _body(self) -> dict[str, Any] | None:
-        length = int(self.headers.get("Content-Length") or "0")
-        if not 0 < length <= MAX_BODY_BYTES:
-            self._json(413, {"error": {"code": "request.too_large", "summary": "The request is too large."}})
-            return None
-        try:
-            value = json.loads(self.rfile.read(length))
-        except ValueError:
-            value = None
-        if not isinstance(value, dict):
-            self._json(400, {"error": {"code": "request.invalid", "summary": "The request is not a JSON object."}})
-            return None
-        return value
+    def refusal(self, code: str, summary: str) -> dict[str, Any]:
+        return {"error": {"code": code, "summary": summary}}
 
     def _parts(self) -> tuple[list[str], dict[str, list[str]]]:
         url = urllib.parse.urlsplit(self.path)

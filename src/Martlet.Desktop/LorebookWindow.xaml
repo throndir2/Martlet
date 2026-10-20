@@ -22,8 +22,10 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock Text="Lorebooks" FontSize="24" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" Margin="0,8"
-                       Text="Lorebooks add saved background details when matching keywords come up. They stay on this PC, save as you edit, and can be imported from JSON or character cards."/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8"><Run Text="Lorebooks add saved background details when matching keywords come up."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0"
+                       Text="Lorebooks add saved background details when matching keywords come up. They are yours on all your computers, save as you edit, and can be imported from SillyTavern World Info JSON or character cards."
+                       Wiki="Personality-and-Characters#lorebooks" AutomationProperties.AutomationId="Help-LorebookAbout"
+                       AutomationProperties.Name="About lorebooks"/></InlineUIContainer></TextBlock>
             <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="40" Margin="0,4,0,8"
                      AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LorebookResult"
                      AutomationProperties.Name="Lorebook status"/>
@@ -122,7 +124,7 @@
                         <TextBox x:Name="EntryContent" Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
                                  AcceptsReturn="True" AcceptsTab="False" TextWrapping="Wrap" Height="170" VerticalScrollBarVisibility="Auto"
                                  AutomationProperties.AutomationId="LorebookEntryContent"
-                                 presentation:InputHint.Text="The lighthouse on Harbor Point has been dark for ten years. Its keeper vanished in a storm."/>
+                                 presentation:InputHint.Text="The lighthouse on Harbor Point has been dark since its keeper vanished in a storm ten years ago."/>
                         <TextBlock Text="{Binding Size}" Margin="0,2,0,6"/>
                         <WrapPanel>
                             <CheckBox Content="_Enabled" IsChecked="{Binding Enabled}" Margin="0,4,16,4" VerticalAlignment="Center"
@@ -177,7 +179,7 @@
                              presentation:InputHint.Text="2"/>
                     <Label Target="{Binding ElementName=Budget}" Content="_Budget per reply" VerticalAlignment="Center"/>
                     <TextBox x:Name="Budget" Width="70" Margin="0,0,16,4" VerticalAlignment="Center" AutomationProperties.AutomationId="LorebookBudget"
-                             ToolTip="Maximum entry text added to one reply. Higher-order entries are used first."
+                             ToolTip="Maximum entry text added to one reply; higher-order entries are used first."
                              presentation:InputHint.Text="4096"/>
                 </WrapPanel>
                 <WrapPanel>
@@ -189,11 +191,11 @@
                               AutomationProperties.AutomationId="LorebookWholeWords"/>
                     <CheckBox x:Name="WordForms" Content="Match other word forms" Margin="0,4,16,4"
                               AutomationProperties.AutomationId="LorebookWordForms"
-                              ToolTip="Keywords also match other forms of their words: dragon finds dragons, Drache finds Drachen. Regular expressions don't change."/>
+                              ToolTip="Keywords also match other forms of their words: dragon finds dragons, Drache finds Drachen."/>
                 </WrapPanel>
 
                 <TextBlock Text="Try it" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4"/>
-                <TextBlock TextWrapping="Wrap" Text="Type a sample message to see which entries would be added. Nothing is sent."/>
+                <TextBlock TextWrapping="Wrap" Text="Type a sample message to see which entries would be added; nothing is sent."/>
                 <DockPanel Margin="0,6,0,0">
                     <Button DockPanel.Dock="Right" Content="Sho_w matches" Click="Test_Click" Padding="10,5" Margin="8,0,0,0"
                             AutomationProperties.AutomationId="LorebookTest"/>

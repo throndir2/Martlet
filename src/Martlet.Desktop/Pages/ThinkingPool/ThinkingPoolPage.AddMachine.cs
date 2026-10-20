@@ -18,24 +18,26 @@ internal sealed partial class ThinkingPoolPage
     private List<UIElement> DeepComputersPanel(ThinkingPoolPageModel model)
     {
         var stack = new List<UIElement>();
-        var automatic = Note(model.AutoJoinText, new Thickness(0, 0, 0, 8));
+        var automatic = HelpTip.Explain(model.AutoJoinText + " " + ThinkingPoolPageModel.AutoJoinMore, new Thickness(0, 0, 0, 8),
+            "ThinkingPoolAutoJoin", "computers that join by themselves", wiki: "Thinking#add-a-machine");
         AutomationProperties.SetAutomationId(automatic, "DeepThinkingAutoJoin");
         stack.Add(automatic);
         if (model.Hosts.Count == 0)
         {
-            var none = Note("No computer is paired yet. Add one on Devices, then add the Thinking pool role there.", new Thickness(0, 0, 0, 4));
+            var none = Note("No computer is paired yet: add one on Devices, then add the Thinking pool role there.", new Thickness(0, 0, 0, 4));
             AutomationProperties.SetAutomationId(none, "DeepThinkingHosts");
             stack.Add(none);
         }
         stack.Add(Row(model.Hosts.Count == 0 ? PageButton("Add a computer", () => services.RunNodeAction(NodeAction.AddComputer), primary: true, id: "DeepThinkingAddComputer")
             : PageButton("Check computers", () => services.RunNodeAction(NodeAction.CheckHost), id: "DeepThinkingCheckHosts")));
-        stack.Add(Note("A job's text (for a think, the conversation so far that fits in 16 KiB and the task) goes to the machine " +
-            "that runs it; to a paired computer through its paired, pinned connection. While it works there, Thinking, the voice and " +
-            "listening keep working here at full speed. The Thinking pool role is an Ollama of its own, so it works even on the " +
+        stack.Add(HelpTip.Explain("A job's text goes to the machine that runs it, and Thinking, the voice and listening keep working here " +
+            "at full speed. For a think, the text is the conversation so far that fits in 16 KiB and the task; a paired computer gets " +
+            "it through its paired, pinned connection. The Thinking pool role is an Ollama of its own, so it works even on the " +
             "computer that does Thinking (they share its graphics card, and replies may start later); without it, a computer that " +
             "also does Thinking for the conversation can't join. Adding the role asks which model it runs and how many slots; " +
             "Change model switches them later. A computer's model can only work as long as its Martlet allows: update it to this " +
-            "version for jobs over a minute.", new Thickness(0, 8, 0, 0)));
+            "version for jobs over a minute.", new Thickness(0, 8, 0, 0), "ThinkingPoolRole", "the Thinking pool role",
+            wiki: "Thinking#add-a-machine"));
         return stack;
     }
 
@@ -66,7 +68,7 @@ internal sealed partial class ThinkingPoolPage
                 "itself and thinks alongside the conversation.", false);
             else if (id.Length == 0) ShowFit("Choose a model.", true);
             else if (OllamaSideBySide.Same(id, beside))
-                ShowFit($"{id} is Thinking's own model, which can't think something over while it answers you. Choose another model.", true);
+                ShowFit($"{id} is Thinking's own model, which can't think something over while it answers you; choose another model.", true);
             else if (localFitModel == id && localFit is { } known) ShowFit((known.Fits ? "Fits: " : "Doesn't fit: ") + known.Why, !known.Fits);
             else
             {
@@ -77,15 +79,18 @@ internal sealed partial class ThinkingPoolPage
         Check(modelBox.Text.Trim());
         modelBox.SelectionChanged += (_, _) => { if (modelBox.SelectedItem is string chosen) Check(chosen); };
         modelBox.LostKeyboardFocus += (_, _) => Check(modelBox.Text.Trim());
-        var shared = Note(model.LocalShare, new Thickness(0, 4, 0, 0));
+        var sharedText = model.LocalShare;
+        var shared = sharedText.Length > 0
+            ? HelpTip.Explain(sharedText + " " + DeepThinkingFit.SharedCardMore, new Thickness(0, 4, 0, 0), "SharedCard-ThisPc",
+                "sharing a graphics card", wiki: "Thinking#add-a-machine")
+            : new TextBlock { Visibility = Visibility.Collapsed };
         shared.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        shared.Visibility = shared.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetAutomationId(shared, "DeepThinkingLocalShare");
         return [
             HelpTip.Explain("A second model can think here while Thinking's answers you, such as a larger one beside a small, fast one. Ollama runs " +
                 "each model in its own process, so they answer at the same time, but only while both fit on the graphics card: Martlet " +
                 "checks before each think and doesn't think it over when they don't. They share the graphics card, so replies may start " +
-                "a little later while it thinks.", new Thickness(0, 0, 0, 8), "SecondThinking", "a second model"),
+                "a little later while it thinks.", new Thickness(0, 0, 0, 8), "SecondThinking", "a second model", wiki: "Thinking#add-a-machine"),
             new Label { Content = "_Model", Target = modelBox, Padding = new Thickness(0, 0, 0, 4) }, modelBox, state, fit, shared,
             Row(PageButton("Add to the Thinking pool", () =>
                 {
@@ -94,10 +99,10 @@ internal sealed partial class ThinkingPoolPage
                     catch (ContractException error) { services.ShowStatus(error.Message); return; }
                     if (beside is not null && OllamaSideBySide.Same(id, beside))
                     {
-                        services.ShowStatus($"{id} is Thinking's own model, which can't think something over while it answers you. Choose another model.");
+                        services.ShowStatus($"{id} is Thinking's own model, which can't think something over while it answers you; choose another model.");
                         return;
                     }
-                    if (shared.Text.Length > 0 && !services.Confirm(shared.Text + " Use it anyway?",
+                    if (sharedText.Length > 0 && !services.Confirm(sharedText.TrimEnd('.') + "; use it anyway?",
                             "The Thinking pool shares a graphics card", yes: "_Use anyway", no: "_Cancel", questionId: "DeepThinkingShareQuestion"))
                         return;
                     model.AddLocalAsync(id).Forget();

@@ -538,7 +538,7 @@ internal static partial class AutomationPolicy
         new("VisionDisclosure", "Companion › Vision", "Shows what Martlet captures and where it goes (the What Martlet sends card)."),
         new("TalkHearVoiceStatus", "Companion › Hearing", "Shows the advice on whether and how Martlet can hear your voice."),
         new("SetupCloudHint-Thinking", "Companion › Thinking", "Shows the hint of the cloud form for the Thinking provider and model."),
-        new("SetupLocalRecommendation", "Companion › Thinking › This PC", "Shows the graphics card of this PC and the recommended Ollama model."),
+        new("SetupLocalRecommendation", "Companion › Thinking › This PC", "Shows the recommended Ollama model for this PC; its help text adds the graphics card and the smartest model that fits."),
         new("SetupAddModelFileNote", "Companion › Thinking › This PC", "Shows what Use a model file you downloaded does (fixed text)."),
         new("SetupAddModelFile", "Companion › Thinking › This PC", "Shows the label of Use a model file you downloaded. Pressing it needs --allow-ui-effects: it opens a file dialog, adds the file to Ollama and switches Thinking."),
         new("F5VoicesStatus", "Companion › Voice", "Shows how many voices there are and which voice is chosen or in use."),
@@ -610,7 +610,7 @@ internal static partial class AutomationPolicy
         // Songs are only performed in conversation; singing_check exercises them headlessly.
         new("CompanionGroupTitle", "Any Companion page", "Shows the page's group in the side list, such as HOW IT WORKS or OPTIONAL EXTRAS; fixed text."),
         new("CompanionPageTitle", "Any Companion page", "Shows the page's name, such as Thinking pool or Picture making; fixed text."),
-        new("CompanionIntro", "Any Companion page", "Shows the page's fixed intro, which starts with 'Optional.' on a page Martlet works without."),
+        new("CompanionIntro", "Any Companion page", "Shows the first sentence of the page's fixed intro, which starts with 'Optional:' on a page Martlet works without; its help text has all of it."),
         new("PicturesNow", "Companion › Picture making", "Shows where Martlet draws now: the first place in the Picture making list and the places that draw when it is busy."),
         new("PicturesTestState", "Companion › Picture making", "Shows what Check or Draw a test picture found: each place ready or why not, or the test picture's size, place and seconds. Never the picture."),
         new("PicturesCheck", "Companion › Picture making", "Shows the label of the Check button."),
@@ -835,7 +835,7 @@ internal static partial class AutomationPolicy
         new("CompanionSaveState", "Companion › Personality", "Shows whether every change is saved: 'All changes saved.', 'Saving...' or 'Not saved yet: <why>'."),
         new("AvatarSaveState", "Character window", "Shows whether every change is saved: 'All changes saved.', 'Saving...' or 'Not saved yet: <why>'."),
         new("LorebookSaveState", "Lorebooks window", "Shows whether every change is saved: 'All changes saved.', 'Saving...' or 'Not saved yet: <why>'."),
-        new("AvatarStatus", "Character window", "Shows the character status, such as 'Character is showing...' or 'Character hidden. Voice continues.'"),
+        new("AvatarStatus", "Character window", "Shows the character status, such as 'Character is showing...' or 'Character hidden; the voice continues.'"),
         new("LorebookTestResult", "Lorebooks › Try it", "Shows which entries a sample message would trigger, by title, lorebook and keyword, and what the budget left out. Never an entry's text."),
         new("CompanionShortEnding", "Companion › Personality", "Shows how short an ending is said with the words before it, such as 'Up to 2 words'."),
         new("CompanionTextHelp", "Companion › Personality", "Shows Martlet's fixed note under the persona box: the persona is the character's part of the system prompt, and where Martlet's own part is. Fixed text only."),
@@ -1229,7 +1229,7 @@ internal static partial class AutomationPolicy
         new("DeepThinkingAddCard-", "Companion › Thinking pool › Machines", "The Add a model button of a graphics card with no Thinking pool model yet, such as DeepThinkingAddCard-diva-gpu2."),
         // Needs --allow-ui-effects: clicking DeepThinkingAddRole-, DeepThinkingAddCard-, DeepThinkingChangeModel- or SetupChangeHost- (they install the role or open its dialog).
         // Needs --allow-ui-effects: ticking DeepThinkingPool-<host> (it saves thinking-pool.json).
-        new("ThinkingPoolMember-", "Companion › Thinking pool", "A machine's line, such as ThinkingPoolMember-0: diva's Thinking pool (qwen3-8b): Reads text; writes text. 2 slots, set on diva. A machine that is off starts with Off."),
+        new("ThinkingPoolMember-", "Companion › Thinking pool", "A machine's line, such as ThinkingPoolMember-0: diva's Thinking pool (qwen3-8b): Reads text; writes text; 2 slots, set on diva. A machine that is off starts with Off."),
         new("ThinkingPoolBadges-", "Companion › Thinking pool", "A machine's badges, such as ThinkingPoolBadges-0: Waits while you talk · Costs money · Offline, only those that apply."),
         new("ThinkingPoolSlots-", "Companion › Thinking pool", "A machine's slot choice, such as ThinkingPoolSlots-0."),
         new("ThinkingPoolAnswers-", "Companion › Thinking pool", "Whether a machine's Backup for slow replies box is ticked, such as ThinkingPoolAnswers-0."),

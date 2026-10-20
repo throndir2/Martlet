@@ -74,8 +74,8 @@ public partial class SignInSettingsWindow : ThemedWindow
             : string.Join(Environment.NewLine, settings.Refused.Select(r =>
                 $"{r.Label ?? r.Subject} ({r.Provider}: {r.Subject}) from {r.DeviceId} {r.EnrolledAt.ToLocalTime():g}"));
         OwnerStateText.Text = settings.OwnerUser is { } user
-            ? $"Set up: {user}, with an authenticator; {settings.RecoveryCodesLeft} recovery code(s) left. Setting it again replaces it."
-            : "Not set up. Set a name and password, then add the authenticator secret to your app.";
+            ? $"Set up: {user}, with an authenticator; {settings.RecoveryCodesLeft} recovery code(s) left."
+            : "Not set up: set a name and password, then add the authenticator secret to your app.";
         if (settings.OwnerUser is { } name) OwnerUserText.Text = name;
         AllowedText.Text = settings.Allowed.Count == 0 ? "None."
             : string.Join(Environment.NewLine, settings.Allowed.Select(a => $"{a.Label ?? a.Subject} ({a.Provider}: {a.Subject}), " +
@@ -121,8 +121,8 @@ public partial class SignInSettingsWindow : ThemedWindow
         var text = new TextBlock
         {
             Text = $"{allowed.Label ?? allowed.Subject} ({allowed.Provider}: {allowed.Subject}): " +
-                (allowed.Friend ? "a friend. Its computers use only this host's engines and never join your network."
-                    : "one of your computers. It joins your Martlet network."),
+                (allowed.Friend ? "a friend, whose computers use only this host's engines."
+                    : "one of your computers, which joins your Martlet network."),
             TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center
         };
         AutomationProperties.SetAutomationId(text, "SignInAllowed-" + key);
@@ -136,11 +136,10 @@ public partial class SignInSettingsWindow : ThemedWindow
     {
         var name = allowed.Label ?? allowed.Subject;
         var question = allowed.Friend
-            ? $"Make {name} one of your own computers on {host.HostId}? Its computers that signed in as a friend lose access now. When they " +
-              "sign in again, they join your Martlet network and can use all your hosts, settings and memories."
-            : $"Make {name} a friend on {host.HostId}? Its computers that signed in as yours lose access to this host now, and your computers " +
-              "remove them from your Martlet network on their next sync, so they lose every host. When they sign in again, they may use only " +
-              "this host's engines.";
+            ? $"Make {name} one of your own computers on {host.HostId}? When its computers sign in again, they join your Martlet network " +
+              "with all your hosts, settings and memories."
+            : $"Make {name} a friend on {host.HostId}? Its computers lose every host now and, when they sign in again, may use only this " +
+              "host's engines.";
         if (!ConfirmationDialog.Confirm(this, question, allowed.Friend ? "Make one of my computers" : "Make a friend")) return;
         await ChangeAsync(HostSignInAccess.AllowChange(allowed.Provider, allowed.Subject, allowed.Label, friend: !allowed.Friend),
             allowed.Friend ? $"{name} is one of your computers now; its computers sign in again to join your network."
@@ -152,8 +151,8 @@ public partial class SignInSettingsWindow : ThemedWindow
         var name = allowed.Label ?? allowed.Subject;
         if (!ConfirmationDialog.Confirm(this, allowed.Friend
                 ? $"Stop sharing {host.HostId} with {name}? This host revokes their computers at once."
-                : $"Remove {name}'s sign-in? This host revokes the computers it signed in, and your computers remove them from your Martlet " +
-                  "network on their next sync, so they lose every host.", "Remove sign-in"))
+                : $"Remove {name}'s sign-in? Its computers lose this host now and leave your Martlet network on the next sync, so they " +
+                  "lose every host.", "Remove sign-in"))
             return;
         await ChangeAsync(new JsonObject { ["action"] = "disallow", ["provider"] = allowed.Provider, ["subject"] = allowed.Subject },
             allowed.Friend ? $"Stopped sharing {host.HostId} with {name}; their computers lost access."
@@ -202,7 +201,7 @@ public partial class SignInSettingsWindow : ThemedWindow
         {
             ["action"] = "owner", ["user"] = OwnerUserText.Text.Trim(), ["password"] = OwnerPasswordText.Password,
             ["totp_secret"] = pendingSecret, ["code"] = OwnerCodeText.Text.Trim()
-        }, "Owner account saved. Write down the recovery codes below.");
+        }, "Owner account saved: write down the recovery codes below.");
         if (RecoveryText.Visibility == Visibility.Visible)
         {
             OwnerPasswordText.Clear();
@@ -304,11 +303,10 @@ public partial class SignInSettingsWindow : ThemedWindow
         var id = ProviderIdText.Text.Trim().ToLowerInvariant();
         var change = HouseholdProvider.RemoveChange(id);
         var paused = shown is { Usable: true } current && !current.UsableAfter(change) && OutsideAddresses().Count > 0
-            ? $" {host.HostId} is reachable from outside home: after this, nobody can sign in to it, so its outside access pauses until you set up " +
-              "the owner account or allow an identity again."
+            ? $"; {host.HostId} also pauses its outside access because nobody can sign in to it"
             : "";
         if (!ConfirmationDialog.Confirm(this, $"Remove {id} from every host of your household? Computers and friends that sign in with it lose access " +
-                "to those hosts, and your computers that joined with it leave your Martlet network on their next sync." + paused, "Remove provider"))
+                "to those hosts, and your computers that joined with it leave your Martlet network" + paused + ".", "Remove provider"))
         {
             StatusText.Text = "Nothing changed.";
             return;
@@ -429,7 +427,7 @@ public partial class SignInSettingsWindow : ThemedWindow
     {
         if (shown?.Refused.FirstOrDefault() is not { } newest) { StatusText.Text = "Nobody is waiting to be allowed."; return; }
         await ChangeAsync(HostSignInAccess.AllowChange(newest.Provider, newest.Subject, newest.Label, friend), friend
-            ? $"Allowed {newest.Label ?? newest.Subject} as a friend. Once they sign in again from {newest.DeviceId}, their computer may use {host.HostId}'s engines."
+            ? $"Allowed {newest.Label ?? newest.Subject} as a friend: once they sign in again from {newest.DeviceId}, their computer may use {host.HostId}'s engines."
             : $"Allowed {newest.Label ?? newest.Subject}. Sign in again from {newest.DeviceId}.");
     }
 
@@ -440,7 +438,7 @@ public partial class SignInSettingsWindow : ThemedWindow
         {
             if (NetworkInvite.NormalizeAddress(part) is not { } address)
             {
-                StatusText.Text = $"\"{part}\" isn't an address. Use a name or address with its port, like home.example.net:9443.";
+                StatusText.Text = $"\"{part}\" isn't an address: use a name or address with its port, like home.example.net:9443.";
                 return;
             }
             addresses.Add(address);
@@ -457,8 +455,8 @@ public partial class SignInSettingsWindow : ThemedWindow
         InviteText.Visibility = Visibility.Visible;
         CopyInviteButton.Visibility = Visibility.Visible;
         StatusText.Text = addresses.Count == 0
-            ? "Invite made with the home address only: it works only where that address is reachable. Add an outside address for a computer away from home."
-            : "Invite made. On the computer away from home: Devices › Add a computer › Join with an invite.";
+            ? "Invite made with the home address only, so it works only where that address is reachable: add an outside address for a computer away from home."
+            : "Invite made: on the computer away from home, open Devices › Add a computer › Join with an invite.";
     }
 
     private void CopyInvite_Click(object sender, RoutedEventArgs e)

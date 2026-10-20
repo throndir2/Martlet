@@ -116,4 +116,26 @@ When a job (Thinking, Voice or Listening) stops using a provider, Martlet keeps 
 
 The button at the bottom of the left rail shows who uses Martlet now. Click it to switch person, add a person or open your **Account** page. See [Accounts and Household](Accounts-and-Household).
 
+### Backup and restore
+
+**Settings › Tools › Backup / restore** saves your settings to a file on this PC, or puts back settings from a backup that you made on this PC. The backup is a local file: Martlet uploads nothing. It isn't encrypted, so keep it private. It has no API keys or other secrets, conversations, audio, memories or logs.
+
+To make a backup:
+
+1. Choose **Choose file...** and pick where to save the backup, or type the path in **New backup file**.
+2. Choose **Create backup...** and confirm.
+
+To restore a backup:
+
+1. Choose **Browse...** and pick the backup, or type its path in **Backup to restore**.
+2. Choose **Preview restore**. Nothing changes yet. **Restore changes** lists what changes, and **Settings preview** shows the settings from the backup.
+3. Choose **Restore settings...** and confirm. The backup replaces your current settings.
+4. Reload setup, and check your destinations, API keys and devices.
+
+A restore doesn't bring back API keys, permissions or audio tests. Martlet keeps a copy of the settings that it replaced.
+
+If you change the backup file after the preview, or the preview changes, Martlet refuses the restore. Choose **Preview restore** again and check the new preview. The same applies after a failed or canceled action.
+
+Only one backup or restore runs at a time. While one runs, **Cancel action** stops it, and you can close the window. If it times out, wait for it to finish, then open the window again. If Martlet says that cleanup is needed, choose **Retry cleanup** before you start another backup or restore. Close **Troubleshooting** before you use backup and restore.
+
 More detail: [Desktop app](https://github.com/throndir2/Martlet/blob/main/docs/DESKTOP_APP.md), [Greeting when Martlet starts](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md#greeting-when-martlet-starts), [UI design](https://github.com/throndir2/Martlet/blob/main/docs/UI_DESIGN.md), [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md).

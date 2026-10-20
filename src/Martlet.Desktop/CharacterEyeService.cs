@@ -74,7 +74,7 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         Func<string, string, string, BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask, bool automatically,
         CancellationToken token)
     {
-        if (ModelId is not { } id) return Report("Martlet is still reading the character. Try again in a moment.");
+        if (ModelId is not { } id) return Report("Martlet is still reading the character; try again in a moment.");
         if (dataDirectory is null) return Report("Martlet's data folder isn't available, so the measurement can't be saved.");
         Volatile.Write(ref busy, true);
         Report(automatically ? "This character's face isn't measured yet, so Martlet measures it: taking a picture of the character..." : "Taking a picture of the character...");
@@ -82,12 +82,12 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         var tag = fixture is null ? "" : "FIXTURE - NOT AI: ";
         try
         {
-            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot) return Stop("Martlet couldn't take a picture of the character. Try again.");
+            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot) return Stop("Martlet couldn't take a picture of the character; try again.");
             ZonePixels snapshot;
             try { snapshot = await Task.Run(() => TouchZoneImages.Decode(shot.Png), token); }
             catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or InvalidOperationException or IOException)
             {
-                return Stop("The character's picture couldn't be used. Try again.");
+                return Stop("The character's picture couldn't be used; try again.");
             }
             var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
             if (EyeFace.InSnapshot(shot.Probe?.Face, crop, snapshot.Width, snapshot.Height) is not { } face)
@@ -181,7 +181,7 @@ internal sealed class CharacterEyeService(string? dataDirectory)
             if (ModelId == id) Volatile.Write(ref current, null);
             // A forgotten measurement isn't taken again on its own until Martlet starts again; Measure the face takes it.
             lock (automatic) automatic.Add(id);
-            return Report(forgot ? "Forgot the measurement. The eyes and the blush use the model's own data or an estimate." : "No measurement was saved for this model.");
+            return Report(forgot ? "Forgot the measurement, so the eyes and the blush use the model's own data or an estimate." : "No measurement was saved for this model.");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
         {

@@ -16,8 +16,10 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <TextBlock Text="Find a character" Style="{DynamicResource SectionHeading}"/>
-                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,4,0,0"
-                           Text="Name a character. Martlet writes its personality with your Thinking model and looks for a 3D model of it on VRoid Hub and Open Source Avatars. Choose a look, check the creator's conditions, then use it."/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,4,0,0"><Run Text="Name a character, and Martlet writes its personality and finds looks for it."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                           Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CharacterFinderAbout" AutomationProperties.Name="About finding a character"
+                           Wiki="The-Character#find-a-character"
+                           Text="Martlet writes the personality with your Thinking model and looks for 3D models on VRoid Hub and Open Source Avatars. Choose a look, check the creator's conditions, then use it."/></InlineUIContainer></TextBlock>
                 <Label Content="_Who should Martlet be?" Target="{Binding ElementName=QueryText}" Padding="0,12,0,4"/>
                 <DockPanel>
                     <Button x:Name="SearchButton" Content="_Search" Click="Search_Click" IsDefault="True" Style="{DynamicResource PrimaryButton}"
@@ -57,9 +59,11 @@
                 <Button x:Name="NoLookButton" Content="Use without a new _look" Click="NoLook_Click" HorizontalAlignment="Left" Margin="0,8,0,0"
                         AutomationProperties.AutomationId="CharacterFinderNoLook"/>
 
-                <TextBlock Text="Not found? Look for a model on the web" FontWeight="SemiBold" FontSize="15" Margin="0,20,0,4"/>
-                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                           Text="These pages may have a model of the character (VRM, Live2D, MMD or VRChat). Martlet doesn't download them: open a page, check the creator's terms, download a model you may use (unzip it if needed), then add its .vrm file or Live2D .model3.json."/>
+                <TextBlock Text="Look for a model on the web" FontWeight="SemiBold" FontSize="15" Margin="0,20,0,4"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"><Run Text="These pages may have a model of the character (VRM, Live2D, MMD or VRChat)."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                           Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CharacterFinderWebModels" AutomationProperties.Name="About models on the web"
+                           Wiki="The-Character#find-a-character"
+                           Text="Martlet doesn't download them. Open a page, check the creator's terms, download a model you may use (unzip it if needed), then add its .vrm file or Live2D .model3.json."/></InlineUIContainer></TextBlock>
                 <TextBlock x:Name="WebModelsText" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.AutomationId="CharacterFinderWebModels"
                            Text="Martlet looks on the web by itself when it finds no look it can use."/>
                 <StackPanel x:Name="WebModelRows" Margin="0,6,0,0"/>
@@ -72,8 +76,10 @@
                 </WrapPanel>
 
                 <TextBlock Text="Voice" FontWeight="SemiBold" FontSize="15" Margin="0,20,0,4"/>
-                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                           Text="Martlet can speak in a character's voice from a short recording, with a voice engine that copies voices (Companion › Voice). It doesn't find voices by itself: these pages may have recordings of the character. Download a clean clip of the character speaking (5 to 30 seconds, one voice, no music), then add it. A character's voice belongs to its voice actor and studio: use it only for yourself, and only where their terms allow it."/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"><Run Text="These pages may have recordings of the character's voice: use one only for yourself, where its owners allow it."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                           Margin="6,0,0,0" AutomationProperties.AutomationId="Help-CharacterFinderWebVoices" AutomationProperties.Name="About voice clips"
+                           Wiki="The-Character#find-a-character"
+                           Text="Download a clean clip of 5 to 30 seconds (one voice, no music), then add it. A voice engine that copies voices (Companion › Voice) then speaks with it."/></InlineUIContainer></TextBlock>
                 <TextBlock x:Name="WebVoicesText" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.AutomationId="CharacterFinderWebVoices"
                            Text="Search to see pages with recordings."/>
                 <StackPanel x:Name="WebVoiceRows" Margin="0,6,0,0"/>

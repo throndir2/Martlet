@@ -92,11 +92,11 @@ public partial class MainWindow
         var builtInShown = homeAvatar is null || BundledLive2D.IsBuiltIn(modelPath);
         var shown = dataDirectory is null ? null : SharedCharacterModels.ForPath(dataDirectory, library, modelPath);
         var live = library.Live;
-        var status = Note($"{live.Count} character{(live.Count == 1 ? "" : "s")} of your own. " + (builtInShown ? "This PC shows the built-in character."
-                : shown is not null ? "This PC shows one of your characters."
-                : RemoteCharacterModels.IsRemote(modelPath) ? "This PC shows a VRoid Hub character (below)."
-                : SharedCharacterModels.KeyOfPath(dataDirectory ?? "", modelPath) is not null ? "This PC shows a character no longer in your list. Use another one."
-                : "This PC shows a model file that isn't in your list yet; it is added when Martlet next shares your characters."),
+        var status = Note($"{live.Count} character{(live.Count == 1 ? "" : "s")} of your own; " + (builtInShown ? "this PC shows the built-in character."
+                : shown is not null ? "this PC shows one of your characters."
+                : RemoteCharacterModels.IsRemote(modelPath) ? "this PC shows a VRoid Hub character (below)."
+                : SharedCharacterModels.KeyOfPath(dataDirectory ?? "", modelPath) is not null ? "this PC shows a character no longer in your list, so use another one."
+                : "this PC shows a model file that isn't in your list yet, and it is added when Martlet next shares your characters."),
             new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "CharacterModelsStatus");
         stack.Add(status);
@@ -104,13 +104,13 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(shared, "CharacterModelsShared");
         stack.Add(shared);
 
-        stack.Add(CharacterRow(BundledLive2D.DefaultCharacter + " (built-in)", "Live2D. Part of Martlet on every computer.", builtInShown,
+        stack.Add(CharacterRow(BundledLive2D.DefaultCharacter + " (built-in)", "Live2D \u00b7 part of Martlet on every computer", builtInShown,
             BuiltInCharacterKey, () => UseCharacterAsync(null), null, available: true));
         foreach (var model in live)
         {
             var ready = dataDirectory is not null && SharedCharacterModels.IsComplete(dataDirectory, model);
-            var detail = $"{(model.Renderer == CharacterModelLibrary.Vrm ? "VRM" : "Live2D")}, {Size(model.Bytes)}. Added on {model.AddedBy} " +
-                $"{model.AddedAt.ToLocalTime():d}." + (ready ? "" : " Copying to this PC...");
+            var detail = $"{(model.Renderer == CharacterModelLibrary.Vrm ? "VRM" : "Live2D")}, {Size(model.Bytes)} \u00b7 added on {model.AddedBy} " +
+                $"{model.AddedAt.ToLocalTime():d}" + (ready ? "" : " \u00b7 copying to this PC...");
             var inUse = shown?.Id == model.Id;
             stack.Add(CharacterRow(model.Name!, detail, inUse, SharedCharacterModels.Key(model.Id), () => UseCharacterAsync(model),
                 inUse ? null : () => RemoveCharacterAsync(model), ready));
@@ -130,7 +130,7 @@ public partial class MainWindow
         {
             Text = name + (inUse ? "  \u00b7  shown on this PC" : ""), FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap
         });
-        var state = Note(detail + (inUse ? " Shown on this PC." : ""), new Thickness(0, 2, 0, 0));
+        var state = Note(detail + (inUse ? " \u00b7 shown on this PC" : ""), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(state, "CharacterModelState-" + key);
         text.Children.Add(state);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -162,7 +162,7 @@ public partial class MainWindow
         // be overwritten by it.
         if (avatarWindowOpen)
         {
-            ActionText.Text = "The character settings window is open. Choose the character there, or close it first.";
+            ActionText.Text = "The character settings window is open; choose the character there, or close it first.";
             return;
         }
         ChangeTurns.Turn? turn = null;
@@ -170,7 +170,7 @@ public partial class MainWindow
         {
             turn = await ChangeTurnAsync();
             var name = await SwitchCharacterModelAsync(model, lifetime.Token);
-            ActionText.Text = avatar.IsShowing ? $"Martlet now shows '{name}' on this PC." : $"'{name}' is this PC's character. Press Show character to see it.";
+            ActionText.Text = avatar.IsShowing ? $"Martlet now shows '{name}' on this PC." : $"'{name}' is this PC's character; press Show character to see it.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
@@ -233,8 +233,7 @@ public partial class MainWindow
     private async Task RemoveCharacterAsync(CharacterModel model)
     {
         if (store is null || closing) return;
-        if (!ConfirmationDialog.Confirm(this, $"Remove '{model.Name}'?\n\nMartlet deletes its copy on this PC and your other Martlet computers. " +
-                "A computer that shows it keeps it until another character is chosen there. Your original files aren't touched.", "Remove character"))
+        if (!ConfirmationDialog.Confirm(this, $"Remove '{model.Name}' from this PC and your other Martlet computers (your original files stay)?", "Remove character"))
             return;
         try
         {

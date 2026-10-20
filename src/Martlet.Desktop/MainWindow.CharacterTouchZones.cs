@@ -179,8 +179,7 @@ public partial class MainWindow
         foreach (var (choice, word, title, detail) in new (TouchInterrupts, string, string, string)[]
         {
             (TouchInterrupts.Any, "any", "It stops to react (recommended)",
-                "Any touch Martlet notices stops what it is saying, like talking over it. It reacts a moment after your last touch " +
-                "and decides whether to pick up where it left off."),
+                "Any touch Martlet notices stops what it is saying, and it reacts a moment after your last touch."),
             (TouchInterrupts.Intimate, "intimate", "It stops only for intimate touches",
                 $"Only a touch on an intimate part ({CharacterTouchZones.IntimateParts}) stops it; other touches wait until it finishes."),
             (TouchInterrupts.Never, "never", "It finishes first",
@@ -276,7 +275,7 @@ public partial class MainWindow
             Martlet.Core.Contracts.ContractException or System.Text.Json.JsonException or OperationCanceledException)
         {
             if (!closing) characterTouchZones.Report(error is OperationCanceledException
-                ? "Finding zones was stopped. The zones found until then are kept."
+                ? "Finding zones was stopped, and the zones found until then are kept."
                 : $"Martlet couldn't read which character to picture: {error.Message}");
         }
         finally
@@ -309,9 +308,9 @@ public partial class MainWindow
                 (true, $"Your image model, {decision.Name} (Companion › Vision), finds the zones: pictures go to it, not to the Thinking model.", null),
             SenseTaker.ThinkingModel => (true, advice, null),
             _ => (false, advice, thinking is null
-                ? "Detect zones is off: no model that can see pictures is set up. Set up a vision-capable model in Companion › Thinking or Companion › Thinking pool."
-                : "Detect zones is off: the Thinking model is text-only, and no Thinking pool member can see pictures. " +
-                  "Choose a vision-capable model in Companion › Thinking or Companion › Thinking pool.")
+                ? "Detect zones is off: no model that can see pictures is set up; set up a vision-capable model in Companion › Thinking or Companion › Thinking pool."
+                : "Detect zones is off: the Thinking model is text-only and no Thinking pool member can see pictures; " +
+                  "choose a vision-capable model in Companion › Thinking or Companion › Thinking pool.")
         };
     }
 
@@ -651,13 +650,13 @@ public partial class MainWindow
 
     private static string TouchZonesStatusText(CharacterTouchZoneSettings? settings) =>
         settings is null || settings.Zones.Count == 0
-            ? "No zones found yet for this model. Until then a click reacts to the rough part (head, face, body, arm, hand, leg)."
+            ? "No zones found yet for this model, so a click reacts to the rough part (head, face, body, arm, hand, leg)."
             : $"{settings.Zones.Count} zone{(settings.Zones.Count == 1 ? "" : "s")}, {settings.Zones.Count(settings.Active)} in use" +
               (settings.DetectedBy == CharacterTouchZoneSettings.ByVision && settings.DetectedAt is { } at
-                ? $". Found by the Thinking model on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}."
+                ? $", found by the Thinking model on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}."
                 : settings.DetectedBy == CharacterTouchZoneSettings.ByEstimate
-                    ? ". A first guess Martlet placed from the character's own parts and shape, with no AI. Detect zones has your Thinking model find them."
-                    : ". Made by you.");
+                    ? ", a first guess Martlet placed with no AI (Detect zones has your Thinking model find them)."
+                    : ", made by you.");
 
     private void TryTouchZone(CharacterTouchZone zone, CharacterActionCatalog catalog)
     {
@@ -843,10 +842,10 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(box, $"TouchZoneBox-{number}");
             InputHint.SetText(box, "40, 10, 20, 15");
             box.ToolTip = follows
-                ? $"Each area of the model's own {zone.Follows}, where it was in the picture. The zone follows them wherever they move; " +
-                  "move one onto another part to place the zone there instead."
-                : "Left, top, width and height, in percent of the picture; several areas are separated by |. Or drag a box on the picture, " +
-                  "or its corner to resize it; zoom the picture in for smaller steps.";
+                ? $"Each area of the model's own {zone.Follows}, where it was in the picture: the zone follows them wherever they move, " +
+                  "and you can move one onto another part to place the zone there instead."
+                : "Left, top, width and height, in percent of the picture, with | between areas; or drag a box on the picture, or its " +
+                  "corner to resize it.";
             if (!follows)
             {
                 // An area starts beside the last one; move it into place.

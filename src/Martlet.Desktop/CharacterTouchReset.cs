@@ -34,23 +34,19 @@ internal static class CharacterTouchReset
     internal static readonly IReadOnlyList<TouchResetLevel> Levels =
     [
         new(ReactionsId, "Zone reactions",
-            "What each zone does when you touch it goes back to what a fresh zone gets: its reactions, its rest, Martlet notices and " +
-            "your own words. The zones, their boxes and names stay.",
+            "Each zone's reactions, rest, Martlet notices and your own words go back to a fresh zone's, and the zones themselves stay.",
             ReactionLosses, _ => "Each zone reacts as a fresh zone does.",
             (target, token) => target.Zones.ResetReactionsAsync(target.Fresh, token)),
         new(ZonesId, "Zones",
-            "Removes this model's zones, found and added, with their boxes, names and reactions, and the pictures they were found " +
-            "in. Martlet then places a first guess again, as for a new character.",
-            ZoneLosses, _ => "Martlet places a first guess at this model's zones, with no AI and nothing sent. Detect zones has " +
-                "your Thinking model find them again.",
+            "Removes this model's zones and the pictures they were found in, and Martlet places a first guess again.",
+            ZoneLosses, _ => "Martlet places a first guess at this model's zones with no AI; Detect zones has your Thinking model " +
+                "find them again.",
             (target, token) => target.Zones.ForgetAsync(token), Covers: [ReactionsId]),
         new(TemperamentId, "Touch temperament",
-            "Forgets the active persona's touch temperament (decided from its personality or changed by you) and any temperament it " +
-            "uses instead. Martlet then decides it again from the personality.",
+            "Forgets the active persona's touch temperament, and Martlet decides it again from the personality.",
             TemperamentLosses, TemperamentAfter, ForgetTemperamentAsync),
         new(ReactionChangesId, "The character's own changes",
-            "Undoes the changes the active persona's character made itself to how it reacts to touches (the How I react " +
-            "check-in), so touches play what you chose again. Your zones and temperament stay.",
+            "Undoes the changes the active persona's character made itself to how it reacts to touches.",
             ReactionChangeLosses, _ => null, UndoReactionChangesAsync),
         new(EverythingId, "Everything",
             "All of the above: this model's zones and the active persona's touch temperament start again as a fresh character's, " +
@@ -73,7 +69,7 @@ internal static class CharacterTouchReset
         $"Reset {level.Label.ToLowerInvariant()} for this character?\n\nYou lose:\n" +
         string.Join("\n", loses.Select(line => "\u2022 " + char.ToUpperInvariant(line[0]) + line[1..] + ".")) +
         (level.After(target) is { } after ? "\n\nAfterwards: " + after : "") +
-        "\n\nOther models and personas keep theirs. You can't undo this.";
+        "\n\nYou can't undo this; other models and personas keep theirs.";
 
     /// <summary>"3 zones: Hair, Left cheek and Tail" (at most six names, then how many more); <paramref name="what"/> goes after "zones".</summary>
     internal static string Zones(IReadOnlyList<CharacterTouchZone> zones, string what = "")
@@ -143,14 +139,14 @@ internal static class CharacterTouchReset
 
     private static string? TemperamentAfter(TouchResetTarget target) => target.Persona is not { } persona ? null
         : string.IsNullOrWhiteSpace(persona.Text)
-            ? $"{persona.Name} has no personality text, so it uses the built-in reactions. Your other Martlet computers get this change too."
-            : $"Martlet decides how {persona.Name} reacts to touch again from its personality, in the background when it isn't replying. " +
-              "Your other Martlet computers get this change too.";
+            ? $"{persona.Name} has no personality text, so it uses the built-in reactions on all your Martlet computers."
+            : $"Martlet decides how {persona.Name} reacts to touch again from its personality, in the background, for all your " +
+              "Martlet computers.";
 
     private static async Task<string?> ForgetTemperamentAsync(TouchResetTarget target, CancellationToken token)
     {
         if (target.Persona is not { } persona) return "No persona is active.";
-        if (target.Temperaments.Busy) return "Martlet is deciding a touch temperament now. Wait until it is done.";
+        if (target.Temperaments.Busy) return "Martlet is deciding a touch temperament now; wait until it is done.";
         var why = await target.Temperaments.ForgetAsync(persona.Id, token);
         if (why is null && !string.IsNullOrWhiteSpace(persona.Text)) target.Redecide(persona);
         return why;

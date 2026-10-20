@@ -91,10 +91,10 @@ public partial class MainWindow
     /// <summary>Why an account switch must wait now, or null when it can happen.</summary>
     private string? AccountSwitchBlocked() =>
         accounts is null ? "Accounts aren't available on this PC."
-        : conversation?.Replying == true ? "Martlet is replying. Switch accounts when it has finished."
+        : conversation?.Replying == true ? "Martlet is replying: switch accounts when it has finished."
         : accounts.Switching ? "Martlet is switching accounts."
         : model?.IsRunning == true || setupOperations.IsRunning || changes.Busy || settingsBusy || memorySyncBusy
-            ? "Martlet is saving a change. Switch accounts in a moment." : null;
+            ? "Martlet is saving a change: switch accounts in a moment." : null;
 
     private void AccountButton_Click(object sender, RoutedEventArgs e)
     {
@@ -111,7 +111,7 @@ public partial class MainWindow
             var item = new MenuItem
             {
                 Header = new TextBlock { Text = label }, IsChecked = current, IsEnabled = !current && blocked is null,
-                ToolTip = account.RoleText + (account.Pending ? ". It reaches your other computers once this PC is in your Martlet network." : "")
+                ToolTip = account.RoleText + (account.Pending ? "; it reaches your other computers once this PC is in your Martlet network." : "")
             };
             AutomationProperties.SetAutomationId(item, "AccountSwitch-" + account.Key);
             AutomationProperties.SetName(item, label);
@@ -178,8 +178,8 @@ public partial class MainWindow
             }
         }
         if (closing) return;
-        ActionText.Text = $"Hi, {to.Name}. " + (talking
-            ? "The conversation ended for the switch. Start talking or listening when you're ready."
+        ActionText.Text = $"Hi, {to.Name}: " + (talking
+            ? "the conversation ended for the switch, so start talking or listening when you're ready."
             : "Martlet is yours now.");
         RenderListening();
         UpdateTray();
@@ -204,7 +204,7 @@ public partial class MainWindow
         QueueAccountsSync();
         if (AccountSwitchBlocked() is { } why)
         {
-            ActionText.Text = $"Added {accounts.SignedIn.First(a => a.Id == added).Name}. {why}";
+            ActionText.Text = $"Added {accounts.SignedIn.First(a => a.Id == added).Name}, but {why}";
             return;
         }
         SwitchAccountAsync(added).Forget();
@@ -221,7 +221,7 @@ public partial class MainWindow
         if (roster is null)
         {
             var here = accounts.SignedIn.Count;
-            accountsSyncStatus = $"Accounts: {here} {(here == 1 ? "person" : "people")} on this PC. They reach your other computers once this PC is in a Martlet network.";
+            accountsSyncStatus = $"Accounts: {here} {(here == 1 ? "person" : "people")} on this PC, shared with your other computers once this PC is in a Martlet network.";
             ShowAccountsSyncStatus();
             return;
         }
@@ -281,10 +281,10 @@ public partial class MainWindow
             var old = reads.Count(r => r.Old);
             var down = reads.Count(r => !r.Ok && !r.Old);
             accountsSyncStatus = $"Accounts: {people} {(people == 1 ? "person" : "people")} in your household, the same on {same} of {hosts.Count} " +
-                $"host{(hosts.Count == 1 ? "" : "s")}; checked {DateTime.Now:t}." +
-                (pending > 0 ? $" {pending} on this PC {(pending == 1 ? "waits" : "wait")} to reach your hosts." : "") +
-                (down > 0 ? $" {down} not responding." : "") +
-                (old > 0 ? $" Update {(old == 1 ? "one host" : old + " hosts")} to share accounts." : "");
+                $"host{(hosts.Count == 1 ? "" : "s")}; checked {DateTime.Now:t}" +
+                (pending > 0 ? $"; {pending} on this PC {(pending == 1 ? "waits" : "wait")} to reach your hosts" : "") +
+                (down > 0 ? $"; {down} not responding" : "") +
+                (old > 0 ? $"; update {(old == 1 ? "one host" : old + " hosts")} to share accounts" : "") + ".";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or InvalidOperationException)

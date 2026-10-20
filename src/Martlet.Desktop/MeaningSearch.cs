@@ -112,16 +112,16 @@ internal sealed class MeaningSearch : IDisposable
             if (current is null) return "Off: Martlet finds memories, guide sections and reports by their words only.";
             if (ready is null) return $"Checking {now.Model} {current.Where}...";
             if (ready.Missing)
-                return $"Not ready: {now.Model} isn't downloaded in Ollama on this PC. Choose Download to get it" +
-                    (now.Model == MeaningSearchFile.DefaultModel ? $" ({MeaningSearchFile.DefaultModelSize})" : "") +
-                    "; until then Martlet finds by words only.";
-            if (ready.Hold) return $"Waiting: {ready.Problem}. Martlet finds by words only until it can load {now.Model}.";
-            if (ready.Problem is { } problem) return $"Not ready: {problem}, so Martlet finds by words only. It checks again in a few minutes.";
-            var line = $"On: {now.Model} {current.Where}. Found by meaning: {Count(MemoryVectors, "memory", "memories")}, " +
-                $"{Count(GuideVectors, "guide section", "guide sections")} and {Count(ReportVectors, "report section", "report sections")}.";
-            if (fill is { } f) line += $" Reading {f.What}: {f.Done} of {f.Total}.";
-            if (failed is not null) line += $" The last try failed ({failed}); it tries again later.";
-            return line;
+                return $"Not ready: {now.Model} isn't downloaded in Ollama on this PC, so Martlet finds by words only; choose Download to get it" +
+                    (now.Model == MeaningSearchFile.DefaultModel ? $" ({MeaningSearchFile.DefaultModelSize})" : "") + ".";
+            if (ready.Hold) return $"Waiting: {ready.Problem}, so Martlet finds by words only until it can load {now.Model}.";
+            if (ready.Problem is { } problem) return $"Not ready: {problem}, so Martlet finds by words only and checks again in a few minutes.";
+            var line = $"On: {now.Model} {current.Where}, with {Count(MemoryVectors, "memory", "memories")}, " +
+                $"{Count(GuideVectors, "guide section", "guide sections")} and {Count(ReportVectors, "report section", "report sections")} " +
+                "found by meaning";
+            if (fill is { } f) line += $"; reading {f.What}: {f.Done} of {f.Total}";
+            if (failed is not null) line += $"; the last try failed ({failed}), so it tries again later";
+            return line + ".";
         }
     }
 

@@ -1970,7 +1970,7 @@ own character and runs its own conversation.
 **One flow for every check-in.** A built-in check-in is only data: a prompt,
 the facts it gets to know, the conditions it waits for and what its answer
 does. Your own check-ins have the same parts, and Martlet runs both the same
-way (`CheckIns.Wait`, `Message`, `Read`). Each card on Companion › Check-ins
+way (`CheckInSchedule.Wait`, `Message`, `Read`). Each card on Companion › Check-ins
 has the same editor:
 
 - *What it asks*: the prompt of a built-in check-in, or your own words.
@@ -2381,7 +2381,7 @@ check-in follows the same choice as the replies. While it is on, `{adult}` is
 Companion › Prompts › *Check-in: adult content on* (the check-in may be
 explicit, never about anyone under 18). While it is off, it is *Check-in:
 adult content off* (keep it non-explicit). Empty either prompt and `{adult}`
-says nothing (`CheckIns.Adult`, `CheckInState.Adult`).
+says nothing (`CheckInPrompts.Adult`, `CheckInState.Adult`).
 
 **Signals.** Some facts and conditions follow things Martlet already notices
 on this PC (`CheckInSignals.cs`, `MainWindow.CheckInSignals.cs`). The desktop
@@ -2536,7 +2536,7 @@ an error that says to answer without tools. A run with tools also gets more
 time (8 minutes to wait for a member and work, `CheckIns.ToolTimeout`, not 2)
 and more room to write in each request (2,048 tokens,
 `CheckIns.MaximumToolOutputTokens`, not 600), and its message says it may
-work in steps (`CheckIns.Steps`). A run that needs one call ends after one
+work in steps (`CheckInPrompts.Steps`). A run that needs one call ends after one
 call. No reply waits for a check-in, so the time to Martlet's first word does
 not change. A run with the answer *Its tools act* whose tools don't run on
 this PC now (such as the Memory tools while memory is off) doesn't ask the
@@ -2681,7 +2681,7 @@ model calling these tools is **NOT RUN**.
 
 **Answers.** Martlet reads the last decisive line, so thinking written before
 the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
-`<think>` block are skipped (`CheckIns.Read`). `OK`, `KEEP`, `REMIND:
+`<think>` block are skipped (`CheckInAnswers.Read`). `OK`, `KEEP`, `REMIND:
 nothing` and `KNOW: nothing to add` change nothing, and so does an answer Martlet can't read (the status
 says so).
 
@@ -2721,9 +2721,9 @@ just before the run. To add a built-in check-in:
 1. Add it to `CheckIns.BuiltIn` with its facts, conditions and outcome, and
    its prompt in `PromptCatalog` (the task only; *Check-ins: each check* adds
    the answer format).
-2. For a new fact, add a `CheckInFacts` flag, its text in `CheckIns.Facts` and
-   its placeholder in `CheckIns.Placeholders`. For a new condition, add a
-   `CheckInConditions` flag and its wait in `CheckIns.Wait` (a signal's wait
+2. For a new fact, add a `CheckInFacts` flag, its text in `CheckInPrompts.Facts` and
+   its placeholder in `CheckInPrompts.Placeholders`. For a new condition, add a
+   `CheckInConditions` flag and its wait in `CheckInSchedule.Wait` (a signal's wait
    goes in `CheckInSignals.cs`, with the signal in `CheckInState` and followed
    in `MainWindow.CheckInSignals.cs`). Widen `CheckIns.KnownFacts` or
    `KnownConditions`, which `CheckInSettings.Validate` checks. Add each to the

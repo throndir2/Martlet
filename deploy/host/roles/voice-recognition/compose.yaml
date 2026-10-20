@@ -7,11 +7,11 @@
 services:
   voice-recognition:
     build:
-      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/voice-recognition
-      dockerfile: host/Dockerfile
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers
+      dockerfile: voice-recognition/host/Dockerfile
       args:
         ACCELERATOR: cpu
-    image: martlet-voice-recognition:1
+    image: martlet-voice-recognition:2
     pull_policy: build
     restart: unless-stopped
     init: true
