@@ -1826,8 +1826,8 @@ Companion › Voice shows) and `abilities`, the rundown Companion › Voice show
 `cloning` and `sounds` (true or false), `emotions` (`None`, `WhisperOnly`,
 `Intensity` or `Tags`), `items` (`Voice cloning`, `Laughs & sighs` and
 `Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
-`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
-Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
+`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes;
+Laughs & sighs: yes; Emotions: whispering only." for Chatterbox Turbo, whose
 tones other than `[whispering]` don't change the voice and whose `[whispering]`
 the model itself whispers only now and then). `otherVoices` gives the
 same `abilities` and `runsOn` for the `openai` (online) voice, which doesn't
@@ -6074,12 +6074,14 @@ On Companion › Voice › *A cloud provider*, *Cloud voice* is an option picker
 `Picker-CloudVoice-openai` (OpenAI's voices) and `Picker-CloudVoice-elevenlabs`.
 ElevenLabs' details are readable: its facts (`PickerFact-CloudVoice-<fact>`:
 voice cloning, laughs and sighs, emotions, streaming, languages, cost),
-`ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
-your cloned voice. Key saved.*, and whether ElevenLabs asked to verify the
+`ElevenLabsStatus` (*Not in use yet: ...* or *In use: Eleven v4 Turbo with
+your cloned voice; key saved.*, and whether ElevenLabs asked to verify the
 voice; never the voice's name), `ElevenLabsKeyStatus` (what the key field will
 do; never the key) and `ElevenLabsModel` (the chosen model). Its abilities read
 through `VoiceEngineAbilities-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
-so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs.
+so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs. The *?* marks `Help-ElevenLabsAbout`,
+`Help-ElevenLabsModel`, `Help-ElevenLabsCosts` and `Help-ElevenLabsConsent` (the rights statement of the box) link to the
+wiki's *ElevenLabs* and *What you agree to*.
 `ElevenLabsSave` uploads a recording and saves the route, so it needs
 `--allow-ui-effects`. Never press it in a check: it would contact ElevenLabs.
 
@@ -8284,7 +8286,10 @@ its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavShare`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavThinkingRequests`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). Many pages keep their longer
-explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
+explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`; Listening, Voice, People,
+Singing, *Microphone and speakers* and *Voice ID* have, for example, `Help-ListeningRecognizer`,
+`Help-VoicesAbout`, `Help-ElevenLabsConsent`, `Help-PeopleRecognize`, `Help-SingingAbout`,
+`Help-AudioSetupIntro` and `Help-VoiceIdAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
 explanation as `help`, and `ui_click` on it only opens a small card with that
 text (passive, no `--allow-ui-effects`). While the card is open, `ui_snapshot`
@@ -9971,7 +9976,7 @@ voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
 voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
 use (a starter voice's name, "one of your recordings", or "a voice no longer in
-the list"), for example "6 voices. None chosen yet; Martlet starts with Jenny
+the list"), for example "6 voices; none chosen yet, so Martlet starts with Jenny
 (Dioco)." `F5VoicesShared` reads whether the list is shared with the
 paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
 voices still copying to this PC, hosts to update, or "No other Martlet computers
@@ -10025,7 +10030,7 @@ speech-to-text (and may send the recording to the Listening host), so it needs
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
 `F5RecordVoice` (passive: it only opens the dialog) opens *Record your own
 voice* (`OwnVoiceDialog`); `OwnVoiceCancel` (passive) closes it. `OwnVoiceAbout`
-returns its intro. `OwnVoiceConsent` is the box that says it is the owner's own
+returns its intro (one sentence; `Help-OwnVoiceAbout` has the rest and links to the wiki's *Record your own voice*). `OwnVoiceConsent` is the box that says it is the owner's own
 voice; its checked state is readable, and `ui_toggle` on it needs
 `--allow-ui-effects`. Each line has its fixed words (`OwnVoiceLine-<n>`, for
 example "“Would you enjoy a quiet cup of cocoa while we measure the
@@ -10034,10 +10039,10 @@ treasure?”"), its state (`OwnVoiceLineState-<n>`: "Not recorded yet.",
 (`OwnVoiceRecord-<n>`, readable as "Record line 2", "Stop recording line 2" or
 "Record line 2 again"; off until the box is ticked). `OwnVoiceRecorder` returns
 what the microphone is doing or why a line wasn't kept ("Press Record beside a
-line, then read it out loud.", "Line 2 recorded. Next, record line 3.", "Only
-0.8 seconds of speech was heard on line 1. ..."), `OwnVoiceSummary` how many
-lines are recorded and how long they are together ("No lines recorded yet.
-Record all 4 lines to make your voice.", "2 of 4 lines recorded, 11.6 seconds
+line, then read it out loud.", "Line 2 recorded; next, record line 3.", "Only
+0.8 seconds of speech was heard on line 1, so ..."), `OwnVoiceSummary` how many
+lines are recorded and how long they are together ("No lines recorded yet;
+record all 4 lines to make your voice.", "2 of 4 lines recorded, 11.6 seconds
 together with the pauses.") and `OwnVoiceProblem` why `OwnVoiceOk` (Add voice)
 couldn't add the voice ("Record line 1 first.", or that together the lines are
 longer than 30 seconds and which line to read again). Record uses the
@@ -10063,7 +10068,7 @@ sighs, emotions, streaming, languages, your recordings, license and whether it
 allows commercial use, numbers), `PickerState-VoiceEngine` where it stands
 ("Speaking on this PC.", "Ready on gpu-pc.", "Setting up on gpu-pc...", or why
 it can't run there), `VoiceEngineAbilities-<key>` the rundown of what it can do
-("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only."; shown
+("Voice cloning: yes; Laughs & sighs: yes; Emotions: whispering only."; shown
 as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in `f5_voices`),
 `VoiceEngineFeatures-<key>` its other needs as chips ("Docker, 5 s+ samples,
 English" for Chatterbox Turbo; the same list as `features` in `f5_voices`), and
@@ -10098,17 +10103,20 @@ voice engine there, or says one would share the card before one is set up.
 
 Companion › Singing (`CompanionTab-Singing`, under *Optional extras*;
 [Singing](SINGING.md)) has the standard order. `SingingNow` says whether and
-where Martlet sings ("Off. Martlet doesn't sing: no computer in the music list
-is on. Singing stays set up on your computers.", "Not set up yet. ...",
+where Martlet sings, in one sentence ("Off: Martlet doesn't sing, because no computer in the music list
+is on; Singing stays set up on your computers.", "Not set up yet: add one of your computers ...",
 "Martlet writes the music on gpu-pc (or the first free one of 2 computers) in
-high quality, and matches the voice on gpu-pc with SoulX-Singer.", or "... Voice
-match is off: songs keep the music model's own singer."). A song has two
+high quality, and matches the voice on gpu-pc with SoulX-Singer.", or "..., but voice
+match is off, so songs keep the music model's own singer."). `Help-SingingAbout` (*?*) explains what asking
+for a song does and links to the wiki's *How a song is made*. A song has two
 parts, each with its own shared pool list
 ([the two singing pools](SINGING.md#the-two-singing-pools)): *Music: where
 Martlet writes songs* (`Pool-singing-...`; with none on, Martlet doesn't sing)
 and *Voice match: where Martlet matches the singing to its voice*
 (`Pool-voice-match-...`; with none on, songs keep the music model's own
-singer). Each list has the shared IDs (summary, each member's line with its
+singer). Each list's intro shows one sentence with `Help-Pool-singing-Intro` and
+`Help-Pool-voice-match-Intro` (the whole intro, with a link to the wiki's *The music and voice match lists*).
+Each list has the shared IDs (summary, each member's line with its
 state, such as "1. gpu-pc. A paired computer; runs Singing with SoulX-Singer and
 VevoSing; high quality." or "...; SoulX-Singer.", On, Up, Down, Remove,
 Settings, kept-for and the Add buttons; only computers that aren't shared by
@@ -10134,7 +10142,8 @@ model not set up there: `Pool-singing-AddXl-`, `Pool-singing-AddHeartMuLa-`, `Po
 `SingingCloudKeyStatus-<area>`, `SingingCloudConsent-<area>` (what goes to the provider and that it may cost money),
 `SingingCloudAdd-<area>` (needs `--allow-ui-effects`) and `SingingCloudState-<area>`. A cloud member's settings show
 `Pool-<area>-CloudKeyStatus-<member key>`, a key box with `Pool-<area>-CloudSaveKey-<member key>` and, for Mureka,
-`Pool-singing-OwnVoice-<member key>` (*Sing in Martlet's voice*). A voice
+`Pool-singing-OwnVoice-<member key>` (*Sing in Martlet's voice*) and `Help-Pool-<area>-CloudModel-<member key>`
+(how to use another model of the provider; wiki *Cloud providers*). A voice
 match member adds `Pool-voice-match-AddVevo-<member key>` (*Add VevoSing here*
 where it runs without VevoSing) and `Pool-voice-match-Model-<member key>`
 (*SoulX-Singer*, the default, or *VevoSing*: that computer's own model, saved in
@@ -10146,13 +10155,14 @@ voice match list, it makes the voice match list from the music list. *What
 Singing is* shows the role's details only (`Picker-Singing-Role`): its facts
 (`PickerFact-Singing-<fact>`: `vram`, `download`, `song`, `license`, `cost`,
 `data`) and `SingingGpu` (fixed text: its first sentence, with all of it in
-`help`), which answers whether Singing needs a graphics card of its own. *Voice
-match models* compares the two models: `Picker-SingingVoiceMatch-SoulX` and
+`help` and in `Help-SingingGpu`, which links to the wiki's *Hardware*), which answers whether Singing needs a graphics card of its own. *Voice
+match models* has `Help-SingingVoiceMatchModels` (wiki *More choices*) and compares the two models: `Picker-SingingVoiceMatch-SoulX` and
 `Picker-SingingVoiceMatch-VevoSing` (passive; *in use* is the first voice match
 computer's model) compare their footprint and license
 (`PickerFact-SingingVoiceMatch-license`: VevoSing is "CC-BY-NC-ND-4.0:
 personal, non-commercial use only ..."). *Set up Singing here* asks one
-confirmation naming the downloads, licences and terms and sets the role up
+confirmation: the question and one sentence with the graphics card, the download size, the licences and the
+voice rule (the wiki's *What each part downloads* lists every model) and sets the role up
 through `martlet-host add singing` (a run window on this PC whose
 `HostRunStatus` follows the image build, the service starting and each model
 file's download, for example "Singing: downloading model-svc.pt, 45% of 2730

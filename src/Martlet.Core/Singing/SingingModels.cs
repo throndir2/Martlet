@@ -7,7 +7,8 @@ namespace Martlet.Core.Singing;
 public sealed record SingingAddOn(string Id, string Name, string Button, SongMusicModel? Music, SongVoiceMatch? Match, string Choice,
     string On, string Off, string Download, string Licence, bool NonCommercial, string Label, string About)
 {
-    /// <summary>What adding it downloads and agrees to, for its confirmation (role.conf's terms for it, in short).</summary>
+    /// <summary>What adding it downloads and agrees to, in one sentence for its confirmation (role.conf's terms for it, in short; the
+    /// wiki's Singing#consent-and-licenses lists every model and licence).</summary>
     public string Terms { get; init; } = "";
 }
 
@@ -22,60 +23,48 @@ public static class SingingModels
             "about 20 GB", "MIT", false, "ACE-Step 1.5 XL (the highest quality; about 20 GB more, a 12 GB+ card)",
             "ACE-Step's 4B music model (its SFT model, 50 steps): clearer words and richer music than ACE-Step 1.5.")
         {
-            Terms = "ACE-Step 1.5 XL downloads about 20 GB more: its SFT model (huggingface.co/ACE-Step/acestep-v15-xl-sft, MIT). " +
-                "It is ACE-Step's largest music model: the clearest singing and music, but slower and it needs a 12 GB+ NVIDIA " +
-                "graphics card (16 GB+ is better beside the voice)."
+            Terms = "ACE-Step 1.5 XL downloads about 20 GB more (MIT) and needs a 12 GB+ NVIDIA graphics card, or 16 GB+ beside the voice."
         },
         new("heartmula", "HeartMuLa", "HeartMuLa", SongMusicModel.HeartMuLa, null, "SINGING_HEARTMULA", "yes", "no",
             "about 22 GB", "Apache-2.0", false, "HeartMuLa (a 3B song model; about 22 GB more, a 16 GB+ card)",
             "HeartMuLa's 3B song model with its HeartCodec: full songs from lyrics and style tags.")
         {
-            Terms = "HeartMuLa adds HeartMuLa's heartlib (github.com/HeartMuLa/heartlib, Apache-2.0) to the singing image and " +
-                "downloads about 22 GB: HeartMuLa-oss-3B, HeartCodec and their tokenizer (huggingface.co/HeartMuLa, Apache-2.0). " +
-                "It needs a 16 GB+ NVIDIA graphics card. Martlet has not measured it yet."
+            Terms = "HeartMuLa downloads about 22 GB (Apache-2.0) and needs a 16 GB+ NVIDIA graphics card; Martlet hasn't measured it yet."
         },
         new("diffrhythm", "DiffRhythm", "DiffRhythm", SongMusicModel.DiffRhythm, null, "SINGING_DIFFRHYTHM", "yes", "no",
             "about 9 GB", "Apache-2.0; its VAE Stability AI Community; MuQ-MuLan CC-BY-NC-4.0", true,
             "DiffRhythm (fast; about 9 GB more, an 8 GB+ card; non-commercial use only)",
             "DiffRhythm 1.2: a diffusion song model that writes a whole song in seconds, up to 4 minutes 45 seconds.")
         {
-            Terms = "DiffRhythm adds DiffRhythm (github.com/ASLP-lab/DiffRhythm, Apache-2.0) and espeak-ng to the singing image and " +
-                "downloads about 9 GB: DiffRhythm 1.2 full (Apache-2.0), its VAE (Stability AI Community License), MuQ-MuLan and " +
-                "MuQ (CC-BY-NC-4.0: non-commercial use only) and XLM-RoBERTa base (MIT). It needs an 8 GB+ NVIDIA graphics card. " +
-                "Martlet has not measured it yet."
+            Terms = "DiffRhythm downloads about 9 GB, needs an 8 GB+ NVIDIA graphics card and includes MuQ models for " +
+                "non-commercial use only (CC-BY-NC-4.0); Martlet hasn't measured it yet."
         },
         new("yue", "YuE", "YuE", SongMusicModel.YuE, null, "SINGING_YUE", "yes", "no",
             "about 8 GB", "CC-BY-NC-4.0", true, "YuE (strong singing, slow; non-commercial use only; about 8 GB more, a 16 GB+ card)",
-            "YuE2: a lyrics-to-song model with strong singing. It is slow, and the lyrics set the song's length.")
+            "YuE2: a slow lyrics-to-song model with strong singing, where the lyrics set the song's length.")
         {
-            Terms = "YuE adds YuE2's inference package to the singing image and downloads about 8 GB: YuE2-3B and its VAE " +
-                "(huggingface.co/m-a-p, CC-BY-NC-4.0: non-commercial use only; the licensors let individual creators use what " +
-                "they make). It is slow and needs a 16 GB+ NVIDIA graphics card (24 GB for full precision). Martlet has not " +
-                "measured it yet."
+            Terms = "YuE downloads about 8 GB of models for non-commercial use only (CC-BY-NC-4.0) and needs a 16 GB+ NVIDIA " +
+                "graphics card (24 GB for full precision); Martlet hasn't measured it yet."
         },
         new("vevosing", "VevoSing", "Vevo", null, SongVoiceMatch.VevoSing, "SINGING_VOICE_MATCHES", "soulx-vevosing", "soulx",
             "about 4.5 GB", "CC-BY-NC-ND-4.0", true, "VevoSing (closer to the voice; personal, non-commercial use only)",
             "Amphion's Vevo1.5: a little closer to the voice and cleaner, but may drift off-key.")
         {
-            Terms = "VevoSing downloads about 4.5 GB more: Amphion's Vevo1.5 models (huggingface.co/amphion/Vevo1.5), licensed " +
-                "CC-BY-NC-ND-4.0: personal, non-commercial use only, and nothing made from them may be shared as a derivative; " +
-                "and OpenAI Whisper medium (MIT). Choose it only for your own non-commercial use."
+            Terms = "VevoSing downloads about 4.5 GB of models for personal, non-commercial use only, and nothing made with them " +
+                "may be shared as a derivative (CC-BY-NC-ND-4.0)."
         },
         new("vevo2", "Vevo2", "Vevo2", null, SongVoiceMatch.Vevo2, "SINGING_VEVO2", "yes", "no",
             "about 3 GB", "CC-BY-NC-ND-4.0", true, "Vevo2 (Amphion's newest; personal, non-commercial use only)",
             "Amphion's Vevo2: speech and singing voice conversion from a short recording, keeping the melody.")
         {
-            Terms = "Vevo2 downloads about 3 GB more: Amphion's Vevo2 models (huggingface.co/RMSnow/Vevo2), licensed " +
-                "CC-BY-NC-ND-4.0: personal, non-commercial use only, and nothing made from them may be shared as a derivative; " +
-                "and OpenAI Whisper medium (MIT). Martlet has not measured it yet."
+            Terms = "Vevo2 downloads about 3 GB of models for personal, non-commercial use only, and nothing made with them may " +
+                "be shared as a derivative (CC-BY-NC-ND-4.0); Martlet hasn't measured it yet."
         },
         new("seedvc", "Seed-VC", "SeedVc", null, SongVoiceMatch.SeedVc, "SINGING_SEEDVC", "yes", "no",
             "about 2.5 GB", "GPL-3.0", false, "Seed-VC (singing voice conversion with pitch; GPL-3.0)",
             "Seed-VC's singing model (44.1 kHz, with pitch): zero-shot singing voice conversion from a short recording.")
         {
-            Terms = "Seed-VC adds Seed-VC (github.com/Plachtaa/seed-vc, GPL-3.0, no longer maintained) to the singing image and " +
-                "downloads about 2.5 GB: its singing model (GPL-3.0), RMVPE (MIT), CAMPPlus (Apache-2.0), NVIDIA BigVGAN v2 " +
-                "(MIT) and OpenAI Whisper small (Apache-2.0). Martlet has not measured it yet."
+            Terms = "Seed-VC downloads about 2.5 GB (GPL-3.0, no longer maintained); Martlet hasn't measured it yet."
         },
     ];
 

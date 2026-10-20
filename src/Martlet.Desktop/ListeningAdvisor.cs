@@ -100,7 +100,7 @@ internal static partial class ListeningAdvisor
             (loads.Count == 0 ? "." : $". Other local models may also use {(several ? "them" : "it")}: {string.Join(", ", loads.Select(l => l.Describe()))}.");
         if (gpu.DriverMajor is { } major && major < MinimumDriver)
             return Cpu("the NVIDIA driver is out of date",
-                $"Update the NVIDIA driver to use the graphics card. This PC has {gpu.Driver}. Martlet needs {MinimumDriver} or newer.", note);
+                $"Update the NVIDIA driver to use the graphics card: Martlet needs {MinimumDriver} or newer, and this PC has {gpu.Driver}.", note);
         if (containersUseGpu == false)
             return Cpu("Docker Desktop can't use the graphics card", "Docker Desktop can't use the NVIDIA graphics card yet.", note);
         if (free >= LargeNeedGb)
