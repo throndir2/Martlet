@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- Use models your apps already run now also works on host PCs: when LM Studio, llama.cpp, vLLM or another model app on a host serves a smarter model, Recommended setup adds the new **Thinking pool (your own app)** role, and that host's Thinking pool uses the model in your app. Nothing downloads, and replies stay as fast as before. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- Use models your apps already run now also works on host PCs: when LM Studio, llama.cpp, vLLM or another model app on a host serves a smarter model, Recommended setup adds the new **Thinking pool (your own app)** role, and that host's Thinking pool uses the model in your app. Nothing downloads, and replies stay as fast as before. ([#1090](https://github.com/throndir2/Martlet/pull/1090))
 
 ### Changed
 
