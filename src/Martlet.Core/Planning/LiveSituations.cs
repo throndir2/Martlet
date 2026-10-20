@@ -130,10 +130,8 @@ public static class LiveSituations
             order.Add(new(LivePlaceKind.ThisPc, "This PC", facts.HomeModel ?? facts.LocalModel ?? "its model") { CardKept = true });
             var place = order[0];
             var why = place.Kind == LivePlaceKind.ThisPc
-                ? $"A game ({game}) runs on this PC, and no other place can do live Thinking, so it stays on this PC's {place.Model}. " +
-                  "Martlet unloads it only when the game needs the graphics card's memory; Ollama then runs it on the processor." + backupNote
-                : $"A game ({game}) runs on this PC, so live Thinking leaves its graphics card for {place.Text}. The model stays loaded " +
-                  "while the game leaves room, and live Thinking comes back when the game ends." + backupNote;
+                ? $"A game ({game}) runs on this PC and no other place can do live Thinking, so it stays on this PC's {place.Model}." + backupNote
+                : $"A game ({game}) runs on this PC, so live Thinking uses {place.Text} until the game ends." + backupNote;
             return new(Situation.Gaming, place, order, why);
         }
 

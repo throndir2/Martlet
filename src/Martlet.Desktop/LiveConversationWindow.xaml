@@ -28,7 +28,7 @@
                     <!-- Background tasks (thinking longer, a song...): how many Martlet is running or has ready, shown once it starts
                          one. It opens the task list over the conversation (TasksPanel). -->
                     <Button x:Name="TasksChip" Click="TasksChip_Click" Padding="12,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
-                            ToolTip="Background tasks. Martlet keeps working on these while you talk."
+                            ToolTip="Background tasks that Martlet keeps working on while you talk"
                             AutomationProperties.AutomationId="LiveTasks">
                         <StackPanel Orientation="Horizontal">
                             <Grid Width="14" Height="14" Margin="0,0,7,0" VerticalAlignment="Center">
@@ -61,9 +61,9 @@
                         </Grid>
                     </Button>
                     <Button x:Name="StopButton" Click="Stop_Click" IsEnabled="False" Padding="8,6" MinHeight="34" MinWidth="40"
-                            ToolTip="Stop (Esc)&#x0a;Stops the reply, recording and watching. Listening stays on." ToolTipService.ShowOnDisabled="True"
+                            ToolTip="Stop (Esc)&#x0a;Stops the reply, recording and watching, but listening stays on." ToolTipService.ShowOnDisabled="True"
                             AutomationProperties.Name="Stop (Esc)" AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
-                            AutomationProperties.HelpText="Stops the reply, recording and watching. Listening stays on.">
+                            AutomationProperties.HelpText="Stops the reply, recording and watching, but listening stays on.">
                         <TextBlock Style="{DynamicResource Icon}" Text="&#xE71A;"/>
                     </Button>
                 </StackPanel>
@@ -109,9 +109,9 @@
                                    Margin="0,0,10,0" AutomationProperties.AutomationId="LiveContext"/>
                         <Button x:Name="RefreshContextButton" Content="_Refresh context" Click="RefreshContext_Click" Style="{DynamicResource LinkButton}"
                                 FontSize="12" Padding="0" VerticalAlignment="Center" ToolTipService.ShowOnDisabled="True"
-                                ToolTip="Forget the earlier exchanges so Martlet's next reply starts fresh. The messages stay on screen."
+                                ToolTip="Forget the earlier exchanges so Martlet's next reply starts fresh (the messages stay on screen)"
                                 AutomationProperties.AutomationId="LiveRefreshContext"
-                                AutomationProperties.HelpText="Forgets the earlier exchanges so the next reply starts fresh. The messages stay on screen."/>
+                                AutomationProperties.HelpText="Forgets the earlier exchanges so the next reply starts fresh (the messages stay on screen)."/>
                     </WrapPanel>
                 </StackPanel>
             </DockPanel>
@@ -153,7 +153,7 @@
                     <DockPanel>
                         <Button x:Name="SongStopButton" DockPanel.Dock="Right" VerticalAlignment="Center" Content="Stop singing" Click="SongStop_Click"
                                 Padding="12,3" Margin="10,0,0,0" Visibility="Collapsed"
-                                ToolTip="Martlet finishes the word and the band rings out on the beat. Martlet hears where it stopped."
+                                ToolTip="Martlet finishes the word, the band rings out on the beat, and Martlet hears where it stopped"
                                 AutomationProperties.AutomationId="LiveSongStop"/>
                         <StackPanel>
                             <TextBlock x:Name="SongText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
@@ -211,7 +211,7 @@
                                 PreviewMouseLeftButtonDown="Ptt_Down" PreviewMouseLeftButtonUp="Ptt_Up" LostMouseCapture="Ptt_LostCapture"
                                 PreviewKeyDown="Ptt_KeyDown" PreviewKeyUp="Ptt_KeyUp" LostKeyboardFocus="Ptt_LostFocus"
                                 AutomationProperties.AutomationId="LivePtt" AutomationProperties.Name="Hold to talk (Space), release to send"
-                                AutomationProperties.HelpText="Hold the mouse button or Space, then release to send. Esc discards." />
+                                AutomationProperties.HelpText="Hold the mouse button or Space, then release to send (Esc discards)." />
                         <Button x:Name="SendButton" Content="_Send" Click="Send_Click" IsEnabled="False" Padding="20,10" Margin="8,0,0,0"
                                 Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="LiveSend" />
                     </StackPanel>
@@ -220,7 +220,7 @@
                                  VerticalScrollBarVisibility="Auto" TextChanged="Input_Changed" PreviewKeyDown="Input_KeyDown"
                                  SizeChanged="Input_SizeChanged"
                                  AutomationProperties.AutomationId="LiveInput" AutomationProperties.Name="Message Martlet"
-                                 AutomationProperties.HelpText="Press Enter to send. Press Shift+Enter for a new line." />
+                                 AutomationProperties.HelpText="Press Enter to send, or Shift+Enter for a new line." />
                         <!-- Its margin is set from where the box's caret starts, so the hint sits exactly where typing begins. -->
                         <TextBlock x:Name="Placeholder" Text="Message Martlet" Style="{DynamicResource Muted}" IsHitTestVisible="False"
                                    HorizontalAlignment="Left" VerticalAlignment="Top" TextWrapping="NoWrap"

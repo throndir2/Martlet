@@ -429,9 +429,9 @@ public sealed class EarlyReplyDesktopTests
     [Fact]
     public void Companion_says_whether_replies_start_early_and_what_became_of_them()
     {
-        Assert.Equal("Off. Martlet starts each reply once you finished talking.",
+        Assert.Equal("Off: Martlet starts each reply once you finished talking.",
             MainWindow.EarlyRepliesText(new TalkPreferences(EarlyReplies: false), null, []));
-        Assert.Equal("On. No replies started early yet.", MainWindow.EarlyRepliesText(new TalkPreferences(), null, []));
+        Assert.Equal("On, and no replies started early yet.", MainWindow.EarlyRepliesText(new TalkPreferences(), null, []));
         var at = DateTimeOffset.UnixEpoch;
         EarlyReplyRecord[] records =
         [
@@ -439,7 +439,7 @@ public sealed class EarlyReplyDesktopTests
             new(at, EarlyReplyRecord.Promoted, TimeSpan.FromMilliseconds(280), TimeSpan.FromMilliseconds(1300), 2),
             new(at, EarlyReplyRecord.Changed, TimeSpan.FromMilliseconds(290), TimeSpan.FromMilliseconds(900), 1, "what you said changed")
         ];
-        Assert.Equal("On. Last 3: 1 taken as the reply, 1 let go because you went on talking, 1 let go for another reason. " +
-            "Last: changed after 900 ms.", MainWindow.EarlyRepliesText(new TalkPreferences(), null, records));
+        Assert.Equal("On; last 3: 1 taken as the reply, 1 let go because you went on talking, 1 let go for another reason; " +
+            "last: changed after 900 ms.", MainWindow.EarlyRepliesText(new TalkPreferences(), null, records));
     }
 }

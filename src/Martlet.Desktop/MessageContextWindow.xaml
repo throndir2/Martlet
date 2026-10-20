@@ -39,7 +39,7 @@
                         ToolTip="Copy everything this request sent, as text" AutomationProperties.AutomationId="MessageContextCopyAll"
                         AutomationProperties.HelpText="Copies everything this request sent, as text."/>
                 <TextBlock Style="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"
-                           Text="Shown on this PC only. Martlet keeps it for the newest messages while the conversation is open, and never saves or logs it."/>
+                           Text="Shown on this PC only, and Martlet never saves or logs it."/>
             </DockPanel>
         </Border>
         <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto" Padding="22,14,22,6" Focusable="False">
