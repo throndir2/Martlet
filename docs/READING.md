@@ -186,4 +186,4 @@ of small text at full size and at 1024 x 576, to show why Martlet reads at full
 size, and a drawn 4K desktop. With `dataDirectory`, `pace` gives the saved
 **Read the screen** choice. `paceCheck` runs the production read pace for each
 choice over a simulated minute. With `endpoint` it also sends the same pictures to
-a Reading worker on loopback. See [MCP](MCP.md#reading).
+a Reading worker on loopback. See [MCP](mcp/thinking.md#reading).

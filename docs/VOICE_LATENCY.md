@@ -59,7 +59,7 @@ after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of sp
 Push-to-talk counts from letting go of the talk button, typed messages from
 sending them. MCP's `latency_report` summarizes the newest lines (median and
 90th percentile of the total and of every step, the slowest steps, the models);
-see [MCP](MCP.md#latency). The Chatterbox service also logs, per reply, how
+see [MCP](mcp/diagnostics.md#latency). The Chatterbox service also logs, per reply, how
 much speech it made and how long it took (never the words).
 
 A voice made slower than real time (Chatterbox streams in growing chunks, and a
@@ -112,7 +112,7 @@ floor held or stopped anything during a turn, the line says so:
 The floor's own work is bookkeeping: a level change takes a lock and a list
 walk on the caller's thread, and its log line, status file and host holds run
 on other threads, so it adds nothing to the time to the first audio. MCP's
-`live_floor_status` and `live_floor_check` show it ([MCP](MCP.md#live-floor-the-live-turn-first)).
+`live_floor_status` and `live_floor_check` show it ([MCP](mcp/thinking.md#live-floor-the-live-turn-first)).
 
 ## Thinking trace: each Thinking request step by step
 
@@ -155,7 +155,7 @@ Thinking turn 12 (reply) ended at 5600 ms: Completed; 2 requests, 1 tool call, f
 | ended | The state and the failure (if any), the number of requests and tool calls, the first words and first audio, the characters and spoken pieces, and what the turn dropped or fell back to |
 
 Each request for the Thinking pool's slots (the
-[Thinking requests](MCP.md#thinking-requests) page's `tr-N`) also writes its way
+[Thinking requests](mcp/thinking.md#thinking-requests) page's `tr-N`) also writes its way
 through the line. The pool job's own turn then follows as *Thinking turn 13
 (memory pool job on gpu-box)*:
 
@@ -180,7 +180,7 @@ The *still waiting* notices come from the turn's supervisor, which checks every
 10 ms beside the reply. With the production runtime and a fixture endpoint
 (180 turns with the trace on and 180 with it off, four runs), the median time
 to the first words differed by -0.01 to +0.06 ms, which is noise. MCP's
-`thinking_trace` puts the lines back together ([MCP](MCP.md#latency)).
+`thinking_trace` puts the lines back together ([MCP](mcp/diagnostics.md#latency)).
 
 ## Where the time goes today
 
@@ -753,7 +753,7 @@ ms of silence; judge 31 ms.* (or *incomplete*, *you went on talking*, *slow*,
 wait 260, end-of-turn judge 40* instead of *end of speech 800*. Companion ›
 Listening shows the newest decisions (`TalkJudgeTurnsStatus`), and MCP's
 `turn_judge_check` runs the bundled model and the gate headless
-([MCP](MCP.md#latency)). Other judges plug in behind Smart Turn through
+([MCP](mcp/diagnostics.md#latency)). Other judges plug in behind Smart Turn through
 `IEndOfTurnJudge` and `EndOfTurnJudges.WithFallback`, as the Thinking-pool one
 does. Smart Turn runs once while it loads, so the first pause isn't slower.
 
@@ -859,7 +859,7 @@ the turn's, in the order they happened, then *promoted* when it was taken.
 Companion › Listening's `TalkEarlyRepliesStatus` counts the newest outcomes,
 and MCP's `latency_report` sums them (`early`). MCP's `early_reply_check`
 rehearses the gates, the held turn and the comparison in real time with
-fixtures ([MCP](MCP.md#latency)).
+fixtures ([MCP](mcp/diagnostics.md#latency)).
 
 **Measured on this PC** (MCP `early_reply_check`, Release build, FIXTURES, NOT
 AI: quick transcript after 90 ms, judge after 26 ms, Thinking's first words
