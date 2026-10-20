@@ -64,7 +64,7 @@ internal static class CharacterThemeCheck
         {
             Directory.CreateDirectory(previewDirectory);
             var prefix = label ?? id[..16];
-            var written = await Sta(() =>
+            var written = await WpfThread.RunAsync(() =>
             {
                 var files = new List<string>();
                 void Write(string name, ThemePalette palette, string title)
@@ -111,22 +111,4 @@ internal static class CharacterThemeCheck
             }
         };
     }
-
-    /// <summary>Runs WPF drawing on one long-lived STA thread whose dispatcher keeps running, as in an app.</summary>
-    private static Task<T> Sta<T>(Func<T> work) => Wpf.Value.InvokeAsync(work).Task;
-
-    private static readonly Lazy<System.Windows.Threading.Dispatcher> Wpf = new(() =>
-    {
-        var ready = new TaskCompletionSource<System.Windows.Threading.Dispatcher>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
-            ready.SetResult(System.Windows.Threading.Dispatcher.CurrentDispatcher);
-            System.Windows.Threading.Dispatcher.Run();
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.IsBackground = true;
-        thread.Start();
-        return ready.Task.GetAwaiter().GetResult();
-    });
 }
