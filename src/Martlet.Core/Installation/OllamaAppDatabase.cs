@@ -84,9 +84,9 @@ public static class OllamaAppDatabase
     {
         problem = null;
         if (db.Text("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'") is null)
-            problem = "Ollama's app database has no settings table. This Ollama version keeps its settings differently.";
+            problem = "Ollama's app database has no settings table (this Ollama version keeps its settings differently).";
         else if (db.Text("SELECT name FROM pragma_table_info('settings') WHERE name = 'models'") is null)
-            problem = "Ollama's app settings have no models column. This Ollama version keeps its model location differently.";
+            problem = "Ollama's app settings have no models column (this Ollama version keeps its model location differently).";
         else if (db.Text("SELECT CAST(id AS TEXT) FROM settings WHERE id = 1") is null)
             problem = "Ollama's app settings have no saved row yet.";
         return problem is null;

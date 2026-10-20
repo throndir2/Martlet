@@ -25,8 +25,10 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="20">
                 <TextBlock Text="Memory" FontSize="24" FontWeight="SemiBold" />
-                <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,10"
-                           Text="Lasting facts Martlet remembers about you and the people it knows by voice. They stay on your computers, and you can search, change or delete them here, or just ask Martlet to." />
+                <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap"><Run Text="Lasting facts Martlet remembers about you and the people it knows by voice."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0"
+                           Text="Lasting facts Martlet remembers about you and the people it knows by voice. They stay on your own computers, and you can search, change or delete them here, or just ask Martlet to."
+                           Wiki="Memory#the-memory-window" AutomationProperties.AutomationId="Help-MemoryAbout"
+                           AutomationProperties.Name="About memory"/></InlineUIContainer></TextBlock>
                 <CheckBox x:Name="EnableChoice" Content="Remember facts from conversations"
                           Checked="Configuration_Changed" Unchecked="Configuration_Changed" Margin="0,0,0,12"
                           AutomationProperties.AutomationId="MemoryEnable" />
@@ -34,7 +36,7 @@
                 <CheckBox x:Name="ShareAboutMeChoice" Content="Share new memories about me with the household" Visibility="Collapsed"
                           Checked="ShareAboutMe_Changed" Unchecked="ShareAboutMe_Changed" Margin="0,-6,0,12"
                           AutomationProperties.AutomationId="MemoryShareAboutMe"
-                          ToolTip="New facts Martlet learns about you go to the household's memories. Every character in the household remembers them." />
+                          ToolTip="New facts Martlet learns about you go to the household's memories, which every character in the household remembers." />
 
                 <Border Style="{DynamicResource CardStyle}" Padding="18">
                     <Grid>
@@ -68,7 +70,7 @@
                             <CheckBox x:Name="ShowHistoryChoice" Content="Show _replaced facts" Margin="0,8,0,0"
                                       Checked="ShowHistory_Changed" Unchecked="ShowHistory_Changed"
                                       AutomationProperties.AutomationId="MemoryShowHistory"
-                                      ToolTip="Facts that stopped being true. Martlet keeps them as history and never recalls them." />
+                                      ToolTip="Facts that stopped being true: Martlet keeps them as history and never recalls them." />
                             <ListBox x:Name="FactsList" Height="340" Margin="0,8,0,6" SelectionMode="Extended"
                                      SelectionChanged="FactsList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      AutomationProperties.AutomationId="MemoryFacts" AutomationProperties.Name="Remembered facts">
@@ -163,7 +165,7 @@
                 <Expander Header="Export to a file" AutomationProperties.AutomationId="MemoryExportSection">
                     <StackPanel Margin="4,8,0,0">
                         <TextBlock Style="{DynamicResource Muted}"
-                                   Text="Preview the JSON before creating a local export. Martlet won't upload it or overwrite files." />
+                                   Text="Preview the JSON before creating a local export; Martlet won't upload it or overwrite files." />
                         <Button x:Name="CreateExportPreviewButton" Content="_Preview export" Click="CreateExportPreview_Click"
                                 Padding="10,6" Margin="0,6,0,6" HorizontalAlignment="Left"
                                 AutomationProperties.AutomationId="MemoryCreateExportPreview" />

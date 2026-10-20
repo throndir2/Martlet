@@ -73,10 +73,13 @@ internal static class DeepThinkingFit
     {
         if (thinking is null || cards >= 2 && !sameCard) return null;
         var on = sameCard ? "the same graphics card" : cards == 0 ? "its processor (no graphics card)" : "its only graphics card";
-        return $"{where} already runs a Thinking model ({thinking}) on {on}. A Thinking pool model there shares it: while both run, " +
-               "each runs at about half speed, so replies can start later. We recommend one graphics card for each Thinking model: " +
-               "add another computer with its own graphics card, or a cloud provider, to the Thinking pool instead.";
+        return $"{where} already runs a Thinking model ({thinking}) on {on}, so a Thinking pool model there shares it and both run " +
+               "at about half speed.";
     }
+
+    /// <summary>The rest of <see cref="SharedCard(string, string?, int, bool)"/>'s warning, behind its "?".</summary>
+    internal const string SharedCardMore = "Replies can then start later. We recommend one graphics card for each Thinking model: add " +
+        "another computer with its own graphics card, or a cloud provider, to the Thinking pool instead.";
 
     /// <summary><see cref="SharedCard(string, string?, int)"/> for a paired host: its Thinking model from its Ollama role in
     /// <paramref name="offers"/>, and its dedicated graphics cards from <paramref name="hardware"/> (one when it hasn't reported).</summary>

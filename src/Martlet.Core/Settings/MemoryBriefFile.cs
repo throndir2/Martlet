@@ -119,7 +119,7 @@ public sealed record MemoryBriefFile
         (setting, _) =>
         {
             if (Parse(setting.Value) is not { } brief)
-                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet; update this PC to use it."));
             try { Save(directory, brief); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
