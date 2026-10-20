@@ -9,20 +9,16 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Eyes › Where the face is: where the shown model's eyes come from (its own meshes or eye bones, a
-/// vision measurement or an estimate), whether the blush uses measured cheeks, Measure the face and Forget the measurement.
-/// The measurement is a low-priority vision helper job, never on a reply's path: it runs on its own once per model when a new
-/// model (one without a measurement of its cheeks) shows and a model that can see is set up, and again on request. Its hint
-/// goes to the renderer after each model load.</summary>
+/// <summary>Companion › Eyes › Where the face is, the work behind it (the card is in Pages\Eyes\EyesPage.Face.cs): where the shown
+/// model's eyes come from, Measure the face and Forget the measurement. The measurement is a low-priority vision helper job,
+/// never on a reply's path: it runs on its own once per model when a new model (one without a measurement of its cheeks) shows
+/// and a model that can see is set up, and again on request. Its hint goes to the renderer after each model load.</summary>
 public partial class MainWindow
 {
     private readonly CharacterEyeService characterEyes;
-    private TextBlock? eyesStatus, eyesProgress;
     private bool measuringEyes;
     private long nextEyesCheck, nextEyesSight;
     private bool eyesCanSee;
-    // What the Eyes rows showed when the page was drawn: a new model, measurement or busy state draws them again.
-    private (string? Model, CharacterEyeMeasurement? Measurement, bool Busy) renderedEyes;
 
     private void WireCharacterEyes()
     {
@@ -36,15 +32,11 @@ public partial class MainWindow
     private void EyesChanged()
     {
         if (closing) return;
-        if (eyesStatus is not null) eyesStatus.Text = EyesStatusText();
-        if (eyesProgress is not null)
-        {
-            eyesProgress.Text = characterEyes.Progress ?? "";
-            eyesProgress.Visibility = characterEyes.Progress is null ? Visibility.Collapsed : Visibility.Visible;
-        }
+        eyesPage?.ShowEyes();
         FollowCharacterEyes();
+        // What the Eyes rows showed when the page was drawn: a new model, measurement or busy state draws them again.
         if (openTab == CompanionTab.Eyes && !CompanionContent.IsKeyboardFocusWithin && !tabEdited &&
-            renderedEyes != (characterEyes.ModelId, characterEyes.Current, measuringEyes || characterEyes.Busy)) RenderTab();
+            (eyesPage?.RenderedEyes ?? default) != (characterEyes.ModelId, characterEyes.Current, measuringEyes || characterEyes.Busy)) RenderTab();
     }
 
     /// <summary>From the character timer, about once a second: keeps the showing character's face hint on the shown model's
@@ -85,9 +77,6 @@ public partial class MainWindow
     private (bool CanSee, string Line, string? Off) EyesSight() =>
         TouchZonesPageModel.SightOf(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings.ThinkingRoute(),
             SavedModelAbilities(), CharacterEyeService.Fixture);
-
-    private string EyesStatusText() => characterEyes.ModelId is null ? "Reading the character..."
-        : CharacterEyes.Status(avatar.EyesFrom, characterEyes.Current, avatar.IsShowing, DateTimeOffset.Now);
 
     private async Task MeasureEyesAsync(bool automatically)
     {
@@ -133,90 +122,5 @@ public partial class MainWindow
         if (closing) return;
         FollowCharacterEyes();
         if (openTab == CompanionTab.Eyes) RenderTab();
-    }
-
-    /// <summary>Companion › Eyes › Where the face is: where the eyes come from, how measuring went, Measure the face and Forget
-    /// the measurement, and the close-up Thinking saw with its boxes.</summary>
-    private Border CharacterEyesCard()
-    {
-        var catalog = characterActions.Current;
-        var busy = measuringEyes || characterEyes.Busy;
-        renderedEyes = (characterEyes.ModelId, characterEyes.Current, busy);
-        var stack = new List<UIElement>
-        {
-            Heading("Where the face is"),
-            HelpTip.Explain("Some emotes are drawn over the eyes (heart eyes, star eyes, dizzy swirls), and the blush goes on the " +
-                "cheeks. They fit the face when Martlet knows where its eyes and cheeks are. When a new character shows and a model " +
-                "that can see is set up, your Thinking model measures its eyes, cheeks and mouth once, in a close-up of the face " +
-                "drawn off screen in the rest pose (so it works while the character is hidden), in the background and never while " +
-                "Martlet replies. The model's own eye data comes first unless it clearly misses the measured eye. Press Measure the " +
-                "face to measure again at any time.", new Thickness(0, 0, 0, 4), "CharacterEyes", "emotes over the eyes and the blush")
-        };
-        eyesStatus = Note(EyesStatusText(), new Thickness(0, 0, 0, 4));
-        AutomationProperties.SetAutomationId(eyesStatus, "CharacterEyesStatus");
-        AutomationProperties.SetLiveSetting(eyesStatus, AutomationLiveSetting.Polite);
-        stack.Add(eyesStatus);
-        eyesProgress = Note(characterEyes.Progress ?? "", new Thickness(0, 0, 0, 4));
-        eyesProgress.Visibility = characterEyes.Progress is null ? Visibility.Collapsed : Visibility.Visible;
-        AutomationProperties.SetAutomationId(eyesProgress, "CharacterEyesProgress");
-        AutomationProperties.SetLiveSetting(eyesProgress, AutomationLiveSetting.Polite);
-        stack.Add(eyesProgress);
-
-        var sight = EyesSight();
-        var measure = PageButton(busy ? "Measuring..." : characterEyes.Current is null ? "Measure the face" : "Measure the face again",
-            () => MeasureEyesAsync(automatically: false).Forget(), id: "CharacterEyesMeasure");
-        measure.IsEnabled = !busy && conversation is not null && catalog is not null && sight.CanSee;
-        AutomationProperties.SetHelpText(measure, "Shows your Thinking model a close-up of the character's face (never its files) to find each " +
-            "iris and eye, each cheek and the mouth. Martlet draws the character off screen in its rest pose, so it works while the character is hidden.");
-        var forget = PageButton("Forget the measurement", () => ForgetEyesAsync().Forget(), id: "CharacterEyesForget");
-        forget.IsEnabled = !busy && characterEyes.Current is not null;
-        AutomationProperties.SetHelpText(forget, "Deletes this model's measurement and its pictures. The eyes and the blush then use the model's own data or an estimate.");
-        stack.Add(Row(measure, forget));
-        if (!sight.CanSee)
-        {
-            var off = Warning("Measure the face is off: no model that can see pictures is set up; choose a vision-capable model in " +
-                "Companion › Thinking or Companion › Thinking pool.");
-            AutomationProperties.SetAutomationId(off, "CharacterEyesNote");
-            stack.Add(off);
-        }
-        if (characterEyes.BoxesPicture is { } path)
-        {
-            try
-            {
-                var bitmap = PictureFiles.At(path, decodeHeight: 0, decodeWidth: 480);
-                var picture = new Image { Source = bitmap, Width = 240, Height = 240 * bitmap.PixelHeight / Math.Max(1, bitmap.PixelWidth),
-                    Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 4) };
-                AutomationProperties.SetAutomationId(picture, "CharacterEyesPicture");
-                AutomationProperties.SetName(picture, "The close-up Thinking saw, with its boxes: 1 and 2 the left iris and eye, 3 and 4 the right ones, " +
-                    "5 and 6 the left and right cheeks, 7 the mouth");
-                stack.Add(picture);
-                stack.Add(EyesLegend());
-            }
-            catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { }
-            var open = PageButton("Open the pictures and answers", () => PictureFiles.OpenFolder(Path.GetDirectoryName(path)!), id: "CharacterEyesOpen");
-            AutomationProperties.SetHelpText(open, "Opens the folder with each picture sent to the Thinking model and, beside it, a text file with " +
-                "the exact instructions, message and answer.");
-            stack.Add(Row(open));
-        }
-        return Card([.. stack]);
-    }
-
-    /// <summary>What each numbered box on the close-up is, each name in its box's color; "left" and "right" as you see them.</summary>
-    private static TextBlock EyesLegend()
-    {
-        var legend = Note("", new Thickness(0, 0, 0, 4));
-        legend.Inlines.Add(new System.Windows.Documents.Run("Boxes, left and right as you see them: "));
-        var marks = CharacterEyes.Marks(CharacterEyes.OldExample);
-        for (var i = 0; i < marks.Count; i++)
-        {
-            var color = marks[i].Color;
-            if (i > 0) legend.Inlines.Add(new System.Windows.Documents.Run(", "));
-            legend.Inlines.Add(new System.Windows.Documents.Run($"{marks[i].Number} {CharacterEyes.MarkNames[marks[i].Number - 1]}")
-            {
-                Foreground = new SolidColorBrush(Color.FromRgb(color.R, color.G, color.B)), FontWeight = FontWeights.SemiBold
-            });
-        }
-        AutomationProperties.SetAutomationId(legend, "CharacterEyesLegend");
-        return legend;
     }
 }

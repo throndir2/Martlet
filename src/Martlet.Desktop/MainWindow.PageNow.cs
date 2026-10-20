@@ -217,18 +217,6 @@ public partial class MainWindow
             null, "EmotesNow", avatar.IsShowing ? null : "The character is hidden, so replies don't play them until it shows.");
     }
 
-    private Border EyesNowCard()
-    {
-        var prefs = Talk;
-        var personality = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)?.Gaze;
-        var showing = avatar.IsShowing;
-        var from = showing ? avatar.EyesFrom : null;
-        var problem = from == RendererEyesFrom.Estimate && characterEyes.Current is null && !EyesSight().CanSee
-            ? "The eyes are only estimated and no model that can see pictures is set up to measure them, so emotes drawn over the eyes may not fit."
-            : null;
-        return PageNowCard(EyesNow(prefs.GazeUsual, personality, prefs.GazeFree, from, characterEyes.Current is not null, showing), null, "EyesNow", problem);
-    }
-
     // ---------- People, Tools, Discord and Messaging ----------
 
     private Border PeopleNowCard()

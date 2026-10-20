@@ -12,83 +12,10 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion's How it looks pages that live here: Character, Eyes, Touch and the speech display card (Speech bubbles is in MainWindow.PageNow.cs).</summary>
+/// <summary>Companion › Speech bubbles' configuration card (the page itself is in MainWindow.PageNow.cs). Character and Eyes are in
+/// Pages\Character and Pages\Eyes.</summary>
 public partial class MainWindow
 {
-    // ---------- character ----------
-
-    private void RenderCharacterTab(Panel page)
-    {
-        var showing = avatar.IsShowing;
-        page.Children.Add(PageNowCard(CharacterModelName() + (homeAvatar is { } profile ? $" ({profile.Renderer})" : "") +
-            (showing ? ", on your desktop." : ", hidden."), null, "SetupCharacterNow", characterCleanupProblem));
-
-        var locked = avatar.PlacementLocked;
-        // Reset stays available while hidden once a place is saved, in case the character got lost off screen.
-        var resetPosition = showing || avatar.Placement is not null
-            ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null;
-        var modelCard = Card(Heading("Character model"),
-            HelpTip.Explain("Choose a character model, then adjust its size, position and motion. Choices save on their own and a showing " +
-                "character switches right away.", new Thickness(0, 0, 0, 8), "SetupCharacterModelAbout", "the character model",
-                wiki: "The-Character#show-and-add-characters"),
-            Row(PageButton(showing ? "Hide character" : "Show character", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
-                PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
-                resetPosition,
-                showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null,
-                // Unlocking also works here while the character is hidden.
-                showing || locked ? PageButton(locked ? "Unlock position" : "Lock position",
-                    () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null,
-                // The same goes for click-through: the mouse can't reach the character to turn it off.
-                showing || avatar.ClickThrough ? PageButton(avatar.ClickThrough ? "Turn off click-through" : "Turn on click-through",
-                    () => SetCharacterClickThroughAsync(!avatar.ClickThrough).Forget(), id: "SetupCharacterClickThrough") : null));
-        if (modelCard.Child is Panel modelPanel)
-        {
-            var placementNote = characterPlacementNote = Note(CharacterPlacementText(), new Thickness(0, 4, 0, 0));
-            AutomationProperties.SetAutomationId(placementNote, "SetupCharacterPlacement");
-            modelPanel.Children.Add(placementNote);
-            var clickThroughNote = HelpTip.Explain(avatar.ClickThrough
-                ? "Click-through is on: clicks pass through the character to the windows under it, so you can't drag, zoom or right-click it. Turn it off here or from Martlet's icon in the notification area."
-                : "Click-through is off: the character catches clicks. Turn it on here or from the character's right-click menu to let clicks pass through it, for example while you play a game.",
-                new Thickness(0, 4, 0, 0), "SetupCharacterClickThroughNote", "click-through", wiki: "The-Character#move-zoom-and-lock");
-            AutomationProperties.SetAutomationId(clickThroughNote, "SetupCharacterClickThroughNote");
-            modelPanel.Children.Add(clickThroughNote);
-        }
-        // What the showing model drives: textures (and any downscaling), blinking, mouth, motions and physics.
-        if (showing && avatar.Capabilities is { } loaded && modelCard.Child is Panel modelStack)
-        {
-            var modelNote = Note("Model: " + AvatarRendererProcess.Describe(loaded), new Thickness(0, 4, 0, 0));
-            AutomationProperties.SetAutomationId(modelNote, "SetupCharacterModel");
-            modelStack.Children.Add(modelNote);
-        }
-        page.Children.Add(modelCard);
-        characterViewText = null;
-        if (showing)
-        {
-            // Wheel zoom happens on the overlay itself; Martlet reads the overlay's view whenever this page renders.
-            characterViewText = Note("", new Thickness(0, 8, 0, 0));
-            AutomationProperties.SetAutomationId(characterViewText, "SetupCharacterView");
-            page.Children.Add(Card(Heading("Zoom"),
-                HelpTip.Explain("Use the mouse wheel over the character to zoom. Ctrl+drag or middle-drag pans when zoomed in.",
-                    new Thickness(0, 0, 0, 0), "SetupCharacterZoom", "zooming", wiki: "The-Character#move-zoom-and-lock"),
-                Row(PageButton("Zoom in", () => ZoomCharacterAsync("in").Forget(), id: "SetupCharacterZoomIn"),
-                    PageButton("Zoom out", () => ZoomCharacterAsync("out").Forget(), id: "SetupCharacterZoomOut")),
-                characterViewText));
-            ZoomCharacterAsync("status").Forget();
-        }
-        page.Children.Add(CharacterModelsCard());
-        page.Children.Add(VRoidHubCard());
-        page.Children.Add(ProfilesLinkCard());
-    }
-
-    /// <summary>Companion › Eyes: Now, where the character looks, then where its eyes are (for the emotes drawn over them).</summary>
-    private void RenderEyesTab(Panel page)
-    {
-        FollowCharacterActions();
-        page.Children.Add(CharacterGazeCard());
-        page.Children.Add(CharacterEyesCard());
-        page.Children.Insert(0, EyesNowCard());
-    }
-
     private ComboBox? bubblePlacementChoice;
     private TextBox? bubbleOffsetX, bubbleOffsetY;
     private TextBlock? speechDisplayText;
