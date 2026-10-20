@@ -134,7 +134,7 @@ public partial class MainWindow
         return Card([.. stack]);
     }
 
-    private static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
+    internal static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
 
     /// <summary>One voice: its name (with the in-use mark), a detail line, and Play, Use and (when it may go) Remove. Controls
     /// are identified by <paramref name="key"/>; starter recordings' titles are also readable status (<c>F5VoiceRow-key</c>),

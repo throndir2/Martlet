@@ -16,18 +16,13 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>The app shell
+/// <summary>The app shell's shared state, start and release. Its parts are in their own files: the status line
+/// (MainWindow.StatusLine.cs), navigation (MainWindow.Navigation.cs), the device role and welcome tour (MainWindow.RoleTour.cs),
+/// the stage-aware home (MainWindow.Home.cs), the host dashboard (MainWindow.HostDashboard.cs, with its steps in
+/// Pages\HostDashboard), the devices map (MainWindow.DevicesMap.cs) and who does what (MainWindow.WhoDoesWhat.cs).</summary>
 public partial class MainWindow
 {
-    private sealed record HomeStep(string Id, string Title, string Detail, bool Done, bool Optional, IReadOnlyList<StepCommand> Commands,
-        StepHelp? Help = null);
-    /// <summary>A step's "?" after its title (<see cref="HelpTip.For"/>): what the card says and the wiki section it links to.</summary>
-    private sealed record StepHelp(string Topic, string Text, string Id, string? Wiki);
     private static StepHelp StepTip(string topic, string text, string id, string? wiki = null) => new(topic, text, id, wiki);
-    /// <summary>A step's button. <paramref name="Enabled"/> false greys it out while a run already does what it would do (its
-    /// label then says so, such as "Starting Docker Desktop...").</summary>
-    private sealed record StepCommand(string Label, Action Run, bool Primary = false, bool Enabled = true);
-    private sealed record MapElement(NetworkNode Node, Button Card, System.Windows.Shapes.Path? Track, System.Windows.Shapes.Path? Flow, Ellipse? Ring);
 
     private static readonly string Version = AppVersions.Current;
     private DeviceRole? deviceRole;
@@ -54,8 +49,6 @@ public partial class MainWindow
     /// it rather than being refused.</summary>
     private readonly ChangeTurns changes = new();
     private readonly Dictionary<string, HostCheck> hostChecks = new(StringComparer.Ordinal);
-    private readonly List<MapElement> mapElements = [];
-    private Ellipse? mapGlow;
     private string selectedNode = "this-pc";
     private readonly Dictionary<Panel, HashSet<string>> previousDone = [];
     private readonly Dictionary<Panel, string> previousSteps = [];
@@ -68,7 +61,7 @@ public partial class MainWindow
     private string? hostStateSignature;
     /// <summary>When Show a pairing code last paired a computer, until the host's network names it.</summary>
     private DateTime? hostPairedAt;
-    private static readonly TimeSpan HostProbeInterval = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan HostProbeInterval = TimeSpan.FromSeconds(30);
     private readonly System.Windows.Threading.DispatcherTimer hostProbeTimer = new() { Interval = HostProbeInterval };
     private WindowsVirtualization? virtualization;
     private bool refreshingHome;
@@ -130,7 +123,7 @@ public partial class MainWindow
     private void SharedStepsChanged() => Dispatcher.BeginInvoke(() =>
     {
         if (closing) return;
-        var working = DockerUnderway;
+        var working = HostDashboard.DockerUnderway;
         // Background reads of this PC's host service wait while a conversation replies or hears you, as the timed ones do.
         if (dockerWorkShown && !working && HostsHere && !Talking)
         {
@@ -177,14 +170,14 @@ public partial class MainWindow
 
     // ---------- small visuals ----------
 
-    private static TextBlock Glyph(string glyph, double size, Thickness margin)
+    internal static TextBlock Glyph(string glyph, double size, Thickness margin)
     {
         var text = new TextBlock { Text = glyph, FontSize = size, Margin = margin };
         text.SetResourceReference(StyleProperty, "Icon");
         return text;
     }
 
-    private static Ellipse Dot(NodeHealth health, double size, Thickness margin)
+    internal static Ellipse Dot(NodeHealth health, double size, Thickness margin)
     {
         var dot = new Ellipse { Width = size, Height = size, Margin = margin, VerticalAlignment = VerticalAlignment.Center };
         dot.SetResourceReference(Shape.FillProperty, health switch

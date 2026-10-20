@@ -153,10 +153,10 @@ public partial class MainWindow
                     here.All(c => c.Job != j)).ToList()
                 : [];
             var stopsThinking = here.Any(c => c.Job == ClusterJobs.Thinking && c.State == CoverageState.Unavailable);
-            var step = new[] { DockerStep(own), ServiceStep(own) }.FirstOrDefault(s => !s.Done);
+            var step = new[] { HostDashboard.DockerStep(own), HostDashboard.ServiceStep(own) }.FirstOrDefault(s => !s.Done);
             var detail = char.ToUpperInvariant(trouble[0]) + trouble[1..] + "." +
                 string.Concat(here.Select(c => $" {c.Title}: {c.Effect}")) +
-                (forOthers.Count > 0 ? $" Your other computers use it for {JoinNames(forOthers)} too." : "") +
+                (forOthers.Count > 0 ? $" Your other computers use it for {HostDashboardModel.JoinNames(forOthers)} too." : "") +
                 (here.Count == 0 && forOthers.Count == 0 ? " Nothing uses it right now." : "");
             Add("host-service", stopsThinking ? HealthLevel.Problem : here.Count > 0 || forOthers.Count > 0 ? HealthLevel.Warning : HealthLevel.Notice,
                 "This PC's host service isn't working", detail,
@@ -354,7 +354,7 @@ public partial class MainWindow
             tiles.Add(new("hostservice", "Host service", NetworkMap.ComputerGlyph,
                 hostState is null ? NodeHealth.Unknown : hostState.Ready ? NodeHealth.Ready : NodeHealth.Attention,
                 hostState is null ? "Checking this PC's host service..."
-                    : HostHeadline(hostState) + (hostState.Ready && hostState.Version is { } running ? $", Martlet {running}" : ""),
+                    : HostDashboard.Headline(hostState) + (hostState.Ready && hostState.Version is { } running ? $", Martlet {running}" : ""),
                 () => ShowDevice("this-pc")));
         var terminalOn = mcpTools.Terminal.Enabled;
         if (toolServers.Count > 0 || mcpTools.ConfigurationError is not null || terminalOn)

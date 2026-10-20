@@ -16,7 +16,9 @@ A moved page has these parts:
 | Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Warning`, `Row`, `PageButton`, `Choice` (a large radio choice), `TerminalRow`, `TakeKey`, the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`), the option rows (`Option`, `OptionTitle`), `PageNowCard` and `WithHint`. |
 
 Moved pages: Thinking pool (`ThinkingPool\`), Check-ins (`CheckIns\`), Vision
-(`Vision\`) and the Touch zones card of Companion › Touch (`TouchZones\`). `Companion\CompanionPages.cs` is the catalog of all Companion pages
+(`Vision\`), Picture making (`Pictures\`) and the Touch zones card of Companion › Touch (`TouchZones\`).
+The host dashboard's steps are `HostDashboard\HostDashboardModel` (no WPF), with
+`IHostDashboardServices`; MainWindow draws them and runs what their buttons start. `Companion\CompanionPages.cs` is the catalog of all Companion pages
 (titles, groups, icons, intros and job roles), without WPF.
 `MainWindow.Companion.cs` is only the frame (the side list and `RenderTab`). The
 pages that are not moved yet have one file each: the job pages (Thinking,
