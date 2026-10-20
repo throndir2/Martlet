@@ -28,6 +28,7 @@ public partial class MainWindow
             Intro = "The places that move the mouth with Audio2Face, in order. Each sentence goes to the first one that is free; " +
                 "when all are busy, the mouth follows the voice's loudness for that moment. With none on, it always does. " +
                 "Only Martlet's generated voice is sent to a computer in the list.",
+            Wiki = "The-Character#lip-sync",
             Status = LipSyncMemberStatus,
             Settings = member => LipSyncMemberSettings(member, options),
             CanAdd = host => !host.Shared && (hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(HostRoles.Audio2Face) == true ||
@@ -46,17 +47,17 @@ public partial class MainWindow
                 "in the character's settings.";
         var on = list?.Members.Where(m => !m.Off).ToArray() ?? [];
         if (on.Length == 0 || homeAvatar?.LipSync == AvatarLipSync.Loudness)
-            return "Voice loudness: the mouth opens and closes with the voice. Nothing in the list below is on.";
+            return "Voice loudness: the mouth opens and closes with the voice, and nothing in the list below is on.";
         var lead = on[0];
         var first = lead.Kind == PoolMemberKind.ThisPc
             ? $"Your own Audio2Face service at {LipSyncThisPcEndpoint().Authority}" + (ownLipSyncAnswers == false ? ", which isn't answering now" : "")
             : $"Audio2Face on {lead.Name}" + (lead.HostId == ThisPcHost()?.HostId ? " (this PC)" : "") +
                 (LipSyncHostReachable(lead.HostId!) == false ? ", which isn't reachable now"
                     : HostServes(lead.HostId!, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false ? ", which doesn't run it yet" : "");
-        return first + (on.Length == 1 ? ". "
-                : lead.Kind == PoolMemberKind.ThisPc ? $". When it doesn't answer, the next of {on.Length - 1} more takes the sentence. "
-                : $". When it is busy, the next of {on.Length - 1} more takes the sentence. ") +
-            "When none can, the mouth follows the voice's loudness.";
+        return first + (on.Length == 1 ? ""
+                : lead.Kind == PoolMemberKind.ThisPc ? $", or the next of {on.Length - 1} more when it doesn't answer"
+                : $", or the next of {on.Length - 1} more when it is busy") +
+            "; when none can, the mouth follows the voice's loudness.";
     }
 
     private string? LipSyncMemberStatus(PoolMember member)
@@ -94,8 +95,9 @@ public partial class MainWindow
         var stack = new StackPanel();
         if (member.Kind == PoolMemberKind.ThisPc)
         {
-            stack.Children.Add(Note("An Audio2Face service you run yourself on each companion PC (NVIDIA's NIM or the open-source " +
-                "engine), at a loopback address. Martlet looks for it before each sentence.", new Thickness(0, 0, 0, 6)));
+            stack.Children.Add(HelpTip.Explain("An Audio2Face service you run yourself on each companion PC (NVIDIA's NIM or the " +
+                "open-source engine), at a loopback address. Martlet looks for it before each sentence.", new Thickness(0, 0, 0, 6),
+                "LipSyncOwnService", "your own Audio2Face service", wiki: "The-Character#lip-sync"));
             var address = new TextBox { MinWidth = 260, Margin = new Thickness(0, 0, 8, 0), Text = LipSyncThisPcEndpoint(member).AbsoluteUri };
             AutomationProperties.SetAutomationId(address, id + "-Endpoint");
             AutomationProperties.SetName(address, "Address of your own Audio2Face service");
@@ -130,7 +132,7 @@ public partial class MainWindow
         var hostId = member.HostId!;
         if (FindHost(hostId) is not { } host)
         {
-            stack.Children.Add(Note($"{hostId} isn't paired on this PC. Pair it on Devices to use it here.", new Thickness(0, 0, 0, 0)));
+            stack.Children.Add(Note($"{hostId} isn't paired on this PC; pair it on Devices to use it here.", new Thickness(0, 0, 0, 0)));
             return stack;
         }
         var check = hostChecks.GetValueOrDefault(hostId);
@@ -151,7 +153,7 @@ public partial class MainWindow
         buttons.Add(PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, hostId), id: $"{id}-Check-{hostId}"));
         stack.Children.Add(Note(runs ? $"Audio2Face{(check?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? $" {model}" : "")} runs on {hostId}."
             : CannotHand(hostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot ? $"Audio2Face can't run there: {cannot}"
-            : $"Audio2Face needs {HostRoles.Get(HostRoles.Audio2Face).Needs}. Until it runs there, this PC skips {hostId}.", new Thickness(0, 0, 0, 6)));
+            : $"Audio2Face needs {HostRoles.Get(HostRoles.Audio2Face).Needs}, and until it runs there this PC skips {hostId}.", new Thickness(0, 0, 0, 6)));
         stack.Children.Add(Row([.. buttons]));
         return stack;
     }
@@ -166,18 +168,19 @@ public partial class MainWindow
         var arm = machine.ArmRefusal("audio2face");
         var stack = new List<UIElement> { Heading("Audio2Face on this PC") };
         var about = Note(arm ?? (gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
-            : $"This PC has {gpu.Describe()}." + (fits ? "" : " Audio2Face needs an NVIDIA graphics card with 4 GB or more, so another " +
-                "computer or the voice's loudness suits this PC better.")), new Thickness(0, 0, 0, 6));
+            : $"This PC has {gpu.Describe()}" + (fits ? "." : ", but Audio2Face needs an NVIDIA graphics card with 4 GB or more, so " +
+                "another computer or the voice's loudness suits this PC better.")), new Thickness(0, 0, 0, 6));
         if (!fits || arm is not null) about.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(about, "LipSyncDockerAbout");
         stack.Add(about);
         if (thisPc is null)
         {
-            stack.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
-                    : machine.DockerInstalled ? "Docker Desktop is installed. Martlet can start it when needed. "
-                    : "Docker Desktop isn't installed yet. Martlet installs it first. ") +
-                "Setting this up installs Martlet's host service and Audio2Face with its open-source engine (no NVIDIA account), then " +
-                "puts this PC first in the list.", new Thickness(0, 0, 0, 6)));
+            stack.Add(HelpTip.Explain("Set up Audio2Face here to put this PC first in the list. " +
+                (machine.DockerRunning ? "Docker Desktop is running. "
+                    : machine.DockerInstalled ? "Docker Desktop is installed, and Martlet starts it when needed. "
+                    : "Docker Desktop isn't installed yet, so Martlet installs it first. ") +
+                "Setting this up installs Martlet's host service and Audio2Face with its open-source engine (no NVIDIA account).",
+                new Thickness(0, 0, 0, 6), "LipSyncThisPcSetUp", "setting up Audio2Face here", wiki: "The-Character#lip-sync"));
             var setUp = PageButton("Set up Audio2Face with Docker", () => SetUpThisPcHostAsync(AssignLipSyncAsync).Forget(),
                 primary: fits, id: "SetupLipSyncHostThisPc");
             setUp.IsEnabled = arm is null;
@@ -186,8 +189,8 @@ public partial class MainWindow
         }
         var runs = HostServes(thisPc.HostId, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == true;
         var listed = list?.Members.Any(m => m.HostId == thisPc.HostId) == true;
-        stack.Add(Note(runs ? $"Audio2Face runs in this PC's host service ({thisPc.HostId})." + (listed ? "" : " Add it to the list above to use it.")
-            : $"Audio2Face isn't installed in this PC's host service ({thisPc.HostId}) yet. Installing it puts this PC first in the list.",
+        stack.Add(Note(runs ? $"Audio2Face runs in this PC's host service ({thisPc.HostId})" + (listed ? "." : "; add it to the list above to use it.")
+            : $"Audio2Face isn't installed in this PC's host service ({thisPc.HostId}) yet; installing it puts this PC first in the list.",
             new Thickness(0, 0, 0, 6)));
         var buttons = new List<Button>();
         if (!runs)

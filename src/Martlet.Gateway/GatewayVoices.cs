@@ -59,7 +59,7 @@ internal sealed class GatewayVoiceStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayVoiceRoutes(GatewayHttpServices services, GatewayVoiceStore voices) : GatewayRouteHandler(services)
 {
     internal const string VoicesPath = "/martlet/v1/voices";
     /// <summary>The same list with each voice's account link (docs/ACCOUNTS.md). <see cref="VoicesPath"/> leaves the links out,
@@ -67,12 +67,12 @@ internal sealed partial class GatewayHttpApplication
     internal const string LinkedVoicesPath = VoicesPath + "/linked";
     private const int MaximumVoicesResponseBytes = VoiceRoster.MaximumBytes + 4_096;
 
-    internal GatewayVoiceStore Voices { get; } = new();
+    internal GatewayVoiceStore Voices { get; } = voices;
 
     /// <summary>GET returns this host's copy of the voice list; POST merges a desktop's copy into it and returns the merged
     /// result. Any paired device may do either over its signed, pinned connection. Without <paramref name="linked"/> the
     /// answer leaves account links out, and a copy without links merges in without removing the host's links.</summary>
-    private async ValueTask InvokeVoicesAsync(HttpContext context, bool linked)
+    internal async ValueTask InvokeVoicesAsync(HttpContext context, bool linked)
     {
         VoiceRoster result;
         if (context.Request.Method == HttpMethods.Get)

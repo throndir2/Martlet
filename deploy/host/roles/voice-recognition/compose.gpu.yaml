@@ -7,7 +7,7 @@ services:
     build:
       args:
         ACCELERATOR: gpu
-    image: martlet-voice-recognition-cuda:1
+    image: martlet-voice-recognition-cuda:2
     deploy:
       resources:
         reservations:

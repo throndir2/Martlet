@@ -102,7 +102,7 @@ public sealed class CharacterProfileLocalStoreTests : IDisposable
     [Fact]
     public void TheProfileRowSaysWhatItKeepsWithoutNames()
     {
-        Assert.StartsWith("On this PC: nothing yet.", MainWindow.ProfileHereText(null));
+        Assert.StartsWith("On this PC: nothing yet (", MainWindow.ProfileHereText(null));
         Assert.Equal("On this PC: its own spot and size (520 × 693, locked) · Eyes: Follow your mouse when it's near, replies can't change it · " +
             "While it talks: only intimate touches stop it.", MainWindow.ProfileHereText(Tall));
         Assert.Equal("On this PC: no spot of its own · Eyes: As the personality decides · While it talks: any touch stops it.",

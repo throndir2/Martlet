@@ -21,7 +21,7 @@ namespace Martlet.Gateway;
 /// Everything else answers 404, so nothing of Martlet's private API is visible. Nothing here locks out an address: everyone
 /// comes through one proxy, and keys can't be guessed. The page has no scripts; its sessions live in memory only.
 /// </summary>
-internal sealed partial class GatewayHttpApplication
+internal sealed partial class GatewayFrontDoorRoutes(GatewayHttpServices services, GatewayFrontDoorSessions sessions, GatewayOpenAiRoutes openAi) : GatewayRouteHandler(services)
 {
     internal const string FrontDoorSignInPath = "/portal/sign-in";
     internal const string FrontDoorSignOutPath = "/portal/sign-out";
@@ -29,7 +29,9 @@ internal sealed partial class GatewayHttpApplication
     private readonly ConcurrentDictionary<string, long> frontDoorRequests = new(StringComparer.Ordinal);
 
     /// <summary>The front door's web sessions (signed in with an API key).</summary>
-    internal GatewayFrontDoorSessions FrontDoorSessions { get; } = new();
+    internal GatewayFrontDoorSessions FrontDoorSessions { get; } = sessions;
+
+    private readonly GatewayOpenAiRoutes openAi = openAi;
 
     /// <summary>Requests that went through this front door for each API key since the gateway started (key ID → count).</summary>
     internal long FrontDoorRequestsOf(string keyId) => frontDoorRequests.GetValueOrDefault(keyId);
@@ -50,13 +52,13 @@ internal sealed partial class GatewayHttpApplication
                 if (!GatewayApiKeyStore.IsBearer(context.Request))
                 {
                     Guard.FrontDoor(context, "failure", "missing_api_key");
-                    await WriteOpenAiFailureAsync(context, traceId, 401,
+                    await openAi.WriteOpenAiFailureAsync(context, traceId, 401,
                         "Send your Martlet API key in the Authorization header: the word Bearer, a space, then the key. " +
                         "The person who runs this Martlet gives you one.",
                         OpenAiEndpoint.FrontDoorMissingKey, null, null).ConfigureAwait(false);
                     return;
                 }
-                await InvokeOpenAiAsync(context, rawTarget, traceId).ConfigureAwait(false);
+                await openAi.InvokeOpenAiAsync(context, rawTarget, traceId).ConfigureAwait(false);
                 if (context.Request.Method == HttpMethods.Post && context.Response.StatusCode == StatusCodes.Status200OK &&
                     ApiKeyToken.TryParse(BearerToken(context.Request), out var id, out var secret))
                 {

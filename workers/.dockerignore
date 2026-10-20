@@ -1,0 +1,9 @@
+# The build context of the host roles whose images build from workers/ (workers/<engine>/host/Dockerfile), so that they
+# can copy the shared common/martlet_worker_host.py. Workers that build from their own folder keep their own .dockerignore.
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+*/tests

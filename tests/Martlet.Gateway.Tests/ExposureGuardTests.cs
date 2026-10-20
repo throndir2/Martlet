@@ -177,7 +177,7 @@ public sealed class ExposureGuardTests
         Assert.Equal("home.example.net:9443", document.RootElement.GetProperty("roster").GetProperty("members")
             .EnumerateArray().Single(m => m.GetProperty("kind").GetString() == "host").GetProperty("addresses")[0].GetString());
 
-        using var audit = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.SecurityAuditPath, GatewayRole.Voice, signer));
+        using var audit = await host.Client.SendAsync(host.SignedGet(GatewaySecurityAuditRoutes.SecurityAuditPath, GatewayRole.Voice, signer));
         using var auditDocument = JsonDocument.Parse(await audit.Content.ReadAsStringAsync());
         Assert.True(auditDocument.RootElement.GetProperty("internet_reachable").GetBoolean());
         Assert.Equal("home.example.net:9443", auditDocument.RootElement.GetProperty("outside_addresses")[0].GetString());
@@ -254,14 +254,14 @@ public sealed class ExposureGuardTests
         // The paired owner can still reach sign-in's settings to fix it.
         using (var settings = await host.Client.SendAsync(host.SignedGet("/martlet/v1/signin/settings", GatewayRole.Voice, signer)))
             Assert.NotEqual("outside.paused", settings.IsSuccessStatusCode ? null : await GatewayTestHost.FailureCode(settings));
-        using (var audit = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.SecurityAuditPath, GatewayRole.Voice, signer)))
+        using (var audit = await host.Client.SendAsync(host.SignedGet(GatewaySecurityAuditRoutes.SecurityAuditPath, GatewayRole.Voice, signer)))
             Assert.Equal("outside.paused", await GatewayTestHost.FailureCode(audit));
 
         // Sign-in set up again: outside access serves again (sign-in is read at most every five seconds).
         signIn.Bytes = OwnerSignIn(host.Clock.GetUtcNow()).Bytes;
         host.Clock.Advance(TimeSpan.FromSeconds(6));
         Assert.Equal(HttpStatusCode.OK, (await LiveAsync()).Status);
-        using var served = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.SecurityAuditPath, GatewayRole.Voice, signer));
+        using var served = await host.Client.SendAsync(host.SignedGet(GatewaySecurityAuditRoutes.SecurityAuditPath, GatewayRole.Voice, signer));
         using var document = JsonDocument.Parse(await served.Content.ReadAsStringAsync());
         Assert.False(document.RootElement.GetProperty("outside_access_paused").GetBoolean());
         Assert.False(document.RootElement.TryGetProperty("outside_access_blocked_reason", out _));
@@ -316,7 +316,7 @@ public sealed class ExposureGuardTests
         using (var paired = await host.SendPairingAsync(card, card.SpkiFingerprint, deviceId: "desktop-b"))
             Assert.Equal(HttpStatusCode.Created, paired.StatusCode);
 
-        using var audit = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.SecurityAuditPath, GatewayRole.Voice, signer));
+        using var audit = await host.Client.SendAsync(host.SignedGet(GatewaySecurityAuditRoutes.SecurityAuditPath, GatewayRole.Voice, signer));
         Assert.Equal(HttpStatusCode.OK, audit.StatusCode);
         using var document = JsonDocument.Parse(await audit.Content.ReadAsStringAsync());
         var root = document.RootElement;
@@ -328,7 +328,7 @@ public sealed class ExposureGuardTests
             e.GetProperty("source").GetString() == "127.0.0.1" && e.GetProperty("source_kind").GetString() == "outside");
         Assert.True(root.GetProperty("failures").GetInt64() >= GatewayRequestGuard.FreeFailures);
 
-        using var anonymous = new HttpRequestMessage(HttpMethod.Get, host.Origin.CanonicalOrigin + GatewayHttpApplication.SecurityAuditPath);
+        using var anonymous = new HttpRequestMessage(HttpMethod.Get, host.Origin.CanonicalOrigin + GatewaySecurityAuditRoutes.SecurityAuditPath);
         using var refusedAudit = await host.Client.SendAsync(anonymous);
         Assert.Equal(HttpStatusCode.Unauthorized, refusedAudit.StatusCode);
     }

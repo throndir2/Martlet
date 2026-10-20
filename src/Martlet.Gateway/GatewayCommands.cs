@@ -279,11 +279,11 @@ internal sealed class GatewayCommandStore
         a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var value) && value == pair.Value);
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayCommandRoutes(GatewayHttpServices services, GatewayCommandStore commands) : GatewayRouteHandler(services)
 {
     internal const string CommandsPath = "/martlet/v1/commands";
 
-    internal GatewayCommandStore Commands { get; } = new();
+    internal GatewayCommandStore Commands { get; } = commands;
 
     /// <summary>The command endpoints, all over the paired device's signed, pinned connection:
     /// GET  /martlet/v1/commands             the host's agent and recent commands (without output)
@@ -292,7 +292,7 @@ internal sealed partial class GatewayHttpApplication
     /// POST /martlet/v1/commands/{id}/cancel cancel it (waiting: at once; running: the agent stops it)
     /// POST /martlet/v1/commands/agent       the agent takes work (token required)
     /// POST /martlet/v1/commands/{id}/report the agent reports output and outcome (token required)</summary>
-    private async ValueTask InvokeCommandsAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeCommandsAsync(HttpContext context, string rawTarget)
     {
         var rest = rawTarget.Length == CommandsPath.Length ? "" : rawTarget[(CommandsPath.Length + 1)..];
         var parts = rest.Length == 0 ? [] : rest.Split('/');

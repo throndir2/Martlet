@@ -52,7 +52,7 @@ public sealed class AccountDirectoryRouteTests
 
         var sam = Owner("desktop-a");
         var mine = AccountDirectory.Empty.Put(founder, sam, now);
-        using (var post = await host.Client.SendAsync(host.SignedPost(GatewayHttpApplication.AccountsPath, GatewayRole.Voice, signer, mine.Write())))
+        using (var post = await host.Client.SendAsync(host.SignedPost(GatewayAccountRoutes.AccountsPath, GatewayRole.Voice, signer, mine.Write())))
         {
             var (merged, digest, rejected) = await ReadAsync(post);
             Assert.Equal(0, rejected);
@@ -64,7 +64,7 @@ public sealed class AccountDirectoryRouteTests
         // A computer outside the network and a forged entry are refused; nothing is saved again.
         var forged = mine with { Accounts = [mine.Accounts[0] with { Role = AccountRoles.Member, Revision = mine.Accounts[0].Revision + 1 }] };
         var foreign = AccountDirectory.Merge(forged, AccountDirectory.Empty.Put(outsider, Account.Create("Eve", AccountRoles.Owner), now));
-        using (var post = await host.Client.SendAsync(host.SignedPost(GatewayHttpApplication.AccountsPath, GatewayRole.Voice, signer, foreign.Write())))
+        using (var post = await host.Client.SendAsync(host.SignedPost(GatewayAccountRoutes.AccountsPath, GatewayRole.Voice, signer, foreign.Write())))
         {
             var (merged, digest, rejected) = await ReadAsync(post);
             Assert.Equal(2, rejected);
@@ -73,14 +73,14 @@ public sealed class AccountDirectoryRouteTests
             Assert.Equal(1, storage.Saves);
         }
 
-        using (var get = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.AccountsPath, GatewayRole.Voice, signer)))
+        using (var get = await host.Client.SendAsync(host.SignedGet(GatewayAccountRoutes.AccountsPath, GatewayRole.Voice, signer)))
         {
             var (read, digest, rejected) = await ReadAsync(get);
             Assert.Equal(0, rejected);
             Assert.Equal(mine.Digest(), digest);
             Assert.True(AccountDirectory.Verify(read.Accounts[0], roster));
         }
-        using (var get = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.AccountsDigestPath, GatewayRole.Voice, signer)))
+        using (var get = await host.Client.SendAsync(host.SignedGet(GatewayAccountRoutes.AccountsDigestPath, GatewayRole.Voice, signer)))
         {
             Assert.Equal(HttpStatusCode.OK, get.StatusCode);
             using var document = JsonDocument.Parse(await get.Content.ReadAsStringAsync());
@@ -97,7 +97,7 @@ public sealed class AccountDirectoryRouteTests
         await using var restarted = await GatewayTestHost.StartAsync();
         restarted.Server.AttachAccountStorage(new Storage(storage.Saved));
         var other = new GatewayRequestSigner(restarted.Identity, await restarted.PairAsync(GatewayRole.Voice, "desktop-a"), restarted.Clock);
-        using var reread = await restarted.Client.SendAsync(restarted.SignedGet(GatewayHttpApplication.AccountsDigestPath, GatewayRole.Voice, other));
+        using var reread = await restarted.Client.SendAsync(restarted.SignedGet(GatewayAccountRoutes.AccountsDigestPath, GatewayRole.Voice, other));
         using var reDocument = JsonDocument.Parse(await reread.Content.ReadAsStringAsync());
         Assert.Equal(mine.Digest(), reDocument.RootElement.GetProperty("digest").GetString());
     }
@@ -111,7 +111,7 @@ public sealed class AccountDirectoryRouteTests
         host.Server.AttachAccountStorage(storage);
         var signer = new GatewayRequestSigner(host.Identity, await host.PairAsync(GatewayRole.Voice, "desktop-a"), host.Clock);
         var mine = AccountDirectory.Empty.Put(key, Owner("desktop-a"), host.Clock.GetUtcNow());
-        using var post = await host.Client.SendAsync(host.SignedPost(GatewayHttpApplication.AccountsPath, GatewayRole.Voice, signer, mine.Write()));
+        using var post = await host.Client.SendAsync(host.SignedPost(GatewayAccountRoutes.AccountsPath, GatewayRole.Voice, signer, mine.Write()));
         var (merged, digest, rejected) = await ReadAsync(post);
         Assert.Equal(1, rejected);
         Assert.Empty(merged.Accounts);
@@ -126,25 +126,25 @@ public sealed class AccountDirectoryRouteTests
         host.Server.AttachAccountStorage(new Storage());
         var owner = await FriendAccessTests.SetUpSignInAsync(host);
         var friend = await FriendAccessTests.FriendAsync(host, owner);
-        foreach (var path in new[] { GatewayHttpApplication.AccountsPath, GatewayHttpApplication.AccountsDigestPath })
+        foreach (var path in new[] { GatewayAccountRoutes.AccountsPath, GatewayAccountRoutes.AccountsDigestPath })
         {
             using var refused = await host.Client.SendAsync(host.SignedGet(path, GatewayRole.Voice, friend));
             Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
             Assert.Equal("access.friend", await GatewayTestHost.FailureCode(refused));
         }
-        using (var refused = await host.Client.SendAsync(host.SignedPost(GatewayHttpApplication.AccountsPath, GatewayRole.Voice, friend, "{}"u8.ToArray())))
+        using (var refused = await host.Client.SendAsync(host.SignedPost(GatewayAccountRoutes.AccountsPath, GatewayRole.Voice, friend, "{}"u8.ToArray())))
         {
             Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
             Assert.Equal("access.friend", await GatewayTestHost.FailureCode(refused));
         }
 
-        using (var anonymous = await host.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, host.Origin.CanonicalOrigin + GatewayHttpApplication.AccountsPath)))
+        using (var anonymous = await host.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, host.Origin.CanonicalOrigin + GatewayAccountRoutes.AccountsPath)))
             Assert.NotEqual(HttpStatusCode.OK, anonymous.StatusCode);
 
-        using (var malformed = await host.Client.SendAsync(host.SignedPost(GatewayHttpApplication.AccountsPath, GatewayRole.Voice, owner,
+        using (var malformed = await host.Client.SendAsync(host.SignedPost(GatewayAccountRoutes.AccountsPath, GatewayRole.Voice, owner,
             Encoding.UTF8.GetBytes("""{"schema_version":1,"accounts":[{"id":"not-a-guid"}]}"""))))
             Assert.Equal("request.invalid", await GatewayTestHost.FailureCode(malformed));
-        using (var digestPost = await host.Client.SendAsync(host.SignedPost(GatewayHttpApplication.AccountsDigestPath, GatewayRole.Voice, owner, "{}"u8.ToArray())))
+        using (var digestPost = await host.Client.SendAsync(host.SignedPost(GatewayAccountRoutes.AccountsDigestPath, GatewayRole.Voice, owner, "{}"u8.ToArray())))
             Assert.Equal("request.invalid", await GatewayTestHost.FailureCode(digestPost));
     }
 }

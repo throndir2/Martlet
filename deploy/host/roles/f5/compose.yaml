@@ -8,9 +8,9 @@
 services:
   f5:
     build:
-      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/f5
-      dockerfile: host/Dockerfile
-    image: martlet-f5:1
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers
+      dockerfile: f5/host/Dockerfile
+    image: martlet-f5:2
     pull_policy: build
     restart: unless-stopped
     environment:

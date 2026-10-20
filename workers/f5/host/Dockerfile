@@ -1,5 +1,5 @@
 # Martlet F5 host role image: pinned F5-TTS runtime, the bounded stdio worker (martlet_f5_worker) and its loopback
-# HTTP front (host/martlet_f5_host.py). Built on the host by "martlet-host add f5" (compose build, context workers/f5).
+# HTTP front (host/martlet_f5_host.py). Built on the host by "martlet-host add f5" (compose build, context workers).
 # Package trees are root-owned and read-only for the unprivileged runtime user, without bytecode caches, as the
 # worker's runtime-inventory check requires. Models are not in the image: the role's provisioning step downloads the
 # pinned files into the martlet-f5-models volume.
@@ -12,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN echo 'pip==26.2.1 --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e' > /tmp/pip.lock \
  && python3.12 -m pip install --no-deps --require-hashes --no-compile -r /tmp/pip.lock && rm -f /tmp/pip.lock
 
-COPY host/requirements.lock /tmp/requirements.lock
+COPY f5/host/requirements.lock /tmp/requirements.lock
 # urllib3 probes IPv6 at import time by binding a loopback socket; the worker's audit hook denies every socket and would
 # latch a failure, so the probe is replaced with its result for this offline worker (verified below).
 RUN grep -A1 '^setuptools @' /tmp/requirements.lock > /tmp/setuptools.lock \
@@ -25,8 +25,8 @@ RUN grep -A1 '^setuptools @' /tmp/requirements.lock > /tmp/setuptools.lock \
  && find /usr/local/lib/python3.12/site-packages -name __pycache__ -type d -prune -exec rm -rf {} + \
  && find /usr/local/lib/python3.12/site-packages -name '*.pyc' -type f -exec rm -f {} +
 
-COPY martlet_f5_worker /opt/martlet-f5/worker/martlet_f5_worker
-COPY host/martlet_f5_host.py /opt/martlet-f5/host/martlet_f5_host.py
+COPY f5/martlet_f5_worker /opt/martlet-f5/worker/martlet_f5_worker
+COPY f5/host/martlet_f5_host.py common/martlet_worker_host.py /opt/martlet-f5/host/
 ENV PYTHONPATH=/opt/martlet-f5/worker MARTLET_F5_ROOT=/opt/martlet-f5 MARTLET_F5_PORT=50080 \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 MPLCONFIGDIR=/tmp/matplotlib
 # The worker verifies sys.executable byte-for-byte, so it must be the real interpreter file, not a symlink.

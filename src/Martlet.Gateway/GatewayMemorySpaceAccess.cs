@@ -48,12 +48,12 @@ internal static class GatewayMemorySpaceRules
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed partial class GatewayMemoryRoutes
 {
     private sealed record SharingCache(SharedSettings Settings, IReadOnlyDictionary<Guid, HouseholdSharing> Entries);
     private SharingCache? householdSharing;
 
-    private bool MayUseMemorySpace(GatewayPrincipal principal, string space, GatewayMemorySpaceUse use) =>
+    internal bool MayUseMemorySpace(GatewayPrincipal principal, string space, GatewayMemorySpaceUse use) =>
         GatewayMemorySpaceRules.MayUse(Accounts.Current, principal, space, use, HouseholdSharingNow());
 
     /// <summary>The household's sharing entries in this host's copy of the household settings, read again only when it changed.</summary>

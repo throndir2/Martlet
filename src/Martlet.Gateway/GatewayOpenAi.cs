@@ -50,7 +50,7 @@ internal sealed record GatewayOpenAiQueue
 /// never makes the owner's own replies wait: the owner's requests never look at the queue. Only each host's own Ollama is
 /// reachable: never a cloud provider or a key.
 /// </summary>
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayOpenAiRoutes(GatewayHttpServices services, GatewayNetworkStore network) : GatewayRouteHandler(services)
 {
     private static readonly long OpenAiCreated = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     private static readonly TimeSpan PeerModelsFresh = TimeSpan.FromSeconds(30);
@@ -63,6 +63,7 @@ internal sealed partial class GatewayHttpApplication
     private const string WaitHeader = "X-Martlet-Wait";
     /// <summary>On an answer: how long (milliseconds) the request waited for a free slot.</summary>
     private const string QueuedHeader = "X-Martlet-Queued";
+    private GatewayNetworkStore Network { get; } = network;
     private readonly object openAiGate = new();
     private readonly Dictionary<string, (string Origin, string Spki, HttpClient Client)> openAiClients = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Host, string Key), (DateTimeOffset Until, string[] Models)> peerModels = [];
@@ -91,7 +92,7 @@ internal sealed partial class GatewayHttpApplication
         internal int? RetryAfter { get; } = retryAfter;
     }
 
-    private async ValueTask InvokeOpenAiAsync(HttpContext context, string rawTarget, Guid traceId)
+    internal async ValueTask InvokeOpenAiAsync(HttpContext context, string rawTarget, Guid traceId)
     {
         var path = rawTarget.Split('?', 2)[0];
         try
@@ -185,7 +186,7 @@ internal sealed partial class GatewayHttpApplication
 
     /// <summary>The models each other host of the network lists for the same key, asked at most every 30 seconds per host and
     /// key (10 seconds after a host didn't answer). A host that doesn't answer in 3 seconds lists none this time.</summary>
-    private async Task<IReadOnlyList<(GatewayOpenAiPeer Peer, string[] Models)>> PeerModelsAsync(string authorization, string keyId,
+    internal async Task<IReadOnlyList<(GatewayOpenAiPeer Peer, string[] Models)>> PeerModelsAsync(string authorization, string keyId,
         CancellationToken cancellationToken)
     {
         var peers = Peers();
@@ -734,7 +735,7 @@ internal sealed partial class GatewayHttpApplication
         }
     }
 
-    private async ValueTask WriteOpenAiFailureAsync(HttpContext context, Guid traceId, int status, string message, string code,
+    internal async ValueTask WriteOpenAiFailureAsync(HttpContext context, Guid traceId, int status, string message, string code,
         string? param, int? retryAfter)
     {
         audit.Record(new() { TraceId = traceId, Code = code.Length <= 64 ? code : code[..64], HttpStatus = status });
