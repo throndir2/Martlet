@@ -602,7 +602,7 @@ public partial class MainWindow
 
     // The radio Choice builder is in Pages\PageKit.cs.
 
-    private static DockPanel Labeled(string label, UIElement control)
+    internal static DockPanel Labeled(string label, UIElement control)
     {
         var row = new DockPanel { Margin = new Thickness(28, 6, 0, 0), LastChildFill = false };
         row.Children.Add(new TextBlock { Text = label, Width = 110, VerticalAlignment = VerticalAlignment.Center });

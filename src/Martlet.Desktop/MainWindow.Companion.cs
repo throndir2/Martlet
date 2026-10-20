@@ -283,7 +283,7 @@ public partial class MainWindow
             case CompanionTab.DeepThinking: ThinkingPoolPage.Render(body); break;
             case CompanionTab.Singing: RenderSingingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
-            case CompanionTab.Pictures: RenderPicturesTab(body); break;
+            case CompanionTab.Pictures: PicturesPage.Render(body); break;
             case CompanionTab.Motion: RenderMotionTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
             case CompanionTab.Discord: RenderDiscordTab(body); break;
