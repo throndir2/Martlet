@@ -356,6 +356,23 @@ singing host. `deploy\host\roles\singing\role.conf` has the matching choices and
 
 **Docs:** [Singing](SINGING.md#other-music-and-voice-match-options).
 
+## How a speech host service checks requests and downloads its models
+
+**What it decides:** for the xtts, dia, gpt-sovits, f5, chatterbox, singing, parakeet and voice-recognition host
+services: the answer to a request with a missing (411), bad (400) or too large (413) `Content-Length`, the default body
+limit, how a pinned model file is downloaded and checked (exact size and SHA-256, no partial file kept), and how a host
+owns its model process.
+
+**Owner:** `workers\common\martlet_worker_host.py` (`JsonHandler`, `download`, `fetch_pinned`, `ModelProcess`). Each
+role image copies it beside its host (build context `workers`, `workers\<engine>\host\Dockerfile`).
+
+**Tests:** `python:common`; each engine's own suite (`python:<engine>`); `Every_worker_a_role_builds_from_is_in_the_host_image`
+(Martlet.Desktop.Tests).
+
+**MCP:** `singing_check` with endpoint `fixture` starts this checkout's singing service, which uses it.
+
+**Docs:** [Host roles](../deploy/host/README.md).
+
 ## How much Martlet looks a question up (answer, look up or research)
 
 **What it decides:** when a reply answers from what Martlet knows, searches a guide or report, does a quick look-up, or
