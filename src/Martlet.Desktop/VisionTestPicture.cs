@@ -35,10 +35,26 @@ internal static class VisionTestPicture
         }
         var bitmap = new RenderTargetBitmap(Width, Height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
+        var pixels = new byte[Width * Height * 4];
+        bitmap.CopyPixels(pixels, Width * 4, 0);
+        // A blank picture would make the model look blind, and Martlet would keep that as what the model can do.
+        if (!Drawn(pixels))
+            throw new InvalidOperationException("Windows didn't draw the test picture. This happens while this PC's Remote Desktop " +
+                "session is disconnected; connect to the PC and test again.");
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var stream = new MemoryStream();
         encoder.Save(stream);
         return new(stream.ToArray(), ImageMediaType.Png, Width, Height);
+    }
+
+    /// <summary>Whether BGRA <paramref name="pixels"/> show the picture: an opaque white corner and some dark text. Windows
+    /// leaves them all zero (see-through black) when it can't draw, as in a disconnected Remote Desktop session.</summary>
+    internal static bool Drawn(ReadOnlySpan<byte> pixels)
+    {
+        if (pixels.Length < 4 || pixels[0] < 250 || pixels[3] != 255) return false;
+        for (var i = 0; i + 3 < pixels.Length; i += 4)
+            if (pixels[i] < 128 && pixels[i + 3] == 255) return true;
+        return false;
     }
 }

@@ -148,7 +148,7 @@ public sealed class SenseModelCardsTests
             MainWindow.TestAbout(SenseKind.Audio, "google/gemini-2.5-flash", local: false, "OpenRouter"));
     }
 
-    [Fact]
+    [DesktopSessionFact]
     public async Task The_test_picture_is_one_word_drawn_on_white()
     {
         var pictures = new Dictionary<string, BoundedImage>();
@@ -170,6 +170,19 @@ public sealed class SenseModelCardsTests
             Assert.True(pixels[0] > 250 && pixels[^4] > 250);
         }
         Assert.False(pictures["lighthouse"].Content.Span.SequenceEqual(pictures["snowman"].Content.Span));
+    }
+
+    [Fact]
+    public void A_test_picture_that_Windows_did_not_draw_is_refused()
+    {
+        // Windows leaves the pixels see-through black when it can't draw (a disconnected Remote Desktop session).
+        var pixels = new byte[VisionTestPicture.Width * VisionTestPicture.Height * 4];
+        Assert.False(VisionTestPicture.Drawn(pixels));
+        pixels.AsSpan().Fill(255);
+        Assert.False(VisionTestPicture.Drawn(pixels));
+        pixels.AsSpan(4 * 1000, 4 * 50).Fill(0);
+        for (var i = 1000; i < 1050; i++) pixels[i * 4 + 3] = 255;
+        Assert.True(VisionTestPicture.Drawn(pixels));
     }
 
     private static async Task OnDispatcher(Action action)

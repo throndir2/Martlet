@@ -5727,7 +5727,10 @@ exactly what the voice was asked to say, in order, with `voice.persona` and
 `voice.breaks`. Use `voiceFailure` `none` to hear every piece. With `slow`,
 `ok` needs every piece spoken whole, nothing stopped, and the reply latency
 line saying *The voice paused N times for X ms in all, waiting for its next
-audio.* with at least one pause per piece of about the gap each. Before the
+audio.* with at least one pause, together at least about one gap (the gap
+less the quarter second of audio sent before it; how long each pause is
+depends on how late its audio reached the speakers, so a busy PC shortens
+them). Before the
 playback fix, a pause that long ended the voice after 1 s
 (`PlaybackFailed`, `StreamTruncated`): a paired host making speech slower than
 real time cut each reply short. With `paused`, the reply pauses once its first
