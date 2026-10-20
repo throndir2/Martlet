@@ -247,7 +247,7 @@ public partial class MainWindow
         var terminal = service.Terminal;
         string? problem = null;
         if (service.ConfigurationError is { } error) problem = $"mcp.json has a problem, so no servers run: {error}";
-        else if (terminal.Enabled && TerminalStatus(service, terminal) is (var why, true)) problem = why;
+        else if (terminal.Enabled && ToolsPageModel.TerminalStatus(service, terminal, homeSettings.ThinkingRoute()) is (var why, true)) problem = why;
         else if (service.HasEnabledServers && homeSettings.ThinkingRoute() is
                  { RouteType: not (Martlet.Core.Settings.SetupRouteType.OpenAi or Martlet.Core.Settings.SetupRouteType.ChatCompletions) })
             problem = "Your Thinking model can't use tools: choose OpenAI or a Chat Completions endpoint (such as Ollama on this PC) in Companion › Thinking.";

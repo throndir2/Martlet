@@ -282,9 +282,9 @@ public partial class MainWindow
             case CompanionTab.CheckIns: CheckInsPage.Render(body); break;
             case CompanionTab.DeepThinking: ThinkingPoolPage.Render(body); break;
             case CompanionTab.Singing: SingingPage.Render(body); break;
-            case CompanionTab.Tools: RenderToolsTab(body); break;
+            case CompanionTab.Tools: ToolsPage.Render(body); break;
             case CompanionTab.Pictures: PicturesPage.Render(body); break;
-            case CompanionTab.Motion: RenderMotionTab(body); break;
+            case CompanionTab.Motion: MotionPage.Render(body); break;
             case CompanionTab.SmartHome: SmartHomePage.Render(body); break;
             case CompanionTab.Discord: DiscordPage.Render(body); break;
             case CompanionTab.Messaging: MessagingPage.Render(body); break;

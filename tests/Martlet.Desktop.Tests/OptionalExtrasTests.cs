@@ -196,18 +196,18 @@ public sealed class OptionalExtrasTests
     {
         var older = new Martlet.Core.Motion.MotionSettings();
         Assert.Equal("Martlet makes body motions on m3-host (or the first free one of 2 computers).",
-            MainWindow.MotionNow(listed: true, noneOn: false, older, ["m3-host", "this PC"], fixture: false));
-        Assert.Equal("Martlet makes body motions on m3-host.", MainWindow.MotionNow(listed: false, noneOn: false, older, ["m3-host"], fixture: false));
+            MotionPageModel.Now(listed: true, noneOn: false, older, ["m3-host", "this PC"], fixture: false));
+        Assert.Equal("Martlet makes body motions on m3-host.", MotionPageModel.Now(listed: false, noneOn: false, older, ["m3-host"], fixture: false));
         Assert.Equal("Off. Martlet makes no new body motions; the ones it kept still play. No computer in the list is on.",
-            MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: false));
-        Assert.StartsWith("Off. ", MainWindow.MotionNow(listed: false, noneOn: false,
+            MotionPageModel.Now(listed: true, noneOn: true, older, [], fixture: false));
+        Assert.StartsWith("Off. ", MotionPageModel.Now(listed: false, noneOn: false,
             new Martlet.Core.Motion.MotionSettings { Place = Martlet.Core.Motion.MotionPlace.Off }, [], fixture: false));
-        Assert.StartsWith("Not set up yet:", MainWindow.MotionNow(listed: false, noneOn: false, older, [], fixture: false));
-        Assert.StartsWith("No computer in the list can make motions", MainWindow.MotionNow(listed: true, noneOn: false, older, [], fixture: false));
-        Assert.Contains("FIXTURE - NOT AI", MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: true));
-        Assert.Contains("Live2D", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Live2D));
-        Assert.Contains("only on VRM characters", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Live2D));
-        Assert.StartsWith("Your character is a VRM", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Vrm));
+        Assert.StartsWith("Not set up yet:", MotionPageModel.Now(listed: false, noneOn: false, older, [], fixture: false));
+        Assert.StartsWith("No computer in the list can make motions", MotionPageModel.Now(listed: true, noneOn: false, older, [], fixture: false));
+        Assert.Contains("FIXTURE - NOT AI", MotionPageModel.Now(listed: true, noneOn: true, older, [], fixture: true));
+        Assert.Contains("Live2D", MotionPageModel.Character(Martlet.Avatars.AvatarRenderer.Live2D));
+        Assert.Contains("only on VRM characters", MotionPageModel.Character(Martlet.Avatars.AvatarRenderer.Live2D));
+        Assert.StartsWith("Your character is a VRM", MotionPageModel.Character(Martlet.Avatars.AvatarRenderer.Vrm));
 
         var directory = Path.Combine(Path.GetTempPath(), "martlet-motion-" + Guid.NewGuid().ToString("N"));
         try

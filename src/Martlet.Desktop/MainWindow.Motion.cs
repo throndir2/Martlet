@@ -13,15 +13,10 @@ using Martlet.Core.Motion;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Companion › Motion (an optional extra, docs/MOTION_HOST.md#the-motion-pool): where Martlet makes new body motions for VRM
-/// characters, on the <c>motion</c> host role (Tencent's HY-Motion 1.0). In the standard order: Now (whether and where Martlet
-/// makes motions, and whether the character shown is a VRM, the only kind they play on); the motion pool (the shared list
-/// control: the computers that make motions, in order, with no separate on/off switch: with none on, motion is off); each
-/// member's Settings say where Motion stands there and set the role up with the same martlet-host flow as every role (its own
-/// dialog shows the model and Tencent's license terms); then what Motion is. Kept motions and Make a motion stay on Companion ›
-/// Emotes and motions. Automation IDs: <c>MotionNow</c>, <c>MotionCharacter</c>, <c>MotionOpenEmotes</c>, the list's
-/// <c>Pool-motion-...</c> (and per member <c>Pool-motion-State-&lt;key&gt;</c> and <c>Pool-motion-SetUp-&lt;key&gt;</c>) and
-/// <c>MotionAbout</c>.
+/// The work Companion › Motion (an optional extra, docs/MOTION_HOST.md#the-motion-pool) shows: making the Motion list once from the
+/// older choice, a computer joining the list when the motion role is added there, and setting the <c>motion</c> host role
+/// (Tencent's HY-Motion 1.0) up and waiting for it. The page itself is <see cref="MotionPage"/> in Pages\Motion
+/// (MainWindow.MotionPage.cs gives it its services).
 /// </summary>
 public partial class MainWindow
 {
@@ -31,96 +26,6 @@ public partial class MainWindow
     private string? motionPendingHost;
     /// <summary>Why the last setup failed, by computer.</summary>
     private readonly Dictionary<string, string> motionFailures = new(StringComparer.Ordinal);
-
-    private void RenderMotionTab(Panel page)
-    {
-        EnsureMotionPool();
-        var list = store is null ? null : WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.Motion);
-        var listed = list is not null;
-        var members = store is null ? [] : MotionClient.Members(store.DataDirectory);
-        var older = store is null ? new MotionSettings() : MotionClient.Settings(store.DataDirectory);
-        var thisPc = ThisPcHost()?.HostId;
-        string Name(string hostId) => hostId == thisPc ? "this PC" : hostId;
-        var shown = avatar.IsShowing ? avatar.InspectedProfile : homeAvatar;
-
-        // ---------- Now ----------
-        var nowText = new TextBlock
-        {
-            Text = MotionNow(listed, list?.NoneOn ?? false, older, [.. members.Select(m => Name(m.HostId)).Distinct()], MotionClient.Fixture),
-            FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
-        };
-        AutomationProperties.SetAutomationId(nowText, "MotionNow");
-        var character = Note(MotionCharacter(shown?.Renderer), new Thickness(0, 0, 0, 4));
-        if (shown is not null && shown.Renderer != AvatarRenderer.Vrm) character.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        AutomationProperties.SetAutomationId(character, "MotionCharacter");
-        var emotes = PageButton("Kept motions and Make a motion", () => OpenCompanion(CompanionTab.Emotes), link: true, id: "MotionOpenEmotes");
-        page.Children.Add(Card(Heading("Now"), nowText,
-            HelpTip.Explain("While you talk, Martlet can move a VRM character's whole body: cheer, clap, bow deeply or any movement it " +
-                "thinks of. It makes a new motion in the background and plays it when it's ready, and your words never wait for it. It " +
-                "keeps each motion, so your VRM characters do it again at once later, on all your computers.", new Thickness(0, 0, 0, 4),
-                "MotionWhat", "body motions", wiki: "The-Character#body-motions"),
-            character, Row(emotes)));
-
-        // ---------- the motion pool: the computers that make motions, in order ----------
-        page.Children.Add(PoolListCard(new PoolListOptions
-        {
-            Area = PoolAreas.Motion,
-            Heading = "Where Martlet makes motions",
-            Intro = "The computers that make body motions, in order. A motion goes to the first one that isn't making another motion; " +
-                "when all are busy it waits for the first to finish. With none on, Martlet makes no new motions; the motions it kept " +
-                "still play. Open a computer's Settings to set Motion up there. Your other computers follow this list.",
-            Wiki = "The-Character#body-motions",
-            Status = MotionMemberStatus,
-            Settings = MotionMemberSettings,
-            CanAdd = host => !host.Shared && HostCan(host.HostId, HostRoles.Motion) is not { Allowed: false },
-            Saved = (before, after) =>
-            {
-                // A computer added that doesn't run Motion yet shows its Settings, where Set up is.
-                foreach (var added in after.Members.Where(m => before.Find(m.Key) is null))
-                    if (MotionMemberHost(added) is not { } host || !Offers(host, HostRoles.Motion))
-                        poolExpanded.Add(PoolAreas.Motion.Id + " " + added.Key);
-                return Task.CompletedTask;
-            }
-        }));
-
-        // ---------- what Motion is ----------
-        var about = HelpTip.Explain(MotionAbout, new Thickness(0, 0, 0, 0), "MotionAbout", "the Motion role", wiki: "The-Character#body-motions");
-        AutomationProperties.SetAutomationId(about, "MotionAbout");
-        page.Children.Add(Card(Heading("What Motion is"), about));
-    }
-
-    /// <summary>What the Motion role is, in a few sentences (role.conf's facts and terms in short).</summary>
-    internal const string MotionAbout =
-        "Motion runs Tencent's HY-Motion 1.0 on an NVIDIA graphics card with 24 GB or more, and its license doesn't let you use it in " +
-        "the European Union, the United Kingdom or South Korea. It runs in Docker; the standard model needs 26 GB and the computer " +
-        "about 32 GB of memory. It downloads about 20 GB once, loads when the first motion is made and frees the card three minutes " +
-        "after the last one, so the voice and thinking get it back. Only the short English description of the movement goes to that " +
-        "computer, and it's free. Its license is Tencent's HY-Motion 1.0 Community License.";
-
-    /// <summary>Companion › Motion's Now line (MotionNow). <paramref name="where"/>: the computers motions go to, in order (the
-    /// list's members that are on and paired here; before the list, the older choice's). <paramref name="listed"/>: the list
-    /// exists; <paramref name="noneOn"/>: no member in it is on.</summary>
-    internal static string MotionNow(bool listed, bool noneOn, MotionSettings older, IReadOnlyList<string> where, bool fixture)
-    {
-        if (fixture) return "Martlet makes motions with the FIXTURE - NOT AI test maker on this PC (MARTLET_MOTION_FIXTURE=1).";
-        if (listed && noneOn) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Motion)}. No computer in the list is on.";
-        if (!listed && older.Place == MotionPlace.Off) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Motion)}.";
-        if (where.Count == 0)
-            return listed
-                ? "No computer in the list can make motions for this PC: pair one on Devices, or add one below."
-                : "Not set up yet: add one of your computers with a 24 GB NVIDIA graphics card to the list below and set Motion up there.";
-        var place = where.Count == 1 ? where[0] : $"{where[0]} (or the first free one of {where.Count} computers)";
-        return $"Martlet makes body motions on {place}.";
-    }
-
-    /// <summary>Whether the character shown (else the chosen one) can play body motions: only a VRM can.</summary>
-    internal static string MotionCharacter(AvatarRenderer? renderer) => renderer switch
-    {
-        AvatarRenderer.Vrm => "Your character is a VRM, so replies can make and play body motions.",
-        null => "Body motions play only on VRM characters; choose one on Companion › Character.",
-        _ => "Your character is a Live2D model and body motions play only on VRM characters, so replies don't make or play them now " +
-            "(Live2D characters keep their own model's motions)."
-    };
 
     /// <summary>Makes the motion list once from the older choice (motion.json: one computer, automatic or off) and the computers
     /// that run Motion (every one in the shared plan, and those this PC's checks saw), so the choice isn't lost. The list is
@@ -153,83 +58,6 @@ public partial class MainWindow
         QueueSettingsSync();
         ErrorLog.Info($"Pools: {hostId} runs Motion now, so it joined the Motion list.");
         if (!closing && openTab == CompanionTab.Motion) Dispatcher.InvokeAsync(RenderTab);
-    }
-
-    /// <summary>The paired computer a motion pool member makes motions on: this PC's own host service for This PC, else the
-    /// computer; null when it isn't paired here (or this PC has no host service yet). Never a host a friend shares.</summary>
-    private PairedHost? MotionMemberHost(PoolMember member) =>
-        member.Kind == PoolMemberKind.ThisPc ? ThisPcHost() : FindHost(member.HostId) is { Shared: false } host ? host : null;
-
-    /// <summary>The key a setup on <paramref name="member"/> is followed by: <see cref="MotionThisPc"/> for this PC, else the host ID.</summary>
-    private string MotionSetupKey(PoolMember member) =>
-        member.Kind == PoolMemberKind.ThisPc || member.HostId is { } id && id == ThisPcHost()?.HostId ? MotionThisPc : member.HostId ?? MotionThisPc;
-
-    /// <summary>The model a computer's Motion role runs, in words, or null.</summary>
-    private string? MotionModel(PairedHost host) => hostChecks.GetValueOrDefault(host.HostId)?.Offers?.GetValueOrDefault(HostRoles.Motion) switch
-    {
-        "hy-motion-1.0-lite" => "HY-Motion-1.0-Lite",
-        "hy-motion-1.0" => "HY-Motion-1.0",
-        { Length: > 0 } other => other,
-        _ => null
-    };
-
-    /// <summary>A motion pool member's line in the list: whether Motion runs there (and its model), is being set up, failed, or
-    /// why it can't make motions.</summary>
-    private string? MotionMemberStatus(PoolMember member)
-    {
-        var key = MotionSetupKey(member);
-        if (motionPendingHost == key) return "setting Motion up...";
-        var host = MotionMemberHost(member);
-        var parts = new List<string>();
-        if (host is not null && Offers(host, HostRoles.Motion))
-            parts.Add(MotionModel(host) is { } model ? $"runs Motion with {model}" : "runs Motion");
-        else if (host is null)
-            parts.Add(member.Kind == PoolMemberKind.ThisPc ? ThisPcCannotMove() ?? "doesn't run Motion yet; Settings sets it up" : "not paired with this PC");
-        else
-        {
-            var check = hostChecks.GetValueOrDefault(host.HostId);
-            parts.Add(check?.Reachable == false ? "not reachable right now"
-                : check?.Reachable == true ? "doesn't run Motion yet; Settings sets it up" : "not checked yet");
-        }
-        if (motionFailures.GetValueOrDefault(key) is { } failed) parts.Add("setup failed: " + failed.TrimEnd('.'));
-        return string.Join("; ", parts);
-    }
-
-    /// <summary>A motion pool member's Settings (automation IDs <c>Pool-motion-&lt;part&gt;-&lt;member key&gt;</c>): where Motion
-    /// stands there (State) and Set up Motion here (SetUp) where it doesn't run yet.</summary>
-    private UIElement? MotionMemberSettings(PoolMember member)
-    {
-        var id = $"Pool-{PoolAreas.Motion.Id}-";
-        var host = MotionMemberHost(member);
-        var onThisPc = member.Kind == PoolMemberKind.ThisPc || host is not null && host.HostId == ThisPcHost()?.HostId;
-        var key = MotionSetupKey(member);
-        var pending = motionPendingHost == key;
-        var ready = host is not null && Offers(host, HostRoles.Motion);
-        var cannot = ready ? null : onThisPc ? ThisPcCannotMove()
-            : host is null ? "It isn't paired with this PC."
-            : hostChecks.GetValueOrDefault(host.HostId)?.Reachable == false ? "It isn't reachable right now."
-            : CannotHand(host.HostId, HostRoles.Motion, "motion");
-        var state = pending ? "Setting Motion up here..."
-            : ready ? (MotionModel(host!) is { } model ? $"Motion is ready here with {model}." : "Motion is ready here.")
-            : cannot ?? (motionFailures.GetValueOrDefault(key) is { } why ? $"Setting Motion up failed: {why}" : "Motion isn't set up here yet.");
-        var panel = new StackPanel();
-        var line = Note(state, new Thickness(0, 0, 0, 4));
-        if (cannot is not null || !pending && !ready && motionFailures.ContainsKey(key))
-            line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        AutomationProperties.SetAutomationId(line, id + "State-" + member.Key);
-        panel.Children.Add(line);
-        if (ready) return panel;
-        var setUp = PageButton(pending ? "Setting up..." : "Set up Motion here", () => SetUpMotionAsync(onThisPc ? null : host, key).Forget(),
-            primary: true, id: id + "SetUp-" + member.Key);
-        setUp.IsEnabled = !pending && motionPendingHost is null && cannot is null;
-        if (cannot is not null)
-        {
-            setUp.ToolTip = cannot;
-            ToolTipService.SetShowOnDisabled(setUp, true);
-            AutomationProperties.SetHelpText(setUp, cannot);
-        }
-        panel.Children.Add(Row(setUp));
-        return panel;
     }
 
     /// <summary>Why this PC can't make motions: no NVIDIA graphics card, or one with less than 24 GB; null when it can or Martlet
