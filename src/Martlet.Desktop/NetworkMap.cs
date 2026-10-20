@@ -672,7 +672,8 @@ internal static class NetworkMap
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;
                 if (!managed) continue;
                 // A Thinking pool model for an extra graphics card is offered only on a host with that many NVIDIA cards.
-                if (!HostRoles.OfferedOn(role, nvidiaCards, offered)) continue;
+                if (!HostRoles.OfferedOn(role, nvidiaCards, offered,
+                    inputs.HostHardware?.FirstOrDefault(h => h.HostId == id)?.Served is { Count: > 0 })) continue;
                 if (!offered && PlatformCatalog.EngineForHostRole(role.Kind) is { } engine &&
                     PlatformCatalog.Check(engine, PlatformSide.Host, device) is { Allowed: false } cannot)
                 {

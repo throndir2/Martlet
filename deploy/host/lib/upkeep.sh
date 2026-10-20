@@ -69,6 +69,10 @@ cmd_warm() {
     [[ -n "${role}" ]] || continue
     count=$(( count + 1 ))
     say "Role ${role}"
+    if [[ -n "$(conf_value "$(installed_file "${role}")" api)" ]]; then
+      note "It relays to your own model app on this host; Martlet has nothing to start for it."
+      continue
+    fi
     if [[ ! -f "${ROLES_DIR}/${role}/role.conf" || ! -f "${PROJECTS}/${role}/compose.yaml" ]]; then
       note "This Martlet version has no files for ${role}; leaving it as it is."
       continue
@@ -181,6 +185,7 @@ cmd_status() {
     if [[ "${MODE}" == docker ]] && role_detached "${role}"; then
       note "Not in the gateway's network (missing, or left on the network an earlier setup replaced), so the gateway can't reach it. Reconnect it: martlet-host update (Update host in Martlet)"
     fi
+    [[ -n "$(conf_value "${file}" api)" ]] && note "relays to $(conf_value "${file}" model) in your own model app ($(conf_value "${file}" api) API at $(conf_value "${file}" path))"
     place="$(role_place "${role}")"
     case "${place}" in
       cpu) note "runs on the processor" ;;

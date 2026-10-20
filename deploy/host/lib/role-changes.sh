@@ -54,6 +54,8 @@ installed_roles() {
 role_detached() {
   local role="$1" holder container mode found=0
   [[ "$(conf_value "$(installed_file "${role}")" network)" == host ]] && return 1
+  # A relay to the owner's own model app runs no containers.
+  [[ -n "$(conf_value "$(installed_file "${role}")" api)" ]] && return 1
   holder="$(docker container inspect -f '{{.Id}}' "${NET}" 2>/dev/null)" || return 1
   while IFS= read -r container; do
     [[ -n "${container}" ]] || continue
@@ -90,6 +92,8 @@ refresh_installed_role_files() {
     record="$(installed_file "${role}")"
     kind="$(conf_value "${record}" kind)"; feature="$(conf_value "${record}" feature)"
     [[ -n "${kind}" || -n "${feature}" ]] || continue
+    # A relay to the owner's own model app has no role files to refresh.
+    [[ -z "$(conf_value "${record}" api)" ]] || continue
     dir="${ROLES_DIR}/${role}"; project="${PROJECTS}/${role}"; changed=0
     [[ -f "${dir}/role.conf" && -f "${dir}/compose.yaml" ]] ||
       { note "Role files for ${role} are no longer present; leaving its running containers unchanged."; continue; }
@@ -158,11 +162,13 @@ unpublish_roles() {
 # Records role $1 as installed and publishes it: a gateway route (kind $2 on loopback port $3, model $4) or, for a
 # route-less role, its feature $5 in the machine report. Runs holding the gateway lock (with_gateway).
 publish_role() {
-  local role="$1" kind="$2" port="$3" model="$4" feature="$5" slots="${6:-1}"
+  local role="$1" kind="$2" port="$3" model="$4" feature="$5" slots="${6:-1}" api="${7:-}" path="${8:-}"
   if [[ -n "${kind}" ]]; then
     ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")"
       # A role that runs several requests at once (the deep-thinking role's Ollama slots) says how many.
-      if [[ "${slots}" != 1 ]]; then printf 'slots=%s\n' "${slots}" >> "$(installed_file "${role}")"; fi )
+      if [[ "${slots}" != 1 ]]; then printf 'slots=%s\n' "${slots}" >> "$(installed_file "${role}")"; fi
+      # A role that relays to the owner's own model app (external=openai) names the app's API and path.
+      if [[ -n "${api}" ]]; then printf 'api=%s\npath=%s\n' "${api}" "${path}" >> "$(installed_file "${role}")"; fi )
     collect_machine
     apply_config
   else
@@ -181,6 +187,57 @@ unpublish_role() {
   if [[ -n "$2" ]]; then apply_config; else publish_machine_report; fi
 }
 
+# A role Martlet runs nothing for (role.conf external=openai: the deep-thinking-app role). The gateway relays its route to the
+# owner's own model app on this host's 127.0.0.1, at the port, API path and model its port_from, path_from and model_from
+# choices name. The host service must run natively, so the gateway reaches the app. The app must answer and list the model;
+# then the roles of the same exclusive group stop and the route is published.
+add_external_role() {
+  local role="$1" conf="$2" kind="$3" api project line port path model listing current_kind current_value
+  api="$(conf_value "${conf}" external)"
+  [[ "${api}" == openai && "${kind}" =~ ^[a-z0-9-]+$ ]] || fail "Invalid external entry in role.conf."
+  [[ "${MODE}" == native ]] ||
+    fail "${role} needs this host's Martlet service installed natively, not in Docker: in Docker the gateway can't reach the apps on this computer."
+  project="${PROJECTS}/${role}"
+  declare -A current_choice=() chosen=()
+  local env_lines=()
+  while IFS='|' read -r current_kind current_value; do
+    [[ "${current_kind}" == choice ]] && current_choice["${current_value%%|*}"]="${current_value#*|}"
+  done < <(role_current "${role}")
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] && ask_choice "${line}" "${current_choice[${line%%|*}]:-}"
+  done 3< <(conf_values "${conf}" choice)
+  port="${chosen[$(conf_value "${conf}" port_from)]:-}"; path="${chosen[$(conf_value "${conf}" path_from)]:-}"
+  model="${chosen[$(conf_value "${conf}" model_from)]:-}"
+  [[ "${port}" =~ ^[0-9]{2,5}$ && "${path}" =~ ^(/v1|/api/v1|/engines/v1)$ ]] && open_value "${model}" ||
+    fail "Invalid port, API path or model for ${role}."
+
+  say "Checking your model app at 127.0.0.1:${port}${path}"
+  # Plain http on 127.0.0.1: curl alone, no certificates.
+  command -v curl >/dev/null 2>&1 || require_curl "the model app check"
+  listing="$(curl -fsS --max-time 10 "http://127.0.0.1:${port}${path}/models" 2>/dev/null)" ||
+    fail "Nothing answers at http://127.0.0.1:${port}${path}/models. Start your model app's server, then add ${role} again."
+  grep -qF "\"${model}\"" <<< "${listing}" ||
+    fail "Your model app at port ${port} doesn't list ${model}. Load it there (or choose a model it lists), then add ${role} again."
+  note "Your model app lists ${model}."
+
+  local terms; terms="$(conf_value "${conf}" terms)"
+  if [[ -n "${terms}" ]]; then
+    note "${terms}"
+    ask "Continue with these terms?" || fail "Role not installed."
+  fi
+  local stops=()
+  mapfile -t stops < <(exclusive_others "${role}")
+  if [[ ${#stops[@]} -gt 0 ]]; then
+    note "One Thinking pool model runs on card 1 of a host; ${role} replaces ${stops[*]} here (its downloads are kept, so adding it again is quick)."
+    ask "Stop ${stops[*]} when ${role} starts?" || fail "Role not installed."
+    release_roles "${role}" "${stops[@]}"
+  fi
+  mkdir -p "${project}"; chmod 700 "${project}"
+  ( umask 077; printf '%s\n' "${env_lines[@]}" > "${project}/.env" )
+  with_gateway publish_role "${role}" "${kind}" "${port}" "${model}" "" 1 "${api}" "${path}"
+  say "Role ${role} relays the Thinking pool to ${model} in your app. Paired desktops pick it up automatically."
+}
+
 cmd_add() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host add <role>"
   load_input
@@ -191,6 +248,7 @@ cmd_add() {
   [[ -z "${role_network}" || "${role_network}" == host ]] || fail "Invalid network in role.conf."
   [[ -z "${role_feature}" || "${role_feature}" =~ ^[a-z0-9-]{1,32}$ ]] || fail "Invalid feature in role.conf."
   say "Adding role ${role}: $(conf_value "${conf}" title)"
+  if [[ -n "$(conf_value "${conf}" external)" ]]; then add_external_role "${role}" "${conf}" "${kind}"; return; fi
 
   say "Requirements"
   require_docker
@@ -569,6 +627,12 @@ cmd_remove() {
   [[ -f "${record}" ]] || fail "Role ${role} is not installed."
   local had_kind; had_kind="$(conf_value "${record}" kind)"
   ask "Turn off ${role}: stop it and remove it from the gateway (its downloads and data volumes are kept)?" || exit 0
+  if [[ -n "$(conf_value "${record}" api)" ]]; then
+    # A relay to the owner's own model app: nothing runs, so only its route goes. The app and its model stay as they are.
+    with_gateway unpublish_role "${role}" "${had_kind}"
+    say "Role ${role} is off. Your model app keeps running as it is."
+    return
+  fi
   require_docker
   role_compose "${role}" down || true
   # Every variant, also one an interrupted switch left running.

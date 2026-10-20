@@ -113,6 +113,17 @@ public static partial class NetworkRecommender
                 int[]? split = gpu is not null && role.Span is { Length: > 1 } span ? span : null;
                 var processor = role.Option is { IsLocal: true, UsesGpu: false } && node.Spec.Gpus.Count > 0;
                 var name = Label(role.Option, role.Kind);
+                if (role.App)
+                {
+                    // The deep-thinking-app role: it replaces the host's own Thinking pool model (one runs on card 1).
+                    var summary = $"Relay {node.Name}'s Thinking pool to {Plain(role.Option!)}." +
+                        (was is null ? $" {node.Name} then joins the Thinking pool by itself." : $" It replaces {was.Model ?? "its own model"} there.");
+                    changes.Add(RoleChange(SetupChangeKind.AddRole, node, role, summary, role.Benefit, role.Why) with
+                    {
+                        RoleKind = AppDeepThinkingRole, Model = role.Model, Choices = role.Choices, FromModel = was?.Model
+                    });
+                    continue;
+                }
                 if (was is null)
                 {
                     var summary = (role.OnDisk ? $"Start {name} again on {SplitText(node, role)}, where it is already downloaded"

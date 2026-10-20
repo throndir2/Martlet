@@ -15,7 +15,7 @@ public static class SharedGpu
     /// only with PP-OCRv5, see <see cref="ProcessorOnly"/>).</summary>
     public static readonly IReadOnlyList<(string Kind, string Name)> OtherGpuRoles =
     [
-        ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Thinking pool"), ("deep-thinking-2", "Thinking pool (card 2)"),
+        ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Thinking pool"), ("deep-thinking-app", "Thinking pool (your own app)"), ("deep-thinking-2", "Thinking pool (card 2)"),
         ("deep-thinking-3", "Thinking pool (card 3)"), ("deep-thinking-4", "Thinking pool (card 4)"), ("stt", "Listening"),
         ("singing", "Singing"), ("pictures", "Picture making"), ("ocr", "Reading"), ("motion", "Motion"), ("voice-recognition", "Voice recognition")
     ];

@@ -354,7 +354,9 @@ internal sealed class GatewayHttpApplication : GatewayRouteHandler
                     GeneratedAt = clock.GetUtcNow(),
                     MartletVersion = MartletVersion,
                     Machine = machine,
-                    LoadedModels = loaded
+                    LoadedModels = loaded,
+                    // The model apps' chat models: the last look's answer (a new look runs in the background, never waited for).
+                    ServedModels = inference.ServedModels()
                 }).ConfigureAwait(false);
                 return;
             }
@@ -553,6 +555,9 @@ internal sealed class GatewayHttpApplication : GatewayRouteHandler
         public GatewayMachineReport? Machine { get; init; }
         /// <summary>What the host's Ollama roles have loaded now (<c>/api/ps</c>); absent when none answers and on older hosts.</summary>
         public GatewayLoadedModel[]? LoadedModels { get; init; }
+        /// <summary>The chat models the model apps on this host serve (LM Studio, llama.cpp, vLLM...); absent before the first look
+        /// ends and on older hosts.</summary>
+        public GatewayServedModel[]? ServedModels { get; init; }
     }
 
     private sealed record FailureDocument

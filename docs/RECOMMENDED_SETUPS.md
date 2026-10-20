@@ -743,6 +743,15 @@ preferences, Martlet reads the choice this PC saved before
   says so. Turn the checkbox off to keep Martlet's fastest model.
 - **On a network.** When a host does Thinking for all your companion PCs, a
   served model on one PC only adds a note.
+- **On a host PC.** A host whose Martlet host service is installed natively
+  (not in Docker) also looks for the model apps on that computer, in the
+  background, and its machine report lists their chat models. When one of them
+  is smarter than the Thinking pool model Martlet would run there, Recommended
+  setup adds the **Thinking pool (your own app)** role (`deep-thinking-app`):
+  the host's Thinking pool place relays to that model in your app. Nothing
+  downloads, and your app keeps the model in its own memory. It replaces the
+  host's own Thinking pool model on card 1. Live Thinking never uses it,
+  because it is not the fastest model that hears you.
 
 ### Models your hosts already have
 

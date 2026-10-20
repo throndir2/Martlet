@@ -250,7 +250,16 @@ recommendation keeps it, split across two cards no live job uses (a
 `MoveToGpu` change with `gpuIndexes`, the machine's `cards` entry with
 `split: true`). Each change also has `gpuIndex` and `gpuIndexes` (0-based), and
 each machine `cards` (each role's cards, 1-based, as the review says them) and
-`gpus` (each card's `usedGb` and `capacityGb`).
+`gpus` (each card's `usedGb` and `capacityGb`). Give `fixture: "hostserved"` for
+a host (`lab-box`, an RTX 4060 with 8 GB and 128 GB of memory, installed
+natively) whose machine report lists the chat models LM Studio serves there
+(`openai/gpt-oss-120b`, loaded, and an embedding model): `servedModels.found`
+lists it with `computer: "lab-box"` and the host's own address, and the
+recommendation has an `AddRole` of the `deep-thinking-app` role with
+`model: "openai/gpt-oss-120b"` and `choices` (`APP_PORT` and `APP_PATH`), so
+the host's Thinking pool place relays to it instead of Gemma 4 E4B. Live
+Thinking stays a fast model. Each change has `choices` (more choices the role
+is installed with) when it names any.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.

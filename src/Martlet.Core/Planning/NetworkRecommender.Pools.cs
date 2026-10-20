@@ -155,6 +155,8 @@ public static partial class NetworkRecommender
                         role.Leave = (SetupChangeBenefit.Improvement, "You turned Deep thinking off.");
                 return;
             }
+            // A smarter model the owner's own app already serves on a host takes that host's Thinking pool place (#1053).
+            foreach (var node in nodes.Where(n => n.Presence == Presence.Here)) AppDeep(node);
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && (!n.Companion || singlePc)))
                 foreach (var role in node.Pending.Where(r => r.Kind == DeepThinkingRole && r.Leave is null).ToList())
                     if (!Bigger(node, role)) KeepDeep(node, role);
@@ -193,6 +195,34 @@ public static partial class NetworkRecommender
                 $"{SplitText(slot)}, {card} has room for {Plain(slot.Option)}, which thinks better than {Plain(now)}. Deep " +
                 "thinking runs in the background, so replies come as soon as before.");
             return true;
+        }
+
+        /// <summary>Use models your apps already run, on a host (#1053): when a model app on host <paramref name="node"/> serves a chat
+        /// model smarter than the Thinking pool model Martlet would run there (today's, else the smartest that fits a card), the
+        /// deep-thinking-app role relays that host's Thinking pool to it. Nothing downloads, and the app keeps the model's memory.
+        /// Deep thinking runs in the background, so replies come as soon as before. A place relayed to an app already stays.</summary>
+        private void AppDeep(Node node)
+        {
+            if (node.Companion || !node.CanHost || !node.Machine.Manageable || optOut.Contains(node.Id) ||
+                node.Roles.Any(r => r.Kind == DeepThinkingRole)) return;
+            var best = (request.ServedModels ?? []).Where(m => m is { ModelId.Length: > 0 } && m.MachineId == node.Id && ServedModels.Chats(m.ModelId))
+                .Select(m => (Model: m, Option: AppOption(m)))
+                .OrderByDescending(x => x.Option.QualityTier).ThenByDescending(x => ServedModels.Gb(x.Model, catalog.Models) ?? 0)
+                .ThenBy(x => x.Model.ModelId, StringComparer.Ordinal).FirstOrDefault();
+            if (best.Option is null || !Uri.TryCreate(best.Model.BaseUrl, UriKind.Absolute, out var url)) return;
+            var today = node.Pending.FirstOrDefault(r => r.Kind == DeepThinkingRole && !r.Native && r.Leave is null)?.Option;
+            var own = DeepSlot(node)?.Option;
+            var floor = new[] { today, own }.OfType<ComponentOption>().MaxBy(o => o.QualityTier);
+            if (floor is not null && best.Option.QualityTier <= floor.QualityTier) return;
+            var why = $"{best.Model.AppName} on {node.Name} already serves {best.Model.ModelId}, which thinks better than " +
+                (floor is null ? "any model that fits there" : Plain(floor)) + ", so the Thinking pool uses it there: nothing downloads, and " +
+                "your app keeps the model in its own memory. Deep thinking runs in the background, so replies come as soon as before.";
+            var role = Place(new Slot(node, null, best.Option, false), DeepThinkingRole, ThinkingPoolPlace, SetupChangeBenefit.Improvement, why);
+            role.App = true;
+            role.Choices = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["APP_PORT"] = url.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), ["APP_PATH"] = url.AbsolutePath.TrimEnd('/')
+            };
         }
 
         private void KeepDeep(Node node, Role role)

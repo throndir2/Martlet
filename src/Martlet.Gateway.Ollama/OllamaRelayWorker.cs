@@ -30,6 +30,8 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
     private readonly Uri chat;
     private readonly Uri create;
     private readonly Uri origin;
+    /// <summary>The owner's own model app's Chat Completions address (deep-thinking-app), or null for Martlet's Ollama.</summary>
+    private readonly Uri? app;
     private readonly string model;
     private readonly string roleKind;
     private readonly HttpClient http;
@@ -38,19 +40,26 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
 
     public OllamaRelayWorker(Uri endpoint, string model,
         string destinationId = DefaultDestinationId, string workerId = DefaultWorkerId, HttpMessageHandler? handler = null,
-        bool deepThinking = false, int slots = 1, int card = 1)
+        bool deepThinking = false, int slots = 1, int card = 1, string? appPath = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         if (endpoint.Scheme != Uri.UriSchemeHttp || !IPAddress.TryParse(endpoint.Host.Trim('[', ']'), out var address) ||
             !IPAddress.IsLoopback(address) || endpoint.AbsolutePath != "/")
             throw new ArgumentException("The Ollama relay only reaches a loopback http://127.0.0.1:<port>/ server.", nameof(endpoint));
+        if (appPath is not null)
+        {
+            if (appPath is not ("/v1" or "/api/v1" or "/engines/v1") || !deepThinking)
+                throw new ArgumentException("A model app's relay is a Thinking pool route on /v1, /api/v1 or /engines/v1.", nameof(appPath));
+            app = new Uri(endpoint, appPath.TrimStart('/') + "/chat/completions");
+        }
         chat = new Uri(endpoint, "api/chat");
         create = new Uri(endpoint, OllamaDraftHead.CreatePath.TrimStart('/'));
         origin = endpoint;
         this.model = model;
         roleKind = !deepThinking ? "ollama" : card <= 1 ? "deep-thinking" : $"deep-thinking-{card}";
-        var selection = new OllamaChatModelSelection(Alias(model), model);
-        Route = GatewayInferenceRoute.OllamaChat(destinationId, workerId, selection, "ollama",
+        // An app's model name ("qwen/qwen3-32b", no Ollama tag) gets a route identity of its own; the request sends the real name.
+        var selection = new OllamaChatModelSelection(Alias(model), app is null ? model : AppIdentity(model));
+        Route = GatewayInferenceRoute.OllamaChat(destinationId, workerId, selection, app is null ? "ollama" : "openai-app",
             Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(model))), deepThinking, slots, card);
         http = new HttpClient(handler ?? new SocketsHttpHandler
         {
@@ -61,11 +70,24 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
 
     public GatewayInferenceRoute Route { get; }
 
+    /// <summary>The port of Martlet's own Ollama server; null when it relays to the owner's own app.</summary>
+    public int? OwnPort => app is null ? origin.Port : null;
+
+    /// <summary>The OpenAI-compatible endpoint is offered for Martlet's own Ollama only, not for the owner's app.</summary>
+    public bool OffersOpenAi => app is null;
+
+    /// <summary>The relay of the deep-thinking-app role: the Thinking pool route of card <paramref name="card"/>, relayed to a chat
+    /// model that the owner's own model app on this host serves (LM Studio, llama.cpp, vLLM...) through its OpenAI-compatible
+    /// API at <paramref name="endpoint"/> and <paramref name="path"/>. The app keeps the model loaded and manages its memory.</summary>
+    public static OllamaRelayWorker App(Uri endpoint, string path, string model, HttpMessageHandler? handler = null, int card = 1) =>
+        new(endpoint, model, card == 1 ? DeepThinkingDestinationId : $"deep-thinking-{card}-host",
+            card == 1 ? "deep-thinking-app-relay" : $"deep-thinking-{card}-app-relay", handler, deepThinking: true, 1, card, path);
+
     /// <summary>What this role's Ollama has loaded now (<c>/api/ps</c>, at most two seconds), for the host's machine report; null
     /// when it doesn't answer. A read only: it never loads, unloads or waits for a reply.</summary>
     public async ValueTask<IReadOnlyList<GatewayLoadedModel>?> ReadLoadedAsync(CancellationToken cancellationToken)
     {
-        if (lifetime.IsCancellationRequested) return null;
+        if (lifetime.IsCancellationRequested || app is not null) return null;
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token);
         limit.CancelAfter(TimeSpan.FromSeconds(2));
         try
@@ -88,6 +110,13 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
     public static OllamaRelayWorker DeepThinking(Uri endpoint, string model, HttpMessageHandler? handler = null, int slots = 1, int card = 1) =>
         new(endpoint, model, card == 1 ? DeepThinkingDestinationId : $"deep-thinking-{card}-host",
             card == 1 ? DeepThinkingWorkerId : $"deep-thinking-{card}-relay", handler, deepThinking: true, slots, card);
+
+    /// <summary>An Ollama-shaped name for an app's model, for the route's identity: its alias in lower case with the tag "app".</summary>
+    private static string AppIdentity(string model)
+    {
+        var name = new string(Alias(model).ToLowerInvariant().Where(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-').ToArray()).TrimStart('.', '_', '-');
+        return (name.Length == 0 ? "model" : name.Length > 80 ? name[..80] : name) + ":app";
+    }
 
     /// <summary>The route's model ID for an Ollama model tag, for example llama3.2:3b becomes llama3.2-3b.</summary>
     public static string Alias(string model)
@@ -142,8 +171,9 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
                 var reserved = Route.MaximumOutputBytes / pieceBytes + 1;
                 while (true)
                 {
-                    var (text, done, error) = await NextAsync(reader, payload.Audio is not null && !spoke, stop.Token)
-                        .ConfigureAwait(false);
+                    var (text, done, error) = app is null
+                        ? await NextAsync(reader, payload.Audio is not null && !spoke, stop.Token).ConfigureAwait(false)
+                        : await NextAppAsync(reader, payload.Audio is not null && !spoke, stop.Token).ConfigureAwait(false);
                     stop.Token.ThrowIfCancellationRequested();
                     if (error is not null)
                     {
@@ -193,6 +223,7 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
     private async Task<(HttpResponseMessage? Response, string? Failure)> SendAsync(
         GatewayOllamaChatPayload payload, CancellationToken token)
     {
+        if (app is not null) return await SendAppAsync(app, payload, token).ConfigureAwait(false);
         using var body = new MemoryStream();
         using (var writer = new Utf8JsonWriter(body))
         {
