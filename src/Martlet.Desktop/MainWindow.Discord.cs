@@ -55,13 +55,13 @@ public partial class MainWindow
     {
         var steps = new StackPanel();
         void Step(string text) => steps.Children.Add(Note(text, new Thickness(0, 4, 0, 0)));
-        Step("1. Open the Discord Developer Portal and choose New Application. Name it after your character.");
+        Step("Step 1: open the Discord Developer Portal, choose New Application and name it after your character.");
         steps.Children.Add(Row(PageButton("Open the Developer Portal", () => OpenInBrowser(new Uri(DiscordInvite.PortalUrl)), link: true,
             id: "DiscordOpenPortal")));
-        Step("2. On Bot, choose Reset Token, copy the token and paste it below. Martlet keeps it in Windows Credential Manager.");
-        Step("3. Still on Bot, under Privileged Gateway Intents, turn on Message Content Intent and save.");
-        Step("4. On Installation, allow both Guild Install and User Install.");
-        Step("5. Back here, use Add to a server for each server (and your home server), and Add to my account to use /martlet in DMs and group DMs.");
+        Step("Step 2: on Bot, choose Reset Token and paste the token below (Martlet keeps it in Windows Credential Manager).");
+        Step("Step 3: still on Bot, under Privileged Gateway Intents, turn on Message Content Intent and save.");
+        Step("Step 4: on Installation, allow both Guild Install and User Install.");
+        Step("Step 5: back here, use Add to a server for each server (and your home server), and Add to my account to use /martlet in DMs and group DMs.");
         if (saved.ApplicationId != 0)
             steps.Children.Add(Row(PageButton("Open my bot's page", () => OpenInBrowser(new Uri(DiscordInvite.ApplicationPage(saved.ApplicationId))),
                 link: true, id: "DiscordOpenBotPage")));
@@ -92,8 +92,9 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading("Set up Martlet's Discord bot"),
-            Note("Martlet joins Discord as its own bot, which you create once in Discord's Developer Portal (Discord has no way to make it for you). " +
-                "Martlet never logs in as a person.", new Thickness(0, 0, 0, 6)),
+            HelpTip.Explain("Martlet joins Discord as its own bot, which you make once in Discord's Developer Portal. " +
+                "Discord has no way to make the bot for you, and Martlet never logs in as a person.", new Thickness(0, 0, 0, 6),
+                "DiscordSetup", "setting up the bot", wiki: "Discord#set-up-the-bot"),
             Status(DiscordSetup.Describe(DiscordSetup.Next(saved, status)), "DiscordSetupNext", 15),
             DetailExpander("Step by step", "DiscordSetupSteps", steps, expanded: !saved.Configured),
             new Label { Content = "Bot _token", Target = token, Padding = new Thickness(0, 12, 0, 4) },
@@ -102,8 +103,9 @@ public partial class MainWindow
         };
         if (discordTokenStatus is { } result) children.Add(Status(result, "DiscordTokenStatus"));
         children.Add(Row(save, forget));
-        children.Add(Note("Saving checks that it looks like a bot token, keeps it in Windows Credential Manager and connects. " +
-            "Forget the bot disconnects and removes the token; your chat modes and people stay.", new Thickness(0, 2, 0, 0)));
+        children.Add(HelpTip.Explain("Saving keeps the token in Windows Credential Manager and connects. " +
+            "Martlet first checks that it looks like a bot token. Forget the bot disconnects and removes the token, but keeps your chat modes and people.",
+            new Thickness(0, 2, 0, 0), "DiscordTokenSaving", "the bot token", wiki: "Discord#set-up-the-bot"));
         return Card([.. children]);
     }
 
@@ -126,15 +128,15 @@ public partial class MainWindow
             if (error != CredentialError.None)
             {
                 discordTokenStatus = error == CredentialError.InvalidInput
-                    ? "That isn't a Discord bot token. On the Bot page in the Developer Portal, choose Reset Token and copy the whole token."
+                    ? "That isn't a Discord bot token: on the Bot page in the Developer Portal, choose Reset Token and copy the whole token."
                     : $"Couldn't save the token: {CredentialMessages.Describe(error)}";
                 ActionText.Text = discordTokenStatus;
                 return;
             }
-            discordTokenStatus = "Bot token saved in Windows Credential Manager. Connecting...";
+            discordTokenStatus = "Bot token saved in Windows Credential Manager; connecting...";
             if (!discord.Save(current => current with { Enabled = true }))
             {
-                discordTokenStatus = "The token is saved, but Martlet couldn't save the Discord setup. Check access to your data directory.";
+                discordTokenStatus = "The token is saved, but Martlet couldn't save the Discord setup: check access to your data directory.";
                 return;
             }
             var problem = await discord.StartAsync(lifetime.Token);
@@ -151,9 +153,8 @@ public partial class MainWindow
 
     private async Task ForgetDiscordAsync()
     {
-        if (!ConfirmationDialog.Confirm(this, "Forget Martlet's Discord bot?\n\nMartlet disconnects from Discord and removes the bot token " +
-                "from Windows Credential Manager. Your chat modes and people stay. Reset the token in the Developer Portal if it may have leaked.",
-                "Martlet - Discord"))
+        if (!ConfirmationDialog.Confirm(this, "Forget Martlet's Discord bot, disconnect it and remove its token from Windows Credential Manager " +
+                "(your chat modes and people stay)?", "Martlet - Discord"))
             return;
         await discord.ForgetAsync();
         discordTokenStatus = "The bot token is forgotten.";
@@ -169,7 +170,7 @@ public partial class MainWindow
     {
         var choices = OnOffChoices("DiscordEnabled", "DiscordEnabledOff", "Connect Martlet to Discord whenever Martlet runs",
             "Martlet's bot joins your servers and DMs and chats as the chat modes below say.",
-            "Martlet doesn't connect to Discord. Your bot token, chat modes and people are kept.", saved.Enabled && saved.Configured,
+            "Martlet doesn't connect to Discord, but keeps your bot token, chat modes and people.", saved.Enabled && saved.Configured,
             !saved.Configured ? "Set up Martlet's bot below first." : discordBusy ? "Wait for the last change to finish." : null,
             on => { if (on != discord.Preferences.Enabled) SetDiscordEnabledAsync(on).Forget(); });
         choices[1].IsEnabled = !discordBusy;
@@ -207,7 +208,7 @@ public partial class MainWindow
         if (closing || discordBusy) return;
         if (discord.Preferences.Enabled != on && !discord.Save(current => current with { Enabled = on }))
         {
-            ActionText.Text = "Couldn't save the Discord setting. Check access to your data directory.";
+            ActionText.Text = "Couldn't save the Discord setting: check access to your data directory.";
             RenderTab();
             return;
         }
@@ -300,8 +301,10 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading("Where Martlet chats"),
-            Note("Off: never. Only when mentioned: when someone mentions or replies to Martlet, says its name or uses /martlet. " +
-                "Sometimes: Martlet joins in when it thinks it should. Always: it answers everything.", new Thickness(0, 0, 0, 6)),
+            HelpTip.Explain("Choose how often Martlet chats in each place. " +
+                "Off: never; Only when mentioned: when someone mentions or replies to Martlet, says its name or uses /martlet; " +
+                "Sometimes: when Martlet thinks it should join in; Always: it answers everything.", new Thickness(0, 0, 0, 6),
+                "DiscordModes", "chat modes", wiki: "Discord#how-often-she-joins-in"),
             Status(DiscordSetup.ChatSummary(saved), "DiscordChatModes"),
             new Label { Content = "_Server channels", Target = server, Padding = new Thickness(0, 10, 0, 4) }, server,
             new Label { Content = "_Direct messages", Target = direct, Padding = new Thickness(0, 8, 0, 4) }, direct,
@@ -367,8 +370,9 @@ public partial class MainWindow
             Status(saved.OwnerUserId != 0 ? $"Your account: {saved.OwnerUserId}." : "Your account isn't set.", "DiscordOwnerStatus"),
             new Label { Content = "Your Discord _user ID", Target = owner, Padding = new Thickness(0, 10, 0, 4) },
             owner,
-            Note("DM Martlet's bot or write where it can see, then pick yourself below. Or in Discord turn on Settings > Advanced > Developer Mode, " +
-                "right-click your name and choose Copy User ID, and paste it here.", new Thickness(0, 4, 0, 0)),
+            HelpTip.Explain("DM Martlet's bot or write where it can see, then pick yourself below. " +
+                "Or in Discord turn on Settings > Advanced > Developer Mode, right-click your name, choose Copy User ID and paste it here.",
+                new Thickness(0, 4, 0, 0), "DiscordOwner", "your Discord user ID", wiki: "Discord#who-you-are"),
             Row(saveOwner)
         };
         var index = 0;
@@ -398,9 +402,10 @@ public partial class MainWindow
         };
         children.Add(new Label { Content = "_Home server", Target = home, Padding = new Thickness(0, 14, 0, 4) });
         children.Add(home);
-        children.Add(Note(status.State == DiscordBotState.Online
-            ? "A small server of your own where Martlet makes private voice channels to call people. Add it with Add to home server."
-            : "Connect the bot to pick from its servers.", new Thickness(0, 4, 0, 0)));
+        children.Add(status.State == DiscordBotState.Online
+            ? HelpTip.Explain("A small server of your own where Martlet makes private voice channels to call people. " +
+                "Add Martlet to it with Add to home server.", new Thickness(0, 4, 0, 0), "DiscordHome", "the home server", wiki: "Discord#friends-and-calls")
+            : Note("Connect the bot to pick from its servers.", new Thickness(0, 4, 0, 0)));
         return Card([.. children]);
     }
 
@@ -414,7 +419,7 @@ public partial class MainWindow
         }
         if (!DiscordSetup.TryParseId(text, out var id))
         {
-            ActionText.Text = "That isn't a Discord user ID. It is a long number; Copy User ID gives it.";
+            ActionText.Text = "That isn't a Discord user ID: it's a long number that Copy User ID gives you.";
             return;
         }
         discordOwnerDraft = null;
@@ -423,7 +428,7 @@ public partial class MainWindow
 
     private void SaveDiscord(Func<DiscordPreferences, DiscordPreferences> update, string done)
     {
-        ActionText.Text = discord.Save(update) ? done : "Couldn't save the Discord setup. Check access to your data directory.";
+        ActionText.Text = discord.Save(update) ? done : "Couldn't save the Discord setup: check access to your data directory.";
         Dispatcher.BeginInvoke(() =>
         {
             if (!closing && openTab == CompanionTab.Discord) RenderTab();

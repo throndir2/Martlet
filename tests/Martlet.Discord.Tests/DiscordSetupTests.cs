@@ -59,9 +59,9 @@ public sealed class DiscordSetupTests
             People = [new(11, "Alice"), new(12, "Bob", MayCall: false)]
         };
         var chat = DiscordSetup.ChatSummary(saved);
-        Assert.Equal("Servers: Only when mentioned. DMs: Always (people Martlet knows). Voice: Sometimes. 1 channel rule.", chat);
+        Assert.Equal("Servers: Only when mentioned; DMs: Always (people Martlet knows); voice: Sometimes; 1 channel rule.", chat);
         var people = DiscordSetup.PeopleSummary(saved);
-        Assert.Equal("Your account is set. 2 people (1 may be called). Home server set.", people);
+        Assert.Equal("Your account is set; 2 people (1 may be called); home server set.", people);
         foreach (var secret in new[] { "Alice", "Bob", "secret-plans", "987654321098765432", "555555555555555555" })
             Assert.DoesNotContain(secret, chat + people, StringComparison.Ordinal);
         Assert.Equal("Online as Martlet in 1 server.", DiscordSetup.StatusLine(new(DiscordBotState.Online, "Martlet", 1, 1)));
