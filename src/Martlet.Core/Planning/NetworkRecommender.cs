@@ -13,7 +13,8 @@ namespace Martlet.Core.Planning;
 /// <item>One language model per graphics card: Thinking's Ollama (host role "ollama") and a Thinking pool model
 /// ("deep-thinking") never share a card, and a host runs at most one of each. On a host with two or more NVIDIA cards each
 /// role is pinned to its own card (deploy/host/README.md, choice.gpu and MARTLET_GPU; docs/CLUSTER.md, "Live turn first on a
-/// shared graphics card").</item>
+/// shared graphics card"). A Deep thinking model that no single card has room for runs split across several cards no live
+/// job uses (tensor split; <see cref="SetupChange.GpuIndexes"/>, choice.gpu=GPU-a,GPU-b).</item>
 /// <item>One voice engine per card and per host (role.conf exclusive=voice; docs/VOICE_LATENCY.md, "Keep one voice engine per
 /// GPU"), and the whole network uses the owner's voice engine (Chatterbox Nano, on a card or the processor, while no computer
 /// has room for it), because Speaking's pool needs the same engine on every
@@ -107,7 +108,8 @@ public static partial class NetworkRecommender
             text.Append("m|").Append(machine.MachineId).Append('|').Append(machine.Kind).Append('\n');
             foreach (var role in machine.Roles.OrderBy(r => r.Kind, StringComparer.Ordinal).ThenBy(r => r.Model, StringComparer.OrdinalIgnoreCase))
                 text.Append("r|").Append(role.Kind).Append('|').Append(role.Model?.ToLowerInvariant()).Append('|')
-                    .Append(role.GpuIndex?.ToString(CultureInfo.InvariantCulture)).Append('\n');
+                    .Append(role.GpuIndex?.ToString(CultureInfo.InvariantCulture))
+                    .Append(role.GpuIndexes is { Count: > 1 } split ? "+" + string.Join(',', split) : "").Append('\n');
         }
         foreach (var job in setup.Jobs.OrderBy(j => j.Job, StringComparer.Ordinal))
             text.Append("j|").Append(job.Job).Append('|').Append(job.HostId).Append('|').Append(job.Off).Append('|').Append(job.OptionId)
@@ -144,8 +146,26 @@ public static partial class NetworkRecommender
         /// <summary>Why it goes if nothing else keeps it: its job moved to a host, but a pool may still keep it.</summary>
         public (SetupChangeBenefit Benefit, string Why)? Moved { get; set; }
         public bool IsModel => Kind is ThinkingRole or DeepThinkingRole;
-        public double Gb => Card is not null && Option is { UsesGpu: true } option ? option.GpuGb : 0;
+        /// <summary>A model split across several cards (tensor split): every card it runs on, <see cref="Card"/> first. Null:
+        /// one card (or none).</summary>
+        public int[]? Span { get; set; }
+        /// <summary>The cards today's split model runs on, as Martlet takes them (reported, or presumed when the host doesn't say).</summary>
+        public int[]? WasSpan { get; init; }
+        /// <summary>It runs on <paramref name="card"/> (its card, or one of the cards a split model runs on).</summary>
+        public bool On(int? card) => card is { } c && (Card == c || Span is { } span && Array.IndexOf(span, c) >= 0);
+        /// <summary>The graphics memory it takes on each card it runs on: a split model's share on each.</summary>
+        public double Gb => Card is not null && Option is { UsesGpu: true } option
+            ? Span is { Length: > 1 } span ? SplitGb(option.GpuGb, span.Length) : option.GpuGb : 0;
     }
+
+    /// <summary>A model split across <paramref name="cards"/> cards takes its share on each, plus the buffers each card keeps.</summary>
+    private static double SplitGb(double gb, int cards) => Math.Round(gb / cards + SplitBuffersGb, 2);
+
+    /// <summary>What each card of a split model keeps beside its share of the weights and cache (its own compute buffers).</summary>
+    private const double SplitBuffersGb = 0.5;
+
+    /// <summary>A Deep thinking model is split across at most this many cards: more cards make each token slower to pass along.</summary>
+    private const int MaxSplitCards = 4;
 
     private sealed class Node
     {
@@ -174,7 +194,7 @@ public static partial class NetworkRecommender
         public bool Companion => Machine.Kind == NetworkMachineKind.Companion;
         public bool CanHost => Machine.Kind == NetworkMachineKind.Host || Machine.HasHostService;
         public bool OnWindows => Machine.OnWindows ?? string.Equals(Spec.Platform, "windows", StringComparison.OrdinalIgnoreCase);
-        public double Free(int card) => Capacity[card] - Roles.Where(r => r.Card == card).Sum(r => r.Gb);
+        public double Free(int card) => Capacity[card] - Roles.Where(r => r.On(card)).Sum(r => r.Gb);
         public double RamUsed => Roles.Sum(r => r.Option is { IsLocal: true } option
             ? option.Peak.RamGb + (r.Card is { } card && Spec.Gpus[card].UnifiedMemory ? r.Gb : 0) : 0);
         public double CpuUsed => Roles.Sum(r => r.Option is { IsLocal: true } option ? option.Steady.CpuThreads : 0);
@@ -202,7 +222,11 @@ public static partial class NetworkRecommender
         public bool Frozen { get; set; }
     }
 
-    private sealed record Slot(Node Node, int? Card, ComponentOption Option, bool Native);
+    private sealed record Slot(Node Node, int? Card, ComponentOption Option, bool Native)
+    {
+        /// <summary>A model split across these cards (<see cref="Card"/> first), or null for one card.</summary>
+        public int[]? Span { get; init; }
+    }
 
     /// <summary>Where a step may put a role.</summary>
     private sealed record Query(string Kind)

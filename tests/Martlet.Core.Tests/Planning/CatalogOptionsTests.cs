@@ -305,6 +305,52 @@ public sealed class CatalogOptionsTests
             .Single(r => r.Kind == "deep-thinking").Model, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void A_model_no_single_card_has_room_for_is_split_across_free_cards()
+    {
+        ComponentOption Deep(string model, double gb, int tier, double words) => new()
+        {
+            Id = "deep-thinking:" + model, Component = PlanComponent.DeepThinking, DisplayName = model + " (deep thinking)", ModelId = model,
+            HostRoleKind = "deep-thinking", Gpu = GpuRequirement.AnyGpu, Steady = new(gb, 2, 1, gb), Peak = new(gb, 3, 2, gb), QualityTier = tier,
+            WordsPerSecond = words, Origin = OptionOrigin.LocalFacts, Source = "test"
+        };
+        const string Moe = "hf.co/acme/Moe-80B-A6B-GGUF:Q4_K_M";
+        var catalog = new FootprintCatalog(FootprintCatalog.Default.Options.Append(Deep(Moe, 50, 5, 90)));
+        NetworkSetupRequest Request(params HostedRolePlacement[] roles) => new(
+        [
+            new NetworkMachine(new MachineSpecs("h1", "h1")
+            {
+                Gpus = [.. Enumerable.Range(0, 4).Select(_ => new MachineGpu("RTX 5090", GpuVendor.Nvidia, 32))], RamGb = 256, CpuThreads = 64, Platform = "linux"
+            }, NetworkMachineKind.Host) { HasHostService = true, Roles = roles },
+            new NetworkMachine(new MachineSpecs("pc", "pc") { RamGb = 32, CpuThreads = 16, IsPrimary = true }, NetworkMachineKind.Companion)
+        ]) { VoiceEngine = "chatterbox", Quality = ReplyQuality.Balanced, Wanted = [PlanComponent.Thinking, PlanComponent.DeepThinking] };
+
+        // No 32 GB card has room for the 50 GB model, so it is split across two cards no live job uses.
+        var fresh = NetworkRecommender.Recommend(Request(), catalog);
+        var deep = fresh.Target.Machine("h1")!.Roles.Single(r => r.Kind == "deep-thinking");
+        Assert.Equal(Moe, deep.Model);
+        Assert.Equal(2, deep.GpuIndexes!.Count);
+        var thinkingCard = fresh.Target.Machine("h1")!.Roles.Single(r => r.Kind == "ollama").GpuIndex;
+        Assert.DoesNotContain(thinkingCard!.Value, deep.GpuIndexes);
+        var add = fresh.Changes.Single(c => c.Kind == SetupChangeKind.AddRole && c.RoleKind == "deep-thinking");
+        Assert.Equal(deep.GpuIndexes, add.GpuIndexes);
+        Assert.Contains("split across", add.Why, StringComparison.Ordinal);
+        // Each card holds its share: half the model plus its own buffers.
+        var usage = fresh.Target.Machine("h1")!.Usage!;
+        Assert.All(deep.GpuIndexes, c => Assert.Equal(25.5, usage.Gpus[c].Vram.Used, 1));
+
+        // Today's split model (the host doesn't say its cards) stays as it is: no change for it.
+        var kept = NetworkRecommender.Recommend(Request(new HostedRolePlacement("deep-thinking", Moe, null)), catalog);
+        Assert.DoesNotContain(kept.Changes, c => c.RoleKind == "deep-thinking");
+        Assert.Equal(2, kept.Target.Machine("h1")!.Roles.Single(r => r.Kind == "deep-thinking").GpuIndexes!.Count);
+
+        // A big model the owner runs that Martlet knows only by its name stays, split: a smaller model never replaces it.
+        var owners = NetworkRecommender.Recommend(Request(new HostedRolePlacement("deep-thinking", "llama3.3:70b", null)), FootprintCatalog.Default);
+        var llama = owners.Target.Machine("h1")!.Roles.Single(r => r.Kind == "deep-thinking");
+        Assert.Equal(("llama3.3:70b", 2), (llama.Model, llama.GpuIndexes!.Count));
+        Assert.DoesNotContain(owners.Changes, c => c.RoleKind == "deep-thinking");
+    }
+
     private static string RepositoryRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

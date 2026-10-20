@@ -6598,7 +6598,14 @@ card, and `big-box`, a Linux host with five RTX 5090s (32 GB each) that thinks
 with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B. Its recommendation
 keeps live Thinking on the fast Gemma 4 E2B and has a `ChangeModel` that
 switches Deep thinking to a smarter model a free card has room for (Gemma 4 26B
-with the 2026-10-10 snapshot), because Deep thinking runs in the background.
+with the snapshot), because Deep thinking runs in the background. Give
+`fixture: "bigsplit"` for the same network with Deep thinking on
+`llama3.3:70b` (about 46 GB), which no single 32 GB card has room for: the
+recommendation keeps it, split across two cards no live job uses (a
+`MoveToGpu` change with `gpuIndexes`, the machine's `cards` entry with
+`split: true`). Each change also has `gpuIndex` and `gpuIndexes` (0-based), and
+each machine `cards` (each role's cards, 1-based, as the review says them) and
+`gpus` (each card's `usedGb` and `capacityGb`).
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.

@@ -185,6 +185,7 @@ cmd_status() {
     case "${place}" in
       cpu) note "runs on the processor" ;;
       all) note "runs on every graphics card (not pinned to one)" ;;
+      GPU-*,*) note "runs on graphics cards ${place//,/, } (one model split across them)" ;;
       GPU-*) note "runs on graphics card ${place}" ;;
     esac
     role_compose "${role}" ps 2>/dev/null || true

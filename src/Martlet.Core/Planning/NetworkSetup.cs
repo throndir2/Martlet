@@ -11,7 +11,16 @@ public enum NetworkMachineKind { Companion, Host }
 /// <summary>One host role on a computer's host service: its kind (a HostRoles kind such as "ollama", "deep-thinking",
 /// "stt", "chatterbox", "audio2face"), its model (null when the role has no model choice) and the graphics card it runs on
 /// (an index into that computer's <see cref="MachineSpecs.Gpus"/>; null: the processor, every card, or not known).</summary>
-public sealed record HostedRolePlacement(string Kind, string? Model, int? GpuIndex);
+public sealed record HostedRolePlacement(string Kind, string? Model, int? GpuIndex)
+{
+    /// <summary>The cards one model is split across (tensor split), <see cref="GpuIndex"/> first; null for one card.</summary>
+    public IReadOnlyList<int>? GpuIndexes { get; init; }
+
+    public bool Equals(HostedRolePlacement? other) => other is not null && Kind == other.Kind && Model == other.Model &&
+        GpuIndex == other.GpuIndex && (GpuIndexes ?? []).SequenceEqual(other.GpuIndexes ?? []);
+
+    public override int GetHashCode() => HashCode.Combine(Kind, Model, GpuIndex, GpuIndexes?.Count ?? 0);
+}
 
 /// <summary>One computer the recommender plans for. <see cref="MachineSpecs.Id"/> is the id the cluster plan uses for it
 /// (its host service's host id when it has one, else the Martlet device id).</summary>
@@ -199,6 +208,9 @@ public sealed record SetupChange(SetupChangeKind Kind, string MachineId, string 
     public string? FromModel { get; init; }
     /// <summary>AddRole, MoveToGpu: the card to pin the role to (an index into that computer's MachineSpecs.Gpus).</summary>
     public int? GpuIndex { get; init; }
+    /// <summary>AddRole, ChangeModel, MoveToGpu: the cards one model is split across (tensor split), when no single card has room
+    /// for it; <see cref="GpuIndex"/> is the first of them. Null: one card (or none).</summary>
+    public IReadOnlyList<int>? GpuIndexes { get; init; }
     /// <summary>AddRole, ChangeModel: the role runs on the processor although the computer has a graphics card (its card has no
     /// room for it), so the host installs its processor variant (choice.accelerator=cpu).</summary>
     public bool OnProcessor { get; init; }

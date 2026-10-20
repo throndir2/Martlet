@@ -283,12 +283,19 @@ cmd_add() {
         note "Graphics cards here:${card_list}"
         gpu_choice="${INPUT[choice.gpu]:-}"
         if [[ -z "${gpu_choice}" ]] && ! unattended; then
-          read -r -p "Graphics card for ${role} [a card's GPU-... id, or all] (default automatic): " gpu_choice
+          read -r -p "Graphics card for ${role} [a card's GPU-... id, several ids joined by commas, or all] (default automatic): " gpu_choice
         fi
         [[ -z "${gpu_choice}" || "${gpu_choice}" == automatic ]] && gpu_choice="$(automatic_gpu "${role}")"
         if [[ "${gpu_choice}" == all ]]; then
           vram=0; for i in "${!NVIDIA_MBS[@]}"; do vram=$(( vram + NVIDIA_MBS[i] )); done
           note "Graphics card: all ${#NVIDIA_IDS[@]} cards (${vram} MiB together)"
+        elif [[ "${gpu_choice}" == *,* ]]; then
+          # Several cards (GPU-a,GPU-b): one model split across them (tensor split), for a model no single card has room for.
+          known_gpus "${gpu_choice}" || fail "Graphics cards '${gpu_choice}' aren't all on this host (each once). Check the host again in Martlet."
+          vram=0
+          for i in "${!NVIDIA_IDS[@]}"; do [[ ",${gpu_choice}," == *",${NVIDIA_IDS[i]},"* ]] && vram=$(( vram + NVIDIA_MBS[i] )); done
+          note "Graphics cards: ${gpu_choice//,/, } (${vram} MiB together; one model split across them)"
+          env_lines+=("MARTLET_GPU=${gpu_choice}")
         else
           for i in "${!NVIDIA_IDS[@]}"; do
             if [[ "${NVIDIA_IDS[i]}" == "${gpu_choice}" ]]; then known=1; vram=${NVIDIA_MBS[i]}; note "Graphics card: ${NVIDIA_NAMES[i]} (${gpu_choice}, ${vram} MiB)"; fi

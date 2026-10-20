@@ -107,6 +107,15 @@ public sealed class SetupExecutionTests
         // A name the host can't take, or a host without the open choice (an older Martlet there), is refused.
         Assert.Contains("doesn't offer", SetupExecutor.Arguments(big with { Model = "bad name; rm" }, ollama, null).Problem);
         Assert.Contains("doesn't offer", SetupExecutor.Arguments(big, ollama with { Choices = [ollama.Choices[0] with { Open = false }] }, null).Problem);
+
+        // A model split across several cards: choice.gpu lists each card's UUID (martlet-host splits it with CUDA_VISIBLE_DEVICES).
+        var specs = new MachineSpecs("gpu-box", "gpu-box") { Gpus = [.. Enumerable.Range(0, 3).Select(_ => new MachineGpu("RTX 5090", GpuVendor.Nvidia, 32))] };
+        var cards = ollama with { Choices = ollama.Choices, Gpus = [new("GPU-a", "RTX 5090", 32607), new("GPU-b", "RTX 5090", 32607), new("GPU-c", "RTX 5090", 32607)], GpuOrCpu = true };
+        var split = big with { GpuIndex = 1, GpuIndexes = [1, 2] };
+        (arguments, problem) = SetupExecutor.Arguments(split, cards, specs);
+        Assert.Null(problem);
+        Assert.Equal(("GPU-b,GPU-c", "gpu"), (arguments["choice.gpu"], arguments["choice.accelerator"]));
+        Assert.Contains("no graphics card 5", SetupExecutor.Arguments(split with { GpuIndexes = [1, 4] }, cards, specs).Problem);
     }
 
     [Fact]
