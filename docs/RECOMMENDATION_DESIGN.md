@@ -286,9 +286,20 @@ Each stage is one pull request.
      estimate, writes text, is at most 80 GB, and its weights' size agrees with
      its parameters (a broken record, such as a split file's part, never wins a
      card). Unknown is not Yes. The planners still check the card, the headroom
-     and the owner's online answer. Martlet's host roles offer a fixed list of
-     models (`role.conf`), so a model outside it is `NativeOnly`: only a
-     companion PC's own Ollama runs it.
+     and the owner's online answer. The host roles' model choice is open
+     (`choice_open=OLLAMA_MODEL` in `role.conf`): a host installs any Ollama
+     tag or `hf.co/{repo}:{quant}` from the catalog, so a catalog model can go
+     to a host's Thinking or Deep thinking role. Only an install name a host
+     can't take is `NativeOnly` (a companion PC's own Ollama runs it). A host
+     with an older Martlet refuses the model, and the review says to update
+     Martlet there.
+   - **Bigger models for big hardware.** Deep thinking on a host takes the
+     smartest model that fits a card, the fastest of those (a mixture-of-experts
+     model writes as fast as its active parameters allow). A host's Deep
+     thinking role whose card has room for a model at least one quality step
+     smarter switches to it (an Improvement). Live Thinking keeps its
+     first-word rule, so the bigger models go to Deep thinking, never to the
+     conversation's path.
    - **Smartness.** `catalog.Smartness` gives the tier of new options, served
      models and models a host keeps (`ServedModels.Tier` is the fallback).
      Martlet's own options keep the tier Martlet chose, and show the catalog's

@@ -157,7 +157,7 @@ public static partial class NetworkRecommender
             }
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && (!n.Companion || singlePc)))
                 foreach (var role in node.Pending.Where(r => r.Kind == DeepThinkingRole && r.Leave is null).ToList())
-                    KeepDeep(node, role);
+                    if (!Bigger(node, role)) KeepDeep(node, role);
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.CanHost && (!n.Companion || singlePc) &&
                 n.Machine.Manageable && !optOut.Contains(n.Id) && !n.Roles.Any(r => r.Kind == DeepThinkingRole)))
             {
@@ -174,6 +174,21 @@ public static partial class NetworkRecommender
                     if (hostAnswers) role.Leave ??= (SetupChangeBenefit.Improvement, $"A host answers, so {node.Name}, a companion PC, runs no models and stays light for games.");
                     else KeepDeep(node, role);
                 }
+        }
+
+        /// <summary>Bigger models for big hardware (#663): today's Deep thinking role on a host Martlet can change switches to a
+        /// model at least one quality step smarter when a card there has room for it (<see cref="DeepSlot"/>, as if today's model
+        /// were gone). Deep thinking runs in the background, so a bigger model adds no conversation latency. Once switched, no
+        /// smarter model fits, so the setup stays stable.</summary>
+        private bool Bigger(Node node, Role role)
+        {
+            if (node.Companion || !node.Machine.Manageable || optOut.Contains(node.Id) || role.Option is not { } now) return false;
+            if (DeepSlot(node) is not { } slot || slot.Option.QualityTier < now.QualityTier + 1) return false;
+            var card = slot.Card is { } c && LiveOn(node, c) ? "beside the live jobs, which come first" : "that no live job uses";
+            Place(slot, DeepThinkingRole, ThinkingPoolPlace, SetupChangeBenefit.Improvement,
+                $"{CardText(slot)}, a card {card}, has room for {Plain(slot.Option)}, which thinks better than {Plain(now)}. Deep " +
+                "thinking runs in the background, so replies come as soon as before.");
+            return true;
         }
 
         private void KeepDeep(Node node, Role role)
@@ -237,13 +252,16 @@ public static partial class NetworkRecommender
             " What it thinks about goes to that service.";
 
         /// <summary>A card on <paramref name="node"/> for a new Deep thinking role: one no live job uses first, then the one
-        /// with the most room, never the voice's Windows card or a card with a language model; the biggest model that fits
-        /// (a model the host keeps downloaded first when the owner prefers models their hosts already have).</summary>
+        /// with the most room, never the voice's Windows card or a card with a language model; the smartest model that fits, the
+        /// fastest of those (a mixture-of-experts model writes as fast as its active parameters allow), then the smallest (a model
+        /// the host keeps downloaded first when the owner prefers models their hosts already have). With the model catalog this
+        /// includes 70B and larger models on cards with room for them.</summary>
         private Slot? DeepSlot(Node node)
         {
             var options = catalog.For(PlanComponent.DeepThinking).Where(o => o.IsLocal && o.UsesGpu && o.HostRoleKind == DeepThinkingRole)
                 .OrderByDescending(o => request.PreferHostModels && KeptOnDisk(node, DeepThinkingRole, o))
-                .ThenByDescending(o => o.QualityTier).ThenBy(o => o.GpuGb).ThenBy(o => o.Id, StringComparer.Ordinal).ToArray();
+                .ThenByDescending(o => o.QualityTier).ThenByDescending(o => o.WordsPerSecond ?? 0).ThenBy(o => o.GpuGb)
+                .ThenBy(o => o.Id, StringComparer.Ordinal).ToArray();
             var query = new Query(DeepThinkingRole) { Optional = true, StrictWindows = true, Only = node.Id, Companions = singlePc };
             var cards = (node.Pinnable ? node.Nvidia : node.MainCard is { } main ? [main] : [])
                 .OrderBy(c => LiveOn(node, c) ? 1 : 0).ThenByDescending(node.Free).ThenBy(c => c);

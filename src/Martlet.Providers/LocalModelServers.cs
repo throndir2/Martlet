@@ -28,8 +28,13 @@ public sealed record LocalModelServer(string Id, string Name, string ChatComplet
     public bool NeedsKey { get; init; }
     public IReadOnlyList<string> Unusable { get; init; } = [];
     public string? HowToStart { get; init; }
-    /// <summary>Download sizes in GB by model, when the app says them (Ollama's <c>/api/tags</c>).</summary>
+    /// <summary>Download sizes in GB by model, when the app says them (Ollama's <c>/api/tags</c>, LM Studio's
+    /// <c>/api/v1/models</c> <c>size_bytes</c>, or its older <c>/api/v0/models</c> quantization with the size in the name).</summary>
     public IReadOnlyDictionary<string, double> SizesGb { get; init; } = new Dictionary<string, double>();
+    /// <summary>The models the app has loaded now, with the graphics memory each one holds in GB when the app says it (Ollama's
+    /// <c>/api/ps</c> <c>size_vram</c>); 0 when it is loaded but its graphics memory isn't known (LM Studio's loaded state).
+    /// The memory in use on the graphics card already counts a loaded model, so planning must not count it twice.</summary>
+    public IReadOnlyDictionary<string, double> LoadedGb { get; init; } = new Dictionary<string, double>();
 }
 
 public enum LocalServerAnswerKind
@@ -206,8 +211,118 @@ public static class LocalModelServers
                 SizesGb = answer.SizesGb
             });
         }
-        return found;
+        // What each app has loaded, and LM Studio's real sizes: asked together, within the same time limit.
+        var details = await Task.WhenAll(found.Select(server => server.NeedsKey ? Task.FromResult(server)
+            : DetailsAsync(client, server, timeout ?? LookTimeout, cancellationToken))).ConfigureAwait(false);
+        return details;
     }
+
+    /// <summary><paramref name="server"/> with what its app says beyond the model list: Ollama's loaded models and the graphics
+    /// memory each holds (<c>/api/ps</c>); LM Studio's download sizes and loaded models (<c>/api/v1/models</c>, else the older
+    /// <c>/api/v0/models</c>). Unchanged when the app doesn't answer that.</summary>
+    internal static async Task<LocalModelServer> DetailsAsync(HttpClient client, LocalModelServer server, TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var origin = new Uri(new Uri(server.ChatCompletionsBaseUrl).GetLeftPart(UriPartial.Authority) + "/");
+        try
+        {
+            if (server.Id == "ollama")
+                return await GetAsync(client, new Uri(origin, "api/ps"), timeout, cancellationToken).ConfigureAwait(false) is { } ps
+                    ? server with { LoadedGb = ParseOllamaLoaded(ps) } : server;
+            if (server.Id == "lm-studio")
+            {
+                if (await GetAsync(client, new Uri(origin, "api/v1/models"), timeout, cancellationToken).ConfigureAwait(false) is { } v1 &&
+                    ParseLmStudio(v1, server.Models, v1: true) is { } fromV1)
+                    return server with { SizesGb = Merge(server.SizesGb, fromV1.Sizes), LoadedGb = fromV1.Loaded };
+                if (await GetAsync(client, new Uri(origin, "api/v0/models"), timeout, cancellationToken).ConfigureAwait(false) is { } v0 &&
+                    ParseLmStudio(v0, server.Models, v1: false) is { } fromV0)
+                    return server with { SizesGb = Merge(server.SizesGb, fromV0.Sizes), LoadedGb = fromV0.Loaded };
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+        catch (HttpRequestException) { }
+        return server;
+    }
+
+    private static IReadOnlyDictionary<string, double> Merge(IReadOnlyDictionary<string, double> known, IReadOnlyDictionary<string, double> more)
+    {
+        var merged = new Dictionary<string, double>(known, StringComparer.Ordinal);
+        foreach (var (model, gb) in more) merged.TryAdd(model, gb);
+        return merged;
+    }
+
+    private static async Task<string?> GetAsync(HttpClient client, Uri url, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(timeout);
+        try
+        {
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
+            return response.IsSuccessStatusCode ? await ReadLimitedAsync(response.Content, limit.Token).ConfigureAwait(false) : null;
+        }
+        catch (HttpRequestException) { return null; }
+    }
+
+    /// <summary>Ollama's <c>/api/ps</c>: each loaded model's graphics memory (<c>size_vram</c>) in GB.</summary>
+    internal static IReadOnlyDictionary<string, double> ParseOllamaLoaded(string json)
+    {
+        var loaded = new Dictionary<string, double>(StringComparer.Ordinal);
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("models", out var models) ||
+                models.ValueKind != JsonValueKind.Array) return loaded;
+            foreach (var model in models.EnumerateArray().Take(64))
+                if (model.ValueKind == JsonValueKind.Object && (Text(model, "name") ?? Text(model, "model")) is { Length: > 0 and <= 256 } name)
+                    loaded[name] = Number(model, "size_vram") is { } bytes and >= 0 ? Math.Round(bytes / 1e9, 2) : 0;
+        }
+        catch (JsonException) { }
+        return loaded;
+    }
+
+    /// <summary>LM Studio's model list: <c>/api/v1/models</c> (<c>{"models":[{"key","size_bytes","loaded_instances"}]}</c>) or the
+    /// older <c>/api/v0/models</c> (<c>{"data":[{"id","quantization","state"}]}</c>, sized from the parameters in the name at the
+    /// quantization's bits). Only the models in <paramref name="listed"/> (the Chat Completions list) count. Null when the reply
+    /// is neither.</summary>
+    internal static (IReadOnlyDictionary<string, double> Sizes, IReadOnlyDictionary<string, double> Loaded)? ParseLmStudio(string json,
+        IReadOnlyList<string> listed, bool v1)
+    {
+        var sizes = new Dictionary<string, double>(StringComparer.Ordinal);
+        var loaded = new Dictionary<string, double>(StringComparer.Ordinal);
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty(v1 ? "models" : "data", out var items) || items.ValueKind != JsonValueKind.Array)
+                return null;
+            foreach (var item in items.EnumerateArray().Take(500))
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                var ids = new List<string>();
+                if (Text(item, v1 ? "key" : "id") is { Length: > 0 } id) ids.Add(id);
+                var instances = v1 && item.TryGetProperty("loaded_instances", out var list) && list.ValueKind == JsonValueKind.Array
+                    ? list.EnumerateArray().Select(i => i.ValueKind == JsonValueKind.Object ? Text(i, "id") : null).OfType<string>().ToList() : [];
+                ids.AddRange(instances);
+                var model = ids.FirstOrDefault(i => listed.Contains(i, StringComparer.Ordinal));
+                if (model is null) continue;
+                double? gb = null;
+                if (v1 && Number(item, "size_bytes") is { } bytes and > 0) gb = Math.Round(bytes / 1e9, 2);
+                else if (!v1 && Text(item, "quantization") is { } quantization && Martlet.Core.Planning.ServedModels.Billions(model) is { } billions &&
+                    Martlet.Core.Planning.LocalModelQuantizations.Bits(quantization) is { } bits)
+                    gb = Math.Round(billions * bits / 8, 2);
+                if (gb is { } size) sizes[model] = size;
+                if (v1 ? instances.Count > 0 : Text(item, "state") == "loaded") loaded[model] = 0;
+            }
+        }
+        catch (JsonException) { return null; }
+        return (sizes, loaded);
+    }
+
+    private static string? Text(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static long? Number(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number : null;
 
     /// <summary>Asks the server at <paramref name="baseUrl"/> (on this computer only) which models it has: <c>GET {base}/models</c>,
     /// with <paramref name="apiKey"/> as a bearer token when given. Never throws for an unreachable or odd server.</summary>
