@@ -46,8 +46,9 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
         if (!MainWindowVisible(windows) && !ProblemShown(windows) && !AccountStartShown(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet desktop window is not visible in this interactive session.");
         processId = pid;
+        var desktop = string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase);
         return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows),
-            resources = Resources(pid) };
+            ready = MainWindowReady(windows, desktop), resources = Resources(pid) };
     }
 
     internal object Snapshot(bool layout = false, string? idPrefix = null)
@@ -247,14 +248,7 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
         var element = Find(id, window);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");
         // As a mouse click does, the control takes the keyboard focus first (its window comes to the front).
-        if (focus)
-        {
-            try { element.SetFocus(); }
-            catch (Exception error) when (error is InvalidOperationException or COMException or ElementNotAvailableException)
-            {
-                throw new InvalidOperationException($"Control '{id}' can't take the keyboard focus: {error.Message}");
-            }
-        }
+        if (focus) await FocusAsync(element, id);
         // Navigation items select a page and sections expand or collapse; neither starts work.
         if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
         {
@@ -535,6 +529,41 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
 
     private static bool MainWindowVisible(AutomationElement[] windows) =>
         windows.Any(window => window.Current.AutomationId == "MartletMainWindow");
+
+    /// <summary>Whether the main window is shown, enabled and (for Martlet.Desktop) has its navigation in the UI Automation tree.
+    /// Right after the window shows, its content can still be on the way, longer on a busy PC, so a click then misses a control
+    /// that is there a moment later (#1080). ui_connect reports it as ready.</summary>
+    private static bool MainWindowReady(AutomationElement[] windows, bool desktop)
+    {
+        try
+        {
+            var main = windows.FirstOrDefault(window => window.Current.AutomationId == "MartletMainWindow");
+            if (main is null || !main.Current.IsEnabled) return false;
+            return !desktop || main.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "NavSettings")) is not null;
+        }
+        catch (Exception error) when (error is ElementNotAvailableException or COMException) { return false; }
+    }
+
+    /// <summary>Gives the control the keyboard focus. Windows can refuse it for a moment while another window comes to the front,
+    /// so it tries again for about a second (#1080).</summary>
+    private static async Task FocusAsync(AutomationElement element, string id)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                element.SetFocus();
+                return;
+            }
+            catch (Exception error) when (error is InvalidOperationException or COMException or ElementNotAvailableException)
+            {
+                if (attempt == 10 || error is ElementNotAvailableException)
+                    throw new InvalidOperationException($"Control '{id}' can't take the keyboard focus: {error.Message}");
+                await Task.Delay(100);
+            }
+        }
+    }
 
     /// <summary>Martlet's problem dialog ("Martlet couldn't start" or an unexpected error) is open.</summary>
     private static bool ProblemShown(AutomationElement[] windows) =>

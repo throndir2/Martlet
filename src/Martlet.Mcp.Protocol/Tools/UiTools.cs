@@ -15,7 +15,9 @@ internal sealed partial class McpServer
     private McpTool[] UiTools() =>
     [
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this " +
-            "interactive session. Without pid it finds the Martlet desktop running in this Windows session.", new
+            "interactive session. Without pid it finds the Martlet desktop running in this Windows session. Returns its windows, " +
+            "inTray (no main window shown) and ready: whether the main window is shown, enabled and has its navigation loaded. Right " +
+            "after Martlet starts, call ui_connect again until ready is true before clicking (a busy PC takes longer).", new
         {
             pid = new { type = "integer", minimum = 1 }
         },

@@ -163,15 +163,19 @@ try {
     $desktopBuilt = Test-Path -LiteralPath (Join-Path $desktopBuild 'Martlet.Desktop.exe') -PathType Leaf
 
     if ($DesktopProcessId) {
+        # A desktop this script started (not to the tray) is used once its main window has loaded its navigation (ready): a
+        # click right after the window shows can miss a control on a busy PC.
+        $waitReady = $desktopProcess -and -not ($DesktopArguments -contains '--tray')
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         do {
             $connection = Invoke-Tool 'ui_connect' ([ordered]@{ pid = $DesktopProcessId })
-            if (-not $connection.isError) { break }
+            if (-not $connection.isError -and (-not $waitReady -or $connection.result.ready)) { break }
             if ($desktopProcess -and $desktopProcess.HasExited) { break }
             Start-Sleep -Milliseconds 250
         } while ([DateTime]::UtcNow -lt $deadline)
         $results.Add($connection)
         if ($connection.isError) { throw "ui_connect failed: $($connection.text)" }
+        if ($waitReady -and -not $connection.result.ready) { Write-Warning 'The Martlet desktop connected, but its main window was not ready within 30 seconds.' }
     }
 
     foreach ($call in $requested) {
