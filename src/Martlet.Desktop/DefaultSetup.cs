@@ -29,7 +29,8 @@ internal sealed record DefaultSetupPlan(LocalChatModel Thinking, bool ThinkingOn
         var lines = new List<string>();
         if (thinking && Served is { } served)
             lines.Add($"Thinking: {served.ModelId} in {served.AppName} on this PC (about " +
-                $"{ServedModels.Gb(served)?.ToString("0.#", CultureInfo.InvariantCulture) ?? "?"} GB on the graphics card). " +
+                $"{ServedModels.Gb(served, PlanningCatalog.Models)?.ToString("0.#", CultureInfo.InvariantCulture) ?? "?"} GB on the graphics card" +
+                (served.LoadedGb is null ? "" : ", loaded there now") + "). " +
                 "You already run it there, so nothing downloads. Its first word may come later than with a small model.");
         else if (thinking)
             lines.Add($"Thinking: {Thinking.Id} in Ollama on this PC ({Thinking.Size}{(ThinkingOnGpu ? ", on the graphics card" : ", on the processor")}). " +
@@ -101,13 +102,15 @@ internal static class DefaultSetup
     {
         var card = Specs(gpus, windowsGpu, ramGb, threads).Gpus.FirstOrDefault();
         if (card is null) return plan;
+        // A model the app has loaded already counts in the card's memory in use (nvidia-smi), so only the rest is new (#663).
         var candidates = ServedModels.Usable((served ?? []).Select(m => m with { MachineId = ThisPc }), PlanningCatalog.Current)
             .Select(m => (Model: m, Option: ServedModels.Option(m, PlanningCatalog.Models)))
-            .Where(x => x.Option.UsesGpu && x.Option.GpuGb > 0 && x.Option.GpuGb <= card.VramGb - card.UsedGb)
+            .Select(x => (x.Model, x.Option, Extra: ServedModels.Extra(x.Model, x.Option.GpuGb)))
+            .Where(x => x.Option.UsesGpu && x.Option.GpuGb > 0 && x.Extra <= card.VramGb - card.UsedGb)
             .OrderByDescending(x => x.Option.QualityTier).ThenByDescending(x => x.Option.GpuGb).ThenBy(x => x.Model.ModelId, StringComparer.Ordinal);
-        foreach (var (model, option) in candidates)
+        foreach (var (model, option, extra) in candidates)
         {
-            var withIt = Plan(gpus, windowsGpu, threads, language, option.GpuGb, ramGb);
+            var withIt = Plan(gpus, windowsGpu, threads, language, extra, ramGb);
             if (plan.Voice is not null && (withIt.Voice is null || plan.VoiceOnGpu && !withIt.VoiceOnGpu)) continue;
             return withIt with { Thinking = plan.Thinking, ThinkingOnGpu = true, Served = model };
         }

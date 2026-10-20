@@ -57,6 +57,7 @@ public static class DiagnosticCatalog
         new("planning.catalog_daily", ProbeOutcome.Passed, "Recommendations plan with Martlet's model catalog (the daily copy) and its local facts, plus Martlet's own list of models, whose measured numbers win. Nothing was downloaded for this check.", "planning.review"),
         new("planning.catalog_snapshot", ProbeOutcome.Passed, "Recommendations plan with Martlet's model catalog (the snapshot shipped with Martlet, because no newer daily copy is on this PC) and its local facts, plus Martlet's own list of models. Nothing was downloaded for this check.", "planning.review"),
         new("planning.seed_only", ProbeOutcome.Warning, "Martlet's model catalog can't be read here, so recommendations use only Martlet's own list of models.", "planning.review"),
+        new("planning.catalog_refresh_failing", ProbeOutcome.Warning, "Martlet's model catalog hasn't refreshed fully for over a week: its daily refresh keeps failing for at least one source, so recommendations use the last good copy. Nothing was downloaded for this check.", "planning.review"),
         new("probe.not_run", ProbeOutcome.Skipped, "Catalog entry only: this check has not run.", "diagnostics.refresh"),
         new("probe.running", ProbeOutcome.Running, "Local diagnostics are running; no completed evidence is available yet.", "diagnostics.wait"),
         new("probe.effects_blocked", ProbeOutcome.Skipped, "This check declares effects beyond local read-only inspection and cannot run in this executor.", "diagnostics.refresh"),

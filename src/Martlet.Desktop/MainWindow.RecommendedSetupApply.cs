@@ -638,7 +638,7 @@ internal static class SetupRoleReading
         Installed = inputs.Installed, GpuOrCpu = inputs.GpuOrCpu,
         GpuWhen = inputs.GpuWhen is { } gpuWhen ? new(gpuWhen.Variable, gpuWhen.Value) : null,
         Choices = [.. inputs.Choices.Select(c => new SetupRoleChoice(c.Variable, c.Options, c.Default,
-            c.When is { } when ? new(when.Variable, when.Value) : null))],
+            c.When is { } when ? new(when.Variable, when.Value) : null) { Open = c.Open })],
         Secrets = [.. inputs.Secrets.Select(s => new SetupRoleSecret(s.Name, s.Prompt, s.Stored,
             inputs.SecretWhen.TryGetValue(s.Name, out var when) ? new(when.Variable, when.Value) : null))],
         TermsWhen = [.. inputs.TermsWhen.Select(t => new SetupRoleTerms(new(t.Variable, t.Value), t.Text))],

@@ -10,6 +10,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- On computers with big graphics cards, Recommended setup gives Deep thinking a bigger, smarter model from Martlet's model catalog when a card has room, and your host PCs can now install any model from the catalog, not only Martlet's short list. Replies stay as fast as before: the conversation keeps its fast model. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- Doctor now warns when Martlet's model catalog hasn't refreshed fully for over a week. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - Read more adds new pages to a game's guide from the same wiki, each time you use it, even without a Thinking pool helper and after Martlet restarts. It is next to Read again on Companion › App guides, in the talk window's header, and as a button in the character's speech bubble for a little while after Martlet answers from a guide. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - Martlet keeps what you say in a game for that game: tell it Chillet is your favorite while playing Palworld, and it brings that up in Palworld (or when you ask about Palworld), not in other games. Facts about you still come up everywhere. In Companion › Memory, *Where it matters* shows and changes this for each memory. ([#1030](https://github.com/throndir2/Martlet/pull/1030))
 - Think with a model file you downloaded: Companion › Thinking › This PC › **Use a model file you downloaded...** takes a GGUF file (from Hugging Face or LM Studio's folder, for example), adds it to Ollama with its mmproj file so it can see, then switches Thinking to it and tests it. ([#1012](https://github.com/throndir2/Martlet/pull/1012))
@@ -27,6 +29,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - Martlet's MCP server no longer stops when a tool fails or gets a wrong value (such as `seconds: 45.5`); the tool says what went wrong and the server keeps working. It now answers while a long tool runs, and an assistant can cancel a tool call. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
 - MCP tools that save test data or write a file (a character's eyes or touch zones, a Discord friend request, saved logs, a character picture) now need `--allow-changes`, never write test data into your own Martlet folder, and never replace a file or write to another computer. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
 - Without `--allow-ui-effects`, an assistant can no longer make Martlet contact your hosts or picture places, cancel a background task or pause Martlet, and the window text it reads shows `[email]` and `[path]` instead of e-mail addresses and file paths. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
