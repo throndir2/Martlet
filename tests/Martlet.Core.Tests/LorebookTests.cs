@@ -19,6 +19,19 @@ public sealed class LorebookTests
         LorebookScanner.Scan(library, new(current, earlier), _ => 0).Included.Select(hit => hit.Content).ToArray();
 
     [Fact]
+    public void AnEntryKeyedByTheGamePlayedNowJoinsIn()
+    {
+        var library = Library(Entry(0, "Pals can be caught with spheres.", "Palworld"), Entry(1, "Runes buy upgrades.", "Elden Ring")) with { ScanDepth = 0 };
+        Assert.Empty(Scan(library, "What should I do next?"));
+        var playing = LorebookScanner.Scan(library, new("What should I do next?", [], Activity: "Palworld"), _ => 0);
+        Assert.Equal(["Pals can be caught with spheres."], playing.Included.Select(hit => hit.Content));
+        Assert.Equal("Palworld (played now)", playing.Included[0].Trigger);
+        // Words in the message still trigger as before, whatever is played.
+        Assert.Equal(["Runes buy upgrades."],
+            LorebookScanner.Scan(library with { ScanDepth = 2 }, new("Tell me about Elden Ring.", [], Activity: "Palworld"), _ => 0).Included.Where(hit => !hit.Trigger.EndsWith("(played now)", StringComparison.Ordinal)).Select(hit => hit.Content));
+    }
+
+    [Fact]
     public void WordFormsMatchOtherFormsOnlyWhenChosen()
     {
         var dragon = Entry(0, "Dragons breathe fire.", "dragon");

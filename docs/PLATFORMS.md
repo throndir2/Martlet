@@ -103,8 +103,7 @@ steps:
    rather than a crash: `SoundFlow.Extensions.WebRtc.Apm` 1.4.0 has no
    win-arm64 `webrtc-apm.dll` (echo cancellation: fall back to push-to-talk or
    headphones) and discord/libdave v1.2.1 has no Windows ARM64 asset (Discord
-   voice with DAVE end-to-end encryption). Check `OnnxVadInferenceSession` and
-   `Martlet.LocalStt`, which today require an x64 process.
+   voice with DAVE end-to-end encryption).
 4. Build `Martlet-<version>-win-arm64.exe` (`ArchitecturesAllowed=arm64`,
    `Doctor` reports `platform.arm64_native`) and add one minimal arm64 job to
    `windows-release.yml` (build and upload only, no tests).

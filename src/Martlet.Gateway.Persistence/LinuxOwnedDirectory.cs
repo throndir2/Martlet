@@ -8,7 +8,7 @@ internal enum LinuxStoreStep { PreparedRenamed, PreparedDirectoryFlushed, Author
 
 internal sealed class LinuxOwnedDirectory : IOwnedAuthorityDirectory
 {
-    private static readonly string[] Names = ["owner.lock", "authority.bin", "running", "staging.bin", "pending.bin"];
+    private static readonly string[] Names = ["owner.lock", "authority.bin", "running", "staging.bin", "pending.bin", NonceJournal.Name];
     private readonly ILinuxFileSystem fileSystem;
     private readonly List<(LinuxDescriptor Handle, LinuxFileIdentity Identity, string Name)> ancestors;
     private readonly LinuxDescriptor directory;
@@ -261,7 +261,7 @@ internal sealed class LinuxOwnedDirectory : IOwnedAuthorityDirectory
     {
         RequireName(name);
         ValidateOwner();
-        if (name is not ("staging.bin" or "running") || bytes.Length is <= 0 or > StoreFormat.MaximumBytes)
+        if (name is not ("staging.bin" or "running" or NonceJournal.Name) || bytes.Length is <= 0 or > StoreFormat.MaximumBytes)
             throw Error(GatewayPersistenceFailure.InvalidState);
         using var handle = new LinuxDescriptor(fileSystem, fileSystem.OpenAt(directory.Value, name,
             ReadWrite | Create | Exclusive | CloseOnExec | NoFollow | NonBlocking, 0x180, NoLinks | Beneath | NoMounts));
@@ -286,6 +286,31 @@ internal sealed class LinuxOwnedDirectory : IOwnedAuthorityDirectory
             ValidateOwner();
         }
         finally { CryptographicOperations.ZeroMemory(ownedBytes); }
+    }
+
+    public void Append(string name, long expectedLength, ReadOnlySpan<byte> bytes, Action? written = null)
+    {
+        if (name != NonceJournal.Name || bytes.Length is <= 0 || expectedLength + bytes.Length > NonceJournal.MaximumBytes)
+            throw Error(GatewayPersistenceFailure.InvalidState);
+        using var handle = OpenFile(name, ReadWrite | LinuxFileSystem.Append);
+        var initial = fileSystem.Stat(handle.Value);
+        if (initial.Length != expectedLength)
+            throw Error(GatewayPersistenceFailure.InvalidState);
+        var ownedBytes = bytes.ToArray();
+        var offset = 0;
+        while (offset < ownedBytes.Length)
+        {
+            var count = fileSystem.Write(handle.Value, ownedBytes, offset, ownedBytes.Length - offset);
+            if (count <= 0 || count > ownedBytes.Length - offset)
+                throw Error(GatewayPersistenceFailure.StorageFailed);
+            offset += count;
+        }
+        written?.Invoke();
+        // The file's directory entry is already durable, so one flush of the file makes the append durable.
+        fileSystem.Flush(handle.Value);
+        CheckOpened(name, handle, initial);
+        if (fileSystem.Stat(handle.Value).Length != expectedLength + bytes.Length)
+            throw Error(GatewayPersistenceFailure.StorageFailed);
     }
 
     public void Prepare()
@@ -319,6 +344,15 @@ internal sealed class LinuxOwnedDirectory : IOwnedAuthorityDirectory
 
     public void RemoveUnpreparedStage() => Remove("staging.bin");
     public void RemoveRunning() => Remove("running");
+
+    // No directory flush: an old journal that comes back after a crash only repeats nonces the new authority holds, and the
+    // new journal's creation flushes the directory.
+    public void RemoveJournal()
+    {
+        using (OpenFile(NonceJournal.Name, ReadWrite))
+            fileSystem.Unlink(directory.Value, NonceJournal.Name);
+        ValidateOwner();
+    }
 
     private void Remove(string name)
     {

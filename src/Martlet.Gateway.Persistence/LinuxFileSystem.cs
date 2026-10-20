@@ -51,7 +51,7 @@ internal sealed class LinuxDescriptor(ILinuxFileSystem fileSystem, int value) : 
 internal sealed class LinuxFileSystem : ILinuxFileSystem
 {
     internal const int Directory = 0x10000, NoFollow = 0x20000, CloseOnExec = 0x80000,
-        NonBlocking = 0x800, ReadWrite = 2, Create = 0x40, Exclusive = 0x80;
+        NonBlocking = 0x800, ReadWrite = 2, Create = 0x40, Exclusive = 0x80, Append = 0x400;
     internal const ulong NoLinks = 0x6, Beneath = 0x8, NoMounts = 0x1;
     private const uint RequiredStat = 0x17ff;
 

@@ -55,7 +55,7 @@ public sealed class InferenceTests
 
         DurableGatewayHost Open(HostOpenMode mode) => DurableGatewayHost.Open(Authority.Path, "fixture-host", origin,
             [], new OwnerScenario.Audit(), LocalGatewayDecision.Enable, mode, TimeProvider.System,
-            step => { if (armed && step == StoreStep.PendingFlushed) throw new IOException("Synthetic interruption."); },
+            step => { if (armed && step == StoreStep.NonceWritten) throw new IOException("Synthetic interruption."); },
             inferenceWorkers: [worker], storageBackend: GatewayStorageBackend.LinuxServicePermissions, linuxFileSystem: fs);
     }
 }

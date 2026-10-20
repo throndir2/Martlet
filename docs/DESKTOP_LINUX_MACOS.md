@@ -19,7 +19,7 @@ The Windows desktop is WPF (Windows-only), but almost everything under it is
 already portable `net10.0`: `Martlet.Core` (including the
 [platform catalog](../src/Martlet.Core/Platforms/PlatformCatalog.cs)),
 `Conversation`, `Providers`, `Participation`, `Memory`, `Avatars`, `Perception`,
-`VoiceActivity`, `LocalStt`, `Sherpa`, `Messaging`, `Updates`, the gateway
+`Sherpa`, `Messaging`, the gateway
 client and `Audio` (which also targets plain `net10.0`). So:
 
 - **New app `Martlet.Companion`** on **Avalonia 12** (MIT), `net10.0`, for

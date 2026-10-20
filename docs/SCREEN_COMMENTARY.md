@@ -576,8 +576,8 @@ takes a description made ahead of time, or goes without the picture. See
 [Pictures: the image model](SENSE_MODELS.md#pictures-the-image-model).
 
 An image always needs its own permission (`AllowImageDisclosure`); text
-permission never covers it. The old isolated `Martlet.Perception` P01/P02
-foundations remain unwired; this feature does not use them.
+permission never covers it. This feature does not use the
+[perception worker contracts](PERCEPTION.md) of the hosts.
 
 ## Which models can see?
 

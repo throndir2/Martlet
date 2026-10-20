@@ -15,7 +15,11 @@ Without -Client it registers with every assistant whose settings folder exists
 (Copilot when none does). The server may make and change characters and
 settings (--allow-changes) unless -ReadOnly is given; -AllowUiEffects also lets
 its ui_* tools press buttons that change things. Other servers in each file stay
-as they are, and the file is backed up first. Restart the assistant afterwards.
+as they are. Each run first copies the file to a new backup next to it
+(<file>.martlet-backup-<date>-<time>; the first one and the four newest are
+kept) and prints its path. A file with comments (VS Code's mcp.json may have
+them) is not changed unless -Force is given, because the rewrite removes the
+comments; the backup keeps them. Restart the assistant afterwards.
 -Unregister removes the "martlet" entry again.
 
 Every tool works from the copy except the developer self-tests that start
@@ -38,6 +42,8 @@ param(
     [switch]$AllowUiEffects,
     [switch]$Unregister,
     [switch]$NoBuild,
+    # Rewrites a configuration file that has comments (they are lost; the backup keeps them).
+    [switch]$Force,
     [string]$Configuration = 'Release',
     [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Martlet.Mcp'),
     # Writes this configuration file instead of the assistant's own (one -Client only); for checking the script.
@@ -90,6 +96,31 @@ if (-not $Unregister) {
     $server = Join-Path $copy 'Martlet.Mcp.exe'
 }
 
+# Whether JSON text has // or /* */ comments outside its strings (JSONC, which VS Code allows and ConvertTo-Json drops).
+function Test-JsonComments([string]$Text) {
+    $inString = $false
+    for ($i = 0; $i -lt $Text.Length - 1; $i++) {
+        $c = $Text[$i]
+        if ($inString) {
+            if ($c -eq '\') { $i++ } elseif ($c -eq '"') { $inString = $false }
+        }
+        elseif ($c -eq '"') { $inString = $true }
+        elseif ($c -eq '/' -and $Text[$i + 1] -in '/', '*') { return $true }
+    }
+    return $false
+}
+
+# Copies the file to a new dated backup next to it and keeps the first backup (the file before Martlet) and the four newest.
+function Backup-Config([string]$Path) {
+    $backup = "$Path.martlet-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss-fff')"
+    Copy-Item -LiteralPath $Path -Destination $backup
+    $backups = @(Get-ChildItem -LiteralPath (Split-Path $Path -Parent) -File -Filter "$(Split-Path $Path -Leaf).martlet-backup-*" | Sort-Object Name)
+    if ($backups.Count -gt 5) {
+        $backups[1..($backups.Count - 5)] | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+    }
+    return $backup
+}
+
 $serverArguments = @()
 if (-not $ReadOnly) { $serverArguments += '--allow-changes' }
 if ($AllowUiEffects) { $serverArguments += '--allow-ui-effects' }
@@ -98,9 +129,17 @@ foreach ($name in $Client) {
     $target = $clients[$name]
     $path = if ($ConfigPath) { $ConfigPath } else { $target.Path }
     $config = [ordered]@{}
+    $comments = $false
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         $text = Get-Content -LiteralPath $path -Raw
-        if ($text.Trim()) {
+        if ($text -and (Test-JsonComments $text)) {
+            if (-not $Force) {
+                Write-Warning "$($target.Name): $path has comments, and rewriting it would remove them, so it was not changed. Add the martlet server by hand, or run again with -Force (a backup keeps the comments)."
+                continue
+            }
+            $comments = $true
+        }
+        if ($text -and $text.Trim()) {
             try { $config = ConvertFrom-Json -InputObject $text -AsHashtable -Depth 64 }
             catch { throw "$path isn't JSON that this script can read, so it was not changed: $($_.Exception.Message)" }
         }
@@ -123,7 +162,11 @@ foreach ($name in $Client) {
     if (-not $PSCmdlet.ShouldProcess($path, "$(if ($Unregister) { 'Remove' } else { 'Add' }) the martlet MCP server")) { continue }
     $folder = Split-Path $path -Parent
     if ($folder) { $null = New-Item -ItemType Directory -Force -Path $folder }
-    if (Test-Path -LiteralPath $path -PathType Leaf) { Copy-Item -LiteralPath $path -Destination "$path.martlet-backup" -Force }
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $backup = Backup-Config $path
+        Write-Host "$($target.Name): backed up $path to $backup."
+        if ($comments) { Write-Warning "$($target.Name): the comments in $path are removed; $backup keeps them." }
+    }
     Set-Content -LiteralPath $path -Value (ConvertTo-Json -InputObject $config -Depth 64) -Encoding utf8NoBOM
     Write-Host "$($target.Name): $(if ($Unregister) { 'removed the martlet server from' } else { 'added the martlet server to' }) $path."
 }

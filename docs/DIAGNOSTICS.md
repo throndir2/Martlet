@@ -145,16 +145,15 @@ catalog/configuration state is never a live pass.
 The executable smoke now also requires unconfigured live Send/PTT disabled
 and all live permission/output choices OFF.
 
-This records the **AC-04 local registry integration**, not M1
-release qualification or G1 completion. It extends the foundation's entry points without
-changing Core contracts, settings serialization, original file bytes or the
-provider/PCM schema. It replaces the earlier three-result status.
+This is the local probe registry. It is not a release qualification. It does
+not change Core contracts, settings serialization, original file bytes or the
+provider/PCM schema.
 
-Setup adds optional typed setup metadata to the existing `settings.load` report:
+The `settings.load` report also carries optional typed setup metadata:
 checkpoint, per-role route/consent/key-reference booleans and pending cleanup
 count. Human output and Desktop share that summary; JSON contains no route
-IDs, origins or credential IDs. The twelve-probe registry and exit semantics
-are unchanged. Saved setup is not live readiness and never resolves secrets.
+IDs, origins or credential IDs. Saved setup is not live readiness and never
+resolves secrets.
 See [SETUP](SETUP.md) for configuration, migration and explicit vault actions.
 
 **Audio setup (local only)** is a separate explicit action surface.
@@ -185,8 +184,11 @@ unknown IDs, empty `run`, extra arguments, relative/invalid directories and
 unimplemented commands return one sanitized invocation-error report.
 There is no `self-test`, `--profile`, repair, export or generic shell action.
 
-`status` reports all twelve registered checks. Only settings, application and
-runtime callbacks execute. `run` restricts the report and execution to the
+`status` reports all fourteen registered checks. The settings, application,
+runtime, platform and planning callbacks execute. The provider, audio,
+pipeline and host checks have no callback here: they are optional, show as
+*not checked here* and do not change the status, so a healthy PC reports
+`requested checks passed` (exit 0). `run` restricts the report and execution to the
 named checks: a successful application/runtime run does **not** inspect settings,
 test a provider or qualify installation. `list` reads no settings, executes no
 callbacks and always returns incomplete catalog-only evidence (exit 2).
@@ -197,29 +199,30 @@ exception. Help/version retain normal success and do not load settings.
 
 | Exit | Meaning |
 | --- | --- |
-| 0 | Every selected check passed with current observed evidence, and at least one is required; or ordinary help/version succeeded |
+| 0 | Every required check and every optional check that ran passed with current observed evidence, and at least one required check was selected; or ordinary help/version succeeded |
 | 1 | A real reported failure, callback fault or rejected invalid evidence |
-| 2 | Incomplete: warning, unknown, skipped, not configured, stale, stopped, timed out, catalog-only or no required checks |
+| 2 | Incomplete: a required check or an optional check that ran gave a warning, unknown, skipped, not configured, stale, stopped or timed-out result; catalog-only; or no required checks |
 | 3 | Invalid invocation, or selected settings inspection found invalid/newer/inaccessible configuration; takes precedence over failures |
 
-An optional failed or incomplete **selected** check also prevents green, as in
-the foundation. Fixture success describes only explicitly injected test
+An optional check that ran and failed or stayed incomplete also prevents green.
+An optional check that the report did not run (no callback here, or effects
+beyond local read-only) is *not checked here* and does not. Fixture success describes only explicitly injected test
 fixtures, never live readiness.
 
 ## Production registry
 
-| Stable probe ID | Automatically executed | Declared effects / result |
+| Stable probe ID | Automatically executed | Declared effects / result (required unless it says optional) |
 | --- | --- | --- |
 | `settings.load` | Yes | Local read-only `SettingsStore.LoadAsync`; loaded, first-run, malformed/newer or inaccessible |
 | `application.version` | Yes | Local read-only executing application/version evidence |
 | `runtime.version` | Yes | Local read-only executing .NET 10 runtime evidence; not SDK, install, host or GPU inventory |
 | `platform.architecture` | Yes | Local read-only processor type (`IsWow64Process2`, so the x64 build on Windows on Arm reports ARM64) and whether Martlet runs emulated; no GPU or host inventory |
-| `provider.connection` | No | Permissioned/network/provider-cost; not configured / not run |
-| `audio.input` | No | Permissioned/device; skipped / not run |
-| `audio.playback` | No | Permissioned/device; skipped / not run, no audibility claim |
-| `pipeline.vad` | No | Local read-only declaration, but no diagnostic callback installed |
-| `pipeline.policy` | No | Local read-only declaration, but no diagnostic callback installed |
-| `pipeline.stt`, `pipeline.llm`, `pipeline.tts` | No | Permissioned/provider-cost; not wired / not run |
+| `provider.connection` | No (optional) | Permissioned/network/provider-cost; not configured / not checked here |
+| `audio.input` | No (optional) | Permissioned/device; skipped / not checked here |
+| `audio.playback` | No (optional) | Permissioned/device; skipped / not checked here, no audibility claim |
+| `pipeline.vad` | No (optional) | Local read-only declaration, but no diagnostic callback installed |
+| `pipeline.policy` | No (optional) | Local read-only declaration, but no diagnostic callback installed |
+| `pipeline.stt`, `pipeline.llm`, `pipeline.tts` | No (optional) | Permissioned/provider-cost; not wired / not checked here |
 | `host.connection` | No | Optional permissioned/network host/GPU placeholder; not configured / not run |
 | `planning.catalog` | Yes (optional) | Local read-only: which copy of the model catalog Recommended setup plans with (the daily copy, the shipped snapshot, or Martlet's own list alone; [Recommendation design](RECOMMENDATION_DESIGN.md#build-stages)); reads files only, downloads nothing |
 

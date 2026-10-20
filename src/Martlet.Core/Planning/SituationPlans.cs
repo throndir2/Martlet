@@ -65,13 +65,13 @@ public static class SituationPlans
                     var own = $"{who}'s own model (on the processor when the game needs the graphics card's memory)";
                     gaming.Add(order.Count == 0
                         ? $"On {who}: Thinking stays on {own}: no host runs a Thinking model{(hosted is null ? " and no hosted backup is set up" : "")}.{never}"
-                        : $"On {who}: Thinking moves to {Chain([.. order, own])}. It comes back when the game ends.{never}");
+                        : $"On {who}: Thinking moves to {Chain([.. order, own])} until the game ends.{never}");
                     continue;
                 }
                 var next = job.Pool.Where(p => p != pc.Specs.Id).Select(name).ToList();
                 gaming.Add(next.Count == 0
                     ? $"On {who}: {Title(job.Job)} stays on its own graphics card: no other computer on its list runs its engine."
-                    : $"On {who}: {Title(job.Job)} moves to {Chain(next)} (its list). It comes back when the game ends.");
+                    : $"On {who}: {Title(job.Job)} moves to {Chain(next)} (its list) until the game ends.");
             }
         }
         if (gamers.Count == 0) gaming.Add("No companion PC is used for games, so nothing moves.");

@@ -124,7 +124,7 @@ public sealed class NativeTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var name in new[] { "owner.lock", "authority.bin", "running", "staging.bin", "pending.bin" })
+        foreach (var name in new[] { "owner.lock", "authority.bin", "running", "staging.bin", "pending.bin", NonceJournal.Name })
             File.Delete(path + "/" + name);
         if (System.IO.Directory.Exists(path)) System.IO.Directory.Delete(path, recursive: false);
     }

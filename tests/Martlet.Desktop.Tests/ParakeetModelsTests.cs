@@ -187,7 +187,7 @@ public sealed class ParakeetModelsTests : IDisposable
     {
         Assert.Null(MainWindow.SharedParakeetWaiting(ParakeetModels.V2EnglishId, _ => true));
         var waiting = MainWindow.SharedParakeetWaiting(ParakeetModels.V2EnglishId, model => model != ParakeetModels.V2EnglishId);
-        Assert.StartsWith("Parakeet TDT 0.6B v2 (English) isn't downloaded on this PC yet.", waiting);
+        Assert.StartsWith("Parakeet TDT 0.6B v2 (English) isn't downloaded on this PC yet:", waiting);
         Assert.Contains("Companion › Listening", waiting);
         Assert.Contains("newer Martlet", MainWindow.SharedParakeetWaiting("parakeet-tdt-1.1b", _ => true));
     }

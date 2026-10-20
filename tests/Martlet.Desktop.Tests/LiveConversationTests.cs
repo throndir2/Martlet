@@ -3805,7 +3805,8 @@ internal sealed class LiveFixture : IAsyncDisposable
     }
     internal async Task FinishRemembering()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        // Bounded, but long enough for a busy machine running many suites at once (#1024): alone this takes a few seconds.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var idle = Controller.MemoryCaptureIdle;
         while (!idle.IsCompleted)
         {

@@ -19,7 +19,7 @@ namespace Martlet.Mcp;
 internal static class BackupThinkingCheck
 {
     internal static readonly string[] Scenarios =
-        ["backup-wins", "conversation-wins", "late-conversation", "conversation-fails", "no-member", "held", "let-go", "members"];
+        ["backup-wins", "conversation-wins", "late-conversation", "conversation-fails", "no-member", "open-fails", "held", "let-go", "members"];
     private const string Model = "fixture-model";
     private const string Conversation = "The conversation's model answered.";
     private const string Backup = "The backup member answered.";
@@ -56,6 +56,8 @@ internal static class BackupThinkingCheck
                 "conversation-fails" => await TurnAsync(delay, conversationMs: delay + 200, backupMs: 600, conversationFails: true,
                     cancellation: cancellation),
                 "no-member" => await TurnAsync(delay, conversationMs: delay + 600, backupMs: 100, noMember: true, cancellation: cancellation),
+                // A member is chosen, but its stream can't be opened (a wrong key, a network error): a failure, not "no member".
+                "open-fails" => await TurnAsync(delay, conversationMs: delay + 600, backupMs: 100, openFails: true, cancellation: cancellation),
                 // A reply started early, held for 1.5 s, with only a paid cloud member that may answer: asked once it is taken.
                 "held" => await TurnAsync(delay, conversationMs: 4_000, backupMs: 100, holdMs: 1_500, paidOnly: true, cancellation: cancellation),
                 // A reply started early and let go at 1.5 s, after its member (on the home network) was asked: both stop.
@@ -73,6 +75,8 @@ internal static class BackupThinkingCheck
                 "conversation-fails" => run.Outcome == "Won" && run.Text == Backup && run.Conversation.Failed,
                 "no-member" => run.Outcome == "NoMember" && run.Text == Conversation && run.Backup.Requests == 0 &&
                     run.Line?.Contains("no member could take it", StringComparison.Ordinal) == true,
+                "open-fails" => run.Outcome == "Failed" && run.Text == Conversation && run.Backup.Requests == 0 &&
+                    run.Member == Lan.Describe() && run.Why?.Contains("couldn't be opened: Network", StringComparison.Ordinal) == true,
                 "held" => run.Outcome == "Won" && run.Text == Backup && run.AskedHeld.SequenceEqual([true, false]) &&
                     run.AskedAfterMs >= run.ReleasedAtMs - 30,
                 "let-go" => run.Outcome is null && run.State == "Canceled" && run.Backup.Requests == 1 && run.Backup.StoppedMs is not null &&
@@ -94,10 +98,11 @@ internal static class BackupThinkingCheck
     internal sealed record Endpoint(int Requests, double? AskedMs, double? StoppedMs, bool Answered, bool Failed);
 
     internal sealed record Turn(string State, string Text, string? Outcome, string? Member, double? AskedAfterMs, double? FirstWordsAfterMs,
-        double? ReleasedAtMs, IReadOnlyList<bool> AskedHeld, Endpoint Conversation, Endpoint Backup, string? Line);
+        double? ReleasedAtMs, IReadOnlyList<bool> AskedHeld, Endpoint Conversation, Endpoint Backup, string? Line, string? Why = null);
 
     private static async Task<Turn> TurnAsync(int delayMs, int conversationMs, int backupMs, bool conversationFails = false,
-        bool noMember = false, int? holdMs = null, bool paidOnly = false, bool letGo = false, CancellationToken cancellation = default)
+        bool noMember = false, int? holdMs = null, bool paidOnly = false, bool letGo = false, bool openFails = false,
+        CancellationToken cancellation = default)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         var clock = Stopwatch.StartNew();
@@ -110,7 +115,7 @@ internal static class BackupThinkingCheck
                 Guid.NewGuid(), "chatterbox-turbo", Guid.NewGuid(), new string('0', 64));
             await using var runtime = ConversationRuntime.Create(new SpokenReplyCheck.NoCredentials());
             await using var members = ConversationRuntime.Create(new SpokenReplyCheck.NoCredentials());
-            var backup = new FixtureBackup(TimeSpan.FromMilliseconds(delayMs), members, second.BaseUrl, voice, noMember, paidOnly);
+            var backup = new FixtureBackup(TimeSpan.FromMilliseconds(delayMs), members, second.BaseUrl, voice, noMember, paidOnly, openFails);
             var request = new ConversationRequest(new BoundedTextInput("Say hi.", "Fixture check."),
                 new TextModelSelection(ChatCompletionsSetup.Alias, Model), new TextGenerationLimits(), new ConversationLimits(),
                 chat: new ChatCompletionsTarget(primary.BaseUrl, Keyless: true)) { Backup = backup };
@@ -133,7 +138,7 @@ internal static class BackupThinkingCheck
             var result = terminal.Backup;
             return new(terminal.State.ToString(), turn.Content.Text, result?.Outcome.ToString(), result?.Member,
                 result?.AskedAfter?.TotalMilliseconds, result?.FirstWordsAfter?.TotalMilliseconds, released, backup.AskedHeld,
-                primary.Report(), second.Report(), line);
+                primary.Report(), second.Report(), line, result?.Why);
         }
         finally
         {
@@ -149,7 +154,7 @@ internal static class BackupThinkingCheck
     // that may answer, or with paidOnly a cloud one), then the member's own runtime opens the same request on the backup
     // endpoint (ConversationRuntime.OpenTextAsync).
     private sealed class FixtureBackup(TimeSpan delay, ConversationRuntime runtime, string baseUrl, HostSpeechTarget voice, bool noMember,
-        bool paidOnly) : IThinkingBackup
+        bool paidOnly, bool openFails = false) : IThinkingBackup
     {
         private readonly List<bool> asked = [];
         internal IReadOnlyList<bool> AskedHeld { get { lock (asked) return [.. asked]; } }
@@ -164,6 +169,8 @@ internal static class BackupThinkingCheck
             var plan = pool.Plan([]);
             var choice = ThinkingBackupMembers.Choose(pool, plan, ThinkLonger.Places(plan), LiveResources.None, input, held);
             if (choice.Spot is null) return null;
+            // As the desktop does when the chosen member's stream can't be opened (OpenBackupAsync).
+            if (openFails) throw new ThinkingBackupOpenException(member.Describe(), ProviderFailureCode.Network.ToString());
             var request = new ConversationRequest(input, new TextModelSelection(ChatCompletionsSetup.Alias, Model), reply.TextLimits, reply.Limits,
                 chat: new ChatCompletionsTarget(baseUrl, Keyless: true), generation: reply.Generation);
             var stream = await runtime.OpenTextAsync(request, new SpokenReplyCheck.Permissions(ChatCompletionsSetup.BaseUri(baseUrl), voice),

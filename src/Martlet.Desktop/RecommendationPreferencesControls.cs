@@ -82,30 +82,56 @@ internal static class RecommendationPreferencesControls
         var name = new Label { Content = label, Padding = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, Width = 260 };
         DockPanel.SetDock(name, Dock.Left);
         row.Children.Add(name);
-        var box = new ComboBox { MinWidth = 280, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = help };
+        var (summary, more) = HelpTip.Split(help);
+        var box = new ComboBox { MinWidth = 280, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = summary };
         foreach (var item in items) box.Items.Add(new ComboBoxItem { Content = item });
         box.SelectedIndex = Math.Clamp(selected, 0, items.Count - 1);
         name.Target = box;
         AutomationProperties.SetAutomationId(box, id);
         AutomationProperties.SetName(box, label);
         AutomationProperties.SetHelpText(box, help);
+        if (more is not null) DockPanel.SetDock(box, Dock.Left);
         row.Children.Add(box);
+        if (more is not null) row.Children.Add(Tip(id, label, help));
         panel.Children.Add(row);
         return box;
     }
 
     private static CheckBox Check(Panel panel, string id, string label, bool on, string help)
     {
+        var (summary, more) = HelpTip.Split(help);
         var box = new CheckBox
         {
             Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap }, IsChecked = on, Margin = new Thickness(0, 0, 0, 6),
-            ToolTip = help
+            ToolTip = summary
         };
         AutomationProperties.SetAutomationId(box, id);
         AutomationProperties.SetName(box, label);
         AutomationProperties.SetHelpText(box, help);
-        panel.Children.Add(box);
+        if (more is null)
+        {
+            panel.Children.Add(box);
+            return box;
+        }
+        // The "?" sits right after the check box's text; the text still wraps when the row is narrow.
+        var row = new DockPanel { HorizontalAlignment = HorizontalAlignment.Left, Margin = box.Margin };
+        box.Margin = new Thickness(0);
+        var tip = Tip(id, label, help);
+        DockPanel.SetDock(tip, Dock.Right);
+        row.Children.Add(tip);
+        row.Children.Add(box);
+        panel.Children.Add(row);
         return box;
+    }
+
+    /// <summary>The "?" (Help-&lt;id&gt;) with a preference's full explanation; the control's tooltip has its first sentence.</summary>
+    private static HelpTip Tip(string id, string label, string help)
+    {
+        var tip = HelpTip.For(label.ToLowerInvariant(), help, id, wiki: "Multiple-Computers#recommended-setup");
+        tip.Margin = new Thickness(6, 0, 0, 0);
+        tip.HorizontalAlignment = HorizontalAlignment.Left;
+        tip.VerticalAlignment = VerticalAlignment.Center;
+        return tip;
     }
 
     private static void Note(Panel panel, string id, string text)

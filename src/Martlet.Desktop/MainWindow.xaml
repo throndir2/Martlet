@@ -130,7 +130,7 @@
                                                Text="Let's bring your companion to life" AutomationProperties.AutomationId="StageTitle"/>
                                     <TextBlock x:Name="StageText" Style="{DynamicResource Muted}" FontSize="15" Margin="0,8,0,20" MaxWidth="560"
                                                HorizontalAlignment="Left" AutomationProperties.AutomationId="StageText"
-                                               Text="First, set up how Martlet thinks. It runs on this PC by default."/>
+                                               Text="First, set up how Martlet thinks; it runs on this PC by default."/>
                                     <WrapPanel>
                                         <Button x:Name="PrimaryStageButton" Style="{DynamicResource PrimaryButton}" Content="Set up thinking"
                                                 Click="PrimaryStage_Click" Padding="22,12" FontSize="15" Margin="0,0,12,8"
@@ -336,7 +336,7 @@
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Want to talk with Martlet on this PC?" FontSize="16" FontWeight="SemiBold"/>
                                     <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0"
-                                               Text="As a host PC, it doesn't talk or listen. Switch to make it your companion PC."/>
+                                               Text="As a host PC, it doesn't talk or listen."/>
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -347,7 +347,7 @@
                                     <TextBlock Style="{DynamicResource Eyebrow}" Text="HOST SERVICE"/>
                                     <TextBlock Style="{DynamicResource HeroTitle}" Margin="0,6,0,0" Text="This PC is a Martlet host"/>
                                     <TextBlock Style="{DynamicResource Muted}" FontSize="15" Margin="0,8,0,14" MaxWidth="560" HorizontalAlignment="Left"
-                                               Text="Use this PC for heavier Martlet tasks from your main PC. Connect to:"/>
+                                               Text="Your main PC sends heavier Martlet tasks to this PC at:"/>
                                     <Border Style="{DynamicResource Chip}" HorizontalAlignment="Left" Padding="12,6" Margin="0,0,0,18">
                                         <TextBlock x:Name="HostAddressText" FontFamily="Consolas" FontSize="15" TextWrapping="NoWrap"
                                                    AutomationProperties.AutomationId="HostServiceAddress"/>
@@ -403,8 +403,8 @@
                         <Border Style="{DynamicResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Good to know" Style="{DynamicResource SectionHeading}"/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" TextWrapping="Wrap" Text="&#x2022; Paired computers connect only on your private network. Your other computers can find this PC there and ask to pair; you allow each one here."/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Lip-sync may send generated voice here. Microphone audio and files stay on your main PC."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" TextWrapping="Wrap">&#x2022; Paired computers connect only on your private network.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Your other computers can find this PC on your private network and ask to pair. You allow each one here." Wiki="Setting-Up-a-Host#pairing" AutomationProperties.AutomationId="Help-HostOnlyPrivateNetwork" AutomationProperties.Name="About pairing with this host"/></InlineUIContainer></TextBlock>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" TextWrapping="Wrap" Text="&#x2022; Lip-sync may send generated voice here; microphone audio and files stay on your main PC."/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" Text="&#x2022; GPU tasks need an NVIDIA graphics card, current drivers and Docker Desktop."/>
                                 <Button Style="{DynamicResource LinkButton}" Content="Set up a host on another computer" Click="Hosts_Click"
                                         HorizontalAlignment="Left"/>
@@ -491,7 +491,7 @@
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="What your computers can run" FontSize="18" FontWeight="SemiBold"/>
                                     <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                               Text="From Martlet's estimates of what each part needs. Select a computer above to see its share."/>
+                                               Text="From Martlet's estimates of what each part needs; select a computer above to see its share."/>
                                 </StackPanel>
                             </StackPanel>
                             <TextBlock x:Name="CapacityCoverageText" TextWrapping="Wrap" Margin="0,0,0,6"
@@ -530,8 +530,7 @@
                                 </Border>
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Sharing work" FontSize="18" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                               Text="Each job's page lists the machines that do it, in order: when the first is busy, the next one takes it. The lists are the same on all your computers."/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap">Each job's page lists the machines that do it, in order: when the first is busy, the next one takes it.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="The lists are the same on all your computers." Wiki="Multiple-Computers#each-job-has-a-list-of-machines" AutomationProperties.AutomationId="Help-WorkSharingLists" AutomationProperties.Name="About sharing work"/></InlineUIContainer></TextBlock>
                                 </StackPanel>
                             </StackPanel>
                             <TextBlock x:Name="WorkSharingStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
@@ -557,10 +556,15 @@
                             </DockPanel>
                             <Border Background="{DynamicResource CanvasBrush}" CornerRadius="14" Padding="16,12">
                                 <StackPanel>
-                                    <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
-                                              Content="Keep Martlet the same on all my computers"
-                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, your characters, what it makes (Creations) and Home Assistant travel through your paired hosts. The people Martlet recognizes by voice are always shared with your computers, even while this is off. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
-                                              AutomationProperties.AutomationId="ClusterSync"/>
+                                    <DockPanel>
+                                        <CheckBox x:Name="ClusterSyncChoice" DockPanel.Dock="Left" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
+                                                  Content="Keep Martlet the same on all my computers"
+                                                  AutomationProperties.AutomationId="ClusterSync"/>
+                                        <local:HelpTip Margin="6,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                       Text="Who does what, your settings and API keys, memories, your conversation record, characters, Creations and Home Assistant travel through your paired hosts. The people Martlet knows by voice are shared even while this is off. Audio devices, cameras and this PC's role stay on each computer."
+                                                       Wiki="Multiple-Computers#keep-martlet-the-same-on-all-my-computers"
+                                                       AutomationProperties.AutomationId="Help-ClusterSyncAbout" AutomationProperties.Name="About keeping Martlet the same on all your computers"/>
+                                    </DockPanel>
                                     <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
                                                AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
                                     <TextBlock x:Name="SettingsSyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,6,0,0"
@@ -642,8 +646,7 @@
                                     </Border>
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="Friends" FontSize="18" FontWeight="SemiBold"/>
-                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="Share your hosts' engines with a friend's Martlet: send them a share link. They never join your network and never get your API keys."/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap">Share your hosts' engines with a friend's Martlet: send them a share link.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Your friend never joins your network and never gets your API keys." Wiki="Sharing-with-Friends#share-your-hosts-with-a-friend" AutomationProperties.AutomationId="Help-FriendsAbout" AutomationProperties.Name="About sharing your hosts with a friend"/></InlineUIContainer></TextBlock>
                                     </StackPanel>
                                 </StackPanel>
                             </DockPanel>
@@ -670,8 +673,7 @@
                                     </Border>
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="Share your language models" FontSize="18" FontWeight="SemiBold"/>
-                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="An OpenAI-compatible endpoint: people use the models your hosts run from any app that works with the OpenAI API, with a key you give them. Your own work comes first. Cloud models and keys you set in Martlet are never shared."/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap">People use the models your hosts run from any app that works with the OpenAI API, with a key you give them.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="This is an OpenAI-compatible endpoint. Your own work comes first. Cloud models and keys you set in Martlet are never shared." Wiki="Sharing-with-Friends#share-your-language-models" AutomationProperties.AutomationId="Help-OpenAiAbout" AutomationProperties.Name="About sharing your language models"/></InlineUIContainer></TextBlock>
                                     </StackPanel>
                                 </StackPanel>
                             </DockPanel>
@@ -692,8 +694,7 @@
                                     </Border>
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="Apps and API keys" FontSize="18" FontWeight="SemiBold"/>
-                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="Let other apps and scripts, such as Home Assistant, use your hosts. Each key works on every host in your network."/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap">Let other apps and scripts, such as Home Assistant, use your hosts.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Each key works on every host in your network." Wiki="Sharing-with-Friends#apps-and-api-keys" AutomationProperties.AutomationId="Help-ApiKeysAbout" AutomationProperties.Name="About apps and API keys"/></InlineUIContainer></TextBlock>
                                     </StackPanel>
                                 </StackPanel>
                             </DockPanel>
@@ -718,8 +719,7 @@
                                     </Border>
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="Hosts shared with this PC" FontSize="18" FontWeight="SemiBold"/>
-                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="Friends' hosts you signed in to as a friend. This PC may use their engines; their owners' own work comes first."/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap">Friends' hosts you signed in to as a friend.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="This PC may use their engines; their owners' own work comes first." Wiki="Sharing-with-Friends#use-a-friends-hosts" AutomationProperties.AutomationId="Help-SharedHostsAbout" AutomationProperties.Name="About hosts shared with this PC"/></InlineUIContainer></TextBlock>
                                     </StackPanel>
                                 </StackPanel>
                             </DockPanel>
@@ -800,8 +800,7 @@
                                 AutomationProperties.Name="Clear finished tasks from the list"/>
                         <StackPanel>
                             <TextBlock Text="Background tasks" Style="{DynamicResource PageTitle}"/>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
-                                       Text="Setting up your computers, downloads and other long steps. Hiding their window keeps them running here."/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap">Setting up your computers, downloads and other long steps.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Hiding a task's window keeps the task running here." Wiki="Tools-and-MCP#background-tasks" AutomationProperties.AutomationId="Help-TasksAbout" AutomationProperties.Name="About background tasks"/></InlineUIContainer></TextBlock>
                         </StackPanel>
                     </DockPanel>
                     <TextBlock x:Name="TasksSummaryText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,14"
@@ -856,7 +855,7 @@
                     <Border Style="{DynamicResource CardStyle}" Padding="16,10" Margin="0,6,0,0">
                         <StackPanel>
                             <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"
-                                       Text="Every request that ended since Martlet started, by type. Wait is the time in line; run is the time on a computer."/>
+                                       Text="Every request that ended since Martlet started, by type: wait is the time in line, run is the time on a computer."/>
                             <TextBlock x:Name="ThinkingRequestsTiming" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
                                        AutomationProperties.AutomationId="ThinkingRequestsTiming"/>
                         </StackPanel>
@@ -1029,8 +1028,7 @@
                 <Border Grid.Row="1" Style="{DynamicResource CardStyle}" Padding="20,14" AutomationProperties.Name="Logs from all your computers">
                     <StackPanel>
                         <TextBlock Text="Logs from all your computers" FontWeight="SemiBold"/>
-                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"
-                                   Text="Every computer in your Martlet network shares its logs with all the others, so each one shows them all. To get help, Save logs to share makes one file with everything."/>
+                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap">Every computer in your Martlet network shares its logs with the others, so each one shows them all.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="To get help, Save logs to share makes one file with everything." Wiki="Troubleshooting#get-help" AutomationProperties.AutomationId="Help-LogsAbout" AutomationProperties.Name="About logs from all your computers"/></InlineUIContainer></TextBlock>
                         <TextBlock x:Name="LogShareStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap"
                                    AutomationProperties.AutomationId="LogShareStatus" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
@@ -1119,8 +1117,7 @@
                             <!-- The owner's own palette, shown while Custom is chosen (MainWindow.CustomTheme.cs) -->
                             <StackPanel x:Name="CustomThemePanel" Visibility="Collapsed" Margin="0,18,0,0">
                                 <TextBlock Text="Your custom palette" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,4"/>
-                                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                           Text="Start from a palette you like, then choose a color for each part of Martlet. Every window changes as you go, and your other computers use the same colors."/>
+                                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap">Start from a palette you like, then choose a color for each part of Martlet.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Every window changes as you go, and your other computers use the same colors." Wiki="App-Settings-and-Updates#appearance" AutomationProperties.AutomationId="Help-CustomPaletteAbout" AutomationProperties.Name="About your custom palette"/></InlineUIContainer></TextBlock>
                                 <WrapPanel Margin="0,10,0,0">
                                     <Label Content="Start f_rom" Target="{Binding ElementName=CustomThemeBase}" Padding="0,0,10,0" VerticalAlignment="Center"/>
                                     <ComboBox x:Name="CustomThemeBase" Width="200" Margin="0,0,10,0" SelectedIndex="0"
@@ -1206,11 +1203,16 @@
                                       AutomationProperties.AutomationId="StartCompanion">
                                 <TextBlock TextWrapping="Wrap" Text="When Martlet starts, show the character and start listening (and watching, while vision is on)"/>
                             </CheckBox>
-                            <CheckBox x:Name="GreetAtStartCheck" Margin="0,4,0,6" Checked="GreetAtStart_Changed" Unchecked="GreetAtStart_Changed"
-                                      AutomationProperties.AutomationId="GreetAtStart"
-                                      ToolTip="Once Martlet has warmed up after it starts, it says hello on its own. It may mention the time of day, your last conversation, reminders coming up and the apps you have open, which go to your Thinking model with the greeting.">
-                                <TextBlock TextWrapping="Wrap" Text="Greet me once Martlet has warmed up after it starts"/>
-                            </CheckBox>
+                            <DockPanel>
+                                <CheckBox x:Name="GreetAtStartCheck" DockPanel.Dock="Left" Margin="0,4,0,6" Checked="GreetAtStart_Changed" Unchecked="GreetAtStart_Changed"
+                                          AutomationProperties.AutomationId="GreetAtStart">
+                                    <TextBlock TextWrapping="Wrap" Text="Greet me once Martlet has warmed up after it starts"/>
+                                </CheckBox>
+                                <local:HelpTip Margin="6,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                               Text="Martlet says hello on its own once each time it starts. Your Thinking model gets the time of day, your last conversation, coming reminders and the apps you have open with the greeting."
+                                               Wiki="App-Settings-and-Updates#startup-and-closing"
+                                               AutomationProperties.AutomationId="Help-GreetAtStartAbout" AutomationProperties.Name="About the greeting when Martlet starts"/>
+                            </DockPanel>
                             <TextBlock x:Name="GreetingStatusText" Style="{DynamicResource Muted}" Margin="24,0,0,6" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="GreetingStatus"/>
                             <TextBlock x:Name="BackgroundStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
@@ -1248,8 +1250,7 @@
                     <Border Style="{DynamicResource CardStyle}" x:Name="RecommendationPreferencesCard">
                         <StackPanel>
                             <TextBlock Text="Recommended setup preferences" Style="{DynamicResource SectionHeading}"/>
-                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"
-                                       Text="Martlet plans the recommended setup for your computers with these. They are the same on all your computers; each companion PC keeps its own games answer. Recommended setup on Home shows them too."/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10">Martlet plans the recommended setup for your computers with these.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="They are the same on all your computers; each companion PC keeps its own games answer. Recommended setup on Home shows them too." Wiki="Multiple-Computers#recommended-setup" AutomationProperties.AutomationId="Help-RecommendationPreferencesAbout" AutomationProperties.Name="About recommended setup preferences"/></InlineUIContainer></TextBlock>
                             <StackPanel x:Name="RecommendationPreferencesPanel" AutomationProperties.Name="Recommended setup preferences"/>
                             <TextBlock x:Name="RecommendationPreferencesStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
                                        AutomationProperties.AutomationId="RecommendationPreferencesStatus" AutomationProperties.LiveSetting="Polite"/>
@@ -1299,19 +1300,23 @@
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Your other computers" Style="{DynamicResource SectionHeading}"/>
-                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                       Text="Your paired Martlet computers send commands through this PC's host service over the pinned, signed connection you paired. Martlet here runs only these: update Martlet and the host service (official GitHub Releases only), install or remove a role, show status. It also keeps this PC's host service on this PC's version."/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap">Your paired Martlet computers can send a few commands to this PC's host service.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="They go over the pinned, signed connection you paired. Martlet here runs only these: update Martlet and the host service (official GitHub Releases only), install or remove a role, show status. It also keeps this PC's host service on this PC's version." Wiki="App-Settings-and-Updates#host-updates" AutomationProperties.AutomationId="Help-NodeCommandsAbout" AutomationProperties.Name="About commands from your other computers"/></InlineUIContainer></TextBlock>
                             <CheckBox x:Name="AllowNodeCommands" Margin="0,10,0,6" Checked="AllowNodeCommands_Changed" Unchecked="AllowNodeCommands_Changed"
                                       AutomationProperties.AutomationId="AllowNodeCommands">
                                 <TextBlock TextWrapping="Wrap" Text="Let my other paired computers update Martlet here and manage this PC's host service"/>
                             </CheckBox>
                             <TextBlock x:Name="NodeAgentStatus" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="NodeAgentStatus"/>
-                            <CheckBox x:Name="NearbyShareChoice" Checked="NearbyShare_Changed" Unchecked="NearbyShare_Changed" Margin="0,14,0,6"
-                                      ToolTip="Martlet on your other computers can find this PC on your private network (port 9444) and ask to use the hosts it runs or reaches over SSH. Each request shows a check number here and needs your Allow."
-                                      AutomationProperties.AutomationId="NearbyShare">
-                                <TextBlock TextWrapping="Wrap" Text="Let my other computers find this PC and ask to use its hosts"/>
-                            </CheckBox>
+                            <DockPanel Margin="0,14,0,6">
+                                <CheckBox x:Name="NearbyShareChoice" DockPanel.Dock="Left" Checked="NearbyShare_Changed" Unchecked="NearbyShare_Changed"
+                                          AutomationProperties.AutomationId="NearbyShare">
+                                    <TextBlock TextWrapping="Wrap" Text="Let my other computers find this PC and ask to use its hosts"/>
+                                </CheckBox>
+                                <local:HelpTip Margin="6,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                               Text="Your other computers find this PC on your private network (port 9444) and ask to use the hosts it runs or reaches over SSH. Each request shows a check number here and needs your Allow."
+                                               Wiki="Setting-Up-a-Host#pairing"
+                                               AutomationProperties.AutomationId="Help-NearbyShareAbout" AutomationProperties.Name="About letting your other computers find this PC"/>
+                            </DockPanel>
                             <TextBlock x:Name="NearbyShareStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="NearbyShareStatus"/>
                             <Button x:Name="NearbyFirewallButton" Content="Let my other computers reach this PC" Click="NearbyFirewall_Click"
@@ -1326,7 +1331,7 @@
                                 <TextBlock Text="minutes" VerticalAlignment="Center" Margin="0,0,0,4"/>
                             </WrapPanel>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" AutomationProperties.AutomationId="PresenceAwayStatus"
-                                       Text="Home says when one of your computers stops answering for 30 seconds and when it is back. A short miss is not counted."/>
+                                       Text="Home says when one of your computers stops answering for 30 seconds and when it is back."/>
                         </StackPanel>
                     </Border>
 
@@ -1392,9 +1397,9 @@
                                           Fill="{DynamicResource AccentBrush}"/>
                                 </Canvas>
                             </Viewbox>
-                            <TextBlock Text="Hi! I'm Martlet." Style="{DynamicResource HeroTitle}" TextAlignment="Center" Margin="0,14,0,0"/>
+                            <TextBlock Text="Hi, I'm Martlet!" Style="{DynamicResource HeroTitle}" TextAlignment="Center" Margin="0,14,0,0"/>
                             <TextBlock Style="{DynamicResource Muted}" FontSize="15" TextAlignment="Center" Margin="0,10,0,24"
-                                       Text="A desktop companion that can chat, speak and show an animated character. Let's get set up."/>
+                                       Text="A desktop companion that can chat, speak and show an animated character."/>
                             <Button Style="{DynamicResource PrimaryButton}" Content="Let's begin" HorizontalAlignment="Center" Padding="28,12" FontSize="15"
                                     Click="TourBegin_Click" AutomationProperties.AutomationId="TourBegin"/>
                         </StackPanel>
@@ -1403,13 +1408,13 @@
                         <StackPanel x:Name="TourNetwork" Visibility="Collapsed">
                             <TextBlock Text="Is Martlet already on another of your computers?" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" TextWrapping="Wrap"
-                                       Text="Your computers with Martlet form your Martlet network. They share the work, so each does what it's best at."/>
+                                       Text="Your computers with Martlet form your Martlet network and share the work, so each does what it's best at."/>
                             <Button Style="{DynamicResource CardButton}" Tag="&#xE710;" Margin="0,0,0,12" Click="WizardNewNetwork_Click"
                                     AutomationProperties.AutomationId="WizardNewNetwork">
                                 <StackPanel>
                                     <TextBlock Text="No, this is my first one" FontSize="17" FontWeight="SemiBold"/>
                                     <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                               Text="Start a new Martlet network on this PC. You can add your other computers later."/>
+                                               Text="Start a new Martlet network on this PC; you can add your other computers later."/>
                                 </StackPanel>
                             </Button>
                             <Button Style="{DynamicResource CardButton}" Tag="&#xE968;" Margin="0,0,0,4" Click="WizardJoinNetwork_Click"
@@ -1417,7 +1422,7 @@
                                 <StackPanel>
                                     <TextBlock Text="Yes, join my Martlet network" FontSize="17" FontWeight="SemiBold"/>
                                     <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                               Text="Martlet looks for your other computers on this network. You allow this PC on one of them by comparing a number."/>
+                                               Text="Martlet looks for your other computers on this network, and you allow this PC on one of them by comparing a number."/>
                                 </StackPanel>
                             </Button>
                             <Border x:Name="WizardJoinPanel" Visibility="Collapsed" Background="{DynamicResource SoftBrush}" CornerRadius="16"
@@ -1443,7 +1448,7 @@
                         <StackPanel x:Name="TourSpecs" Visibility="Collapsed">
                             <TextBlock Text="Here's what this PC has" Style="{DynamicResource HeroTitle}" FontSize="26"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16" TextWrapping="Wrap"
-                                       Text="Martlet reads this on this PC only, to work out what can run here. Nothing is sent anywhere."/>
+                                       Text="Martlet reads this only on this PC, to work out what can run here, and sends nothing anywhere."/>
                             <Border Background="{DynamicResource SoftBrush}" CornerRadius="16" Padding="18,14">
                                 <StackPanel x:Name="WizardSpecRows"/>
                             </Border>
@@ -1458,7 +1463,7 @@
                         <StackPanel x:Name="TourPreference" Visibility="Collapsed">
                             <TextBlock Text="Three quick questions" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"
-                                       Text="Martlet chooses the models, memory and graphics cards for you. You can change these answers later in Settings or in Recommended setup."/>
+                                       Text="Martlet chooses the models, memory and graphics cards for you, and you can change these answers later in Settings."/>
                             <TextBlock Text="Do you play games or use heavy apps on this PC?" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock x:Name="WizardGamesHint" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,0"
                                        AutomationProperties.AutomationId="WizardGamesHint"/>
@@ -1498,8 +1503,17 @@
                                        AutomationProperties.AutomationId="WizardPlanSummary"/>
                             <!-- One card per part, built in code (WizardPlanItem-<part>). -->
                             <StackPanel x:Name="WizardPlanList"/>
-                            <TextBlock x:Name="WizardPlanTotals" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       AutomationProperties.AutomationId="WizardPlanTotals"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="WizardPlanTotals" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="WizardPlanTotals"/>
+                                <local:HelpTip x:Name="WizardPlanNotes" Grid.Column="1" Margin="6,0,0,0" VerticalAlignment="Top" Visibility="Collapsed"
+                                               Wiki="First-Steps#4-use-the-suggested-setup"
+                                               AutomationProperties.AutomationId="Help-WizardPlanNotes" AutomationProperties.Name="About this plan"/>
+                            </Grid>
                             <Button x:Name="WizardAcceptButton" Style="{DynamicResource PrimaryButton}" Content="Use these suggestions" HorizontalAlignment="Stretch"
                                     Padding="24,12" FontSize="15" Margin="0,18,0,0" Click="WizardAccept_Click" IsEnabled="False"
                                     AutomationProperties.AutomationId="WizardAccept"/>
@@ -1526,7 +1540,7 @@
                                          presentation:InputHint.Text="Paste your NVIDIA Build key (nvapi-…)"/>
                             <CheckBox x:Name="WizardKeyConsent" Margin="0,12,0,0" AutomationProperties.AutomationId="WizardKeyConsent">
                                 <TextBlock TextWrapping="Wrap"
-                                           Text="Send what I say and Martlet's conversation to NVIDIA Build for Thinking. NVIDIA's terms apply; the free tier has limits."/>
+                                           Text="Send what I say and Martlet's conversation to NVIDIA Build for Thinking (NVIDIA's terms apply and the free tier has limits)."/>
                             </CheckBox>
                             <TextBlock x:Name="WizardKeyStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="WizardKeyStatus"/>

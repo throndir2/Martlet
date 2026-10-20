@@ -111,7 +111,7 @@ public sealed record SpeakingVoiceLibrary
     private const long MaximumRevision = long.MaxValue / 4;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private static readonly string TooLargeMessage =
-        $"The voice list is larger than {(MaximumBytes + (1 << 20) - 1) >> 20} MB. Remove some voices first.";
+        $"The voice list is larger than {(MaximumBytes + (1 << 20) - 1) >> 20} MB, so remove some voices first.";
 
     internal static readonly JsonSerializerOptions Json = new()
     {

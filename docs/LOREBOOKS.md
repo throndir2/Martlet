@@ -17,7 +17,12 @@ editor.
    depth** (2 by default: your message and Martlet's last reply), are searched
    for each entry's keywords. Screen and camera glances scan their prompt,
    including the window title and the program in front, so a game's lore can
-   trigger while you play it.
+   trigger while you play it. While Martlet sees a game played on this PC
+   ([Memories for a game](MEMORY.md#memories-for-a-game)), the game's name is
+   scanned too, on its own and at any scan depth: an entry with the game's name
+   as a keyword (*Palworld*) joins in on every reply while you play it, so a
+   lorebook can hold what Martlet should know or do for one game. Its trigger
+   reads *Palworld (played now)*.
 4. An entry triggers when any keyword matches and its optional **filter
    keywords** pass their rule: *and any*, *and all*, *none of them* or *not all
    of them*. Always-on entries need no keyword. An entry with a **chance** below

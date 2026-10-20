@@ -81,8 +81,7 @@ public sealed class AppGuidesPageTests
         host.Resources["Box"] = new Style(typeof(TextBox)) { Setters = { new Setter(Control.PaddingProperty, new Thickness(20, 4, 20, 4)) } };
         var box = new TextBox { Width = 200 };
         box.SetResourceReference(FrameworkElement.StyleProperty, "Box");
-        var field = (Grid)typeof(MainWindow).GetMethod("WithHint", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [box, "Optional, such as StardewValley", "TestHint"])!;
+        var field = PageKit.WithHint(box, "Optional, such as StardewValley", "TestHint");
         var hint = field.Children.OfType<TextBlock>().Single();
         host.Child = field;
         host.Measure(new Size(400, 100));

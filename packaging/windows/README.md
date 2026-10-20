@@ -127,9 +127,7 @@ authentication.
 
 The updater downloads only after user consent (or with automatic installation
 turned on) and checks the GitHub asset digest before it runs the installer.
-Windows may warn about an unknown publisher. The separate signed ZIP/envelope
-format of the Updates library (`src\Martlet.Updates`) is not used by this
-installer.
+Windows may warn about an unknown publisher.
 
 ## Quick installer, first-run setup and the prerequisites tool
 
@@ -447,15 +445,10 @@ level, a release signature, license clearance or a vulnerability assessment.
 Code signing is not a release requirement for this personal project; public
 releases ship an unsigned installer without any authentication claim.
 
-The avatar producer explicitly selects manifest 3 / provenance 2. Its coordinated
-[signed-candidate metadata reader](../../src/Martlet.Updates/README.md) must support
-that pair before integration; older readers reject manifest 3 as incompatible.
-Legacy manifest 1 and manifest 2 / provenance 1 remain explicit reader/history
-paths, and legacy pure constructors preserve their historical bytes. None is an
-allow-missing path for the current producer. Candidate signing, activation,
-settings compatibility and trust policy do not change. The reader's depth-16
-and restricted ZIP/layout budgets remain narrower than the producer's general
-bounded JSON reader.
+The avatar producer explicitly selects manifest 3 / provenance 2. Legacy
+manifest 1 and manifest 2 / provenance 1 remain history paths, and legacy pure
+constructors preserve their historical bytes. None is an allow-missing path for
+the current producer.
 
 The three application descriptors bind exact root project, directory and private
 parent. Each application's reviewed project/package graph is separate; no global

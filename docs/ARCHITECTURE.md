@@ -41,7 +41,7 @@ implements an isolated ASP.NET Core library boundary: explicit private/loopback
 TLS binding with a caller-supplied pinned identity, local-only pairing approval,
 signed scoped device requests with freshness/nonces/rotation/revocation, and
 role-filtered version/capability/status metadata behind worker interfaces. It
-does not join Desktop/Core settings or the root solution, expose an inference
+does not join Desktop/Core settings, expose an inference
 route/raw worker port, create a production key, change a firewall, or establish
 real LAN/Ubuntu/host qualification.
 The [P03a/P03b/P03c local memory integration](MEMORY.md) implements an
@@ -752,12 +752,10 @@ the settings window preserves explicit session activation; Stop/Escape,
 relevant edits, lock and exit revoke it. No activation survives restart.
 Inherited bounded pipes carry composed targets, never PCM/credentials; each
 target is mapped once. Process/crash isolation is not a general OS sandbox.
-The [local package producer](../packaging/windows/README.md) and
-[current metadata reader](../src/Martlet.Updates/README.md#avatar-payload-schema-3)
-are implemented for manifest 3 / provenance 2 / CycloneDX 1.6 with distinct
-Desktop/Doctor/private-renderer ownership. Reader compatibility retains legacy
-manifest 1 and manifest 2 / provenance 1 without rewriting history; older
-readers reject manifest 3. Actual payload/conformance checks apply to specific
+The [local package producer](../packaging/windows/README.md) is implemented
+for manifest 3 / provenance 2 / CycloneDX 1.6 with distinct
+Desktop/Doctor/private-renderer ownership. (The separate metadata reader of the
+unused Updates library was removed.) Actual payload/conformance checks apply to specific
 frozen builds, not every subsequent tree. Package qualification requires receipts
 for the exact source revision; no published installer, native qualification,
 release approval or executable update/rollback readiness is implied.
