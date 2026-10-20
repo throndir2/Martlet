@@ -453,6 +453,10 @@ public sealed class HostSetupCommandsTests
             var pinned = HostInputDialog.RoleDialog("gpu-pc", "ollama", spread with { GpuCurrent = "GPU-3090aaaa-0000" });
             Assert.Equal("GPU-3090aaaa-0000", HostInputDialog.Cleaned(pinned.Answers())!["choice.gpu"]);
             pinned.Close();
+            // A model split across both cards (choice.gpu GPU-a,GPU-b) stays split.
+            var split = HostInputDialog.RoleDialog("gpu-pc", "deep-thinking", spread with { GpuCurrent = "GPU-3090aaaa-0000,GPU-3080bbbb-1111" });
+            Assert.Equal("GPU-3090aaaa-0000,GPU-3080bbbb-1111", HostInputDialog.Cleaned(split.Answers())!["choice.gpu"]);
+            split.Close();
         });
     }
 

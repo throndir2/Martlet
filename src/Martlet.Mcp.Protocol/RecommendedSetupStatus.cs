@@ -28,6 +28,7 @@ internal static class RecommendedSetupStatus
     internal const string HostModelsFixtureName = "hostmodels";
     internal const string BetterFixtureName = "better";
     internal const string BigHostFixtureName = "bighost";
+    internal const string BigSplitFixtureName = "bigsplit";
 
     /// <summary>The made-up measurements of the "better" fixture: Gemma 4 E2B on gpu-box.</summary>
     private static (MeasuredModelMemory Memory, MeasuredFirstWords Speed) BetterMeasurements(DateTimeOffset now)
@@ -90,10 +91,16 @@ internal static class RecommendedSetupStatus
             {
                 sources = RecommendedSetupInputs.BigHostFixture(DateTimeOffset.UtcNow);
                 source = "fixture bighost (NOT real computers): this PC (a companion PC without a graphics card) and big-box (a Linux host " +
-                    "with five RTX 5090s, 32 GB each) that thinks with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B; it plans with the " +
+                    "with six RTX 5090s, 32 GB each) that thinks with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B; it plans with the " +
                     "model catalog, so Deep thinking gets a bigger model while live Thinking stays fast";
             }
-            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\", \"{BetterFixtureName}\" or \"{BigHostFixtureName}\".");
+            else if (fixture == BigSplitFixtureName)
+            {
+                sources = RecommendedSetupInputs.BigHostFixture(DateTimeOffset.UtcNow, "llama3.3:70b");
+                source = "fixture bigsplit (NOT real computers): the bighost network, but big-box runs Deep thinking with llama3.3:70b " +
+                    "(about 46 GB), which no single 32 GB card has room for, so it runs split across two cards no live job uses (tensor split)";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\", \"{BetterFixtureName}\", \"{BigHostFixtureName}\" or \"{BigSplitFixtureName}\".");
         }
         else
         {
@@ -252,11 +259,19 @@ internal static class RecommendedSetupStatus
                 {
                     kind = c.Kind.ToString(), computer = Name(c.MachineId), summary = c.Summary, why = c.Why, away = c.Away, benefit = c.Benefit.ToString(),
                     roleKind = c.RoleKind, model = c.Model, job = c.Job, needsSomeoneThere = c.NeedsSomeoneThere, downloadGb = c.DownloadGb,
-                    onProcessor = c.OnProcessor
+                    onProcessor = c.OnProcessor, gpuIndex = c.GpuIndex,
+                    // A model split across several cards (tensor split): every card it runs on.
+                    gpuIndexes = c.GpuIndexes
                 }),
                 machines = recommendation.Target.Machines.Select(m => new
                 {
                     computer = Name(m.MachineId), kind = m.Kind.ToString(), roles = m.Roles.Select(r => r.Model is null ? r.Kind : $"{r.Kind}={r.Model}"),
+                    // Where each role runs: its card, or the cards a split model runs on (1-based, as the review says them).
+                    cards = m.Roles.Where(r => r.GpuIndex is not null).Select(r => new
+                    {
+                        role = r.Kind, cards = (r.GpuIndexes is { Count: > 1 } split ? split : [r.GpuIndex!.Value]).Select(i => i + 1), split = r.GpuIndexes is { Count: > 1 }
+                    }),
+                    gpus = m.Usage?.Gpus.Select(g => new { card = g.Index + 1, usedGb = g.Vram.Used, capacityGb = g.Vram.Capacity }),
                     why = m.Why,
                     load = m.Usage is { } usage ? new
                     {
