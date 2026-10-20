@@ -1,6 +1,6 @@
 # Martlet Dia host role image: Nari Labs' Dia (pinned source, Apache-2.0) with hash-pinned PyTorch 2.6.0 (CUDA 12.4) and
 # descript-audio-codec, the Dia worker process and its loopback HTTP front (martlet_dia). Built on the host by
-# "martlet-host add dia" (compose build, context workers/dia). Models are not in the image: the role's provisioning
+# "martlet-host add dia" (compose build, context workers). Models are not in the image: the role's provisioning
 # step downloads the pinned Dia-1.6B-0626 weights and the DAC codec into the martlet-dia-models volume, and nothing is
 # downloaded at run time (HF_HUB_OFFLINE; the worker loads both from local paths).
 FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
@@ -12,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN echo 'pip==26.2.1 --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e' > /tmp/pip.lock \
  && python3.12 -m pip install --no-deps --require-hashes --no-compile -r /tmp/pip.lock && rm -f /tmp/pip.lock
 
-COPY host/requirements.lock /tmp/requirements.lock
+COPY dia/host/requirements.lock /tmp/requirements.lock
 RUN grep -A1 '^setuptools==' /tmp/requirements.lock | sed 's/ \\$//; s/^ *//' | tr '\n' ' ' > /tmp/setuptools.lock \
  && python3.12 -m pip install --no-deps --require-hashes --no-compile -r /tmp/setuptools.lock \
  && python3.12 -m pip install --no-deps --require-hashes --no-compile --no-build-isolation \
@@ -20,7 +20,8 @@ RUN grep -A1 '^setuptools==' /tmp/requirements.lock | sed 's/ \\$//; s/^ *//' | 
  && rm -f /tmp/requirements.lock /tmp/setuptools.lock \
  && find /usr/local/lib/python3.12/site-packages -name __pycache__ -type d -prune -exec rm -rf {} +
 
-COPY martlet_dia /opt/martlet-dia/app/martlet_dia
+COPY dia/martlet_dia /opt/martlet-dia/app/martlet_dia
+COPY common/martlet_worker_host.py /opt/martlet-dia/app/martlet_worker_host.py
 ENV PYTHONPATH=/opt/martlet-dia/app:/opt/martlet-dia/dia-src MARTLET_DIA_ROOT=/opt/martlet-dia MARTLET_DIA_PORT=50084 \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 MPLCONFIGDIR=/tmp/matplotlib NUMBA_CACHE_DIR=/tmp/numba
 RUN python3.12 -m martlet_dia.host fetch-source /opt/martlet-dia/dia-src \

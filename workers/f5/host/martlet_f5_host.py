@@ -62,6 +62,12 @@ from martlet_f5_worker.identity import (
 )
 from martlet_f5_worker.jsonio import canonical_json_bytes
 
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside this file)
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "common"))
+    import martlet_worker_host as shared
+
 ROOT = Path(os.environ.get("MARTLET_F5_ROOT", "/opt/martlet-f5"))
 MODELS = ROOT / "models"
 CONFIG = MODELS / "worker-config.json"
@@ -71,7 +77,6 @@ MODEL = os.environ.get("F5_MODEL", "f5tts-v1-base")
 DEVICE = os.environ.get("MARTLET_F5_DEVICE", "cuda:0")
 DESTINATION = "martlet-host-f5"
 WORKER_ID = "martlet-f5-host"
-MAX_BODY_BYTES = 6 * 1024 * 1024
 WARMUP_SECONDS = 290
 REQUEST_SECONDS = 90
 BUSY_WAIT_SECONDS = 30
@@ -124,14 +129,7 @@ def _log(text: str) -> None:
     print(text, flush=True)
 
 
-def _sha256_file(path: Path) -> tuple[int, str]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        while chunk := stream.read(1_048_576):
-            size += len(chunk)
-            digest.update(chunk)
-    return size, digest.hexdigest()
+_sha256_file = shared.sha256_file
 
 
 # ------------------------------------------------------------------ image build: runtime inventory
@@ -168,38 +166,6 @@ def build_inventory() -> bytes:
 
 
 # ------------------------------------------------------------------ provisioning (post-start role step)
-
-
-def _download(url: str, target: Path, size: int, sha256: str) -> None:
-    if target.is_file():
-        if _sha256_file(target) == (size, sha256):
-            _log(f"{target.name}: already downloaded and verified.")
-            return
-        target.unlink()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    digest = hashlib.sha256()
-    received = 0
-    shown = -1
-    request = urllib.request.Request(url, headers={"User-Agent": "martlet-f5-host"})
-    with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as output:
-        while chunk := response.read(1_048_576):
-            received += len(chunk)
-            if received > size:
-                raise SystemExit(f"{target.name} is larger than its pinned size; stopped.")
-            digest.update(chunk)
-            output.write(chunk)
-            percent = received * 100 // size
-            if percent != shown:
-                shown = percent
-                sys.stdout.write(f"\r{target.name}: {percent}% of {size // 1_048_576 or 1} MiB")
-                sys.stdout.flush()
-    sys.stdout.write("\n")
-    if received != size or digest.hexdigest() != sha256:
-        partial.unlink(missing_ok=True)
-        raise SystemExit(f"{target.name} does not match its pinned SHA-256; nothing was installed.")
-    partial.replace(target)
-    _log(f"{target.name}: verified (SHA-256 {sha256[:12]}...).")
 
 
 def _identity(engine: str, artifacts: list[dict[str, Any]]) -> WorkerIdentity:
@@ -271,7 +237,7 @@ def provision(fixture: bool) -> None:
         )
         for role, (artifact_id, url, revision, size, sha256, license_id, relative) in pinned.items():
             _log(f"Model file {artifact_id} ({license_id}) from {url.split('/resolve/')[0]}")
-            _download(url, ROOT / relative, size, sha256)
+            shared.fetch_pinned(url, ROOT / relative, size, sha256, agent="martlet-f5-host")
             files[role] = relative
             artifacts.append(
                 {
@@ -310,24 +276,20 @@ def warm() -> None:
 # ------------------------------------------------------------------ the worker process
 
 
-class Worker:
+class Worker(shared.ModelProcess):
     """Owns one worker process. Only one synthesis runs at a time (the worker admits exactly one job)."""
 
+    name = "f5"
+    stopped_error = "The F5 worker process stopped; run 'martlet-host add f5' again or restart the role."
+    send_errors = (ContractError,)
+
     def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.write_lock = threading.Lock()
-        self.changed = threading.Condition(self.lock)
-        self.process: subprocess.Popen[bytes] | None = None
-        self.identity: dict[str, Any] | None = None
-        self.state = "not_provisioned" if not CONFIG.is_file() else "cold"
-        self.error: str | None = None
-        self.pending: dict[str, queue.Queue[dict[str, Any] | None]] = {}
+        super().__init__("not_provisioned" if not CONFIG.is_file() else "cold")
         self.started: set[str] = set()
         self.active: dict[str, Any] | None = None
 
-    def status(self) -> dict[str, Any]:
-        with self.lock:
-            return {"error": self.error, "ready": self.state == "ready", "state": self.state, "worker": self.identity}
+    def encode(self, message: dict[str, Any]) -> bytes:
+        return canonical_json_bytes(message)
 
     def start(self) -> None:
         with self.lock:
@@ -369,7 +331,7 @@ class Worker:
             self.identity = config["worker"]
             self.state, self.error = "starting", None
             self.changed.notify_all()
-        threading.Thread(target=self._read, args=(process,), name="f5-worker-reader", daemon=True).start()
+        self.read_in_background(process)
         self.send(
             {
                 "contract_id": CONTRACT_ID,
@@ -381,79 +343,27 @@ class Worker:
             }
         )
 
-    def wait_settled(self, seconds: float) -> dict[str, Any]:
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while self.state not in {"ready", "failed", "stopped", "not_provisioned"}:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
-        return self.status()
-
-    def running(self) -> bool:
-        return self.process is not None and self.process.poll() is None
-
-    def wait_admissible(self, seconds: float) -> None:
-        """Wait (bounded) until the worker is ready with no reply in flight, or has settled into a non-loading state."""
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while (self.state != "ready" or self.pending) and self.state not in {"not_provisioned", "failed", "stopped"}:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
-
-    def send(self, message: dict[str, Any]) -> bool:
-        process = self.process
-        if process is None or process.stdin is None:
-            return False
-        try:
-            with self.write_lock:
-                process.stdin.write(canonical_json_bytes(message) + b"\n")
-                process.stdin.flush()
-            return True
-        except (BrokenPipeError, OSError, ContractError):
-            return False
-
-    def _read(self, process: subprocess.Popen[bytes]) -> None:
-        assert process.stdout is not None
-        for line in process.stdout:
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            kind = message.get("type")
-            summary = ((message.get("last_error") or message.get("error")) or {}).get("summary")
-            if kind == "worker_state":
-                with self.lock:
-                    if self.process is process:
-                        self.state = "ready" if message.get("ready") else str(message.get("state"))
-                        self.error = summary
-                        self.changed.notify_all()
-            elif kind == "event":
-                request_id = str((message.get("ids") or {}).get("request_id"))
-                with self.lock:
-                    target = self.pending.get(request_id)
-                    self.started.add(request_id)
-                if target is not None:
-                    target.put(message)
-            elif kind == "protocol_error":
-                # A synthesize message rejected before its IDs were read: fail the request still waiting for them.
-                with self.lock:
-                    waiting = [q for request_id, q in self.pending.items() if request_id not in self.started]
-                    if self.state not in {"ready", "busy"}:
-                        self.error = summary
-                for target in waiting:
-                    target.put({"type": "rejected", "summary": summary})
-        with self.lock:
-            if self.process is process:
-                self.state = "failed"
-                self.error = self.error or "The F5 worker process stopped; run 'martlet-host add f5' again or restart the role."
-                self.changed.notify_all()
-            waiting = list(self.pending.values())
-        for target in waiting:
-            target.put(None)
+    def on_message(self, process: subprocess.Popen[bytes], message: dict[str, Any]) -> None:
+        kind = message.get("type")
+        summary = ((message.get("last_error") or message.get("error")) or {}).get("summary")
+        if kind == "worker_state":
+            with self.lock:
+                if self.process is process:
+                    self.state = "ready" if message.get("ready") else str(message.get("state"))
+                    self.error = summary
+                    self.changed.notify_all()
+        elif kind == "event":
+            with self.lock:
+                self.started.add(str((message.get("ids") or {}).get("request_id")))
+            self.deliver(message)
+        elif kind == "protocol_error":
+            # A synthesize message rejected before its IDs were read: fail the request still waiting for them.
+            with self.lock:
+                waiting = [q for request_id, q in self.pending.items() if request_id not in self.started]
+                if self.state not in {"ready", "busy"}:
+                    self.error = summary
+            for target in waiting:
+                target.put({"type": "rejected", "summary": summary})
 
 
 WORKER = Worker()
@@ -523,34 +433,8 @@ def _worker_message(request: dict[str, Any], identity: dict[str, Any], action_id
     }
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "martlet-f5-host"
-    sys_version = ""
-
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        return
-
-    def _json(self, status: int, value: dict[str, Any]) -> None:
-        body = json.dumps(value, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _body(self) -> dict[str, Any] | None:
-        length = int(self.headers.get("Content-Length") or "0")
-        if not 0 < length <= MAX_BODY_BYTES:
-            self._json(413, {"error": "request.too_large"})
-            return None
-        try:
-            value = json.loads(self.rfile.read(length))
-        except ValueError:
-            value = None
-        if not isinstance(value, dict):
-            self._json(400, {"error": "request.invalid"})
-            return None
-        return value
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/status":

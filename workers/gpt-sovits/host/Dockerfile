@@ -1,7 +1,7 @@
 # Martlet GPT-SoVITS host role image: GPT-SoVITS 20250606v2pro (source pinned by commit and SHA-256) in its own Python
 # environment (its dependencies conflict with other voice engines), hash-locked inference dependencies with PyTorch 2.6.0
 # CUDA 12.4, its English (NLTK) and Japanese (OpenJTalk) text data, and Martlet's worker and loopback HTTP front
-# (martlet_gpt_sovits). Built on the host by "martlet-host add gpt-sovits" (compose build, context workers/gpt-sovits).
+# (martlet_gpt_sovits). Built on the host by "martlet-host add gpt-sovits" (compose build, context workers).
 # Models are not in the image: the role's provisioning step downloads the pinned files into the
 # martlet-gpt-sovits-models volume, mounted at GPT_SoVITS/pretrained_models.
 FROM python:3.11.13-slim-bookworm@sha256:86adf8dbadc3d6e82ee5dd2c74bec2e1c2467cdad47886280501df722372d2e1
@@ -17,7 +17,7 @@ ARG NLTK_COMMIT=550b6625bcef1f2abff2ff770a5a0d272c9c6b2a
 ARG OPENJTALK_URL=https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz
 ARG OPENJTALK_SHA256=fe6ba0e43542cef98339abdffd903e062008ea170b04e7e2a35da805902f382a
 
-COPY host/requirements.lock /tmp/requirements.lock
+COPY gpt-sovits/host/requirements.lock /tmp/requirements.lock
 # jieba_fast and pyopenjtalk build from source; the compilers are removed again afterwards.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends build-essential cmake curl ca-certificates libsndfile1 \
@@ -41,7 +41,8 @@ RUN apt-get update \
     done \
  && apt-get purge -y build-essential cmake curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* /tmp/*
 
-COPY martlet_gpt_sovits /opt/gpt-sovits/martlet/martlet_gpt_sovits
+COPY gpt-sovits/martlet_gpt_sovits /opt/gpt-sovits/martlet/martlet_gpt_sovits
+COPY common/martlet_worker_host.py /opt/gpt-sovits/martlet/martlet_worker_host.py
 ENV PYTHONPATH=/opt/gpt-sovits/martlet MARTLET_GPT_SOVITS_ROOT=/opt/gpt-sovits MARTLET_GPT_SOVITS_PORT=50082 \
     OPEN_JTALK_DICT_DIR=/opt/gpt-sovits/open_jtalk_dic_utf_8-1.11 NLTK_DATA=/usr/local/share/nltk_data \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 MPLCONFIGDIR=/tmp/matplotlib

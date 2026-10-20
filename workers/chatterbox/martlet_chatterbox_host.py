@@ -30,12 +30,17 @@ import tempfile
 import threading
 import time
 import traceback
-import urllib.request
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, NoReturn
+
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside this file)
+    sys.path.append(str(Path(__file__).resolve().parents[1] / "common"))
+    import martlet_worker_host as shared
 
 # Resemble's library draws progress bars (the original model one for every speech token); the log needs none. tqdm reads this
 # only when it is first imported, and importing torch imports it, so it is set before anything imports torch.
@@ -84,7 +89,7 @@ WORKER_ID = "martlet-chatterbox-host"
 REQUEST_SECONDS = 90
 WARMUP_SECONDS = 600
 BUSY_WAIT_SECONDS = 30
-MAX_BODY_BYTES = 6 * 1024 * 1024
+MAX_BODY_BYTES = shared.MAX_BODY_BYTES
 MAX_FRAME_SAMPLES = 4_800
 MAX_FRAME_BYTES = MAX_FRAME_SAMPLES * 2
 MAX_SAMPLES = 24_000 * 90
@@ -314,48 +319,8 @@ def _log(text: str) -> None:
     print(text, flush=True)
 
 
-def _sha256_file(path: Path) -> tuple[int, str]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        while chunk := stream.read(1_048_576):
-            size += len(chunk)
-            digest.update(chunk)
-    return size, digest.hexdigest()
-
-
 def _download(url: str, target: Path, size: int, sha256: str) -> None:
-    if target.is_file() and _sha256_file(target) == (size, sha256):
-        _log(f"{target.name}: already downloaded and verified.")
-        return
-    if target.exists():
-        target.unlink()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    partial.unlink(missing_ok=True)
-    digest = hashlib.sha256()
-    received = 0
-    shown = -1
-    request = urllib.request.Request(url, headers={"User-Agent": "martlet-chatterbox-host"})
-    with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as output:
-        while chunk := response.read(1_048_576):
-            received += len(chunk)
-            if received > size:
-                partial.unlink(missing_ok=True)
-                raise SystemExit(f"{target.name} is larger than its pinned size; stopped.")
-            digest.update(chunk)
-            output.write(chunk)
-            percent = received * 100 // size
-            if percent != shown:
-                shown = percent
-                sys.stdout.write(f"\r{target.name}: {percent}% of {max(1, size // 1_048_576)} MiB")
-                sys.stdout.flush()
-    sys.stdout.write("\n")
-    if received != size or digest.hexdigest() != sha256:
-        partial.unlink(missing_ok=True)
-        raise SystemExit(f"{target.name} does not match its pinned SHA-256; nothing was installed.")
-    partial.replace(target)
-    _log(f"{target.name}: verified (SHA-256 {sha256[:12]}...).")
+    shared.fetch_pinned(url, target, size, sha256, agent="martlet-chatterbox-host")
 
 
 def _artifact(role: str, size: int, sha256: str, artifact_id: str, license_id: str, revision: str = REVISION) -> dict[str, Any]:
@@ -2224,37 +2189,11 @@ class CacheTooSmall(Exception):
 WORKER = EngineHost()
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "martlet-chatterbox-host"
-    sys_version = ""
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        return
-
-    def _json(self, status: int, value: dict[str, Any]) -> None:
-        body = canonical_json_bytes(value)
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _body(self) -> dict[str, Any] | None:
-        try:
-            length = int(self.headers.get("Content-Length") or "0")
-        except ValueError:
-            length = 0
-        if not 0 < length <= MAX_BODY_BYTES:
-            self._json(413, {"error": "request.too_large"})
-            return None
-        try:
-            value = json.loads(self.rfile.read(length))
-        except ValueError:
-            value = None
-        if not isinstance(value, dict):
-            self._json(400, {"error": "request.invalid"})
-            return None
-        return value
+    def encode(self, value: Any) -> bytes:
+        return canonical_json_bytes(value)
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/status":
