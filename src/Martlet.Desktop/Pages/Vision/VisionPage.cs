@@ -75,8 +75,9 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
         page.Children.Add(Card([.. looks]));
 
         page.Children.Add(Card([Heading("How often it comments"),
-            Note("Most looks end silently. Martlet won't interrupt while you're talking. This also sets how often Martlet reacts " +
-                "to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("Most looks end silently, and Martlet won't interrupt while you're talking. This also sets how often " +
+                "Martlet reacts to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8), "VisionChattiness",
+                "how often it comments", wiki: "Vision#how-chatty-she-is"),
             .. ChattinessPicker.Create("VisionChattiness", () => services.Talk.ScreenChattiness, services.DecidedChattiness, model.SetChattiness)]));
         page.Children.Add(GazeCard(model));
         // Which model makes the screen summaries (SenseJobRouting): the image model, else a Thinking pool model that sees.
@@ -109,7 +110,7 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
         row.Children.Add(box);
         row.Children.Add(find);
         yield return row;
-        yield return Note(choices.Count == 0 ? "Find cameras to choose one. Nothing opens until Martlet looks."
+        yield return Note(choices.Count == 0 ? "Find cameras to choose one; nothing opens until Martlet looks."
             : "The camera opens only while Martlet looks.", new Thickness(28, 0, 0, 0));
     }
 
@@ -128,8 +129,8 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
             if (turnOn is not null && !services.Talk.Watch) turnOn.IsEnabled = model.CanSee && typed.Length > 0;
         };
         yield return address;
-        yield return Note("Example: http://192.168.1.20:8080/shot.jpg. Passwords are used for this session only and aren't saved.",
-            new Thickness(28, 0, 0, 0));
+        yield return HelpTip.Explain("Example: http://192.168.1.20:8080/shot.jpg (a password in it is used for this session only).",
+            new Thickness(28, 0, 0, 0), "VisionAddress", "camera addresses", wiki: "Vision#what-she-looks-at");
         if (!services.SmartHomeConnected) yield break;
         // Home Assistant cameras use their snapshot address; Martlet adds the saved Home Assistant token when it looks.
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(28, 8, 0, 0) };
@@ -172,9 +173,9 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
         var status = Note(model.GazeStatus(), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(status, "VisionGazeStatus");
         return Card(Heading("Glances at your screen"), mouse, decide, status,
-            Note("It decides while vision watches your active window or whole screen and the character shows. Screenshots are " +
-                "compared on this PC; the Thinking model only chooses during the looks Martlet already takes, so nothing extra " +
-                "is sent.", new Thickness(0, 6, 0, 0)));
+            HelpTip.Explain("It decides only while vision watches your active window or whole screen and the character shows. " +
+                "Screenshots are compared on this PC, and the Thinking model chooses only during the looks Martlet already takes, so " +
+                "nothing extra is sent.", new Thickness(0, 6, 0, 0), "VisionGaze", "glances", wiki: "Vision#glances-at-your-screen"));
     }
 
     /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, the model that
@@ -193,13 +194,10 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
         var status = prefs.ScreenSummary && prefs.Watch && !canSee ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "VisionScreenSummaryStatus");
         return Card(Heading("Screen summary over time"), box, status,
-            Note("Each reply gets only the newest picture, so it starts to speak as fast as before. With this on, Martlet also " +
-                "keeps the last few pictures that changed (about 25 seconds, in memory only, never saved) and, every 15 seconds " +
-                "while they change or when you start to talk, sends a small sheet of them with the text read on them to your " +
-                "image model (when you chose one) or a Thinking model that sees in the Thinking pool, in the background. It is " +
-                "never the model your conversation uses. The one or two lines it " +
-                "answers (\"They switched from VS Code to a boss fight\") go with your next message as a note. A reply never " +
-                "waits for it. Each summary is one more request with a picture, which may cost more.", new Thickness(0, 6, 0, 0)));
+            HelpTip.Explain("Each summary is one more request with a picture, which may cost more, and a reply never waits for it. " +
+                "Martlet keeps the last pictures that changed in memory and sends a small sheet of them to your image model or a " +
+                "Thinking pool model that sees, never to the model your conversation uses.", new Thickness(0, 6, 0, 0),
+                "VisionScreenSummary", "screen summaries", wiki: "Vision#screen-summary-over-time"));
     }
 
     /// <summary>Lists the cameras Windows offers to desktop apps, on request only; nothing is opened.</summary>
@@ -213,7 +211,7 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
             var found = await Task.Run(() => new VideoInput().Cameras());
             cameras = found;
             services.ShowStatus(found.Count == 0
-                ? "Windows doesn't see any cameras. Connect a camera or enter a camera address."
+                ? "Windows doesn't see any cameras, so connect a camera or enter a camera address."
                 : $"Found {found.Count} camera{(found.Count == 1 ? "" : "s")}.");
             var talk = services.Talk;
             if (found.FirstOrDefault(c => c.Id == talk.CameraId) is { } same) services.SaveTalk(talk with { CameraName = same.Name });
@@ -221,7 +219,7 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
         }
         catch (Exception error) when (error is VideoSourceException or System.Runtime.InteropServices.ExternalException)
         {
-            services.ShowStatus(error is VideoSourceException ? error.Message : "Windows couldn't list cameras right now. Try again in a moment.");
+            services.ShowStatus(error is VideoSourceException ? error.Message : "Windows couldn't list cameras right now; try again in a moment.");
         }
         finally { findingCameras = false; }
         services.RedrawIfOpen();
@@ -237,12 +235,12 @@ internal sealed class VisionPage(IVisionPageServices services, Func<UIElement> i
         {
             homeCameras = await services.HomeCamerasAsync(services.Lifetime);
             services.ShowStatus(homeCameras.Count == 0 ? "Home Assistant has no cameras."
-                : $"Home Assistant has {homeCameras.Count} camera{(homeCameras.Count == 1 ? "" : "s")}. Pick one above.");
+                : $"Home Assistant has {homeCameras.Count} camera{(homeCameras.Count == 1 ? "" : "s")}: pick one above.");
         }
         catch (HomeAssistantException error) { services.ShowStatus(error.Message); }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException)
         {
-            if (!services.Closing) services.ShowStatus("Couldn't reach Home Assistant. Check that it is running, then try again.");
+            if (!services.Closing) services.ShowStatus("Couldn't reach Home Assistant: check that it is running, then try again.");
         }
         finally { findingHomeCameras = false; }
         services.RedrawIfOpen();

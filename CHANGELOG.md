@@ -33,6 +33,13 @@ Each release's section here is also its notes on GitHub.
 - The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
 - Listening, Voice, People, Singing, *Microphone and speakers* and *Voice ID* now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki pages for listening, voices and singing have the full instructions. ([#1049](https://github.com/throndir2/Martlet/pull/1049))
 - The Thinking, Thinking pool, Prompts, Memory and Lorebook pages and the Memory and Lorebooks windows show one short line for each explanation and status. The details are behind a **?** that links to the wiki, and each prompt's **?** says when Martlet sends it. ([#1059](https://github.com/throndir2/Martlet/pull/1059))
+- Companion › Vision, Reading and Picture making, the Creations page and camera messages now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Vision and Pictures and Creations wiki pages have the full instructions, including what to do when a camera doesn't work. ([#1056](https://github.com/throndir2/Martlet/pull/1056))
+
+### Changed
+
+- Your character's touch zones (also the ones you drew or changed), its eye measurement, its VRoid Hub credit and its own changes to how it reacts to touches are now the same on all your computers, so each model is set up once. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Your Discord setup (the bot and its token, the people Martlet knows, the chat modes and channel rules) and your Telegram and WhatsApp connections with their paired chats are now the same on all your computers. Each computer still chooses for itself whether it runs the bot. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Keeping clips of voices you haven't named is now one choice for all your computers, and turning it off on one computer deletes the clips on every computer. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
 
 ### Fixed
 

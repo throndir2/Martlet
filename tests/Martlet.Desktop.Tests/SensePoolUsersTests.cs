@@ -88,14 +88,14 @@ public sealed class SensePoolUsersTests
         var users = SensePoolUsers.For(SenseKind.Image, Pool, Abilities);
         var pooled = MainWindow.SenseDecisionFor(SenseJobKind.ScreenSummary, new(), null, Abilities, Pool, null, thisPc: false);
         Assert.Equal((SenseTaker.PoolMember, Eyes.Key), (pooled.Taker, pooled.Taken.Key));
-        Assert.Equal("On. While Martlet watches, a Thinking pool model that sees (integrate.api.nvidia.com (acme/eyes-26b)) sums up what " +
+        Assert.Equal("On: while Martlet watches, a Thinking pool model that sees (integrate.api.nvidia.com (acme/eyes-26b)) sums up what " +
             "changed for your next message.", VisionPageModel.ScreenSummaryStatus(true, true, pooled));
         // An image model of its own goes first; the pool model takes over when it can't.
         var own = new SenseModels { Image = new() { Source = SenseSource.Own, Own = Endpoint(Nvidia, "acme/own-eyes") } };
         var first = VisionPageModel.ScreenSummaryStatus(true, true, MainWindow.SenseDecisionFor(SenseJobKind.ScreenSummary, own, null, Abilities, Pool, null, false));
-        Assert.StartsWith("On. While Martlet watches, your image model (integrate.api.nvidia.com (acme/own-eyes)) sums up", first);
-        Assert.EndsWith("When it can't, the Thinking pool does it (integrate.api.nvidia.com (acme/eyes-26b)).", first);
-        Assert.StartsWith("Off for now: no image model and no Thinking pool model that sees takes them.", VisionPageModel.ScreenSummaryStatus(true, true,
+        Assert.StartsWith("On: while Martlet watches, your image model (integrate.api.nvidia.com (acme/own-eyes)) sums up", first);
+        Assert.EndsWith(", and the Thinking pool does it when it can't (integrate.api.nvidia.com (acme/eyes-26b)).", first);
+        Assert.StartsWith("Off for now: no image model and no Thinking pool model that sees takes them,", VisionPageModel.ScreenSummaryStatus(true, true,
             MainWindow.SenseDecisionFor(SenseJobKind.ScreenSummary, new(), null, Abilities, new ThinkingPoolSettings(), null, false)));
 
         var disclosure = SensePoolUsers.SummaryDisclosure(true, users, false);
