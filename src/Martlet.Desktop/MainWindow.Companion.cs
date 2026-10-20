@@ -264,8 +264,8 @@ public partial class MainWindow
             case CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening: RenderJobTab(body, section); break;
             case CompanionTab.Vision: VisionPage.Render(body); break;
             case CompanionTab.Reading: ReadingPage.Render(body); break;
-            case CompanionTab.Hearing: RenderHearingPage(body); break;
-            case CompanionTab.LipSync: RenderLipSyncTab(body); break;
+            case CompanionTab.Hearing: HearingPage.Render(body); break;
+            case CompanionTab.LipSync: LipSyncPage.Render(body); break;
             case CompanionTab.Profiles: RenderProfilesTab(body); break;
             case CompanionTab.Character: CharacterPage.Render(body); break;
             case CompanionTab.SpeechBubbles: RenderSpeechBubblesTab(body); break;
