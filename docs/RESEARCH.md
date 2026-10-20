@@ -176,7 +176,7 @@ not an atomic caller-bound invocation digest. Model-owned system/messages and
 optional upstream request logs prevent whole-prompt/no-retention claims.
 The H02b implementation exercises only controlled HTTP/stream fixtures; no
 runtime/model was executed and no production authorization issuer or route is
-supplied. HostArtifacts metadata remains ineligible and grants no invocation.
+supplied.
 
 ### S14
 

@@ -77,7 +77,7 @@ rather than evidence about the change.
 
 The default and `-All` selections are broad by design, which is why routine
 validation names its targeted tests instead. Measured on a 16-core Windows dev PC
-with a warm build: one leaf test project such as `Martlet.Gateway.Trust.Tests` runs
+with a warm build: one leaf test project such as `Martlet.Perception.Tests` runs
 in about 15 seconds. Without `-Project`, `Martlet.Desktop` references nearly every
 library, so most library changes also select `Martlet.Desktop.Tests`, which runs
 serially and takes 4 to 8 minutes depending on what else the PC is doing; a change

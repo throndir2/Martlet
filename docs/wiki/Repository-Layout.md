@@ -28,7 +28,6 @@ This page tells you where things are in the repository. Before you change a rule
 | `Martlet.Mcp`, `Martlet.Mcp.Protocol` | Martlet's own MCP server and its tools. |
 | `Martlet.Avatar.RendererHost` | The private character renderer process on Windows (WebView2). |
 | `Martlet.Gateway.Host.Linux` | The host gateway on Linux hosts and on the Mac host. |
-| `Martlet.Gateway.Host` | A local host control tool for Windows. |
 
 ## Libraries in `src\`
 
@@ -45,10 +44,9 @@ This page tells you where things are in the repository. Before you change a rule
 | `Martlet.Discord`, `Martlet.Messaging`, `Martlet.Home` | Discord, Telegram and WhatsApp, and Home Assistant. |
 | `Martlet.Avatars`, `Martlet.Avatar.Hosting`, `Martlet.Avatar.Audio2Face` | Character contracts, hosting and Audio2Face lip-sync. |
 | `Martlet.Avatar.Vrm`, `Martlet.Avatar.Live2D` | The VRM and Live2D web packages (npm). |
-| `Martlet.Gateway`, `Martlet.Gateway.Trust`, `Martlet.Gateway.Persistence` | The host gateway, its pairing trust and its saved state. |
+| `Martlet.Gateway`, `Martlet.Gateway.Persistence` | The host gateway and its saved pairings and state. |
 | `Martlet.Gateway.*` (Ollama, Stt, F5, Xtts, GptSovits, Dia, Singing, Pictures, Ocr, Motion, VoiceRecognition, Audio2Face) | The relays from the gateway to each host role. |
 | `Martlet.F5` | The F5 voice worker client and voice presets. |
-| `Martlet.Host.Inventory`, `Martlet.Host.Setup`, `Martlet.HostArtifacts` | Host reports, host setup and host artifact checks. |
 | `Martlet.Credentials.Windows` | API keys in Windows Credential Manager. |
 | `Martlet.Diagnostics`, `Martlet.Support` | Diagnostic probes and the local support bundle. |
 | `Martlet.Mcp.Client` | The MCP client for the tools Martlet uses while you talk. |
