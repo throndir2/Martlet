@@ -184,7 +184,7 @@ public partial class MainWindow
     /// <summary>The main choice of a page whose feature can be off: the feature (<paramref name="id"/>) and an explicit Off
     /// (<paramref name="offId"/>), each saying what it means. <paramref name="blocked"/> says why the feature can't be chosen yet
     /// (its choice is then disabled); <paramref name="set"/> saves a choice.</summary>
-    private static RadioButton[] OnOffChoices(string id, string offId, string title, string detail, string offDetail, bool on, string? blocked,
+    internal static RadioButton[] OnOffChoices(string id, string offId, string title, string detail, string offDetail, bool on, string? blocked,
         Action<bool> set)
     {
         var yes = Choice(id, title, blocked is null || on ? detail : $"{detail} {blocked}", on, id);

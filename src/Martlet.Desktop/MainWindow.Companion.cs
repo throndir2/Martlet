@@ -278,7 +278,7 @@ public partial class MainWindow
             case CompanionTab.AppGuides: RenderAppGuidesTab(body); break;
             case CompanionTab.Memory: RenderMemoryTab(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
-            case CompanionTab.Replies: RenderRepliesTab(body); break;
+            case CompanionTab.Replies: new RepliesPage(this).Render(body); break;
             case CompanionTab.CheckIns: CheckInsPage.Render(body); break;
             case CompanionTab.DeepThinking: ThinkingPoolPage.Render(body); break;
             case CompanionTab.Singing: SingingPage.Render(body); break;
