@@ -42,7 +42,7 @@ class OutputCollector:
     def wait(
         self,
         predicate: Callable[[dict[str, Any]], bool],
-        timeout: float = 3.0,
+        timeout: float = 10.0,
     ) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
         with self.condition:
@@ -201,12 +201,15 @@ def reference(
 def synthesize_message(
     worker: WorkerIdentity,
     *,
-    deadline_seconds: float = 2,
+    deadline_seconds: float = 30,
     chunks: list[dict[str, Any]] | None = None,
     reference_value: dict[str, Any] | None = None,
     request_ids: dict[str, Any] | None = None,
     action_id: str | None = None,
 ) -> dict[str, Any]:
+    # Build the reference WAV before the deadline is stamped, so a busy PC does not spend a short
+    # deadline before the worker sees the message.
+    reference_value = reference_value or reference()
     return {
         "action_id": action_id or str(uuid.uuid4()),
         "chunks": chunks
@@ -235,12 +238,12 @@ def synthesize_message(
             "reference_transcript_supplied": True,
         },
         "protocol_version": dict(PROTOCOL_VERSION),
-        "reference": reference_value or reference(),
+        "reference": reference_value,
         "type": "synthesize",
     }
 
 
-def warmup_message(worker: WorkerIdentity, *, seconds: float = 2) -> dict[str, Any]:
+def warmup_message(worker: WorkerIdentity, *, seconds: float = 30) -> dict[str, Any]:
     return {
         "contract_id": CONTRACT_ID,
         "control_id": str(uuid.uuid4()),

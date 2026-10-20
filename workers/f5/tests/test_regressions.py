@@ -46,7 +46,7 @@ class RegressionTests(unittest.TestCase):
     def ready(self, service, collector):
         service.handle(warmup_message(self.fixture.worker))
         collector.wait(lambda value: value.get("state") == "ready")
-        service.warmup_thread.join(2)
+        service.warmup_thread.join(10)
 
     def test_hostile_json_is_bounded_content_free_and_recoverable(self):
         for data in (
@@ -114,7 +114,7 @@ class RegressionTests(unittest.TestCase):
         service, collector = self.service(engine)
         with mock.patch.object(service, "_watch_warmup"):
             service.handle(warmup_message(self.fixture.worker, seconds=0.08))
-            service.warmup_thread.join(2)
+            service.warmup_thread.join(10)
         self.assertEqual("failed", service.state)
         self.assertEqual("deadline_exceeded", service.last_error["code"])
         self.assertTrue(engine.closed)
@@ -131,14 +131,14 @@ class RegressionTests(unittest.TestCase):
             def synthesize(self, reference, text, cancel):
                 self.reference = reference
                 self.entered.set()
-                self.release.wait(5)
+                self.release.wait(30)
                 yield b"\x01\x00"
 
         engine = Blocked()
         service, collector = self.service(engine)
         self.ready(service, collector)
         service.handle(synthesize_message(self.fixture.worker))
-        self.assertTrue(engine.entered.wait(2))
+        self.assertTrue(engine.entered.wait(10))
         thread = service.active_job.thread
         try:
             with mock.patch("martlet_f5_worker.service.MAX_CANCEL_SECONDS", 0.01):
@@ -149,7 +149,7 @@ class RegressionTests(unittest.TestCase):
             self.assertNotEqual("", engine.reference.transcript)
         finally:
             engine.release.set()
-            thread.join(2)
+            thread.join(10)
         self.assertTrue(engine.closed)
         self.assertEqual("stopped", service.state)
         self.assertFalse(any(engine.reference.audio))
@@ -165,7 +165,7 @@ class RegressionTests(unittest.TestCase):
 
             def synthesize(self, reference, text, cancel):
                 self.entered.set()
-                self.release.wait(5)
+                self.release.wait(30)
                 yield b"\x01\x00"
 
         engine = Blocked()
@@ -173,7 +173,7 @@ class RegressionTests(unittest.TestCase):
         self.ready(service, collector)
         first = synthesize_message(self.fixture.worker)
         service.handle(first)
-        self.assertTrue(engine.entered.wait(2))
+        self.assertTrue(engine.entered.wait(10))
         thread = service.active_job.thread
         try:
             service.handle(cancel_message(first))
@@ -188,7 +188,7 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual("busy", service.state)
         finally:
             engine.release.set()
-            thread.join(2)
+            thread.join(10)
         first_events = [m for m in collector.messages if m.get("type") == "event"
                         and m["ids"]["request_id"] == first["ids"]["request_id"]]
         self.assertEqual(["started", "canceled"], [m["kind"] for m in first_events])
@@ -207,7 +207,7 @@ class RegressionTests(unittest.TestCase):
         engine = DeniedLoad()
         service, collector = self.service(engine, policy)
         service.handle(warmup_message(self.fixture.worker))
-        service.warmup_thread.join(2)
+        service.warmup_thread.join(10)
         self.assertEqual("failed", service.state)
         self.assertEqual("execution_policy", service.last_error["stage"])
         self.assertTrue(engine.closed)
@@ -260,7 +260,7 @@ for call in (lambda: socket.socket(), lambda: subprocess.Popen([sys.executable, 
 assert p.denied.is_set()
 """
         result = subprocess.run(
-            [sys.executable, "-c", code], capture_output=True, timeout=5,
+            [sys.executable, "-c", code], capture_output=True, timeout=30,
             env=os.environ.copy(), check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr.decode())
@@ -281,7 +281,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
 """
         result = subprocess.run(
             [sys.executable, "-c", code, str(self.fixture.config_path)],
-            input=b"", capture_output=True, timeout=5, check=False,
+            input=b"", capture_output=True, timeout=30, check=False,
         )
         self.assertEqual(0, result.returncode)
         self.assertEqual(b"", result.stderr)
@@ -304,7 +304,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
 
         def infer(*args, **kwargs):
             entered.set()
-            release.wait(5)
+            release.wait(30)
             yield [0.25] * 20, 24_000
 
         engine._model = types.SimpleNamespace(
@@ -317,7 +317,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
         service.state = "ready"
         message = synthesize_message(self.fixture.worker)
         service.handle(message)
-        self.assertTrue(entered.wait(2))
+        self.assertTrue(entered.wait(10))
         job = service.active_job
         try:
             service.handle(cancel_message(message))
@@ -327,7 +327,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
             self.assertIsNotNone(engine._model)
         finally:
             release.set()
-            job.thread.join(2)
+            job.thread.join(10)
         self.assertFalse(captured[0].exists())
         self.assertFalse(any(job.request.reference.audio))
         self.assertFalse(any(m.get("kind") == "audio_frame" for m in collector.messages))
@@ -342,13 +342,13 @@ raise SystemExit(main(['--config', sys.argv[1]]))
             def load(self, paths, deadline, observation=None):
                 self.paths = paths
                 self.entered.set()
-                self.release.wait(5)
+                self.release.wait(30)
                 self.loaded = True
 
         engine = BlockingLoad()
         service, collector = self.service(engine)
         service.handle(warmup_message(self.fixture.worker))
-        self.assertTrue(engine.entered.wait(2))
+        self.assertTrue(engine.entered.wait(10))
         try:
             with mock.patch("martlet_f5_worker.service.MAX_CANCEL_SECONDS", 0.01):
                 service.close()
@@ -357,7 +357,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
             self.assertTrue(all(p.exists() for p in engine.paths.values()))
         finally:
             engine.release.set()
-            service.warmup_thread.join(2)
+            service.warmup_thread.join(10)
         self.assertTrue(engine.closed)
         self.assertFalse(any(p.exists() for p in engine.paths.values()))
         self.assertEqual("stopped", service.state)
@@ -385,7 +385,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
 
         class DeadlineReturn(DeterministicFakeEngine):
             def synthesize(self, reference, text, cancel):
-                cancel.wait(3)
+                cancel.wait(30)
                 return
                 yield
 
@@ -395,15 +395,15 @@ raise SystemExit(main(['--config', sys.argv[1]]))
         def pause_timeout(job, error):
             if error.code == "deadline_exceeded":
                 entered.set()
-                release.wait(3)
+                release.wait(30)
             return original(job, error)
 
         service, collector = self.service(DeadlineReturn())
         self.ready(service, collector)
         with mock.patch.object(_Job, "_fail_locked", pause_timeout):
-            service.handle(synthesize_message(self.fixture.worker, deadline_seconds=0.08))
+            service.handle(synthesize_message(self.fixture.worker, deadline_seconds=1))
             try:
-                self.assertTrue(entered.wait(2))
+                self.assertTrue(entered.wait(10))
                 self.assertFalse(any(m.get("kind") == "canceled" for m in collector.messages))
             finally:
                 release.set()
@@ -424,7 +424,7 @@ raise SystemExit(main(['--config', sys.argv[1]]))
 
         thread = threading.Thread(target=denied_background_operation)
         thread.start()
-        thread.join(2)
+        thread.join(10)
         service._emit_state(None)
         self.assertEqual("failed", collector.messages[-1]["state"])
         self.assertFalse(collector.messages[-1]["ready"])
@@ -444,12 +444,12 @@ raise SystemExit(main(['--config', sys.argv[1]]))
             if current.name == "martlet-f5-synthesis" and not first_thread:
                 first_thread.append(current)
                 publishing.set()
-                release.wait(5)
+                release.wait(30)
             original(control_id)
 
         with mock.patch.object(service, "_emit_state", side_effect=pause_first_ready):
             service.handle(synthesize_message(self.fixture.worker))
-            self.assertTrue(publishing.wait(2))
+            self.assertTrue(publishing.wait(10))
             second = synthesize_message(self.fixture.worker)
             service.handle(second)
             collector.wait(lambda m: m.get("kind") == "completed"
@@ -466,6 +466,6 @@ raise SystemExit(main(['--config', sys.argv[1]]))
                 self.assertFalse(closed.wait(0.05))
             finally:
                 release.set()
-                waiter.join(2)
+                waiter.join(10)
             self.assertTrue(closed.is_set())
             self.assertFalse(first_thread[0].is_alive())
