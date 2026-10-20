@@ -80,6 +80,12 @@ it. Martlet offers only the ones your engine can make.
 Your character laughs, sighs and moves along with these sounds. See
 [The Character](The-Character).
 
+A touch zone can also make a voice sound (**Add a reaction** on the zone's
+page). Martlet's own voice makes it when you touch the zone, never while
+Martlet speaks or you talk. A paid voice, such as ElevenLabs, makes a sound
+only when you click **▶** on it. When you change to a voice that says words
+only, the sounds stay in the zone's list for a voice that makes them.
+
 ## Your voices
 
 **Voices** is your voice list. It is the same on all your computers.
@@ -242,8 +248,12 @@ delete it there.
 
 **Companion › Voice › In conversations** has **Speak Martlet's replies aloud**
 and **Voice volume**. Voice volume sets how loud Martlet speaks and sings on
-this PC. It doesn't change Windows' volume or other apps. **Speakers** chooses
-where her voice plays.
+this PC. A reply or song that plays now changes at once. It doesn't change
+Windows' volume or other apps. **Speakers** chooses where her voice plays.
+
+When **Speak Martlet's replies aloud** is off, replies show as text in the talk
+window and in the character's speech bubble. **Mute voice** and **Unmute
+voice** on the character's right-click menu change the same setting.
 
 ## When the voice can't speak
 

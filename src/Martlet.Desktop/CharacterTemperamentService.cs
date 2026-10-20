@@ -130,7 +130,7 @@ internal sealed class CharacterTemperamentService(string? dataDirectory)
         if (own?.PersonalityDigest == digest) return;
         if (own?.Source == CharacterTouchTemperament.ByOwner)
         {
-            Report($"{persona.Name}'s personality changed. Your own touch choices stay; Re-decide from personality uses the new personality.");
+            Report($"{persona.Name}'s personality changed, but your own touch choices stay until you press Re-decide from personality.");
             return;
         }
         CancellationTokenSource next;

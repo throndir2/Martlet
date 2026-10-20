@@ -384,14 +384,24 @@ These match the tasks in [#663](https://github.com/throndir2/Martlet/issues/663)
    and a loader in `Martlet.Core.Planning` (Built, above).
 3. Add the daily background refresh (OpenRouter, models.dev, NVIDIA's
    `models.md`, vLLM, LMArena), with a size limit, a timeout and the last good
-   copy, plus an MCP status tool (Built; no Doctor probe yet: the MCP status
-   tool says what the refresh did).
+   copy, plus an MCP status tool and a Doctor finding (Built:
+   `model_catalog_status` says what the refresh did, and the
+   `planning.catalog` probe warns with `planning.catalog_refresh_failing` when
+   no refresh read every source for over a week).
 4. Add Hugging Face sizes and `config.json` facts for open-weight models, and
    memory estimates for each host (Built in
    [#760](https://github.com/throndir2/Martlet/pull/760) and joined into the
    catalog above).
 5. Replace the fixed lists in `FootprintCatalog.Seed`, the provider defaults and
    the `role.conf` choices with catalog picks, keeping today's entries as the
-   offline fallback (Built for the planner's options and the provider defaults;
-   the `role.conf` choices are still a fixed list, so a catalog model outside it
-   runs only in a companion PC's own Ollama).
+   offline fallback (Built. The `role.conf` model choice of the Thinking and
+   Deep thinking roles keeps its list as the offline fallback and is open
+   (`choice_open=OLLAMA_MODEL`), so a host installs any catalog model by its
+   Ollama tag or `hf.co/{repo}:{quant}`).
+6. Bigger models for big hardware: Deep thinking on a host takes the smartest
+   model a card has room for, a mixture-of-experts model by its active
+   parameters, and switches to a bigger, smarter model when its cards have room;
+   a model no single card has room for is split across several free cards
+   (tensor split); live Thinking keeps its first-word rule (Built). Real sizes and loaded models from the model apps
+   (Ollama `/api/ps`, LM Studio `/api/v1/models` and `/api/v0/models`), so a
+   loaded model isn't counted twice (Built).

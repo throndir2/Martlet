@@ -8,9 +8,11 @@ namespace Martlet.Core.Planning;
 // seed (FootprintCatalog.Seed.cs) stays: it is the offline fallback, and its measured numbers win.
 public sealed partial class FootprintCatalog
 {
-    /// <summary>The Ollama models Martlet's host roles offer: the OLLAMA_MODEL choice of deploy/host/roles/ollama/role.conf and
-    /// deep-thinking/role.conf (FootprintCatalogTests checks they match). A host role installs only these, so a catalog model
-    /// outside the list runs only in a companion PC's own Ollama (<see cref="ComponentOption.NativeOnly"/>).</summary>
+    /// <summary>The Ollama models Martlet's host roles list: the OLLAMA_MODEL choice of deploy/host/roles/ollama/role.conf and
+    /// deep-thinking/role.conf (FootprintCatalogTests checks they match). Their choice is open (choice_open=OLLAMA_MODEL), so a
+    /// host role also installs any other Ollama tag or hf.co/{repo}:{quant} from the model catalog; only an install name the
+    /// host can't take (<see cref="SetupRoleChoice.OpenValue"/>) runs in a companion PC's own Ollama alone
+    /// (<see cref="ComponentOption.NativeOnly"/>).</summary>
     public static IReadOnlyList<string> HostRoleModels { get; } = Array.AsReadOnly<string>(
     [
         "gemma4:e2b", "gemma4:e4b", "qwen3-vl:8b", "gemma4:12b", "gemma4:26b", "gemma3:4b", "qwen2.5vl:7b", "gemma3:12b", "gemma3:27b",
@@ -146,7 +148,8 @@ public static partial class CatalogOptions
             HearsAudio = component != PlanComponent.Vision && model.Hears == true, SeesImages = component != PlanComponent.Hearing && model.Sees == true,
             TakesVideo = model.TakesVideo == true, CallsTools = model.CallsTools, Evidence = FootprintEvidence.Estimate, Origin = OptionOrigin.LocalFacts,
             CatalogKey = model.Key, Smartness = Words(smartness, estimates: true), SmartnessCredit = Credit(smartness),
-            NativeOnly = !FootprintCatalog.HostRoleModels.Contains(install, StringComparer.OrdinalIgnoreCase), Source = source
+            NativeOnly = !FootprintCatalog.HostRoleModels.Contains(install, StringComparer.OrdinalIgnoreCase) && !SetupRoleChoice.OpenValue(install),
+            Source = source
         };
         yield return Option(install, PlanComponent.Thinking, "ollama") with { FirstWordMs = FirstWordMs(estimate, bandwidthGbps), WordsPerSecond = words };
         var deep = local.Estimate(null, DeepContextTokens);

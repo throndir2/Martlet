@@ -531,7 +531,7 @@ public partial class MainWindow
         {
             // Where the bubble sits (beside the character or in one place, and its offsets) depends on this PC's screens, like
             // the character's own place, so only whether bubbles and subtitles show travels.
-            var path = Path.Combine(directory, "speech-display.json");
+            var path = Path.Combine(directory, SpeechDisplayPreferences.FileName);
             var prefs = captions.Preferences;
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(new SharedSpeechDisplay(prefs.SpeechBubbles, prefs.Subtitles), SharedJson),
                 null, !File.Exists(path), FileTime(path)));
@@ -596,6 +596,15 @@ public partial class MainWindow
             characterTemperaments.Reload();
             return SharedApply.Done;
         }, () => CharacterTouchTemperaments.Share(Path.Combine(directory, AccountWorkingCopy.DirectoryName, "no-temperaments")));
+        // What each character model was found or told to be: its touch zones, its eyes' measurement and its VRoid Hub credit, the
+        // household's, so a model is found and measured once for every computer; and the character's own changes to its touch
+        // reactions, each person's. The pictures stay on the computer that made them.
+        yield return CharacterSharedSections.TouchZones(directory, new(
+            () => characterTouchZones.Busy ? "This PC is finding a character's touch zones now." : null, characterTouchZones.Reload));
+        yield return CharacterSharedSections.Eyes(directory, new(
+            () => characterEyes.Busy ? "This PC is measuring a character's eyes now." : null, characterEyes.Reload));
+        yield return CharacterSharedSections.VRoidHub(directory);
+        yield return CharacterSharedSections.ReactionChanges(directory, new(null, characterReactionChanges.Reload));
         // Whether Martlet keeps a record of your conversations and may search it on its own: each person's, the same on every
         // computer they are signed in on (the record itself travels as the shared record of conversations).
         if (conversationHistory is { } history)
@@ -629,6 +638,14 @@ public partial class MainWindow
                 var value = JsonSerializer.Deserialize<SharedSwitch>(setting.Value, SharedJson) ?? throw new JsonException();
                 if (value.On != localVoices.Enabled) localVoices.SetEnabled(value.On);
                 return Task.FromResult(SharedApply.Done);
+            });
+        // Whether Martlet keeps the last few clips of voices the owner hasn't named: the household's privacy choice, the same on
+        // every computer. Turning it off anywhere deletes the clips each computer kept.
+        if (localVoices.Available)
+            yield return Martlet.Core.Speakers.VoiceChoices.ClipsSection(directory, on =>
+            {
+                localVoices.Clips.SetEnabled(on);
+                Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.People) RenderTab(); });
             });
         yield return new DelegateSection(VoiceIdKey, "Voice ID", _ =>
         {
@@ -674,11 +691,17 @@ public partial class MainWindow
             if (SmartHomeCanRender()) RenderTab();
             return Task.FromResult(SharedApply.Done);
         });
+        // Martlet's Discord setup (the bot and its token, the owner, chat modes, channel rules, the people it knows and the call
+        // choices that aren't about this PC's devices) is the household's; whether the bot connects here stays with each computer.
+        yield return Martlet.Discord.DiscordSharing.Section(directory, new WindowsDiscordTokenVault(settingsVault), discord.Save, discordCalls.Save);
+        // Telegram and WhatsApp: the connected bot or number with its secrets, the paired chats and speaking replies aloud; whether
+        // Martlet answers them here, and WhatsApp's webhook port, stay with each computer.
+        yield return Martlet.Messaging.MessagingSharing.Section(directory, new WindowsMessagingSecretVault(settingsVault), messaging.Follow);
         yield return new DelegateSection(UpdatesKey, "App updates", _ =>
         {
             var value = new SharedUpdates(updateChecksEnabled, updatePreferences.IntervalMinutes, updatePreferences.AutoInstall,
                 updatePreferences.AutoUpdateHosts);
-            var times = new[] { FileTime(Path.Combine(directory, "update-checks.txt")), FileTime(Path.Combine(directory, UpdatePreferences.FileName)) };
+            var times = new[] { FileTime(Path.Combine(directory, UpdateCheckPreferences.FileName)), FileTime(Path.Combine(directory, UpdatePreferences.FileName)) };
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, times.All(t => t is null), times.Max()));
         }, (setting, _) =>
         {

@@ -234,7 +234,8 @@ internal sealed class GatewayCreationStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayCreationRoutes(GatewayHttpServices services, GatewayCreationStore creations, GatewayAccountDirectoryStore accounts,
+    GatewayMemorySpaces memorySpaces) : GatewayRouteHandler(services)
 {
     internal const string CreationsPath = "/martlet/v1/creations";
     internal const string CreationsDigestPath = CreationsPath + "/digest";
@@ -243,9 +244,12 @@ internal sealed partial class GatewayHttpApplication
     private const int MaximumCreationsResponseBytes = CreationLibrary.MaximumBytes + 2 * 1024 * 1024;
     private const int MaximumCreationChunkBytes = (CreationLibrary.ChunkBytes + 2) / 3 * 4 + 4_096;
 
-    internal GatewayCreationStore Creations { get; } = new();
+    internal GatewayCreationStore Creations { get; } = creations;
 
-    private static bool IsCreationsTarget(string rawTarget) =>
+    private GatewayAccountDirectoryStore Accounts { get; } = accounts;
+    private GatewayMemorySpaces MemorySpaces { get; } = memorySpaces;
+
+    internal static bool IsCreationsTarget(string rawTarget) =>
         rawTarget is CreationsPath or CreationsDigestPath || rawTarget.StartsWith(CreationChunkPath, StringComparison.Ordinal) ||
         rawTarget.StartsWith(CreationAccountsPath, StringComparison.Ordinal);
 
@@ -256,7 +260,7 @@ internal sealed partial class GatewayHttpApplication
     /// /chunks/&lt;sha256&gt;) are the same for one account's own list (docs/ACCOUNTS.md), for paired member devices that
     /// <see cref="GatewayMemorySpaces.Access"/> lets use that account's memory space: reading needs read access, a POST read and
     /// write access. The answers on those routes name the <c>account</c>.</summary>
-    private async ValueTask InvokeCreationsAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeCreationsAsync(HttpContext context, string rawTarget)
     {
         Guid? account = null;
         string rest;

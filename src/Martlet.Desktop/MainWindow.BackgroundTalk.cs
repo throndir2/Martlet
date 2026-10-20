@@ -52,9 +52,9 @@ public partial class MainWindow
             if (closing) return;
             ActionText.Text = (window.ListeningStarted, window.WatchingStarted) switch
             {
-                (true, true) => "Martlet keeps listening and watching without the talk window. Stop them on Home or from the notification-area icon.",
-                (false, true) => "Martlet keeps watching without the talk window. Stop watching on Home or from the notification-area icon.",
-                _ => "Martlet keeps listening without the talk window. Stop listening on Home or from the notification-area icon."
+                (true, true) => "Martlet keeps listening and watching without the talk window; stop them on Home or from the notification-area icon.",
+                (false, true) => "Martlet keeps watching without the talk window; stop it on Home or from the notification-area icon.",
+                _ => "Martlet keeps listening without the talk window; stop it on Home or from the notification-area icon."
             };
             UpdateTray();
         };
@@ -99,7 +99,7 @@ public partial class MainWindow
         }
         if (ConversationSession() is not { } talk)
         {
-            ActionText.Text = "Martlet can't listen right now. Try again in a moment.";
+            ActionText.Text = "Martlet can't listen right now, so try again in a moment.";
             return;
         }
         if (!talk.IsVisible) talk.StartInBackground();
@@ -119,7 +119,7 @@ public partial class MainWindow
         }
         if (ConversationSession() is not { } talk)
         {
-            ActionText.Text = "Martlet can't watch right now. Try again in a moment.";
+            ActionText.Text = "Martlet can't watch right now, so try again in a moment.";
             return;
         }
         if (!talk.IsVisible) talk.StartInBackground();
@@ -142,7 +142,7 @@ public partial class MainWindow
     }
 
     private const string HostHasNoCompanionText =
-        "This PC is a Martlet host, so it doesn't talk, listen, watch or show the character. Use your companion PC, or choose Use as my companion PC in Settings.";
+        "This PC is a Martlet host, so it doesn't talk, listen, watch or show the character (Settings › Use as my companion PC changes that).";
 
     /// <summary>What was on when this PC last became a Martlet host (the character showing, always listening, watching), so it
     /// comes back when this PC is your companion PC again; null when Martlet hasn't seen it become a host since it started.</summary>
@@ -193,14 +193,14 @@ public partial class MainWindow
             _ => "hid the character"
         };
         ErrorLog.Info($"This PC became a Martlet host, so Martlet {stopped} here.");
-        if (hidden) ActionText.Text = $"This PC is now a Martlet host, so Martlet {stopped}. Your companion choices are kept for when it's your companion PC again.";
+        if (hidden) ActionText.Text = $"This PC is now a Martlet host, so Martlet {stopped}; your companion choices come back when it's your companion PC again.";
     }
 
     private void StartCompanion_Changed(object sender, RoutedEventArgs e)
     {
         if (changingBackgroundChoice) return;
         background = background with { StartCompanion = StartCompanionCheck.IsChecked == true };
-        RenderBackground(background.Save(store?.DataDirectory) ? null : "Couldn't save this choice. It applies until Martlet closes.");
+        RenderBackground(background.Save(store?.DataDirectory) ? null : "Couldn't save this choice, so it applies only until Martlet closes.");
     }
 
     /// <summary>Home's Start listening / Stop listening and Start watching / Stop watching buttons and their indicators.</summary>

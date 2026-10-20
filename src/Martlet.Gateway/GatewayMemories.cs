@@ -80,23 +80,29 @@ internal sealed class GatewayMemoryStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed partial class GatewayMemoryRoutes(GatewayHttpServices services, GatewayMemoryStore memories, GatewayMemorySpaces memorySpaces,
+    GatewayAccountDirectoryStore accounts, GatewaySettingsStore settings, GatewayNetworkStore network) : GatewayRouteHandler(services)
 {
     internal const string MemoriesPath = "/martlet/v1/memories";
     internal const string MemoriesDigestPath = MemoriesPath + "/digest";
     private const int MaximumMemoriesResponseBytes = SharedMemories.MaximumBytes + 16_384;
     private static System.Text.Json.JsonSerializerOptions? memoriesJson;
 
-    internal GatewayMemoryStore Memories { get; } = new();
+    internal GatewayMemoryStore Memories { get; } = memories;
 
-    private static bool IsMemoriesTarget(string rawTarget) =>
+    internal GatewayMemorySpaces MemorySpaces { get; } = memorySpaces;
+    private GatewayAccountDirectoryStore Accounts { get; } = accounts;
+    private GatewaySettingsStore Settings { get; } = settings;
+    private GatewayNetworkStore Network { get; } = network;
+
+    internal static bool IsMemoriesTarget(string rawTarget) =>
         rawTarget is MemoriesPath or MemoriesDigestPath || IsMemorySpaceTarget(rawTarget);
 
     /// <summary>GET /memories returns this host's copy of what Martlet remembers and POST merges a desktop's copy into it and
     /// returns the merged result; GET /memories/digest returns only the copy's digest, so desktops read the copy when it
     /// changed. The copy holds the owner's memories: only paired devices may use these, over their signed, pinned connection;
     /// API keys may not. /memories/spaces/... are the memory spaces (GatewayMemorySpaces.cs).</summary>
-    private async ValueTask InvokeMemoriesAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeMemoriesAsync(HttpContext context, string rawTarget)
     {
         if (IsMemorySpaceTarget(rawTarget))
         {

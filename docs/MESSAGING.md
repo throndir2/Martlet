@@ -43,8 +43,13 @@ How it works:
   window.
 - **Also say replies aloud on this PC** (off by default) speaks them with the
   chosen voice, never while Windows is locked.
-- Only one program can read a bot's messages, so the bot runs on this PC only;
-  messaging.json is not synced. A host PC never answers.
+- Only one program can read a bot's messages, so Martlet answers an app only on
+  the PC where you turn it on. The connected bot or number with its secrets, the
+  paired chats and **Also say replies aloud** are the same on all your computers
+  (the `messaging` shared setting): on a new PC the app is already connected,
+  and you turn on answering there only if that PC should run it. WhatsApp's
+  webhook port and your own public address stay with each PC. A host PC never
+  answers.
 - Martlet reads text only for now (photos, voice notes and stickers get a short
   note). A tool call or smart-home action that asks first waits for you at the
   PC and otherwise times out.

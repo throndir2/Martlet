@@ -6,28 +6,40 @@ using Microsoft.AspNetCore.Http.Features;
 
 namespace Martlet.Gateway;
 
-internal sealed partial class GatewayHttpApplication
+/// <summary>A host's HTTPS application: the request guard, health, version, capabilities, status and pairing routes here,
+/// and every other area of routes in its own handler (<see cref="GatewayRouteHandler"/>), which gets the stores of its area.
+/// This class makes the shared stores, gives each handler the ones it needs and sends each request to its handler.</summary>
+internal sealed class GatewayHttpApplication : GatewayRouteHandler
 {
-    internal const int MaximumPairingRequestBytes = 8_192;
-    /// <summary>A member pairing with its copy of the roster (<see cref="GatewayMemberPairingProof.Roster"/>).</summary>
-    internal const int MaximumMemberPairingRequestBytes = Martlet.Core.Network.NetworkRoster.MaximumBytes + 4_096;
-    internal static readonly TimeSpan PairingBodyDeadline = TimeSpan.FromSeconds(10);
-    private static readonly JsonSerializerOptions Json = CreateJson();
-    private static readonly string? MartletVersion = typeof(GatewayHttpApplication).Assembly.GetName().Version?.ToString(3);
-    private readonly GatewayHostIdentity identity;
     private readonly IGatewayPairingExchange pairing;
-    private readonly GatewayRequestAuthenticator authenticator;
     private readonly IGatewayAdmissionStatus admission;
     private readonly GatewayWorkerRegistry workers;
-    private readonly GatewayInferenceRouteRegistry inference;
-    private readonly TimeProvider clock;
-    private readonly IGatewayCrypto crypto;
-    private readonly IGatewayAuditSink audit;
-    private readonly GatewayCredentialStore credentials;
     private volatile GatewayMachineReport? machine;
+    private readonly GatewayAccountRoutes accountRoutes;
+    private readonly GatewayApiKeyRoutes apiKeyRoutes;
+    private readonly GatewayCharacterModelRoutes characterModelRoutes;
+    private readonly GatewayClusterRoutes clusterRoutes;
+    private readonly GatewayCommandRoutes commandRoutes;
+    private readonly GatewayConversationRoutes conversationRoutes;
+    private readonly GatewayCreationRoutes creationRoutes;
+    private readonly GatewayFrontDoorRoutes frontDoorRoutes;
+    private readonly GatewayHomeAssistantRoutes homeAssistantRoutes;
+    private readonly GatewayInferenceRoutes inferenceRoutes;
+    private readonly GatewayLogRoutes logRoutes;
+    private readonly GatewayMemoryRoutes memoryRoutes;
+    private readonly GatewayNetworkRoutes networkRoutes;
+    private readonly GatewayOpenAiRoutes openAiRoutes;
+    private readonly GatewayPriorityRoutes priorityRoutes;
+    private readonly GatewaySecurityAuditRoutes securityAuditRoutes;
+    private readonly GatewaySettingsRoutes settingsRoutes;
+    private readonly GatewaySignInRoutes signInRoutes;
+    private readonly GatewaySpeakingVoiceRoutes speakingVoiceRoutes;
+    private readonly GatewayVoiceRoutes voiceRoutes;
 
     internal GatewayMachineReport? Machine { get => machine; set => machine = value; }
     internal DateTimeOffset Now => clock.GetUtcNow();
+    internal TimeProvider Clock => clock;
+
     internal GatewayHttpApplication(
         GatewayHostIdentity identity,
         IGatewayPairingExchange pairing,
@@ -37,45 +49,108 @@ internal sealed partial class GatewayHttpApplication
         GatewayInferenceRouteRegistry inference,
         TimeProvider clock,
         IGatewayCrypto crypto,
-        IGatewayAuditSink audit)
+        IGatewayAuditSink audit) : base(CreateServices(identity, credentials, inference, clock, crypto, audit))
     {
-        this.identity = identity;
         this.pairing = pairing;
         this.admission = admission;
-        authenticator = new(identity, credentials);
         this.workers = workers;
-        this.inference = inference;
-        this.clock = clock;
-        this.crypto = crypto;
-        this.audit = audit;
-        this.credentials = credentials;
-        Logs = new(identity.HostId, clock);
-        StoreHealth = new(clock, (level, message, repeatKey) => Logs.Own(level, message, repeatKey));
         // Each signed request saves its nonce before it is admitted; a slow disk shows up here (issue #1005).
         credentials.SlowCommitObserved = elapsed => Logs.Own(LogLevels.Warn,
             $"Saving this host's pairings took {elapsed.TotalMilliseconds:0} ms; signed requests wait for this save.", "authority:slow-commit");
         Network = new(identity, credentials, clock, (level, message) => Logs.Own(level, message));
-        ApiKeys = new(identity.HostId, clock);
-        Guard = new(clock, (level, message, repeatKey) => Logs.Own(level, message, repeatKey));
         // A host whose roster entry lists outside addresses is reachable from outside: the guard's limits apply to every source.
         Network.Changed = roster =>
         {
             Guard.Listed = roster?.Host(identity.HostId) is { Removed: false, Addresses.Count: > 0 };
             OutsideAddressesChanged?.Invoke();
         };
-        InitializeSignIn(credentials);
+        var services = Services;
+        var signIn = GatewaySignInRoutes.CreateService(services, credentials, Network);
+        accountRoutes = new(services, Accounts, Network);
+        apiKeyRoutes = new(services);
+        characterModelRoutes = new(services, CharacterModels);
+        clusterRoutes = new(services, Cluster);
+        commandRoutes = new(services, Commands);
+        conversationRoutes = new(services, Conversations, MemorySpaces);
+        creationRoutes = new(services, Creations, Accounts, MemorySpaces);
+        openAiRoutes = new(services, Network);
+        frontDoorRoutes = new(services, FrontDoorSessions, openAiRoutes);
+        homeAssistantRoutes = new(services, HomeAssistant);
+        inferenceRoutes = new(services, SpeakingVoices);
+        logRoutes = new(services);
+        memoryRoutes = new(services, Memories, MemorySpaces, Accounts, Settings, Network);
+        networkRoutes = new(services, Network, pairing, credentials, signIn);
+        priorityRoutes = new(services);
+        securityAuditRoutes = new(services, credentials, Network, FrontDoorSessions, () => OutsideListeners(), () => FrontDoorListeners());
+        settingsRoutes = new(services, Settings, AccountSettings, Accounts, MemorySpaces);
+        signInRoutes = new(services, signIn, Network, Accounts, pairing, credentials);
+        speakingVoiceRoutes = new(services, SpeakingVoices, Voices);
+        voiceRoutes = new(services, Voices);
         // The account directory decides which device may use which memory space (GatewayMemorySpaceAccess.cs).
-        MemorySpaces.Access = MayUseMemorySpace;
+        MemorySpaces.Access = memoryRoutes.MayUseMemorySpace;
         Guard.SignInBlocked = () => GatewayOutsideAccess.SignInBlockedReason(SignIn);
         // Preemptions and refusals of pool work go into this host's own log, which paired desktops show.
         inference.Activity = (message, repeatKey) => Logs.Own(LogLevels.Info, message, repeatKey);
     }
 
-    /// <summary>The load and save failures of this host's shared stores (see <see cref="GatewayStoreHealth"/>).</summary>
-    internal GatewayStoreHealth StoreHealth { get; }
+    private static GatewayHttpServices CreateServices(GatewayHostIdentity identity, GatewayCredentialStore credentials,
+        GatewayInferenceRouteRegistry inference, TimeProvider clock, IGatewayCrypto crypto, IGatewayAuditSink audit)
+    {
+        var logs = new GatewayLogStore(identity.HostId, clock);
+        return new()
+        {
+            Identity = identity,
+            Clock = clock,
+            Crypto = crypto,
+            Audit = audit,
+            Authenticator = new(identity, credentials),
+            Inference = inference,
+            Logs = logs,
+            StoreHealth = new(clock, (level, message, repeatKey) => logs.Own(level, message, repeatKey)),
+            ApiKeys = new(identity.HostId, clock),
+            Guard = new(clock, (level, message, repeatKey) => logs.Own(level, message, repeatKey))
+        };
+    }
 
-    /// <summary>Rate limits, lockouts and the audit log every request passes (see <see cref="GatewayRequestGuard"/>).</summary>
-    internal GatewayRequestGuard Guard { get; }
+    // The shared stores. Each handler gets the ones its routes use; the server attaches their storage.
+    internal GatewayNetworkStore Network { get; }
+    internal GatewayAccountDirectoryStore Accounts { get; } = new();
+    internal GatewaySettingsStore Settings { get; } = new();
+    internal GatewayAccountSettings AccountSettings { get; } = new();
+    internal GatewayMemoryStore Memories { get; } = new();
+    internal GatewayMemorySpaces MemorySpaces { get; } = new();
+    internal GatewayConversationRecords Conversations { get; } = new();
+    internal GatewayCreationStore Creations { get; } = new();
+    internal GatewayClusterStore Cluster { get; } = new();
+    internal GatewayVoiceStore Voices { get; } = new();
+    internal GatewaySpeakingVoiceStore SpeakingVoices { get; } = new();
+    internal GatewayCharacterModelStore CharacterModels { get; } = new();
+    internal GatewayHomeAssistantStore HomeAssistant { get; } = new();
+    internal GatewayCommandStore Commands { get; } = new();
+    internal GatewayFrontDoorSessions FrontDoorSessions { get; } = new();
+
+    internal GatewaySignInService SignIn => signInRoutes.SignIn;
+
+    /// <summary>The host's current TLS certificate with its private key, which signs account attestations (its key is the one
+    /// the roster pins). Set when the listener starts; null before.</summary>
+    internal Func<System.Security.Cryptography.X509Certificates.X509Certificate2>? SigningCertificate
+    {
+        get => signInRoutes.SigningCertificate;
+        set => signInRoutes.SigningCertificate = value;
+    }
+
+    internal GatewayOpenAiQueue OpenAiQueue { get => openAiRoutes.OpenAiQueue; set => openAiRoutes.OpenAiQueue = value; }
+    internal Func<IReadOnlyList<GatewayOpenAiPeer>>? OpenAiPeers { get => openAiRoutes.OpenAiPeers; set => openAiRoutes.OpenAiPeers = value; }
+    internal Func<GatewayOpenAiPeer, HttpMessageHandler>? OpenAiPeerHandler
+    {
+        get => openAiRoutes.OpenAiPeerHandler;
+        set => openAiRoutes.OpenAiPeerHandler = value;
+    }
+
+    internal void CloseOpenAi() => openAiRoutes.CloseOpenAi();
+    internal void LogGpuMap() => priorityRoutes.LogGpuMap();
+    internal Task InvokeFrontDoorAsync(HttpContext context) => frontDoorRoutes.InvokeFrontDoorAsync(context);
+    internal long FrontDoorRequestsOf(string keyId) => frontDoorRoutes.FrontDoorRequestsOf(keyId);
 
     /// <summary>The addresses this host listens on besides its home origin (<see cref="GatewayOverlayListeners"/>).</summary>
     internal Func<IReadOnlyList<string>> OutsideListeners { get; set; } = static () => [];
@@ -143,113 +218,113 @@ internal sealed partial class GatewayHttpApplication
                     MaximumMemberPairingRequestBytes).ConfigureAwait(false);
                 var credential = Network.PairMember(proof, context.RequestAborted,
                     context.Connection.RemoteIpAddress?.ToString() ?? "");
-                LogMemberPaired(credential);
+                networkRoutes.LogMemberPaired(credential);
                 Guard.Succeeded(context, routeClass, "paired", credential.DeviceId);
                 await WritePairingAsync(context, credential, null).ConfigureAwait(false);
                 return;
             }
-            if (rawTarget == SecurityAuditPath)
+            if (rawTarget == GatewaySecurityAuditRoutes.SecurityAuditPath)
             {
-                await InvokeSecurityAuditAsync(context).ConfigureAwait(false);
+                await securityAuditRoutes.InvokeSecurityAuditAsync(context).ConfigureAwait(false);
                 return;
             }
-            if (IsSignInTarget(rawTarget!))
+            if (GatewaySignInRoutes.IsSignInTarget(rawTarget!))
             {
-                await InvokeSignInAsync(context, rawTarget!).ConfigureAwait(false);
+                await signInRoutes.InvokeSignInAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (IsNetworkTarget(rawTarget!))
+            if (GatewayNetworkRoutes.IsNetworkTarget(rawTarget!))
             {
-                await InvokeNetworkAsync(context, rawTarget!).ConfigureAwait(false);
+                await networkRoutes.InvokeNetworkAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
 
-            if (rawTarget == ClusterPath)
+            if (rawTarget == GatewayClusterRoutes.ClusterPath)
             {
-                await InvokeClusterAsync(context).ConfigureAwait(false);
+                await clusterRoutes.InvokeClusterAsync(context).ConfigureAwait(false);
                 return;
             }
-            if (rawTarget == VoicesPath || rawTarget == LinkedVoicesPath)
+            if (rawTarget == GatewayVoiceRoutes.VoicesPath || rawTarget == GatewayVoiceRoutes.LinkedVoicesPath)
             {
-                await InvokeVoicesAsync(context, linked: rawTarget == LinkedVoicesPath).ConfigureAwait(false);
+                await voiceRoutes.InvokeVoicesAsync(context, linked: rawTarget == GatewayVoiceRoutes.LinkedVoicesPath).ConfigureAwait(false);
                 return;
             }
-            if (IsSpeakingVoicesTarget(rawTarget!))
+            if (GatewaySpeakingVoiceRoutes.IsSpeakingVoicesTarget(rawTarget!))
             {
-                await InvokeSpeakingVoicesAsync(context, rawTarget!).ConfigureAwait(false);
+                await speakingVoiceRoutes.InvokeSpeakingVoicesAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (IsCharacterModelsTarget(rawTarget!))
+            if (GatewayCharacterModelRoutes.IsCharacterModelsTarget(rawTarget!))
             {
-                await InvokeCharacterModelsAsync(context, rawTarget!).ConfigureAwait(false);
+                await characterModelRoutes.InvokeCharacterModelsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (IsCreationsTarget(rawTarget!))
+            if (GatewayCreationRoutes.IsCreationsTarget(rawTarget!))
             {
-                await InvokeCreationsAsync(context, rawTarget!).ConfigureAwait(false);
+                await creationRoutes.InvokeCreationsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (IsConversationsTarget(rawTarget!))
+            if (GatewayConversationRoutes.IsConversationsTarget(rawTarget!))
             {
-                await InvokeConversationsAsync(context, rawTarget!).ConfigureAwait(false);
+                await conversationRoutes.InvokeConversationsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (rawTarget == HomeAssistantPath)
+            if (rawTarget == GatewayHomeAssistantRoutes.HomeAssistantPath)
             {
-                await InvokeHomeAssistantAsync(context).ConfigureAwait(false);
+                await homeAssistantRoutes.InvokeHomeAssistantAsync(context).ConfigureAwait(false);
                 return;
             }
-            if (IsSettingsTarget(rawTarget!))
+            if (GatewaySettingsRoutes.IsSettingsTarget(rawTarget!))
             {
-                await InvokeSettingsAsync(context, rawTarget!).ConfigureAwait(false);
+                await settingsRoutes.InvokeSettingsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (IsMemoriesTarget(rawTarget!))
+            if (GatewayMemoryRoutes.IsMemoriesTarget(rawTarget!))
             {
-                await InvokeMemoriesAsync(context, rawTarget!).ConfigureAwait(false);
+                await memoryRoutes.InvokeMemoriesAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (IsAccountsTarget(rawTarget!))
+            if (GatewayAccountRoutes.IsAccountsTarget(rawTarget!))
             {
-                await InvokeAccountsAsync(context, rawTarget!).ConfigureAwait(false);
+                await accountRoutes.InvokeAccountsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
-            if (rawTarget == ApiKeysPath)
+            if (rawTarget == GatewayApiKeyRoutes.ApiKeysPath)
             {
-                await InvokeApiKeysAsync(context).ConfigureAwait(false);
+                await apiKeyRoutes.InvokeApiKeysAsync(context).ConfigureAwait(false);
                 return;
             }
-            if (rawTarget == CommandsPath || rawTarget!.StartsWith(CommandsPath + "/", StringComparison.Ordinal))
+            if (rawTarget == GatewayCommandRoutes.CommandsPath || rawTarget!.StartsWith(GatewayCommandRoutes.CommandsPath + "/", StringComparison.Ordinal))
             {
-                await InvokeCommandsAsync(context, rawTarget).ConfigureAwait(false);
+                await commandRoutes.InvokeCommandsAsync(context, rawTarget).ConfigureAwait(false);
                 return;
             }
-            if (IsLogsTarget(rawTarget!))
+            if (GatewayLogRoutes.IsLogsTarget(rawTarget!))
             {
-                await InvokeLogsAsync(context, rawTarget!).ConfigureAwait(false);
+                await logRoutes.InvokeLogsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
             if (Martlet.Core.Access.OpenAiEndpoint.IsPath(rawTarget!))
             {
-                await InvokeOpenAiAsync(context, rawTarget!, traceId).ConfigureAwait(false);
+                await openAiRoutes.InvokeOpenAiAsync(context, rawTarget!, traceId).ConfigureAwait(false);
                 return;
             }
 
             if (context.Request.Method == HttpMethods.Post &&
                 rawTarget == "/martlet/v1/inference/cancel")
             {
-                await InvokeInferenceCancellationAsync(context, traceId).ConfigureAwait(false);
+                await inferenceRoutes.InvokeInferenceCancellationAsync(context, traceId).ConfigureAwait(false);
                 return;
             }
-            if (IsPriorityTarget(rawTarget!))
+            if (GatewayPriorityRoutes.IsPriorityTarget(rawTarget!))
             {
-                await InvokePriorityAsync(context, rawTarget!).ConfigureAwait(false);
+                await priorityRoutes.InvokePriorityAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
             if (context.Request.Method == HttpMethods.Post &&
                 inference.TryGetByPath(rawTarget!, out var route))
             {
-                await InvokeInferenceAsync(context, traceId, route).ConfigureAwait(false);
+                await inferenceRoutes.InvokeInferenceAsync(context, traceId, route).ConfigureAwait(false);
                 return;
             }
 
@@ -361,12 +436,6 @@ internal sealed partial class GatewayHttpApplication
         }
     }
 
-    private static void EnsureEmptyRequest(HttpRequest request)
-    {
-        GatewayRules.Require(request.ContentLength is null or 0 &&
-            !request.Headers.ContainsKey("Transfer-Encoding"), "request.invalid");
-    }
-
     private void LogPaired(IssuedDeviceCredential credential) =>
         Logs.Own(LogLevels.Info, $"Paired device {credential.DeviceId} (roles: {string.Join(", ", credential.Roles).ToLowerInvariant()}).");
 
@@ -382,82 +451,6 @@ internal sealed partial class GatewayHttpApplication
             Lifetime = credential.Lifetime,
             HostProof = hostProof
         });
-
-    private static async ValueTask<T> ReadPairingAsync<T>(
-        HttpRequest request,
-        CancellationToken cancellationToken,
-        int maximumBytes = MaximumPairingRequestBytes) where T : class
-    {
-        GatewayRules.Require(request.ContentType is "application/json" or
-            "application/json; charset=utf-8", "request.invalid");
-        GatewayRules.Require(!request.Headers.ContainsKey("Content-Encoding") &&
-            (request.ContentLength is null || request.ContentLength >= 1 && request.ContentLength <= maximumBytes),
-            request.ContentLength > maximumBytes ? "request.too_large" : "request.invalid");
-        if (maximumBytes > MaximumPairingRequestBytes &&
-            request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
-            limit.MaxRequestBodySize = maximumBytes;
-        using var output = new MemoryStream();
-        var buffer = new byte[4096];
-        // Anyone may call these routes, so a slow sender can't hold the connection open: the whole body within 10 seconds.
-        using var deadline = new CancellationTokenSource(PairingBodyDeadline);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        try
-        {
-            while (true)
-            {
-                var read = await request.Body.ReadAsync(buffer, linked.Token).ConfigureAwait(false);
-                if (read == 0)
-                    break;
-                if (output.Length + read > maximumBytes)
-                    throw new GatewayProtocolException("request.too_large");
-                output.Write(buffer, 0, read);
-            }
-        }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            throw new GatewayProtocolException("request.timeout");
-        }
-        GatewayRules.Require(output.Length > 0, "request.invalid");
-        var bytes = output.ToArray();
-        try
-        {
-            using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
-            InspectJson(document.RootElement);
-            var proof = document.Deserialize<T>(Json);
-            GatewayRules.Require(proof is not null, "request.invalid");
-            return proof!;
-        }
-        catch (JsonException)
-        {
-            throw new GatewayProtocolException("request.invalid");
-        }
-        catch (InvalidOperationException)
-        {
-            throw new GatewayProtocolException("request.invalid");
-        }
-    }
-
-    private static void InspectJson(JsonElement element)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var property in element.EnumerateObject())
-            {
-                GatewayRules.Require(names.Add(property.Name), "request.invalid");
-                InspectJson(property.Value);
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-                InspectJson(item);
-        }
-        else if (element.ValueKind == JsonValueKind.String)
-        {
-            _ = element.GetString();
-        }
-    }
 
     private async ValueTask WriteFailureAsync(
         HttpContext context,
@@ -491,44 +484,6 @@ internal sealed partial class GatewayHttpApplication
             Detail = detail,
             TraceId = traceId
         }).ConfigureAwait(false);
-    }
-
-    private static async ValueTask WriteJsonAsync<T>(HttpContext context, int status, T value, int maximumBytes = GatewayRules.MaximumResponseBytes,
-        JsonSerializerOptions? options = null)
-    {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, options ?? Json);
-        GatewayRules.Require(bytes.Length <= maximumBytes, "gateway.internal");
-        context.Response.StatusCode = status;
-        context.Response.ContentType = "application/json; charset=utf-8";
-        context.Response.ContentLength = bytes.Length;
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers.XContentTypeOptions = "nosniff";
-        await context.Response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
-    }
-
-    private Guid TraceId()
-    {
-        var bytes = crypto.RandomBytes(16);
-        return new(bytes);
-    }
-
-    private static JsonSerializerOptions CreateJson()
-    {
-        var options = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            RespectNullableAnnotations = true,
-            MaxDepth = 8
-        };
-        options.Converters.Add(new JsonStringEnumConverter(
-            JsonNamingPolicy.SnakeCaseLower, allowIntegerValues: false));
-        return options;
-    }
-
-    private sealed record LivenessDocument
-    {
-        public required string Status { get; init; }
     }
 
     private sealed record PairingResponseDocument

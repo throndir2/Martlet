@@ -55,9 +55,10 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(character, "MotionCharacter");
         var emotes = PageButton("Kept motions and Make a motion", () => OpenCompanion(CompanionTab.Emotes), link: true, id: "MotionOpenEmotes");
         page.Children.Add(Card(Heading("Now"), nowText,
-            Note("While you talk, Martlet can move a VRM character's whole body: cheer, clap, bow deeply or any movement it thinks of. " +
-                "It makes a new motion in the background and plays it when it's ready, and your words never wait for it. It keeps each " +
-                "motion, so your VRM characters do it again at once later, on all your computers.", new Thickness(0, 0, 0, 4)),
+            HelpTip.Explain("While you talk, Martlet can move a VRM character's whole body: cheer, clap, bow deeply or any movement it " +
+                "thinks of. It makes a new motion in the background and plays it when it's ready, and your words never wait for it. It " +
+                "keeps each motion, so your VRM characters do it again at once later, on all your computers.", new Thickness(0, 0, 0, 4),
+                "MotionWhat", "body motions", wiki: "The-Character#body-motions"),
             character, Row(emotes)));
 
         // ---------- the motion pool: the computers that make motions, in order ----------
@@ -68,6 +69,7 @@ public partial class MainWindow
             Intro = "The computers that make body motions, in order. A motion goes to the first one that isn't making another motion; " +
                 "when all are busy it waits for the first to finish. With none on, Martlet makes no new motions; the motions it kept " +
                 "still play. Open a computer's Settings to set Motion up there. Your other computers follow this list.",
+            Wiki = "The-Character#body-motions",
             Status = MotionMemberStatus,
             Settings = MotionMemberSettings,
             CanAdd = host => !host.Shared && HostCan(host.HostId, HostRoles.Motion) is not { Allowed: false },
@@ -82,18 +84,18 @@ public partial class MainWindow
         }));
 
         // ---------- what Motion is ----------
-        var about = Note(MotionAbout, new Thickness(0, 0, 0, 0));
+        var about = HelpTip.Explain(MotionAbout, new Thickness(0, 0, 0, 0), "MotionAbout", "the Motion role", wiki: "The-Character#body-motions");
         AutomationProperties.SetAutomationId(about, "MotionAbout");
         page.Children.Add(Card(Heading("What Motion is"), about));
     }
 
     /// <summary>What the Motion role is, in a few sentences (role.conf's facts and terms in short).</summary>
     internal const string MotionAbout =
-        "Martlet's Motion role runs Tencent's HY-Motion 1.0 in Docker on an NVIDIA graphics card with 24 GB or more (the standard " +
-        "model needs 26 GB) and about 32 GB of memory. It downloads about 20 GB once, loads when the first motion is made and frees " +
-        "the card three minutes after the last one, so the voice and thinking get it back. Only the short English description of " +
-        "the movement goes to that computer, and it's free. Its license is Tencent's HY-Motion 1.0 Community License: it doesn't " +
-        "apply in the European Union, the United Kingdom or South Korea, so don't use Motion there.";
+        "Motion runs Tencent's HY-Motion 1.0 on an NVIDIA graphics card with 24 GB or more, and its license doesn't let you use it in " +
+        "the European Union, the United Kingdom or South Korea. It runs in Docker; the standard model needs 26 GB and the computer " +
+        "about 32 GB of memory. It downloads about 20 GB once, loads when the first motion is made and frees the card three minutes " +
+        "after the last one, so the voice and thinking get it back. Only the short English description of the movement goes to that " +
+        "computer, and it's free. Its license is Tencent's HY-Motion 1.0 Community License.";
 
     /// <summary>Companion › Motion's Now line (MotionNow). <paramref name="where"/>: the computers motions go to, in order (the
     /// list's members that are on and paired here; before the list, the older choice's). <paramref name="listed"/>: the list
@@ -106,7 +108,7 @@ public partial class MainWindow
         if (where.Count == 0)
             return listed
                 ? "No computer in the list can make motions for this PC: pair one on Devices, or add one below."
-                : "Not set up yet. Add one of your computers with a 24 GB NVIDIA graphics card to the list below and set Motion up there.";
+                : "Not set up yet: add one of your computers with a 24 GB NVIDIA graphics card to the list below and set Motion up there.";
         var place = where.Count == 1 ? where[0] : $"{where[0]} (or the first free one of {where.Count} computers)";
         return $"Martlet makes body motions on {place}.";
     }
@@ -115,9 +117,9 @@ public partial class MainWindow
     internal static string MotionCharacter(AvatarRenderer? renderer) => renderer switch
     {
         AvatarRenderer.Vrm => "Your character is a VRM, so replies can make and play body motions.",
-        null => "Body motions play only on VRM characters. Choose one on Companion › Character.",
-        _ => "Your character is a Live2D model. Body motions play only on VRM characters, so replies don't make or play them now; " +
-            "the list below stays ready for when you choose a VRM character. Live2D characters keep their own model's motions."
+        null => "Body motions play only on VRM characters; choose one on Companion › Character.",
+        _ => "Your character is a Live2D model and body motions play only on VRM characters, so replies don't make or play them now " +
+            "(Live2D characters keep their own model's motions)."
     };
 
     /// <summary>Makes the motion list once from the older choice (motion.json: one computer, automatic or off) and the computers
@@ -250,8 +252,8 @@ public partial class MainWindow
         if (store is null || setupService is null || closing) return;
         if (motionPendingHost is not null)
         {
-            ActionText.Text = $"Motion is still being set up on {(motionPendingHost == MotionThisPc ? "this PC" : motionPendingHost)}. " +
-                "Its window shows progress; set up the next one when it's done.";
+            ActionText.Text = $"Motion is still being set up on {(motionPendingHost == MotionThisPc ? "this PC" : motionPendingHost)}; " +
+                "its window shows progress, so set up the next one when it's done.";
             return;
         }
         var thisPc = ThisPcHost();
@@ -266,10 +268,10 @@ public partial class MainWindow
             {
                 var done = await RunHostActionAsync(target, HostRoles.Get(HostRoles.Motion).Add);
                 if (closing) return;
-                if (done is null) motionFailures[key] = $"Setting it up on {where} stopped. Its run window has details.";
+                if (done is null) motionFailures[key] = $"Setting it up on {where} stopped; its run window has details.";
                 else if (await WaitForMotionAsync(target, lifetime.Token) is { } why)
-                    motionFailures[key] = $"Setup finished, but Martlet can't see Motion on {where} yet ({why}). Check it in a minute.";
-                else ActionText.Text = $"Motion is ready on {where}. Martlet makes body motions there for VRM characters.";
+                    motionFailures[key] = $"Setup finished, but Martlet can't see Motion on {where} yet ({why}); check it in a minute.";
+                else ActionText.Text = $"Motion is ready on {where}, and Martlet makes body motions there for VRM characters.";
                 return;
             }
             string? stopped = null;
@@ -287,7 +289,7 @@ public partial class MainWindow
                     throw new InvalidOperationException($"Installing Motion stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
                 run.Status("Checking Motion on this PC...");
                 if (await WaitForMotionAsync(pc, run.Token) is { } why)
-                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Motion yet ({why}). Check this PC in a minute.");
+                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Motion yet ({why}); check this PC in a minute.");
                 return "Motion is ready on this PC.";
             }
             var (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,

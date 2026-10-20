@@ -183,7 +183,7 @@ public partial class MainWindow
         if (closing) return;
         if (!SharingFilesReady() || await SharingSourcesAsync(lifetime.Token) is not { } sources)
         {
-            ActionText.Text = "Martlet can't share characters right now; try again in a moment.";
+            ActionText.Text = "Martlet can't share characters right now. Try again in a moment.";
             if (openTab == CompanionTab.Profiles) RenderTab();
             return;
         }
@@ -199,8 +199,8 @@ public partial class MainWindow
         ActionText.Text = mode switch
         {
             CharacterShareMode.Copy => $"People in your household can now use a copy of '{profile.Name}'.",
-            CharacterShareMode.Together => $"People in your household can now talk to '{profile.Name}', and it remembers everyone it talks to.",
-            _ => $"'{profile.Name}' is private again; copies people made stay theirs."
+            CharacterShareMode.Together => $"People in your household can now talk to '{profile.Name}'. It remembers everyone it talks to, in its own memories.",
+            _ => $"'{profile.Name}' is private again. Copies people made stay theirs."
         };
         if (openTab == CompanionTab.Profiles) RenderTab();
     }
@@ -250,7 +250,7 @@ public partial class MainWindow
             }
         }
         return taken >= 0 ? taken
-            : throw new DesktopMemoryException("memory.no_host", "None of your hosts took the facts: check that they run an up-to-date Martlet, then try again.");
+            : throw new DesktopMemoryException("memory.no_host", "None of your hosts took the facts. Check that they run an up-to-date Martlet, then try again.");
     }
 
     /// <summary>Makes memory use the space of the character in use: its own space when it is shared together, else the
@@ -320,7 +320,7 @@ public partial class MainWindow
         }
         if (own.HasJoined(profile.Id))
         {
-            panel.Children.Add(State("Shared with you together: everyone who talks to it shares its memories, and only its owner changes it."));
+            panel.Children.Add(State("Shared with you together: everyone who talks to it shares its memories. Only its owner changes it."));
             return panel;
         }
         var mode = own.ModeOf(profile.Id);
@@ -347,7 +347,7 @@ public partial class MainWindow
         {
             CharacterShareMode.Copy => "Shared as a copy: people in your household can use a copy, with its own memories.",
             CharacterShareMode.Together => "Shared together: people in your household talk to this character, and it remembers everyone in its own memories.",
-            _ => own.RemembersOnItsOwn(profile.Id) ? "Private: only you see and use it, and it keeps the memories it made while shared." : "Private: only you see and use it."
+            _ => own.RemembersOnItsOwn(profile.Id) ? "Private: only you see and use it. It keeps the memories it made while shared." : "Private: only you see and use it."
         }));
         return panel;
     }
@@ -362,9 +362,9 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Household characters"),
-            HelpTip.Explain("Characters other people in your household share. Use a copy to make one your own, with its own memories. Talk to a " +
-                "character shared together and it remembers everyone it talks to.", new Thickness(0, 0, 0, 8), "HouseholdCharacters",
-                "household characters", wiki: "Accounts-and-Household#share-characters-and-memories")
+            HelpTip.Explain("Characters other people in your household share. Use a copy to make one your own, with its own memories. Talk " +
+                "to a character shared together and it remembers everyone it talks to.", new Thickness(0, 0, 0, 8), "HouseholdCharacters",
+                "household characters", wiki: "Personality-and-Characters#sharing-a-character-with-your-household")
         };
         TextBlock Status(string text)
         {
@@ -374,7 +374,7 @@ public partial class MainWindow
         }
         if (SharingAccount is not { } me)
         {
-            stack.Add(Status("Household characters need an account for each person, so they show once Martlet knows who uses it."));
+            stack.Add(Status("Household characters need an account for each person. They show once Martlet knows who uses it."));
             return Card([.. stack]);
         }
         var entries = HouseholdEntries();
@@ -392,14 +392,14 @@ public partial class MainWindow
                 Id = character.Id, Name = character.Name, PersonaId = character.Persona.Id, ModelId = character.ModelId, VoiceId = character.VoiceId
             };
             var problem = ProfileProblem(asProfile, library, voices);
-            var state = character.Mode == CharacterShareMode.Copy ? "Shared as a copy"
-                : joined ? "Shared together and in your profiles: use it there or here"
-                : "Shared together: talk to it to add it to your profiles";
+            var state = character.Mode == CharacterShareMode.Copy ? "Shared as a copy."
+                : joined ? "Shared together. It is in your profiles; use it there or here."
+                : "Shared together. Talk to it to add it to your profiles.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = character.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             text.Children.Add(Note($"Shared by {HouseholdMemberName(owner)} · Look: {LookName(character.ModelId, library)} · Voice: {VoiceName(character.VoiceId, voices)}",
                 new Thickness(0, 2, 0, 0)));
-            var stateText = Note(problem is null ? state + "." : $"{state} · {problem}", new Thickness(0, 2, 0, 0));
+            var stateText = Note(state + (problem is null ? "" : " " + problem), new Thickness(0, 2, 0, 0));
             AutomationProperties.SetAutomationId(stateText, "HouseholdCharacterState-" + character.Key);
             text.Children.Add(stateText);
             var (label, id, run) = character.Mode == CharacterShareMode.Copy
@@ -440,11 +440,11 @@ public partial class MainWindow
         if (lorebooks is not null && shared.Lorebooks.Count > 0)
         {
             var lore = await lorebooks.UpdateAsync(current => SharedCharacters.CopyLorebooks(current, shared, copy.PersonaId), lifetime.Token);
-            if (!lore.Saved) note = "; its lorebooks couldn't be copied: " + lore.Error;
+            if (!lore.Saved) note = " Its lorebooks couldn't be copied: " + lore.Error;
         }
         ErrorLog.Info($"Sharing: used a copy of a household character ({shared.Key}) as {copy.Key}.");
         await UseCharacterProfileAsync(copy.Id);
-        ActionText.Text = $"'{copy.Name}' is your own copy now, with its own memories" + (note.Length > 0 ? note : ".");
+        ActionText.Text = $"'{copy.Name}' is your own copy now, with its own memories." + note;
         if (openTab == CompanionTab.Profiles) RenderTab();
     }
 
@@ -475,7 +475,7 @@ public partial class MainWindow
         ErrorLog.Info($"Sharing: this account talks to a character shared together ({shared.Key}).");
         await UseCharacterProfileAsync(character);
         if (!ActionText.Text.StartsWith("Couldn't", StringComparison.Ordinal))
-            ActionText.Text = $"You talk to '{shared.Name}' together with your household now, and it remembers everyone it talks to.";
+            ActionText.Text = $"You talk to '{shared.Name}' together with your household now. It remembers everyone it talks to.";
         if (openTab == CompanionTab.Profiles) RenderTab();
     }
 
@@ -484,8 +484,8 @@ public partial class MainWindow
     private async Task LeaveSharedCharacterAsync(CharacterProfile profile)
     {
         if (closing) return;
-        if (!ConfirmationDialog.Confirm(this, $"Leave '{profile.Name}'? It goes from your characters on all your computers, but its memories " +
-                "stay with it for the others.", "Leave character"))
+        if (!ConfirmationDialog.Confirm(this, $"Leave '{profile.Name}'?\n\nIt goes from your characters on all your computers. What it " +
+                "remembers stays with it for the others who talk to it. You can talk to it again from Household characters.", "Leave character"))
             return;
         if (!await LeaveMirrorAsync(profile.Id)) return;
         ActionText.Text = $"'{profile.Name}' left your characters.";

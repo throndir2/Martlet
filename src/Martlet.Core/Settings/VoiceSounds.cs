@@ -62,7 +62,7 @@ public static class VoiceSounds
     /// play." Null when it makes at least one.</summary>
     public static string? NoSoundsReason(SpeechEngine? engine, bool voice) =>
         !voice ? "Martlet has no voice set up, so voice sounds don't play."
-        : engine is null ? "This voice says words only, so voice sounds don't play. Chatterbox Turbo, Chatterbox Nano, Dia and ElevenLabs make them."
-        : Supported(engine).Count == 0 ? $"{engine.Name} says words only, so voice sounds don't play. Chatterbox Turbo, Chatterbox Nano, Dia and ElevenLabs make them."
+        : engine is null ? "This voice says words only, so voice sounds don't play (Chatterbox Turbo, Chatterbox Nano, Dia and ElevenLabs make them)."
+        : Supported(engine).Count == 0 ? $"{engine.Name} says words only, so voice sounds don't play (Chatterbox Turbo, Chatterbox Nano, Dia and ElevenLabs make them)."
         : null;
 }

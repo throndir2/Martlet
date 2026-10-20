@@ -628,10 +628,7 @@ internal sealed partial class McpServer
     private static object MemorySyncStatus(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
-        string? choice;
-        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
-        var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
+        var sync = Martlet.Core.Cluster.ClusterSyncChoice.Describe(directory);
         object Described(Martlet.Core.Sync.MemorySyncState state) => new
         {
             state = state.StoreId == Guid.Empty ? "unreadable" : "loaded", syncedAt = state.SyncedAt, facts = state.Observed.Count,
@@ -681,7 +678,7 @@ internal sealed partial class McpServer
 
         var roster = Martlet.Core.Speakers.VoiceRoster.Empty;
         string voiceList;
-        var voicesPath = Path.Combine(directory, "voices.json");
+        var voicesPath = Path.Combine(directory, Martlet.Core.Speakers.VoiceChoices.RosterFile);
         try
         {
             if (File.Exists(voicesPath))
@@ -855,26 +852,21 @@ internal sealed partial class McpServer
         };
     }
 
-    /// <summary>smart-home.json in a data directory (the file name and fields match Martlet.Desktop's HomePreferences). The
-    /// token lives in Windows Credential Manager and is never read here.</summary>
+    /// <summary>smart-home.json in a data directory, read through its store (Martlet.Home.HomePreferences). The token lives in
+    /// Windows Credential Manager and is never read here.</summary>
     private static object SmartHomeStatus(JsonElement arguments)
     {
-        var path = Path.Combine(DataDirectory(arguments), "smart-home.json");
-        if (!File.Exists(path)) return new { state = "none", connected = false };
+        var directory = DataDirectory(arguments);
+        if (!File.Exists(Path.Combine(directory, Martlet.Home.HomePreferences.FileName))) return new { state = "none", connected = false };
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            var root = document.RootElement;
-            string Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
-            bool Flag(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
-            var tokenSaved = root.TryGetProperty("CredentialId", out var id) && id.ValueKind == JsonValueKind.String &&
-                Guid.TryParse(id.GetString(), out var guid) && guid != Guid.Empty;
+            var saved = Martlet.Home.HomePreferences.Read(directory);
+            var tokenSaved = saved.CredentialId != Guid.Empty;
             return new
             {
-                state = "loaded", connected = Text("Address").Length > 0 && tokenSaved, address = Text("Address"), name = Text("LocationName"),
-                version = Text("Version"), tokenSaved, control = Flag("Control"), allowSensitive = Flag("AllowSensitive"), modelTools = Flag("ModelTools"),
-                shared = Flag("FollowShare"), sharedBy = Text("SharedBy"),
-                sharedRevision = root.TryGetProperty("SharedRevision", out var revision) && revision.TryGetInt64(out var number) ? number : 0
+                state = "loaded", connected = saved.Address.Length > 0 && tokenSaved, address = saved.Address, name = saved.LocationName,
+                version = saved.Version, tokenSaved, control = saved.Control, allowSensitive = saved.AllowSensitive, modelTools = saved.ModelTools,
+                shared = saved.FollowShare, sharedBy = saved.SharedBy, sharedRevision = saved.SharedRevision
             };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
@@ -894,43 +886,37 @@ internal sealed partial class McpServer
         return new { downloaded = true, version = own.Version, verified = own.Verified, signed = problem is null, signatureProblem = problem };
     }
 
-    /// <summary>messaging.json in a data directory (the file name and fields match Martlet.Desktop's MessagingPreferences). The
-    /// bot token lives in Windows Credential Manager and is never read here; paired chats are only counted.</summary>
+    /// <summary>messaging.json in a data directory, read through its store (Martlet.Messaging.MessagingPreferences). The bot
+    /// token lives in Windows Credential Manager and is never read here; paired chats are only counted.</summary>
     private static object MessagingStatus(JsonElement arguments)
     {
-        var path = Path.Combine(DataDirectory(arguments), "messaging.json");
+        var directory = DataDirectory(arguments);
         object NoTelegram() => new { connected = false, enabled = false, chats = 0 };
         object NoWhatsApp() => new { connected = false, enabled = false, chats = 0 };
-        if (!File.Exists(path)) return new { state = "none", telegram = NoTelegram(), whatsApp = NoWhatsApp(), cloudflared = CloudflaredStatus(DataDirectory(arguments)) };
+        if (!File.Exists(Path.Combine(directory, Martlet.Messaging.MessagingPreferences.FileName)))
+            return new { state = "none", telegram = NoTelegram(), whatsApp = NoWhatsApp(), cloudflared = CloudflaredStatus(directory) };
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            static string Text(JsonElement section, string name) =>
-                section.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
-            static bool Flag(JsonElement section, string name) => section.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
-            static int Chats(JsonElement section) =>
-                section.TryGetProperty("Chats", out var list) && list.ValueKind == JsonValueKind.Array ? list.GetArrayLength() : 0;
-            static bool Saved(JsonElement section) => Guid.TryParse(Text(section, "CredentialId"), out var credential) && credential != Guid.Empty;
-            var root = document.RootElement;
-            object telegramStatus = root.TryGetProperty("Telegram", out var telegram) && telegram.ValueKind == JsonValueKind.Object
-                ? new
+            var saved = Martlet.Messaging.MessagingPreferences.Read(directory);
+            var telegram = saved.Telegram;
+            var whatsApp = saved.WhatsApp;
+            return new
+            {
+                state = "loaded",
+                telegram = new
                 {
-                    connected = Text(telegram, "BotUsername").Length > 0, enabled = Flag(telegram, "Enabled"), bot = Text(telegram, "BotUsername"),
-                    botName = Text(telegram, "BotName"), tokenSaved = Saved(telegram), chats = Chats(telegram), speakReplies = Flag(telegram, "SpeakReplies")
-                }
-                : NoTelegram();
-            object whatsAppStatus = root.TryGetProperty("WhatsApp", out var whatsApp) && whatsApp.ValueKind == JsonValueKind.Object
-                ? new
+                    connected = telegram.Connected, enabled = telegram.Enabled, bot = telegram.BotUsername, botName = telegram.BotName,
+                    tokenSaved = telegram.CredentialId != Guid.Empty, chats = telegram.Chats.Count, speakReplies = telegram.SpeakReplies
+                },
+                whatsApp = new
                 {
-                    connected = Text(whatsApp, "PhoneNumberId").Length > 0, enabled = Flag(whatsApp, "Enabled"), number = Text(whatsApp, "Number"),
-                    name = Text(whatsApp, "Name"), appId = Text(whatsApp, "AppId"), businessAccountId = Text(whatsApp, "BusinessAccountId"),
-                    phoneNumberId = Text(whatsApp, "PhoneNumberId"),
-                    port = whatsApp.TryGetProperty("Port", out var port) && port.TryGetInt32(out var number) ? number : 0,
-                    publicAddress = Text(whatsApp, "PublicAddress"), quickTunnel = Text(whatsApp, "PublicAddress").Length == 0,
-                    secretsSaved = Saved(whatsApp), chats = Chats(whatsApp), speakReplies = Flag(whatsApp, "SpeakReplies")
-                }
-                : NoWhatsApp();
-            return new { state = "loaded", telegram = telegramStatus, whatsApp = whatsAppStatus, cloudflared = CloudflaredStatus(DataDirectory(arguments)) };
+                    connected = whatsApp.Connected, enabled = whatsApp.Enabled, number = whatsApp.Number, name = whatsApp.Name, appId = whatsApp.AppId,
+                    businessAccountId = whatsApp.BusinessAccountId, phoneNumberId = whatsApp.PhoneNumberId, port = whatsApp.Port,
+                    publicAddress = whatsApp.PublicAddress, quickTunnel = whatsApp.PublicAddress.Length == 0,
+                    secretsSaved = whatsApp.CredentialId != Guid.Empty, chats = whatsApp.Chats.Count, speakReplies = whatsApp.SpeakReplies
+                },
+                cloudflared = CloudflaredStatus(directory)
+            };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {

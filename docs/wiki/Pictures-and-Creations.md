@@ -27,6 +27,75 @@ busy, offline or missing a file, the next place draws. When all are busy, the
 picture waits in the shortest line. Each computer keeps its own list, because
 which place is free depends on where you talk. The pictures are shared.
 
+When you add a place, it goes to the end of the list. Press **Up** to draw
+there sooner. With nothing on, pictures are off.
+
+### Set up the Picture making role
+
+Add **This PC** or one of your computers, open its **Settings** and press
+**Set up**. Martlet sets the role up in Docker, as its other roles, and shows
+the progress. If this PC has no host service yet, Martlet sets it up first (and
+installs Docker Desktop when it is missing).
+
+- It needs an NVIDIA graphics card with 8 GB or more (12 GB is faster). On a PC
+  without one, use another computer, your own ComfyUI or a cloud provider.
+- It shares the graphics card with the voice and listening. It uses the card
+  only while it draws, and frees it a few minutes after the last picture.
+- It builds a container with ComfyUI (GPL-3.0) and PyTorch. Then it downloads
+  about 20 GB of pinned Z-Image Turbo files from
+  `huggingface.co/Comfy-Org/z_image_turbo` (Apache-2.0): the diffusion model,
+  its Qwen3 4B text encoder and the VAE.
+- The descriptions that Martlet writes go to that computer.
+- Do not use it for anything illegal or harmful, or to show real people without
+  their consent. Say that pictures are AI-generated when you share them.
+
+If setup stops, its run window has the details. If setup finishes but Martlet
+can't see Picture making yet, wait a minute and press **Check**.
+
+### Your own ComfyUI
+
+Choose **Add address** and type the address of a ComfyUI that you run. Martlet
+sends ComfyUI the workflow and the description through ComfyUI's own API, and
+fetches the picture.
+
+1. Start ComfyUI with `--listen`, so that other computers can reach it.
+   ComfyUI has no password, so do this only on your own network.
+2. Open the place's **Settings** and press **Connect**. Martlet shows the
+   ComfyUI version, its checkpoints and whether Z-Image Turbo is there.
+3. Choose the **Workflow** and press **Save**:
+   - **Z-Image Turbo**: its three files must be in ComfyUI's models folders.
+   - **A checkpoint**: a Stable Diffusion 1.5 or XL checkpoint that **Connect**
+     listed.
+   - **My own workflow**: in ComfyUI, open your workflow and use
+     **Workflow › Export (API)**. Then press **Load workflow file** and choose
+     that file (256 KB at most). Put `{{prompt}}` where the description goes.
+     You can also use `{{negative}}`, `{{seed}}`, `{{width}}` and
+     `{{height}}`. Without `{{prompt}}`, Martlet fills in the sampler's prompt
+     itself.
+
+If **Connect** fails, make sure that ComfyUI runs, that you started it with
+`--listen` and that the address is right.
+
+### Cloud providers
+
+Under **A cloud provider**, choose **OpenRouter** or **NVIDIA Build**:
+
+- **OpenRouter**: any OpenRouter model that draws (on openrouter.ai/models,
+  choose output **image**). Martlet asks for one picture of about 1K, in the
+  shape that it chose.
+- **NVIDIA Build**: NVIDIA's FLUX models (build.nvidia.com), with the same
+  `nvapi-` key as NVIDIA Build's chat models.
+
+Paste your API key. Martlet saves it in Windows Credential Manager. When
+Thinking already uses the same provider, you can leave the key empty to use
+Thinking's key. Tick the box to agree: the description of each picture drawn
+there goes to the provider, and each picture may cost money. Then press
+**Add**.
+
+The model is part of the place. To draw with another model of the same
+provider, add the provider again with that model. A cloud place's **Settings**
+can save a key of its own. When you remove the place, its own key goes too.
+
 ## Asking for a picture
 
 Say "Draw me a fox curled up in the snow." Your Thinking model must be able to
@@ -105,6 +174,10 @@ Choose a creation to see its title, kind and date, the voice and personality
 that made it, and its details, such as a song's lyrics or a report's text.
 **Rename** gives it a new title. **Delete** removes it. Both apply on all your
 computers, and a deleted creation can't be brought back.
+
+A creation that a newer Martlet made can be of a kind that this Martlet doesn't
+know yet. Update Martlet to use it on this PC. Until then, Martlet keeps it for
+your other computers.
 
 There is no Play button. Ask Martlet instead: "Sing the rain song again",
 "Start from the chorus" or "Show me the fox picture."

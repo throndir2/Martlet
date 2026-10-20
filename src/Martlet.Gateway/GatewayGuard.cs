@@ -251,7 +251,7 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
         var kind = Source(context);
         // A public endpoint whose sign-in has no usable method serves nothing outside home, except the paired owner fixing
         // sign-in (a signed request to the sign-in settings).
-        if (kind == GatewaySourceKind.Outside && rawTarget != GatewayHttpApplication.SignInSettingsPath && OutsideAccessPaused)
+        if (kind == GatewaySourceKind.Outside && rawTarget != GatewaySignInRoutes.SignInSettingsPath && OutsideAccessPaused)
         {
             var from = Address(context);
             var at = clock.GetUtcNow();

@@ -57,7 +57,7 @@ public partial class MainWindow
             _ when measured => "measured with vision",
             _ => showing ? "being read" : "read when the character shows"
         };
-        return $"Where it looks: {gaze}{(free ? "; replies may change it" : "")}. Eyes: {eyes}.";
+        return $"Where it looks: {gaze}{(free ? "; replies may change it" : "")}; eyes: {eyes}.";
     }
 
     /// <summary>Companion › Touch: how many touch zones are on and who placed them, and what a touch does while Martlet talks.</summary>
@@ -100,7 +100,7 @@ public partial class MainWindow
     }
 
     /// <summary>Companion › Smart home: which Home Assistant Martlet is connected to and what it may do with it.</summary>
-    internal static string SmartHomeNow(HomePreferences saved, bool connected)
+    internal static string SmartHomeNow(Martlet.Home.HomePreferences saved, bool connected)
     {
         if (!connected) return "Off: Home Assistant isn't connected.";
         var where = (saved.LocationName.Length > 0 ? saved.LocationName : "Home Assistant") + (saved.Address.Length > 0 ? $" at {saved.Address}" : "");

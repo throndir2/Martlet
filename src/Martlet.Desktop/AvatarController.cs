@@ -644,7 +644,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 throw new InvalidOperationException("The character window closed before it finished loading.");
             if (selected.LipSync == AvatarLipSync.Audio2Face)
             {
-                Publish("Character is showing. Review and activate Audio2Face below to start lip-sync.");
+                Publish("Character is showing; review and activate Audio2Face below to start lip-sync.");
                 return;
             }
             AutoAudio2Face? automatic = null;
@@ -662,18 +662,18 @@ internal sealed partial class AvatarController : IAsyncDisposable
             StartCharacter(current, automatic);
             if (automatic is null)
                 Publish(selected.LipSync == AvatarLipSync.Auto
-                    ? "Character is showing. No compatible mouth controls were found."
-                    : "Character is showing. Mouth movement follows Martlet's voice.");
+                    ? "Character is showing, but no compatible mouth controls were found."
+                    : "Character is showing, and its mouth follows Martlet's voice.");
             else if (hostLink is { } assigned && await assigned.ReadyAsync(token))
-                Publish($"Character is showing. Lip-sync is using host {assigned.Authority}.");
+                Publish($"Character is showing, with lip-sync from host {assigned.Authority}.");
             else if (await Audio2FaceProbe.IsListeningAsync(automatic.Options, TimeSpan.FromMilliseconds(300), token))
-                Publish($"Character is showing. Lip-sync is using Audio2Face at {automatic.Options.Endpoint.Authority}.");
+                Publish($"Character is showing, with lip-sync from Audio2Face at {automatic.Options.Endpoint.Authority}.");
             else if (hostLink is { } host)
-                Publish($"Character is showing. Host {host.Authority} isn't ready, so mouth movement follows Martlet's voice.");
+                Publish($"Character is showing; host {host.Authority} isn't ready, so its mouth follows Martlet's voice.");
             else if (selected.RemoteHost is not null)
-                Publish("Character is showing. Pair the host again to use it for lip-sync.");
+                Publish("Character is showing; pair the host again to use it for lip-sync.");
             else
-                Publish("Character is showing. Audio2Face isn't running, so mouth movement follows Martlet's voice.");
+                Publish("Character is showing; Audio2Face isn't running, so its mouth follows Martlet's voice.");
         }
         finally { changes.Release(); }
     }
@@ -1127,12 +1127,12 @@ internal sealed partial class AvatarController : IAsyncDisposable
             {
                 CheckAttempt(attempt, version);
                 profile = selected with { ResourceRevision = snapshot.Revision };
-                Publish("Model controls inspected. Review the mappings before activating Audio2Face.");
+                Publish("Model controls inspected; review the mappings before you activate Audio2Face.");
             }
         }
         catch
         {
-            Publish("Couldn't inspect the model. Check the model file, SDK folder and WebView2, then try again.");
+            Publish("Couldn't inspect the model; check the model file, SDK folder and WebView2, then try again.");
             if (entered)
             {
                 if (renderer is { } failed) await failed.DisposeAsync();
@@ -1186,7 +1186,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 pending = null;
                 observer.Enable();
                 worker = RunAsync(settings, targets, config, version, renderer, activation.Token);
-                Publish("Audio2Face is ready for this session. It will start when Martlet speaks.");
+                Publish("Audio2Face is ready for this session and starts when Martlet speaks.");
             }
         }
         finally
@@ -1272,7 +1272,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
                     if (token.IsCancellationRequested) break;
                     Publish($"Audio2Face couldn't animate this speech: {(error is Audio2FaceException a ? a.Failure.ToString() :
                         error is AvatarOperationException reason ? reason.Message :
-                        segment.Failure != SpeechObservationFailure.None ? segment.Failure.ToString() : "runtime or mapping failure")}. Voice continues.");
+                        segment.Failure != SpeechObservationFailure.None ? segment.Failure.ToString() : "runtime or mapping failure")}, and the voice continues.");
                 }
                 finally
                 {
@@ -1286,7 +1286,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
         catch (Exception error) when (RendererFailures.Is(error, token))
         {
             RendererFailures.Log("Audio2Face lip-sync stopped", error);
-            Publish("Character lip-sync stopped. Voice continues; inspect again before retrying.");
+            Publish("Character lip-sync stopped and the voice continues; inspect again before you retry.");
             runtimeFailed = true;
             observer.Disable();
             lock (stateGate) if (activation is { } currentActivation) currentActivation.CancelAsync().Forget();
@@ -1300,11 +1300,11 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 try { await ownedRenderer.SendAsync("stop", new { }, clear.Token); }
                 catch (Exception error) when (RendererFailures.Is(error, CancellationToken.None))
                 {
-                    Publish("Couldn't reset the character, so Martlet stopped the renderer. Voice continues.");
+                    Publish("Couldn't reset the character, so Martlet stopped the renderer; the voice continues.");
                     await ownedRenderer.DisposeAsync();
                 }
             }
-            if (token.IsCancellationRequested && !runtimeFailed) Publish("Audio2Face stopped. Show the character again to restart it.");
+            if (token.IsCancellationRequested && !runtimeFailed) Publish("Audio2Face stopped; show the character again to restart it.");
         }
     }
 
@@ -1433,7 +1433,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
         {
             Revoke();
             await CleanupAsync();
-            Publish("Character hidden. Voice continues.");
+            Publish("Character hidden; the voice continues.");
         }
         finally { changes.Release(); }
     }

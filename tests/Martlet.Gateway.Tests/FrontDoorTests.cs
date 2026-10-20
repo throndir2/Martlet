@@ -113,8 +113,8 @@ public sealed partial class FrontDoorTests
 
     private static class FrontDoorPaths
     {
-        internal const string SignIn = GatewayHttpApplication.FrontDoorSignInPath;
-        internal const string SignOut = GatewayHttpApplication.FrontDoorSignOutPath;
+        internal const string SignIn = GatewayFrontDoorRoutes.FrontDoorSignInPath;
+        internal const string SignOut = GatewayFrontDoorRoutes.FrontDoorSignOutPath;
     }
 
     private static FormUrlEncodedContent Form(string form, string? key = null) =>

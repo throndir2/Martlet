@@ -43,8 +43,8 @@ public partial class LiveConversationWindow
 
     /// <summary>The start of the vision button's tooltip while Martlet watches: where its pictures go.</summary>
     private string WatchingTip() => controller.ImageDescribed
-        ? $"Martlet checks {watchSource.Label}. Your image model, {controller.ImageRoute.Name}, describes the pictures in words for the " +
-          "Thinking model: one now and then for a look, and the newest while you type or talk."
+        ? $"Martlet checks {watchSource.Label}, and your image model, {controller.ImageRoute.Name}, describes the pictures in words " +
+          "for the Thinking model."
         : $"Martlet checks {watchSource.Label}, occasionally sends one picture to the Thinking model and sends the newest " +
           "with what you type or say.";
 

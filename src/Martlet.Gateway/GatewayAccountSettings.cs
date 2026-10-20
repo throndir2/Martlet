@@ -101,12 +101,10 @@ internal sealed class GatewayAccountSettings
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed partial class GatewaySettingsRoutes
 {
     internal const string AccountSettingsPath = SettingsPath + "/accounts/";
     private const string AccountSettingsDigestSuffix = "/digest";
-
-    internal GatewayAccountSettings AccountSettings { get; } = new();
 
     private static bool IsAccountSettingsTarget(string rawTarget) => rawTarget.StartsWith(AccountSettingsPath, StringComparison.Ordinal);
 

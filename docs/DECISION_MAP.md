@@ -210,15 +210,21 @@ These parts carry the shared settings and must agree with `SettingsFiles`:
 | --- | --- |
 | Shared sections of `settings.json` and `lorebooks.json` (Thinking, Listening, Speaking, the Thinking pool and others); `settings.json` is not a `SettingsFiles` row | `AppSettingsSections` (`src\Martlet.Core\Sync\AppSettingsSections.cs`) |
 | Shared sections of the desktop's own files (`talk`, `character`, `model-abilities`, `work-sharing` and others) | `DesktopSections()` (`src\Martlet.Desktop\MainWindow.SettingsSync.cs`) |
+| The per-model character files (touch zones, eyes, VRoid Hub credits, the character's own reaction changes) | `CharacterSharedSections` (`src\Martlet.Avatar.Hosting\CharacterSharedSections.cs`) |
+| Keeping clips of unnamed voices | `VoiceChoices.ClipsSection` (`src\Martlet.Core\Speakers\VoiceChoices.cs`) |
+| Discord (with its bot token) and Telegram and WhatsApp (with their secrets) | `DiscordSharing` (`src\Martlet.Discord\DiscordSharing.cs`), `MessagingSharing` (`src\Martlet.Messaging\MessagingSharing.cs`) |
 | Household or each person | `SettingScopes` (`src\Martlet.Core\Sync\SettingScopes.cs`) |
 | Pool lists: `pools.json` (shared) or `pools-local.json` (this PC) | `PoolArea.Shared` (`src\Martlet.Core\Cluster\Pools.cs`) |
 
 The rule is in [AGENTS.md](../AGENTS.md#martlet-is-one-app-configuration-is-shared):
 share by default; keep a setting local only when it describes the computer.
 A new settings file gets a `SettingsFiles` row, a store and, when it is not
-shared, a row in CLUSTER.md.
+shared, a row in CLUSTER.md. A file that holds no choice (status, cache,
+record) is named in `SettingsFiles.NotSettings` instead.
 
-**Tests:** `SettingsFilesTests` (every local file has its CLUSTER.md row),
+**Tests:** `SettingsFilesTests` (every local file has its CLUSTER.md row, and
+every file name a store declares is registered or named as not a setting),
+`SharedFilesTwoComputersTests`,
 `AccountSettingsTests` and `ThinkingPoolShareTests` (Martlet.Core.Tests);
 `SettingsFileStoreTests` and `ClusterSyncTests` (Martlet.Desktop.Tests).
 
@@ -300,7 +306,7 @@ with the find question in `HostFind` (`src\Martlet.Core\Network\HostFind.cs`).
 `HostRegistry.Moved` (`src\Martlet.Desktop\HostControl.cs`) keeps the new
 address with the pairing (`movedTo`) and moves an SSH target that named the old
 one. On a host, `GatewayHomeListeners` (`src\Martlet.Gateway`) and the Docker
-keeper's `follow_home` (`deploy\host\martlet-host`) decide where it listens.
+keeper's `follow_home` (`deploy\host\lib\docker.sh`) decide where it listens.
 
 **Tests:** `HostFindTests` (Martlet.Core.Tests), `HostMoveTests`
 (Martlet.Avatar.Audio2Face.Tests), `HomeListenerTests` (Martlet.Gateway.Tests),
@@ -350,6 +356,23 @@ singing host. `deploy\host\roles\singing\role.conf` has the matching choices and
 
 **Docs:** [Singing](SINGING.md#other-music-and-voice-match-options).
 
+## How a speech host service checks requests and downloads its models
+
+**What it decides:** for the xtts, dia, gpt-sovits, f5, chatterbox, singing, parakeet and voice-recognition host
+services: the answer to a request with a missing (411), bad (400) or too large (413) `Content-Length`, the default body
+limit, how a pinned model file is downloaded and checked (exact size and SHA-256, no partial file kept), and how a host
+owns its model process.
+
+**Owner:** `workers\common\martlet_worker_host.py` (`JsonHandler`, `download`, `fetch_pinned`, `ModelProcess`). Each
+role image copies it beside its host (build context `workers`, `workers\<engine>\host\Dockerfile`).
+
+**Tests:** `python:common`; each engine's own suite (`python:<engine>`); `Every_worker_a_role_builds_from_is_in_the_host_image`
+(Martlet.Desktop.Tests).
+
+**MCP:** `singing_check` with endpoint `fixture` starts this checkout's singing service, which uses it.
+
+**Docs:** [Host roles](../deploy/host/README.md).
+
 ## How much Martlet looks a question up (answer, look up or research)
 
 **What it decides:** when a reply answers from what Martlet knows, searches a guide or report, does a quick look-up, or
@@ -379,7 +402,7 @@ model a [network model name](OPENAI_ENDPOINT.md#network-model-names) runs on,
 how it ranks against the owner's work, whether and how long it waits for a
 free slot, and the context size it runs with.
 
-**Owner:** `GatewayHttpApplication.RelayOpenAiAsync` and `ListModelsAsync`
+**Owner:** `GatewayOpenAiRoutes.RelayOpenAiAsync` and `ListModelsAsync`
 (`src\Martlet.Gateway\GatewayOpenAi.cs`) for the key check, the model list and
 the order (this host's own model first, then the hosts of the roster that list
 the model; a host never sends a request on twice), and for where a request
@@ -416,7 +439,7 @@ door](OPENAI_ENDPOINT.md#the-front-door) (its public port) serves, what its web
 page shows to anyone and to a person signed in with a key, and when a web
 session ends.
 
-**Owner:** `GatewayHttpApplication.InvokeFrontDoorAsync` and
+**Owner:** `GatewayFrontDoorRoutes.InvokeFrontDoorAsync` and
 `GatewayFrontDoorSessions` (`src\Martlet.Gateway\GatewayFrontDoor.cs`) for the
 routes (`/v1`, `/`, `/portal/sign-in`, `/portal/sign-out`, `/health/live`;
 404 for the rest), sign-in and sessions; `GatewayFrontDoorPage.cs` for the

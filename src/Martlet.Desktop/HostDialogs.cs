@@ -310,10 +310,14 @@ internal sealed class HostInputDialog : ThemedWindow
             .OfType<string>().ToHashSet(StringComparer.Ordinal);
         void AddRoleChoice(HostRoleChoice choice)
         {
-            // Installed: what it runs with now, chosen. A variant's own choice has it only when that variant runs now.
-            var now = inputs.Current.GetValueOrDefault(choice.Variable) is { } current && choice.Options.Contains(current) ? current : null;
+            // Installed: what it runs with now, chosen. A variant's own choice has it only when that variant runs now. An open
+            // choice (any model name) also lists a model outside its options that the role runs now.
+            var held = inputs.Current.GetValueOrDefault(choice.Variable);
+            IReadOnlyList<string> listed = choice.Open && held is not null && !choice.Options.Contains(held) &&
+                Martlet.Core.Planning.SetupRoleChoice.OpenValue(held) ? [.. choice.Options, held] : choice.Options;
+            var now = inputs.Current.GetValueOrDefault(choice.Variable) is { } current && listed.Contains(current) ? current : null;
             var automatic = choice.Suggested && now is null;
-            string[] options = automatic ? [Automatic, .. choice.Options] : [.. choice.Options];
+            string[] options = automatic ? [Automatic, .. listed] : [.. listed];
             var pick = Pick(options, choice.Key, "choice." + choice.Variable);
             var label = pick is { } chosen ? $"{choice.Label} (recommended: {OptionText(chosen.Value)}, {chosen.Why})"
                 : automatic ? choice.Label + " (automatic recommended by the host)" : choice.Label;
@@ -377,13 +381,18 @@ internal sealed class HostInputDialog : ThemedWindow
     /// never moves it.</summary>
     private static void AddGpuChoice(HostInputDialog dialog, HostRoleInputs inputs, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
     {
-        string Name(string id) => inputs.Gpus.FirstOrDefault(g => g.Id == id)?.Name ?? (id == "all" ? "every card" : id);
+        string One(string id) => inputs.Gpus.FirstOrDefault(g => g.Id == id)?.Name ?? (id == "all" ? "every card" : id);
+        string Name(string id) => id.Contains(',', StringComparison.Ordinal) ? string.Join(" and ", id.Split(',').Select(One)) : One(id);
+        // A model split across several cards (choice.gpu GPU-a,GPU-b) is a choice of its own while it runs that way.
+        (string Value, string Text)[] split = inputs.GpuCurrent is { } across && across.Contains(',', StringComparison.Ordinal)
+            ? [(across, $"{Name(across)} (one model split across them)")] : [];
         (string Value, string Text)[] cards =
         [
             (Automatic, inputs.GpuCurrent is { } current
                 ? "Automatic (keeps " + Name(current) + ")"
                 : "Automatic (a card no other role uses, with the most free memory)"),
             .. inputs.Gpus.Select((g, i) => (g.Id, $"Card {i + 1}: {g.Describe()}")),
+            .. split,
             ("all", "All cards (one model spread over every card)")
         ];
         var now = inputs.Installed && inputs.GpuCurrent is { } runs && cards.Any(c => c.Value == runs) ? runs : null;

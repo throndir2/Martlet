@@ -11,8 +11,18 @@ namespace Martlet.Core.Planning;
 /// <summary>A choice that applies only to one variant of a role: choice <see cref="Variable"/> is <see cref="Value"/>.</summary>
 public sealed record SetupRoleCondition(string Variable, string Value);
 
-/// <summary>A role's choice (role.choice / role.choice_when): its variable, options and default.</summary>
-public sealed record SetupRoleChoice(string Variable, IReadOnlyList<string> Options, string Default, SetupRoleCondition? When = null);
+/// <summary>A role's choice (role.choice / role.choice_when): its variable, options and default. <see cref="Open"/>: it also
+/// takes any model name (role.choice_open; <see cref="OpenValue"/>), so a host installs a model from the model catalog.</summary>
+public sealed record SetupRoleChoice(string Variable, IReadOnlyList<string> Options, string Default, SetupRoleCondition? When = null)
+{
+    public bool Open { get; init; }
+
+    /// <summary>Whether an open choice takes <paramref name="model"/>: the host engine's model pattern (letters, digits and
+    /// . _ : / -, 128 characters at most, the first a letter or digit, no ".."), as martlet-host's open_value.</summary>
+    public static bool OpenValue(string? model) =>
+        model is { Length: > 0 and <= 128 } && char.IsAsciiLetterOrDigit(model[0]) && !model.Contains("..", StringComparison.Ordinal) &&
+        model.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or ':' or '/' or '-');
+}
 
 /// <summary>A secret a role asks for (role.secret), whether the host already stores it, and the variant it belongs to.</summary>
 public sealed record SetupRoleSecret(string Name, string Prompt, bool Stored, SetupRoleCondition? When = null);
@@ -403,7 +413,7 @@ public static class SetupExecutor
                 return (arguments, $"{change.MachineId}'s {role} role doesn't offer {model}: update Martlet there, then check again.");
             if (choice is not null)
             {
-                arguments["choice." + choice.Variable] = choice.Options.First(o => string.Equals(o, model, StringComparison.OrdinalIgnoreCase));
+                arguments["choice." + choice.Variable] = choice.Options.FirstOrDefault(o => string.Equals(o, model, StringComparison.OrdinalIgnoreCase)) ?? model;
                 if (choice.When is { } when) arguments["choice." + when.Variable] = when.Value;
             }
         }
@@ -420,7 +430,22 @@ public static class SetupExecutor
         if (change.OnProcessor && change.Kind is SetupChangeKind.AddRole or SetupChangeKind.ChangeModel && needs.GpuOrCpu &&
             Holds(needs.GpuWhen, arguments))
             arguments["choice.accelerator"] = "cpu";
-        if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndex is { } index)
+        if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndexes is { Count: > 1 } split)
+        {
+            // One model split across several cards (tensor split): choice.gpu lists every card's UUID, in order.
+            var ids = new List<string>();
+            foreach (var index in split)
+            {
+                var (card, problem) = Card(specs, index, needs.Gpus);
+                if (problem is not null) return (arguments, $"{change.MachineId}: {problem}");
+                if (card is null) return (arguments, $"{change.MachineId}'s host service doesn't list its graphics cards, so it can't split a model across them.");
+                if (!ids.Contains(card.Id, StringComparer.Ordinal)) ids.Add(card.Id);
+            }
+            if (ids.Count < 2) return (arguments, $"{change.MachineId}: the cards to split the model across are the same card.");
+            arguments["choice.gpu"] = string.Join(',', ids);
+            if (needs.GpuOrCpu && Holds(needs.GpuWhen, arguments)) arguments["choice.accelerator"] = "gpu";
+        }
+        else if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndex is { } index)
         {
             var (card, problem) = Card(specs, index, needs.Gpus);
             if (problem is not null) return (arguments, $"{change.MachineId}: {problem}");
@@ -430,10 +455,12 @@ public static class SetupExecutor
         return (arguments, null);
     }
 
-    /// <summary>The choice whose options hold <paramref name="model"/>: one of the variant already chosen first, then any.</summary>
+    /// <summary>The choice whose options hold <paramref name="model"/>: one of the variant already chosen first, then any; else
+    /// an open choice (<see cref="SetupRoleChoice.Open"/>) that takes it.</summary>
     private static SetupRoleChoice? ModelChoice(SetupRoleNeeds needs, string model, IReadOnlyDictionary<string, string> arguments)
     {
         var offering = needs.Choices.Where(c => c.Options.Contains(model, StringComparer.OrdinalIgnoreCase)).ToArray();
+        if (offering.Length == 0 && SetupRoleChoice.OpenValue(model)) offering = [.. needs.Choices.Where(c => c.Open)];
         return offering.FirstOrDefault(c => c.When is not null && Holds(c.When, arguments)) ?? offering.FirstOrDefault(c => c.When is null) ??
             offering.FirstOrDefault();
     }

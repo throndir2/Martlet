@@ -151,7 +151,7 @@ public partial class LiveConversationWindow
         {
             Content = "Cancel", FontSize = 12, Padding = new Thickness(10, 3, 10, 3), MinHeight = 0, Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Top,
-            ToolTip = "Stop this task. Martlet hears that you stopped it next time you talk."
+            ToolTip = "Stop this task (Martlet hears that you stopped it next time you talk)"
         };
         AutomationProperties.SetAutomationId(cancel, "LiveJobCancel-" + id);
         AutomationProperties.SetName(cancel, $"Cancel {id}");
@@ -190,7 +190,7 @@ public partial class LiveConversationWindow
         // A due reminder comes up as soon as Martlet is free whatever Thinking longer says.
         if (ready && jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet).All(job => job.Kind.Notice)) when = ThinkDelivery.WhenFree;
         var parts = new List<string>();
-        if (running) parts.Add("Martlet keeps working on these while you talk. Stop (Esc) doesn't end them.");
+        if (running) parts.Add("Martlet keeps working on these while you talk, and Stop (Esc) doesn't end them.");
         // Which computers the running ones are on (names only), such as "think-1 on diva, think-2 on ripley".
         var placed = jobs.Where(job => !job.Finished && job.Place is not null).Select(job => $"{job.Id} on {job.Place!.Name}").ToArray();
         if (placed.Length > 0) parts.Add($"Running {string.Join(", ", placed)}.");
@@ -213,7 +213,7 @@ public partial class LiveConversationWindow
         if (job.Kind.Notice)
             return job.Kind.Name == Reminders.KindName ? job.Delivery switch
             {
-                BackgroundDeliveryState.Pending => "Due now. Martlet brings it up as soon as it's free.",
+                BackgroundDeliveryState.Pending => "Due now, so Martlet brings it up as soon as it's free.",
                 BackgroundDeliveryState.Reserved => "Martlet is reminding you.",
                 BackgroundDeliveryState.Delivered => "Martlet reminded you.",
                 _ => "The conversation ended before Martlet reminded you."
