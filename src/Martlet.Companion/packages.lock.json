@@ -145,6 +145,19 @@
           "Avalonia.Skia": "12.1.3"
         }
       },
+      "Grpc.Core.Api": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "p2SOMl6q/GZ4/5MLkgboC/z55g4zKUEruRn/g46QgppjQBVnsLZVBU/9VO7n60ll38G3Eo8Zu9b7x+W01GKFVg=="
+      },
+      "Grpc.Net.Common": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "DPxm/H8G/lDRrz997wM0M2zN/PGqVeZKDakhBbtABEbv6WIW4HI9g3BvntBQT6ZUROuGacMzfyyF9e5kiTVFfQ==",
+        "dependencies": {
+          "Grpc.Core.Api": "2.84.0"
+        }
+      },
       "HarfBuzzSharp": {
         "type": "Transitive",
         "resolved": "8.3.1.3",
@@ -179,6 +192,19 @@
         "resolved": "0.11.6",
         "contentHash": "NdNWGDiZ6eS/Mf/9+QHR91cj1K7Hy+PX9yrHI/zM7xFYuj9IWT2uxtB6sCHjrnxAeLV9fut1R6zHDUGKX6f9lQ=="
       },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "fGLiCRLMYd00JYpClraLjJTNKLmMJPnqxMaiRzEBIIvevlzxz33mXy39Lkd48hu1G+N21S7QpaO5ZzKsI6FRuA=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "RIFgaqoaINxkM2KTOw72dmilDmTrYA0ns2KW4lDz4gZ2+o6IQ894CzmdL3StM2oh7QQq44nCWiqKqc4qUI9Jmg==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.1"
+        }
+      },
       "SkiaSharp.NativeAssets.macOS": {
         "type": "Transitive",
         "resolved": "3.119.4",
@@ -194,10 +220,27 @@
         "resolved": "3.119.4",
         "contentHash": "XOpbx/4CReO2wYsq2s6rbvdauc6dntG4Zv499sHGTJ87bwZaFXszFkwql3+FIZMc8kUPeaj3Mx2ezIJmo8a1Kg=="
       },
+      "martlet.avatar.audio2face": {
+        "type": "Project",
+        "dependencies": {
+          "Google.Protobuf": "[3.36.2, )",
+          "Grpc.Net.Client": "[2.84.0, )",
+          "Martlet.Avatars": "[0.88.2, )",
+          "Martlet.Core": "[0.88.2, )"
+        }
+      },
+      "martlet.avatars": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.88.2, )"
+        }
+      },
       "martlet.companion.platform": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.49.0, )"
+          "Martlet.Avatar.Audio2Face": "[0.88.2, )",
+          "Martlet.Core": "[0.88.2, )",
+          "Martlet.Providers": "[0.88.2, )"
         }
       },
       "martlet.core": {
@@ -206,7 +249,7 @@
       "martlet.platform.linux": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Companion.Platform": "[0.49.0, )",
+          "Martlet.Companion.Platform": "[0.88.2, )",
           "SkiaSharp": "[3.119.4, )",
           "SkiaSharp.NativeAssets.Linux": "[3.119.4, )",
           "Tmds.DBus.Protocol": "[0.94.1, )"
@@ -215,13 +258,29 @@
       "martlet.platform.macos": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Companion.Platform": "[0.49.0, )"
+          "Martlet.Companion.Platform": "[0.88.2, )"
         }
       },
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.49.0, )"
+          "Martlet.Core": "[0.88.2, )"
+        }
+      },
+      "Google.Protobuf": {
+        "type": "CentralTransitive",
+        "requested": "[3.36.2, )",
+        "resolved": "3.36.2",
+        "contentHash": "Ci1q1iJg74qAE5riTA2FbMS0wPbpruPQI/JQ9DrAsRo2VsSxgt1e/pmxGxgrci+pXJEgrSYg2vPl8rrStZkclQ=="
+      },
+      "Grpc.Net.Client": {
+        "type": "CentralTransitive",
+        "requested": "[2.84.0, )",
+        "resolved": "2.84.0",
+        "contentHash": "My6Fms2YCyAbihTBZZ3kLS39iTY2pkMAzGDBTC6XhPOujg70eB07AEJ7tPiW3tZ70bhFzHcc3+d4j3DaIPF3aA==",
+        "dependencies": {
+          "Grpc.Net.Common": "2.84.0",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
         }
       },
       "SkiaSharp": {

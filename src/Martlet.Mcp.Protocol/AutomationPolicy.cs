@@ -354,6 +354,7 @@ internal static partial class AutomationPolicy
         new("CharacterState", "Martlet.Companion (dev run)", "Shows the state of the character from the headless status. No secrets."),
         new("CompanionStatus", "Martlet.Companion (dev run)", "Shows the headless status JSON. No secrets."),
         new("Refusals", "Martlet.Companion (dev run)", "Shows the guardrail refusals. No secrets."),
+        new("SyncStatus", "Martlet.Companion (dev run)", "Shows what the last sync with the paired hosts took, shared and keeps waiting, and why. No secrets."),
         new("NotOffered", "Martlet.Companion (dev run)", "Shows the engines that are not offered here and the reasons. No secrets."),
         new("ThinkingWarnings", "Martlet.Companion (dev run)", "Shows the warnings about the local model. No secrets."),
         new("KeyNote", "Martlet.Companion (dev run)", "Shows the note on where keys are stored; never the key."),

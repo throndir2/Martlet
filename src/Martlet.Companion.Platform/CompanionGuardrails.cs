@@ -93,7 +93,7 @@ public sealed class CompanionGuardrails
         return (settings, refusals);
     }
 
-    internal static bool IsLoopback(string? baseUrl) =>
+    public static bool IsLoopback(string? baseUrl) =>
         Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) &&
         (uri.IsLoopback || System.Net.IPAddress.TryParse(uri.Host.Trim('[', ']'), out var address) && System.Net.IPAddress.IsLoopback(address));
 

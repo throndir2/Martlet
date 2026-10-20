@@ -72,11 +72,21 @@ client and `Audio` (which also targets plain `net10.0`). So:
   CPU-only warning. Settings carried from another device (Settings > Import, or a
   copied `settings.json`) keep what this computer can run; the rest is refused with
   the catalog's reason and this computer's choice is kept.
+- **One Martlet on every computer (#980):** pair a host in Settings › *Your other
+  computers* (its address and code). Every 15 seconds the companion syncs the shared
+  settings through its paired hosts with the desktop's sync engine: Thinking,
+  Listening and Speaking (with their API keys, kept in Secret Service or the
+  Keychain) and the personality (the character's name and persona). The push-to-talk
+  key, the character file, lip-sync and the cloud consent stay on the computer. A
+  shared choice it can't run keeps its own choice and says why
+  ([One Martlet on every computer](CLUSTER.md#one-martlet-on-every-computer)).
+  *Keep Martlet the same on all my computers* turns it off. Import stays as a way
+  to copy a `settings.json` without a host.
 - **Platform services:** contracts in `src/Martlet.Companion.Platform`; defaults
   until DX02/DX03 land (no global key, no click-through, no screen capture, keys
   kept in memory only until the app quits).
-- **Headless status:** `Martlet.Companion --status [--as linux-x64|linux-nvidia|linux-arm64|macos-arm64|macos-x64] [--import settings.json]`,
-  also the MCP tool `companion_status`; `--character-check` opens only the
+- **Headless status:** `Martlet.Companion --status [--as linux-x64|linux-nvidia|linux-arm64|macos-arm64|macos-x64] [--import settings.json] [--data folder]`,
+  also the MCP tool `companion_status` (with the sync: paired hosts and who last changed each shared setting); `--character-check` opens only the
   character and exits 0 once it shows and lip-sync was sent.
 
 Checked: unit tests (`Martlet.Companion.Tests`, `PlatformCatalogTests`); the
@@ -86,8 +96,8 @@ full app with the character on screen. **NOT RUN:** a real Linux desktop session
 (Wayland/XWayland, a compositor for transparency, a tray host), microphone and
 speakers, live OpenAI or Ollama requests, and everything on a Mac.
 
-Not in DX01's first release: pairing with hosts through the gateway client,
-whisper.cpp on this computer, hands-free listening, memory and Voice ID.
+Not in DX01's first release: jobs on paired hosts (who does what and failover; the
+companion pairs with hosts only to share settings), whisper.cpp on this computer, hands-free listening, memory and Voice ID.
 
 ## Compatibility research (accessed 2026-10-06)
 

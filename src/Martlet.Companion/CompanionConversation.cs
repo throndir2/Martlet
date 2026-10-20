@@ -15,8 +15,16 @@ internal sealed class StoreCredentialSource(ICredentialStore store) : IProviderC
 {
     public async ValueTask<BoundProviderCredential?> ResolveAsync(ProviderCredentialBinding binding, CancellationToken cancellationToken)
     {
-        var name = binding.Origin == OpenAiTextGenerationCatalog.Origin ? CompanionSettings.OpenAiKey : CompanionSettings.ChatCompletionsKey;
+        var name = binding.Origin != OpenAiTextGenerationCatalog.Origin ? CompanionSettings.ChatCompletionsKey : binding.Role switch
+        {
+            ProviderRole.Stt => CompanionSettings.OpenAiListeningKey,
+            ProviderRole.Tts => CompanionSettings.OpenAiSpeakingKey,
+            _ => CompanionSettings.OpenAiKey
+        };
         var secret = await store.GetAsync(name, cancellationToken);
+        // Listening and speaking use the OpenAI key typed here unless another computer shared one of their own.
+        if (string.IsNullOrWhiteSpace(secret) && name != CompanionSettings.ChatCompletionsKey)
+            secret = await store.GetAsync(CompanionSettings.OpenAiKey, cancellationToken);
         if (string.IsNullOrWhiteSpace(secret)) return null;
         try { return new BoundProviderCredential(binding, secret.Trim()); }
         catch (CredentialUnavailableException) { return null; }
@@ -105,7 +113,8 @@ public sealed class CompanionConversation(ICredentialStore credentials) : IDispo
         if (settings.Listening != "openai-stt") throw new CompanionException("Choose a listening engine in Settings.");
         if (!settings.CloudConsent)
             throw new CompanionException("Turn on \"Send to the cloud provider\" in Settings first: your voice goes to OpenAI, which may charge you.");
-        if (await credentials.GetAsync(CompanionSettings.OpenAiKey, cancellationToken) is null)
+        if (await credentials.GetAsync(CompanionSettings.OpenAiKey, cancellationToken) is null &&
+            await credentials.GetAsync(CompanionSettings.OpenAiListeningKey, cancellationToken) is null)
             throw new CompanionException("Add your OpenAI API key in Settings.");
         var format = new PcmFormat { SampleRate = sampleRate, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian };
         var audio = BoundedWaveAudio.FromPcm(format, pcm);
@@ -132,7 +141,8 @@ public sealed class CompanionConversation(ICredentialStore credentials) : IDispo
         if (!settings.CloudConsent) throw new CompanionException("Turn on \"Send to the cloud provider\" in Settings to hear replies.");
         foreach (var part in SpeechParts(text))
         {
-            var selection = new SpeechSynthesisSelection("openai-tts", OpenAiSpeechSynthesisCatalog.DefaultModelId,
+            var selection = new SpeechSynthesisSelection("openai-tts",
+                OpenAiSpeechSynthesisCatalog.SupportsModel(settings.SpeakingModel) ? settings.SpeakingModel : OpenAiSpeechSynthesisCatalog.DefaultModelId,
                 OpenAiSpeechSynthesisCatalog.SupportsVoice(settings.Voice) ? settings.Voice : OpenAiSpeechSynthesisCatalog.DefaultVoice,
                 SpeechOutputFormat.Pcm24KhzMono16Le);
             var input = new BoundedSpeechInput(part);
