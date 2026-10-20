@@ -54,7 +54,7 @@ public sealed class HostRoleSetupTests
 
     /// <summary>The role pages use the shared steps and don't copy the install or the wait loop again.</summary>
     [Theory]
-    [InlineData("MainWindow.Pictures.cs")]
+    [InlineData("MainWindow.Pictures.LoadPicturesWorkflow.cs")]
     [InlineData("MainWindow.Reading.cs")]
     [InlineData("MainWindow.SingingSetup.cs")]
     [InlineData("MainWindow.Motion.cs")]
