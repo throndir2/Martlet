@@ -41,7 +41,7 @@ public partial class AccountProveWindow : ThemedWindow
         this.dataDirectory = dataDirectory;
         expected = expectedAccount;
         if (heading is not null) HeadingText.Text = heading;
-        if (hint is not null) HintText.Text = hint;
+        if (hint is not null) HintRun.Text = hint;
         UserText.Text = user ?? "";
         RememberCheck.Visibility = RememberHint.Visibility = offerRemember ? Visibility.Visible : Visibility.Collapsed;
         HostChoice.ItemsSource = hosts;
@@ -49,7 +49,7 @@ public partial class AccountProveWindow : ThemedWindow
         if (hosts.Count == 0)
         {
             SignInButton.IsEnabled = false;
-            StatusText.Text = "This PC has no host of your Martlet network to check a sign-in. Pair one under Devices first.";
+            StatusText.Text = "This PC has no host of your Martlet network to check a sign-in: pair one under Devices first.";
         }
         Loaded += async (_, _) =>
         {
@@ -157,10 +157,10 @@ public partial class AccountProveWindow : ThemedWindow
                 {
                     // The details (addresses, HTTP status) go to the log only.
                     ErrorLog.Warn($"Account sign-in: {choice.Host.HostId} couldn't check the sign-in", error);
-                    reasons.Add(error is OperationCanceledException or TimeoutException ? $"{choice.Label} didn't answer in time." : $"{choice.Label} couldn't check it.");
+                    reasons.Add(error is OperationCanceledException or TimeoutException ? $"{choice.Label} didn't answer in time" : $"{choice.Label} couldn't check it");
                 }
             }
-            StatusText.Text = "No host could check the sign-in. " + string.Join(" ", reasons) + " Make sure a host is on and try again.";
+            StatusText.Text = $"No host could check the sign-in ({string.Join("; ", reasons)}): make sure a host is on and try again.";
         }
         catch (OperationCanceledException) { }
         finally { SignInButton.IsEnabled = true; }
@@ -182,7 +182,7 @@ public partial class AccountProveWindow : ThemedWindow
         var roster = NetworkIdentity.Load(dataDirectory).Roster;
         if (roster is null) return "This PC is in no Martlet network, so it can't check the host's answer.";
         var check = proof.Attestation.Check(roster, DateTimeOffset.UtcNow);
-        if (check != AccountAttestationCheck.Valid) return $"The host's answer didn't check out ({check}). Try another host.";
+        if (check != AccountAttestationCheck.Valid) return $"The host's answer didn't check out ({check}): try another host.";
         if (expected is { } account && proof.AccountId != account) return "That login belongs to another account.";
         return null;
     }

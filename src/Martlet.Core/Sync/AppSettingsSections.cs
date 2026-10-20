@@ -47,7 +47,7 @@ public sealed record SharedRoute
             // A Parakeet model a newer Martlet added waits for this PC's update, like any route this Martlet doesn't know.
             (Parakeet, SetupRole.Stt) when LocalSpeechSetup.IsParakeetModel(Model) =>
                 Route(SetupRouteType.LocalParakeet, role, LocalSpeechSetup.ParakeetAlias, SelfHostSetup.LocalOrigin, Model, null),
-            _ => throw new ContractException(ErrorCode.UnsupportedVersion, "It was chosen on a newer Martlet. Update this PC to use it.")
+            _ => throw new ContractException(ErrorCode.UnsupportedVersion, "It was chosen on a newer Martlet; update this PC to use it.")
         };
         route.Validate();
         return route;
@@ -136,7 +136,7 @@ public sealed class AppSettingsSections
         try { return JsonSerializer.Deserialize<T>(json, Json) ?? throw new ContractException(ErrorCode.InvalidContract, "It is empty."); }
         catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException)
         {
-            throw new ContractException(ErrorCode.UnsupportedVersion, "It was saved by a newer Martlet. Update this PC to use it.");
+            throw new ContractException(ErrorCode.UnsupportedVersion, "It was saved by a newer Martlet; update this PC to use it.");
         }
     }
 
@@ -145,7 +145,7 @@ public sealed class AppSettingsSections
         try { return ContractJson.Read<T>(Encoding.UTF8.GetBytes(json), SharedSettings.MaximumValueBytes); }
         catch (ContractException error)
         {
-            throw new ContractException(error.Code, $"It can't be used here ({error.Message}). Update this PC if another computer runs a newer Martlet.");
+            throw new ContractException(error.Code, $"It can't be used here ({error.Message}); update this PC if another computer runs a newer Martlet.");
         }
     }
 
@@ -219,14 +219,14 @@ public sealed class AppSettingsSections
     {
         var shared = Read<SharedRoute>(setting.Value);
         if (shared.Type == SharedRoute.WindowsTts)
-            return SharedApply.Waiting("Windows voices were removed from Martlet. Choose a voice for this PC in Companion › Voice.");
+            return SharedApply.Waiting("Windows voices were removed from Martlet, so choose a voice for this PC in Companion › Voice.");
         if (await available(role, shared, token).ConfigureAwait(false) is { } why) return SharedApply.Waiting(why);
         var (settings, revision, problem) = await EditAsync(token).ConfigureAwait(false);
         if (settings is null) return SharedApply.Waiting(problem!);
         var current = settings.Setup!.Routes.SingleOrDefault(r => r.Role == role);
         var onHost = current is not null && SelfHostSetup.IsGateway(current.RouteType);
         if (onHost && !fromHost)
-            return SharedApply.Waiting($"{title} runs on {current!.Gateway?.HostId ?? "a paired host"} now. This PC switches to it when " +
+            return SharedApply.Waiting($"{title} runs on {current!.Gateway?.HostId ?? "a paired host"} now; this PC switches to it when " +
                 $"{title.ToLowerInvariant()} comes back here.");
         var built = shared.Build(role);
         // A key this PC already holds for the same provider is used again: the current one, or one set aside earlier.
@@ -355,13 +355,13 @@ public sealed class AppSettingsSections
     private async Task<SharedApply> ApplyThinkingPoolAsync(SharedSetting setting, string? secret, CancellationToken token)
     {
         if (ThinkingPoolShare.Parse(setting.Value) is not { } shared)
-            return SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it.");
+            return SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it.");
         var bundle = ThinkingPoolShare.Unbundle(secret);
         if (shared.Members.Any(m => m.Key is { } index && index >= bundle.Count))
             return SharedApply.Waiting("Its API keys haven't reached this PC yet.");
         var (local, state) = ThinkingPoolSettings.Read(dataDirectory);
         if (state == "unreadable")
-            return SharedApply.Waiting("This PC's Thinking pool file can't be read. Open Companion › Thinking pool to set it up again.");
+            return SharedApply.Waiting("This PC's Thinking pool file can't be read; open Companion › Thinking pool to set it up again.");
         var profile = Guid.Empty;
         if (bundle.Count > 0 || local.All.Any(m => ThinkingPoolShare.IsShared(m) && m.CredentialId is not null))
         {
@@ -392,7 +392,7 @@ public sealed class AppSettingsSections
                 return id;
             }
             var next = ThinkingPoolShare.Apply(local, shared, Credential, DateTimeOffset.Now);
-            if (!next.Save(dataDirectory)) return SharedApply.Waiting("This PC's Thinking pool couldn't be saved. Check access to Martlet's data folder.");
+            if (!next.Save(dataDirectory)) return SharedApply.Waiting("This PC's Thinking pool couldn't be saved; check access to Martlet's data folder.");
             saved = true;
             foreach (var old in local.All.Where(m => m.Place == DeepThinkingPlace.Endpoint && m.CredentialId is { } id && next.All.All(n => n.CredentialId != id)))
             {
@@ -421,12 +421,12 @@ public sealed class AppSettingsSections
     private Task<SharedApply> ApplyThinkingPoolChoicesAsync(SharedSetting setting, string? secret, CancellationToken token)
     {
         if (ThinkingPoolShare.ParseChoices(setting.Value) is not { } choices)
-            return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+            return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
         var (local, state) = ThinkingPoolSettings.Read(dataDirectory);
         if (state == "unreadable")
-            return Task.FromResult(SharedApply.Waiting("This PC's Thinking pool file can't be read. Open Companion › Thinking pool to set it up again."));
+            return Task.FromResult(SharedApply.Waiting("This PC's Thinking pool file can't be read; open Companion › Thinking pool to set it up again."));
         return Task.FromResult(ThinkingPoolShare.Apply(local, choices).Save(dataDirectory)
-            ? SharedApply.Done : SharedApply.Waiting("This PC's Thinking pool couldn't be saved. Check access to Martlet's data folder."));
+            ? SharedApply.Done : SharedApply.Waiting("This PC's Thinking pool couldn't be saved; check access to Martlet's data folder."));
     }
 
     // ---------- Thinking fallback ----------
@@ -590,7 +590,7 @@ public sealed class AppSettingsSections
         try { library = JsonSerializer.Deserialize<LorebookLibrary>(setting.Value, LoreJson) ?? throw new JsonException(); }
         catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException)
         {
-            return SharedApply.Waiting("They were saved by a newer Martlet. Update this PC to use them.");
+            return SharedApply.Waiting("They were saved by a newer Martlet; update this PC to use them.");
         }
         library.Validate();
         var current = await lorebooks!.LoadAsync(token).ConfigureAwait(false);

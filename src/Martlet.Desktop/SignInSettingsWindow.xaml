@@ -18,8 +18,7 @@
                 <TextBlock x:Name="HeadingText" Style="{DynamicResource SectionHeading}" TextWrapping="Wrap" AutomationProperties.AutomationId="SignInSettingsTitle"/>
                 <TextBlock x:Name="OutsideWarningText" TextWrapping="Wrap" Margin="0,8,0,0" FontWeight="SemiBold" Visibility="Collapsed"
                            Foreground="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="SignInOutsideWarning"/>
-                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,14"
-                           Text="Let one of your computers join this host while it is away from home, by signing in instead of typing a code shown here. A computer that signs in is paired like any other and joins your Martlet network by itself. You can also share this host's engines with a friend: allow their account as a friend below and send them the invite. Remove a sign-in here to take access away."/>
+                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,14">Let one of your computers join this host while it is away from home, by signing in instead of typing a code shown here.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="A computer that signs in pairs like any other and joins your Martlet network by itself. To share this host's engines with a friend, allow their account as a friend and send them the invite. Remove a sign-in to take access away." Wiki="Accounts-and-Household#sign-in-from-outside" AutomationProperties.AutomationId="Help-SignInSettingsIntro" AutomationProperties.Name="About sign-in from outside"/></InlineUIContainer></TextBlock>
 
                 <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
                     <StackPanel>
@@ -36,7 +35,7 @@
                                 AutomationProperties.AutomationId="SignInTotpNew"/>
                         <StackPanel x:Name="SecretPanel" Visibility="Collapsed" Margin="0,8,0,0">
                             <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                       Text="Add it to your authenticator app (Google Authenticator, Aegis, 1Password, Bitwarden...): open the link, or type the secret. It is required for every sign-in."/>
+                                       Text="Add it to your authenticator app (such as Google Authenticator, Aegis, 1Password or Bitwarden), which every sign-in needs: open the link or type the secret."/>
                             <TextBox x:Name="SecretText" IsReadOnly="True" FontFamily="Consolas" Margin="0,4,0,4" AutomationProperties.AutomationId="SignInTotpSecret"/>
                             <TextBox x:Name="SecretLinkText" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,0,0,8"
                                      AutomationProperties.AutomationId="SignInTotpLink"/>
@@ -58,8 +57,7 @@
                 <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
                     <StackPanel>
                         <TextBlock Text="Allowed sign-ins" FontWeight="SemiBold" FontSize="15"/>
-                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="Identities at a sign-in provider set up on this host (the provider's ID and the account's stable subject). Each is one of your own computers, which joins your Martlet network, or a friend's, which uses only this host's engines (thinking, listening, speaking, lip-sync and reading), never joins your network and always goes after your own work. Changing which one an identity is makes its computers sign in again. Removing one takes access away from the computers it signed in."/>
+                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8">The accounts that may sign in to this host: each is one of your own computers or a friend.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Your own computers join your Martlet network. A friend's computer uses only this host's engines and always goes after your own work. Changing or removing an identity makes its computers sign in again or lose access." Wiki="Accounts-and-Household#allowed-sign-ins" AutomationProperties.AutomationId="Help-SignInAllowed" AutomationProperties.Name="About allowed sign-ins"/></InlineUIContainer></TextBlock>
                         <TextBlock x:Name="AllowedText" TextWrapping="Wrap" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInAllowedList"/>
                         <StackPanel x:Name="AllowedPanel" AutomationProperties.Name="Allowed sign-ins" Margin="0,0,0,8"/>
                         <TextBlock x:Name="ProvidersText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
@@ -86,7 +84,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Content="A_llow" Click="Allow_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInAllow"/>
                             <Button Content="Remove and take its computers' access away" Click="Disallow_Click" AutomationProperties.AutomationId="SignInDisallow"
-                                    ToolTip="This host revokes the computers it signed in. Your own computers among them are removed from your Martlet network on your computers' next sync, so they lose every host; a friend's computer never joined it"/>
+                                    ToolTip="This host revokes the computers it signed in, and your own ones among them leave your Martlet network on the next sync"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -94,8 +92,7 @@
                 <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
                     <StackPanel>
                         <TextBlock Text="Sign-in providers for your household" FontWeight="SemiBold" FontSize="15"/>
-                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="Sign in in the browser with your own identity provider (Authentik, Authelia, Keycloak, Pocket ID or any OpenID Connect issuer), Google, Microsoft, Discord or Steam. Register a client for Martlet there (Google: Cloud console › APIs &amp; Services › Credentials › OAuth client ID › Desktop app; Microsoft: Entra admin center › App registrations, a Mobile and desktop application with the redirect http://127.0.0.1; Discord: Developer Portal › your application › OAuth2, with the redirect http://127.0.0.1:&lt;port&gt;/; Steam needs nothing) and enter its ID and secret here. Martlet saves the provider on every host of your Martlet network, so you set it up once; the hosts keep the secret, and this PC keeps a copy only to add it to a host that joins later. Then sign in once from the computer you want to allow and allow it below."/>
+                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8">Let people sign in in the browser with your own identity provider, Google, Microsoft, Discord or Steam.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Register a client for Martlet at the provider and enter its ID and secret here. Martlet saves the provider on every host of your network. Then sign in once from the computer you want to allow, and allow it below." Wiki="Accounts-and-Household#sign-in-providers" AutomationProperties.AutomationId="Help-SignInProviders" AutomationProperties.Name="About sign-in providers"/></InlineUIContainer></TextBlock>
                         <TextBlock x:Name="HouseholdProvidersText" TextWrapping="Wrap" Margin="0,0,0,6" Text="Reading your hosts' providers..."
                                    AutomationProperties.AutomationId="SignInHouseholdProviders"/>
                         <Button Content="Add to the other hosts" Click="PushProviders_Click" HorizontalAlignment="Left" Margin="0,0,0,10"
@@ -165,8 +162,7 @@
                 <Border Style="{DynamicResource CardStyle}">
                     <StackPanel>
                         <TextBlock Text="Invite" FontWeight="SemiBold" FontSize="15"/>
-                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="The invite tells a computer away from home where this host answers and which key to expect. It holds no secret; signing in is what lets a computer in. Send it to a friend too, once their account is allowed as a friend. It starts with the outside addresses your network has for this host (Your Martlet network › Outside addresses); set them there so the computer keeps reaching the host after it joins."/>
+                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8">The invite tells a computer away from home where this host answers and which key to expect.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="It holds no secret: signing in is what lets a computer in, so you can also send it to a friend you allowed. It starts with this host's outside addresses from Your Martlet network › Outside addresses." Wiki="Accounts-and-Household#make-an-invite" AutomationProperties.AutomationId="Help-SignInInvite" AutomationProperties.Name="About the invite"/></InlineUIContainer></TextBlock>
                         <TextBlock Text="Outside address(es), separated by spaces"/>
                         <TextBox x:Name="InviteAddressText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInInviteAddress"
                                  presentation:InputHint.Text="home.example.net:9443 203.0.113.7:9443"/>

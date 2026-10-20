@@ -11,7 +11,7 @@
         <StackPanel Margin="20">
             <TextBlock Text="Backup and restore settings" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"/>
             <TextBlock x:Name="ScopeText" TextWrapping="Wrap" Margin="0,10"/>
-            <TextBlock TextWrapping="Wrap" Margin="0,6" Text="Create a local backup of this profile, or restore one you made on this PC. Restoring settings does not restore API keys, permissions or audio tests."/>
+            <TextBlock TextWrapping="Wrap" Margin="0,6">Create a local backup of this profile, or restore one you made on this PC.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="A restore replaces your current settings. It doesn't bring back API keys, permissions or audio tests." Wiki="App-Settings-and-Updates#backup-and-restore" AutomationProperties.AutomationId="Help-RecoveryIntro" AutomationProperties.Name="About backup and restore"/></InlineUIContainer></TextBlock>
             <StackPanel x:Name="Actions">
                 <Label Target="{Binding ElementName=BackupPath}" Content="New _backup file"/>
                 <TextBox x:Name="BackupPath" MaxLength="2048" AutomationProperties.AutomationId="RecoveryBackupPath"

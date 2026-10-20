@@ -8,8 +8,7 @@
         AutomationProperties.AutomationId="SignInJoinWindow">
     <StackPanel Margin="26,24">
         <TextBlock Style="{DynamicResource SectionHeading}" Text="Join your Martlet from outside home" AutomationProperties.AutomationId="SignInJoinTitle"/>
-        <TextBlock TextWrapping="Wrap" Margin="0,6,0,14" Style="{DynamicResource Muted}"
-                   Text="Paste the invite you made at home (Devices › your host › Sign-in from outside), or one a friend sent you. Martlet checks the host's key before it sends anything, then you sign in. With your own host, this PC is then paired with it and joins your network by itself. With a friend's host, this PC may use only its engines and never joins their network."/>
+        <TextBlock TextWrapping="Wrap" Margin="0,6,0,14" Style="{DynamicResource Muted}">Paste the invite you made at home (Devices › your host › Sign-in from outside), or one a friend sent you.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Martlet checks the host's key before it sends anything, then you sign in. With your own host, this PC pairs and joins your network by itself. With a friend's host, this PC uses only its engines." Wiki="Accounts-and-Household#join-from-outside-home" AutomationProperties.AutomationId="Help-SignInJoinIntro" AutomationProperties.Name="About joining from outside home"/></InlineUIContainer></TextBlock>
         <TextBlock Text="Invite" FontWeight="SemiBold"/>
         <TextBox x:Name="InviteText" FontFamily="Consolas" TextWrapping="Wrap" MinHeight="54" MaxLength="4096" Margin="0,4,0,8"
                  AutomationProperties.AutomationId="SignInInvite" AutomationProperties.Name="Invite from home"

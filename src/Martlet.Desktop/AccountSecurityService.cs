@@ -142,7 +142,7 @@ internal sealed class AccountSecurityService(AccountSession session, string data
         if (key is null)
         {
             ErrorLog.Warn($"Accounts: account {AccountSession.Short(id)}'s files here are encrypted, but no key opened them.");
-            ShowProblem(owner, $"{NameOf(id)}'s files on this PC are encrypted. Unlock with your PIN to open them.");
+            ShowProblem(owner, $"{NameOf(id)}'s files on this PC are encrypted: unlock with your PIN to open them.");
             return false;
         }
         // Some files stay encrypted: the account would open without them (its stores would start from their defaults).
@@ -156,8 +156,7 @@ internal sealed class AccountSecurityService(AccountSession session, string data
     {
         var list = string.Join(", ", skipped.Take(5)) + (skipped.Count > 5 ? $" and {skipped.Count - 5} more" : "");
         var dialog = new AccountChoiceDialog("AccountFilesStayEncryptedDialog", "Accounts", $"Some of {name}'s files stay encrypted",
-            $"Martlet couldn't decrypt {skipped.Count} of {name}'s files on this PC: {list}. Another program can have them open, or they are damaged. " +
-            "If you open the account now, Martlet starts without them.",
+            $"Martlet couldn't decrypt {skipped.Count} of {name}'s files on this PC ({list}), so if you open the account now, Martlet starts without them.",
             [("AccountFilesOpenAnyway", "Open without them"), ("AccountFilesStayLocked", "Don't open now")]) { Owner = owner };
         return dialog.ShowDialog() == true && dialog.Chosen == "AccountFilesOpenAnyway";
     }
@@ -192,8 +191,7 @@ internal sealed class AccountSecurityService(AccountSession session, string data
         if (Application.Current?.Dispatcher is not { } dispatcher) return;
         var name = NameOf(id);
         dispatcher.BeginInvoke(() => ShowProblem(Application.Current?.MainWindow,
-            $"{skipped.Count} of {name}'s files on this PC are not encrypted yet, because another program has them open: {list}. " +
-            "Martlet tries again when it closes."));
+            $"{skipped.Count} of {name}'s files on this PC are not encrypted yet because another program has them open ({list}); Martlet tries again when it closes."));
     }
 
     /// <summary>Encrypts <paramref name="id"/>'s files here when that is on and its key is known (it just stopped being active
@@ -253,7 +251,7 @@ internal sealed class AccountSecurityService(AccountSession session, string data
         var next = change(current, key, DateTimeOffset.UtcNow);
         var accepted = AccountDirectory.Accept(current, next, roster);
         if (accepted.Rejected > 0)
-            throw new InvalidOperationException("Your other computers would refuse this change: this PC hasn't proved that account. Sign in again first.");
+            throw new InvalidOperationException("Your other computers would refuse this change because this PC hasn't proved that account: sign in again first.");
         session.Follow(accepted.Directory, []);
         return accepted.Directory;
     }
@@ -300,7 +298,7 @@ internal sealed class AccountSecurityService(AccountSession session, string data
                 : directory);
             session.SignIn(proof.Attestation, roster, now);
             if (window.Password is { } password) Locks.RememberPassword(id, password, FileKey(id));
-            return $"This Windows login no longer signs in as {entry.Name}. This PC asks for your PIN or password from now on.";
+            return $"This Windows login no longer signs in as {entry.Name}; this PC asks for your PIN or password from now on.";
         }
         finally { window.Forget(); }
     }
@@ -410,12 +408,11 @@ internal sealed class AccountSecurityService(AccountSession session, string data
         if (account is null) return;
         ErrorLog.Info($"Accounts: this Windows login's e-mail hint matches account {AccountSession.Short(account.Id)}; asking Continue as.");
         var ask = new AccountChoiceDialog("ContinueAsDialog", "Continue as", $"Continue as {account.Name}?",
-            $"This Windows login's e-mail matches {account.Name}'s account in your household. Sign in with {account.Name}'s Martlet password to " +
-            "continue as them on this PC; the e-mail alone never signs anyone in.",
+            $"This Windows login's e-mail matches {account.Name}'s account in your household: sign in with {account.Name}'s Martlet password to continue as them.",
             [("ContinueAsYes", $"Continue as {account.Name}"), ("ContinueAsNo", "No, I'm someone else")]);
         if (ask.ShowDialog() != true || ask.Chosen != "ContinueAsYes") return;
         var prove = Prove(null, account.Id, $"Sign in as {account.Name}",
-            $"Sign in with {account.Name}'s Martlet password. This Windows login then signs in as {account.Name}.", offerRemember: false);
+            $"Sign in with {account.Name}'s Martlet password so this Windows login signs in as {account.Name} from now on.", offerRemember: false);
         if (prove?.Proof is not { } proof) return;
         try
         {
