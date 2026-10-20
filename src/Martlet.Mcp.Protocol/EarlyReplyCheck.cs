@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -168,11 +166,9 @@ internal static class EarlyReplyCheck
         var watch = Stopwatch.StartNew();
         double Now() => watch.Elapsed.TotalMilliseconds;
         void Note(string what) { lock (run.Decisions) run.Decisions.Add((Now(), what)); }
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
+        var server = Fixture(thinkingMs, run);
+        var baseUrl = server.V1;
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, thinkingMs, run, stop.Token);
         try
         {
             var speakers = new Speakers(Now);
@@ -376,8 +372,7 @@ internal static class EarlyReplyCheck
         finally
         {
             stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
             run.Requests = run.RequestCount;
             run.Aborted = run.AbortedCount;
         }
@@ -407,60 +402,27 @@ internal static class EarlyReplyCheck
 
     // Every request on its own connection, at once: Thinking's first words after thinkingMs, the rest 100 ms later. A request the
     // conversation lets go is aborted (its connection closes), which the next write finds.
-    private static async Task ServeAsync(TcpListener listener, int thinkingMs, Run run, CancellationToken cancellation)
+    private static LoopbackHttpServer Fixture(int thinkingMs, Run run) => new(async exchange =>
     {
-        var handlers = new List<Task>();
+        var completed = false;
         try
         {
-            while (!cancellation.IsCancellationRequested)
+            Interlocked.Increment(ref run.RequestCount);
+            await exchange.StartAsync();
+            await Task.Delay(thinkingMs, exchange.Cancellation);
+            for (var i = 0; i < Chunks.Length; i++)
             {
-                var client = await listener.AcceptTcpClientAsync(cancellation);
-                handlers.Add(Task.Run(() => HandleAsync(client, thinkingMs, run, cancellation), CancellationToken.None));
+                if (i > 0) await Task.Delay(ChunkGapsMs[i], exchange.Cancellation);
+                await exchange.WriteAsync(FixtureChat.Content(Chunks[i], role: i == 0));
             }
+            await exchange.WriteAsync(FixtureChat.Finish());
+            completed = true;
         }
         finally
         {
-            try { await Task.WhenAll(handlers); } catch (Exception error) when (error is OperationCanceledException or IOException or SocketException or ObjectDisposedException) { }
+            if (!completed && !exchange.Cancellation.IsCancellationRequested) Interlocked.Increment(ref run.AbortedCount);
         }
-    }
-
-    private static async Task HandleAsync(TcpClient client, int thinkingMs, Run run, CancellationToken cancellation)
-    {
-        using (client)
-        {
-            var completed = false;
-            try
-            {
-                await using var stream = client.GetStream();
-                await HearingCheck.ReadRequestAsync(stream, cancellation);
-                Interlocked.Increment(ref run.RequestCount);
-                await Write(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", cancellation);
-                const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-                await Task.Delay(thinkingMs, cancellation);
-                for (var i = 0; i < Chunks.Length; i++)
-                {
-                    if (i > 0) await Task.Delay(ChunkGapsMs[i], cancellation);
-                    var role = i == 0 ? "\"role\":\"assistant\"," : "";
-                    await Write(stream, "data: " + chunk + "\"delta\":{" + role + "\"content\":" + JsonSerializer.Serialize(Chunks[i]) +
-                        "},\"finish_reason\":null}]}\n\n", cancellation);
-                }
-                await Write(stream, "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", cancellation);
-                completed = true;
-            }
-            catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException) { }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-            finally
-            {
-                if (!completed && !cancellation.IsCancellationRequested) Interlocked.Increment(ref run.AbortedCount);
-            }
-        }
-    }
-
-    private static async Task Write(NetworkStream stream, string text, CancellationToken cancellation)
-    {
-        await stream.WriteAsync(Encoding.UTF8.GetBytes(text), cancellation);
-        await stream.FlushAsync(cancellation);
-    }
+    }, concurrent: true);
 
     // FIXTURE, NOT AI: a quarter second of a quiet 220 Hz tone per piece, its first audio after voiceMs.
     private sealed class Voice(int voiceMs, Run run, Func<double> now) : IHostSpeechClient

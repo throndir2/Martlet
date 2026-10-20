@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Conversation.Guides;
@@ -294,67 +292,25 @@ internal static class MeaningSearchCheck
     /// <summary>A loopback stand-in for Ollama's /api/embed: 4-number vectors for a known model, 404 for any other.</summary>
     private sealed class EmbedFixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
-        private readonly Task serving;
+        private readonly LoopbackHttpServer server;
 
-        internal EmbedFixture()
+        internal EmbedFixture() => server = new(exchange =>
         {
-            listener.Start();
-            serving = ServeAsync();
-        }
+            LastPath = exchange.Request.Target;
+            LastBody = exchange.Request.Text;
+            using var sent = JsonDocument.Parse(LastBody);
+            var known = sent.RootElement.GetProperty("model").GetString() == "nomic-embed-text";
+            var count = sent.RootElement.GetProperty("input").GetArrayLength();
+            var (status, answer) = known
+                ? (200, JsonSerializer.Serialize(new { model = "nomic-embed-text", embeddings = Enumerable.Range(0, count).Select(i => new[] { 0.1f, 0.2f, 0.3f, i }) }))
+                : (404, "{\"error\":\"model \\\"not-downloaded\\\" not found, try pulling it first\"}");
+            return exchange.RespondAsync(status, answer);
+        });
 
-        internal string Origin => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
+        internal string Origin => server.Origin;
         internal string? LastPath { get; private set; }
         internal string? LastBody { get; private set; }
 
-        private async Task ServeAsync()
-        {
-            while (!stop.IsCancellationRequested)
-            {
-                TcpClient client;
-                try { client = await listener.AcceptTcpClientAsync(stop.Token); }
-                catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { return; }
-                using (client)
-                {
-                    try
-                    {
-                        await using var stream = client.GetStream();
-                        var head = new StringBuilder();
-                        var one = new byte[1];
-                        while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await stream.ReadAsync(one, stop.Token) == 1)
-                            head.Append((char)one[0]);
-                        var lines = head.ToString().Split("\r\n");
-                        var length = lines.Select(l => l.Split(':', 2)).Where(p => p.Length == 2 && p[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
-                            .Select(p => int.Parse(p[1].Trim(), System.Globalization.CultureInfo.InvariantCulture)).FirstOrDefault();
-                        var body = new byte[length];
-                        var read = 0;
-                        while (read < length) read += await stream.ReadAsync(body.AsMemory(read), stop.Token);
-                        LastPath = lines[0].Split(' ') is { Length: > 1 } parts ? parts[1] : "/";
-                        LastBody = Encoding.UTF8.GetString(body);
-                        using var sent = JsonDocument.Parse(LastBody);
-                        var known = sent.RootElement.GetProperty("model").GetString() == "nomic-embed-text";
-                        var count = sent.RootElement.GetProperty("input").GetArrayLength();
-                        var (status, answer) = known
-                            ? (200, JsonSerializer.Serialize(new { model = "nomic-embed-text", embeddings = Enumerable.Range(0, count).Select(i => new[] { 0.1f, 0.2f, 0.3f, i }) }))
-                            : (404, "{\"error\":\"model \\\"not-downloaded\\\" not found, try pulling it first\"}");
-                        var payload = Encoding.UTF8.GetBytes(answer);
-                        await stream.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Not Found")}\r\n" +
-                            $"Content-Type: application/json\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n"), stop.Token);
-                        await stream.WriteAsync(payload, stop.Token);
-                    }
-                    catch (Exception error) when (error is IOException or OperationCanceledException or SocketException or JsonException or
-                        KeyNotFoundException or FormatException) { }
-                }
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 }

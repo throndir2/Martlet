@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Conversation;
@@ -338,75 +336,29 @@ internal static class ImageModelCheck
     // chosen by the request's number.
     private sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
         private readonly List<byte[]> bodies = [];
-        private readonly Func<int, int> delay;
-        private readonly Func<int, string> words;
-        private readonly Task serving;
+        private readonly LoopbackHttpServer server;
 
-        internal Fixture(Func<int, int> delay, Func<int, string> words)
+        internal Fixture(Func<int, int> delay, Func<int, string> words) => server = new(async exchange =>
         {
-            this.delay = delay;
-            this.words = words;
-            listener.Start();
-            serving = ServeAsync();
-        }
+            int index;
+            lock (bodies)
+            {
+                index = bodies.Count;
+                bodies.Add(exchange.Request.Body);
+            }
+            var wait = delay(index);
+            if (wait > 0) await Task.Delay(wait, exchange.Cancellation);
+            await exchange.RespondAsync(200, FixtureChat.Reply(words(index)), "text/event-stream");
+        }, concurrent: true);
 
-        internal string BaseUrl => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
+        internal string BaseUrl => server.V1;
 
         internal byte[][] Bodies
         {
             get { lock (bodies) return [.. bodies]; }
         }
 
-        private async Task ServeAsync()
-        {
-            var handling = new List<Task>();
-            try
-            {
-                while (!stop.IsCancellationRequested) handling.Add(HandleAsync(await listener.AcceptTcpClientAsync(stop.Token)));
-            }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            await Task.WhenAll(handling);
-        }
-
-        private async Task HandleAsync(TcpClient client)
-        {
-            using (client)
-            {
-                try
-                {
-                    await using var stream = client.GetStream();
-                    var body = await HearingCheck.ReadRequestAsync(stream, stop.Token);
-                    int index;
-                    lock (bodies)
-                    {
-                        index = bodies.Count;
-                        bodies.Add(body);
-                    }
-                    var wait = delay(index);
-                    if (wait > 0) await Task.Delay(wait, stop.Token);
-                    const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-                    var events = "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(words(index)) +
-                        "},\"finish_reason\":null}]}\n\ndata: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-                    var payload = Encoding.UTF8.GetBytes(events);
-                    var head = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n" +
-                        $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-                    await stream.WriteAsync(head, stop.Token);
-                    await stream.WriteAsync(payload, stop.Token);
-                    await stream.FlushAsync(stop.Token);
-                }
-                catch (Exception error) when (error is OperationCanceledException or IOException or SocketException or ObjectDisposedException) { }
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            await serving;
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 }

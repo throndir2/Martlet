@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Martlet.Audio;
 using Martlet.Avatar.Hosting;
@@ -216,11 +214,8 @@ internal static class VoiceSoundCheck
     // before it starts when there is one.
     private static async Task<Reply> ReplyAsync(byte[]? clip, CancellationToken cancellation)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = QuickSoundCheck.ServeAsync(listener, TimeSpan.FromMilliseconds(300), false, stop.Token);
+        var server = QuickSoundCheck.Fixture(TimeSpan.FromMilliseconds(300), false);
+        var baseUrl = server.V1;
         try
         {
             var speakers = new PacedSpeakers();
@@ -240,10 +235,7 @@ internal static class VoiceSoundCheck
         }
         finally
         {
-            await stop.CancelAsync();
-            listener.Stop();
-            try { await serving; }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 

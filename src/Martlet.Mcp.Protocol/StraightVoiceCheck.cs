@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -484,108 +482,56 @@ internal static class StraightVoiceCheck
     private sealed class Relay : IAsyncDisposable
     {
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(3) };
-        private readonly TcpListener listener;
-        private readonly CancellationTokenSource stop = new();
         private readonly List<byte[]> bodies = [];
         private readonly string? forward;
         private readonly bool refuseAudio;
-        private Task serving = Task.CompletedTask;
-        internal string BaseUrl { get; }
+        private readonly LoopbackHttpServer server;
+        internal string BaseUrl => server.V1;
 
         private Relay(string? forward, bool refuseAudio)
         {
             this.forward = forward;
             this.refuseAudio = refuseAudio;
-            listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            BaseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
+            server = new LoopbackHttpServer(AnswerAsync, concurrent: true);
         }
 
-        internal static Relay Start(string? forward, bool refuseAudio = false)
-        {
-            var relay = new Relay(forward, refuseAudio);
-            relay.serving = relay.ServeAsync();
-            return relay;
-        }
+        internal static Relay Start(string? forward, bool refuseAudio = false) => new(forward, refuseAudio);
 
         internal byte[][] Bodies { get { lock (bodies) return [.. bodies]; } }
 
-        private async Task ServeAsync()
+        private async Task AnswerAsync(LoopbackExchange exchange)
         {
-            while (!stop.IsCancellationRequested)
+            var body = exchange.Request.Body;
+            lock (bodies) bodies.Add(body);
+            if (refuseAudio && exchange.Request.Text.Contains("\"input_audio\"", StringComparison.Ordinal))
             {
-                TcpClient client;
-                try { client = await listener.AcceptTcpClientAsync(stop.Token); }
-                catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { return; }
-                _ = HandleAsync(client);
+                await exchange.RespondAsync(400, "{\"error\":{\"message\":\"This model does not take audio input.\",\"type\":\"invalid_request_error\"}}");
+                return;
             }
-        }
-
-        private async Task HandleAsync(TcpClient client)
-        {
-            using (client)
+            if (forward is null)
             {
-                try
-                {
-                    await using var stream = client.GetStream();
-                    var body = await HearingCheck.ReadRequestAsync(stream, stop.Token);
-                    lock (bodies) bodies.Add(body);
-                    if (refuseAudio && Encoding.UTF8.GetString(body).Contains("\"input_audio\"", StringComparison.Ordinal))
-                    {
-                        var refusal = Encoding.UTF8.GetBytes("{\"error\":{\"message\":\"This model does not take audio input.\",\"type\":\"invalid_request_error\"}}");
-                        await WriteAsync(stream, "400 Bad Request", "application/json", refusal);
-                        return;
-                    }
-                    if (forward is null)
-                    {
-                        const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-                        var events = "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"Fixture reply (not AI).\"},\"finish_reason\":null}]}\n\n" +
-                            "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-                        await WriteAsync(stream, "200 OK", "text/event-stream", Encoding.UTF8.GetBytes(events));
-                        return;
-                    }
-                    // As the desktop sends it to Ollama on this PC: Thinking steps Off as reasoning_effort, usage with the cache.
-                    var request = JsonNode.Parse(body)!.AsObject();
-                    request.Remove("chat_template_kwargs");
-                    request["reasoning_effort"] = "none";
-                    request["stream_options"] = new JsonObject { ["include_usage"] = true };
-                    using var message = new HttpRequestMessage(HttpMethod.Post, forward + "/v1/chat/completions")
-                    {
-                        Content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json")
-                    };
-                    using var response = await Http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, stop.Token);
-                    var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {(int)response.StatusCode} {response.ReasonPhrase}\r\n" +
-                        $"Content-Type: {response.Content.Headers.ContentType?.ToString() ?? "text/event-stream"}\r\nConnection: close\r\n\r\n");
-                    await stream.WriteAsync(head, stop.Token);
-                    await using var upstream = await response.Content.ReadAsStreamAsync(stop.Token);
-                    var buffer = new byte[16_384];
-                    int read;
-                    while ((read = await upstream.ReadAsync(buffer, stop.Token)) > 0)
-                    {
-                        await stream.WriteAsync(buffer.AsMemory(0, read), stop.Token);
-                        await stream.FlushAsync(stop.Token);
-                    }
-                }
-                catch (Exception error) when (error is OperationCanceledException or IOException or SocketException or
-                    HttpRequestException or JsonException or ObjectDisposedException) { }
+                await exchange.RespondAsync(200, FixtureChat.Reply(), "text/event-stream");
+                return;
             }
+            // As the desktop sends it to Ollama on this PC: Thinking steps Off as reasoning_effort, usage with the cache.
+            var request = JsonNode.Parse(body)!.AsObject();
+            request.Remove("chat_template_kwargs");
+            request["reasoning_effort"] = "none";
+            request["stream_options"] = new JsonObject { ["include_usage"] = true };
+            using var message = new HttpRequestMessage(HttpMethod.Post, forward + "/v1/chat/completions")
+            {
+                Content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json")
+            };
+            using var response = await Http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, exchange.Cancellation);
+            await exchange.StartAsync((int)response.StatusCode, response.Content.Headers.ContentType?.ToString() ?? "text/event-stream");
+            await using var upstream = await response.Content.ReadAsStreamAsync(exchange.Cancellation);
+            var buffer = new byte[16_384];
+            int read;
+            while ((read = await upstream.ReadAsync(buffer, exchange.Cancellation)) > 0)
+                await exchange.WriteAsync(buffer.AsMemory(0, read));
         }
 
-        private async Task WriteAsync(NetworkStream stream, string status, string type, byte[] payload)
-        {
-            var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\nContent-Type: {type}\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(head, stop.Token);
-            await stream.WriteAsync(payload, stop.Token);
-            await stream.FlushAsync(stop.Token);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 
     private sealed class NoCredentials : IProviderCredentialSource

@@ -11331,7 +11331,7 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
+  `src\Martlet.Mcp.Protocol\AutomationPolicy.Clicks.cs` (or `SafeClickPrefixes` for a
   family of generated IDs such as `CompanionTab-` and `Node-`). A passive click
   may read this PC, ask the local network a discovery question that carries
   none of your data, and stop what Martlet does at this moment (a reply, a
@@ -11341,7 +11341,7 @@ observe them:
   behind `--allow-ui-effects`. `AutomationPolicyTests` checks the effect texts
   for these words.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
-  `SafeValuePrefixes`) in the same file so snapshots return their text (a value
+  `SafeValuePrefixes`) in `AutomationPolicy.Values.cs` so snapshots return their text (a value
   pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
   `ui_snapshot` also replaces every e-mail address with `[email]` and every
@@ -11358,8 +11358,21 @@ observe them:
   lists them). A registration is the tool's name, description, input schema
   (strict, bounded arguments, ID-based results), handler and, when it needs
   one, its `ToolPermission` (`Changes` makes the server refuse it without
-  `--allow-changes`). Put code that only that tool uses in the same file. Or
-  add a Doctor probe that `doctor_run` reaches.
+  `--allow-changes`). Put code that only that tool uses in the same file, or
+  in a part next to it (`<Area>Tools.<Feature>.cs`, such as
+  `NetworkTools.Labs.cs`) when the file grows past about 800 lines. Or add a
+  Doctor probe that `doctor_run` reaches.
+- **Fixtures:** a check that stands in for a model, a web site or a service on
+  127.0.0.1 uses `LoopbackHttpServer` in `src\Martlet.Mcp.Protocol\Fixtures`
+  (it reads Content-Length and chunked requests and answers whole,
+  server-sent events or chunked), with `FixtureChat` for Chat Completions
+  answers. Do not write another socket server.
+- **Errors:** throw `ArgumentException` for wrong arguments,
+  `InvalidOperationException` when Martlet is not in a state for it, or
+  `McpToolException` for any other expected failure; the assistant gets the
+  message as the tool's error. An area whose code throws exceptions of its own
+  projects names them in `McpServer.ToolGroups` (`Expecting`). Any other
+  exception comes back with its type name, and the server keeps running.
   Keep tools local, read-only by default and free of network, audio and
   credential effects unless gated like `--allow-ui-effects` (or, for tools that
   save the owner's settings, `--allow-changes`). Begin each description with one
