@@ -17,14 +17,11 @@ public partial class MainWindow
     /// <summary>The app that runs Thinking's model on this PC.</summary>
     internal enum LocalApp { Ollama, Other }
 
-    private const string AnotherAddress = "Another address on this PC";
-
     private LocalApp? localApp;
     private IReadOnlyList<LocalModelServer>? localServers;
     private bool lookingForLocalServers;
-    /// <summary>The model app picked in the list (its base URL), or <see cref="AnotherAddress"/>; kept while the page shows again.</summary>
+    /// <summary>The model app picked in the list (its base URL), or <see cref="ThinkingCards.AnotherAddress"/>; kept while the page shows again.</summary>
     private string? localServerPicked;
-    private string? localServerAddress;
     /// <summary>What the address typed under Another address said when asked for its models.</summary>
     private (string BaseUrl, LocalServerAnswer Answer)? localServerAsked;
     private LocalServerTestOutcome? localServerTest;
@@ -32,7 +29,7 @@ public partial class MainWindow
     private bool testingLocalServer;
 
     /// <summary>The last test of a model in a model app on this PC: where, which model, what it found and whether it worked.</summary>
-    private sealed record LocalServerTestOutcome(string BaseUrl, string Model, string Text, bool Passed, bool Warning);
+    internal sealed record LocalServerTestOutcome(string BaseUrl, string Model, string Text, bool Passed, bool Warning);
 
     /// <summary>Thinking uses a model app on this PC other than Martlet's Ollama: a Chat Completions route to a loopback address.</summary>
     internal static bool IsLocalServer(SetupRoute? route) =>
@@ -93,175 +90,6 @@ public partial class MainWindow
         catch (OperationCanceledException) { return; }
         finally { lookingForLocalServers = false; }
         if (!closing && openTab == CompanionTab.Thinking && !(quiet && tabEdited)) RenderTab();
-    }
-
-    /// <summary>The model app found on this PC that the Model app picker shows for <see cref="LocalApp.Other"/>: the one picked,
-    /// else the one Thinking uses, else the first found; null for an app typed by its address.</summary>
-    private LocalModelServer? PickedLocalServer(SetupRoute? route)
-    {
-        var found = OtherLocalServers();
-        var wanted = localServerPicked ?? (IsLocalServer(route) ? route!.Origin : null);
-        if (wanted == AnotherAddress) return null;
-        return found.FirstOrDefault(s => s.ChatCompletionsBaseUrl == wanted) ?? (wanted is null ? found.FirstOrDefault() : null);
-    }
-
-    /// <summary>Which app runs the model on this PC, as an option picker (<c>Picker-LocalApp-&lt;key&gt;</c>): Ollama, each other
-    /// model app found here, and an app typed by its address. Choosing one shows its card below.</summary>
-    private Border LocalAppCard(SetupRoute? route, LocalApp chosen)
-    {
-        var others = OtherLocalServers();
-        var options = JobOptions.LocalApps(others, lookingForLocalServers && localServers is null, !Prerequisites.IsMissing(Prerequisites.Ollama),
-            IsLocalOllama(route), IsLocalServer(route) ? route!.Origin : null);
-        var shown = chosen == LocalApp.Ollama ? JobOptions.OllamaApp
-            : PickedLocalServer(route) is { } server ? JobOptions.AppKey(server) : JobOptions.AddressApp;
-        // The chosen app's own card below is its details.
-        return OptionPicker("LocalApp", "Model app", null, options, shown, key =>
-        {
-            localApp = key == JobOptions.OllamaApp ? LocalApp.Ollama : LocalApp.Other;
-            if (key == JobOptions.AddressApp) localServerPicked = AnotherAddress;
-            else if (others.FirstOrDefault(s => JobOptions.AppKey(s) == key) is { } picked) localServerPicked = picked.ChatCompletionsBaseUrl;
-        }, details: false);
-    }
-    /// <summary>A model app the owner already runs on this PC: pick a found one (or type its address), pick its model, test it,
-    /// use it. Only a key the app asks for is entered, and it is kept in Windows Credential Manager like any route's key.</summary>
-    private Border LocalServerCard(SetupRoute? route)
-    {
-        var current = IsLocalServer(route) ? route : null;
-        var found = OtherLocalServers();
-
-        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
-            Text = current is null ? LocalServersSummary(localServers, lookingForLocalServers, ollamaModels is not null)
-                : $"Thinking uses {current.ModelId} in {LocalServerName(current.Origin)}; " +
-                  Lowered(LocalServersSummary(localServers, lookingForLocalServers, ollamaModels is not null)) };
-        AutomationProperties.SetAutomationId(status, "LocalServersStatus");
-        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-
-        var picked = PickedLocalServer(route);
-        var address = new TextBox { MaxLength = 256, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
-            Text = localServerAddress ?? (current is not null && found.All(s => s.ChatCompletionsBaseUrl != current.Origin) ? current.Origin : null) ?? "" };
-        AutomationProperties.SetName(address, "Address on this PC");
-        AutomationProperties.SetAutomationId(address, "LocalServerAddress");
-        InputHint.SetText(address, "http://127.0.0.1:8080/v1");
-        var addressPanel = new StackPanel { Children =
-        {
-            new Label { Content = "_Address on this PC", Target = address, Padding = new Thickness(0, 8, 0, 4) },
-            address,
-            Note("The address your app shows for its server, for example localhost:1234 or http://127.0.0.1:8080/v1.", new Thickness(0, 4, 0, 0))
-        } };
-
-        var model = new ComboBox { IsEditable = true, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(model, "Model");
-        AutomationProperties.SetAutomationId(model, "LocalServerModel");
-        var models = Note("", new Thickness(0, 4, 0, 0));
-        AutomationProperties.SetAutomationId(models, "LocalServerModels");
-
-        var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(key, "API key, only if the app asks for one");
-        AutomationProperties.SetAutomationId(key, "LocalServerKey");
-        InputHint.SetText(key, "The key you set in the app, if it asks for one");
-        var keyStatus = Note("", new Thickness(0, 4, 0, 0));
-        AutomationProperties.SetAutomationId(keyStatus, "LocalServerKeyStatus");
-        var hint = Note("", new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(hint, "LocalServerHint");
-        var privacy = Note("", new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(privacy, "LocalServerPrivacy");
-
-        LocalModelServer? Picked() => picked;
-        string? BaseUrl(out string problem)
-        {
-            problem = "";
-            return Picked()?.ChatCompletionsBaseUrl ?? LocalModelServers.Normalize(address.Text, out problem);
-        }
-        string ModelId() => (model.Text ?? "").Trim();
-        bool HasKey(string? baseUrl) => baseUrl is not null && (current?.Origin == baseUrl && current.CredentialId is not null ||
-            SetupSettings.SetAsideCredentials(homeSettings, SetupRole.Llm, baseUrl).Count > 0);
-
-        var tested = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
-        AutomationProperties.SetAutomationId(tested, "LocalServerTestResult");
-        AutomationProperties.SetLiveSetting(tested, AutomationLiveSetting.Polite);
-        void ShowTest()
-        {
-            var baseUrl = BaseUrl(out _);
-            var last = localServerTest is { } outcome && outcome.Model == ModelId() && outcome.BaseUrl == baseUrl ? outcome : null;
-            tested.Text = last?.Text ?? (ModelId().Length == 0 || baseUrl is null ? "" : $"{ModelId()} isn't tested yet, so test it before you use it.");
-            tested.SetResourceReference(TextBlock.ForegroundProperty, last is null ? "MutedBrush" : last.Passed && !last.Warning ? "SuccessBrush"
-                : "WarningBrush");
-        }
-        showLocalServerTest = ShowTest;
-
-        var use = PageButton("Use this app", () => SaveLocalServerAsync(BaseUrl(out var problem), problem, ModelId(), key).Forget(),
-            primary: true, id: "LocalServerUse");
-        var find = PageButton("Find models", () => AskLocalServerAsync(address.Text, key).Forget(), id: "LocalServerFind");
-
-        void Refresh(bool keepModel)
-        {
-            var server = Picked();
-            addressPanel.Visibility = server is null ? Visibility.Visible : Visibility.Collapsed;
-            find.Visibility = server is null ? Visibility.Visible : Visibility.Collapsed;
-            var baseUrl = BaseUrl(out _);
-            var asked = server is null && localServerAsked is { } a && a.BaseUrl == baseUrl ? a.Answer : null;
-            IReadOnlyList<string> list = server?.Models ?? asked?.Models ?? [];
-            IReadOnlyList<string> unusable = server?.Unusable ?? asked?.Unusable ?? [];
-            if (!keepModel)
-            {
-                var keep = ModelId();
-                model.ItemsSource = list;
-                model.Text = current?.Origin == baseUrl && current is not null ? current.ModelId
-                    : list.Contains(keep, StringComparer.Ordinal) ? keep : list.FirstOrDefault() ?? keep;
-            }
-            var listed = server?.NeedsKey == true || asked?.Kind == LocalServerAnswerKind.NeedsKey
-                    ? "It asks for an API key before it lists its models: enter the key you set in the app, then choose Find models or Test model"
-                    : asked is { Kind: not LocalServerAnswerKind.Models } ? (asked.Problem ?? "").TrimEnd('.')
-                    : list.Count == 0 && (server is not null || asked is not null) ? "It lists no models yet, so load one in the app or type its name"
-                    : list.Count > 0 ? $"It lists {list.Count} {(list.Count == 1 ? "model" : "models")}" : "";
-            var cannot = unusable.Count > 0 ? $"Martlet can't use {string.Join(", ", unusable.Take(3))}: give it a name of letters, digits, " +
-                "dots, dashes, underscores, slashes or colons in the app" : "";
-            models.Text = listed.Length > 0 && cannot.Length > 0 ? $"{listed}; {Lowered(cannot)}." : listed.Length + cannot.Length > 0 ? listed + cannot + "." : "";
-            var saved = HasKey(baseUrl);
-            keyStatus.Text = saved ? "Your key for this app is saved; leave this empty to keep it or enter a new key."
-                : "Leave this empty unless the app asks for a key (Martlet keeps a key in Windows Credential Manager).";
-            var name = baseUrl is null ? "the app" : LocalServerName(baseUrl);
-            // An app that already answers needs no start steps; one typed by address may not be running yet.
-            var start = server is not null ? "" : (baseUrl is null ? null : LocalModelServers.AppAt(baseUrl)?.HowToStart) ??
-                "Start your app's local server (it may be called API server, OpenAI-compatible server or Developer server), then " +
-                "choose Look again or enter its address.";
-            hint.Text = start;
-            hint.Visibility = start.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-            privacy.Text = $"Your messages go to {name} on this PC, and that app decides what it keeps and whether anything leaves this PC.";
-            use.Content = baseUrl is null ? "Use this app" : $"Use {LocalServerName(baseUrl)}";
-            AutomationProperties.SetName(use, (string)use.Content);
-            ShowTest();
-        }
-        Refresh(keepModel: false);
-        address.TextChanged += (_, _) =>
-        {
-            tabEdited = true;
-            localServerAddress = address.Text;
-            Refresh(keepModel: true);
-        };
-        model.SelectionChanged += (_, _) => { tabEdited = true; Dispatcher.BeginInvoke(new Action(ShowTest)); };
-        model.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => ShowTest()));
-        key.PasswordChanged += (_, _) => tabEdited = true;
-
-        return Card(Heading("Your model app on this PC"),
-            HelpTip.Explain("Martlet thinks with a model your app serves on this PC, with no per-request cost. Start the app's local " +
-                "server, then choose it here.", new Thickness(0, 0, 0, 8), "LocalServerAbout", "your model app",
-                wiki: "Thinking#use-a-model-app-you-already-run"),
-            status,
-            addressPanel,
-            new Label { Content = "M_odel", Target = model, Padding = new Thickness(0, 8, 0, 4) },
-            model,
-            models,
-            new Label { Content = "API _key (only if the app asks for one)", Target = key, Padding = new Thickness(0, 8, 0, 4) },
-            key,
-            keyStatus,
-            hint,
-            privacy,
-            Row(PageButton("Look again", () => LookForLocalServersAsync().Forget(), id: "LocalServersScan"),
-                find,
-                PageButton("Test model", () => TestLocalServerAsync(BaseUrl(out var problem), problem, ModelId(), key).Forget(), id: "LocalServerTest"),
-                use),
-            tested);
     }
 
     /// <summary>The key typed in <paramref name="box"/>, read for one request to the app on this PC, else the saved key for that
