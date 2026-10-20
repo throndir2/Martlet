@@ -268,8 +268,8 @@ public partial class MainWindow
             case CompanionTab.LipSync: LipSyncPage.Render(body); break;
             case CompanionTab.Profiles: RenderProfilesTab(body); break;
             case CompanionTab.Character: CharacterPage.Render(body); break;
-            case CompanionTab.SpeechBubbles: RenderSpeechBubblesTab(body); break;
-            case CompanionTab.Emotes: RenderEmotesTab(body); break;
+            case CompanionTab.SpeechBubbles: SpeechBubblesPage.Render(body); break;
+            case CompanionTab.Emotes: EmotesPage.Render(body); break;
             case CompanionTab.Eyes: EyesPage.Render(body); break;
             case CompanionTab.Touch: TouchPage.Render(body); break;
             case CompanionTab.Personality: PersonalityPage.Render(body); break;
@@ -299,7 +299,7 @@ public partial class MainWindow
         });
     }
 
-    // The job pages are in MainWindow.JobPages.cs and MainWindow.LocalThinking.cs; Character, Eyes and Touch in
-    // MainWindow.CharacterPages.cs; the moved pages in Pages\<Page>. The page catalog (titles, groups,
+    // The moved pages are in Pages\<Page>; a page that is not moved yet is a Render...Tab method in its own MainWindow file. The
+    // page catalog (titles, groups,
     // icons, intros) is Pages\Companion\CompanionPages.cs, and the small builders are in Pages\PageKit.cs.
 }

@@ -116,7 +116,7 @@ public partial class MainWindow : ThemedWindow
         recovery = services.Recovery;
         avatar = services.Avatar;
         captions = services.Captions;
-        captions.Changed += () => ShowSpeechDisplay();
+        captions.Changed += () => speechBubblesPage?.Show();
         avatar.Placement = CharacterPlacementStore.Load(store?.DataDirectory);
         avatar.ClickThrough = CharacterClickThroughStore.Load(store?.DataDirectory);
         avatar.VoiceMuted = !Talk.SpeakReplies;
