@@ -22,7 +22,7 @@ internal static class PosixFileSystem
 /// kern.bootsessionuuid.</summary>
 internal sealed class MacFileSystem : ILinuxFileSystem
 {
-    private const int ONonBlock = 0x4, ONoFollow = 0x100, OCreate = 0x200, OExclusive = 0x800,
+    private const int ONonBlock = 0x4, OAppend = 0x8, ONoFollow = 0x100, OCreate = 0x200, OExclusive = 0x800,
         ODirectory = 0x100000, OCloseOnExec = 0x1000000, ONoFollowAny = 0x20000000;
     private const int AtSymlinkNoFollow = 0x20, FullFileSync = 51, LockExclusiveNonBlocking = 2 | 4;
     private const uint RenameExclusive = 0x4;
@@ -48,9 +48,11 @@ internal sealed class MacFileSystem : ILinuxFileSystem
     internal static int TranslateFlags(int linux)
     {
         const int known = LinuxFileSystem.Directory | LinuxFileSystem.NoFollow | LinuxFileSystem.CloseOnExec |
-            LinuxFileSystem.NonBlocking | LinuxFileSystem.ReadWrite | LinuxFileSystem.Create | LinuxFileSystem.Exclusive | 1;
+            LinuxFileSystem.NonBlocking | LinuxFileSystem.ReadWrite | LinuxFileSystem.Create | LinuxFileSystem.Exclusive |
+            LinuxFileSystem.Append | 1;
         if ((linux & ~known) != 0 || (linux & 3) == 3) throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
         var flags = linux & 3;
+        if ((linux & LinuxFileSystem.Append) != 0) flags |= OAppend;
         if ((linux & LinuxFileSystem.Directory) != 0) flags |= ODirectory;
         if ((linux & LinuxFileSystem.NoFollow) != 0) flags |= ONoFollow;
         if ((linux & LinuxFileSystem.CloseOnExec) != 0) flags |= OCloseOnExec;

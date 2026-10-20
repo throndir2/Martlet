@@ -32,11 +32,16 @@ public sealed record HostSecurityAudit(string HostId, bool InternetReachable, bo
     public bool? StoresHealthy { get; init; }
     /// <summary>The stores whose last load or save failed ("API keys: save"); empty when all work.</summary>
     public IReadOnlyList<string> FailingStores { get; init; } = [];
-    /// <summary>How many times the host saved its pairing authority since it started, and how long a save takes on average and
-    /// at most (each signed request waits for one save); null from older hosts.</summary>
+    /// <summary>How many times the host fully saved its pairing authority since it started, and how long a save takes on
+    /// average and at most; null from older hosts.</summary>
     public long? AuthorityCommits { get; init; }
     public double? AuthorityCommitAverageMs { get; init; }
     public double? AuthorityCommitLongestMs { get; init; }
+    /// <summary>How many nonce saves (one journal append each; every signed request waits for one) the host made since it
+    /// started, and how long one takes on average and at most; null from older hosts.</summary>
+    public long? NonceSaves { get; init; }
+    public double? NonceSaveAverageMs { get; init; }
+    public double? NonceSaveLongestMs { get; init; }
 }
 
 public sealed partial class Audio2FaceHostConnection
@@ -88,7 +93,11 @@ public sealed partial class Audio2FaceHostConnection
                 AuthorityCommits = root.TryGetProperty("authority_commits", out var commits) && commits.ValueKind == JsonValueKind.Object
                     ? commits.GetProperty("count").GetInt64() : null,
                 AuthorityCommitAverageMs = commits.ValueKind == JsonValueKind.Object ? commits.GetProperty("average_ms").GetDouble() : null,
-                AuthorityCommitLongestMs = commits.ValueKind == JsonValueKind.Object ? commits.GetProperty("longest_ms").GetDouble() : null
+                AuthorityCommitLongestMs = commits.ValueKind == JsonValueKind.Object ? commits.GetProperty("longest_ms").GetDouble() : null,
+                NonceSaves = root.TryGetProperty("nonce_saves", out var nonces) && nonces.ValueKind == JsonValueKind.Object
+                    ? nonces.GetProperty("count").GetInt64() : null,
+                NonceSaveAverageMs = nonces.ValueKind == JsonValueKind.Object ? nonces.GetProperty("average_ms").GetDouble() : null,
+                NonceSaveLongestMs = nonces.ValueKind == JsonValueKind.Object ? nonces.GetProperty("longest_ms").GetDouble() : null
             };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)

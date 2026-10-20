@@ -7,6 +7,7 @@ using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Access;
 using Martlet.Gateway;
+using Martlet.Gateway.Persistence;
 
 namespace Martlet.NodeLinkCheck;
 
@@ -71,10 +72,11 @@ internal static class ExposureRehearsal
             (saved, savedSecret) = (pairing, secret);
             var audit = await desktop.ReadSecurityAuditAsync(token);
             return (audit.Events.Any(e => e is { Outcome: "success", Subject: "lab-desktop", SourceKind: "loopback" }) && !audit.InternetReachable &&
-                    audit is { StoresHealthy: true, FailingStores.Count: 0, AuthorityCommits: not null },
+                    audit is { StoresHealthy: true, FailingStores.Count: 0, AuthorityCommits: not null, NonceSaves: not null },
                 $"paired; audit: {audit.Successes} success(es), source kind {audit.Events.LastOrDefault()?.SourceKind}; stores healthy: " +
                 $"{audit.StoresHealthy}; authority saves: {audit.AuthorityCommits} (average {audit.AuthorityCommitAverageMs} ms, " +
-                $"longest {audit.AuthorityCommitLongestMs} ms)");
+                $"longest {audit.AuthorityCommitLongestMs} ms); nonce saves: {audit.NonceSaves} (average {audit.NonceSaveAverageMs} ms, " +
+                $"longest {audit.NonceSaveLongestMs} ms)");
         });
 
         host.Server.Exposure = new() { TreatAllAsOutside = true, InternetReachable = true };
@@ -179,6 +181,32 @@ internal static class ExposureRehearsal
                 string.Join(" | ", lines.Where(l => l.StartsWith("Refused") || l.StartsWith("Locked out") || l.StartsWith("Throttled")).Take(4)));
         });
         desktop?.Dispose();
+
+        await Run("A host with its real pairing store saves each signed request's nonce with one journal append, not a full save", async () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), "martlet-exposure-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var origin = new GatewayOrigin($"https://127.0.0.1:{LabHost.FreePort()}");
+                await using var durable = DurableGatewayHost.CreateNew(Path.Combine(root, "store"), "lab-durable", origin, [],
+                    new QuietAudit(), LocalGatewayDecision.Enable, token);
+                await durable.StartAsync(token);
+                var card = durable.OpenPairing(new() { DeviceId = "lab-durable-desktop", DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
+                var (pairing, secret) = await Audio2FaceHostClient.PairAsync(origin.CanonicalOrigin, "lab-durable",
+                    durable.Identity!.SpkiFingerprint, "lab-durable-desktop", card.PairingId, card.Token.Reveal(), token);
+                using var connection = new Audio2FaceHostConnection(pairing, secret);
+                HostSecurityAudit audit = null!;
+                for (var i = 0; i < 20; i++)
+                    audit = await connection.ReadSecurityAuditAsync(token);
+                await durable.CloseCleanlyAsync(token);
+                // The pairing is one full save; the 20 signed reads before the last audit are nonce appends.
+                return (audit is { NonceSaves: >= 19, AuthorityCommits: <= 1 },
+                    $"full saves: {audit.AuthorityCommits} (average {audit.AuthorityCommitAverageMs} ms); nonce saves: {audit.NonceSaves} " +
+                    $"(average {audit.NonceSaveAverageMs} ms, longest {audit.NonceSaveLongestMs} ms)");
+            }
+            finally { Directory.Delete(root, recursive: true); }
+        });
 
         // Outside addresses: the desktop keeps the home origin (pinned key, signatures) and only the TCP connection goes elsewhere.
         host.Server.Exposure = new();
@@ -350,6 +378,11 @@ internal static class ExposureRehearsal
         static bool Private(byte[] b) => b[0] == 10 || b[0] == 172 && b[1] is >= 16 and <= 31 || b[0] == 192 && b[1] == 168;
         return (addresses.FirstOrDefault(a => Private(a.GetAddressBytes())),
             addresses.FirstOrDefault(a => a.GetAddressBytes() is [100, var second, _, _] && (second & 0xC0) == 64));
+    }
+
+    private sealed class QuietAudit : IGatewayAuditSink
+    {
+        public void Record(GatewayAuditEvent gatewayEvent) { }
     }
 
     private sealed class LabHost : IAsyncDisposable, IGatewayAuditSink, IGatewaySignInStorage
