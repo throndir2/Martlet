@@ -75,11 +75,13 @@ public partial class MainWindow
             colors = characterThemes.Colors(theme);
         }
         app.ApplyTheme(theme, colors);
-        var note = theme.FromCharacter() && colors is null ? " Reading your character's colors..." : "";
-        var saved = created ? $"Custom saved. It starts from {previous.Name()}: choose any color below to change it." : $"{theme.Name()} saved." + note;
+        var reading = theme.FromCharacter() && colors is null;
+        var saved = created ? $"Custom saved, starting from {previous.Name()}: choose any color below to change it."
+            : $"{theme.Name()} saved" + (reading ? "; reading your character's colors..." : ".");
         if (store is null)
         {
-            AppearanceStatus.Text = "Theme applied for this session. Choose a data folder to save it." + note;
+            AppearanceStatus.Text = "Theme applied for this session; choose a data folder to save it" +
+                (reading ? " (reading your character's colors...)." : ".");
             RenderAppearance();
             return;
         }
@@ -92,7 +94,7 @@ public partial class MainWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppearanceStatus.Text = "Theme applied for this session, but it could not be saved. Check access to Martlet's data folder.";
+            AppearanceStatus.Text = "Theme applied for this session, but it couldn't be saved, so check access to Martlet's data folder.";
         }
         RenderAppearance();
         FollowCharacterTheme();
@@ -121,7 +123,7 @@ public partial class MainWindow
         catch (Exception ex) when (ex is OperationCanceledException || RendererFailures.Is(ex, lifetime.Token))
         {
             if (!closing)
-                AppearanceStatus.Text += " The character could not update its colors. Restart it to apply the theme.";
+                AppearanceStatus.Text = AppearanceStatus.Text.TrimEnd('.') + ", but the character couldn't update its colors (restart it to apply the theme).";
         }
     }
 
@@ -133,7 +135,7 @@ public partial class MainWindow
         var loaded = characterThemes.Current;
         AppearanceCharacterStatus.Text = characterThemes.Problem is { } problem ? "Martlet couldn't read this character's colors: " + problem
             : loaded is null ? "Reading your character's colors..."
-            : $"{loaded.Entry.Swatches.Count} main colors from its textures. The character palettes take their accent from " +
+            : $"{loaded.Entry.Swatches.Count} main colors from its textures; the character palettes take their accent from " +
               $"{CharacterThemeRules.Pick(loaded.Entry.Swatches).Accent.Hex} and follow the character you show.";
         AppearanceSwatches.Children.Clear();
         if (loaded is not null)

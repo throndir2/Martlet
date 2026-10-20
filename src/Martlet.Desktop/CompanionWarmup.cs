@@ -56,7 +56,7 @@ internal static class CompanionWarmup
     /// <summary>What warming up means for what you do now, after <see cref="Line"/>.</summary>
     internal static string Advice(IReadOnlyList<WarmupItem> items, bool talkWindow) =>
         items.Any(i => i.Part == WarmupPart.Thinking)
-            ? talkWindow ? "You can talk or type now. The first reply starts once the model has loaded."
+            ? talkWindow ? "You can talk or type now; the first reply starts once the model has loaded."
                 : "Martlet answers once the model has loaded."
             : items.Any(i => i.Part == WarmupPart.Listening)
                 ? "Martlet hears you once it has loaded." : "Martlet is almost ready.";
@@ -67,8 +67,8 @@ internal static class CompanionWarmup
         items.FirstOrDefault(i => i.Part == WarmupPart.Thinking && i.LastTime is { TotalSeconds: > 0 }) is { } thinking
             ? Math.Clamp(thinking.Elapsed / thinking.LastTime!.Value, 0, 0.95) : null;
 
-    /// <summary>The line after warming up ends: "Warmed up in 18 s. Martlet is ready to talk."</summary>
-    internal static string Done(TimeSpan took) => $"Warmed up in {Seconds(took)} s. Martlet is ready to talk.";
+    /// <summary>The line after warming up ends: "Warmed up in 18 s, and Martlet is ready to talk."</summary>
+    internal static string Done(TimeSpan took) => $"Warmed up in {Seconds(took)} s, and Martlet is ready to talk.";
 
     private static string Phrase(WarmupItem item) => item.Part switch
     {

@@ -79,7 +79,7 @@ public static class AppUpdateHelper
             var previous = Cmd(AppUpdateStaging.PreviousRoot(installRoot!));
             // The new version is already in <program folder>.next: two folder renames switch to it. The first try comes at
             // once; the character's renderer and tool servers end with Martlet (kill-on-close job objects).
-            text.Append(Note($"Martlet exited. Switching to Martlet {version}, which was installed beside it while Martlet ran."))
+            text.Append(Note($"Martlet exited; switching to Martlet {version}, which was installed beside it while Martlet ran."))
                 .Append($"if not exist \"{next}\\{AppUpdateStaging.DesktopFolder}\\{AppUpdateStaging.DesktopExecutable}\" goto nostage\r\n")
                 .Append("set s=0\r\n:switch\r\n")
                 .Append($"if exist \"{previous}\" rd /s /q \"{previous}\"\r\n")
@@ -90,20 +90,20 @@ public static class AppUpdateHelper
                 .Append(":switched\r\n")
                 .Append($"move \"{next}\" \"{root}\" >NUL 2>&1 || goto putback\r\n")
                 .Append($"if exist \"{previous}\\uninstall\" move \"{previous}\\uninstall\" \"{root}\\uninstall\" >NUL 2>&1\r\n")
-                .Append(Note($"Switched to Martlet {version}. Updating its shortcuts and Windows' list of installed apps."))
+                .Append(Note($"Switched to Martlet {version}; updating its shortcuts and Windows' list of installed apps."))
                 .Append($"\"{Cmd(installer)}\" {FinishArguments(installerLog)}\r\n")
                 .Append("set code=%errorlevel%\r\n")
-                .Append("if not \"%code%\"==\"0\" " + Note("The installer's finish step ended with exit code %code%. Martlet " +
-                    $"{version} runs, but Windows' list of installed apps may still show the earlier version. Details are in install.log."))
+                .Append("if not \"%code%\"==\"0\" " + Note("The installer's finish step ended with exit code %code%, so Windows' list of installed apps may still " +
+                    $"show the version before {version}; details are in install.log."))
                 .Append($">\"{Cmd(result)}\" echo 0 {version}\r\n")
                 .Append("goto done\r\n")
                 .Append(":putback\r\n")
                 .Append($"move \"{previous}\" \"{root}\" >NUL 2>&1\r\n")
                 .Append(":inuse\r\n")
-                .Append(Note("Martlet's program folder is still in use, so it could not be switched. Running the whole installer instead."))
+                .Append(Note("Martlet's program folder is still in use, so Martlet runs the whole installer instead."))
                 .Append("goto full\r\n")
                 .Append(":nostage\r\n")
-                .Append(Note("The version installed beside Martlet is missing. Running the whole installer instead."))
+                .Append(Note("The version installed beside Martlet is missing, so Martlet runs the whole installer instead."))
                 .Append("ping -n 2 127.0.0.1 >NUL\r\n")
                 .Append(":full\r\n");
         }
@@ -117,7 +117,7 @@ public static class AppUpdateHelper
                 : $"{(staged ? "Installing" : "Martlet exited. Installing")} Martlet {version} with the installer's progress window."))
             .Append($"\"{Cmd(installer)}\" {InstallerArguments(unattended, installerLog)}\r\n")
             .Append("set code=%errorlevel%\r\n")
-            .Append(Note("The installer finished with exit code %code%. Its details are in install.log."))
+            .Append(Note("The installer finished with exit code %code%; its details are in install.log."))
             .Append($">\"{Cmd(result)}\" echo %code% {version}\r\n")
             .Append(":done\r\n");
         // /B: no console of its own. Martlet is a windowed app, so this only keeps the helper itself out of sight. /D: Martlet
@@ -125,7 +125,7 @@ public static class AppUpdateHelper
         if (relaunch is not null)
             text.Append(Note("Starting Martlet again."))
                 .Append($"start \"\" /D \"{Cmd(Path.GetDirectoryName(relaunch) ?? directory)}\" /B \"{Cmd(relaunch)}\"{relaunchArguments}\r\n");
-        else text.Append(Note("Done. Martlet starts the new version the next time it is opened."));
+        else text.Append(Note("Done; Martlet starts the new version the next time it is opened."));
         // The previous version (and a staged one the whole installer replaced) go once Martlet runs again.
         if (installRoot is not null)
             text.Append($"if exist \"{Cmd(AppUpdateStaging.PreviousRoot(installRoot))}\" rd /s /q \"{Cmd(AppUpdateStaging.PreviousRoot(installRoot))}\"\r\n")

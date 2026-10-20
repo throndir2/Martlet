@@ -45,7 +45,7 @@ public partial class MainWindow
         ErrorLog.Info($"Recommended setup: your preferences are {preferences.Describe()}.");
         QueueSettingsSync();
         if (SettingsPage.IsVisible)
-            Dispatcher.BeginInvoke(() => RenderRecommendationPreferences(reopen ? null : "Saved for all your computers. The next Recommended setup plans with it."));
+            Dispatcher.BeginInvoke(() => RenderRecommendationPreferences(reopen ? null : "Saved for all your computers, and the next Recommended setup plans with it."));
         if (reopen) Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync().Forget());
         return true;
     }
