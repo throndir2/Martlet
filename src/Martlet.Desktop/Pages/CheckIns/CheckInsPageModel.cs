@@ -72,7 +72,7 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
         if (state.Last is not { } last) return now + " It hasn't run since Martlet started.";
         return $"{now} Last at {last.At.ToLocalTime():t}{(last.Member is { } member ? " on " + member : "")}" +
             $"{(last.Trigger is { } trigger ? $" (started by {trigger})" : "")}: {last.Result}. " +
-            (last.Tools.Count > 0 ? $"Tools it called: {CheckIns.ToolsText(last.Tools)}. " : "") +
+            (last.Tools.Count > 0 ? $"Tools it called: {CheckInPrompts.ToolsText(last.Tools)}. " : "") +
             $"{state.Runs} run{(state.Runs == 1 ? "" : "s")} since Martlet started, {state.Acted} acted on.";
     }
 
@@ -177,7 +177,7 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
             return;
         }
         var name = current.Name + " (copy)";
-        var task = CheckIns.Template(current, services.Prompts) ?? "";
+        var task = CheckInPrompts.Template(current, services.Prompts) ?? "";
         var copy = new CustomCheckIn
         {
             Id = newId, Name = name.Length > CheckIns.MaximumNameCharacters ? name[..CheckIns.MaximumNameCharacters] : name, On = false,

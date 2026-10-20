@@ -12,6 +12,23 @@ Martlet is one app on all your computers. Talk to her on one PC, and let your st
 
 To change what a PC is for, open **Settings › What this PC is for** and choose **Use as my companion PC** or **Use as a Martlet host**. The **Your other computers** list on the same card switches your other computers too. On the Devices map, select another computer and choose **Make it a host PC** or **Make it a companion PC**.
 
+### Switch another computer from here
+
+The switch travels with the shared settings, so **Keep Martlet the same on all my computers** must be on (**Devices › Settings for all devices**).
+
+1. Open **Settings › What this PC is for › Your other computers**, or select the computer on the Devices map.
+2. Choose **Make it a host PC** or **Make it a companion PC**, then confirm.
+3. Wait. The other computer switches within a minute while Martlet runs there, or the next time Martlet starts there. If Martlet is replying there, it switches right after that reply.
+4. This PC says on its status line when the other computer has switched.
+
+Until it switches, the button reads **Keep it a companion PC**: choose it to take back your ask. A later choice made on that computer itself replaces your ask, and this PC tells you.
+
+When a computer becomes a host PC, Martlet there stops talking and listening, shows its host dashboard and starts its host service's jobs by itself. It keeps its companion choices, so you can make it a companion PC again from here or at that computer. A computer that has no host service yet does no work for your other computers until someone at it chooses **Set up host service** on its Home (once; Windows may ask to allow it).
+
+When a computer becomes a companion PC again, Martlet there shows the character and listens again as before it became a host, or as its startup choices say. A host service that it runs keeps serving your other computers.
+
+If another computer asks this PC to switch from a newer Martlet, update Martlet on this PC so that it can follow the ask.
+
 To add a host, see [Setting Up a Host](Setting-Up-a-Host).
 
 ## Join your Martlet network
@@ -23,6 +40,8 @@ Your computers with Martlet form your **Martlet network**. Pair a host once, and
 3. Pick one of your other computers in the list.
 4. Make sure that both screens show the same check number.
 5. Choose **Allow** on the other computer. **Turn down** refuses the request.
+
+When you choose **Allow**, the other computer gets a one-use code for each host listed. It pairs like a computer that you added yourself, and then it can use those hosts' jobs. Choose **Deny** if you didn't just ask from that computer, or if the check numbers are different.
 
 The new PC then pairs with every host by itself, also with hosts that you add later. It follows your shared settings, so its jobs go to your hosts.
 
@@ -86,7 +105,8 @@ Select a computer to see what it does, whether it answers and its Martlet versio
 Each job (voice, listening, lip-sync, reading, seeing, hearing, pictures and singing) has a list of machines, in order, on its Companion page. Add this PC, one of your computers, a graphics card or a cloud provider, and turn each one on or off.
 
 - The first machine does the job. When it is busy or offline, the next one takes over. The lists are the same on all your computers.
-- **Companion › Thinking** lists the computers that may answer when your Thinking model is busy. The list is empty by default.
+- **Companion › Thinking** lists the computers that may answer when your Thinking model is busy. The list is empty by default. Another computer's model has no prompt cache for your conversation, so it answers later and pushes its own conversation out of its cache. While the list is empty, a reply waits for its own computer.
+- In the Thinking pool, untick a computer to keep every companion PC's pool jobs off it. A computer that you keep for one companion PC takes no Thinking pool work from the others. In the other lists, each machine has its own **Every companion PC** or **Only** choice.
 - A job that a host does can have **Fail over automatically**. When the host stops answering for about 30 seconds, the job moves to another of your hosts with the same engine.
 - Work goes only to machines that you put on a list or chose as a backup. Martlet never moves your work to a cloud service by itself.
 
@@ -109,6 +129,41 @@ Some things stay on each computer, because they describe that computer: its micr
 Each person's own settings go only to the computers where that person is signed in. See [Accounts and Household](Accounts-and-Household).
 
 If your computers disagree, choose **Use this PC's settings on all my computers**. A computer that cannot use a shared choice yet (for example, a model is not installed there) keeps its own choice and says why.
+
+### Use this PC's settings on all my computers
+
+This button copies this PC's settings to every paired computer and replaces what they have. It copies how Martlet thinks, listens and speaks (with this PC's API keys), the character with its emotes and motions, the personality, replies, prompts, lorebooks, how you talk, the theme, Voice ID, recognizing voices, what Martlet may do with Home Assistant, app updates and what Thinking models hear and see.
+
+With accounts, your own settings (personality, replies, prompts, lorebooks, the character, how you talk, the theme and Voice ID) go only to the computers where you are signed in. Other people's settings stay as they are.
+
+### The sync status lines
+
+Under the switch, Devices shows how sync goes:
+
+- **Sync is on** tells how many of your hosts have the same choices of who does what, and when Martlet last checked.
+- **Settings** tells how many settings are shared, on how many hosts they are the same, and what this PC last took from another computer.
+- A host that is not responding is counted. Update a host that runs an older Martlet, so that it can share settings and each person's settings.
+- With accounts, your own settings start to sync when this PC finishes switching to you.
+
+### Not followed here yet
+
+This line names each shared setting that this PC cannot use yet, and why. This PC keeps its own choice and tries again. To fix the usual causes:
+
+- **Chosen, made or saved on a newer Martlet**: update Martlet on this PC.
+- **A character from VRoid Hub**: link VRoid Hub on this PC in **Account › Linked services**.
+- **A character's model file isn't on this PC**: add the character in **Companion › Character › Your characters** on the computer that has the file. Martlet then copies it to your other computers.
+- **Ollama isn't installed, or doesn't have the model**: set up Ollama or download the model in **Companion › Thinking**.
+- **Windows voices were removed**: choose another voice for this PC in **Companion › Voice**.
+- **A job runs on a host now**: this PC switches to the shared choice when the job comes back to this PC.
+- **The Thinking pool file can't be read or saved**: open **Companion › Thinking pool** to set it up again, and check that Martlet can write to its data folder.
+
+### When settings can't be read or saved
+
+- **Saved by a newer Martlet**, or **cannot be saved by this older Martlet**: update Martlet, or restore a compatible backup.
+- **Damaged or too large**: restore a compatible backup, or fix the settings file.
+- **Changed since you opened them**: another window or computer saved first. Open the page again, check your changes and save again.
+- **Cannot be accessed**: check the data folder's permissions and free space, and close other Martlet windows that use the same data folder.
+- **The key was not saved** or **could not save the cleanup**: open Setup again and finish or remove the waiting key first.
 
 ## Update every host from your companion PC
 

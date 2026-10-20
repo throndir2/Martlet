@@ -37,13 +37,11 @@ internal sealed class OpenAiAccessDialog : ThemedWindow
         var heading = new TextBlock { Text = "Give someone access", TextWrapping = TextWrapping.Wrap };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
-        root.Children.Add(new TextBlock
-        {
-            Text = "Martlet makes a key for one person or app. With it, any app that works with the OpenAI API can use the language " +
-                "models your hosts run. The key can't reach anything else: not your settings, memories, voices, other engines, " +
-                "or the cloud models and keys you set in Martlet. Revoke it at any time.",
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
-        });
+        root.Children.Add(HelpTip.Explain(
+            "Martlet makes a key for one person or app, and it reaches only the language models your hosts run. Any app that works " +
+            "with the OpenAI API can use it. The key never reaches your settings, memories, voices, other engines, or the cloud " +
+            "models and keys you set in Martlet; revoke it at any time.",
+            new Thickness(0, 4, 0, 6), "OpenAiAccessKey", "the key", wiki: "Sharing-with-Friends#share-your-language-models"));
         AutomationProperties.SetAutomationId(name, "OpenAiAccessName");
         AutomationProperties.SetName(name, "Who the key is for");
         InputHint.SetText(name, "Alex, or Alex's coding app");
@@ -58,7 +56,7 @@ internal sealed class OpenAiAccessDialog : ThemedWindow
         };
         equal.Content = new TextBlock
         {
-            Text = "Same priority as your background work: they run beside your Thinking pool's work. Your live conversations still stop them.",
+            Text = "Same priority as your background work: they run beside your Thinking pool's work, but your live conversations still stop them.",
             TextWrapping = TextWrapping.Wrap
         };
         AutomationProperties.SetAutomationId(first, "OpenAiAccessPriorityFirst");
@@ -130,14 +128,12 @@ internal sealed class OpenAiInviteDialog : ThemedWindow
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         AutomationProperties.SetAutomationId(heading, "OpenAiInviteTitle");
         root.Children.Add(heading);
-        var note = new TextBlock
-        {
-            Text = "Copy this and send it in a private message. Martlet doesn't keep the key and can't show it again; if it's lost, " +
-                "revoke it and make a new one." + (publicAddress ? "" :
-                " You haven't set an address to give people yet, so this uses a home address: it works only inside your home and " +
-                "only in apps that can skip certificate checks. Set up a proxy first to share outside your home."),
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 10)
-        };
+        var note = HelpTip.Explain(publicAddress
+                ? "Copy this and send it in a private message; Martlet can't show the key again. If it's lost, revoke the key and make a new one."
+                : "Copy this and send it in a private message; it has a home address, so it works only inside your home. Martlet can't " +
+                  "show the key again; if it's lost, revoke the key and make a new one. A home address works only in apps that can skip " +
+                  "certificate checks; to share outside your home, give the front door an address first (Show setup).",
+            new Thickness(0, 4, 0, 10), "OpenAiInviteKey", "the key", wiki: "Sharing-with-Friends#share-your-language-models");
         AutomationProperties.SetAutomationId(note, "OpenAiInviteNote");
         root.Children.Add(note);
         var text = OpenAiEndpoint.Invite(issued.Key.Name, baseUrl, issued.Token, models);
@@ -196,22 +192,14 @@ internal sealed class OpenAiProxyDialog : ThemedWindow
         var heading = new TextBlock { Text = "Give your front door an address", TextWrapping = TextWrapping.Wrap };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
-        var steps = new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 10),
-            Text = (open ? $"Your front door is open on {hostId}, at {upstream} on your home network. "
-                    : $"First open the front door (Share › Share your language models › Front door). These steps assume {upstream}. ") +
-                "Apps need an https address with a real certificate in front of it. Pick one way:\n\n" +
-                "1. Tailscale Funnel (no domain, no router change): install Tailscale on the front door's computer, sign in, and run the " +
-                "command below there. Tailscale prints your address (https://<computer>.<tailnet>.ts.net).\n" +
-                "2. Nginx Proxy Manager, Nginx or Caddy (your own domain): point the name at your home's internet address (or keep it " +
-                "behind Cloudflare's proxy), let your router send port 443 to the proxy's computer, and add the site below.\n" +
-                "3. Cloudflare Tunnel (a domain on Cloudflare, no router change): add the rule below to cloudflared on any computer at home.\n\n" +
-                $"Then type the address (for example https://{serverName}/v1) in Address to give people, choose Save and Check address.\n\n" +
-                "Send everything to the front door: it serves only Martlet's web page and the OpenAI-compatible API, and answers 404 for " +
-                "the rest. Never point a proxy at the gateway's own port (9443). Behind Cloudflare's proxy a reply that doesn't stream " +
-                "must finish within 100 seconds; streamed replies have no such limit."
-        };
+        var steps = HelpTip.Explain(
+            (open ? $"Your front door is open on {hostId} at {upstream}: give it an https address with a real certificate in one of the ways below."
+                : $"First open the front door (Share › Share your language models › Front door), then give it an https address in one of the ways below. " +
+                  $"These steps assume {upstream}.") +
+            " Tailscale Funnel needs no domain; Cloudflare Tunnel needs a domain on Cloudflare; Nginx Proxy Manager, Nginx and Caddy need " +
+            "your own domain and your router's port 443. Then type the address in Address to give people, and choose Save and Check address. " +
+            "Never point a proxy at the gateway's own port (9443).",
+            new Thickness(0, 4, 0, 10), "OpenAiProxyWays", "the ways to get an address", wiki: "Sharing-with-Friends#get-an-https-address");
         AutomationProperties.SetAutomationId(steps, "OpenAiProxySteps");
         root.Children.Add(steps);
         root.Children.Add(Config("Tailscale Funnel (run on the front door's computer)", "OpenAiProxyTailscale", OpenAiEndpoint.TailscaleCommand(port)));
@@ -243,8 +231,8 @@ internal sealed class OpenAiProxyDialog : ThemedWindow
         AutomationProperties.SetName(button, "Sign in to Nginx Proxy Manager and point your address at the front door");
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
         status.SetResourceReference(StyleProperty, "Muted");
-        status.Text = !open ? "Open the front door first. Then Martlet can set up Nginx Proxy Manager for you."
-            : publicAddress is null ? "Save the address to give people first. Then Martlet can set up Nginx Proxy Manager for you."
+        status.Text = !open ? "Open the front door first, then Martlet can set it up in Nginx Proxy Manager for you."
+            : publicAddress is null ? "Save the address to give people first, then Martlet can set it up in Nginx Proxy Manager for you."
             : "Martlet signs in to Nginx Proxy Manager once, changes the site for this name if there is one (or adds it), and checks the address.";
         AutomationProperties.SetAutomationId(status, "OpenAiProxyManagerStatus");
         button.Click += async (_, _) =>
@@ -275,9 +263,9 @@ internal sealed class OpenAiProxyDialog : ThemedWindow
         var found = ProxyManager.Address($"{upstreamHost}:81") is { } near && await ProxyManager.AnswersAsync(http, near, CancellationToken.None)
             ? near.ToString().TrimEnd('/') : null;
         var dialog = new HostInputDialog("Nginx Proxy Manager", "Sign in to Nginx Proxy Manager",
-            $"Martlet signs in once to send {serverName} to your front door ({frontDoorOrigin}). It doesn't save the email or password." +
-            (found is null ? "" : $"\n\nMartlet found Nginx Proxy Manager at {found}."), "Sign _in");
-        dialog.AddText("manager", "Nginx Proxy Manager's address", found ?? "", "Its admin page, usually port 81.", maxLength: 200);
+            $"Martlet signs in once to send {serverName} to your front door ({frontDoorOrigin}) and doesn't save the email or password.", "Sign _in");
+        dialog.AddText("manager", "Nginx Proxy Manager's address", found ?? "",
+            found is null ? "Its admin page, usually port 81." : "Martlet found it at this address.", maxLength: 200);
         dialog.AddText("email", "Email", "", maxLength: 200);
         dialog.AddSecret("manager-password", "Password");
         if (dialog.Ask(this) is not { } answers) return "Nginx Proxy Manager wasn't changed.";

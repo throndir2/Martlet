@@ -110,29 +110,42 @@ public static partial class NetworkRecommender
             {
                 var was = today.FirstOrDefault(r => r.Kind == role.Kind);
                 int? gpu = node.Pinnable && role.Option is { UsesGpu: true } ? role.Card : null;
+                int[]? split = gpu is not null && role.Span is { Length: > 1 } span ? span : null;
                 var processor = role.Option is { IsLocal: true, UsesGpu: false } && node.Spec.Gpus.Count > 0;
                 var name = Label(role.Option, role.Kind);
                 if (was is null)
                 {
-                    var summary = (role.OnDisk ? $"Start {name} again on {CardText(node, role.Card)}. It is already downloaded there."
-                        : $"Install {name} on {CardText(node, role.Card)}.") +
+                    var summary = (role.OnDisk ? $"Start {name} again on {SplitText(node, role)}. It is already downloaded there."
+                        : $"Install {name} on {SplitText(node, role)}.") +
                         (role.Kind == DeepThinkingRole ? $" {node.Name} then joins the Thinking pool by itself." : "");
                     changes.Add(RoleChange(SetupChangeKind.AddRole, node, role, summary, role.Benefit, role.Why) with
                     {
-                        Model = role.Model, GpuIndex = gpu, DownloadGb = Download(role), OnProcessor = processor
+                        Model = role.Model, GpuIndex = gpu, GpuIndexes = split, DownloadGb = Download(role), OnProcessor = processor
                     });
                     continue;
                 }
                 if (role.Model is not null && !Same(role.Model, was.Model))
                 {
                     var summary = $"Switch {node.Name}'s {KindName(role.Kind)} from {was.Model ?? "its model"} to {name}." +
+                        (split is null ? "" : $" It is split across {SplitText(node, role)}.") +
                         (role.OnDisk ? " It is already downloaded there." : "");
                     changes.Add(RoleChange(SetupChangeKind.ChangeModel, node, role, summary, role.Benefit, role.Why) with
                     {
-                        Model = role.Model, FromModel = was.Model, DownloadGb = Download(role), OnProcessor = processor
+                        Model = role.Model, FromModel = was.Model, DownloadGb = Download(role), OnProcessor = processor,
+                        GpuIndex = split is null ? null : gpu, GpuIndexes = split
                     });
                 }
-                if (gpu is { } card && card != was.GpuIndex)
+                var before = node.Today.FirstOrDefault(r => !r.Native && r.Kind == role.Kind)?.WasSpan ?? was.GpuIndexes;
+                if (split is not null && !split.SequenceEqual(before ?? []))
+                {
+                    var (benefit, why) = role.Why.Length > 0 ? (role.Benefit, role.Why) : PinReason(node);
+                    changes.Add(RoleChange(SetupChangeKind.MoveToGpu, node, role,
+                        $"Split {name} across {SplitText(node, role)}.", benefit, why) with
+                    {
+                        GpuIndex = gpu, GpuIndexes = split
+                    });
+                }
+                else if (split is null && gpu is { } card && card != was.GpuIndex)
                 {
                     var (benefit, why) = was.GpuIndex is not null && role.Why.Length > 0 ? (role.Benefit, role.Why) : PinReason(node);
                     changes.Add(RoleChange(SetupChangeKind.MoveToGpu, node, role, $"Pin {node.Name}'s {name} to its {GpuName(node, card)}.", benefit, why) with
@@ -215,7 +228,7 @@ public static partial class NetworkRecommender
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.OnWindows))
                 foreach (var voice in node.Roles.Where(r => IsVoice(r.Kind) && r.Card is not null))
                 {
-                    var others = node.Roles.Where(r => r != voice && r.Card == voice.Card && r.Gb > 0).Select(r => Label(r.Option, r.Kind)).ToList();
+                    var others = node.Roles.Where(r => r != voice && r.On(voice.Card) && r.Gb > 0).Select(r => Label(r.Option, r.Kind)).ToList();
                     if (others.Count > 0)
                         notes.Add($"{node.Name} runs on Windows, so {Label(voice.Option, voice.Kind)} shares its {GpuName(node, voice.Card!.Value)} with " +
                             $"{List(others)}; if the card's memory runs short, the voice can start late.");

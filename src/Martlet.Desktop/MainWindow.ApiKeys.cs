@@ -130,13 +130,13 @@ public partial class MainWindow
             apiKeys = list;
             var ok = results.Count(r => r.Copy is not null);
             var old = results.Where(r => r.Old).Select(r => r.HostId).ToArray();
-            apiKeysSync = $"On {ok} of {results.Length} host{(results.Length == 1 ? "" : "s")}, checked {DateTime.Now:t}." +
-                (old.Length > 0 ? $" Update {string.Join(", ", old)} (Update host) to use keys there." : "");
+            apiKeysSync = $"on {ok} of {results.Length} host{(results.Length == 1 ? "" : "s")}, checked {DateTime.Now:t}" +
+                (old.Length > 0 ? $"; update {string.Join(", ", old)} (Update host) to use keys there." : ".");
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or InvalidOperationException)
         {
-            apiKeysSync = "Couldn't sync your API keys this time: " + error.Message;
+            apiKeysSync = "couldn't sync them this time: " + error.Message;
             ErrorLog.Warn("API key sync failed: " + error.Message);
         }
         finally
@@ -183,8 +183,7 @@ public partial class MainWindow
     {
         if (store is null) return;
         if (!ConfirmationDialog.Confirm(this,
-                $"Revoke \"{key.Name}\"? Apps using it stop working on every host in your network as soon as each host hears about it " +
-                "(right away for hosts that answer now). This can't be undone; make a new key if the app needs access again.",
+                $"Revoke \"{key.Name}\"? Apps that use it stop working on every host, and this can't be undone.",
                 "Revoke key"))
             return;
         try
@@ -212,9 +211,8 @@ public partial class MainWindow
         var shown = apiKeys.Keys.Where(k => !k.Revoked).OrderBy(k => k.Expired(now)).ThenBy(k => k.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
         ApiKeyCreateButton.IsEnabled = store is not null;
         ApiKeysStatusText.Text = store is null ? "Unavailable without a local data folder."
-            : (shown.Length == 0 ? "No API keys yet. Your own computers never need one; make one for each app or script that should use your hosts."
-                : $"{shown.Length} API key{(shown.Length == 1 ? "" : "s")}.") + " " +
-              (homeHosts.Count == 0 ? "Pair a host first: keys work on your hosts." : apiKeysSync ?? "Checking your hosts...");
+            : (shown.Length == 0 ? "No API keys yet" : $"{shown.Length} API key{(shown.Length == 1 ? "" : "s")}") +
+              (homeHosts.Count == 0 ? "; pair a host first, because keys work on your hosts." : "; " + (apiKeysSync ?? "checking your hosts..."));
         ApiKeysPanel.Children.Clear();
         foreach (var key in shown) ApiKeysPanel.Children.Add(ApiKeyRow(key, now));
         if (SharePage.IsVisible) RenderOpenAi();
@@ -229,11 +227,11 @@ public partial class MainWindow
         revoke.Click += (_, _) => RevokeApiKey(key);
         DockPanel.SetDock(revoke, Dock.Right);
         row.Children.Add(revoke);
-        var may = string.Join("; ", key.Scopes.Select(ApiKeyScopes.Title)) + ".";
-        var made = $"Made on {key.CreatedBy} {key.CreatedAt.ToLocalTime():d}.";
-        var used = apiKeysUsed.TryGetValue(key.Id, out var seen) ? $"Last used {seen.At.ToLocalTime():g} on {seen.HostId}." : "Not used since your hosts started.";
-        var expires = key.ExpiresAt is not { } at ? "Never expires." : key.Expired(now) ? $"Expired {at.ToLocalTime():d}." : $"Expires {at.ToLocalTime():d}.";
-        row.Children.Add(NetworkRowText("ApiKeyRow-" + key.Id, key.Name, $"{may} {made} {used} {expires} ID {key.Id[..6]}."));
+        var may = string.Join("; ", key.Scopes.Select(ApiKeyScopes.Title));
+        var made = $"made on {key.CreatedBy} {key.CreatedAt.ToLocalTime():d}";
+        var used = apiKeysUsed.TryGetValue(key.Id, out var seen) ? $"last used {seen.At.ToLocalTime():g} on {seen.HostId}" : "not used since your hosts started";
+        var expires = key.ExpiresAt is not { } at ? "never expires" : key.Expired(now) ? $"expired {at.ToLocalTime():d}" : $"expires {at.ToLocalTime():d}";
+        row.Children.Add(NetworkRowText("ApiKeyRow-" + key.Id, key.Name, $"{may} · {made} · {used} · {expires} · ID {key.Id[..6]}"));
         return NetworkRowCard(row, warning: key.Expired(now));
     }
 }

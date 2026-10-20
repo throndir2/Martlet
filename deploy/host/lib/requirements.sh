@@ -227,7 +227,23 @@ detect_nvidia() {
   done
 }
 
-# The graphics card (UUID) an installed role was pinned to, or nothing when it uses every card (or the CPU).
+# Whether $1 is one card's UUID or a list of them ("GPU-a,GPU-b": one model split across those cards, tensor split).
+gpu_list() { [[ "$1" =~ ^GPU-[A-Za-z0-9-]+(,GPU-[A-Za-z0-9-]+){0,7}$ ]]; }
+
+# Whether every card in list $1 is on this host (detect_nvidia first), each once.
+known_gpus() {
+  local id i seen="," found
+  gpu_list "$1" || return 1
+  for id in ${1//,/ }; do
+    [[ "${seen}" != *",${id},"* ]] || return 1
+    seen+="${id},"; found=0
+    for i in "${!NVIDIA_IDS[@]}"; do [[ "${NVIDIA_IDS[i]}" == "${id}" ]] && found=1; done
+    (( found )) || return 1
+  done
+}
+
+# The graphics card (UUID) an installed role was pinned to, a comma-separated list of cards for a model split across them, or
+# nothing when it uses every card (or the CPU).
 role_gpu() {
   local project="${PROJECTS}/$1"
   [[ -f "${project}/compose.gpu.yaml" ]] || return 0
@@ -239,7 +255,7 @@ role_gpu() {
 role_place() {
   local project="${PROJECTS}/$1" gpu accelerator
   gpu="$(role_gpu "$1")"
-  if [[ "${gpu}" =~ ^GPU-[A-Za-z0-9-]+$ ]]; then printf '%s' "${gpu}"; return 0; fi
+  if gpu_list "${gpu}"; then printf '%s' "${gpu}"; return 0; fi
   accelerator="$(conf_value "${project}/.env" MARTLET_ACCELERATOR 2>/dev/null || true)"
   if [[ "${accelerator}" == cpu ]]; then printf 'cpu'
   elif [[ -f "${project}/compose.gpu.yaml" ]]; then printf 'all'; fi
@@ -323,7 +339,7 @@ role_current() {
 gpu_users() {
   local self="$1" uuid="$2" other users=()
   while IFS= read -r other; do
-    [[ -n "${other}" && "${other}" != "${self}" && "$(role_gpu "${other}")" == "${uuid}" ]] && users+=("${other}")
+    [[ -n "${other}" && "${other}" != "${self}" && ",$(role_gpu "${other}")," == *",${uuid},"* ]] && users+=("${other}")
   done < <(installed_roles)
   printf '%s' "${users[*]:-}"
 }
@@ -337,6 +353,8 @@ automatic_gpu() {
   # Installed on the GPU without a card of its own: it runs on every card and keeps doing so.
   if [[ -z "${current}" && -f "$(installed_file "${role}")" && -f "${PROJECTS}/${role}/compose.gpu.yaml" ]]; then printf 'all'; return; fi
   for i in "${!NVIDIA_IDS[@]}"; do [[ "${NVIDIA_IDS[i]}" == "${current}" ]] && { printf '%s' "${current}"; return; }; done
+  # Split across several cards: it keeps them while every one is still on this host.
+  if [[ "${current}" == *,* ]] && known_gpus "${current}"; then printf '%s' "${current}"; return; fi
   for pass in free nothink any; do
     [[ "${pass}" != nothink || "${role}" =~ ^(ollama|deep-thinking(-[0-9])?)$ ]] || continue
     for i in "${!NVIDIA_IDS[@]}"; do
@@ -357,7 +375,7 @@ automatic_gpu() {
 # (CUDA_VISIBLE_DEVICES takes UUIDs, so this also holds where Docker exposes every card, as WSL 2 does).
 install_gpu_overlay() {
   local source="$1" target="$2" gpu="${3:-}"
-  if [[ ! "${gpu}" =~ ^GPU-[A-Za-z0-9-]+$ ]]; then cp "${source}" "${target}"; return; fi
+  if ! gpu_list "${gpu}"; then cp "${source}" "${target}"; return; fi
   awk -v gpu="${gpu}" '
     /^[^ #]/ { section = ($0 ~ /^services:/) }
     { print }

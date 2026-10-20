@@ -132,7 +132,7 @@ public partial class MainWindow
             var other = accounts.SignedIn.FirstOrDefault(a => a.Id != id && security.UnlocksWithWindows(a.Id)) ?? accounts.SignedIn.FirstOrDefault(a => a.Id != id);
             if (other is null)
             {
-                ActionText.Text = "You are the only account on this PC. Add a person or sign in as someone else first.";
+                ActionText.Text = "You are the only account on this PC: add a person or sign in as someone else first.";
                 return;
             }
             await SwitchAccountAsync(other.Id);
@@ -160,7 +160,7 @@ public partial class MainWindow
             if (into is { } kept && accounts.SignedIn.Any(a => a.Id == kept) && AccountSwitchBlocked() is null)
                 SwitchAccountAsync(kept).Forget();
             else if (ActionText is not null)
-                ActionText.Text = into is null ? $"{gone.Name}'s account was removed. Choose another account." : $"{gone.Name}'s account was merged into another one. Sign in as it.";
+                ActionText.Text = into is null ? $"{gone.Name}'s account was removed: choose another account." : $"{gone.Name}'s account was merged into another one: sign in as that account.";
         }
     }
 
