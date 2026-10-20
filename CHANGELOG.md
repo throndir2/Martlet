@@ -16,7 +16,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- On a PC where Windows can't give the character Direct3D 9 (for example some remote sessions), Martlet says so instead of the character renderer crashing on exit or when Companion › Touch opens. (#1083, #1088)
+- On a PC where Windows can't give the character Direct3D 9 (for example some remote sessions), Martlet says so instead of the character renderer crashing on exit or when Companion › Touch opens. ([#1091](https://github.com/throndir2/Martlet/pull/1091))
 
 ## [0.89.0] - 2026-10-19
 
