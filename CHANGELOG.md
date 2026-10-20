@@ -31,6 +31,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Background tasks that wait for a free computer now start in the order you asked for them. Before, two that were asked at the same moment could swap places. ([#1047](https://github.com/throndir2/Martlet/pull/1047))
 - A background task (such as a think or a song) that couldn't start no longer stays "running" forever and blocks new ones until a restart; it ends as failed and the log says why. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - When a Backup Thinking machine can't be reached (a wrong key or a network error), the log and the Thinking pool status now say that it failed and why, instead of "no machine could take it". ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Martlet's MCP server no longer stops when a tool fails or gets a wrong value (such as `seconds: 45.5`); the tool says what went wrong and the server keeps working. It now answers while a long tool runs, and an assistant can cancel a tool call. ([#1034](https://github.com/throndir2/Martlet/pull/1034))
