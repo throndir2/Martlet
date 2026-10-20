@@ -66,6 +66,13 @@ internal sealed partial class RendererWindow
             userData = Path.Combine(Path.GetTempPath(), "Martlet.Avatar", activation.ToString("N"));
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userData,
                 options: new CoreWebView2EnvironmentOptions { AllowSingleSignOnUsingOSPrimaryAccount = false });
+            // Without a Direct3D 9 device the composition WebView2 can't draw, and its half-made image would end this process
+            // from the finalizer thread (#1083): stop here with the reason instead.
+            if (RendererGraphics.Direct3D9Problem(new System.Windows.Interop.WindowInteropHelper(this).EnsureHandle()) is { } graphics)
+            {
+                graphicsProblem = graphics;
+                throw new InvalidOperationException($"The character can't be drawn: {graphics}.");
+            }
             await browser.EnsureCoreWebView2Async(environment);
             var core = browser.CoreWebView2;
             core.Settings.AreHostObjectsAllowed = false;
@@ -310,6 +317,8 @@ internal sealed partial class RendererWindow
                 if (activation != Guid.Empty)
                     await replyWriter.WriteAsync(RendererProtocol.Message("error", activation, modelRejection is { Length: > 0 } rejected
                         ? new { code = "avatar.model_rejected", message = $"This model can't be shown: {rejected}" }
+                        : graphicsProblem is { } graphics
+                        ? new { code = "avatar.renderer_unavailable", message = $"This PC can't draw the character: {graphics}." }
                         : new { code = "avatar.renderer_unavailable", message = "The character renderer failed; check what it needs on this PC and try again." }))
                         .WaitAsync(TimeSpan.FromSeconds(1));
             }
