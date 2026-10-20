@@ -201,7 +201,7 @@ public partial class MainWindow
             SetupRun.Read(own.Value) is { Finished: false } left)
         {
             var now = DateTimeOffset.UtcNow;
-            var ended = left.Interrupted(now, $"Martlet closed on {ClusterDevice} before this change was made. Check the recommended setup again.");
+            var ended = left.Interrupted(now, $"Martlet closed on {ClusterDevice} before this change was made: check the recommended setup again.");
             try { settingsNode.Put(own.Key, ended.Write(), now); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
             {
@@ -229,13 +229,13 @@ public partial class MainWindow
                 return new(false, machineId == ClusterDevice || machineId == DeviceCapacityInputs.ThisPcId ||
                     window.OtherComputers().Any(c => c.DeviceId == machineId)
                         ? $"{machineId} runs no host service, so it can't run host roles."
-                        : $"{machineId} isn't paired with this PC. It pairs by itself once it's in your Martlet network; check again then.");
+                        : $"{machineId} isn't paired with this PC; it pairs by itself once it's in your Martlet network, so check again then.");
             if (window.store is null) return new(false, "Martlet can't use its data folder on this PC.");
             return host.Method switch
             {
                 HostSetupMethod.ThisPcDocker or HostSetupMethod.Agent => SetupReach.Yes,
                 HostSetupMethod.SshDocker or HostSetupMethod.SshNative when !string.IsNullOrWhiteSpace(host.SshTarget) => SetupReach.Yes,
-                _ => new(false, $"Martlet doesn't know how to reach {host.HostId}'s host service. Set its connection method on the Devices map, " +
+                _ => new(false, $"Martlet doesn't know how to reach {host.HostId}'s host service: set its connection method on the Devices map, " +
                     $"or make this change on {host.HostId}.", SomeoneThere: true)
             };
         }
@@ -327,8 +327,8 @@ public partial class MainWindow
         {
             if (window.store is null) return SetupStepResult.Failed("Martlet can't use its data folder on this PC.");
             if (!window.clusterEnabled)
-                return SetupStepResult.Attention("Keep Martlet the same on all my computers is off on this PC, so who does what can't change " +
-                    "on your other computers. Turn it on in Devices, then Reconfigure again.");
+                return SetupStepResult.Attention("Keep Martlet the same on all my computers is off on this PC: turn it on in Devices, " +
+                    "then Reconfigure again.");
             var turn = await window.ChangeTurnAsync();
             try
             {
@@ -684,7 +684,6 @@ internal static class SetupRoutes
         if (facts.HostPc)
             return new(SetupStepVerdict.NeedsOwner, $"Choose {name} for {job} in {tab} on your companion PC: this PC is a host PC and uses no jobs.");
         var route = facts.Route;
-        const string Others = " Your other companion PCs follow it through the shared settings once they can (their Companion page says what they need).";
         switch (job, option)
         {
             case (ClusterJobs.Thinking, { ModelId: { } served }) when ServedModels.IsServed(option):
@@ -692,27 +691,27 @@ internal static class SetupRoutes
                     (facts.Served is null || route.Origin == facts.Served.BaseUrl))
                     return new(SetupStepVerdict.Ready, $"Thinking already uses {served} on this PC.") { InUse = true };
                 if (facts.Served is not { BaseUrl.Length: > 0 } app)
-                    return new(SetupStepVerdict.NeedsOwner, $"Martlet didn't find the app that runs {served} on this PC this time. " +
-                        $"Start it, then choose it in {tab} › This PC.");
-                return new(SetupStepVerdict.Ready, $"Thinking uses {served} in {app.AppName} on this PC. It already runs there, so nothing downloads.{Others}");
+                    return new(SetupStepVerdict.NeedsOwner, $"Martlet didn't find the app that runs {served} on this PC: " +
+                        $"start it, then choose it in {tab} › This PC.");
+                return new(SetupStepVerdict.Ready, $"Thinking uses {served} in {app.AppName} on this PC, which already runs it, so nothing downloads.");
             case (ClusterJobs.Thinking, { IsLocal: true, HostRoleKind: HostRoles.Ollama, ModelId: { } model }):
                 if (route is { RouteType: SetupRouteType.ChatCompletions, Origin: MainWindow.LocalOllamaBaseUrl } && route.ModelId == model)
                     return new(SetupStepVerdict.Ready, $"Thinking already uses {model} in Ollama on this PC.") { InUse = true };
                 if (facts.OllamaMissing)
-                    return new(SetupStepVerdict.NeedsOwner, $"Ollama isn't installed on this PC. Install it in {tab}, then check again to use {name}.");
+                    return new(SetupStepVerdict.NeedsOwner, $"Ollama isn't installed on this PC: install it in {tab}, then check again to use {name}.");
                 var size = facts.OllamaModelSize;
-                return new(SetupStepVerdict.Ready, $"Thinking uses {name} in Ollama on this PC.{Others}")
+                return new(SetupStepVerdict.Ready, $"Thinking uses {name} in Ollama on this PC.")
                 {
                     Terms = $"Ollama downloads {model}{(size is null ? "" : $" ({size})")} from " +
-                        $"{(model.StartsWith("hf.co/", StringComparison.OrdinalIgnoreCase) ? "Hugging Face" : "ollama.com")} when it isn't on this PC yet. " +
-                        "The model's own license applies."
+                        $"{(model.StartsWith("hf.co/", StringComparison.OrdinalIgnoreCase) ? "Hugging Face" : "ollama.com")} when it isn't on this PC yet, " +
+                        "and the model's own license applies."
                 };
             case (ClusterJobs.Listening, { RunsInApp: true, ModelId: { } id }) when Parakeet(id) is { } parakeet:
                 if (route is { RouteType: SetupRouteType.LocalParakeet } && route.ModelId == parakeet.Id)
                     return new(SetupStepVerdict.Ready, $"Listening already uses {parakeet} on this PC.") { InUse = true };
                 if (facts.ParakeetInstalled is not { } installed)
                     return new(SetupStepVerdict.CannotApply, "Parakeet can't run without Martlet's data folder on this PC.");
-                return new(SetupStepVerdict.Ready, $"Listening uses {parakeet} on this PC's processor. Speech stays on this PC.{Others}")
+                return new(SetupStepVerdict.Ready, $"Listening uses {parakeet} on this PC's processor, so speech stays on this PC.")
                 {
                     Terms = installed(parakeet.Id) ? null
                         : $"{parakeet} (NVIDIA, CC BY 4.0) downloads from Hugging Face ({Martlet.Sherpa.SherpaComponents.Megabytes(parakeet.DownloadBytes)})."

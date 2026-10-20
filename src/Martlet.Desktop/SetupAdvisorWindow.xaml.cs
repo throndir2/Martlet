@@ -64,7 +64,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
             OtherComputers = (pairedHosts ?? []).Take(SetupAdvisor.MaxOtherComputers).ToArray()
         };
         if (pairedHosts is { Count: > 0 })
-            ExtraMachinesHint.Text = $"Your paired Martlet host{(pairedHosts.Count == 1 ? " is" : "s are")} filled in with the hardware they reported. Add any other computers you plan to use.";
+            ExtraMachinesHint.Text = $"Your paired Martlet host{(pairedHosts.Count == 1 ? " is" : "s are")} filled in with the hardware they reported; add any other computers you plan to use.";
         Load(Answers);
         ShowStep(0);
     }
@@ -152,7 +152,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         var selected = (AdvisorGpu)Math.Max(0, ThisPcGpuChoice.SelectedIndex);
         ThisPcGpuHint.Text = detectedText is null ? TaskManagerHint
             : selected == detectedGpu ? $"Detected on this PC: {detectedText}."
-            : $"Detected on this PC: {detectedText}. You chose something else; Martlet plans with your choice.";
+            : $"Detected on this PC: {detectedText}, but Martlet plans with the card you chose.";
     }
 
     private void ThisPcGpu_Changed(object sender, SelectionChangedEventArgs e) => UpdateThisPcHint();
@@ -175,7 +175,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
             row.NameBox = new TextBox { Text = row.Name, MinHeight = 30, VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 48 };
             AutomationProperties.SetAutomationId(row.NameBox, $"OtherComputerName{number}");
             AutomationProperties.SetName(row.NameBox, $"Name of computer {number} (optional)");
-            row.NameBox.ToolTip = $"Optional name. If left blank, this will be Computer {number}.";
+            row.NameBox.ToolTip = $"Optional name; if you leave it empty, it is Computer {number}.";
             InputHint.SetText(row.NameBox, "Optional, e.g. Gaming PC");
             row.GpuBox = new ComboBox { ItemsSource = GpuNames, SelectedIndex = (int)row.Gpu, MinHeight = 30 };
             AutomationProperties.SetAutomationId(row.GpuBox, $"OtherComputerGpu{number}");
@@ -191,7 +191,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         }
         if (count > 0)
             OtherComputersPanel.Children.Add(Muted(
-                "Not sure? Choose \"Has a GPU, not sure which\". Paired Martlet hosts can fill this in automatically.", new Thickness(0, 8, 0, 0)));
+                "If you aren't sure, choose \"Has a GPU, not sure which\"; paired Martlet hosts fill this in by themselves.", new Thickness(0, 8, 0, 0)));
     }
 
     private void BuildResult()
@@ -199,7 +199,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         advice = SetupAdvisor.Recommend(Answers);
         ResultStep.Children.Clear();
         Add(new TextBlock { Text = advice.Title, FontSize = 20, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        var summary = Muted(advice.Summary, new Thickness(0, 4, 0, 12));
+        var summary = HelpTip.Explain(advice.Summary, new Thickness(0, 4, 0, 12), "AdvisorSummary", "this plan", wiki: "First-Steps#4-use-the-suggested-setup");
         AutomationProperties.SetAutomationId(summary, "AdvisorSummary");
         Add(summary);
 
@@ -226,12 +226,12 @@ public partial class SetupAdvisorWindow : ThemedWindow
             AutomationProperties.SetAutomationId(choice, $"AdvisorChoice-{number}");
             AutomationProperties.SetName(choice, $"{role.Role}: {role.Choice} ({role.Status})");
             card.Children.Add(choice);
-            card.Children.Add(Line("Runs on", role.Where));
-            card.Children.Add(Line("What it does", role.WhatItDoes));
-            card.Children.Add(Line("Why", role.Why));
-            card.Children.Add(Line("Your data", role.Data));
-            if (role.UntilThen is not null) card.Children.Add(Line("For now", role.UntilThen));
-            if (role.HowTo is not null) card.Children.Add(Line("How to set it up", role.HowTo));
+            card.Children.Add(Line("Runs on", role.Where, $"AdvisorWhere-{number}"));
+            card.Children.Add(Line("What it does", role.WhatItDoes, $"AdvisorWhat-{number}"));
+            card.Children.Add(Line("Why", role.Why, $"AdvisorWhy-{number}"));
+            card.Children.Add(Line("Your data", role.Data, $"AdvisorData-{number}"));
+            if (role.UntilThen is not null) card.Children.Add(Line("For now", role.UntilThen, $"AdvisorForNow-{number}"));
+            if (role.HowTo is not null) card.Children.Add(Line("How to set it up", role.HowTo, $"AdvisorHowTo-{number}"));
             var border = new Border { Child = card };
             border.SetResourceReference(StyleProperty, "CardStyle");
             AutomationProperties.SetName(border, $"{role.Role}: {role.Choice}, {role.Where}, {role.Status}");
@@ -255,7 +255,8 @@ public partial class SetupAdvisorWindow : ThemedWindow
         foreach (var note in advice.Notes) Add(Bullet(note));
 
         Add(Heading("Next steps"));
-        Add(Muted("Work through these steps in order. Nothing changes until you save or confirm in each window.", new Thickness(0, 0, 0, 8)));
+        Add(HelpTip.Explain("Work through these steps in order. Nothing changes until you save or confirm in each window.", new Thickness(0, 0, 0, 8),
+            "AdvisorNextSteps", "the next steps", wiki: "First-Steps#4-use-the-suggested-setup"));
         var actions = new WrapPanel();
         foreach (var next in advice.NextSteps)
         {
@@ -292,7 +293,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
             }
             catch (System.Runtime.InteropServices.ExternalException)
             {
-                StepText.Text = "The clipboard is busy. Try Copy this plan again.";
+                StepText.Text = "The clipboard is busy: press Copy this plan again.";
             }
         };
         actions.Children.Add(copy);
@@ -315,11 +316,19 @@ public partial class SetupAdvisorWindow : ThemedWindow
         return block;
     }
 
-    private static TextBlock Line(string label, string text)
+    /// <summary>"<paramref name="label"/>: " and the first sentence of <paramref name="text"/>; a longer text is all in a "?"
+    /// after it (Help-<paramref name="id"/>).</summary>
+    private static TextBlock Line(string label, string text, string id)
     {
+        var (first, more) = HelpTip.Split(text);
         var block = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
         block.Inlines.Add(new System.Windows.Documents.Run(label + ": ") { FontWeight = FontWeights.SemiBold });
-        block.Inlines.Add(new System.Windows.Documents.Run(text));
+        block.Inlines.Add(new System.Windows.Documents.Run(first));
+        if (more is null) return block;
+        AutomationProperties.SetHelpText(block, text);
+        var tip = HelpTip.For(label.ToLowerInvariant(), text, id, wiki: "First-Steps#4-use-the-suggested-setup");
+        tip.Margin = new Thickness(6, 0, 0, 0);
+        block.Inlines.Add(new System.Windows.Documents.InlineUIContainer(tip) { BaselineAlignment = BaselineAlignment.Center });
         return block;
     }
 

@@ -15,8 +15,7 @@ internal sealed record DefaultSetupPlan(LocalChatModel Thinking, bool ThinkingOn
     ListeningAdvice Listening, string ParakeetModel, string Gpu, bool LipSyncOnGpu = false, bool VoiceOnGpu = true)
 {
     /// <summary>What the confirmation and the status say when no voice fits this PC.</summary>
-    internal const string NoVoice = "Voice: not set up. This PC has no room for a voice engine: Chatterbox Nano needs an NVIDIA " +
-        "graphics card with 4 GB or more, or about 8 free processor threads and 4.5 GB of free memory. Free some room, or set up " +
+    internal const string NoVoice = "Voice: not set up, since this PC has no room for a voice engine: free some room, or set up " +
         "a voice on another computer in Companion › Voice.";
 
     /// <summary>A chat model one of the owner's model apps already serves on this PC, which Thinking uses instead of
@@ -30,19 +29,18 @@ internal sealed record DefaultSetupPlan(LocalChatModel Thinking, bool ThinkingOn
         if (thinking && Served is { } served)
             lines.Add($"Thinking: {served.ModelId} in {served.AppName} on this PC (about " +
                 $"{ServedModels.Gb(served, PlanningCatalog.Models)?.ToString("0.#", CultureInfo.InvariantCulture) ?? "?"} GB on the graphics card" +
-                (served.LoadedGb is null ? "" : ", loaded there now") + "). " +
-                "You already run it there, so nothing downloads. Its first word may come later than with a small model.");
+                (served.LoadedGb is null ? "" : ", loaded there now") + "), which you already run, so nothing downloads.");
         else if (thinking)
-            lines.Add($"Thinking: {Thinking.Id} in Ollama on this PC ({Thinking.Size}{(ThinkingOnGpu ? ", on the graphics card" : ", on the processor")}). " +
-                (Thinking.Hears ? "It's the fastest model that also hears your voice." : "It's the fastest model that fits."));
+            lines.Add($"Thinking: {Thinking.Id} in Ollama on this PC ({Thinking.Size}{(ThinkingOnGpu ? ", on the graphics card" : ", on the processor")}), " +
+                (Thinking.Hears ? "the fastest model that also hears your voice." : "the fastest model that fits."));
         if (voice)
             lines.Add(Voice is not { } engine ? NoVoice
-                : VoiceOnGpu ? $"Voice: {engine.Name} on the graphics card. Martlet speaks once it's ready."
-                : $"Voice: {engine.Name} on the processor, since the graphics card has no room for a voice engine. " +
-                  "Its first word comes about 1.5 seconds after Thinking's. Martlet speaks once it's ready.");
+                : VoiceOnGpu ? $"Voice: {engine.Name} on the graphics card; Martlet speaks once it's ready."
+                : $"Voice: {engine.Name} on the processor, since the graphics card has no room for a voice engine; " +
+                  "Martlet speaks once it's ready.");
         if (listening)
             lines.Add(ListenOnGpu
-                ? $"Listening: your Windows default microphone, with Whisper ({Listening.GpuModel}) on the graphics card. Parakeet on the processor listens until it's ready."
+                ? $"Listening: your Windows default microphone, with Whisper ({Listening.GpuModel}) on the graphics card (Parakeet on the processor listens until it's ready)."
                 : $"Listening: your Windows default microphone, with Parakeet on the processor{(Voice is null || !VoiceOnGpu ? "" : ", leaving the graphics card to the voice")}.");
         return string.Join("\n", lines);
     }

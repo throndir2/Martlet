@@ -6753,8 +6753,8 @@ breakdown, as for `DeviceResource-<key>` on Devices), `RecommendedSetupJob-<n>`,
 `RecommendedSetupSituation-<i>` (the title of one of the three plans:
 *Normal*, *While gaming* or *Host away*) and `RecommendedSetupSituation-<i>-<j>`
 (where each live job goes in that plan, such as *On DESK: Thinking moves to
-gpu-box (qwen3:8b), then NVIDIA Build, then DESK's own model ... It comes back
-when the game ends.*; `recommended_setup_status` returns the same plans in
+gpu-box (qwen3:8b), then NVIDIA Build, then DESK's own model ... until the
+game ends.*; `recommended_setup_status` returns the same plans in
 `situations`),
 `RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
 `RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,

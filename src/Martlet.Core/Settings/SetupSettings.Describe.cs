@@ -5,7 +5,7 @@ public sealed partial record SetupSettings
     public static string Describe(AppSettings? settings)
     {
         if (settings?.Setup is not { } setup)
-            return "Setup not started. Choose Thinking, Voice and Listening on the Companion page.";
+            return "Setup not started: choose Thinking, Voice and Listening on the Companion page.";
         var lines = new List<string>
         {
             $"Setup checkpoint: {setup.Checkpoint}.",
