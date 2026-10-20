@@ -5,7 +5,7 @@ using Martlet.Avatar.Hosting;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Touch › Touch zones › Start over: one Reset button that takes the shown model's touch setup and the active
+/// <summary>Companion › Touch › Touch zones › Start over (its section is in TouchZonesPage.Parts.cs): one Reset button that takes the shown model's touch setup and the active
 /// persona's touch temperament back to how a fresh character starts, at the level chosen beside it
 /// (<see cref="CharacterTouchReset.Levels"/>), after a confirmation that lists exactly what is lost.</summary>
 public partial class MainWindow
@@ -27,53 +27,6 @@ public partial class MainWindow
                 AskThinkingForTemperamentAsync, lifetime.Token,
                 news: $"{persona.Name}'s touch temperament was reset; Martlet decides it again from the personality in a moment."),
             characterReactionChanges);
-    }
-
-    /// <summary>The Start over section at the end of the Touch zones card: the level list (TouchZonesResetLevel), what the level
-    /// clears (TouchZonesResetNote), Reset (TouchZonesReset) and what the last reset did (TouchZonesResetState).
-    /// <paramref name="edits"/> holds the card's unsaved zone edits, saved before a reset so they can't come back after it.</summary>
-    private StackPanel TouchZonesResetSection(string modelId, AutoSave edits)
-    {
-        var section = new StackPanel { Margin = new Thickness(0, 20, 0, 0) };
-        section.Children.Add(new TextBlock { Text = "Start over", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
-        section.Children.Add(HelpTip.Explain("Reset this character's touch to how a fresh character starts. Choose how much to reset: " +
-            "Martlet asks first and lists what you lose. Only the model shown and the active persona change.", new Thickness(0, 0, 0, 6),
-            "TouchZonesStartOver", "starting over", wiki: "The-Character#start-over"));
-        var levels = CharacterTouchReset.Levels;
-        var chosen = CharacterTouchReset.Level(touchResetLevel);
-        var list = Compact(new ComboBox { ItemsSource = levels.Select(l => l.Label).ToArray(), SelectedIndex = IndexOf(chosen), MinWidth = 180 });
-        AutomationProperties.SetName(list, "What to reset");
-        AutomationProperties.SetAutomationId(list, "TouchZonesResetLevel");
-        var reset = Compact(PageButton(resettingTouch ? "Resetting..." : "Reset...", () => ResetTouchAsync(modelId, edits).Forget(), id: "TouchZonesReset"));
-        reset.Margin = new Thickness(8, 0, 0, 0);
-        reset.IsEnabled = !resettingTouch && !detectingTouchZones && !characterTouchZones.Busy;
-        AutomationProperties.SetHelpText(reset, "Asks first, and lists exactly what you lose, before anything is reset.");
-        var row = new WrapPanel();
-        row.Children.Add(list);
-        row.Children.Add(reset);
-        section.Children.Add(row);
-        var clears = Note(chosen.Clears, new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(clears, "TouchZonesResetNote");
-        section.Children.Add(clears);
-        list.SelectionChanged += (_, _) =>
-        {
-            var level = levels[Math.Max(0, list.SelectedIndex)];
-            touchResetLevel = level.Id;
-            clears.Text = level.Clears;
-        };
-        var state = Note("", new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(state, "TouchZonesResetState");
-        AutomationProperties.SetLiveSetting(state, AutomationLiveSetting.Polite);
-        ShowStatusLine(state, touchResetState);
-        section.Children.Add(state);
-        return section;
-
-        static int IndexOf(TouchResetLevel level)
-        {
-            for (var i = 0; i < CharacterTouchReset.Levels.Count; i++)
-                if (CharacterTouchReset.Levels[i] == level) return i;
-            return 0;
-        }
     }
 
     private async Task ResetTouchAsync(string modelId, AutoSave edits)

@@ -628,7 +628,7 @@ public sealed class TouchZoneDetectionTests
         var senses = imageModel is null ? new SenseModels() : new SenseModels { Image = new() { Source = SenseSource.Own, Own = imageModel } };
         var decision = SenseJobRouting.Decide(SenseJobKind.HelperPicture,
             SenseJobInputs.For(SenseKind.Image, senses, thinking, null) with { PoolName = poolMember });
-        return MainWindow.TouchZonesSight(decision, thinking, null, fixture);
+        return TouchZonesPageModel.SightOf(decision, thinking, null, fixture);
     }
 
     private static readonly DeepThinkingSettings LocalEyes =

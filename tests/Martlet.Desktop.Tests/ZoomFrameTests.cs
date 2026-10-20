@@ -142,19 +142,19 @@ public sealed class ZoomFrameTests(Xunit.Abstractions.ITestOutputHelper output)
     [Fact]
     public void AnAddedZoneStartsInTheMiddleOfThePartTheMapShows()
     {
-        Assert.Equal(new TouchZoneBox(0.4, 0.4, 0.2, 0.2), MainWindow.AddedZoneBox(1, new Point(0.5, 0.5)));
+        Assert.Equal(new TouchZoneBox(0.4, 0.4, 0.2, 0.2), TouchZonesPage.AddedZoneBox(1, new Point(0.5, 0.5)));
         // Zoomed in 4x on the face: as large on the screen as at 1x, in the middle of what shows.
-        var face = MainWindow.AddedZoneBox(4, new Point(0.3, 0.2));
+        var face = TouchZonesPage.AddedZoneBox(4, new Point(0.3, 0.2));
         Near(0.275, face.X);
         Near(0.175, face.Y);
         Near(0.05, face.Width);
         Near(0.05, face.Height);
         Assert.True(face.Valid);
         // Near an edge it stays on the picture.
-        var corner = MainWindow.AddedZoneBox(2, new Point(0.99, 0.01));
+        var corner = TouchZonesPage.AddedZoneBox(2, new Point(0.99, 0.01));
         Near(0.9, corner.X);
         Near(0, corner.Y);
-        Assert.True(MainWindow.AddedZoneBox(8, new Point(0.5, 0.5)).Valid);
+        Assert.True(TouchZonesPage.AddedZoneBox(8, new Point(0.5, 0.5)).Valid);
     }
 
     [Fact]
