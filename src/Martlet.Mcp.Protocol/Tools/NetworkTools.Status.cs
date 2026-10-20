@@ -260,9 +260,6 @@ internal sealed partial class McpServer
     private static object NearbyStatus(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
-        string? choice;
-        try { choice = File.ReadAllText(Path.Combine(directory, "nearby.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
         object hosts;
         var path = Path.Combine(directory, "hosts.json");
         if (!File.Exists(path)) hosts = new { state = "none", paired = 0, shareable = Array.Empty<object>() };
@@ -296,7 +293,7 @@ internal sealed partial class McpServer
         // computer offers at most as many hosts as Martlet can remember.
         return new
         {
-            share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts,
+            share = Martlet.Core.Network.NearbyChoice.Describe(directory), port = 9444, hosts,
             find = new { listensSeconds = 15, queriesSentAtSeconds = new[] { 0, 0.5, 1.5, 3.5, 7.5 }, hostsOfferedAtMost = 64 }
         };
     }

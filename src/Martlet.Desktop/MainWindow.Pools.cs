@@ -465,13 +465,12 @@ public partial class MainWindow
         {
             Area = area,
             Heading = area.ConversationFirst ? "When the Thinking model is busy" : "Where it runs",
-            Wiki = "Multiple-Computers#each-job-has-a-list-of-machines",
+            Wiki = "Multiple-Computers#the-order-of-the-list",
             Intro = area.ConversationFirst
                 ? "A reply always tries the conversation's own model first, so nothing changes while it is free. Add computers that run " +
                   "the same model to take a reply when it is busy. Empty: a reply waits for its own model. Another computer starts " +
                   "without the conversation in its prompt cache, so its first word comes later."
-                : $"The machines that do {job.Job}, in order. The first one that is on does it; the next ones take a request when it is " +
-                  $"busy. Turn every one off, or remove them, to turn {job.Job} off. Each machine keeps its own settings.",
+                : $"The machines that do {job.Job}, in order. The first one that is on does it, and the next ones help when it is busy.",
             Status = Status,
             Settings = Settings,
             CanAdd = host => !area.ConversationFirst || host.HostId != routeMember?.HostId && Runs(host.HostId),

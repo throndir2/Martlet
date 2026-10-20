@@ -171,9 +171,15 @@ internal static class NetworkMap
           $"{(asked == DeviceRole.Host ? "host" : "companion")} PC: it switches the next time Martlet there syncs its settings (an older " +
           "Martlet there needs updating first).";
 
+    /// <summary>The note on a host of your Martlet network that this PC isn't paired with yet.</summary>
+    private const string UnpairedHostNote = "Your other computers use this host; it pairs with this PC by itself once it's in your Martlet network.";
+
     /// <summary>What another computer says when it is a host PC without a host service of its own yet.</summary>
     internal const string NoHostServiceYet = "Its host service isn't set up yet, so it does no work for your other computers until someone " +
         "at it chooses Set up host service on its Home (once; Windows may ask to allow it).";
+
+    /// <summary><see cref="NoHostServiceYet"/> after a semicolon, to join it to another sentence.</summary>
+    internal static string NoHostServiceYetJoined => "its" + NoHostServiceYet[3..];
 
     /// <summary>The command that switches another of your computers between companion and host PC (any of your computers can
     /// switch any other; it follows on its next settings sync), or, while an ask waits, the opposite one, which withdraws it.
@@ -195,8 +201,8 @@ internal static class NetworkMap
         var what = computer.Role switch
         {
             DeviceRole.Companion => "Companion PC" + (host is not null ? $" that also runs a host service ({host})." : "."),
-            DeviceRole.Host => host is not null ? $"Host PC, runs {host}." : "Host PC. " + NoHostServiceYet,
-            _ => "It hasn't said whether it is a companion or a host PC: it runs an older Martlet. Update it to switch it from here."
+            DeviceRole.Host => host is not null ? $"Host PC, runs {host}." : "Host PC; " + NoHostServiceYetJoined,
+            _ => "It runs an older Martlet that doesn't say whether it is a companion or a host PC; update it to switch it from here."
         };
         return what + Asked(computer) + (computer.Activity is { } activity ? " " + activity : "");
     }
@@ -382,7 +388,7 @@ internal static class NetworkMap
                 draft.Facts.Add(new("Host", hostId));
                 AddHardware(draft, inputs, hostId);
                 draft.Worsen(NodeHealth.Unknown, "Not paired with this PC");
-                draft.Notes.Add("Your other computers use this host. It pairs with this PC by itself once it's in your Martlet network.");
+                draft.Notes.Add(UnpairedHostNote);
             }
             return draft;
         }
@@ -489,7 +495,7 @@ internal static class NetworkMap
         {
             var missing = Node("missing:brain", NodeKind.Missing, "Conversation model", "Not chosen yet", CloudGlyph);
             missing.Worsen(NodeHealth.Attention, "Choose one");
-            missing.Roles.Add(new("Thinks", "Thinking", "Martlet needs this to answer you. Run a free model on your own computers (a graphics card, or the processor if there is none), or choose an online one.",
+            missing.Roles.Add(new("Thinks", "Thinking", "Martlet needs this to answer you: run a free model on your own computers, or choose an online one.",
                 DeviceComponent.Job(SetupRole.Llm)));
             missing.Commands.Add(new(NodeAction.Companion, "Set up thinking in Companion", true, nameof(SetupRole.Llm), DeviceComponent.Job(SetupRole.Llm)));
             missing.Commands.Add(new(NodeAction.Advisor, "Get a recommendation", Component: DeviceComponent.Job(SetupRole.Llm)));
@@ -547,19 +553,19 @@ internal static class NetworkMap
                 // The Thinking pool is this PC's own: a computer with its role joins by itself unless the owner keeps it out.
                 else if (SelfHostSetup.DeepThinkingCardOfRole(role.Kind) is { } card && model is not null)
                     target.Roles.Add(new(role.Chip, role.Name, card > 1
-                        ? $"Ready on graphics card {card} ({model}). It is a Thinking pool member of its own, beside the host's other cards."
+                        ? $"Ready on graphics card {card} ({model}), as a Thinking pool member of its own."
                         : companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
                         ? $"Thinks things over in the background for this PC ({model})."
                         : inputs.ThinkingPoolLeft?.Contains(paired.HostId) == true
-                        ? $"Ready ({model}). You keep it out of the Thinking pool: tick it in Companion > Thinking pool to add it again."
-                        : $"Ready ({model}). It joins the Thinking pool by itself unless you keep it out in Companion > Thinking pool.",
+                        ? $"Ready ({model}), but you keep it out of the Thinking pool; tick it in Companion > Thinking pool to add it again."
+                        : $"Ready ({model}); it joins the Thinking pool by itself unless you keep it out in Companion > Thinking pool.",
                         DeviceComponent.Standby(role.Kind)));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
                     !(role.Kind == speaking && speaks))
                     target.Roles.Add(new(role.Chip, role.Name, role.Kind == HostRoles.Singing
-                            ? "Ready. Martlet makes its songs here when you ask it to sing (Companion > Singing)."
-                            : $"Ready. Assign {role.Job} to use it.",
+                            ? "Ready: Martlet makes its songs here when you ask it to sing (Companion > Singing)."
+                            : $"Ready; assign {role.Job} to use it.",
                         DeviceComponent.Standby(role.Kind)));
             }
             var users = inputs.HostUsers?.GetValueOrDefault(paired.HostId);
@@ -567,7 +573,7 @@ internal static class NetworkMap
             {
                 var others = users?.Where(u => !u.ThisPc).Select(u => u.Text).ToArray();
                 var detail = $"Paired as {paired.HostId}" + (others is null ? "."
-                    : others.Length == 0 ? ". No other computer uses it yet." : ". Used by " + string.Join("; ", others) + ".");
+                    : others.Length == 0 ? ", and no other computer uses it yet." : ", used by " + string.Join("; ", others) + ".");
                 // A host PC already lists its host service: one row says what it is and who uses it.
                 var listed = thisPc.Roles.FindIndex(r => r.Component == DeviceComponent.HostService);
                 // This PC reads its own host service from Docker; a companion PC that also hosts shows when it can't work.
@@ -578,7 +584,7 @@ internal static class NetworkMap
                 }
                 else if (check?.Reachable == false)
                 {
-                    detail = "Not answering. " + detail;
+                    detail = "Not answering; " + char.ToLowerInvariant(detail[0]) + detail[1..];
                     thisPc.Worsen(NodeHealth.Attention, "Host service not answering");
                 }
                 var row = new HostedRole("Host", "Martlet host service",
@@ -589,7 +595,7 @@ internal static class NetworkMap
             else
             {
                 if (target.Roles.Count == before)
-                    target.Roles.Add(new("Host", "Martlet host", check?.Text ?? "Paired. Check connection to see what it can do.",
+                    target.Roles.Add(new("Host", "Martlet host", check?.Text ?? "Paired; use Check connection to see what it can do.",
                         DeviceComponent.Host));
                 if (users is { Count: > 0 })
                     target.Roles.Add(new("Users", "Computers using it", string.Join("; ", users.Select(u => u.Text)) + ".", DeviceComponent.Users));
@@ -615,10 +621,10 @@ internal static class NetworkMap
             var reported = check?.Reachable == true ? check.MartletVersion ?? saved : saved;
             var known = check?.Reachable == true || reported is not null;
             var outdated = known && AppVersions.IsOlder(reported, app);
-            target.Facts.Add(new(local ? "Host service" : "Martlet", !known ? "Version not reported yet. Use Check connection."
-                : reported is null ? $"Needs update. This PC runs {app}."
+            target.Facts.Add(new(local ? "Host service" : "Martlet", !known ? "Version not reported yet; use Check connection."
+                : reported is null ? $"Needs update: this PC runs {app}."
                 : outdated ? $"Needs update from {reported} to {app}."
-                : reported == app ? $"{reported}, up to date" : $"{reported}, newer than this PC ({app}). Update this PC to {reported}.",
+                : reported == app ? $"{reported}, up to date" : $"{reported}, newer than this PC ({app}); update this PC to {reported}.",
                 "SelectedDeviceRelease"));
             var updateShown = outdated && !local && target.Worsen(NodeHealth.Attention, "Update available");
             if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
@@ -701,8 +707,8 @@ internal static class NetworkMap
             // Home Assistant runs on the host's own network (no gateway route); the host reports it in its machine report.
             if (HomeAssistantHosts.Runs(hardware))
             {
-                target.Roles.Add(new("Home", "Home Assistant", $"Runs at {HomeAssistantHosts.Address(paired).AbsoluteUri.TrimEnd('/')}. " +
-                    "Set it up and manage it in Companion > Smart home.", DeviceComponent.Standby(HomeAssistantHosts.Role)));
+                target.Roles.Add(new("Home", "Home Assistant", $"Runs at {HomeAssistantHosts.Address(paired).AbsoluteUri.TrimEnd('/')}; " +
+                    "set it up in Companion > Smart home.", DeviceComponent.Standby(HomeAssistantHosts.Role)));
                 target.Commands.Add(new(NodeAction.Companion, "Open Smart home", Argument: nameof(CompanionTab.SmartHome)));
                 if (managed && !local)
                     target.Commands.Add(new(NodeAction.RemoveRole, "Remove Home Assistant", Argument: id + "/" + HomeAssistantHosts.Role));
@@ -741,7 +747,7 @@ internal static class NetworkMap
             if (draft is null || draft == thisPc) continue;
             if (!host.Paired)
             {
-                draft.Notes.Remove("Your other computers use this host. It pairs with this PC by itself once it's in your Martlet network.");
+                draft.Notes.Remove(UnpairedHostNote);
                 if (draft.Facts.All(f => f.Label != "Address") && host.Origin.Length > 0) draft.Facts.Insert(0, new("Address", host.Origin));
                 draft.Facts.Add(new("Martlet network", "Member host, not paired with this PC yet"));
             }
@@ -772,13 +778,11 @@ internal static class NetworkMap
             var where = computer.Activity is { } activity ? " " + activity : "";
             var standing = computer.Standing switch
             {
-                ComputerStanding.Asking => $"Asks to join your Martlet network through {computer.Through} (check number {computer.CheckNumber}). " +
-                    "Allow it on the Share page, under Your Martlet network.",
-                ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network, so it doesn't see your other hosts or " +
-                    "computers. To bring it in, update Martlet on it: it then asks to join by itself, and you allow it on the Share page." + where,
-                ComputerStanding.Friend => $"A friend's computer: it signed in to {computer.Through ?? "your host"} as a friend and uses only its " +
-                    "engines (thinking, listening, speaking, lip-sync, reading). It never joins your Martlet network; your own work comes " +
-                    "first. Stop sharing on the Share page, under Friends." + where,
+                ComputerStanding.Asking => $"Asks to join your Martlet network through {computer.Through} (check number {computer.CheckNumber}); " +
+                    "allow it on the Share page, under Your Martlet network.",
+                ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network; update Martlet on it, and it asks to join by itself." + where,
+                ComputerStanding.Friend => $"A friend's computer that signed in to {computer.Through ?? "your host"} as a friend: it uses only its " +
+                    "engines and never joins your Martlet network." + where,
                 _ => "In your Martlet network." + where
             };
             // What it is, as it said itself; a computer on an older Martlet hasn't said, so it shows as the Martlet app. A host PC
@@ -899,19 +903,18 @@ internal static class NetworkMap
             {
                 draft.Subtitle = "Shared by a friend";
                 draft.Facts.Add(new("Shared with this PC", "By a friend: its engines only, for this PC only"));
-                draft.Notes.Add("A friend shares this host with this PC. It never joins your Martlet network, your other computers don't " +
-                    "use it, and its owner's own work comes first. Share › Hosts shared with this PC lists it.");
+                draft.Notes.Add("A friend shares this host with this PC only; it never joins your Martlet network, and its owner's work comes first.");
             }
 
         // Its details are just the ways to add one, each a whole clickable card (nothing there only looks like a button).
         var add = new Draft("add", NodeKind.Add, "Add a computer", "Use another computer", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };
         add.Commands.Add(new(NodeAction.AddComputer, "Add a computer", true,
-            Detail: "Another computer can help with thinking, speech or lip-sync. Pair it once with a one-use code on your private network."));
+            Detail: "Pair another computer once with a one-use code, so it helps with thinking, speech or lip-sync."));
         add.Commands.Add(new(NodeAction.PrepareComputer, "Prepare a Linux computer",
-            Detail: "Get a Linux PC ready for host jobs over SSH first. Martlet checks it, then changes only what you select."));
+            Detail: "Get a Linux PC ready for host jobs over SSH; Martlet changes only what you select."));
         if (inputs.Role != DeviceRole.Host)
             add.Commands.Add(new(NodeAction.HostThisPc, "Run host services on this PC",
-                Detail: "No other computer? Let this PC do thinking, speech or lip-sync itself."));
+                Detail: "Let this PC do thinking, speech or lip-sync itself when you have no other computer."));
         order.Add(add);
 
         return order.Select(draft => draft.Build()).ToArray();
@@ -927,7 +930,7 @@ internal static class NetworkMap
         if (target.Facts.Any(f => f.Label is "Hardware" or "Graphics")) return;
         if (reported is not { } report)
         {
-            target.Facts.Add(new("Hardware", "Not reported yet. Use Check connection."));
+            target.Facts.Add(new("Hardware", "Not reported yet; use Check connection."));
             return;
         }
         if (report.Gpus.Count == 0) target.Facts.Add(new("Graphics", "No dedicated GPU reported"));

@@ -187,13 +187,13 @@ public sealed class SupportIntegrationTests
             Click(window, "ExportButton");
             Assert.Contains("Export canceled", Field<TextBox>(window, "ResultText").Text);
             Assert.False(File.Exists(scope.Output));
-            Assert.Contains("Nothing will be uploaded", confirmation);
+            Assert.Contains("Nothing will be overwritten or uploaded", confirmation);
             Assert.Contains(scope.Output, confirmation);
             approved = true;
             Click(window, "ExportButton");
             await Until(() => File.Exists(scope.Output) && !controller.IsBusy);
             await Until(() => Field<TextBox>(window, "ResultText").Text.Contains("Exported locally", StringComparison.Ordinal));
-            Assert.Contains("Nothing was uploaded", Field<TextBox>(window, "ResultText").Text);
+            Assert.Contains("nothing was uploaded", Field<TextBox>(window, "ResultText").Text);
             AssertArchive(preview, scope.Output);
             Assert.False(Directory.Exists(scope.Data));
         }
@@ -372,7 +372,7 @@ public sealed class SupportIntegrationTests
             await Until(() => Field<Button>(window, "ClearButton").IsEnabled);
             Field<TextBox>(window, "DestinationText").Text = scope.Output;
             Click(window, "ExportButton");
-            Assert.Contains("The preview or destination changed.", Field<TextBox>(window, "ResultText").Text);
+            Assert.Contains("The preview or destination changed,", Field<TextBox>(window, "ResultText").Text);
             Assert.False(File.Exists(scope.Output));
             Assert.False(File.Exists(Path.Combine(scope.Root, "changed.zip")));
             Field<CheckBox>(window, "LogsChoice").IsChecked = true;

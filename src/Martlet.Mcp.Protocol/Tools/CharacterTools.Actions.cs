@@ -21,13 +21,9 @@ internal sealed partial class McpServer
         string? renderer = null;
         if (modelPath is null && directory is not null)
         {
-            try
-            {
-                using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "avatar.json")));
-                modelPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
-                renderer = avatar.RootElement.TryGetProperty("renderer", out var kind) ? kind.ToString() : null;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+            var shown = Martlet.Avatar.Hosting.AvatarProfileStore.Peek(directory);
+            modelPath = shown?.ModelPath;
+            renderer = shown?.Renderer.ToString();
         }
         if (modelPath is null) throw new ArgumentException("Give modelPath (a .model3.json or .vrm), or a dataDirectory whose avatar.json shows one.");
         var vrm = modelPath.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase) || renderer?.Contains("vrm", StringComparison.OrdinalIgnoreCase) == true;

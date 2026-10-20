@@ -58,7 +58,9 @@ public partial class MainWindow
         {
             DetailContent.Children.Add(DetailSection("What it does",
                 rows.All(r => r.Component is DeviceComponent.Host or DeviceComponent.Member) ? null
-                : node.Kind == NodeKind.Missing ? "Not set up yet." : "Change these jobs here."));
+                : node.Kind == NodeKind.Missing ? "Not set up yet." : "Change these jobs here.",
+                HelpTip.For("what it does", "Each row is a job or role of this computer, with the buttons that change it.", "DeviceJobs",
+                    wiki: "Multiple-Computers#machine-cards")));
             foreach (var role in rows)
             {
                 var commands = role.Component is { } key && shown.Add(key)
@@ -395,7 +397,7 @@ public partial class MainWindow
 
     // ---------- details ----------
 
-    private static TextBlock DetailSection(string heading, string? hint)
+    private static TextBlock DetailSection(string heading, string? hint, HelpTip? help = null)
     {
         var text = new TextBlock { Margin = new Thickness(0, 22, 0, 12) };
         text.Inlines.Add(new System.Windows.Documents.Run(heading));
@@ -406,6 +408,11 @@ public partial class MainWindow
             var muted = new System.Windows.Documents.Run("   " + hint) { FontWeight = FontWeights.Normal, FontSize = 13 };
             muted.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "MutedBrush");
             text.Inlines.Add(muted);
+        }
+        if (help is not null)
+        {
+            help.Margin = new Thickness(6, 0, 0, 0);
+            text.Inlines.Add(new System.Windows.Documents.InlineUIContainer(help) { BaselineAlignment = BaselineAlignment.Center });
         }
         return text;
     }
@@ -483,13 +490,9 @@ public partial class MainWindow
             method.Items.Add(item);
             if (value == host.Method || value == HostSetupMethod.Agent && host.Method == HostSetupMethod.OnHost) method.SelectedItem = item;
         }
-        var hint = new TextBlock
-        {
-            Text = "Through Martlet on that computer: commands go over the pinned, signed connection you paired, and Martlet there " +
-                "runs them (it needs to be running there; until then they wait). Use SSH for a Linux computer without Martlet.",
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8)
-        };
-        hint.SetResourceReference(StyleProperty, "Muted");
+        var hint = HelpTip.Explain("Martlet on that computer runs the commands over your paired connection; use SSH for a Linux computer " +
+            "without Martlet. The connection is pinned and signed, and commands wait until Martlet runs on that computer.",
+            new Thickness(0, 0, 0, 8), "DeviceReachMethod", "connection method", wiki: "Multiple-Computers#machine-cards");
         AutomationProperties.SetAutomationId(hint, "HostReachHint");
         var label = new TextBlock { Text = "SSH target, for example me@192.168.1.20", Margin = new Thickness(0, 0, 0, 4) };
         label.SetResourceReference(StyleProperty, "Muted");

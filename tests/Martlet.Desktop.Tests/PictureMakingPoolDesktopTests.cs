@@ -39,7 +39,7 @@ public sealed class PictureMakingPoolDesktopTests
             // m5-host isn't paired here; m1-host does fewer jobs than m3-host.
             var list = PictureClient.List(directory);
             Assert.Equal(["host:m4-host", "host:m1-host", "host:m3-host"], list.Members.Select(m => m.Key));
-            Assert.True(PoolSettings.Saved(directory, shared: false));
+            Assert.True(PoolSettings.Saved(directory, shared: true));
             Assert.Equal(list.Members.Select(m => m.Key), PoolSettings.LoadFor(directory, PoolAreas.PictureMaking)!.Members.Select(m => m.Key));
             Assert.True(PictureClient.IsSetUp(directory));
             Assert.Equal("m4-host", PictureClient.Painter(directory));

@@ -86,6 +86,7 @@ public sealed record ModelAbilitySources
 public sealed record ModelAbilities
 {
     public const string FileName = "model-abilities.json";
+    public const string SharedKey = "model-abilities";
     public const int MaximumModels = 64;
     private static readonly JsonSerializerOptions Canonical = new()
     {

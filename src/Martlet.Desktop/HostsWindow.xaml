@@ -40,7 +40,11 @@
                 <StackPanel x:Name="ConnectStep">
                     <TextBlock Text="Connect a computer" Style="{DynamicResource PageTitle}"/>
                     <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"
-                               Text="Pick a Martlet host on your network, or set up a new one. Then choose which jobs it runs."/>
+                               AutomationProperties.Name="Pick a Martlet host on your network, or set up a new one."><Run
+                            Text="Pick a Martlet host on your network, or set up a new one."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                            Text="After you connect a computer, choose which jobs it runs." Wiki="Setting-Up-a-Host#the-add-a-computer-window"
+                            AutomationProperties.AutomationId="Help-HostsConnect" AutomationProperties.Name="About adding a computer"
+                            Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
 
                     <Border x:Name="NearbyCard" Style="{DynamicResource CardStyle}" AutomationProperties.AutomationId="NearbyCard">
                         <StackPanel>
@@ -50,7 +54,11 @@
                                 <StackPanel>
                                     <TextBlock Text="Martlet on your network" FontWeight="SemiBold" FontSize="16"/>
                                     <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                               Text="Pick a computer, then press Allow on it when both show the same check number. Nothing to type."/>
+                                               AutomationProperties.Name="Pick a computer, then press Allow on it when both show the same check number."><Run
+                                        Text="Pick a computer, then press Allow on it when both show the same check number."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                        Text="You type nothing: the check number shows that both computers talk to each other." Wiki="Setting-Up-a-Host#pairing"
+                                        AutomationProperties.AutomationId="Help-HostsNearby" AutomationProperties.Name="About Martlet on your network"
+                                        Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                                 </StackPanel>
                             </DockPanel>
                             <!-- One row per Martlet that answered, built in code (NearbyItem-n, NearbyConnect-n). -->
@@ -73,18 +81,30 @@
                                 <Button x:Name="EnterCodeButton" DockPanel.Dock="Right" Content="_Enter a pairing code" Click="EnterCode_Click"
                                         VerticalAlignment="Center" Margin="16,0,0,0" AutomationProperties.AutomationId="HostsEnterCode"/>
                                 <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"
-                                           Text="Not listed? Guest Wi-Fi, a VPN, another subnet or a firewall can hide it. Enter the address and pairing code it shows instead."/>
+                                           AutomationProperties.Name="If it isn't listed, enter the address and pairing code it shows."><Run
+                                    Text="If it isn't listed, enter the address and pairing code it shows."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                    Text="Guest Wi-Fi, a VPN, another subnet or a firewall can hide a computer." Wiki="Setting-Up-a-Host#pairing"
+                                    AutomationProperties.AutomationId="Help-HostsNotListed" AutomationProperties.Name="About a computer that isn't listed"
+                                    Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                             </DockPanel>
                             <DockPanel Margin="0,10,0,0">
                                 <Button x:Name="JoinWithInviteButton" DockPanel.Dock="Right" Content="Join with an _invite" Click="JoinWithInvite_Click"
                                         VerticalAlignment="Center" Margin="16,0,0,0" AutomationProperties.AutomationId="HostsJoinWithInvite"/>
                                 <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"
-                                           Text="Away from home? Paste the invite you made at home and sign in; this PC then joins your Martlet network by itself."/>
+                                           AutomationProperties.Name="Away from home, paste the invite you made at home and sign in."><Run
+                                    Text="Away from home, paste the invite you made at home and sign in."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                    Text="This PC then joins your Martlet network by itself." Wiki="Setting-Up-a-Host#the-add-a-computer-window"
+                                    AutomationProperties.AutomationId="Help-HostsInvite" AutomationProperties.Name="About joining with an invite"
+                                    Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                             </DockPanel>
                             <StackPanel x:Name="ManualPanel" Visibility="Collapsed" Margin="0,12,0,0" AutomationProperties.AutomationId="ManualPanel">
                                 <TextBlock x:Name="PairCodeHelp" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
                                            AutomationProperties.AutomationId="PairCodeHelp"
-                                           Text="On the other computer, choose Show a pairing code in Martlet (or run martlet-host pair on a Linux host), then enter the address and code it shows. The code works until it's used or canceled there."/>
+                                           AutomationProperties.Name="On the other computer, choose Show a pairing code in Martlet (or run martlet-host pair on a Linux host), then enter the address and code it shows."><Run
+                                    Text="On the other computer, choose Show a pairing code in Martlet (or run martlet-host pair on a Linux host), then enter the address and code it shows."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                    Text="The code works once, until a computer uses it or you cancel it there." Wiki="Setting-Up-a-Host#pairing"
+                                    AutomationProperties.AutomationId="Help-HostsPairingCode" AutomationProperties.Name="About pairing codes"
+                                    Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -127,7 +147,11 @@
                         <StackPanel>
                             <TextBlock Text="A Linux computer over SSH" FontWeight="SemiBold" FontSize="15"/>
                             <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,10"
-                                       Text="Martlet signs in once, runs the host in Docker when the computer has it (or installs it natively on Linux with systemd), then connects automatically. On a NAS, install Docker from its app center first."/>
+                                       AutomationProperties.Name="Martlet signs in once, sets up the host and connects to it by itself."><Run
+                                Text="Martlet signs in once, sets up the host and connects to it by itself."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                Text="Martlet runs the host in Docker when the computer has it, or installs it natively on Linux with systemd. On a NAS, install Docker from its app center first."
+                                Wiki="Setting-Up-a-Host#linux-over-ssh" AutomationProperties.AutomationId="Help-HostsSsh"
+                                AutomationProperties.Name="About setting up a Linux computer" Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                             <Label Target="{Binding ElementName=SshTargetText}" Content="SSH _target (user@computer)" Padding="0,0,0,4"/>
                             <DockPanel>
                                 <Button x:Name="SetupButton" DockPanel.Dock="Right" Content="Set up over _SSH" Click="Setup_Click"
@@ -141,14 +165,22 @@
                             <Expander Header="Its private network address" Margin="0,10,0,0" AutomationProperties.AutomationId="HostAddressSection">
                                 <StackPanel Margin="0,8,0,0">
                                     <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6"
-                                               Text="Filled in automatically from the computer. Change it only if your other computers reach it at a different address."/>
+                                               AutomationProperties.Name="Martlet fills this in from the computer."><Run
+                                        Text="Martlet fills this in from the computer."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                        Text="Change it only if your other computers reach it at a different address." Wiki="Setting-Up-a-Host#the-add-a-computer-window"
+                                        AutomationProperties.AutomationId="Help-HostsAddress" AutomationProperties.Name="About the private network address"
+                                        Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                                     <TextBox x:Name="AddressText" AutomationProperties.AutomationId="HostAddress" presentation:InputHint.Text="192.168.1.20"/>
                                 </StackPanel>
                             </Expander>
                         </StackPanel>
                     </Border>
                     <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
-                               Text="Another Windows PC? Install Martlet there and choose Use as a Martlet host on its Home page. It then appears under Martlet on your network."/>
+                               AutomationProperties.Name="For another Windows PC, install Martlet there and choose Use as a Martlet host on its Home page."><Run
+                        Text="For another Windows PC, install Martlet there and choose Use as a Martlet host on its Home page."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                        Text="It then shows under Martlet on your network." Wiki="Setting-Up-a-Host#ways-to-set-up-a-host"
+                        AutomationProperties.AutomationId="Help-HostsOtherWindowsPc" AutomationProperties.Name="About another Windows PC"
+                        Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                 </StackPanel>
 
                 <StackPanel x:Name="RolesStep" Visibility="Collapsed">
@@ -167,7 +199,7 @@
                             <WrapPanel x:Name="HostButtons">
                                 <Button Content="Chec_k host" Click="Check_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="CheckHost"/>
                                 <Button Content="_Update host" Click="UpdateHost_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="UpdateHost"
-                                        ToolTip="Update the host. Pairings and jobs stay"/>
+                                        ToolTip="Update the host; its pairings and jobs stay"/>
                                 <Button Content="Sign-in from _outside" Click="SignInSettings_Click" Margin="0,0,10,0"
                                         AutomationProperties.AutomationId="HostSignInSettings"
                                         ToolTip="Let your computers join this host from outside home by signing in"/>
@@ -180,7 +212,11 @@
                     <Expander Header="This PC's device ID" Margin="0,4,0,0" AutomationProperties.AutomationId="DeviceIdSection">
                         <StackPanel Margin="0,8,0,0">
                             <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                       Text="How this PC appears on the host. Martlet sends it automatically when connecting."/>
+                                       AutomationProperties.Name="How this PC appears on the host."><Run
+                                Text="How this PC appears on the host."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                Text="Martlet sends it by itself when it connects." Wiki="Setting-Up-a-Host#the-add-a-computer-window"
+                                AutomationProperties.AutomationId="Help-HostsDeviceId" AutomationProperties.Name="About the device ID"
+                                Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
                             <DockPanel>
                                 <Button Content="Cop_y" Click="CopyDeviceId_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/>
                                 <TextBox x:Name="DeviceIdText" AutomationProperties.AutomationId="DeviceId" AutomationProperties.Name="This PC's device ID"

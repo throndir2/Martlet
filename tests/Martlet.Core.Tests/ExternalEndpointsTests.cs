@@ -79,7 +79,7 @@ public sealed class ExternalEndpointsTests
             Pools = [new PoolList { Area = PoolAreas.Speaking.Id, Members = [PoolMember.ThisPc(), PoolMember.Computer("diva")] }]
         });
         Assert.Empty(endpoints);
-        Assert.Equal("None. Martlet sends work only to this PC and your own computers.", ExternalEndpoints.Summary(endpoints));
+        Assert.Equal("None: Martlet sends work only to this PC and your own computers.", ExternalEndpoints.Summary(endpoints));
     }
 
     [Fact]

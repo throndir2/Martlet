@@ -148,7 +148,7 @@ public sealed class SenseModelCardsTests
             MainWindow.TestAbout(SenseKind.Audio, "google/gemini-2.5-flash", local: false, "OpenRouter"));
     }
 
-    [Fact]
+    [DrawingFact]
     public async Task The_test_picture_is_one_word_drawn_on_white()
     {
         var pictures = new Dictionary<string, BoundedImage>();

@@ -28,10 +28,10 @@ internal sealed record BundleManifest(int SchemaVersion, Guid SnapshotId, DateTi
 public sealed class SupportSnapshot : IDisposable
 {
     public const int MaximumFrozenBytes = 4 * 1024 * 1024;
-    public const string OmissionSummary = "No raw settings, secrets, provider bodies, summaries supplied by callers, " +
+    public const string OmissionSummary = "Leaves out raw settings, secrets, provider bodies, summaries supplied by callers, " +
         "transcripts, audio, screenshots, history, memory, voice/model IDs, device/host/user identities, paths, environment " +
-        "or credential contents. Trace, turn and journal UUIDs use one fresh per-bundle pseudonym map. " +
-        "Catalog guidance only. Timestamps and counts remain. Allowlisting reduces disclosure; it is not a universal privacy guarantee.";
+        "and credential contents; trace, turn and journal UUIDs get one fresh pseudonym map per bundle, and only catalog guidance, " +
+        "timestamps and counts remain (an allowlist reduces disclosure but is not a universal privacy guarantee).";
     private readonly object gate = new();
     private readonly (PreviewFile Info, byte[] Bytes)[] files;
     private readonly TimeProvider clock;

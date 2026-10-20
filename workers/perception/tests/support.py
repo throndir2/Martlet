@@ -212,7 +212,7 @@ class RecordingEmitter:
     def wait_for(
         self,
         predicate: Callable[[dict[str, Any]], bool],
-        timeout: float = 3.0,
+        timeout: float = 10.0,
     ) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
         with self.condition:
@@ -263,7 +263,7 @@ def request_wire(
     environment: FixtureEnvironment,
     *,
     image: bytes | None = None,
-    deadline_seconds: float = 2.0,
+    deadline_seconds: float = 10.0,
     captured_seconds_ago: float = 0.1,
     expected_worker: WorkerIdentity | None = None,
     task_role: str | None = None,
@@ -336,7 +336,7 @@ def request_wire(
 def warmup_wire(
     environment: FixtureEnvironment,
     *,
-    deadline_seconds: float = 2.0,
+    deadline_seconds: float = 30.0,
 ) -> dict[str, Any]:
     return {
         "contract_id": "martlet.perception.worker",

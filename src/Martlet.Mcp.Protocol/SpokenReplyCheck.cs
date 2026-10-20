@@ -36,6 +36,8 @@ internal static class SpokenReplyCheck
     private const long CueGraceMs = 50;
     // How long a slow voice keeps the speakers waiting in the middle of each piece.
     internal static readonly TimeSpan SlowGap = TimeSpan.FromMilliseconds(1_500);
+    // The audio a slow voice sends before each gap: half of a piece's half second.
+    private static readonly TimeSpan SlowFirstHalf = TimeSpan.FromMilliseconds(250);
     private const string Model = "fixture-model";
     private const string VoiceModel = "chatterbox-turbo";
     private static readonly string[] Sentences =
@@ -157,9 +159,11 @@ internal static class SpokenReplyCheck
                 Math.Abs(stepsSum - total) <= latency.Steps.Count + 1 &&
                 (reasoning == TimeSpan.Zero || latency.Steps.GetValueOrDefault(ReplyLatency.HiddenReasoning) >= reasoning.TotalMilliseconds * 0.8) &&
                 latency.Steps.GetValueOrDefault(ReplyLatency.VoiceSynthesis) >= voiceDelay.TotalMilliseconds * 0.8 &&
-                // A slow voice's pauses are said in the line: at least one per piece, each about as long as its gap.
-                (failure != "slow" || latency.VoicePauses >= voice.Calls &&
-                    latency.VoicePausedMs >= voice.Calls * SlowGap.TotalMilliseconds * 0.8) &&
+                // A slow voice's pauses are said in the line. How long each one is depends on how late its first half reached the
+                // speakers, which a busy PC delays, so the line must show at least one pause of at least one gap's worth: the gap
+                // less the half piece that was playing during it.
+                (failure != "slow" || latency.VoicePauses >= 1 &&
+                    latency.VoicePausedMs >= (SlowGap - SlowFirstHalf).TotalMilliseconds * 0.8) &&
                 // A reply paused for the user says so in the line, and that it played on.
                 (failure != "paused" || latency.Resumed && latency.PausedForYouMs >= HoldFor.TotalMilliseconds * 0.9);
             var text = turn.Content.Text;

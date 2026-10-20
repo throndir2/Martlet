@@ -117,8 +117,13 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
         row.Children.Add(RowGroup(on));
         row.Children.Add(RowGroup(RowLabel("Every", every), every));
-        row.Children.Add(RowGroup(RowLabel("Its answer", outcome), outcome));
-        var children = new List<UIElement> { Heading(checkIn.Name), Note(checkIn.Does, new Thickness(0, 0, 0, 0)), row, status };
+        row.Children.Add(RowGroup(RowLabel("Its answer", outcome), outcome, AnswerTip(id)));
+        var children = new List<UIElement>
+        {
+            Heading(checkIn.Name),
+            HelpTip.Explain(checkIn.Does, new Thickness(0, 0, 0, 0), $"CheckInAbout-{id}", checkIn.Name, wiki: "Thinking#check-ins"),
+            row, status
+        };
         var more = new List<UIElement>();
         // Its prompt, like the task of your own check-ins: edited here, saved with Martlet's other prompts (Companion › Prompts
         // lists it too).
@@ -135,7 +140,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
             AutomationProperties.SetAutomationId(box, "CheckInPrompt-" + id);
             AutomationProperties.SetName(box, checkIn.Name + ": what it asks");
             AutomationProperties.SetHelpText(box, prompt.Help);
-            InputHint.SetText(box, "What this check-in asks the Thinking pool. Left empty, it asks nothing.");
+            InputHint.SetText(box, "What this check-in asks the Thinking pool");
             var state = Note("", new Thickness(0, 2, 0, 0));
             AutomationProperties.SetAutomationId(state, "CheckInPromptState-" + id);
             void ShowState() => state.Text = MainWindow.PromptState(prompt, box.Text, services.Prompts);
@@ -150,7 +155,8 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
             promptBox = box;
             promptDefault = prompt.Default;
             more.Add(HelpTip.After(new Label { Content = "_What it asks", Target = box, Padding = new Thickness(0), Margin = new Thickness(0, 6, 0, 0) },
-                "placeholders", CheckInsPageModel.PlaceholderHelp + " Empty it to stop this check-in from asking anything.", "CheckInPrompt-" + id));
+                "placeholders", CheckInsPageModel.PlaceholderHelp + " Empty it to stop this check-in from asking anything.", "CheckInPrompt-" + id,
+                wiki: "Thinking#what-a-check-in-knows"));
             more.Add(box);
             more.Add(state);
         }
@@ -160,7 +166,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         AutomationProperties.SetHelpText(copy, $"Makes a check-in of your own with this one's prompt and choices, off until you turn it on.");
         var reset = PageButton("Use built-in settings", () => ResetAsync().Forget(), link: true, id: "CheckInReset-" + id);
         AutomationProperties.SetHelpText(reset, $"Puts Martlet's own prompt, facts, conditions, answer, inputs and tools for {checkIn.Name} " +
-            "back. On and Every stay as they are.");
+            "back (On and Every stay as they are).");
         children.Add(Row(PageButton("Check now", () => SaveThenCheckAsync().Forget(), id: "CheckInRun-" + id), copy, reset));
         return Card([.. children]);
 
@@ -254,10 +260,10 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         top.Children.Add(RowGroup(name));
         top.Children.Add(RowGroup(on));
         top.Children.Add(RowGroup(RowLabel("Every", every), every));
-        top.Children.Add(RowGroup(RowLabel("Its answer", outcome), outcome));
+        top.Children.Add(RowGroup(RowLabel("Its answer", outcome), outcome, AnswerTip(id)));
         view.Children.Add(top);
         view.Children.Add(HelpTip.After(new Label { Content = "_What it checks", Target = task, Padding = new Thickness(0), Margin = new Thickness(0, 6, 0, 0) },
-            "placeholders", CheckInsPageModel.PlaceholderHelp, "CheckInTask-" + id));
+            "placeholders", CheckInsPageModel.PlaceholderHelp, "CheckInTask-" + id, wiki: "Thinking#what-a-check-in-knows"));
         view.Children.Add(task);
         view.Children.Add(status);
         view.Children.Add(Fold.Create("More settings", "CheckInMore-" + id, false, choices));
@@ -283,5 +289,14 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         for (var i = 0; i < CheckIns.EveryChoices.Count; i++)
             if (CheckIns.EveryChoices[i] == minutes) index = i;
         return Compact(new ComboBox { ItemsSource = CheckIns.EveryChoices.Select(CheckInsPageModel.EveryText).ToArray(), SelectedIndex = index, Width = 130 });
+    }
+
+    /// <summary>The "?" after Its answer (Help-CheckInOutcome-&lt;id&gt;): what the answers do, with the wiki's list of them.</summary>
+    private static HelpTip AnswerTip(string id)
+    {
+        var tip = HelpTip.For("its answer", CheckInsPageModel.OutcomeHelp, "CheckInOutcome-" + id, wiki: "Thinking#what-its-answer-does");
+        tip.Margin = new Thickness(6, 0, 0, 0);
+        tip.VerticalAlignment = VerticalAlignment.Center;
+        return tip;
     }
 }

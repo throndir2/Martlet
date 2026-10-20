@@ -37,17 +37,14 @@ internal sealed partial class McpServer
         };
 
         object character;
-        var avatar = Path.Combine(directory, "avatar.json");
-        if (!File.Exists(avatar)) character = new { state = "none" };
+        if (!File.Exists(Path.Combine(directory, Martlet.Avatar.Hosting.AvatarProfileStore.FileName))) character = new { state = "none" };
         else
         {
             try
             {
-                using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(avatar, cancellation));
-                var root = document.RootElement;
-                string? Text(JsonElement parent, string name) =>
-                    parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                var model = Text(root, "model_path") ?? "";
+                // avatar.json through its store (Martlet.Avatar.Hosting.AvatarProfileStore).
+                var shown = Martlet.Avatar.Hosting.AvatarProfileStore.Read(directory)!;
+                var model = shown.ModelPath;
                 const string builtIn = "builtin:";
                 character = new
                 {
@@ -56,13 +53,13 @@ internal sealed partial class McpServer
                     builtInCharacter = model.StartsWith(builtIn, StringComparison.Ordinal) ? model[builtIn.Length..] : null,
                     ownModelType = model.StartsWith(builtIn, StringComparison.Ordinal) ? null
                         : model.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase) ? ".model3.json" : Path.GetExtension(model).ToLowerInvariant(),
-                    renderer = Text(root, "renderer"),
-                    lipSync = Text(root, "lip_sync") ?? "auto",
-                    autoShow = root.TryGetProperty("auto_show", out var show) && show.ValueKind == JsonValueKind.True,
-                    lipSyncHost = root.TryGetProperty("remote_host", out var host) && host.ValueKind == JsonValueKind.Object ? Text(host, "host_id") : null
+                    renderer = shown.Renderer.ToString().ToLowerInvariant(),
+                    lipSync = shown.LipSync.ToString().ToLowerInvariant(),
+                    autoShow = shown.AutoShow,
+                    lipSyncHost = shown.RemoteHost?.HostId
                 };
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or Martlet.Core.Contracts.ContractException)
             {
                 character = new { state = "unreadable", problem = error.GetType().Name };
             }

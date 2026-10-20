@@ -1,10 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Platform-service contracts for the Linux and macOS companion (docs/DESKTOP_LINUX_MACOS.md). Martlet.Platform.Linux
-       (DX02) and Martlet.Platform.MacOS (DX03) implement them; Martlet.Companion picks one at startup. No UI dependency. -->
+       (DX02) and Martlet.Platform.MacOS (DX03) implement them; Martlet.Companion picks one at startup. Also the companion's
+       settings, guardrails and their sync with the owner's other computers (CompanionSharing), so Martlet MCP's
+       settings_sync_selftest runs the same code. No UI dependency. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
+    <!-- The paired host client: pairing with a code, and reading and merging a host's copy of the shared settings. -->
+    <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
   </ItemGroup>
 </Project>

@@ -20,7 +20,11 @@
         <StackPanel DockPanel.Dock="Top" Margin="22,18,22,8">
             <TextBlock x:Name="HeadingText" Text="Prepare this computer" FontSize="24" FontWeight="SemiBold" />
             <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                       Text="Martlet can prepare a Linux PC for host jobs over SSH. It reads the PC first, then changes only what you select. Most changes need administrator rights." />
+                       AutomationProperties.Name="Martlet can prepare a Linux PC for host jobs over SSH."><Run
+                Text="Martlet can prepare a Linux PC for host jobs over SSH."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                Text="Martlet reads the PC first, then changes only what you select. Most changes need administrator rights."
+                Wiki="Setting-Up-a-Host#prepare-a-linux-computer" AutomationProperties.AutomationId="Help-PrepareHost"
+                AutomationProperties.Name="About preparing a Linux computer" Margin="6,0,0,0" VerticalAlignment="Center"/></InlineUIContainer></TextBlock>
             <DockPanel Margin="0,12,0,0">
                 <TextBlock Text="SSH target" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <Button x:Name="ReadButton" DockPanel.Dock="Right" Content="_Read status" Click="Read_Click" Padding="14,6" Margin="10,0,0,0"

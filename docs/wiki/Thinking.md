@@ -49,6 +49,12 @@ Where one of your computers can already think, the key goes to **If Thinking fai
 
 **Look again** looks for apps again. Martlet looks only on this PC and starts or installs nothing.
 
+- Using a model app costs nothing for each request. Your messages go to that app on this PC, and the app decides what it keeps and whether anything leaves the PC. LiteLLM, for example, may send requests on to cloud providers.
+- Leave **API key** empty unless the app asks for one. When it does, enter the key you set in the app, then choose **Find models** or **Test model**. Martlet keeps the key in Windows Credential Manager.
+- When the app lists no models, load one in the app or type its name. Martlet can use only model names made of letters, digits, dots, dashes, underscores, slashes and colons; rename other models in the app.
+- When the app doesn't list the model you typed, Martlet asks before it switches. Some apps load a model only when they are asked for it.
+- Test a model before you use it. When the test or the check fails, Thinking doesn't change.
+
 ## Choosing and checking a model
 
 - Martlet's own model list updates every day, so new models show up without a Martlet update. Each model says what it takes in (text, pictures, sound and video), how smart it is and what it needs.
@@ -261,6 +267,100 @@ To write your own check-in:
 4. Choose what **Its answer** does: remind Martlet in her next reply, have her bring it up, add to what she knows, or let **Its tools act**.
 5. Under **It may use these tools**, tick tool sets such as reminders, memory, Discord calls, songs and pictures. Tools need a pool model that calls tools.
 
-**Copy as your own** turns a built-in check-in into one you can change freely. **Use built-in settings** puts Martlet's own back.
+**Copy as your own** turns a built-in check-in into one you can change freely. The copy starts off. **Use built-in settings** puts Martlet's own prompt, facts, conditions, answer, inputs and tools back. **On** and **Every** stay as they are.
+
+You can have at most 8 check-ins of your own. To add or copy one more, remove one first. When you edit a built-in check-in's prompt, the check-in uses the new prompt from its next run. If you empty the prompt, the check-in asks nothing.
+
+**Check now** runs one check-in at once. Only one check-in runs at a time. If another check-in runs, try again in a moment.
+
+The **Now** line tells how many check-ins are on and which Thinking pool member takes them first. If the pool has no member that can take check-ins, they wait. Add a member on **Companion › Thinking pool**.
+
+### What a check-in knows
+
+A check-in always gets the day and time. Under **It gets to know**, tick the facts it also gets. Each fact adds a few lines of text to the check-in's question. If Martlet doesn't have a fact now (for example the screen, while Martlet doesn't watch it), the line says so.
+
+A placeholder puts a fact where you want it in the prompt. The facts that the prompt doesn't name go after the prompt, then the day and time and the answer format. Other placeholders are `{name}`, `{time}` and `{adult}` (whether Adult content is on, from **Companion › Prompts**).
+
+| Fact | What the check-in gets | Placeholder |
+|---|---|---|
+| The conversation | The last 6 exchanges (you and Martlet, oldest first) and how long it has been quiet since. | `{conversation}` |
+| Its personality | The active personality: the character's name and the text you wrote for it. | `{persona}` |
+| Martlet's last replies | Martlet's last 6 replies, numbered, oldest first, without what you said. | `{replies}` |
+| What Martlet said in the last hour | Martlet's replies, remarks and reactions of the last hour (the newest 10). Each has the time, such as "10:05 PM (12 min ago)". | `{said}` |
+| Emotes and gaze | The emotes a reply turned on that still show, with their hints and how long each has shown. Where the eyes look now and where they usually look. | `{emotes}`, `{example}` (the first emote's tag), `{looking}`, `{usual}`, `{since}` |
+| Reminders and background work | The reminders that are set and the background work Martlet started or finished in this conversation. | `{work}` |
+| What changed on screen | Martlet's newest words about what changed on your screen, while it watches the screen. This is not a screenshot. For a screenshot, tick **A screenshot of the screen in front**. | `{screen}` |
+| What the PC plays | Martlet's newest words about what this PC plays (music, videos, games), while it hears it. This is not a recording. For a recording, choose one under **With each run it takes**. | `{sound}` |
+| Whether you're at the PC | Whether someone uses this PC now, or how long since someone last used the keyboard or mouse. | `{presence}` |
+| How you touched the character | What you did to the character in the last 10 minutes, oldest first, each with the time: pokes, pats, holds, strokes (with their path and direction) and moves. It tells which touches were intimate, how the personality feels about them and the places you keep coming back to. Martlet only reads it: its next reply still gets your touches. | `{touches}` |
+| What you are doing | What you seem to do on this PC (a game, a call or voice chat, a video, music, full screen), what it was before and when it changed. Martlet knows it only while it hears what this PC plays. | `{activity}` |
+| Who is here | The voices Martlet heard in the last 10 minutes (Voice ID), each with the time: the names of the voices it knows, a voice it doesn't know and which voice is yours. Never what they said. | `{people}` |
+| What happened while you were away | After you come back from 10 minutes or more away: how long you were away, what Martlet said meanwhile, the background work that finished and the reminders that came due. | `{away}` |
+| The latest exchange | What you said last and Martlet's reply, in full. If the check-in didn't run after each exchange, it gets every exchange since it last ran (at most 6), so it misses nothing. | `{exchange}` |
+| What Martlet heard you say | What always listening heard you say in the last 10 minutes, oldest first. Each line has the time, who spoke (Voice ID), other voices, people who talk over each other, lines that this PC played at the same time, and whether Martlet answered or stayed quiet. Then whether Martlet holds back now while you talk to someone else. | `{heard}` |
+| The callback list | The few things from this conversation that are worth bringing back later (at most 8): what you're in the middle of, running jokes, things you said in your own words and facts that fit a tease. Each has when it came up. The **Callback list** check-in writes the list after each reply. | `{callbacks}` |
+
+Under **With each run it takes**, a check-in can also take:
+
+- **A screenshot of the screen in front**: a screenshot of the screen you work on. It doesn't run while a private window is in front.
+- **A recording**: the last seconds of the microphone or of what this PC plays. Choose the length under **Length**.
+
+**A script it runs first** is optional. Windows PowerShell runs the script hidden in your home folder, as you, before each run. The script stops after 20 seconds. The check-in gets what the script prints. For example, this script gives the busiest programs: `Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU`.
+
+### When a check-in runs
+
+Every check-in waits:
+
+- for its time (**Every**),
+- while you talk,
+- while nobody uses this PC,
+- for its conditions under **It waits until**,
+- for a Thinking pool member that can take it.
+
+**Check now** skips the waits for the time and for something new, but not the other waits. Point at a condition to see when it waits. Some conditions need more detail:
+
+- **What you do changed**: it waits until a game, a call or a full-screen app started or ended since it last ran. Martlet can tell this only while it hears what this PC plays.
+- **Martlet asked something you didn't answer**: it waits until Martlet's last remark asked you something, you're at the PC and you didn't answer for 2 minutes. It runs once for each question.
+- **A taskbar button flashed or a notification showed**: it waits until a taskbar button flashed or a pop-up notification showed since it last ran. Martlet notices them only while a check-in that is on waits for them. Martlet never reads what they say.
+- **The conversation went quiet**: it waits until nothing was said for 3 minutes (but not more than 30), you're at the PC, the callback list has something and Martlet's last remark didn't ask you something. It runs once in each quiet spell.
+- **Only between these hours**: it runs from the **From** hour up to the **Until** hour. When the **Until** hour comes first, it runs past midnight. The two hours must be different.
+- **At most**: a limit. However often its conditions are met, it runs at most this many times in an hour.
+
+Under **It starts when**, you can tick events that start the check-in instead of a time:
+
+1. With one event ticked, the check-in runs only when that event happens: a moment after your touches stop, right after a reply, or right after you say something.
+2. It runs at most once per **Every**. **Every** is then the time it waits before it can run again.
+3. It runs on the Thinking pool, so a reply never waits for it.
+4. It still waits while it's off, while nobody uses this PC, for its conditions and for a pool member.
+5. With no event ticked, it runs every few minutes.
+
+**A reply ends** runs right after each of Martlet's replies (after Martlet said it), with what you said and the reply. Exchanges that end while it waits for its **Every** are kept, and it reads them all when it runs. **You say something** runs right after always listening hears you say something, whether Martlet answered or stayed quiet. Only what the microphone hears counts, not what you type.
+
+### What its answer does
+
+Martlet adds the answer format to the check-in's prompt. **Its answer** sets what Martlet does with the answer:
+
+- **Reminds Martlet in its next reply**: a `REMIND:` line goes in the notes of your next message, so Martlet's next reply follows it.
+- **Martlet brings it up**: Martlet says a `SAY:` line on its own as soon as it's free.
+- **Adds to what Martlet knows**: a `KNOW:` line, a short description of what happens, goes in the notes of your next message (within a few minutes). Martlet may use it as background. It is not a reminder to follow.
+- **Thinks ahead for Martlet's next reply**: a `PLAN:` line goes in the notes of your next message, once. It has the character's own thoughts about what you'll likely say next and what it means to say then. If another reply ends first, Martlet drops it.
+- **Martlet holds back while you talk to someone else**: an `ASIDE:` line makes Martlet stay quiet while that lasts, unless you talk to it. `BACK` ends it, and so do a few quiet minutes.
+- **Keeps Martlet's callback list**: `CALLBACK:` lines are the whole new list of things worth bringing back later. **Think ahead** and **Quiet moments** read the list. `KEEP` leaves the list as it is and `NONE` empties it.
+- **Turns off the emotes it names**: `OFF` lines with the tags of lingering emotes turn them off. Tick **Emotes and gaze** for this.
+- **Takes the eyes back to their usual**: `USUAL` ends the gaze that a reply chose.
+- **Its tools act**: the tools the check-in calls are what it does, and its answer only says what it did. Tick at least one tool set under **It may use these tools**.
+
+For every answer, `OK` or `KEEP` changes nothing.
+
+### Check-in tools and models
+
+Under **It may use these tools**, tick the tool sets the check-in may call. The model can call these tools while it answers, at most 64 calls in 16 rounds. Only Thinking pool members on an endpoint whose model calls tools take a check-in with tools. Point at a tool set to see what it does and its tools.
+
+Under **The model must handle**, choose what the check-in's model must do: read text (always), see pictures or hear recordings. Only Thinking pool members that can do all of these take the check-in.
+
+- A screenshot needs a model that sees pictures. A recording needs a model that hears recordings.
+- A screenshot or a recording goes only to that member. The member can be a cloud service.
+- Martlet keeps the microphone and what this PC plays in memory only while a check-in that is on asks for them and Martlet hears them.
+- Gemma 4 and Gemma 3n hear only the first 30 seconds of a recording. Gemini, OpenAI's audio models and Voxtral hear a whole minute.
 
 More detail: [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md), [Local model apps](https://github.com/throndir2/Martlet/blob/main/docs/LOCAL_MODEL_APPS.md), [Hosted Thinking](https://github.com/throndir2/Martlet/blob/main/docs/HOSTED_THINKING.md), [Model catalog](https://github.com/throndir2/Martlet/blob/main/docs/MODEL_CATALOG.md), [Recommended setups](https://github.com/throndir2/Martlet/blob/main/docs/RECOMMENDED_SETUPS.md).

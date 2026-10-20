@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:Martlet.Companion"
         x:Class="Martlet.Companion.MainWindow"
         Title="Martlet" AutomationProperties.AutomationId="MartletMainWindow" Width="720" Height="640" MinWidth="480" MinHeight="420">
   <TabControl Name="Tabs" AutomationProperties.AutomationId="MainTabs" Padding="12">
@@ -32,7 +33,12 @@
             <Button Grid.Column="1" Name="BrowseCharacter" AutomationProperties.AutomationId="BrowseCharacter" Content="Choose…" />
           </Grid>
 
-          <TextBlock Text="Thinking" FontWeight="SemiBold" Margin="0,8,0,0" />
+          <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+            <TextBlock Text="Thinking" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <local:HelpMark AutomationProperties.AutomationId="Help-CompanionThinking" AutomationProperties.Name="About Thinking"
+                            Wiki="Linux-and-Mac#what-the-early-app-can-do"
+                            Text="Use OpenAI or any OpenAI-compatible server. A model app on this computer runs slowly without a supported graphics card, so use a small model, a cloud route or a paired host then." />
+          </StackPanel>
           <ComboBox Name="Thinking" AutomationProperties.AutomationId="ThinkingEngine" HorizontalAlignment="Stretch" />
           <ComboBox Name="OpenAiModel" AutomationProperties.AutomationId="OpenAiModel" HorizontalAlignment="Stretch" />
           <TextBox Name="ChatBaseUrl" AutomationProperties.AutomationId="ChatBaseUrl" PlaceholderText="https://host/v1 or http://127.0.0.1:11434/v1" />
@@ -65,6 +71,17 @@
           </StackPanel>
           <TextBlock Name="Refusals" AutomationProperties.AutomationId="Refusals" TextWrapping="Wrap" Foreground="IndianRed" />
           <TextBlock Name="NotOffered" AutomationProperties.AutomationId="NotOffered" TextWrapping="Wrap" Opacity="0.7" />
+
+          <TextBlock Text="Your other computers" FontWeight="SemiBold" Margin="0,12,0,0" />
+          <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                     Text="Pair with a host to use the same character, persona, Thinking, Listening and Speaking (with their keys) as on your other computers. The push-to-talk key, the character file and the cloud consent stay with this computer." />
+          <CheckBox Name="KeepSame" AutomationProperties.AutomationId="KeepSameOnAllComputers" Content="Keep Martlet the same on all my computers" />
+          <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
+            <TextBox Name="HostAddress" AutomationProperties.AutomationId="HostAddress" PlaceholderText="The host's address, for example 192.168.1.20" />
+            <TextBox Grid.Column="1" Name="HostCode" AutomationProperties.AutomationId="HostPairingCode" PlaceholderText="The code it shows, like K7QM-4XPA" />
+            <Button Grid.Column="2" Name="PairButton" AutomationProperties.AutomationId="PairHost" Content="Pair" />
+          </Grid>
+          <TextBlock Name="SyncStatus" AutomationProperties.AutomationId="SyncStatus" TextWrapping="Wrap" Opacity="0.8" />
         </StackPanel>
       </ScrollViewer>
     </TabItem>

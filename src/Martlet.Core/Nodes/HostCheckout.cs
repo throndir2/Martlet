@@ -63,8 +63,8 @@ public static class HostCheckout
         "elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y git; elif command -v yum >/dev/null 2>&1; then sudo yum install -y git; " +
         "elif command -v zypper >/dev/null 2>&1; then sudo zypper --non-interactive install git; " +
         "elif command -v pacman >/dev/null 2>&1; then sudo pacman -Sy --noconfirm --needed git; fi; } </dev/null || true; " +
-        "command -v git >/dev/null 2>&1 || { echo 'Stopped: git is not installed here and could not be installed with the system package manager. " +
-        "If this computer has no internet access, set it up from Martlet, which sends what it needs from your PC.' >&2; exit 1; }; " +
+        "command -v git >/dev/null 2>&1 || { echo 'Stopped: git is not installed here and the system package manager could not install it; " +
+        "without internet access, set this computer up from Martlet, which sends what it needs from your PC.' >&2; exit 1; }; " +
         "if [ ! -d ~/Martlet/.git ]; then mkdir -p ~/.cache/martlet && rm -rf ~/.cache/martlet/clone && " +
         "{ git clone -q --depth 1 " + Repository + " ~/.cache/martlet/clone </dev/null || " +
         "{ echo 'Stopped: could not download Martlet from " + Repository + ".' >&2; exit 1; }; } && " +
@@ -72,8 +72,8 @@ public static class HostCheckout
         "mv ~/.cache/martlet/clone ~/Martlet; fi; ";
 
     internal const string Present =
-        "test -x " + Engine + " || { echo 'Stopped: there is no Martlet engine in ~/Martlet (deploy/host/martlet-host). " +
-        "Set this computer up again from Martlet.' >&2; exit 1; }; ";
+        "test -x " + Engine + " || { echo 'Stopped: there is no Martlet engine in ~/Martlet (deploy/host/martlet-host), so " +
+        "set this computer up again from Martlet.' >&2; exit 1; }; ";
 
     /// <summary>The command for one engine run.</summary>
     /// <param name="arguments">martlet-host's arguments, for example "--yes setup".</param>

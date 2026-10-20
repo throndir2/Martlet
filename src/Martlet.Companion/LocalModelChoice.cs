@@ -8,7 +8,7 @@ internal static class LocalModelChoice
 {
     internal static string Describe(IReadOnlyList<LocalModelServer> found) =>
         found.Count == 0
-            ? "No model app answers on this computer. Start Ollama, LM Studio or your app's local server, then look again."
+            ? "No model app answers on this computer, so start Ollama, LM Studio or your app's local server and look again."
             : "Found: " + string.Join("; ", found.Select(s => $"{s.Name} at {s.ChatCompletionsBaseUrl} (" +
                 (s.NeedsKey ? "asks for a key" : s.Models.Count == 0 ? "no model loaded" : string.Join(", ", s.Models.Take(4)) +
                     (s.Models.Count > 4 ? $" and {s.Models.Count - 4} more" : "")) + ")")) + ".";

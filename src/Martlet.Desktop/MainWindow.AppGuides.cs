@@ -120,7 +120,7 @@ public partial class MainWindow
         appGuidesDrawn = guides.Revision;
         var library = guides.Library;
         var now = PageNowCard(AppGuidesNow(guides), null, "AppGuidesNow",
-            guides.LoadProblem is { } unread ? $"Martlet couldn't read your guide library ({unread}). It wasn't changed. Turning App guides on starts a new library and keeps a copy of the old file, unless a newer Martlet wrote it." : null);
+            guides.LoadProblem is { } unread ? $"Martlet couldn't read your guide library ({unread}) and didn't change it; turning App guides on starts a new one and keeps a copy of the old file." : null);
         appGuidesNowText = FindById<TextBlock>(now, "AppGuidesNow");
         page.Children.Add(now);
 
@@ -128,25 +128,20 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(on, "AppGuidesOn");
         on.Checked += (_, _) => SetAppGuidesOnAsync(true).Forget();
         on.Unchecked += (_, _) => SetAppGuidesOnAsync(false).Forget();
-        var disclosure = Note("On by default. When you start a game Martlet has no guide for, it reads up on it on its own: it " +
-            "sends the game's name to DuckDuckGo to find its wiki, then reads up to 200 of the wiki's pages, those about the game " +
-            "first. Then, when a Thinking pool helper can take research, Martlet gives it the game's name, the titles the pages " +
-            "link to and what you do now (your screen, sounds and recent words) to choose up to 300 more pages to read. Read more " +
-            "(here, in the talk window or on the speech bubble) reads up to 300 more pages of the same wiki each time: a helper " +
-            "chooses them when one can, else Martlet takes the pages the guide links to most. The " +
-            "wiki sites see the requests and this PC's " +
-            "internet address. The guides stay on this PC. To stop a read, press Stop reading below or tell Martlet no. To stop it " +
-            "from reading up on its own, turn off Read up when I start a game or app. To notice a game, Martlet looks only at the " +
-            "name of the program in front and whether it fills the screen, never at window titles or the screen.",
-            new Thickness(24, 2, 0, 8));
+        var disclosure = HelpTip.Explain("For a game without a guide, Martlet sends its name to DuckDuckGo and reads up to 200 pages of " +
+            "its wiki, and the wiki sites see this PC's internet address. A Thinking pool helper may then choose up to 300 more pages " +
+            "from the game's name, the linked titles and what you do now, and the guides stay on this PC. To notice a game, Martlet " +
+            "looks only at the name of the program in front and whether it fills the screen.",
+            new Thickness(24, 2, 0, 8), "AppGuidesAbout", "what App guides send", wiki: "App-Guides#what-is-sent-where");
         AutomationProperties.SetAutomationId(disclosure, "AppGuidesDisclosure");
         var ask = new CheckBox { Content = "Read up when I start a game or app", IsChecked = library.ReadUpWhenStarted, IsEnabled = library.On };
         AutomationProperties.SetAutomationId(ask, "AppGuidesAsk");
         ask.Checked += (_, _) => SetAppGuidesAskAsync(true).Forget();
         ask.Unchecked += (_, _) => SetAppGuidesAskAsync(false).Forget();
-        var askNote = Note("When a game, or an app on your list, without a guide comes to the front, Martlet reads up on it on its " +
-            "own and tells you, in character. If you tell it you'd rather it didn't, it stops and doesn't read up on that app on its " +
-            "own again.", new Thickness(24, 2, 0, 4));
+        var askNote = HelpTip.Explain("When a game, or an app on your list, without a guide comes to the front, Martlet reads up on it " +
+            "on its own and tells you, in character. If you tell it you'd rather it didn't, it stops and doesn't read up on that app on " +
+            "its own again.", new Thickness(24, 2, 0, 4), "AppGuidesReadUp", "reading up on its own",
+            wiki: "App-Guides#reading-up-when-you-start-a-game");
         var front = Note(AppGuidesFront(guides), new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(front, "AppGuidesFront");
         AutomationProperties.SetLiveSetting(front, AutomationLiveSetting.Polite);
@@ -156,12 +151,13 @@ public partial class MainWindow
         var list = new List<UIElement>
         {
             Heading("Your apps"),
-            Note("While an app is in front, or you name it, the best matching parts of its guide go with what you ask. You can also " +
-                "say \"read up on Stardew Valley\".", new Thickness(0, 0, 0, 8))
+            HelpTip.Explain("While an app is in front, or you name it, the best matching parts of its guide go with what you ask. " +
+                "You can also say \"read up on Stardew Valley\".", new Thickness(0, 0, 0, 8), "AppGuidesUse", "how guides are used",
+                wiki: "App-Guides#how-she-uses-a-guide")
         };
         if (library.Apps.Count == 0)
         {
-            var empty = Note("No apps yet. Start a game, add one below, or ask Martlet to read up on one.", new Thickness(0, 4, 0, 0));
+            var empty = Note("No apps yet: start a game, add one below or ask Martlet to read up on one.", new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(empty, "AppGuidesEmpty");
             list.Add(empty);
         }
@@ -197,7 +193,7 @@ public partial class MainWindow
                 id: "AppGuideRead-" + entry.Key);
             read.IsEnabled = on && guides.Building is null;
             read.ToolTip = !on ? "Turn App guides on first." : entry.BuiltAt is null ? null
-                : "Read its first pages again for what changed. The pages Read more added stay in the guide.";
+                : "Read its first pages again for what changed (the pages Read more added stay in the guide).";
             buttons.Children.Add(read);
             if (entry.BuiltAt is not null)
             {
@@ -284,12 +280,12 @@ public partial class MainWindow
     private static string AppGuidesNow(AppGuideService guides)
     {
         var library = guides.Library;
-        if (!library.On) return "Off. Martlet doesn't read up on games and apps, or notice which one you play.";
+        if (!library.On) return "Off: Martlet doesn't read up on games and apps, or notice which one you play.";
         var built = library.Apps.Where(a => a.BuiltAt is not null).ToArray();
-        var text = built.Length == 0 ? "On. No guides yet."
-            : $"On. {built.Length} guide{(built.Length == 1 ? "" : "s")}, {built.Sum(a => a.Pages)} pages, {Size(built.Sum(a => a.Bytes))}.";
-        if (guides.Building is { } reading) text += $" Reading up on {reading.Name}: {reading.Progress ?? "starting"}.";
-        return text;
+        var text = built.Length == 0 ? "On: no guides yet"
+            : $"On: {built.Length} guide{(built.Length == 1 ? "" : "s")}, {built.Sum(a => a.Pages)} pages, {Size(built.Sum(a => a.Bytes))}";
+        if (guides.Building is { } reading) text += $"; reading up on {reading.Name} ({(reading.Progress ?? "starting").TrimEnd('.')})";
+        return text + ".";
     }
 
     /// <summary>What is in front, as App guides sees it.</summary>
@@ -308,18 +304,18 @@ public partial class MainWindow
     /// <summary>A row's line: its guide (pages, size, when, where from), a problem, being read now, or declined.</summary>
     private static string AppGuideStatus(AppGuideService guides, AppGuideEntry entry)
     {
-        string text;
-        if (guides.Building is { } reading && reading.Key == entry.Key) text = $"Reading up now: {reading.Progress ?? "starting"}.";
-        else if (entry.BuiltAt is { } at)
-            text = $"{entry.Pages} page{(entry.Pages == 1 ? "" : "s")}, {Size(entry.Bytes)}, read {at.ToLocalTime():d MMM yyyy, HH:mm}." +
-                (entry.Problem is { } failed ? $" The last try didn't work: {failed}." : "");
-        else text = entry.Problem is { } problem ? $"No guide yet. The last try didn't work: {problem}." : "No guide yet.";
-        if (guides.GuideProblem(entry.Key) is { } unread) text += $" Its guide can't be used: {unread}. Read it again to make a new one.";
+        // One sentence: its state first, then the facts, joined with semicolons.
+        var parts = new List<string>();
+        if (guides.Building is { } reading && reading.Key == entry.Key) parts.Add($"Reading up now ({(reading.Progress ?? "starting").TrimEnd('.')})");
+        else if (entry.BuiltAt is { } at) parts.Add($"{entry.Pages} page{(entry.Pages == 1 ? "" : "s")}, {Size(entry.Bytes)}, read {at.ToLocalTime():d MMM yyyy, HH:mm}");
+        else parts.Add("No guide yet");
+        if (guides.Building?.Key != entry.Key && entry.Problem is { } problem) parts.Add($"the last try didn't work ({problem.TrimEnd('.')})");
+        if (guides.GuideProblem(entry.Key) is { } unread) parts.Add($"its guide can't be used ({unread.TrimEnd('.')}), so read it again to make a new one");
         if (entry.Sites.Count > 0)
-            text += " Reads from " + string.Join(", ", entry.Sites.Select(s => Uri.TryCreate(s, UriKind.Absolute, out var url) ? url.Host : s)) + ".";
-        if (entry.Programs.Count > 0) text += " Programs: " + string.Join(", ", entry.Programs) + ".";
-        if (entry.Declined) text += " You said no, so Martlet doesn't read up on it on its own.";
-        return text;
+            parts.Add("reads from " + string.Join(", ", entry.Sites.Select(s => Uri.TryCreate(s, UriKind.Absolute, out var url) ? url.Host : s)));
+        if (entry.Programs.Count > 0) parts.Add("programs: " + string.Join(", ", entry.Programs));
+        if (entry.Declined) parts.Add("you said no, so Martlet doesn't read up on it on its own");
+        return string.Join("; ", parts) + ".";
     }
 
     private static string Size(long bytes) => bytes >= 1_000_000 ? $"{bytes / 1_000_000.0:0.0} MB" : $"{Math.Max(1, bytes / 1_000)} KB";
@@ -375,7 +371,7 @@ public partial class MainWindow
         {
             var entry = await appGuides.AddAsync(name, programs, sites, lifetime.Token);
             foreach (var box in new[] { appGuideAddName, appGuideAddPrograms, appGuideAddSites }) box?.Clear();
-            appGuidesResult = $"Added {entry.Name}." + (sites.Length < given.Length ? " Some addresses weren't web links, so they were left out." : "");
+            appGuidesResult = $"Added {entry.Name}" + (sites.Length < given.Length ? ", without the addresses that weren't web links." : ".");
             ErrorLog.Info($"App guides: you added an app ({entry.Programs.Count} program names, {entry.Sites.Count} start pages).");
             if (read) await ReadUpFromPageAsync(entry);
             else if (openTab == CompanionTab.AppGuides) RenderTab();
@@ -483,7 +479,7 @@ public partial class MainWindow
         if (appGuides is not { } guides) return;
         var stopped = guides.StopReading();
         ErrorLog.Info($"App guides: you stopped reading up ({(stopped ? "stopping" : "nothing was being read")}).");
-        appGuidesResult = stopped ? $"Stopping. Martlet keeps what it read about {entry.Name}." : "Martlet isn't reading up now.";
+        appGuidesResult = stopped ? $"Stopping, and Martlet keeps what it read about {entry.Name}." : "Martlet isn't reading up now.";
         if (openTab == CompanionTab.AppGuides) RenderTab();
     }
 

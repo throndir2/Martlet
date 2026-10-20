@@ -85,7 +85,7 @@ internal sealed class SmartHome : IDisposable
                         "Enter a Home Assistant long-lived access token first.");
                 read = vault.ReadHomeAssistantToken(saved.CredentialId);
                 lease = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                    "The saved access token couldn't be read. Enter it again.");
+                    "The saved access token couldn't be read: enter it again.");
             }
             var info = await client.GetInfoAsync(baseUri, lease, cancellationToken).ConfigureAwait(false);
             var credentialId = saved.CredentialId;
@@ -125,7 +125,7 @@ internal sealed class SmartHome : IDisposable
         var state = await client.OnboardingAsync(baseUri, cancellationToken).ConfigureAwait(false);
         if (!state.NeedsOwner)
             throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                "This Home Assistant already has an owner. Sign in with Home Assistant instead.");
+                "This Home Assistant already has an owner, so sign in with Home Assistant instead.");
         var region = HomeRegion.FromSystem();
         var session = await client.CreateOwnerAsync(baseUri, name, username, password, region.Language, cancellationToken).ConfigureAwait(false);
         await client.FinishOnboardingAsync(baseUri, session, region, cancellationToken).ConfigureAwait(false);
@@ -143,7 +143,7 @@ internal sealed class SmartHome : IDisposable
         var state = await client.OnboardingAsync(baseUri, cancellationToken).ConfigureAwait(false);
         if (state.NeedsOwner)
             throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                "Nobody has set up this Home Assistant yet. Use Set up below to create its owner account.");
+                "Nobody has set up this Home Assistant yet: use Set up below to create its owner account.");
         using var token = await HomeAssistantSignIn.SignInAsync(client, baseUri, ClientName(), openBrowser, cancellationToken)
             .ConfigureAwait(false);
         return await StoreAsync(baseUri, token, followShare: false, sharedBy: "", cancellationToken).ConfigureAwait(false);
@@ -245,7 +245,7 @@ internal sealed class SmartHome : IDisposable
         var baseUri = HomeAssistantEndpoint.Normalize(saved.Address);
         using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
         var token = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-            "The saved access token couldn't be read. Connect again in Smart home.");
+            "The saved access token couldn't be read: connect again in Smart home.");
         return await action(baseUri, token).ConfigureAwait(false);
     }
 
@@ -470,7 +470,7 @@ internal sealed class SmartHome : IDisposable
             var baseUri = HomeAssistantEndpoint.Normalize(saved.Address);
             using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
             var token = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                "The saved access token couldn't be read. Connect again in Smart home.");
+                "The saved access token couldn't be read: connect again in Smart home.");
             var result = await client.ProcessAsync(baseUri, token, text, cancellationToken).ConfigureAwait(false);
             if (!result.Recognized) return new(HomeTurnKind.NotRecognized, HomeAssistantContext.NotRecognized(prompts), null);
             var summary = Describe(result);
@@ -481,8 +481,8 @@ internal sealed class SmartHome : IDisposable
                 var operated = string.Join(", ", result.Succeeded.Where(HomeCommandGuard.IsSensitive).Select(t => t.Name).Where(n => n.Length > 0).Distinct().Take(6));
                 ErrorLog.Warn($"Smart home safety: Home Assistant operated a lock, door, garage, gate, alarm or valve ({operated}) without confirmation.");
                 summary = "Safety problem: Home Assistant operated a lock, door, garage, gate, alarm or valve" +
-                    (operated.Length > 0 ? $" ({operated})" : "") + " without your confirmation. " + summary +
-                    " Hide that device from Home Assistant voice assistants to block it.";
+                    (operated.Length > 0 ? $" ({operated})" : "") + " without your confirmation (hide that device from Home Assistant voice " +
+                    "assistants to block it). " + summary;
                 Record(summary);
                 return new(HomeTurnKind.Handled, HomeAssistantContext.Handled(result, prompts), "Home Assistant: " + summary);
             }
@@ -519,7 +519,7 @@ internal sealed class SmartHome : IDisposable
         var baseUri = HomeAssistantEndpoint.Normalize(saved.Address);
         using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
         var token = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-            "The saved access token couldn't be read. Connect again in Smart home.");
+            "The saved access token couldn't be read: connect again in Smart home.");
         var cameras = await client.CamerasAsync(baseUri, token, cancellationToken).ConfigureAwait(false);
         return cameras.Select(camera => (camera, HomeAssistantClient.CameraSnapshot(baseUri, camera.EntityId))).ToArray();
     }
@@ -533,9 +533,8 @@ internal sealed class SmartHome : IDisposable
         timeout.CancelAfter(ConfirmTimeout);
         try
         {
-            return await ask($"Send this to Home Assistant?\n\n\"{request}\"\n\nIt mentions a lock, door, garage, gate, alarm or valve. " +
-                "It may run right away if Home Assistant recognizes it. No answer within " +
-                $"{ConfirmTimeout.TotalSeconds:0} seconds means No.", timeout.Token).ConfigureAwait(false);
+            return await ask("Send this request about a lock, door, garage, gate, alarm or valve to Home Assistant, where it may run right away " +
+                $"(no answer within {ConfirmTimeout.TotalSeconds:0} seconds means No)?\n\n\"{request}\"", timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return false; }
     }

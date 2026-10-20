@@ -25,6 +25,9 @@ public sealed partial class MainWindow : Window
     private IVoicePlayback? playback;
     private CancellationTokenSource? turn;
     private HotkeyGesture? gesture;
+    private readonly CompanionSync? sync;
+    private readonly DispatcherTimer syncTimer = new() { Interval = TimeSpan.FromSeconds(15) };
+    private bool syncing;
 
     /// <summary>The tray/menu bar state, for the app's tray.</summary>
     public event Action<TrayState, string>? StateChanged;
@@ -39,6 +42,8 @@ public sealed partial class MainWindow : Window
         this.store = store;
         guardrails = new CompanionGuardrails(info);
         conversation = new CompanionConversation(platform.Credentials);
+        try { sync = new CompanionSync(store.Folder, store, guardrails, platform.Credentials); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { sync = null; }
         InitializeComponent();
         (settings, var refusals) = store.Load(guardrails);
         FillChoices();
@@ -63,6 +68,17 @@ public sealed partial class MainWindow : Window
         PresetLmStudio.Click += (_, _) => Preset("http://127.0.0.1:1234/v1");
         PresetDockerModelRunner.Click += (_, _) => Preset("http://127.0.0.1:12434/engines/v1");
         FindLocalModels.Click += async (_, _) => await FindLocalModelsAsync();
+        PairButton.Click += async (_, _) => await PairAsync();
+        KeepSame.IsChecked = sync?.Enabled ?? false;
+        KeepSame.IsEnabled = PairButton.IsEnabled = sync is not null;
+        KeepSame.IsCheckedChanged += async (_, _) =>
+        {
+            if (sync is null || sync.Enabled == (KeepSame.IsChecked == true)) return;
+            sync.Enabled = KeepSame.IsChecked == true;
+            await SyncNowAsync();
+        };
+        SyncStatus.Text = sync is null ? "This computer's data folder can't be written, so it can't share settings." : "";
+        syncTimer.Tick += async (_, _) => await SyncNowAsync();
         KeyDown += (_, e) => { if (Matches(e)) { e.Handled = true; StartTalking(); } };
         KeyUp += async (_, e) => { if (Matches(e)) { e.Handled = true; await StopTalkingAsync(); } };
         platform.Hotkey.Pressed += (_, _) => Dispatcher.UIThread.Post(StartTalking);
@@ -72,10 +88,13 @@ public sealed partial class MainWindow : Window
             await RegisterHotkeyAsync();
             if (settings.ShowCharacter) CharacterToggle.IsChecked = true;
             SetState(TrayState.Idle, "Ready");
+            syncTimer.Start();
+            await SyncNowAsync();
         };
         Closed += (_, _) =>
         {
             turn?.Cancel();
+            syncTimer.Stop();
             character?.Close();
             server?.Dispose();
             playback?.Dispose();
@@ -151,10 +170,12 @@ public sealed partial class MainWindow : Window
     private async Task SaveAsync()
     {
         var (admitted, refusals) = guardrails.Admit(ReadSettings(), settings);
-        settings = admitted;
+        // The personalities a sync kept since this page was shown (CompanionSharedSections) stay.
+        settings = admitted with { SharedPersonalities = store.Load(guardrails).Settings.SharedPersonalities };
         store.Save(settings);
         if (!string.IsNullOrWhiteSpace(OpenAiKey.Text))
-            await platform.Credentials.SetAsync(CompanionSettings.OpenAiKey, OpenAiKey.Text.Trim(), CancellationToken.None);
+            foreach (var name in new[] { CompanionSettings.OpenAiKey, CompanionSettings.OpenAiListeningKey, CompanionSettings.OpenAiSpeakingKey })
+                await platform.Credentials.SetAsync(name, OpenAiKey.Text.Trim(), CancellationToken.None);
         if (!string.IsNullOrWhiteSpace(ChatKey.Text))
             await platform.Credentials.SetAsync(CompanionSettings.ChatCompletionsKey, ChatKey.Text.Trim(), CancellationToken.None);
         OpenAiKey.Text = ChatKey.Text = "";
@@ -183,6 +204,52 @@ public sealed partial class MainWindow : Window
             Status(refusals.Count == 0 ? "Settings imported." : $"Settings imported; {refusals.Count} choice(s) this computer can't run were refused.");
         }
         catch (System.Text.Json.JsonException error) { Status("That file isn't Martlet settings: " + error.Message); }
+    }
+
+    // ---- your other computers ----
+
+    /// <summary>One sync with the paired hosts (every 15 seconds): what changed on your other computers shows here at once.</summary>
+    private async Task SyncNowAsync()
+    {
+        if (sync is null || syncing) return;
+        syncing = true;
+        try
+        {
+            var report = await sync.SyncPairedAsync(CancellationToken.None);
+            if (report.Took.Count > 0)
+            {
+                (settings, var refusals) = store.Load(guardrails);
+                ShowSettings(settings);
+                ShowRefusals(refusals);
+                Status("Settings from your other computers: " + string.Join(", ", report.Took) + ".");
+            }
+            else (settings, _) = store.Load(guardrails);
+            SyncStatus.Text = sync.Enabled ? report.Describe() : "Off: this computer keeps its own settings.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Core.Contracts.ContractException or InvalidOperationException)
+        {
+            SyncStatus.Text = "Couldn't share settings: " + error.Message;
+        }
+        finally { syncing = false; }
+    }
+
+    private async Task PairAsync()
+    {
+        if (sync is null) return;
+        PairButton.IsEnabled = false;
+        try
+        {
+            var pairing = await sync.Hosts.PairAsync(HostAddress.Text ?? "", HostCode.Text ?? "", sync.DeviceId, CancellationToken.None);
+            HostCode.Text = "";
+            SyncStatus.Text = $"Paired with {pairing.HostId}.";
+            await SyncNowAsync();
+        }
+        catch (Exception error) when (error is Avatar.Audio2Face.Remote.Audio2FaceHostException or HttpRequestException or IOException or
+            OperationCanceledException or InvalidOperationException or Core.Contracts.ContractException)
+        {
+            SyncStatus.Text = "Couldn't pair: " + error.Message;
+        }
+        finally { PairButton.IsEnabled = true; }
     }
 
     private void ShowRefusals(IReadOnlyList<string> refusals) =>

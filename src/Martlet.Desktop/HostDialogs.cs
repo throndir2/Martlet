@@ -10,15 +10,14 @@ internal sealed class HostShellDialogs(Window owner) : IHostShellPrompts
 {
     public bool TrustHostKey(HostShellTarget target, string hostKey) => owner.Dispatcher.Invoke(() =>
         ConfirmationDialog.Confirm(owner,
-            $"Trust {target.Host}?\n\nThis is Martlet's first connection to this computer. Its SSH key fingerprint is:\n\n{hostKey}\n\n" +
-            "Martlet will remember it and refuse to connect if it changes.",
+            $"Trust {target.Host} and remember its SSH key fingerprint for every later connection?\n\n{hostKey}",
             "Trust computer"));
 
     public string? LoginPassword(HostShellTarget target, bool retry) => owner.Dispatcher.Invoke(() =>
     {
         var dialog = new HostInputDialog("Sign in once", $"Password for {target}",
-            (retry ? "That password was not accepted. " : "") +
-            "Martlet signs in once to set up SSH access. The password is not saved.", "Sign in");
+            retry ? "That password was not accepted, so try again (Martlet doesn't save it)."
+                : "Martlet signs in once to set up SSH access and doesn't save the password.", "Sign in");
         dialog.AddSecret("password", "Password");
         return dialog.Ask(owner)?["password"];
     });
@@ -26,8 +25,8 @@ internal sealed class HostShellDialogs(Window owner) : IHostShellPrompts
     public HostShellSudo? SudoPassword(HostShellTarget target, bool retry) => owner.Dispatcher.Invoke(() =>
     {
         var dialog = new HostInputDialog("Administrator password", $"Administrator password for {target}",
-            (retry ? "That password was not accepted. " : "") +
-            "Some setup steps need administrator rights (sudo) on that computer. The password is sent only over this SSH connection and is not shown in logs.",
+            retry ? "That password was not accepted, so try again (it goes only over this SSH connection)."
+                : "Some setup steps need administrator rights (sudo) on that computer; the password goes only over this SSH connection.",
             "Continue");
         dialog.AddSecret("password", "Administrator password", "Usually the same as the sign-in password.");
         dialog.AddRemember("Remember for this computer");
@@ -215,6 +214,11 @@ internal sealed class HostInputDialog : ThemedWindow
         values[key] = () => box.IsChecked == true ? "yes" : "";
     }
 
+    /// <summary>A muted line that shows the first sentence of <paramref name="text"/>, with a "?" (Help-<paramref name="id"/>) that
+    /// has all of it and links to <paramref name="wiki"/> ("Page#anchor").</summary>
+    internal void AddExplanation(string id, string topic, string text, string wiki) =>
+        fields.Children.Add(HelpTip.Explain(text, new Thickness(0, 0, 0, 8), id, topic, wiki));
+
     /// <summary>A highlighted note (status text, automation ID <paramref name="id"/>) with an optional button beside it that
     /// runs <paramref name="action"/> (automation ID <paramref name="actionId"/>).</summary>
     internal void AddNote(string id, string text, string? actionLabel = null, string? actionId = null, Action? action = null)
@@ -282,18 +286,18 @@ internal sealed class HostInputDialog : ThemedWindow
         var keeps = inputs.Current.Count > 0 || inputs.AcceleratorCurrent is not null || inputs.Choices.Count == 0 && !inputs.GpuOrCpu;
         var message = $"{inputs.Title}\n\n" +
             (!change ? $"Needs: {inputs.Requires}."
-                : keeps ? $"It already runs on {host}. Change what you like below; what you leave stays as it is."
-                : $"It already runs on {host}. Apply sets it up again with the choices below; update {host} to see what it runs with now.") +
+                : keeps ? $"It already runs on {host}, and what you don't change below stays as it is."
+                : $"It already runs on {host}, and Apply sets it up again with the choices below.") +
             (inputs.Terms.Length > 0 ? $"\n\n{inputs.Terms}" : "") +
             (inputs.Stops.Count > 0
                 ? $"\n\nOnly one voice engine runs on a computer, so installing it stops {HostRoles.Names(inputs.Stops)} on {host} first " +
-                  "and frees the graphics card's memory it used. Downloads are kept, so adding one again is quick."
+                  "(its downloads are kept)."
                 : "") +
             (local
-                ? $"\n\nMartlet {(change ? "applies the change" : "installs it")} on this PC's host. Secrets stay on this PC."
+                ? $"\n\nMartlet {(change ? "applies the change" : "installs it")} on this PC's host, and secrets stay on this PC."
                 : agent
-                ? $"\n\nMartlet on {host} {(change ? "applies the change" : "installs it")}. Secrets go over its paired connection, are held only in memory until Martlet there takes them, and are saved there."
-                : $"\n\nMartlet {(change ? "applies the change" : "installs it")} on the host. Secrets are sent over SSH and saved there.");
+                ? $"\n\nMartlet on {host} {(change ? "applies the change" : "installs it")}, and secrets go there over its paired connection and are saved there."
+                : $"\n\nMartlet {(change ? "applies the change" : "installs it")} on the host, and secrets are sent there over SSH and saved there.");
         var dialog = change
             ? new HostInputDialog($"Change {role}", $"Change {role} on {host}", message, "_Apply")
             : new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
@@ -365,7 +369,7 @@ internal sealed class HostInputDialog : ThemedWindow
         foreach (var secret in inputs.Secrets)
         {
             dialog.AddSecret("secret." + secret.Name, secret.Prompt,
-                secret.Stored ? "Already saved. Leave empty to keep it." : null, optional: secret.Stored);
+                secret.Stored ? "Already saved; leave empty to keep it." : null, optional: secret.Stored);
             if (inputs.SecretWhen.GetValueOrDefault(secret.Name) is { } when)
                 dialog.ShowWhen("secret." + secret.Name, "choice." + when.Variable, when.Value);
         }
@@ -428,7 +432,7 @@ internal sealed class HostInputDialog : ThemedWindow
             ? new Dictionary<string, (string, string)>(StringComparer.Ordinal) { ["choice.gpu"] = (id, "it has the most graphics memory free") }
             : recommended;
         var dialog = new HostInputDialog($"Graphics card for {role}", $"Which graphics card runs {role} on {host}?",
-            $"{host} has {inputs.Gpus.Count} NVIDIA graphics cards. Choose the one {role} uses, so each part of Martlet " +
+            $"{host} has {inputs.Gpus.Count} NVIDIA graphics cards, so choose the one {role} uses and each part of Martlet " +
             "(thinking, listening, its voice) can have a card of its own.", "_Continue");
         AddGpuChoice(dialog, inputs, suggested);
         return dialog;

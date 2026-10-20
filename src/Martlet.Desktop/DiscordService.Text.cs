@@ -24,8 +24,8 @@ internal sealed partial class DiscordService
 
     internal static string Describe(DiscordTextStats stats) =>
         $"Text chat: {stats.Seen} seen, {stats.Considered} considered, {stats.Answered} answered, {stats.Passed} passed, " +
-        $"{stats.Dropped} dropped, {stats.Failed} failed. Last reply: {stats.LastPlaceKind ?? "none"}. " +
-        $"Last problem: {stats.LastError ?? "none"}.";
+        $"{stats.Dropped} dropped, {stats.Failed} failed; last reply: {stats.LastPlaceKind ?? "none"}; " +
+        $"last problem: {stats.LastError?.TrimEnd('.') ?? "none"}.";
 
     private void AttachText()
     {

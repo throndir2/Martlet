@@ -43,8 +43,9 @@ public sealed class HostSetupCommandsTests
             var (dialog, blocked) = MainWindow.OutsideAccessDialog("gpu-pc", true, ["gpu-pc.tailnet.ts.net:9443"], audit, false, () => opened++);
             Assert.Equal("signin.not_set_up", blocked);
             var note = Find<TextBlock>(dialog, "OutsideAccessBlockedReason");
-            Assert.StartsWith("Outside access paused: sign-in is off. Sign-in isn't set up on this host", note.Text);
-            Assert.EndsWith("(signin.not_set_up)", note.Text);
+            Assert.StartsWith("Outside access is paused because sign-in isn't set up on this host", note.Text);
+            Assert.EndsWith("(signin.not_set_up).", note.Text);
+            Assert.Equal(1, Martlet.Core.Text.Sentences.Count(note.Text));
             Assert.False(Find<CheckBox>(dialog, "HostInput-allowCodes").IsEnabled);
             Assert.True(Find<CheckBox>(dialog, "HostInput-treatAll").IsEnabled);
             Find<Button>(dialog, "OutsideAccessSetUpSignIn").RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
@@ -62,7 +63,7 @@ public sealed class HostSetupCommandsTests
             // Read from outside while paused (the audit itself refused): still explained.
             var (away, why) = MainWindow.OutsideAccessDialog("gpu-pc", true, ["gpu-pc.tailnet.ts.net:9443"], null, true, () => { });
             Assert.Equal("signin.not_set_up", why);
-            Assert.StartsWith("Outside access paused: sign-in is off.", Find<TextBlock>(away, "OutsideAccessBlockedReason").Text);
+            Assert.StartsWith("Outside access is paused because", Find<TextBlock>(away, "OutsideAccessBlockedReason").Text);
             away.Close();
         });
     }
@@ -191,7 +192,7 @@ public sealed class HostSetupCommandsTests
             Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, other, "me@gpu"));
         }
         var noSystemd = probe with { OperatingSystem = "Alpine Linux v3.22", Systemd = false };
-        Assert.Contains("Install Docker Engine", HostRemote.Blocker(HostRemote.Choose(noSystemd), noSystemd, "me@gpu"));
+        Assert.Contains("install Docker Engine", HostRemote.Blocker(HostRemote.Choose(noSystemd), noSystemd, "me@gpu"));
         Assert.Contains("without systemd", HostRemote.Blocker(HostSetupMethod.SshNative, noSystemd, "me@gpu"));
         // ARM64 Linux (Raspberry Pi 5, Ampere, DGX Spark) is a host too; 32-bit ARM and others are not.
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe with { Architecture = "aarch64" }, "me@pi"));

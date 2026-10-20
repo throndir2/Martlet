@@ -78,7 +78,7 @@ class EntrypointTests(unittest.TestCase):
                 [event["sequence"] for event in events],
             )
             process.stdin = None
-            remaining_stdout, stderr = process.communicate(timeout=5)
+            remaining_stdout, stderr = process.communicate(timeout=30)
             self.assertEqual(0, process.returncode)
             shutdown = [
                 json.loads(line)

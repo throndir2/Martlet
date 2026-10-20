@@ -43,20 +43,20 @@ internal static class WindowsVirtualizationSetup
         if (state.FeaturesBeforeFirmware)
         {
             // A fresh PC: turning the features on needs no virtualization, so the restart into the firmware settings finishes both.
-            run.Output.Report($"Windows needs changes before Docker Desktop can start: {string.Join(", ", state.Problems())}. " +
+            run.Output.Report($"Windows needs changes before Docker Desktop can start: {string.Join(", ", state.Problems())}; " +
                 "Martlet turns on the Windows features first, so one restart finishes both.");
             try { await TurnOnFeaturesAsync(run); }
             catch (InvalidOperationException error)
             {
-                run.Output.Report(error.Message + " Martlet tries again once virtualization is on.");
+                run.Output.Report(error.Message.TrimEnd('.') + "; Martlet tries again once virtualization is on.");
             }
         }
         await CheckRestartAsync(state, run, resume);
         if (!state.NeedsChanges)
         {
             if (state.RuntimeUnavailable)
-                throw new InvalidOperationException($"Docker Desktop can't start: {string.Join(", ", state.Problems())}. {state.Recovery}");
-            if (!state.Ready) run.Output.Report("Windows readiness could not be confirmed. " + state.Recovery);
+                throw new InvalidOperationException($"Docker Desktop can't start ({string.Join(", ", state.Problems())}): {state.Recovery}");
+            if (!state.Ready) run.Output.Report("Windows readiness could not be confirmed: " + state.Recovery);
             return new(false, state.Ready);
         }
         run.Output.Report($"Windows needs changes before Docker Desktop can start: {string.Join(", ", state.Problems())}.");
@@ -65,9 +65,9 @@ internal static class WindowsVirtualizationSetup
         run.Output.Report("Windows: " + after.Describe() + ".");
         await CheckRestartAsync(after, run, resume);
         if (after.Blocked)
-            throw new InvalidOperationException($"Docker Desktop still can't start: {string.Join(", ", after.Problems())}. {after.Recovery}");
+            throw new InvalidOperationException($"Docker Desktop still can't start ({string.Join(", ", after.Problems())}): {after.Recovery}");
         run.Output.Report(after.Ready ? "Windows is ready for Docker Desktop."
-            : "Windows changes finished, but readiness could not be confirmed. " + after.Recovery);
+            : "Windows changes finished, but readiness could not be confirmed: " + after.Recovery);
         return new(true, after.Ready);
     }
 
@@ -76,14 +76,14 @@ internal static class WindowsVirtualizationSetup
     /// declined or a step failed.</summary>
     private static async Task<int> TurnOnFeaturesAsync(HostRunWindow run)
     {
-        run.Status("Turning on Windows features for Docker Desktop. Windows asks for administrator approval. This can take a few minutes...");
+        run.Status("Turning on Windows features for Docker Desktop (Windows asks for administrator approval; this can take a few minutes)...");
         return await FixAsync(run.Output, run.Token) switch
         {
-            null => throw new InvalidOperationException("Windows was not changed, so Docker Desktop can't start. Run this again and approve the administrator prompt."),
+            null => throw new InvalidOperationException("Windows was not changed, so Docker Desktop can't start; run this again and approve the administrator prompt."),
             0 => 0,
             WindowsVirtualization.RestartExitCode => WindowsVirtualization.RestartExitCode,
-            2 => throw new InvalidOperationException("Windows couldn't install WSL. Check this PC's internet connection, then try again."),
-            var exit => throw new InvalidOperationException($"Windows couldn't turn on the features Docker Desktop needs (exit {exit}). Check the output for details.")
+            2 => throw new InvalidOperationException("Windows couldn't install WSL; check this PC's internet connection, then try again."),
+            var exit => throw new InvalidOperationException($"Windows couldn't turn on the features Docker Desktop needs (exit {exit}); the output shows why.")
         };
     }
 
@@ -105,12 +105,10 @@ internal static class WindowsVirtualizationSetup
     private static async Task FirmwareAsync(HostRunWindow run, ContinueSetupKind resume)
     {
         if (!ConfirmationDialog.Confirm(run,
-                "Hardware virtualization is off in this PC's firmware. Docker Desktop needs it, and until it is on Docker Desktop says " +
-                "\"Virtualization support not detected\".\n\nRestart into firmware settings now? " +
-                "Save your work first. Windows asks for administrator approval. After you sign in again, Martlet continues setup.\n\n" +
-                "In firmware settings, " + FirmwareHow + ".",
+                "Hardware virtualization is off in this PC's firmware, and Docker Desktop needs it: save your work, then restart into " +
+                "the firmware settings now to " + FirmwareHow + "?",
                 "Turn on virtualization"))
-            throw new InvalidOperationException("Docker Desktop can't start until hardware virtualization is on. Restart into the firmware settings, " +
+            throw new InvalidOperationException("Docker Desktop can't start until hardware virtualization is on: restart into the firmware settings, " +
                 FirmwareHow + ", then run this step again.");
         var continues = HostSetupResume.Register(resume, run.Heading);
         run.Status("Windows is asking to restart into firmware settings...");
@@ -124,8 +122,7 @@ internal static class WindowsVirtualizationSetup
     {
         var continues = HostSetupResume.Register(resume, run.Heading);
         if (!ConfirmationDialog.Confirm(run,
-                "Windows needs to restart to finish setup for Docker Desktop. Save your work first.\n\n" +
-                continues + "\n\nRestart Windows now?", "Restart Windows"))
+                "Restart Windows now to finish setup for Docker Desktop (save your work first)?", "Restart Windows"))
             throw new PausedForRestartException("Restart Windows to finish setup for Docker Desktop. Until then Docker Desktop can't start: " +
                 "if you open it, it says virtualization isn't detected or Virtual Machine Platform isn't enabled. " + continues);
         run.Status("Restarting Windows...");
@@ -172,7 +169,7 @@ internal static class WindowsVirtualizationSetup
         }
         catch (Win32Exception error) when (error.NativeErrorCode == 1223)
         {
-            output.Report("Administrator approval was declined. Windows was not changed.");
+            output.Report("Administrator approval was declined, so Windows was not changed.");
             return null;
         }
         catch (Win32Exception error) { throw new InvalidOperationException("Windows PowerShell could not start: " + error.Message); }

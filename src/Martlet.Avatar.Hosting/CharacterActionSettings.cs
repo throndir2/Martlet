@@ -400,9 +400,9 @@ public static partial class CharacterActions
         try { document = JsonSerializer.Deserialize<Document>(shared, Json); }
         catch (Exception error) when (error is JsonException or NotSupportedException)
         {
-            throw new ContractException(ErrorCode.UnsupportedVersion, "They were saved by a newer Martlet. Update this PC to use them.");
+            throw new ContractException(ErrorCode.UnsupportedVersion, "They were saved by a newer Martlet; update this PC to use them.");
         }
-        ContractRules.Require(document is { Version: 1, Models: not null }, "They were saved by a newer Martlet. Update this PC to use them.",
+        ContractRules.Require(document is { Version: 1, Models: not null }, "They were saved by a newer Martlet; update this PC to use them.",
             ErrorCode.UnsupportedVersion);
         var models = document!.Models!.Where(m => m is { ModelId: not null, Actions: not null }).ToArray();
         ContractRules.Require(models.Length <= MaximumModels && models.Select(m => m.ModelId).Distinct(StringComparer.Ordinal).Count() == models.Length,
