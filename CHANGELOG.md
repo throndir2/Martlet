@@ -32,7 +32,7 @@ Each release's section here is also its notes on GitHub.
 
 - The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
 - Listening, Voice, People, Singing, *Microphone and speakers* and *Voice ID* now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki pages for listening, voices and singing have the full instructions. ([#1049](https://github.com/throndir2/Martlet/pull/1049))
-- The Thinking, Thinking pool, Prompts, Memory and Lorebook pages and the Memory and Lorebooks windows show one short line for each explanation and status. The details are behind a **?** that links to the wiki, and each prompt's **?** says when Martlet sends it. ([#PR995](https://github.com/throndir2/Martlet/pull/PR995))
+- The Thinking, Thinking pool, Prompts, Memory and Lorebook pages and the Memory and Lorebooks windows show one short line for each explanation and status. The details are behind a **?** that links to the wiki, and each prompt's **?** says when Martlet sends it. ([#1059](https://github.com/throndir2/Martlet/pull/1059))
 
 ### Fixed
 
