@@ -380,13 +380,18 @@ a wrong statement.
    of the new section (plain words, no PR links), keeping the links to the
    changelog and releases. The download and version badges update themselves;
    don't hardcode the version anywhere else in the README.
-5. Check the notes locally: `.\scripts\Get-ReleaseNotes.ps1 -Version <version>`
+5. Refresh the bundled model catalog: run `.\scripts\Update-ModelCatalog.ps1`
+   and commit the changed
+   `src\Martlet.Core\Planning\Catalog\model-catalog.json` with the release PR
+   ([The model catalog](docs/MODEL_CATALOG.md)). If a public source can't be
+   read, the script writes nothing; release with the old snapshot and say so.
+6. Check the notes locally: `.\scripts\Get-ReleaseNotes.ps1 -Version <version>`
    must print the section.
-6. Merge the PR, then dispatch `windows-release.yml` with that version. The
+7. Merge the PR, then dispatch `windows-release.yml` with that version. The
    workflow runs the same script before restoring anything, stops if the
    section is missing, and publishes it as the release's *What's new* followed
    by the install, license and SHA-256 text.
-7. Confirm on GitHub that `v<version>` is Latest and its notes show the
+8. Confirm on GitHub that `v<version>` is Latest and its notes show the
    changelog entries.
 
 If a published release's notes need correcting, fix `CHANGELOG.md` in a normal
