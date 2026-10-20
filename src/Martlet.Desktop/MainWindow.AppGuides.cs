@@ -131,7 +131,9 @@ public partial class MainWindow
         var disclosure = Note("On by default. When you start a game Martlet has no guide for, it reads up on it on its own: it " +
             "sends the game's name to DuckDuckGo to find its wiki, then reads up to 200 of the wiki's pages, those about the game " +
             "first. Then, when a Thinking pool helper can take research, Martlet gives it the game's name, the titles the pages " +
-            "link to and what you do now (your screen, sounds and recent words) to choose up to 300 more pages to read. The " +
+            "link to and what you do now (your screen, sounds and recent words) to choose up to 300 more pages to read. Read more " +
+            "(here, in the talk window or on the speech bubble) reads up to 300 more pages of the same wiki each time: a helper " +
+            "chooses them when one can, else Martlet takes the pages the guide links to most. The " +
             "wiki sites see the requests and this PC's " +
             "internet address. The guides stay on this PC. To stop a read, press Stop reading below or tell Martlet no. To stop it " +
             "from reading up on its own, turn off Read up when I start a game or app. To notice a game, Martlet looks only at the " +
@@ -194,8 +196,18 @@ public partial class MainWindow
             var read = PageButton(entry.BuiltAt is null ? "Read up now" : "Read again", () => ReadUpFromPageAsync(entry).Forget(),
                 id: "AppGuideRead-" + entry.Key);
             read.IsEnabled = on && guides.Building is null;
-            if (!on) read.ToolTip = "Turn App guides on first.";
+            read.ToolTip = !on ? "Turn App guides on first." : entry.BuiltAt is null ? null
+                : "Read its first pages again for what changed. The pages Read more added stay in the guide.";
             buttons.Children.Add(read);
+            if (entry.BuiltAt is not null)
+            {
+                // Read more: more pages of the same wiki join the guide; it never reads the pages the guide has again.
+                var more = PageButton("Read more", () => ReadMoreFromPageAsync(entry).Forget(), id: "AppGuideMore-" + entry.Key);
+                more.Margin = new Thickness(8, 0, 0, 0);
+                more.IsEnabled = on && guides.Building is null;
+                more.ToolTip = on ? "Read more pages of its wiki and add them to the guide." : "Turn App guides on first.";
+                buttons.Children.Add(more);
+            }
         }
         if (entry.Declined)
         {
@@ -374,6 +386,59 @@ public partial class MainWindow
             appGuidesResult = $"Couldn't add it: {why}.";
             if (openTab == CompanionTab.AppGuides) RenderTab();
         }
+    }
+
+    /// <summary>Read more on the page: more pages of the app's wiki join its guide.</summary>
+    private async Task ReadMoreFromPageAsync(AppGuideEntry entry)
+    {
+        appGuidesResult = $"Reading more about {entry.Name}...";
+        if (openTab == CompanionTab.AppGuides) RenderTab();
+        appGuidesResult = await ReadMoreAboutAsync(entry, "the App guides page");
+        if (!closing && openTab == CompanionTab.AppGuides) RenderTab();
+    }
+
+    /// <summary>The speech bubble's Read more: more pages about the app it was offered for.</summary>
+    private void ReadMoreFromBubble()
+    {
+        var key = captions.TakeOffer() ?? conversation?.ReadMoreTarget()?.Key;
+        if (appGuides?.Library.Apps.FirstOrDefault(a => a.Key == key) is not { BuiltAt: not null } entry)
+        {
+            ErrorLog.Info("App guides: the speech bubble's Read more was pressed, but no app with a guide was offered.");
+            return;
+        }
+        ErrorLog.Info("App guides: you pressed Read more on the speech bubble.");
+        ReadMoreFromBubbleAsync(entry).Forget();
+    }
+
+    private async Task ReadMoreFromBubbleAsync(AppGuideEntry entry)
+    {
+        var said = await ReadMoreAboutAsync(entry, "the speech bubble");
+        if (closing || said.Length == 0) return;
+        ActionText.Text = said;
+        if (openTab == CompanionTab.AppGuides) RenderTab();
+    }
+
+    /// <summary>Reads more about <paramref name="entry"/>: in the conversation that runs, as its background job (Martlet tells you
+    /// in character when it's done), else here on its own. What happened in a few words ("" when Martlet is closing).</summary>
+    private async Task<string> ReadMoreAboutAsync(AppGuideEntry entry, string where)
+    {
+        if (appGuides is not { On: true } guides) return "App guides are off.";
+        if (guides.Building is { } busy) return $"Martlet is already reading up on {busy.Name}.";
+        if (openConversation?.ReadMore(entry) is { } start)
+            return start.Job is { } job ? $"Reading more about {entry.Name} in the conversation ({job.Id})."
+                : $"Couldn't read more about {entry.Name}: {start.Message ?? start.Refusal}";
+        var research = conversation?.GuideResearch;
+        AppGuideBuild read;
+        try
+        {
+            read = await Task.Run(() => research is not null ? research.ReadMoreNowAsync(entry.Key, null, lifetime.Token)
+                : guides.ReadMoreAsync(entry.Key, null, null, null, lifetime.Token));
+        }
+        catch (OperationCanceledException) { return ""; }
+        LiveConversationController.LogMore(where, read);
+        return read is { Built: true, Pages: > 0 }
+            ? $"Read {read.Pages} more page{(read.Pages == 1 ? "" : "s")} about {read.Name} ({read.Chunks} sections)."
+            : $"Couldn't read more about {read.Name}: {read.Problem}.";
     }
 
     /// <summary>Read up now (or Read again): in the conversation that runs, as its background job, else here on its own.</summary>

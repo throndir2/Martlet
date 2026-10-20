@@ -68,7 +68,9 @@ internal sealed partial class McpServer
             "accounts\\<id>\\memory, household and character spaces in memory-spaces\\<space>) with its space ID and the same counts. The " +
             "top-level counts are the store in the memory setting's folder (memories from before accounts until they move to the owner's " +
             "space, or a custom folder). upkeep: what tidying memory last did (memory-upkeep.json: how many stores it checked for " +
-            "duplicates, and the last pass's space, outcome, counts and pool member). Never a fact's text, a name, a voice ID or a " +
+            "duplicates, and the last pass's space, outcome, counts and pool member). where: how many current facts matter " +
+            "everywhere, in any game (anyGame) and for each game by its name (docs/MEMORY.md, \"Memories for a game\"). Never a " +
+            "fact's text, a person's name, a voice ID or a " +
             "path. Read-only (it never opens or locks a " +
             "store); contacts nothing. limits: the most facts a store holds, characters per fact and store bytes.", new
         {
@@ -107,6 +109,22 @@ internal sealed partial class McpServer
             dataDirectory = new { type = "string" }
         },
             async (arguments, cancellation) => await MemoryForgetAsync(arguments, cancellation), ToolPermission.ChangesUnlessPreview),
+        Tool("memory_where", "Set where remembered facts matter, as Companion › Memory's Where it matters does (docs/MEMORY.md, " +
+            "\"Memories for a game\"): every current fact whose text contains contains (any case) or whose ID is in ids, in every " +
+            "memory store of the data folder or only in space, is kept for where: \"everywhere\", \"games\" (any game) or a game's " +
+            "name (only while that game is played). preview: true only counts them. A running Martlet keeps working (the tool waits " +
+            "up to 15 s for the store to be free) and its memory sync carries the change to your other computers. Returns per space " +
+            "how many facts matched and changed and their IDs; never a fact's text. Needs --allow-changes unless preview. " +
+            DataDirectoryNote, new
+        {
+            where = new { type = "string", maxLength = 120 },
+            contains = new { type = "string", maxLength = 200 },
+            ids = new { type = "array", items = new { type = "string" }, maxItems = 1000 },
+            space = new { type = "string", maxLength = 128 },
+            preview = new { type = "boolean" },
+            dataDirectory = new { type = "string" }
+        },
+            async (arguments, cancellation) => await MemoryWhereAsync(arguments, cancellation), ToolPermission.ChangesUnlessPreview),
         Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
@@ -122,8 +140,11 @@ internal sealed partial class McpServer
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "memories")),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
-            "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
-            "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
+            "transport, program and raw arguments (${env:...} and ${secret:...} references are kept, never their values; a literal " +
+            "value that looks secret, such as the value after --token or --api-key, a key=value with a secret name, a password in a " +
+            "web address or a token such as sk-... or ghp_..., shows as [hidden]), environment and " +
+            "header names, on/off, auto-approve, the MCP directory entry it was installed from, the secret names it uses and how a " +
+            "reply names its tools (toolNames: always <server>_<tool>, whatever else runs). " +
             "Read-only; starts no server and reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
@@ -252,7 +273,7 @@ internal sealed partial class McpServer
             "the friend, the bot and the owner, the ring DM with a jump link and a server invite), calling again (channel reused, " +
             "joined), cleanup, calls turned off, /friend remove, the presence each state shows and its rate limit, and the avatar " +
             "rate limit. requestFrom (a Discord user ID as a string, with requestName) files a friend request into the given " +
-            "dataDirectory as /friend ask would (requires an explicit, disposable dataDirectory), so Companion > Discord's Friends " +
+            "dataDirectory as /friend ask would (requires an explicit, disposable dataDirectory, never Martlet's own data folder, and --allow-changes), so Companion > Discord's Friends " +
             "and calls card lists it for DiscordFriendApprove-<id>.", new
         {
             dataDirectory = new { type = "string" },
@@ -262,13 +283,13 @@ internal sealed partial class McpServer
             requestName = new { type = "string", maxLength = 64 }
         },
             async (arguments, cancellation) => await DiscordCompanionCheck.RunAsync(DataDirectory(arguments),
-                arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out _),
+                DisposableDataDirectory(arguments),
                 OptionalString(arguments, "person"), OptionalString(arguments, "character"),
                 OptionalString(arguments, "requestFrom") is { } from
                     ? ulong.TryParse(from, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)
                         ? id : throw new ArgumentException("requestFrom must be a Discord user ID.")
                     : null,
-                OptionalString(arguments, "requestName"), cancellation)),
+                OptionalString(arguments, "requestName"), cancellation)) with { Writes = arguments => OptionalString(arguments, "requestFrom") is not null },
         Tool("discord_reply_status", "Martlet's Discord reply engine, from a data directory: the desktop's discord-replies.json " +
             "(whether the engine is wired, replies, passes, skipped turns with the last reason, failures with the last code, places " +
             "with history, requests running, the last reply and pass times, its latency, first-words time and prompt-cache use, " +
@@ -407,7 +428,22 @@ internal sealed partial class McpServer
             facts = new { type = "array", items = new { type = "string" }, minItems = 1, maxItems = Martlet.Memory.MemoryLimits.MaximumFacts }
         },
             async (arguments, cancellation) => await MemoryRecallCheck.RunAsync(OptionalString(arguments, "query"), MemoryRecallCheck.Facts(arguments), cancellation)),
-        Tool("memory_upkeep_check", "Rehearse search words, replaced facts kept as history and tidying memory with the production " +
+        Tool("memory_activity_check", "Rehearse memories kept for the game they come from with the production memory code " +
+            "(Martlet.Memory: the activity on each fact, the recall filter, the store's search and another space's snapshot) on " +
+            "synthetic facts in a disposable store: a fact made while playing Palworld recalled while playing Palworld or when the " +
+            "words name it, never in another game or outside games; a fact for any game in every game; a fact for everywhere " +
+            "always; a game's fact travelling with its activity while a fact for everywhere is written exactly as before; a " +
+            "correction keeping where a fact matters; an activity of the wrong form refused; a lorebook entry keyed by the game " +
+            "played now joining in (Martlet.Core's LorebookScanner) and the While you play prompt naming the game. Optional query (with activity, a " +
+            "game's name, or none for no game) recalls those words against the sample facts. Never opens your memory. Nothing " +
+            "leaves this PC.", new
+        {
+            query = new { type = "string" },
+            activity = new { type = "string" }
+        },
+            async (arguments, cancellation) => await MemoryActivityCheck.RunAsync(OptionalString(arguments, "activity"),
+                OptionalString(arguments, "query"), cancellation)),
+        Tool("memory_upkeep_check","Rehearse search words, replaced facts kept as history and tidying memory with the production " +
             "code (Martlet.Memory's store and recall, and the desktop's own upkeep: the plan, the pool member's fact list, parsing " +
             "its answer and the store request) on synthetic facts in a disposable store: a question in other words (\"What should " +
             "I cook tonight?\") finding \"The user is vegetarian.\" only once the fact has search words; the WORDS, SAME and " +
@@ -420,7 +456,8 @@ internal sealed partial class McpServer
     ];
 
     /// <summary>mcp.json in a data directory as the desktop's McpToolService parses it (the file name matches). Arguments are
-    /// the raw ones from the file, so ${env:...} and ${secret:...} stay references; no server starts and no credential is read.</summary>
+    /// the raw ones from the file, so ${env:...} and ${secret:...} stay references; a literal value that looks secret is
+    /// hidden (<see cref="HideSecretArguments"/>). No server starts and no credential is read.</summary>
     private static object McpServersStatus(JsonElement arguments)
     {
         var path = Path.Combine(DataDirectory(arguments), "mcp.json");
@@ -449,7 +486,7 @@ internal sealed partial class McpServer
                     name = server.Name,
                     transport = server.Transport.ToString().ToLowerInvariant(),
                     command = (raw?["command"] as JsonValue)?.ToString(),
-                    args = (raw?["args"] as JsonArray)?.Select(a => a?.ToString()).ToArray() ?? [],
+                    args = HideSecretArguments((raw?["args"] as JsonArray)?.Select(a => a?.ToString()).ToArray() ?? []),
                     host = server.Url?.Host,
                     env = server.Env.Keys.ToArray(),
                     headers = server.Headers.Keys.ToArray(),
@@ -459,11 +496,84 @@ internal sealed partial class McpServer
                     registry = server.Registry,
                     registryVersion = server.RegistryVersion,
                     secrets = server.Secrets,
+                    // How a reply offers its tools: always <prefix>_<tool> (McpToolNames), whatever else runs.
+                    toolNames = McpToolNames.Safe(server.Name) + "_<tool>",
                     problem = server.Problem
                 };
             }).ToArray()
         };
     }
+
+    private const string Hidden = "[hidden]";
+
+    /// <summary>mcp.json arguments with every literal value that looks secret replaced by [hidden]: the value after a flag with a
+    /// secret name (--token, --api-key, --password...), the value of a key=value or --key=value with such a name, the user and
+    /// password in a web address, and values shaped like well-known tokens (sk-..., ghp_..., xoxb-..., long random strings).
+    /// ${env:...} and ${secret:...} references stay as they are.</summary>
+    internal static string?[] HideSecretArguments(string?[] arguments)
+    {
+        var hidden = new string?[arguments.Length];
+        var afterSecretFlag = false;
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            var argument = arguments[i];
+            if (argument is null) { hidden[i] = null; afterSecretFlag = false; continue; }
+            if (afterSecretFlag && !argument.StartsWith('-'))
+            {
+                hidden[i] = OnlyReferences(argument) ? argument : Hidden;
+                afterSecretFlag = false;
+                continue;
+            }
+            afterSecretFlag = false;
+            var equals = argument.IndexOf('=');
+            if (equals > 0 && SecretName(argument[..equals]))
+            {
+                var value = argument[(equals + 1)..];
+                hidden[i] = OnlyReferences(value) ? argument : argument[..(equals + 1)] + Hidden;
+                continue;
+            }
+            if (argument.StartsWith('-') && equals < 0 && SecretName(argument)) afterSecretFlag = true;
+            hidden[i] = HideInValue(argument);
+        }
+        return hidden;
+    }
+
+    private static readonly string[] SecretWords =
+        ["token", "secret", "password", "passwd", "pwd", "apikey", "api-key", "api_key", "auth", "credential", "bearer", "private-key",
+         "private_key", "access-key", "access_key", "client-secret", "client_secret", "pat", "key"];
+
+    // A flag or setting name that names a secret: --token, --api-key, API_KEY, password, -p is not one (too short to tell).
+    private static bool SecretName(string name)
+    {
+        var words = name.TrimStart('-').ToLowerInvariant();
+        if (words.Length < 3) return false;
+        return SecretWords.Any(word => words == word || words.EndsWith("-" + word, StringComparison.Ordinal) ||
+            words.EndsWith("_" + word, StringComparison.Ordinal) || words.StartsWith(word + "-", StringComparison.Ordinal) ||
+            words.StartsWith(word + "_", StringComparison.Ordinal) || (word.Length >= 5 && words.Contains(word, StringComparison.Ordinal)));
+    }
+
+    private static bool OnlyReferences(string value) => SecretReference().Replace(value, "").Length == 0 && value.Length > 0;
+
+    // A value that is not after a flag: hides a web address's user and password and values shaped like tokens.
+    private static string HideInValue(string value)
+    {
+        if (OnlyReferences(value)) return value;
+        var hidden = UrlUserInfo().Replace(value, match => match.Groups[1].Value + Hidden + "@");
+        return TokenShape().IsMatch(hidden) ? Hidden : hidden;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\$\{(?:env|secret):[^}]+\}")]
+    private static partial System.Text.RegularExpressions.Regex SecretReference();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@")]
+    private static partial System.Text.RegularExpressions.Regex UrlUserInfo();
+
+    // Well-known token prefixes, a JWT, or a long run of letters and digits that holds both (a key, not a word or a path).
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^(?:sk-[A-Za-z0-9_-]{16,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|" +
+        @"xox[abposr]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{30,}|glpat-[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*|" +
+        @"(?=[A-Za-z0-9_\-]*[0-9])(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{32,})$")]
+    private static partial System.Text.RegularExpressions.Regex TokenShape();
 
     /// <summary>How the desktop's MCP directory would install one registry entry. Secret values are never returned, only the
     /// ${secret:...} names the entry would use.</summary>
@@ -616,7 +726,7 @@ internal sealed partial class McpServer
             : here.State == "unreadable" ? new { memory, storage, state = "unreadable", voiceList, spaces = (object)spaces, upkeep, limits }
             : (object)new { memory, storage, state = "loaded", voiceList, facts = here.Facts, typed = here.Typed,
                 fromConversation = here.FromConversation, expiring = here.Expiring, replaced = here.Replaced,
-                withSearchWords = here.WithSearchWords, whose = here.Whose, spaces, upkeep, limits };
+                withSearchWords = here.WithSearchWords, whose = here.Whose, where = here.Where, spaces, upkeep, limits };
     }
 
     /// <summary>What tidying memory last did, from the desktop's memory-upkeep.json (counts, times and the pool member only).</summary>
@@ -646,7 +756,8 @@ internal sealed partial class McpServer
     private static object? Shaped(MemoryCounts? counts) => counts is null ? null : new
     {
         state = counts.State, facts = counts.Facts, typed = counts.Typed, fromConversation = counts.FromConversation,
-        expiring = counts.Expiring, replaced = counts.Replaced, withSearchWords = counts.WithSearchWords, whose = counts.Whose
+        expiring = counts.Expiring, replaced = counts.Replaced, withSearchWords = counts.WithSearchWords, whose = counts.Whose,
+        where = counts.Where
     };
 
     /// <summary>The counts of one memory store's authoritative file (".martlet-memory.v1.json", the name Martlet.Memory's
@@ -656,7 +767,7 @@ internal sealed partial class McpServer
     {
         var path = Path.Combine(folder, ".martlet-memory.v1.json");
         if (!File.Exists(path)) return null;
-        List<(string? Voice, string? Source, string? Retention, bool Replaced, bool Words)> facts = [];
+        List<(string? Voice, string? Source, string? Retention, bool Replaced, bool Words, string? Activity)> facts = [];
         try
         {
             byte[] bytes;
@@ -677,7 +788,7 @@ internal sealed partial class McpServer
                     return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
                 }
                 facts.Add((Text("voice_id"), Text("created_from", "source_kind"), Text("retention", "kind"),
-                    Text("replaced_at_utc") is not null, Text("search_words") is not null));
+                    Text("replaced_at_utc") is not null, Text("search_words") is not null, Text("activity")));
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
@@ -697,7 +808,16 @@ internal sealed partial class McpServer
                     .OrderBy(g => g.First().Number)
                     .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, linked = g.First().Account is not null, facts = g.Count() }).ToArray(),
                 forgottenVoices = owned.Count(v => v is null)
-            }, facts.Count(f => f.Replaced), facts.Count(f => f.Words));
+            }, facts.Count(f => f.Replaced), facts.Count(f => f.Words),
+            // Where the current facts matter (docs/MEMORY.md, "Memories for a game"): everywhere, any game, and each game by name.
+            new
+            {
+                everywhere = facts.Count(f => !f.Replaced && f.Activity is null),
+                anyGame = facts.Count(f => !f.Replaced && f.Activity == Martlet.Memory.MemoryActivity.Gaming),
+                activities = facts.Where(f => !f.Replaced && Martlet.Memory.MemoryActivity.Name(f.Activity) is not null)
+                    .GroupBy(f => f.Activity!.ToLowerInvariant()).OrderByDescending(g => g.Count())
+                    .Select(g => new { where = Martlet.Memory.MemoryActivity.Describe(g.First().Activity), facts = g.Count() }).ToArray()
+            });
     }
 
     /// <summary>One Home Assistant's first-run state (no sign-in needed), as Smart home checks it before offering Set up.</summary>
@@ -763,13 +883,15 @@ internal sealed partial class McpServer
         }
     }
 
-    /// <summary>Martlet's own cloudflared download in the data directory's tools folder: its version and whether it still matches
-    /// the size and SHA-256 checked against GitHub's release at download (Martlet runs it only then).</summary>
+    /// <summary>Martlet's own cloudflared download in the data directory's tools folder: its version, whether it still matches
+    /// the size and SHA-256 checked against GitHub's release at download, and whether Windows confirms Cloudflare's signature
+    /// on it (Martlet runs it only when both hold).</summary>
     private static object CloudflaredStatus(string directory)
     {
         var own = Martlet.Messaging.CloudflareQuickTunnel.Installed(Path.Combine(directory, "tools"));
-        return own is null ? new { downloaded = false, version = (string?)null, verified = false }
-            : new { downloaded = true, version = own.Version, verified = own.Verified };
+        if (own is null) return new { downloaded = false, version = (string?)null, verified = false, signed = false, signatureProblem = (string?)null };
+        var problem = Martlet.Messaging.CloudflaredSignature.Problem(own.Path);
+        return new { downloaded = true, version = own.Version, verified = own.Verified, signed = problem is null, signatureProblem = problem };
     }
 
     /// <summary>messaging.json in a data directory (the file name and fields match Martlet.Desktop's MessagingPreferences). The

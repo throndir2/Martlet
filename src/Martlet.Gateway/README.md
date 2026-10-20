@@ -62,9 +62,8 @@ wire documents are unchanged. The inference layer is a focused reuse of
 HTTP/JSON/registry/perception output and tests were reused, with additive signing
 and capability changes. Old security/pairing/server snapshots were not restored.
 Current F5, Perception and Providers APIs are referenced without changing them.
-Memory.Service, Host.Doctor and Host.Setup are not imported.
-Core installation planning, settings, Desktop and HostArtifacts v2/catalog
-remain independent and unchanged.
+Memory.Service and Host.Doctor are not imported.
+Core installation planning, settings and Desktop remain independent and unchanged.
 
 ### Schema 5 client foundation
 
@@ -94,36 +93,19 @@ second integration layer owns actual self-host UI/dispatch and expanded
 transitive payload/notices/RID locks. This foundation does not qualify an AI
 engine, Ubuntu deployment, host installation or native model execution.
 
-The newer [Gateway.Trust foundation](../Martlet.Gateway.Trust/README.md) remains
-isolated and **uncomposed**. These are alternative implementation lineages, not
-two production authorities or interchangeable credentials. This reused Gateway
-is the transport/authentication lineage for subsequent earlier-consumer reuse;
-neither library currently owns a deployed host. The permanent protocol-2
-Gateway.Persistence owner is the sole composed durable authority; no Trust
-bridge, timed-device store, expiry sentinel or secondary approval surface is added.
-
-| Boundary | Reused `Martlet.Gateway` | Isolated `Martlet.Gateway.Trust` |
-| --- | --- | --- |
-| Host/device identity | Bounded identifier strings; certificate-derived `sha256:` plus lowercase SPKI hex | Nonempty UUIDs; supplied uppercase SPKI hex without prefix; no TLS verification |
-| Authorization | `voice`, `perception`, `memory`; per-request scoped HMAC, timestamp and nonce | Independent status/transcription/generation/synthesis/perception/memory-read/memory-write flags; point-in-time secret authorization, no signed-request replay contract |
-| Secret ownership | Base64url strings exposed explicitly by `Reveal`; SHA-256 verifier is an HMAC signing key | Disposable 32-byte buffers with explicit copy/import; SHA-256 verifier for equality checks |
-| Pairing and rotation | Eight local windows, five failed proofs/window; direct local rotation with up to ten-minute overlap | Sixteen pending approvals, authority-wide redemption limit; one-use locally approved renewal with two-minute overlap |
-| State/time | At most 128 non-expiring paired/retiring records, bounded per-credential nonces; shared observed-UTC access closure | Volatile bounded live-device state; UTC and monotonic device expiry with rollback closure |
-
-There is no conversion, fallback, shared authority, secret cast, scope widening
-or credential interchange between these namespaces. Even though both use
-SHA-256 over random device secrets, persisting a Gateway HMAC verifier requires
-**signing-key protection**, not treating it as a harmless password hash.
+An earlier, separate Gateway.Trust library (another pairing design) was never
+used and was removed (#1039). The permanent protocol-2 Gateway.Persistence owner
+is the sole composed durable authority. Persisting a Gateway HMAC verifier
+requires **signing-key protection**, not treating it as a harmless password hash.
 
 The public volatile constructor has no durable import/export or restart recovery;
-use the durable owner when pairing must survive process lifetime. It does not
-inherit Trust's device-expiry policy or interchangeable secret/scope types.
+use the durable owner when pairing must survive process lifetime.
 The optional [canonical durable owner](../Martlet.Gateway.Persistence/README.md)
 now supplies a Windows current-user DPAPI/private-NTFS backend and composes this
 same server privately. It preserves HMAC signing keys **and live replay history**
 across clean restarts, commits admission/rotation/revocation before success, and
 recovers validated prepared transactions without resetting devices after a
-crash or reboot. It never imports Trust records or restores a stale backup.
+crash or reboot. It never restores a stale backup.
 Its protocol-distinct schema, automatic same-key renewal and native
 limitations are documented there.
 

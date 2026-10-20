@@ -45,9 +45,11 @@ internal sealed class GatewayCommandStore
     private byte[]? agentToken;
     private NodeAgentInfo? agent;
     private IGatewayCommandStorage? storage;
+    private GatewayStoreHealth health = new();
 
-    internal void Attach(IGatewayCommandStorage value, string token, DateTimeOffset now)
+    internal void Attach(IGatewayCommandStorage value, string token, DateTimeOffset now, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         GatewayRules.Require(Base64Url.TryDecode(token, 32, out var raw), "request.invalid");
         List<NodeCommand> saved = [];
@@ -63,7 +65,11 @@ internal sealed class GatewayCommandStore
         }
         // An unreadable copy is dropped; senders see their command is gone and can send it again.
         catch (Exception error) when (error is JsonException or ContractException or KeyNotFoundException or InvalidOperationException or
-            FormatException or IOException or UnauthorizedAccessException or GatewayProtocolException) { saved.Clear(); }
+            FormatException or IOException or UnauthorizedAccessException or GatewayProtocolException)
+        {
+            saved.Clear();
+            health.Failed("commands", "load", error);
+        }
         lock (gate)
         {
             storage = value;
@@ -254,7 +260,8 @@ internal sealed class GatewayCommandStore
     private void SaveLocked()
     {
         if (storage is null) return;
-        try
+        // Commands that cannot be saved still work from memory until the gateway restarts.
+        health.Try("commands", "save", () =>
         {
             // The saved copy keeps each command's state and only its latest output; the full tail lives in memory.
             var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document
@@ -262,9 +269,7 @@ internal sealed class GatewayCommandStore
                 SchemaVersion = 1, Commands = entries.Select(e => e.Command with { Output = e.Command.Output.TakeLast(SavedOutputLines).ToArray() }).ToArray()
             }, NodeCommandRules.Json);
             if (bytes.Length <= MaximumStorageBytes) storage.Save(bytes);
-        }
-        // Commands that cannot be saved still work from memory until the gateway restarts.
-        catch (Exception) { }
+        });
     }
 
     private static NodeCommand Finish(NodeCommand command, NodeCommandState state, string? summary, DateTimeOffset now) =>

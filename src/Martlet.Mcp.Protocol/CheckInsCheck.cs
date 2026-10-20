@@ -82,6 +82,8 @@ internal static class CheckInsCheck
         maximumCallbackCharacters = CallbackList.MaximumCharacters, callbackWindowHours = CallbackList.Window.TotalHours,
         mostPerHourChoices = CheckIns.MostPerHourChoices,
         maximumToolRounds = CheckIns.MaximumToolRounds, maximumToolCalls = CheckIns.MaximumToolCalls,
+        maximumToolOutputTokens = CheckIns.MaximumToolOutputTokens, toolTimeoutSeconds = CheckIns.ToolTimeout.TotalSeconds,
+        hardMaxToolRounds = BoundedTextInput.HardMaxToolRounds,
         maximumToolResultCharacters = CheckIns.MaximumToolResultCharacters,
         toolSets = CheckInToolSets.All.Select(s => new { id = s.Id, name = s.Name, does = s.Does, tools = s.Tools.Select(t => t.Name).ToArray(), replaces = s.Replaces.ToArray(), optional = s.Optional }).ToArray()
     };
@@ -216,6 +218,7 @@ internal static class CheckInsCheck
             [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome.",
             [CheckIns.Ahead] = "PLAN: FIXTURE: They'll probably say the bug is fixed; I'll cheer, then tease them about how long it took.",
             [CheckIns.Actions] = "OK",
+            [CheckIns.MemoryCare] = "FIXTURE: Added (in Minecraft) to 2 facts about the castle.",
             [CheckIns.Lull] = "SAY: FIXTURE: So did that \"one more try\" ever end?",
             [CheckIns.Callbacks] = "CALLBACK: quote - FIXTURE they said \"one more try\" about the boss\nCALLBACK: open - FIXTURE a bug drives them crazy"
         };
@@ -1186,6 +1189,46 @@ internal static class CheckInsCheck
             {
                 textOnlyPool = none?.Outcome.ToString(), withOneThatCallsTools = done?.Member, calls = uses.Count, made = CheckIns.ToolsText(uses),
                 answer = done?.Text
+            });
+
+        // Memory care: a built-in check-in that works on memory in several steps, with every Memory tool, more time and more room
+        // to write than a check-in without tools. A FIXTURE handler answers the calls (NOT AI, no memory store).
+        var care = CheckIns.BuiltIn.SingleOrDefault(c => c.Id == CheckIns.MemoryCare);
+        var cared = new List<string>();
+        var careHost = care is null ? null : new CheckInToolHost(care.ToolSets, new(care.Id, care.Name, null, facts.Now),
+            new Dictionary<string, CheckInToolHandler>
+            {
+                [MemoryToolSet.Id] = (call, _, _) =>
+                {
+                    lock (cared) cared.Add(call.Name);
+                    return ValueTask.FromResult(new ConversationToolResult($"Memory: {MemoryToolSet.Action(call.Name)}.\nFIXTURE"));
+                }
+            });
+        var careJob = care is null ? null : CheckIns.Prepare(care, CheckIns.Focus(care, facts), null, careHost);
+        // More calls than the old limit of 8, in the steps a model would take: look, find, then fix many facts.
+        string[] plan = [MemoryToolSet.Overview, MemoryToolSet.Find, MemoryToolSet.Find, MemoryToolSet.History, MemoryToolSet.Note,
+            MemoryToolSet.UpdateMany, MemoryToolSet.Merge, MemoryToolSet.Outdated, MemoryToolSet.Update, MemoryToolSet.Forget,
+            MemoryToolSet.Find, MemoryToolSet.Note];
+        var careAnswers = new List<ConversationToolResult>();
+        if (careHost is not null)
+            foreach (var name in plan) careAnswers.Add(await careHost.CallAsync(new("care-" + careAnswers.Count, name, "{}"), cancellation));
+        step("memory care: a built-in check-in that works on memory in several steps",
+            care is { On: true, Outcome: CheckInOutcome.Tools, EveryMinutes: 60, Conditions: CheckInConditions.SomethingNew } &&
+            care.ToolSets.SequenceEqual([MemoryToolSet.Id]) && care.Needs.HasFlag(ThinkingCapability.Tools) &&
+            CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInMemory)) == (CheckInFacts.Latest | CheckInFacts.Activity) &&
+            careJob is { MaxToolRounds: CheckIns.MaximumToolRounds, MaxOutputTokens: CheckIns.MaximumToolOutputTokens } &&
+            careJob.Timeout == CheckIns.ToolTimeout && careJob.Tools.Select(t => t.Name).SequenceEqual(MemoryToolSet.Set.Tools.Select(t => t.Name)) &&
+            careJob.Text.Contains(CheckIns.Steps, StringComparison.Ordinal) && careJob.Text.Contains("memory_note", StringComparison.Ordinal) &&
+            careJob.Text.Contains("(where)", StringComparison.Ordinal) &&
+            new[] { MemoryToolSet.Remember, MemoryToolSet.Update, MemoryToolSet.UpdateMany }.All(name =>
+                careJob.Tools.Single(t => t.Name == name).ParametersJson.Contains("\"where\"", StringComparison.Ordinal)) &&
+            CheckIns.MaximumToolRounds <= BoundedTextInput.HardMaxToolRounds && plan.Length > 8 &&
+            careAnswers.All(a => !a.IsError) && cared.SequenceEqual(plan),
+            new
+            {
+                care?.Name, care?.On, care?.EveryMinutes, tools = careJob?.Tools.Select(t => t.Name), careJob?.MaxToolRounds,
+                maximumToolCalls = CheckIns.MaximumToolCalls, timeoutMinutes = careJob?.Timeout.TotalMinutes, careJob?.MaxOutputTokens,
+                calls = cared.Count, made = careHost is null ? null : CheckIns.ToolsText(careHost.Uses)
             });
     }
 

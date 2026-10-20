@@ -21,16 +21,17 @@ internal sealed class GatewayClusterStore
     private ClusterPlan plan = ClusterPlan.Empty;
     private string digest = ClusterPlan.Empty.Digest();
     private IGatewayClusterStorage? storage;
+    private GatewayStoreHealth health = new();
 
     internal ClusterPlan Current { get { lock (gate) return plan; } }
 
-    internal void Attach(IGatewayClusterStorage value)
+    internal void Attach(IGatewayClusterStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         ClusterPlan? saved = null;
-        try { if (value.Load() is { } bytes) saved = ClusterPlan.Parse(bytes); }
         // An unreadable or malformed copy is replaced by the next desktop that syncs.
-        catch (Exception) { }
+        health.Try("cluster plan", "load", () => { if (value.Load() is { } bytes) saved = ClusterPlan.Parse(bytes); });
         lock (gate)
         {
             storage = value;
@@ -54,8 +55,7 @@ internal sealed class GatewayClusterStore
         plan = next;
         digest = nextDigest;
         if (!save || storage is null) return;
-        try { storage.Save(next.Write()); }
-        catch (Exception) { }
+        health.Try("cluster plan", "save", () => { storage.Save(next.Write()); });
     }
 }
 

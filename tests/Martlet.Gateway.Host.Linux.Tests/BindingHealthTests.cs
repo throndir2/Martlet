@@ -141,7 +141,7 @@ public sealed class BindingHealthTests
         var armed = false;
         await using var owner = DurableGatewayHost.Open("/srv/martlet/store", "fixture-host", origin,
             [], new QuietAudit(), LocalGatewayDecision.Enable, HostOpenMode.Create, TimeProvider.System,
-            step => { if (armed && step == StoreStep.PendingFlushed) throw new IOException(); },
+            step => { if (armed && step == StoreStep.NonceWritten) throw new IOException(); },
             storageBackend: GatewayStorageBackend.LinuxServicePermissions, linuxFileSystem: fs);
         await owner.StartAsync();
         using var client = PinnedGatewayClient.Create(origin, owner.Identity!);

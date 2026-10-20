@@ -1,6 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <InternalsVisibleTo Include="Martlet.Launcher" />
-    <InternalsVisibleTo Include="Martlet.Launcher.Tests" />
-  </ItemGroup>
-</Project>

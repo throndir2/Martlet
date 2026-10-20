@@ -824,6 +824,35 @@ internal static class ThinkLongerCheck
         var lineFull = inLine.All(start => start.Started) && fullLine.Refusal == "busy" && fullLine.Message ==
             "Martlet already has 6 thinks running or waiting, and it runs up to 2 at once. Running now: think-1 on diva and think-2 on ripley. " +
             "Wait for one to finish.";
+        // A job whose seating throws (a clock that fails, as at shutdown) ends Failed and is reported, so its kind isn't blocked;
+        // finished jobs waiting to be brought up never grow past KeptWaiting.
+        var breaking = new BreakingClock();
+        using var faultJobs = new BackgroundJobs(breaking);
+        string? reported = null;
+        faultJobs.Faulted += (id, _) => reported = id;
+        IReadOnlyList<BackgroundPlace> one = [new("host:diva", "diva")];
+        var faultKind = new BackgroundJobKind("check", 2, null, TimeSpan.FromMinutes(1));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holder = faultJobs.Start(faultKind, "holder", async (job, token) =>
+        {
+            entered.TrySetResult();
+            return await Forever(job, token);
+        }, one);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+        breaking.Broken = true;
+        var seating = faultJobs.Start(faultKind, "waits in line", Forever, one, wait: true);
+        await Until(() => seating.Job?.Finished == true);
+        breaking.Broken = false;
+        faultJobs.CancelAll();
+        var startFailure = holder.Started && seating.Job is { State: BackgroundJobState.Failed } failedStart && reported == failedStart.Id;
+        using var many = new BackgroundJobs();
+        var quick = new BackgroundJobKind("quick", 8, null, null);
+        for (var i = 0; i < BackgroundJobs.KeptWaiting + 8; i++)
+        {
+            var next = many.Start(quick, $"quick {i}", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("ok")));
+            await Until(() => next.Job?.Finished == true);
+        }
+        var trimmed = many.Recent.Count <= BackgroundJobs.KeptWaiting + 1 && many.Undelivered.Count <= BackgroundJobs.KeptWaiting + 1;
         var timedOut = timed.Job;
         var songRun = songJob.Job!;
         var lateRun = lateSong.Job!;
@@ -833,10 +862,16 @@ internal static class ThinkLongerCheck
             first.Job.Delivery == BackgroundDeliveryState.Delivered &&
             timedOut is { State: BackgroundJobState.TimedOut } && hourly.Refusal == "hourly_limit" &&
             songRun.State == BackgroundJobState.Canceled && songRun.Delivery == BackgroundDeliveryState.Delivered &&
-            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited && lineFull;
+            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited && lineFull &&
+            startFailure && trimmed;
         return (ok, new
         {
             ok,
+            startFailure = new
+            {
+                ok = startFailure, state = seating.Job?.State.ToString(), problem = seating.Job?.Problem, reported = reported is not null
+            },
+            waitingTrimmed = new { ok = trimmed, kept = many.Recent.Count, waiting = many.Undelivered.Count, limit = BackgroundJobs.KeptWaiting },
             deepThinkingUnlimited = new
             {
                 ok = unlimited, timeLimit = production.TimeLimit?.ToString() ?? "none", hourlyLimit = production.MaxPerHour?.ToString() ?? "none",
@@ -1161,5 +1196,14 @@ internal static class ThinkLongerCheck
             try { await accepting; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
             stop.Dispose();
         }
+    }
+
+    // A clock whose timers fail while Broken is set (as a disposed clock would at shutdown).
+    private sealed class BreakingClock : TimeProvider
+    {
+        internal volatile bool Broken;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+            Broken ? throw new ObjectDisposedException("clock") : System.CreateTimer(callback, state, dueTime, period);
     }
 }

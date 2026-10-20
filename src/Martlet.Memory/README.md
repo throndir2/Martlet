@@ -27,6 +27,9 @@ index, clear the revision-bound cache and invalidate in-flight results. No
 backup, network, provider, embedding, vector database, credential field, logger
 or transcript API exists. A fact may name whose it is (`VoiceId`, an opaque
 voice list ID the caller chooses; `EditFactRequest` requires it, so an edit
-never drops it by accident); a fact without one is written as before.
+never drops it by accident); a fact without one is written as before. A fact may
+also say where it matters (`Activity`: `gaming` or `gaming/<game>`,
+`MemoryActivity`); `MemoryQuery.Activity` leaves out the facts of other
+activities, and an edit keeps it unless `SetActivity` is set.
 
 See [the full contract, limits and remaining gates](../../docs/MEMORY.md).

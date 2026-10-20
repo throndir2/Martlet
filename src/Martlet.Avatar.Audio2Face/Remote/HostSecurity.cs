@@ -28,6 +28,20 @@ public sealed record HostSecurityAudit(string HostId, bool InternetReachable, bo
     public IReadOnlyList<string> FrontDoorListeners { get; init; } = [];
     /// <summary>How many browsers are signed in to the front door's web page now; null when this host isn't the front door.</summary>
     public int? FrontDoorSessions { get; init; }
+    /// <summary>False when one of the host's shared stores failed to load or save and has not worked since; null from older hosts.</summary>
+    public bool? StoresHealthy { get; init; }
+    /// <summary>The stores whose last load or save failed ("API keys: save"); empty when all work.</summary>
+    public IReadOnlyList<string> FailingStores { get; init; } = [];
+    /// <summary>How many times the host fully saved its pairing authority since it started, and how long a save takes on
+    /// average and at most; null from older hosts.</summary>
+    public long? AuthorityCommits { get; init; }
+    public double? AuthorityCommitAverageMs { get; init; }
+    public double? AuthorityCommitLongestMs { get; init; }
+    /// <summary>How many nonce saves (one journal append each; every signed request waits for one) the host made since it
+    /// started, and how long one takes on average and at most; null from older hosts.</summary>
+    public long? NonceSaves { get; init; }
+    public double? NonceSaveAverageMs { get; init; }
+    public double? NonceSaveLongestMs { get; init; }
 }
 
 public sealed partial class Audio2FaceHostConnection
@@ -69,7 +83,21 @@ public sealed partial class Audio2FaceHostConnection
                 FrontDoorListeners = root.TryGetProperty("front_door_listeners", out var doors) && doors.ValueKind == JsonValueKind.Array
                     ? doors.EnumerateArray().Take(8).Select(e => e.GetString() ?? throw new InvalidOperationException()).ToArray() : [],
                 FrontDoorSessions = root.TryGetProperty("front_door_sessions", out var sessions) && sessions.ValueKind == JsonValueKind.Number &&
-                    sessions.TryGetInt32(out var count) ? count : null
+                    sessions.TryGetInt32(out var count) ? count : null,
+                StoresHealthy = root.TryGetProperty("stores_healthy", out var healthy) && healthy.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? healthy.GetBoolean() : null,
+                FailingStores = root.TryGetProperty("stores", out var stores) && stores.ValueKind == JsonValueKind.Array
+                    ? stores.EnumerateArray().Take(64)
+                        .Where(e => e.TryGetProperty("failing", out var failing) && failing.ValueKind == JsonValueKind.String)
+                        .Select(e => $"{Text(e, "store")}: {Text(e, "failing")}").ToArray() : [],
+                AuthorityCommits = root.TryGetProperty("authority_commits", out var commits) && commits.ValueKind == JsonValueKind.Object
+                    ? commits.GetProperty("count").GetInt64() : null,
+                AuthorityCommitAverageMs = commits.ValueKind == JsonValueKind.Object ? commits.GetProperty("average_ms").GetDouble() : null,
+                AuthorityCommitLongestMs = commits.ValueKind == JsonValueKind.Object ? commits.GetProperty("longest_ms").GetDouble() : null,
+                NonceSaves = root.TryGetProperty("nonce_saves", out var nonces) && nonces.ValueKind == JsonValueKind.Object
+                    ? nonces.GetProperty("count").GetInt64() : null,
+                NonceSaveAverageMs = nonces.ValueKind == JsonValueKind.Object ? nonces.GetProperty("average_ms").GetDouble() : null,
+                NonceSaveLongestMs = nonces.ValueKind == JsonValueKind.Object ? nonces.GetProperty("longest_ms").GetDouble() : null
             };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)

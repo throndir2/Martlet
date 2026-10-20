@@ -77,14 +77,15 @@ rather than evidence about the change.
 
 The default and `-All` selections are broad by design, which is why routine
 validation names its targeted tests instead. Measured on a 16-core Windows dev PC
-with a warm build: one leaf test project such as `Martlet.Gateway.Trust.Tests` runs
+with a warm build: one leaf test project such as `Martlet.Perception.Tests` runs
 in about 15 seconds. Without `-Project`, `Martlet.Desktop` references nearly every
 library, so most library changes also select `Martlet.Desktop.Tests`, which runs
 serially and takes 4 to 8 minutes depending on what else the PC is doing; a change
 to `Martlet.Core` selects almost everything. The full run (`-All`) took 12 minutes
-on a quiet PC and 20 on a busy one, dominated by `Martlet.Updates.Tests` (6.5 to 9.5
-minutes), `Martlet.Launcher.Tests` (4.5 to 5) and `Martlet.Desktop.Tests`. Making
-those three faster is the best way to shorten long runs (tracked in
+on a quiet PC and 20 on a busy one. `Martlet.Desktop.Tests` was the longest suite
+that remains; the two other slow suites (`Martlet.Updates.Tests` and
+`Martlet.Launcher.Tests`) were removed with their unused libraries. Making
+`Martlet.Desktop.Tests` faster is the best way to shorten long runs (tracked in
 [#332](https://github.com/throndir2/Martlet/issues/332)).
 
 ## How the selection works

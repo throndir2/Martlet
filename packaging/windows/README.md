@@ -127,9 +127,7 @@ authentication.
 
 The updater downloads only after user consent (or with automatic installation
 turned on) and checks the GitHub asset digest before it runs the installer.
-Windows may warn about an unknown publisher. The separate signed ZIP/envelope
-format of the Updates library (`src\Martlet.Updates`) is not used by this
-installer.
+Windows may warn about an unknown publisher.
 
 ## Quick installer, first-run setup and the prerequisites tool
 
@@ -324,8 +322,8 @@ application's `.deps.json` (including each project's runtime asset):
   unchanged; no conversation, provider, participation or vault assembly is
   included there.
 
-V06b already introduced `Martlet.Support` for explicit local troubleshooting;
-V07a recovery stays inside existing Core/Desktop, with no new assembly or
+Troubleshooting already introduced `Martlet.Support` for explicit local troubleshooting;
+Recovery stays inside existing Core/Desktop, with no new assembly or
 dependency. Support bundles remain deliberately lossy and cannot restore
 configuration. Installed help explains the separate recovery workflow.
 Conversation, Providers and Participation are authored BCL-only integration
@@ -383,7 +381,7 @@ Same-version reinstall replaces the same owned files and shortcuts; close both
 apps first. This is an idempotent **skeleton**, not an application-aware repair
 engine. No installer-driven schema migration, backup, version activation, stale-file pruning,
 downgrade, interrupted-upgrade recovery or transaction rollback is claimed.
-Those are V07 gates and must not be inferred from successful compilation.
+Those are release gates and must not be inferred from successful compilation.
 
 ## Pins, locks, provenance and integrity
 
@@ -436,7 +434,7 @@ source flag is honest local evidence, not proof that HEAD contains those inputs.
 Neither whole-build reproducibility nor byte-identical installers across
 machines/times are established by deterministic metadata.
 
-### Offline provenance and CycloneDX SBOM (V07c foundation)
+### Offline provenance and CycloneDX SBOM
 
 Every new payload requires `sbom.cdx.json`, a **CycloneDX 1.6 JSON** software
 bill of materials, plus the manifest's `provenance` object. Legacy schema-v1
@@ -447,15 +445,10 @@ level, a release signature, license clearance or a vulnerability assessment.
 Code signing is not a release requirement for this personal project; public
 releases ship an unsigned installer without any authentication claim.
 
-The avatar producer explicitly selects manifest 3 / provenance 2. Its coordinated
-[signed-candidate metadata reader](../../src/Martlet.Updates/README.md) must support
-that pair before integration; older readers reject manifest 3 as incompatible.
-Legacy manifest 1 and manifest 2 / provenance 1 remain explicit reader/history
-paths, and legacy pure constructors preserve their historical bytes. None is an
-allow-missing path for the current producer. Candidate signing, activation,
-settings compatibility and trust policy do not change. The reader's depth-16
-and restricted ZIP/layout budgets remain narrower than the producer's general
-bounded JSON reader.
+The avatar producer explicitly selects manifest 3 / provenance 2. Legacy
+manifest 1 and manifest 2 / provenance 1 remain history paths, and legacy pure
+constructors preserve their historical bytes. None is an allow-missing path for
+the current producer.
 
 The three application descriptors bind exact root project, directory and private
 parent. Each application's reviewed project/package graph is separate; no global
@@ -624,11 +617,11 @@ that SDK behavior with an empty test-only folder; it never modifies the SDK or
 the caller's environment. Source matching remains exact, with no wildcard
 allowance for arbitrary local/network feeds.
 
-## V04b integration, fixtures and dependency evidence
+## Conversation integration, fixtures and dependency evidence
 
 The RID locks cover Core, Audio, Diagnostics, Credentials.Windows,
 Conversation, Providers, Participation, Support, Desktop and Doctor.
-The three V04b library locks and Desktop's added project edges are generated
+The three conversation library locks and Desktop's added project edges are generated
 by the existing maintenance helper, not hand-authored placeholder locks.
 Normal locks remain separate; maintenance regression checks hash
 every normal source lock before/after regeneration of **all** copied RID locks.

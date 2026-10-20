@@ -36,6 +36,7 @@ public partial class MemoryWindow : ThemedWindow
         public string Caption => (Fact.ReplacedAtUtc is { } replaced ? $"Replaced {When(replaced)} · " : "") +
             $"{Person ?? EveryoneLabel} · {MemoryPromptContext.Source(Fact.LastModifiedBy.SourceKind)} · " +
             When(Fact.UpdatedAtUtc) + (Fact.Retention.Kind == MemoryRetentionKind.ExpiresAt ? " · " + RetentionText(Fact.Retention) : "") +
+            (Fact.Activity is null ? "" : " · " + MemoryActivity.Describe(Fact.Activity)) +
             (SpaceName is null ? "" : " · " + SpaceName);
 
         public override string ToString() => Person is null ? Fact.Content : $"{Person} · {Fact.Content}";
@@ -355,10 +356,33 @@ public partial class MemoryWindow : ThemedWindow
             : filters.FirstOrDefault(o => o.Kind == wanted?.Kind && o.VoiceId == wantedVoice) ?? filters[0];
         rendering = false;
         showPerson = null;
-        // Reading the facts again never changes whose the fact you are writing or changing is.
+        // Reading the facts again never changes whose the fact you are writing or changing is, or where it matters.
         ResetPersonChoice(editing is { } held ? facts.FirstOrDefault(f => f.Id == held.Id) : null,
             PersonChoice.SelectedItem as PersonOption);
+        ResetWhereChoice(editing is { } kept ? facts.FirstOrDefault(f => f.Id == kept.Id) : null, WhereChoice.SelectedItem as WhereOption);
     }
+
+    /// <summary>One Where it matters option: everywhere (null), any game ("gaming") or one game.</summary>
+    internal sealed record WhereOption(string Label, string? Activity)
+    {
+        public override string ToString() => Label;
+    }
+
+    /// <summary>The Where it matters options: everywhere, any game, the game played now and every game a fact is kept for.
+    /// <paramref name="keep"/> is a choice already made, kept while it is offered. A new fact is for everywhere.</summary>
+    private void ResetWhereChoice(MemoryFact? fact, WhereOption? keep = null)
+    {
+        var options = new List<WhereOption> { new("Everywhere", null), new("While gaming (any game)", MemoryActivity.Gaming) };
+        foreach (var activity in facts.Select(f => f.Activity).Append(fact?.Activity).Append(CurrentActivity.Now).Append(keep?.Activity)
+                     .OfType<string>().Where(a => MemoryActivity.Name(a) is not null))
+            if (!options.Any(o => MemoryActivity.Same(o.Activity, activity)))
+                options.Add(new(char.ToUpperInvariant(MemoryActivity.Describe(activity)[0]) + MemoryActivity.Describe(activity)[1..], activity));
+        var wanted = keep?.Activity ?? (keep is null ? fact?.Activity : null);
+        WhereChoice.ItemsSource = options;
+        WhereChoice.SelectedItem = options.FirstOrDefault(o => MemoryActivity.Same(o.Activity, wanted)) ?? options[0];
+    }
+
+    private string? SelectedWhere() => (WhereChoice.SelectedItem as WhereOption)?.Activity;
 
     /// <summary>The Belongs to options; a fact whose voice was forgotten keeps that voice as an option. <paramref name="keep"/> is
     /// a choice already made, kept while it is still offered (a voice merged meanwhile becomes the voice it joined).</summary>
@@ -448,6 +472,8 @@ public partial class MemoryWindow : ThemedWindow
         // How many are kept in each space besides yours (counts only).
         foreach (var space in current.Where(f => elsewhere.ContainsKey(f.Id)).GroupBy(SpaceName))
             text += $"; {space.Count()} in {space.Key}";
+        var games = current.Count(f => f.Activity is not null);
+        if (games > 0) text += $"; {games} kept for {(current.Where(f => f.Activity is not null).Select(f => f.Activity!.ToLowerInvariant()).Distinct().Count() is var kinds && kinds == 1 ? "1 game or activity" : $"{kinds} games or activities")}";
         var replaced = facts.Count - current.Length;
         if (replaced > 0) text += $"; {replaced} replaced kept as history";
         return text + (all ? "." : $". Showing {shown}.");
@@ -488,6 +514,7 @@ public partial class MemoryWindow : ThemedWindow
         var retention = SelectedRetention(existing: null);
         var content = FactContent.Text;
         var voice = SelectedVoice();
+        var where = SelectedWhere();
         if (string.IsNullOrWhiteSpace(content))
         {
             FactStatus.Text = "Write the fact first.";
@@ -500,7 +527,7 @@ public partial class MemoryWindow : ThemedWindow
         }
         await RunAsync(async token =>
             receipt = await service.SaveFactAsync(
-                configurationRevision, content, retention, voice, token).ConfigureAwait(false),
+                configurationRevision, content, retention, voice, token, activity: where).ConfigureAwait(false),
             "Couldn't add the fact.");
         if (closed || receipt is null)
             return;
@@ -521,6 +548,7 @@ public partial class MemoryWindow : ThemedWindow
         var retention = SelectedRetention(fact);
         var content = FactContent.Text;
         var voice = SelectedVoice();
+        var where = SelectedWhere();
         if (retention is null)
         {
             FactStatus.Text = "Choose how long to keep it first.";
@@ -528,7 +556,7 @@ public partial class MemoryWindow : ThemedWindow
         }
         await RunAsync(async token =>
             receipt = await service.EditFactAsync(
-                configurationRevision, fact, content, retention, voice, token, SpaceOf(fact)).ConfigureAwait(false),
+                configurationRevision, fact, content, retention, voice, token, SpaceOf(fact), where).ConfigureAwait(false),
             "Couldn't edit the fact. Refresh and try again.");
         if (closed || receipt is null)
             return;
@@ -628,6 +656,7 @@ public partial class MemoryWindow : ThemedWindow
         RetentionChoice.ItemsSource = NewRetentionOptions;
         RetentionChoice.SelectedIndex = 0;
         ResetPersonChoice(null);
+        ResetWhereChoice(null);
     }
     private async void CreateExportPreview_Click(object sender, RoutedEventArgs e)
     {
@@ -715,6 +744,7 @@ public partial class MemoryWindow : ThemedWindow
             editing = (fact.Id, fact.Revision);
             FactContent.Text = fact.Content;
             ResetPersonChoice(fact);
+            ResetWhereChoice(fact);
             RetentionChoice.ItemsSource = NewRetentionOptions.Append(
                 new RetentionOption("Keep current retention", null, KeepCurrent: true));
             RetentionChoice.SelectedIndex = NewRetentionOptions.Length;
@@ -722,6 +752,7 @@ public partial class MemoryWindow : ThemedWindow
         var earlier = facts.Count(f => f.ReplacedBy == fact.Id);
         FactDetails.Text =
             $"Belongs to: {PersonName(fact.VoiceId) ?? "everyone (not tied to a voice)"}\n" +
+            $"Matters: {MemoryActivity.Describe(fact.Activity)}\n" +
             (service.Account is null ? "" : $"Kept in: {SpaceName(fact) ?? MemorySpaces.Label(activeSpace ?? service.Account.Space, service.Account)}" +
                 (Changeable(fact) ? "" : " (only the person who shares it can change it)") + "\n") +
             $"Created: {When(fact.CreatedAtUtc)} ({MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)})\n" +

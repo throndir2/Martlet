@@ -376,8 +376,7 @@ so I can talk to it in minutes.*
 - **Flow**: opens the conversation window in demo mode with a banner *Demo:
   scripted replies. Set up Martlet* → returns to A1 step 2.
 - **Clicks**: 1.
-- **Today**: Settings › *Try fixture (audio OFF)*, *Completed fixture +
-  confirm 200 ms tone*.
+- **Today**: not built. Martlet has no offline demo yet.
 
 #### A4. Skip setup
 
@@ -1472,12 +1471,11 @@ These need building before the recipes in 11.2 work:
 
 1. **Windows speech as a route.** Windows voices were removed from speaking:
    Chatterbox Nano on the processor is the voice for a computer without a
-   graphics card. `Martlet.Stt.Windows` (recognition) still isn't a choice in
-   the app.
-2. **Listening on this PC without Docker.** `Martlet.LocalStt` (native
-   whisper.cpp, no Docker) exists as a disabled candidate. Wiring it in
-   removes WSL, Docker Desktop and the host service from the most common
-   *This PC* listening setup.
+   graphics card. Windows speech recognition isn't a choice in the app (the
+   unused `Martlet.Stt.Windows` library was removed).
+2. **Listening on this PC without Docker.** Parakeet through sherpa-onnx
+   (`Martlet.Sherpa`) already listens on this PC without Docker. The unused
+   native whisper.cpp candidate (`Martlet.LocalStt`) was removed.
 3. ~~A bundled default F5 voice~~: done in #145; since replaced by six starter
    voices that are free to use and share (public domain, CMU ARCTIC or the
    Jenny TTS dataset) and are

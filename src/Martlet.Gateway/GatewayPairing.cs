@@ -79,6 +79,12 @@ public sealed record GatewayDeviceRegistration
 public sealed record GatewayPairedDevice(string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen,
     GatewayAccess Access = GatewayAccess.Full);
 
+/// <summary>How long saves of the credential authority took since the gateway started (kept in memory only).</summary>
+public sealed record GatewayAuthorityCommitStats(long Commits, long SlowCommits, TimeSpan Last, TimeSpan Longest, TimeSpan Total)
+{
+    public TimeSpan Average => Commits == 0 ? TimeSpan.Zero : Total / Commits;
+}
+
 public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewayAdmissionStatus, IGatewayPrincipalAuthority
 {
     public static readonly TimeSpan MaximumRotationOverlap = TimeSpan.FromMinutes(10);
@@ -90,9 +96,23 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     internal static readonly TimeSpan MaximumClockStepBack = TimeSpan.FromSeconds(30);
     internal const int MaximumNoncesPerCredential = 1024;
 
+    /// <summary>A commit slower than this is written to the host log.</summary>
+    internal static readonly TimeSpan SlowCommit = TimeSpan.FromMilliseconds(50);
+
+    // Lock order: commitGate, then gate. A request's nonce commit holds only commitGate while it writes, so other
+    // requests check their signatures meanwhile and one later commit saves all their nonces together.
+    private readonly object commitGate = new();
     private readonly object gate = new();
+    private readonly object statsGate = new();
     private readonly Dictionary<string, CredentialRecord> credentials = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTimeOffset> lastSeen = new(StringComparer.Ordinal);
+    private long changeSequence;
+    private long committedSequence;
+    private GatewayAuthorityCommitStats commitStats = new(0, 0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
+    private GatewayAuthorityCommitStats nonceStats = new(0, 0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
+    // Nonces checked since the last save, for the next nonce append. A full save holds them all and clears this.
+    private readonly List<StoredGatewayNonceRecord> unsavedNonces = [];
+    private DateTimeOffset? replayFloor;
     private readonly GatewayHostIdentity identity;
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
@@ -124,11 +144,15 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         try
         {
             var now = ObserveTimeLocked(clock);
-            GatewayRules.Require(checkpoint.ObservedAt - now <= MaximumClockStepBack &&
+            // The nonce journal may have seen later times than the saved checkpoint; the newest is the high-water mark.
+            var highWater = checkpoint.JournalObservedAt is { } journal && journal > checkpoint.ObservedAt
+                ? journal : checkpoint.ObservedAt;
+            GatewayRules.Require(highWater - now <= MaximumClockStepBack &&
                 (!sameBoot || checkpoint.Frequency == frequency && checkpoint.Timestamp <= lastTimestamp!.Value),
                 "auth.clock_invalid");
-            if (now < checkpoint.ObservedAt)
-                lastObservedTime = now = checkpoint.ObservedAt;
+            if (now < highWater)
+                lastObservedTime = now = highWater;
+            replayFloor = checkpoint.ReplayFloor;
             var offlineTicks = (decimal)(now - checkpoint.ObservedAt).Ticks;
             if (sameBoot)
                 offlineTicks = Math.Max(offlineTicks, decimal.Ceiling(((decimal)lastTimestamp!.Value -
@@ -171,11 +195,43 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     internal IssuedDeviceCredential Issue(string deviceId, string displayName, GatewayRole[] roles,
         CancellationToken cancellationToken = default, GatewayAccess access = GatewayAccess.Full)
     {
+        lock (commitGate)
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var result = IssueLocked(deviceId, displayName, roles, ObserveTimeLocked(clock), access);
-            CommitLocked(cancellationToken);
+            CommitLocked();
+            try { EnsureIssuedStillLiveLocked(result.CredentialId); }
+            catch
+            {
+                CloseLocked();
+                throw;
+            }
+            return result;
+        }
+    }
+
+    /// <summary>Issues a new credential to <paramref name="deviceId"/> and revokes its older ones in the same commit. When
+    /// the issue fails (capacity, storage), the older credentials stay as they were.</summary>
+    internal IssuedDeviceCredential IssueReplacing(string deviceId, string displayName, GatewayRole[] roles,
+        CancellationToken cancellationToken = default, GatewayAccess access = GatewayAccess.Full)
+    {
+        GatewayRules.Identifier(deviceId);
+        lock (commitGate)
+        lock (gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var now = ObserveTimeLocked(clock);
+            SweepInactiveLocked(now);
+            var older = credentials.Values.Where(candidate => candidate.DeviceId == deviceId && !candidate.Revoked).ToArray();
+            var result = IssueLocked(deviceId, displayName, roles, now, access, releasing: older.Length);
+            foreach (var credential in older)
+            {
+                credential.Revoked = true;
+                CryptographicOperations.ZeroMemory(credential.Verifier);
+                credential.Nonces.Clear();
+            }
+            CommitLocked();
             try { EnsureIssuedStillLiveLocked(result.CredentialId); }
             catch
             {
@@ -194,6 +250,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     {
         GatewayRules.Require(Base64Url.TryDecode(credentialId, 16, out _), "request.invalid");
         GatewayRules.Require(overlap >= TimeSpan.Zero && overlap <= MaximumRotationOverlap, "request.invalid");
+        lock (commitGate)
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -214,7 +271,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                 current.StartedAt = lastTimestamp!.Value;
             }
             current.RotatedToCredentialId = replacement.CredentialId;
-            CommitLocked(cancellationToken);
+            CommitLocked();
             EnsureIssuedStillLiveLocked(replacement.CredentialId);
             cancellationToken.ThrowIfCancellationRequested();
             return replacement;
@@ -226,6 +283,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     public bool RevokeCredential(string credentialId, CancellationToken cancellationToken)
     {
         GatewayRules.Require(Base64Url.TryDecode(credentialId, 16, out _), "request.invalid");
+        lock (commitGate)
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -235,7 +293,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             credential.Revoked = true;
             CryptographicOperations.ZeroMemory(credential.Verifier);
             credential.Nonces.Clear();
-            CommitLocked(cancellationToken);
+            CommitLocked();
             if (persistence is not null)
                 ObserveTimeLocked(clock);
             cancellationToken.ThrowIfCancellationRequested();
@@ -248,6 +306,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     public int RevokeDevice(string deviceId, CancellationToken cancellationToken)
     {
         GatewayRules.Identifier(deviceId);
+        lock (commitGate)
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -262,7 +321,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                 count++;
             }
             if (count > 0)
-                CommitLocked(cancellationToken);
+                CommitLocked();
             if (persistence is not null)
                 ObserveTimeLocked(clock);
             cancellationToken.ThrowIfCancellationRequested();
@@ -317,48 +376,32 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     GatewayPrincipal IGatewayRequestCredentials.Authenticate(GatewaySignedRequest request) =>
         Authenticate(request);
 
+    /// <summary>Checks a signed request and records its nonce. With durable storage the nonce is saved (one append to the
+    /// nonce journal) before the request is admitted, but outside the main lock: requests that arrive while one save writes
+    /// share the next one. A cancellation never closes the authority; only a storage failure does.</summary>
     internal GatewayPrincipal Authenticate(GatewaySignedRequest request)
     {
+        CredentialRecord credential;
+        long ticket;
         lock (gate)
         {
             request.CancellationToken.ThrowIfCancellationRequested();
+            credential = CheckSignedLocked(request);
+            ticket = ++changeSequence;
+        }
+        if (persistence is not null)
+            PersistThrough(ticket);
+        lock (gate)
+        {
             var now = ObserveTimeLocked(clock);
-            var found = credentials.TryGetValue(request.CredentialId, out var credential);
-            SweepInactiveLocked(now);
-            if (!found)
+            if (!credentials.TryGetValue(credential.CredentialId, out var live) || !ReferenceEquals(live, credential))
                 throw new GatewayProtocolException("auth.invalid");
-            if (credential!.Revoked)
+            if (credential.Revoked)
                 throw new GatewayProtocolException("auth.revoked");
             if (ExpiredLocked(credential, now))
                 throw new GatewayProtocolException("auth.expired");
-
-            var expected = crypto.HmacSha256(credential.Verifier, request.CanonicalBytes);
-            if (!crypto.FixedTimeEquals(expected, request.Signature))
-                throw new GatewayProtocolException("auth.invalid");
-            if (request.Timestamp < now - RequestClockSkew ||
-                request.Timestamp > now + RequestClockSkew)
+            if (request.Timestamp < now - RequestClockSkew || request.Timestamp > now + RequestClockSkew)
                 throw new GatewayProtocolException("auth.clock");
-            if (!credential.Roles.Contains(request.Role))
-                throw new GatewayProtocolException("auth.role");
-
-            foreach (var stale in credential.Nonces
-                .Where(item => item.Value <= now).Select(item => item.Key).ToArray())
-                credential.Nonces.Remove(stale);
-            if (credential.Nonces.ContainsKey(request.Nonce))
-                throw new GatewayProtocolException("auth.replay");
-            if (credential.Nonces.Count >= MaximumNoncesPerCredential)
-                throw new GatewayProtocolException("auth.rate");
-            credential.Nonces.Add(request.Nonce,
-                now + RequestClockSkew + RequestClockSkew + TimeSpan.FromTicks(1));
-            CommitLocked(request.CancellationToken);
-            EnsureIssuedStillLiveLocked(credential.CredentialId);
-            if (persistence is not null)
-            {
-                var afterCommit = ObserveTimeLocked(clock);
-                if (request.Timestamp < afterCommit - RequestClockSkew ||
-                    request.Timestamp > afterCommit + RequestClockSkew)
-                    throw new GatewayProtocolException("auth.clock");
-            }
             request.CancellationToken.ThrowIfCancellationRequested();
             lastSeen[credential.DeviceId] = now;
 
@@ -373,6 +416,44 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                 Access = credential.Access
             };
         }
+    }
+
+    private CredentialRecord CheckSignedLocked(GatewaySignedRequest request)
+    {
+        var now = ObserveTimeLocked(clock);
+        var found = credentials.TryGetValue(request.CredentialId, out var credential);
+        SweepInactiveLocked(now);
+        if (!found)
+            throw new GatewayProtocolException("auth.invalid");
+        if (credential!.Revoked)
+            throw new GatewayProtocolException("auth.revoked");
+        if (ExpiredLocked(credential, now))
+            throw new GatewayProtocolException("auth.expired");
+
+        var expected = crypto.HmacSha256(credential.Verifier, request.CanonicalBytes);
+        if (!crypto.FixedTimeEquals(expected, request.Signature))
+            throw new GatewayProtocolException("auth.invalid");
+        if (request.Timestamp < now - RequestClockSkew ||
+            request.Timestamp > now + RequestClockSkew)
+            throw new GatewayProtocolException("auth.clock");
+        if (!credential.Roles.Contains(request.Role))
+            throw new GatewayProtocolException("auth.role");
+        if (replayFloor is { } floor && request.Timestamp <= floor)
+            throw new GatewayProtocolException("auth.replay");
+
+        foreach (var stale in credential.Nonces
+            .Where(item => item.Value <= now).Select(item => item.Key).ToArray())
+            credential.Nonces.Remove(stale);
+        if (credential.Nonces.ContainsKey(request.Nonce))
+            throw new GatewayProtocolException("auth.replay");
+        if (credential.Nonces.Count >= MaximumNoncesPerCredential)
+            throw new GatewayProtocolException("auth.rate");
+        // A nonce must outlive only the time its signed timestamp still passes the clock check.
+        var expires = request.Timestamp + RequestClockSkew + TimeSpan.FromTicks(1);
+        credential.Nonces.Add(request.Nonce, expires);
+        if (persistence is not null)
+            unsavedNonces.Add(new(credential.CredentialId, request.Nonce, expires, now));
+        return credential;
     }
 
     T IGatewayPrincipalAuthority.WithAuthority<T>(GatewayPrincipal principal, Func<T> operation) =>
@@ -400,11 +481,12 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         string displayName,
         GatewayRole[] roles,
         DateTimeOffset now,
-        GatewayAccess access = GatewayAccess.Full)
+        GatewayAccess access = GatewayAccess.Full,
+        int releasing = 0)
     {
         GatewayRules.Defined(access);
         SweepInactiveLocked(now);
-        GatewayRules.Require(credentials.Count < MaximumRegistrations, "auth.capacity");
+        GatewayRules.Require(credentials.Count - releasing < MaximumRegistrations, "auth.capacity");
         string? credentialId = null;
         for (var attempt = 0; attempt < 16; attempt++)
         {
@@ -528,6 +610,10 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     private GatewayCheckpoint CheckpointLocked(DateTimeOffset now)
     {
         SweepInactiveLocked(now);
+        // The checkpoint holds every live nonce, so the nonces waiting for an append are saved with it.
+        unsavedNonces.Clear();
+        if (replayFloor is { } floor && floor < now - RequestClockSkew)
+            replayFloor = null;
         return new(now, credentials.Values.Select(record => new StoredGatewayCredential(
             record.CredentialId, record.DeviceId, record.DisplayName, record.Roles.ToArray(),
             record.Verifier.ToArray(), record.IssuedAt, record.Lifetime,
@@ -535,23 +621,21 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             record.Nonces.Where(item => item.Value > now)
                 .Select(item => new StoredGatewayNonce(item.Key, item.Value)).ToArray(),
             record.Access == GatewayAccess.Friend ? GatewayAccess.Friend : null)).ToArray(),
-            lastTimestamp!.Value, frequency);
+            lastTimestamp!.Value, frequency, replayFloor);
     }
 
-    private void CommitLocked(CancellationToken cancellationToken = default)
+    /// <summary>Saves the authority with the caller's change in it. The caller holds <c>commitGate</c> and <c>gate</c>.
+    /// A failure closes the authority, because the disk state is then unknown.</summary>
+    private void CommitLocked()
     {
         if (persistence is null)
             return;
         try
         {
             using var checkpoint = CheckpointLocked(ObserveTimeLocked(clock));
-            cancellationToken.ThrowIfCancellationRequested();
-            persistence.Commit(checkpoint);
-        }
-        catch (OperationCanceledException)
-        {
-            CloseLocked();
-            throw;
+            var sequence = ++changeSequence;
+            TimedCommit(checkpoint);
+            committedSequence = sequence;
         }
         catch (GatewayProtocolException)
         {
@@ -564,6 +648,116 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             throw new GatewayProtocolException("auth.storage");
         }
     }
+
+    /// <summary>Makes every change up to <paramref name="ticket"/> durable. Holds <c>commitGate</c> while it writes, and
+    /// <c>gate</c> only to copy the state, so one write can save the nonces of many requests. Nonces go to the store's
+    /// nonce journal (one append and one flush); when the store cannot append, the whole authority is saved.</summary>
+    private void PersistThrough(long ticket)
+    {
+        lock (commitGate)
+        {
+            StoredGatewayNonceRecord[] nonces;
+            long sequence;
+            lock (gate)
+            {
+                if (committedSequence >= ticket)
+                    return;
+                nonces = unsavedNonces.ToArray();
+                unsavedNonces.Clear();
+                sequence = changeSequence;
+            }
+            try
+            {
+                if (TimedAppend(nonces))
+                {
+                    committedSequence = sequence;
+                    return;
+                }
+            }
+            catch (Exception error)
+            {
+                lock (gate)
+                    CloseLocked();
+                if (error is GatewayProtocolException) throw;
+                throw new GatewayProtocolException("auth.storage");
+            }
+            GatewayCheckpoint checkpoint;
+            lock (gate)
+            {
+                checkpoint = CheckpointLocked(ObserveTimeLocked(clock));
+                sequence = changeSequence;
+            }
+            using (checkpoint)
+            {
+                try { TimedCommit(checkpoint); }
+                catch (Exception error)
+                {
+                    lock (gate)
+                        CloseLocked();
+                    if (error is GatewayProtocolException) throw;
+                    throw new GatewayProtocolException("auth.storage");
+                }
+            }
+            committedSequence = sequence;
+        }
+    }
+
+    private bool TimedAppend(StoredGatewayNonceRecord[] nonces)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (!persistence!.AppendNonces(nonces))
+            return false;
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+        lock (statsGate)
+            nonceStats = Add(nonceStats, elapsed);
+        if (elapsed >= SlowCommit)
+            SlowCommitObserved?.Invoke(elapsed);
+        return true;
+    }
+
+    private void TimedCommit(GatewayCheckpoint checkpoint)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        persistence!.Commit(checkpoint);
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+        lock (statsGate)
+            commitStats = Add(commitStats, elapsed);
+        if (elapsed >= SlowCommit)
+            SlowCommitObserved?.Invoke(elapsed);
+    }
+
+    private static GatewayAuthorityCommitStats Add(GatewayAuthorityCommitStats stats, TimeSpan elapsed) => stats with
+    {
+        Commits = stats.Commits + 1,
+        SlowCommits = stats.SlowCommits + (elapsed >= SlowCommit ? 1 : 0),
+        Last = elapsed,
+        Total = stats.Total + elapsed,
+        Longest = elapsed > stats.Longest ? elapsed : stats.Longest
+    };
+
+    /// <summary>How long full saves of the authority take (pairing changes, the first request after a restart, and a
+    /// request whose nonce cannot be appended to the nonce journal).</summary>
+    internal GatewayAuthorityCommitStats CommitStats
+    {
+        get
+        {
+            lock (statsGate)
+                return commitStats;
+        }
+    }
+
+    /// <summary>How long nonce appends take; each signed request waits for one (requests that arrive together share it).</summary>
+    internal GatewayAuthorityCommitStats NonceStats
+    {
+        get
+        {
+            lock (statsGate)
+                return nonceStats;
+        }
+    }
+
+    /// <summary>Called after a commit that took <see cref="SlowCommit"/> or longer, for the host log.</summary>
+    internal Action<TimeSpan>? SlowCommitObserved { get; set; }
 
     private void EnsureIssuedStillLiveLocked(string id)
     {
@@ -634,12 +828,15 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
 
     internal void CommitMaintenance(Action<GatewayCheckpoint> commit)
     {
+        lock (commitGate)
         lock (gate)
         {
             try
             {
                 using var checkpoint = CheckpointLocked(ObserveTimeLocked(clock));
+                var sequence = ++changeSequence;
                 commit(checkpoint);
+                committedSequence = sequence;
                 ObserveTimeLocked(clock);
             }
             catch
@@ -652,6 +849,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
 
     internal void Complete(CancellationToken cancellationToken = default)
     {
+        lock (commitGate)
         lock (gate)
         {
             stopping = false;
@@ -878,10 +1076,14 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
                     proof.SpkiFingerprint != identity.SpkiFingerprint ? "host.pin_mismatch" : "pairing.invalid");
             }
 
+            // Check the deadline before the credential is issued, so an expired window never leaves an unused pairing.
+            if (ExpiredLocked(window, credentials.ObserveTime(clock)))
+            {
+                RemoveWindowLocked(proof.PairingId);
+                throw new GatewayProtocolException("pairing.expired");
+            }
             var credential = credentials.Issue(window.DeviceId!, window.DisplayName!, window.Roles, cancellationToken);
             RemoveWindowLocked(proof.PairingId);
-            if (ExpiredLocked(window, credentials.ObserveTime(clock)))
-                throw new GatewayProtocolException("pairing.expired");
             cancellationToken.ThrowIfCancellationRequested();
             return credential;
         }

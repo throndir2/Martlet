@@ -30,51 +30,122 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         ("Other", OtherTools())
     ];
 
+    /// <summary>Reads JSON-RPC requests, one a line, and writes the responses. Tool calls run one after another, in the order they
+    /// came, but the server keeps reading while one runs: ping and the other methods answer at once, and notifications/cancelled
+    /// stops a running or waiting tool call (a cancelled call gets no response, as MCP says).</summary>
     internal async Task RunAsync(TextReader input, TextWriter output, CancellationToken cancellation)
     {
-        while (!cancellation.IsCancellationRequested)
+        using var writing = new SemaphoreSlim(1, 1);
+        var calls = new System.Collections.Concurrent.ConcurrentDictionary<string, CancellationTokenSource>(StringComparer.Ordinal);
+        var toolCalls = Task.CompletedTask;
+
+        async Task WriteAsync(object response)
         {
-            var line = await input.ReadLineAsync(cancellation);
-            if (line is null) break;
-            object? id = null;
-            object response;
+            await writing.WaitAsync(CancellationToken.None);
             try
             {
-                if (line.Length > MaxLineLength) throw new ArgumentException("Request exceeds 1 MiB.");
-                using var document = JsonDocument.Parse(line);
-                var request = document.RootElement;
-                if (request.ValueKind != JsonValueKind.Object ||
-                    !request.TryGetProperty("jsonrpc", out var version) ||
-                    version.ValueKind != JsonValueKind.String || version.GetString() != "2.0" ||
-                    !request.TryGetProperty("method", out var method) || method.ValueKind != JsonValueKind.String)
-                    throw new ArgumentException("Invalid JSON-RPC request.");
-                if (request.TryGetProperty("id", out var requestId))
-                {
-                    if (requestId.ValueKind is not (JsonValueKind.String or JsonValueKind.Number))
-                        throw new ArgumentException("Invalid JSON-RPC request ID.");
-                    id = requestId.Clone();
-                }
-                if (id is null) continue;
-                var parameters = request.TryGetProperty("params", out var value) ? value : default;
-                response = method.GetString() switch
-                {
-                    "initialize" => Success(id, new
-                    {
-                        protocolVersion = "2025-06-18",
-                        capabilities = new { tools = new { } },
-                        serverInfo = new { name = "martlet", title = "Martlet", version = Version },
-                        instructions = Instructions()
-                    }),
-                    "ping" => Success(id, new { }),
-                    "tools/list" => Success(id, new { tools = ToolList() }),
-                    "tools/call" => Success(id, await CallAsync(parameters, cancellation)),
-                    _ => Error(id, -32601, "Method not found.")
-                };
+                await output.WriteLineAsync(JsonSerializer.Serialize(response));
+                await output.FlushAsync(CancellationToken.None);
             }
-            catch (JsonException ex) { response = Error(id, -32700, ex.Message); }
-            catch (ArgumentException ex) { response = Error(id, -32600, ex.Message); }
-            await output.WriteLineAsync(JsonSerializer.Serialize(response));
-            await output.FlushAsync(cancellation);
+            finally { writing.Release(); }
+        }
+
+        async Task ToolCallAsync(Task previous, object id, string key, JsonElement parameters, CancellationTokenSource call)
+        {
+            try { await previous; } catch (Exception) { }
+            try
+            {
+                if (call.IsCancellationRequested) return;
+                object result;
+                try { result = await CallAsync(parameters, call.Token); }
+                catch (OperationCanceledException) when (call.IsCancellationRequested) { return; }
+                catch (Exception ex) { result = ToolError(ex); }
+                if (!call.IsCancellationRequested) await WriteAsync(Success(id, result));
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException) { }
+            finally
+            {
+                calls.TryRemove(new KeyValuePair<string, CancellationTokenSource>(key, call));
+                call.Dispose();
+            }
+        }
+
+        try
+        {
+            while (!cancellation.IsCancellationRequested)
+            {
+                var line = await input.ReadLineAsync(cancellation);
+                if (line is null) break;
+                object? id = null;
+                object response;
+                try
+                {
+                    if (line.Length > MaxLineLength) throw new ArgumentException("Request exceeds 1 MiB.");
+                    JsonDocument document;
+                    try { document = JsonDocument.Parse(line); }
+                    catch (JsonException ex)
+                    {
+                        // Only a request line that is not JSON is a parse error; a tool's own JSON problems are tool errors.
+                        await WriteAsync(Error(null, -32700, "Parse error: " + ex.Message));
+                        continue;
+                    }
+                    using (document)
+                    {
+                        var request = document.RootElement;
+                        if (request.ValueKind != JsonValueKind.Object ||
+                            !request.TryGetProperty("jsonrpc", out var version) ||
+                            version.ValueKind != JsonValueKind.String || version.GetString() != "2.0" ||
+                            !request.TryGetProperty("method", out var method) || method.ValueKind != JsonValueKind.String)
+                            throw new ArgumentException("Invalid JSON-RPC request.");
+                        if (request.TryGetProperty("id", out var requestId))
+                        {
+                            if (requestId.ValueKind is not (JsonValueKind.String or JsonValueKind.Number))
+                                throw new ArgumentException("Invalid JSON-RPC request ID.");
+                            id = requestId.Clone();
+                        }
+                        var parameters = request.TryGetProperty("params", out var value) ? value.Clone() : default;
+                        if (id is null)
+                        {
+                            if (method.GetString() == "notifications/cancelled" && parameters.ValueKind == JsonValueKind.Object &&
+                                parameters.TryGetProperty("requestId", out var cancelled) &&
+                                calls.TryGetValue(cancelled.GetRawText(), out var running))
+                            {
+                                try { running.Cancel(); } catch (ObjectDisposedException) { }
+                            }
+                            continue;
+                        }
+                        if (method.GetString() == "tools/call")
+                        {
+                            var key = ((JsonElement)id).GetRawText();
+                            var call = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                            calls[key] = call;
+                            toolCalls = ToolCallAsync(toolCalls, id, key, parameters, call);
+                            continue;
+                        }
+                        response = method.GetString() switch
+                        {
+                            "initialize" => Success(id, new
+                            {
+                                protocolVersion = "2025-06-18",
+                                capabilities = new { tools = new { } },
+                                serverInfo = new { name = "martlet", title = "Martlet", version = Version },
+                                instructions = Instructions()
+                            }),
+                            "ping" => Success(id, new { }),
+                            "tools/list" => Success(id, new { tools = ToolList() }),
+                            _ => Error(id, -32601, "Method not found.")
+                        };
+                    }
+                }
+                catch (ArgumentException ex) { response = Error(id, -32600, ex.Message); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { response = Error(id, -32603, "Internal error: " + ex.Message); }
+                await WriteAsync(response);
+            }
+        }
+        finally
+        {
+            // The calls already read still answer before the server ends (stdin closed).
+            await toolCalls;
         }
     }
 
@@ -87,21 +158,57 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             var tool = FindTool(name) ?? throw new ArgumentException($"Unknown tool '{name}'.");
             // martlet_call's result is already the result of the tool it ran.
             if (tool.Name == "martlet_call") return await tool.Run(arguments, cancellation);
-            var result = tool.Permission == ToolPermission.Changes
+            var result = tool.Permission == ToolPermission.Changes || tool.Writes?.Invoke(arguments) == true
                 ? await ChangingAsync(name, () => tool.Run(arguments, cancellation))
                 : await tool.Run(arguments, cancellation);
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
-            System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
-            System.Windows.Automation.ElementNotAvailableException or Martlet.Core.Contracts.ContractException or
-            Martlet.Core.Settings.CharacterCardException or IOException or UnauthorizedAccessException or
-            // The character finders (character_find_looks, character_find_on_web, a look key in character_create) go online.
-            System.Net.Http.HttpRequestException or Martlet.Avatar.Hosting.VRoidHubException or Martlet.Conversation.WebResearchException ||
-            ex is TaskCanceledException && !cancellation.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or InsufficientExecutionStackException)) { return ToolError(ex); }
+    }
+
+    /// <summary>A tool's failure as an MCP tool result (isError), so one bad call never ends the server. The exceptions the
+    /// tools throw on purpose give their message; any other gives its type too.</summary>
+    private static object ToolError(Exception ex)
+    {
+        var text = ex switch
         {
-            return new { content = new[] { new { type = "text", text = ex is TaskCanceledException ? "A web request took too long." : ex.Message } }, isError = true };
+            OperationCanceledException or TimeoutException => "The tool took too long: " + ex.Message,
+            ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
+                System.Windows.Automation.ElementNotAvailableException or Martlet.Core.Contracts.ContractException or
+                Martlet.Core.Settings.CharacterCardException or System.Net.Http.HttpRequestException or
+                Martlet.Avatar.Hosting.VRoidHubException or Martlet.Conversation.WebResearchException => ex.Message,
+            _ => $"{ex.GetType().Name}: {ex.Message}"
+        };
+        if (text.Length > 2000) text = text[..2000] + "...";
+        return new { content = new[] { new { type = "text", text } }, isError = true };
+    }
+
+    /// <summary>Whether the call names a dataDirectory that is not the current user's own Martlet data folder: the only kind
+    /// the diagnostic tools write FIXTURE data into.</summary>
+    private static bool DisposableDataDirectory(JsonElement arguments)
+    {
+        if (OptionalString(arguments, "dataDirectory") is not { Length: > 0 } given || !Path.IsPathFullyQualified(given)) return false;
+        static string Normal(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        return !string.Equals(Normal(given), Normal(DefaultDataDirectory), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Refuses an output file on another computer (a \\server\share path or a network drive) or one that exists, so a
+    /// tool only adds a new file on this PC.</summary>
+    internal static void RequireLocalNewFile(string path, string name)
+    {
+        var full = Path.GetFullPath(path);
+        if (full.StartsWith(@"\\", StringComparison.Ordinal) || full.StartsWith("//", StringComparison.Ordinal))
+            throw new ArgumentException($"{name} must be on this PC, not a network path.");
+        if (Path.GetPathRoot(full) is { Length: > 0 } root)
+        {
+            DriveType type;
+            try { type = new DriveInfo(root).DriveType; }
+            catch (ArgumentException) { type = DriveType.Unknown; }
+            if (type == DriveType.Network) throw new ArgumentException($"{name} must be on this PC, not a network drive.");
         }
+        if (File.Exists(full) || Directory.Exists(full)) throw new ArgumentException($"{name} already exists; choose a new file name.");
     }
 
     /// <summary>The optional absolute speechDirectory argument (where Parakeet is downloaded), or the current user's.</summary>
@@ -203,7 +310,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
     };
 
     private sealed record MemoryCounts(string State, int Facts = 0, int Typed = 0, int FromConversation = 0, int Expiring = 0, object? Whose = null,
-        int Replaced = 0, int WithSearchWords = 0);
+        int Replaced = 0, int WithSearchWords = 0, object? Where = null);
 
     /// <summary>Whether a hosts.json entry is a host a friend shares with that desktop (Martlet.Desktop's PairedHost.Access).</summary>
     internal static bool IsSharedHost(JsonElement host) =>

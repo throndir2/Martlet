@@ -1772,12 +1772,9 @@ backup/restore excludes the sidecar with visible disclosure until that lifecycle
 integration is qualified. This feature-local recovery is not inclusion in
 global backup, installer/update lifecycle qualification or release readiness.
 
-The [local packaging pipeline](../packaging/windows/README.md) and
-[current update reader](../src/Martlet.Updates/README.md#avatar-payload-schema-3)
-now coordinate manifest 3 / provenance 2 / CycloneDX 1.6, including the real
-Desktop, Doctor and private renderer contexts and browser evidence. The reader
-retains legacy manifest 1 and manifest 2 / provenance 1 paths without rewriting
-their history; older readers reject manifest 3. Actual self-contained payload,
+The [local packaging pipeline](../packaging/windows/README.md) writes
+manifest 3 / provenance 2 / CycloneDX 1.6, including the real
+Desktop, Doctor and private renderer contexts and browser evidence. Actual self-contained payload,
 three-document consumer conformance and repeated local package assertions have
 passed for specific frozen builds. Those receipts do not transfer to a changed
 source tree: every candidate requires its own frozen-source build and checks.

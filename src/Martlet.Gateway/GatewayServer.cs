@@ -49,65 +49,65 @@ public sealed class GatewayServer
 
     /// <summary>Keeps this host's copy of the shared cluster plan (served at /martlet/v1/cluster) in <paramref name="storage"/>
     /// and loads the copy saved there.</summary>
-    public void AttachClusterStorage(IGatewayClusterStorage storage) => application.Cluster.Attach(storage);
+    public void AttachClusterStorage(IGatewayClusterStorage storage) => application.Cluster.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's copy of the shared voice list (served at /martlet/v1/voices) in <paramref name="storage"/>
     /// and loads the copy saved there.</summary>
-    public void AttachVoiceStorage(IGatewayVoiceStorage storage) => application.Voices.Attach(storage);
+    public void AttachVoiceStorage(IGatewayVoiceStorage storage) => application.Voices.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's copy of the voices Martlet speaks with and their recordings (served at
     /// /martlet/v1/speaking-voices) in <paramref name="storage"/> and loads what was saved there.</summary>
-    public void AttachSpeakingVoiceStorage(IGatewaySpeakingVoiceStorage storage) => application.SpeakingVoices.Attach(storage);
+    public void AttachSpeakingVoiceStorage(IGatewaySpeakingVoiceStorage storage) => application.SpeakingVoices.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's copy of the character models the owner added and their pieces (served at
     /// /martlet/v1/character-models) in <paramref name="storage"/> and loads what was saved there.</summary>
-    public void AttachCharacterModelStorage(IGatewayCharacterModelStorage storage) => application.CharacterModels.Attach(storage);
+    public void AttachCharacterModelStorage(IGatewayCharacterModelStorage storage) => application.CharacterModels.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's copy of Martlet's creations and their pieces (served at /martlet/v1/creations) in
     /// <paramref name="storage"/> and loads what was saved there.</summary>
-    public void AttachCreationStorage(IGatewayCreationStorage storage) => application.Creations.Attach(storage);
+    public void AttachCreationStorage(IGatewayCreationStorage storage) => application.Creations.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's creation list of each account (served at /martlet/v1/creations/accounts/{32 hex}) in
     /// <paramref name="storage"/> and loads the lists saved there. Attach it before <see cref="AttachCreationStorage"/>, which
     /// keeps the pieces of every list.</summary>
-    public void AttachAccountCreationStorage(IGatewayAccountCreationStorage storage) => application.Creations.AttachAccounts(storage);
+    public void AttachAccountCreationStorage(IGatewayAccountCreationStorage storage) => application.Creations.AttachAccounts(storage, application.StoreHealth);
 
     /// <summary>The accounts this host keeps a creation list for.</summary>
     public IReadOnlyList<Guid> CreationAccounts => application.Creations.Accounts;
 
     /// <summary>Keeps this host's shared Home Assistant connection (served at /martlet/v1/home-assistant) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
-    public void AttachHomeAssistantStorage(IGatewayHomeAssistantStorage storage) => application.HomeAssistant.Attach(storage);
+    public void AttachHomeAssistantStorage(IGatewayHomeAssistantStorage storage) => application.HomeAssistant.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's copy of the owner's shared settings (served at /martlet/v1/settings, API keys included) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
-    public void AttachSettingsStorage(IGatewaySettingsStorage storage) => application.Settings.Attach(storage);
+    public void AttachSettingsStorage(IGatewaySettingsStorage storage) => application.Settings.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's copy of each account's settings (served at /martlet/v1/settings/accounts/{account}) in
     /// <paramref name="storage"/> and loads the copies saved there.</summary>
-    public void AttachAccountSettingsStorage(IGatewayAccountSettingsStorage storage) => application.AccountSettings.Attach(storage);
+    public void AttachAccountSettingsStorage(IGatewayAccountSettingsStorage storage) => application.AccountSettings.Attach(storage, application.StoreHealth);
 
     /// <summary>The accounts (32 lowercase hex) this host keeps settings for.</summary>
     public IReadOnlyList<string> AccountSettings => application.AccountSettings.Accounts;
 
     /// <summary>Keeps this host's copy of everything Martlet remembers (served at /martlet/v1/memories) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
-    public void AttachMemoryStorage(IGatewayMemoryStorage storage) => application.Memories.Attach(storage);
+    public void AttachMemoryStorage(IGatewayMemoryStorage storage) => application.Memories.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's copy of the household's account directory (served at /martlet/v1/accounts) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
-    public void AttachAccountStorage(IGatewayAccountStorage storage) => application.Accounts.Attach(storage);
+    public void AttachAccountStorage(IGatewayAccountStorage storage) => application.Accounts.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps this host's memory spaces (served at /martlet/v1/memories/spaces/{space}) in <paramref name="storage"/>
     /// and loads the spaces saved there.</summary>
-    public void AttachMemorySpaceStorage(IGatewayMemorySpaceStorage storage) => application.MemorySpaces.Attach(storage);
+    public void AttachMemorySpaceStorage(IGatewayMemorySpaceStorage storage) => application.MemorySpaces.Attach(storage, application.StoreHealth);
 
     /// <summary>The IDs of the memory spaces this host keeps.</summary>
     public IReadOnlyList<string> MemorySpaces => application.MemorySpaces.Spaces;
 
     /// <summary>Keeps this host's copies of each account's record of conversations (served at
     /// /martlet/v1/conversations/accounts/{32 hex}/{yyyy-MM}) in <paramref name="storage"/> and loads the months saved there.</summary>
-    public void AttachConversationStorage(IGatewayConversationStorage storage) => application.Conversations.Attach(storage);
+    public void AttachConversationStorage(IGatewayConversationStorage storage) => application.Conversations.Attach(storage, application.StoreHealth);
 
     /// <summary>The keys (<c>&lt;32 hex account&gt;-&lt;yyyy-MM&gt;</c>) of the months of conversations this host keeps, in order.</summary>
     public IReadOnlyList<string> ConversationRecords => application.Conversations.Keys;
@@ -122,11 +122,11 @@ public sealed class GatewayServer
 
     /// <summary>Keeps this host's copy of the network's API keys (served to paired desktops at /martlet/v1/api-keys and
     /// checked for every Authorization: Bearer request) in <paramref name="storage"/> and loads the copy saved there.</summary>
-    public void AttachApiKeyStorage(IGatewayApiKeyStorage storage) => application.ApiKeys.Attach(storage);
+    public void AttachApiKeyStorage(IGatewayApiKeyStorage storage) => application.ApiKeys.Attach(storage, application.StoreHealth);
 
     /// <summary>Keeps the Martlet network roster this host accepted (served at /martlet/v1/network) in
     /// <paramref name="storage"/> and loads the roster saved there.</summary>
-    public void AttachNetworkStorage(IGatewayNetworkStorage storage) => application.Network.Attach(storage);
+    public void AttachNetworkStorage(IGatewayNetworkStorage storage) => application.Network.Attach(storage, application.StoreHealth);
 
     /// <summary>For tests: the other hosts this host's OpenAI-compatible endpoint sends requests on to (instead of its roster's),
     /// given as host ID, home origin and TLS key fingerprint.</summary>
@@ -144,7 +144,7 @@ public sealed class GatewayServer
 
     /// <summary>Keeps this host's sign-in settings (owner account, providers, allowed identities; served without secrets at
     /// /martlet/v1/signin) in <paramref name="storage"/>. Without it nobody can sign in here.</summary>
-    public void AttachSignInStorage(IGatewaySignInStorage storage) => application.SignIn.Attach(storage);
+    public void AttachSignInStorage(IGatewaySignInStorage storage) => application.SignIn.Attach(storage, application.StoreHealth);
 
     /// <summary>Null when someone can sign in to this host (an owner account, or a provider with an allowed identity);
     /// otherwise why not ("signin.not_set_up", "signin.no_allowed_identity"). A host is reachable from outside home only
@@ -163,11 +163,11 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and accepts <paramref name="agentToken"/> (32 random bytes, base64url, also written where
     /// only the host computer itself can read it) from the Martlet app that runs them there.</summary>
     public void AttachCommandStorage(IGatewayCommandStorage storage, string agentToken) =>
-        application.Commands.Attach(storage, agentToken, application.Now);
+        application.Commands.Attach(storage, agentToken, application.Now, application.StoreHealth);
 
     /// <summary>Keeps this host's log (its own activity and every computer's lines the owner's desktops share with it;
     /// served at /martlet/v1/logs) in <paramref name="storage"/> and loads the log saved there.</summary>
-    public void AttachLogStorage(IGatewayLogStorage storage) => application.Logs.Attach(storage);
+    public void AttachLogStorage(IGatewayLogStorage storage) => application.Logs.Attach(storage, application.StoreHealth);
 
     /// <summary>Adds a line to this host's own log (for example a configuration problem the host found at start).</summary>
     public void RecordActivity(string level, string message) => application.Logs.Own(level, message);

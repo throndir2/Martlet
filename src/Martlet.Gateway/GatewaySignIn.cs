@@ -66,14 +66,16 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     internal const int MaximumRefused = 8;
     private GatewaySignInDocument document = new();
     private IGatewaySignInStorage? storage;
+    private GatewayStoreHealth health = new();
 
     /// <summary>Builds the provider for a configured entry; external providers plug in here.</summary>
     internal Func<GatewaySignInProviderConfig, IGatewaySignInProvider?> Providers { get; set; } = _ => null;
 
     internal bool Attached { get { lock (gate) return storage is not null; } }
 
-    internal void Attach(IGatewaySignInStorage value)
+    internal void Attach(IGatewaySignInStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         lock (gate)
         {
@@ -91,14 +93,14 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
         try { loaded = storage.Load() is { } bytes ? GatewaySignInDocument.Parse(bytes) : new(); }
         catch (Exception error) when (error is not OperationCanceledException)
         {
+            health.Failed("sign-in", "load", error, logged: true);
             log(LogLevels.Warn, "signin.json is unreadable or invalid, so nobody can sign in to this host until it is set up again.");
             return new();
         }
         var stale = loaded.Sweep(clock.GetUtcNow());
         if (stale.Count > 0)
         {
-            try { storage.Save(loaded.Write()); }
-            catch (Exception error) when (error is not OperationCanceledException) { }
+            health.Try("sign-in", "save", () => storage.Save(loaded.Write()), attempts: 2);
             RevokeLocked(stale);
         }
         return loaded;
@@ -523,8 +525,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             if (index < 0 || current.Enrolled[index].Key == key) return;
             var next = current.Clone();
             next.Enrolled[index] = next.Enrolled[index] with { Key = key };
-            try { SaveLocked(next); }
-            catch (Exception error) when (error is not OperationCanceledException) { }
+            health.Try("sign-in", "save", () => SaveLocked(next), attempts: 2);
         }
     }
 
@@ -544,8 +545,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             {
                 var next = current.Clone();
                 next.Removed.RemoveAll(r => !Pending(r));
-                try { SaveLocked(next); }
-                catch (Exception error) when (error is not OperationCanceledException) { }
+                health.Try("sign-in", "save", () => SaveLocked(next), attempts: 2);
             }
             return pending;
         }

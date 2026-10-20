@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <EmbeddedResource Include="candidate-requirements.json" />
-  </ItemGroup>
-</Project>

@@ -10,7 +10,10 @@ namespace Martlet.Core.Lorebooks;
 /// <param name="Earlier">Recent messages before it, oldest first.</param>
 /// <param name="PersonaId">The active persona; SelectedPersonas lorebooks apply only to their personas.</param>
 /// <param name="PersonaName">Replaces {{char}} in keys and content.</param>
-public sealed record LorebookScanRequest(string Current, IReadOnlyList<string> Earlier, Guid? PersonaId = null, string? PersonaName = null);
+/// <param name="Activity">What the user does now, such as the name of the game played: scanned on its own after the messages
+/// (whatever the scan depth), so an entry keyed by a game's name joins in while that game is played. Null: nothing.</param>
+public sealed record LorebookScanRequest(string Current, IReadOnlyList<string> Earlier, Guid? PersonaId = null, string? PersonaName = null,
+    string? Activity = null);
 
 /// <summary>One triggered entry, with macros already expanded in <see cref="Content"/>.</summary>
 public sealed record LorebookHit(Guid BookId, string BookName, int BookIndex, int EntryIndex, LorebookEntry Entry,
@@ -141,7 +144,16 @@ public static class LorebookScanner
                 if (pass > 0 && candidate.Entry.ExcludeRecursion) continue;
                 var text = pass == 0 ? Window(candidate.Depth) : WithRecursion(candidate.Depth);
                 var forms = Forms(candidate, text);
-                if (FirstMatch(candidate.Entry.Keys, name, text, candidate.CaseSensitive, candidate.WholeWords, forms) is not { } key) continue;
+                var key = FirstMatch(candidate.Entry.Keys, name, text, candidate.CaseSensitive, candidate.WholeWords, forms);
+                // The game played now: an entry keyed by its name joins in while it is played.
+                if (key is null && pass == 0 && !string.IsNullOrWhiteSpace(request.Activity))
+                {
+                    text = request.Activity;
+                    forms = Forms(candidate, text);
+                    key = FirstMatch(candidate.Entry.Keys, name, text, candidate.CaseSensitive, candidate.WholeWords, forms) is { } now
+                        ? now + " (played now)" : null;
+                }
+                if (key is null) continue;
                 if (candidate.Entry.SecondaryKeys.Count > 0 && !SecondaryPasses(candidate, text, forms)) continue;
                 matched.Add((candidate, pass == 0 ? key : key + " (from another entry)"));
             }

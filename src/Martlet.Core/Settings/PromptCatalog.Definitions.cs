@@ -262,6 +262,12 @@ public static partial class PromptCatalog
             "from what Martlet remembers (Companion › Memory › Memory brief). It goes in the notes of the first message of each " +
             "conversation, never in the instructions, so prompt caches keep working. Empty it to send no brief.",
             DefaultMemoryBriefInstructions, []),
+        new(WhilePlaying, ConversationGroup, "While you play",
+            "Goes in the notes of a message while Martlet sees a game played on this PC, once while the conversation sent still " +
+            "carries it (again after the game changes), never in the instructions, so prompt caches keep working. Lorebook entries " +
+            "with the game's name as a keyword are added too, so a lorebook can hold what Martlet should know for one game. {game} " +
+            "is the game's name. Empty it to send nothing.",
+            DefaultWhilePlayingInstructions, ["game"]),
         new(Notes, ConversationGroup, "Notes with messages",
             "Opens the first notes in the conversation sent. Whatever changes from message to message " +
             "(new lorebook entries and remembered facts, who is talking, smart home results) goes with the message, " +
@@ -392,6 +398,11 @@ public static partial class PromptCatalog
             "and the WORDS line after a REMEMBER or UPDATE line as the fact's hidden search words; " +
             "{nothing} is the word for no change.",
             DefaultMemoryCaptureInstructions, ["nothing"]),
+        new(MemoryCaptureGame, BackgroundGroup, "Remembering while you play",
+            "Added to Remembering while Martlet sees a game played on this PC, so a fact about that game is kept for it and isn't " +
+            "brought up in other games. {game} is the game's name. Martlet reads REMEMBER HERE (this game only), REMEMBER GAMES " +
+            "(any game) and REMEMBER EVERYWHERE; a REMEMBER line without one counts as HERE.",
+            DefaultMemoryCaptureGameInstructions, ["game"]),
         new(MemoryUpkeep, BackgroundGroup, "Tidying memory",
             "Sent in the background to a free Thinking pool member, never to the conversation's own model: groups of remembered " +
             "facts that may repeat or contradict each other, and facts without search words. Martlet reads the SAME (merge), " +
@@ -512,6 +523,14 @@ public static partial class PromptCatalog
             "the reply), or every exchange since it last ran, and {work} the reminders set and the background work started or " +
             "finished. It changes nothing itself: the tools of the sets it may use do (such as reminders).",
             DefaultCheckInActionsInstructions, ["name", "exchange", "work"]),
+        new(CheckInMemory, CheckInGroup, "Check-in: memory care",
+            "What Memory care checks, every hour while something new was said. {exchange} is what was said since it last ran and " +
+            "{activity} what the user seems to be doing on this PC (a game, an app). It changes nothing itself: the Memory tools " +
+            "it calls in as many steps as it takes (memory_overview, memory_find, memory_history, memory_update, " +
+            "memory_update_many, memory_note, memory_merge, memory_outdated, memory_forget) do: they correct facts, keep a " +
+            "fact for the right game (where) and merge duplicates, and every correction keeps the " +
+            "earlier version as history.",
+            DefaultCheckInMemoryInstructions, ["name", "exchange", "activity"]),
         new(CheckInAhead, CheckInGroup, "Check-in: think ahead",
             "What Think ahead asks right after each reply, while the user hasn't answered yet. {persona} is the active " +
             "personality, {conversation} the end of the conversation and {callbacks} the callback list (what Callback list keeps, " +

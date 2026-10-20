@@ -56,8 +56,9 @@ public partial class MainWindow
         var id = $"Pool-{area.Id}-";
         var name = SingingCloud.Name(provider);
         var stack = new StackPanel();
-        stack.Children.Add(Note($"Its model is part of the member. To use another {name} model, add {name} again with that model. " +
-            $"One {name} key serves both of Singing's lists and your other computers.", new Thickness(0, 0, 0, 8)));
+        stack.Children.Add(HelpTip.Explain($"To use another {name} model, add {name} again with that model. One {name} key serves " +
+            "both of Singing's lists and your other computers.", new Thickness(0, 0, 0, 8), $"{id}CloudModel-{member.Key}", $"{name} models",
+            wiki: "Singing#cloud-providers"));
         if (area == PoolAreas.Singing && provider == SingingCloud.Mureka)
         {
             var own = new CheckBox
@@ -66,8 +67,8 @@ public partial class MainWindow
                 Content = new TextBlock
                 {
                     TextWrapping = TextWrapping.Wrap,
-                    Text = "Sing in the voice Martlet speaks with (Mureka clones it from the voice's recording, which goes to Mureka). " +
-                        "Then songs from Mureka need no voice match."
+                    Text = "Sing in the voice Martlet speaks with (Mureka clones it from the voice's recording, which goes to Mureka), " +
+                        "so songs from Mureka need no voice match."
                 }
             };
             AutomationProperties.SetAutomationId(own, id + "OwnVoice-" + member.Key);
@@ -80,7 +81,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(key, id + "CloudKey-" + member.Key);
         InputHint.SetText(key, $"Paste your {name} API key");
         key.PasswordChanged += (_, _) => tabEdited = true;
-        var status = Note(Capitalized(SingingKeyText(provider)) + ". Paste a key to save it for Singing.", new Thickness(0, 4, 0, 0));
+        var status = Note(Capitalized(SingingKeyText(provider)) + "; paste a key to save it for Singing.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(status, id + "CloudKeyStatus-" + member.Key);
         var save = PageButton("Save key", () => SaveSingingKeyAsync(provider, key).Forget(), primary: true, id: id + "CloudSaveKey-" + member.Key);
         AutomationProperties.SetName(save, $"Save the {name} key for Singing");
@@ -103,7 +104,7 @@ public partial class MainWindow
             await SingingCloudKeys.SaveAsync(store.DataDirectory, provider, key, lifetime.Token);
             QueueSettingsSync();
             ErrorLog.Info($"Singing: saved a {name} key for Singing.");
-            ActionText.Text = $"Saved the {name} key for Singing in Windows Credential Manager. Your other computers get it too.";
+            ActionText.Text = $"Saved the {name} key for Singing in Windows Credential Manager, and your other computers get it too.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is InvalidOperationException or ContractException) { ActionText.Text = error.Message; }
@@ -149,13 +150,13 @@ public partial class MainWindow
         InputHint.SetText(key, $"Paste your {name} API key");
         var has = store is not null && SingingCloudKeys.Has(store.DataDirectory, provider);
         var keyStatus = Note(has ? $"Leave this empty to use the {name} key Martlet has ({SingingKeyText(provider)}), or paste another key."
-            : $"Paste your {name} API key. Martlet saves it in Windows Credential Manager and gives it to your other computers.", new Thickness(0, 4, 0, 0));
+            : $"Paste your {name} API key: Martlet saves it in Windows Credential Manager and gives it to your other computers.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "SingingCloudKeyStatus-" + area.Id);
         var consent = new CheckBox
         {
             Margin = new Thickness(0, 12, 0, 8),
-            Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = $"I add {name} to Singing's {(area == PoolAreas.VoiceMatch ? "voice match" : "music")} list. " +
-                SingingCloud.Disclosure(provider, area) }
+            Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = $"I add {name} to Singing's {(area == PoolAreas.VoiceMatch ? "voice match" : "music")} list: " +
+                Lowered(SingingCloud.Disclosure(provider, area)) }
         };
         AutomationProperties.SetAutomationId(consent, "SingingCloudConsent-" + area.Id);
         model.TextChanged += (_, _) => { if (model.IsKeyboardFocusWithin) { tabEdited = true; consent.IsChecked = false; } };
@@ -220,8 +221,8 @@ public partial class MainWindow
                 throw new InvalidOperationException($"Couldn't save the {area.Title} list on this PC.");
             QueueSettingsSync();
             ErrorLog.Info($"Singing: added {SingingCloud.Describe(member, area)} to the {area.Title} list (the owner agreed to pay).");
-            Say($"{SingingCloud.Describe(member, area)} is now last in the list. Move it up to use it sooner." +
-                (key is null ? "" : " Its API key is saved in Windows Credential Manager."));
+            Say($"{SingingCloud.Describe(member, area)} is now last in the list (move it up to use it sooner)" +
+                (key is null ? "." : ", and its API key is saved in Windows Credential Manager."));
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is ContractException or InvalidOperationException) { Say(error.Message); }

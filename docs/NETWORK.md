@@ -591,6 +591,31 @@ didn't answer.
   name their source address.
 - Sign-in points register their routes through the same guard
   (`IGatewayRequestGuard.TryAdmit` and `Record`).
+- **Store health.** The host's shared stores (API keys, accounts, sign-in,
+  memories, conversations, creations, settings, voices, character models,
+  commands, Home Assistant, cluster plan, network, log) load and save through
+  one helper (`GatewayStoreHealth`). A failure keeps the store working from
+  memory, is written to the host log once a minute for each store and action,
+  and is shown in the audit: `stores_healthy` and `stores` (each store that
+  failed: what failed last, how often, when and why). API keys, accounts,
+  sign-in and the network roster try a save twice; an API key or account copy
+  that still is not saved is saved again at the next sync.
+- **Authority saves.** Each signed request saves its nonce (a one-use request
+  number that stops replays) before it is admitted, with one append and one
+  flush to the store's nonce journal (`nonces.log`), not a full save of the
+  authority. Requests that arrive during a save share the next one, and the
+  save runs outside the authority's main lock. The audit's `nonce_saves` gives
+  the number of nonce saves and their average and longest time;
+  `authority_commits` does the same for full saves (pairing changes, a clean
+  close, and the first request after a damaged journal). A save of 50 ms or
+  more is written to the host log. A cancelled request never closes the
+  authority; only a storage failure does.
+- **Member pairing limits.** Only failed member-pairing proofs count toward the
+  limit of 30 a minute, for each source address, so false proofs from one home
+  device cannot block real members. A re-pair issues the new credential and
+  revokes the older ones in one save, so a failed re-pair keeps the old
+  credential. A card pairing window is checked for its deadline before the
+  credential is issued.
 
 Exposure choices (`GatewayExposure`): *internet reachable* (limits apply to
 every source), *allow typed pairing codes from outside home* (off by default)

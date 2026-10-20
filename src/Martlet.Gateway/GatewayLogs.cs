@@ -61,6 +61,7 @@ internal sealed class GatewayLogStore
     // The newest store position in the last full save: later lines go to the recent save until it grows too large.
     private long fullThrough;
     private IGatewayLogStorage? storage;
+    private GatewayStoreHealth health = new();
     private ITimer? saveTimer;
     private bool dirty;
 
@@ -77,15 +78,14 @@ internal sealed class GatewayLogStore
 
     internal int Count { get { lock (gate) return entries.Count; } }
 
-    internal void Attach(IGatewayLogStorage value)
+    internal void Attach(IGatewayLogStorage value, GatewayStoreHealth? storeHealth = null)
     {
+        if (storeHealth is not null) health = storeHealth;
         ArgumentNullException.ThrowIfNull(value);
         Document? saved = null, recent = null;
-        try { if (value.Load() is { } bytes) saved = JsonSerializer.Deserialize<Document>(bytes, StorageJson); }
         // An unreadable or malformed log starts empty; it is replaced at the next save.
-        catch (Exception) { }
-        try { if (value.LoadRecent() is { } bytes) recent = JsonSerializer.Deserialize<Document>(bytes, StorageJson); }
-        catch (Exception) { }
+        health.Try("log", "load", () => { if (value.Load() is { } bytes) saved = JsonSerializer.Deserialize<Document>(bytes, StorageJson); });
+        health.Try("log", "load", () => { if (value.LoadRecent() is { } bytes) recent = JsonSerializer.Deserialize<Document>(bytes, StorageJson); });
         lock (gate)
         {
             storage = value;
@@ -238,7 +238,11 @@ internal sealed class GatewayLogStore
             }
             try
             {
-                if (recent is not null && target.SaveRecent(recent)) return;
+                if (recent is not null && target.SaveRecent(recent))
+                {
+                    health.Succeeded("log", "save");
+                    return;
+                }
                 byte[] bytes;
                 long through;
                 lock (gate)
@@ -260,7 +264,13 @@ internal sealed class GatewayLogStore
                 // Empties the recent save; lines that arrived during the full save stay in it.
                 target.SaveRecent(recent);
             }
-            catch (Exception) { lock (gate) dirty = true; }
+            catch (Exception error)
+            {
+                lock (gate) dirty = true;
+                health.Failed("log", "save", error);
+                return;
+            }
+            health.Succeeded("log", "save");
         }
     }
 

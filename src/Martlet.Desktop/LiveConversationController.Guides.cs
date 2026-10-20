@@ -36,11 +36,11 @@ internal sealed partial class LiveConversationController
     {
         if (!OffersGuides(configured))
         {
-            if (OffersReportSearch(configured)) own.Add((AppGuideTools.SearchDefinition, SearchGuideAsync));
+            if (OffersReportSearch(configured)) own.Add((AppGuideTools.SearchDefinition, (call, token) => SearchGuideAsync(operation, call, token)));
             return;
         }
         own.Add((AppGuideTools.ReadUpDefinition, (call, token) => ValueTask.FromResult(ReadUpOn(operation, call))));
-        own.Add((AppGuideTools.SearchDefinition, SearchGuideAsync));
+        own.Add((AppGuideTools.SearchDefinition, (call, token) => SearchGuideAsync(operation, call, token)));
         own.Add((AppGuideTools.SkipDefinition, SkipGuideAsync));
         own.Add((AppGuideTools.BriefDefinition, (call, token) => ValueTask.FromResult(UpdateGuideBrief(call))));
         guidance = Join(guidance, AppGuideTools.Instructions(configured.Prompts));
@@ -57,22 +57,77 @@ internal sealed partial class LiveConversationController
             return new(problem!, true);
         }
         if (Guides is not { On: true } guides) return new(AppGuideTools.TurnedOff, true);
-        // Martlet may already read up on it: it started on its own when the app came to the front.
-        if (guides.Building is { } reading && reading.Key == (AppGuideService.Match(guides.Library, [arguments.App])?.Key ??
+        // Martlet may already read up on it: it started on its own when the app came to the front, or from the user's words.
+        if ((guides.Building?.Key ?? Volatile.Read(ref startedGuide)) is { } readingKey && readingKey == (AppGuideService.Match(guides.Library, [arguments.App])?.Key ??
                 AppGuideService.KeyOf(AppGuideTools.CleanName(arguments.App))))
         {
             tools?.Record(server, AppGuideTools.ReadUpName, "already reading", "", false);
-            return new(AppGuideTools.AlreadyReading(reading.Name));
+            return new(AppGuideTools.AlreadyReading(guides.Library.Apps.FirstOrDefault(a => a.Key == readingKey)?.Name ?? AppGuideTools.Label(arguments.App)));
         }
-        var start = StartReadingUp(guides, arguments.App, arguments.Sites);
+        // An app with a guide already: Martlet reads more pages of the same wiki (never the first pages again).
+        var more = GuideToReadMore(guides.Library, arguments.App, arguments.Sites);
+        var start = more is not null ? StartReadingMore(guides, more) : StartReadingUp(guides, arguments.App, arguments.Sites);
         if (start.Job is not { } job)
         {
             tools?.Record(server, AppGuideTools.ReadUpName, "not started: " + start.Refusal, "", false);
             return new(AppGuideTools.Refused(start), true);
         }
-        tools?.Record(server, AppGuideTools.ReadUpName, "started " + job.Id, "", false);
-        return new(AppGuideTools.Started(job, AppGuideTools.Label(arguments.App), !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text)));
+        tools?.Record(server, AppGuideTools.ReadUpName, (more is null ? "started " : "reading more ") + job.Id, "", false);
+        return new(AppGuideTools.Started(job, more?.Name ?? AppGuideTools.Label(arguments.App), !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text),
+            more is not null));
     }
+
+    /// <summary>Whether a reading-more job of this conversation was started and hasn't ended.</summary>
+    internal bool ReadingGuide => Volatile.Read(ref startedGuide) is not null;
+
+    // The app whose guide a reading-up job reads now (set when it starts, before the guide service says so), or null.
+    private string? startedGuide;
+
+    /// <summary>The app's entry when Martlet has a guide about <paramref name="app"/> already and no other pages were given, so
+    /// reading up means reading more of its wiki; null otherwise.</summary>
+    internal static AppGuideEntry? GuideToReadMore(AppGuideLibrary library, string app, IReadOnlyList<string> sites) =>
+        AppGuideService.Match(library, [app]) is { BuiltAt: not null } entry &&
+        sites.All(site => entry.Sites.Contains(site, StringComparer.OrdinalIgnoreCase)) ? entry : null;
+
+    /// <summary>Starts reading more of <paramref name="entry"/>'s wiki as this conversation's job (its talk window shows "Reading
+    /// up on"): from what the guide file kept, so it works after Martlet starts again; a Thinking pool member chooses the pages
+    /// when one can, else the most linked titles are read with no model. The pages join the guide.</summary>
+    internal BackgroundJobStart StartReadingMore(AppGuideService guides, AppGuideEntry entry)
+    {
+        var previous = Interlocked.Exchange(ref startedGuide, entry.Key);
+        var start = jobs.Start(AppGuideTools.Kind, AppGuideTools.Label(entry.Name), async (job, token) =>
+        {
+            try
+            {
+                job.Report(BackgroundJobState.Running, "Reading more of its wiki");
+                var progress = new GuideProgress(text => job.Report(BackgroundJobState.Running, "Reading more: " + text));
+                var read = GuideResearch is { } research
+                    ? await research.ReadMoreNowAsync(entry.Key, progress, token).ConfigureAwait(false)
+                    : await guides.ReadMoreAsync(entry.Key, null, null, progress, token).ConfigureAwait(false);
+                LogMore(job.Id, read);
+                var total = guides.Library.Apps.FirstOrDefault(a => a.Key == entry.Key)?.Pages ?? read.Pages;
+                return read is { Built: true, Pages: > 0 } ? BackgroundJobOutcome.Done(AppGuideTools.MoreReady(read, total))
+                    : BackgroundJobOutcome.Failed(read.Problem ?? "no more pages were worth reading");
+            }
+            finally { Interlocked.CompareExchange(ref startedGuide, null, entry.Key); }
+        });
+        if (start.Job is { } started)
+            ErrorLog.Info($"App guides: started {started.Id}, reading more of a guide's wiki " +
+                $"({jobs.StartedWithinHour(AppGuideTools.KindName)} of {AppGuideTools.Kind.MaxPerHour} this hour).");
+        else
+        {
+            Interlocked.CompareExchange(ref startedGuide, previous, entry.Key);
+            ErrorLog.Info($"App guides: reading more wasn't started ({start.Refusal}).");
+        }
+        return start;
+    }
+
+    /// <summary>The desktop log's line for one try to read more: counts and time only, never the app, a link or what was read.</summary>
+    internal static void LogMore(string by, AppGuideBuild read) =>
+        ErrorLog.Info(read is { Built: true, Pages: > 0 }
+            ? $"App guides: {by} read {read.Pages} more pages ({read.Failed} unreadable, {read.Downloaded / 1024} KiB downloaded) into " +
+              $"{read.Chunks} sections, in {BackgroundJobs.Duration(read.Took)}."
+            : $"App guides: {by} added no pages after {BackgroundJobs.Duration(read.Took)} ({(read.Busy ? "busy" : read.Problem)}).");
 
     /// <summary>Starts a reading-up job for <paramref name="app"/> in this conversation (its talk window shows "Reading up on");
     /// <paramref name="programs"/> join its entry (the names Windows gives the program in front).</summary>
@@ -113,7 +168,7 @@ internal sealed partial class LiveConversationController
     /// name, the guide of the app in front (or the only guide) is searched, and report sections that match well
     /// (<see cref="ResearchReportIndex.MinimumRelevance"/>) go with its best sections. A name that isn't a guide's searches the
     /// reports it names; with no guide to search, every report is searched.</summary>
-    private async ValueTask<ConversationToolResult> SearchGuideAsync(TextToolCall call, CancellationToken token)
+    private async ValueTask<ConversationToolResult> SearchGuideAsync(LiveConversationOperation operation, TextToolCall call, CancellationToken token)
     {
         const string server = "Martlet";
         var (arguments, problem) = AppGuideTools.ParseSearch(call.ArgumentsJson);
@@ -154,6 +209,7 @@ internal sealed partial class LiveConversationController
             .OrderByDescending(h => h.Relevance).Take(AppGuideTools.SearchResults).ToArray();
         var guideHits = kept.Where(k => k.Guide is not null).Select(k => k.Guide!).ToArray();
         var reportHits = kept.Where(k => k.Report is not null).Select(k => k.Report!).ToArray();
+        if (guideHits.Length > 0) UsedGuide(operation, entry.Key);
         tools?.Record(server, AppGuideTools.SearchName, $"found {guideHits.Length}" + (reportHits.Length > 0 ? $" and {reportHits.Length} in reports" : ""),
             "", false);
         ErrorLog.Info($"App guides: the Thinking model searched a guide and found {guideHits.Length} section{(guideHits.Length == 1 ? "" : "s")}" +
@@ -244,12 +300,15 @@ internal sealed partial class LiveConversationController
         jobs.Start(AppGuideTools.OfferKind, AppGuideTools.Label(offer.Name),
             (_, _) => Task.FromResult(BackgroundJobOutcome.Done(AppGuideTools.OfferNote(offer)))).Job;
 
-    /// <summary>"Read up on X" in the user's own words while this reply can't call read_up_on (a Thinking route without function
-    /// calling, or a model that rejected tools): Martlet starts reading up itself, and the note tells the model. Null when the
-    /// words don't ask that ("read up on it" means the app in front, when there is one).</summary>
+    /// <summary>The user's own words ask Martlet to read up on an app while this reply can't call read_up_on (a Thinking route
+    /// without function calling, or a model that rejected tools), or to read more about an app it has a guide for (on every
+    /// route, so a reply never says yes with no job behind it): Martlet starts it itself, and the note tells the model. Null when
+    /// the words don't ask that ("read up on it" and "read more about it" mean the app in front, when there is one).</summary>
     private string? ReadUpAsked(AppGuideService guides, string words, DesktopToolset? toolset)
     {
-        if (toolset?.Offers(AppGuideTools.ReadUpName) == true || AppGuideTools.AskedToReadUp(words) is not { } asked) return null;
+        var offered = toolset?.Offers(AppGuideTools.ReadUpName) == true;
+        var moreWords = AppGuideTools.AskedToReadMore(words);
+        if ((moreWords ?? (offered ? null : AppGuideTools.AskedToReadUp(words))) is not { } asked) return null;
         var front = guides.Front;
         IReadOnlyList<string>? programs = null;
         if (asked == AppGuideTools.InFront)
@@ -259,20 +318,56 @@ internal sealed partial class LiveConversationController
             programs = new[] { front.Program, front.File }.Where(p => p.Length > 0).ToArray();
             if (asked.Length == 0) return null;
         }
-        if (guides.Building is { } reading && reading.Key == (AppGuideService.Match(guides.Library, [asked])?.Key ??
-                AppGuideService.KeyOf(asked)))
-            return AppGuideTools.ReadingNote(reading.Name, null);
-        var start = StartReadingUp(guides, asked, [], programs);
+        var more = GuideToReadMore(guides.Library, asked, []);
+        // Read-more words about an app without a guide read up on it, but only where the model can't call read_up_on itself.
+        if (more is null && moreWords is not null && offered) return null;
+        if ((guides.Building?.Key ?? Volatile.Read(ref startedGuide)) is { } reading && reading == (more?.Key ??
+                AppGuideService.Match(guides.Library, [asked])?.Key ?? AppGuideService.KeyOf(asked)))
+            return AppGuideTools.ReadingNote(guides.Library.Apps.FirstOrDefault(a => a.Key == reading)?.Name ?? asked, null, more is not null);
+        var start = more is not null ? StartReadingMore(guides, more) : StartReadingUp(guides, asked, [], programs);
         tools?.Record("Martlet", AppGuideTools.ReadUpName,
-            start.Job is { } job ? "started " + job.Id + " (asked in words)" : "not started: " + start.Refusal, "", false);
-        return AppGuideTools.ReadingNote(AppGuideTools.Label(asked), start);
+            start.Job is { } job ? (more is null ? "started " : "reading more ") + job.Id + " (asked in words)" : "not started: " + start.Refusal, "", false);
+        return AppGuideTools.ReadingNote(more?.Name ?? AppGuideTools.Label(asked), start, more is not null);
+    }
+
+    /// <summary>The app whose guide the last reply used (its notes or search_guide found sections), or null: what the talk
+    /// window's Read more button and the speech bubble's offer read more about when no app with a guide is in front.</summary>
+    internal string? LastGuide => Volatile.Read(ref lastGuide);
+    private string? lastGuide;
+
+    // A reply used the app's guide: the operation and the talk window know which.
+    private void UsedGuide(LiveConversationOperation operation, string key)
+    {
+        operation.GuideKey = key;
+        Volatile.Write(ref lastGuide, key);
+    }
+
+    /// <summary>The app Read more reads more about now: the app in front when it has a guide, else the app whose guide the last
+    /// reply used; null when there is none or App guides are off.</summary>
+    internal AppGuideEntry? ReadMoreTarget()
+    {
+        if (Guides is not { On: true } guides) return null;
+        var library = guides.Library;
+        return guides.Front?.Entry is { } front && library.Apps.FirstOrDefault(a => a.Key == front.Key) is { BuiltAt: not null } inFront ? inFront
+            : LastGuide is { } key && library.Apps.FirstOrDefault(a => a.Key == key) is { BuiltAt: not null } used ? used : null;
+    }
+
+    /// <summary>Reads more about <paramref name="entry"/> as this conversation's job (Read more in the talk window, on the speech
+    /// bubble or on Companion › App guides), or says why it can't start: App guides off, or it reads up on an app now.</summary>
+    internal BackgroundJobStart ReadMore(AppGuideEntry entry)
+    {
+        if (Guides is not { On: true } guides) return new(null, "off", "App guides are off.");
+        if ((guides.Building?.Key ?? Volatile.Read(ref startedGuide)) is not null)
+            return new(null, "busy", $"Martlet is already reading up on {guides.Building?.Name ?? "an app"}.");
+        return StartReadingMore(guides, entry);
     }
 
     /// <summary>The guide notes for the user's own words (the app they name, else the app in front), from memory only: the
     /// sections the conversation's notes don't carry yet. Null when there are none. Counts go to the desktop log.</summary>
-    private string? GuideNotes(string words, IReadOnlyList<TextHistoryMessage> sent, PromptSettings? prompts, out int used)
+    private string? GuideNotes(string words, IReadOnlyList<TextHistoryMessage> sent, PromptSettings? prompts, out int used, out string? key)
     {
         used = 0;
+        key = null;
         if (Guides is not { On: true } guides || !guides.Library.Apps.Any(a => a.BuiltAt is not null)) return null;
         var earlier = string.Join("\n", sent.Where(message => message.Role == TextHistoryRole.User &&
             (message.Text.Contains(GuideRecall.Label, StringComparison.Ordinal) || message.Text.Contains(GuideBrief.Label, StringComparison.Ordinal)))
@@ -289,6 +384,7 @@ internal sealed partial class LiveConversationController
                   $"relevance {found.Best:0.00}, {found.Took.TotalMilliseconds:0.##} ms).") +
             (brief is null ? "" : " The app's brief went with it."));
         used = found.Used;
+        if (used > 0) key = AppGuideService.Match(guides.Library, [found.App])?.Key;
         return brief is null ? found.Notes : found.Notes is null ? brief : brief + "\n" + found.Notes;
     }
 

@@ -21,12 +21,12 @@ like a broken connection.
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
 | R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | V02c exposes exact compatible LLM catalog choices and validates fresh route consent; no Desktop VLM route yet |
 | R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Explicit completed turns now supply bounded ephemeral context; automatic listening/observation collection remains unavailable |
-| R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; standalone post-capture VAD is production-blocked and is not live barge-in |
+| R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; the energy detector and end-of-turn judge find speech, but they are not live barge-in |
 | R24: Adjustable response mix | **Removed:** the persona text sets how Martlet talks | No style sliders and no per-reply style pick; see [R24](#r24-response-style-mix-removed) |
 
 See [the implemented conversation](CONVERSATION.md),
 [participation policy](../src/Martlet.Participation/README.md) and
-[VAD boundary](VAD.md) for exact current behavior. Existing library foundations
+[voice activity detection](VAD.md) for exact current behavior. Existing library foundations
 do not satisfy these new end-user requirements.
 
 ## R19: Editable persona profiles

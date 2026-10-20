@@ -22,6 +22,7 @@ internal sealed class FakeLinuxFileSystem : ILinuxFileSystem, IDisposable
         internal Node Node = node;
         internal int Offset;
         internal bool OwnsLock;
+        internal bool Append;
     }
 
     private readonly Dictionary<int, Opened> handles = [];
@@ -88,7 +89,9 @@ internal sealed class FakeLinuxFileSystem : ILinuxFileSystem, IDisposable
             parent.Children.Add(name, node);
         }
         else if ((flags & Exclusive) != 0) throw Failure(GatewayPersistenceFailure.RecoveryRequired);
-        return Handle(node);
+        var fd = Handle(node);
+        handles[fd].Append = (flags & LinuxFileSystem.Append) != 0;
+        return fd;
     }
 
     private Node? StoreOrNull() => Parent.Children.GetValueOrDefault("store");
@@ -151,6 +154,7 @@ internal sealed class FakeLinuxFileSystem : ILinuxFileSystem, IDisposable
     {
         Call("write");
         var opened = handles[descriptor];
+        if (opened.Append) opened.Offset = opened.Node.Bytes.Length;
         var written = Math.Min(count, TransferLimit);
         Array.Resize(ref opened.Node.Bytes, opened.Offset + written);
         bytes.AsSpan(offset, written).CopyTo(opened.Node.Bytes.AsSpan(opened.Offset));
