@@ -15,11 +15,6 @@ public partial class MainWindow : IThinkingCardsServices
     private ThinkingCards ThinkingCards => thinkingCards ??= new(this);
 
     // The job pages (MainWindow.JobPages.cs) still call the cards by these names.
-    private Border LocalAppCard(SetupRoute? route, LocalApp chosen) => ThinkingCards.LocalApp(route, chosen);
-    private Border LocalServerCard(SetupRoute? route) => ThinkingCards.LocalServer(route);
-    private Border LocalThinkingCard(SetupRoute? route) => ThinkingCards.LocalThinking(route);
-    private Border FallbackCard() => ThinkingCards.Fallback();
-    private Border? SituationFixtureCard() => ThinkingCards.SituationFixture();
 
     AppSettings? IThinkingCardsServices.Settings => homeSettings;
     MachineInfo IThinkingCardsServices.Machine => machine;

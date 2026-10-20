@@ -941,4 +941,4 @@ looping animations do not start and transitions complete immediately.
 5. `LiveConversationWindow` is only the conversation: history bubbles, the
    message box and the Listening, Vision and Stop toggles (section 6). Its
    choices live in `TalkPreferences` (`talk-preferences.json`), edited on the
-   Companion Listening, Voice and Vision pages (`MainWindow.Talk.cs`).
+   Companion Listening, Voice and Vision pages (the cards are in `Pages/Listening` and `Pages/Talk`; `MainWindow.Talk.cs` saves the choices).

@@ -7,8 +7,8 @@ using Martlet.F5;
 namespace Martlet.Desktop;
 
 /// <summary>The services MainWindow gives the cards of Companion › Voice (<see cref="VoiceCards"/> in Pages\Voice). The work the
-/// cards start stays in the window (MainWindow.VoiceEngines.cs and MainWindow.Voices.cs). The job page (MainWindow.JobPages.cs)
-/// still calls the cards by their old names, which forward to the cards.</summary>
+/// cards start stays in the window (MainWindow.VoiceEngines.cs and MainWindow.Voices.cs). The job page (<see cref="JobPage"/>) gets
+/// the cards through MainWindow.JobPage.cs.</summary>
 public partial class MainWindow : IVoiceCardsServices
 {
     private VoiceCards? voiceCards;
@@ -16,9 +16,6 @@ public partial class MainWindow : IVoiceCardsServices
     /// <summary>The Voice cards, made once: they keep the computer the engine list shows while the window lives.</summary>
     private VoiceCards VoiceCards => voiceCards ??= new(this);
 
-    private Border VoiceEnginesCard(SetupRoute? route, PairedHost? thisPc, bool onThisPc) => VoiceCards.VoiceEngines(route, thisPc, onThisPc);
-    private Border VoicesCard(SetupRoute? route) => VoiceCards.Voices(route);
-    private Border ChatterboxStyleCard() => VoiceCards.ChatterboxStyleCard();
     internal static string StyleState(ChatterboxStyle style) => VoiceCards.StyleState(style);
     private static List<VoiceItem> VoiceItems(SpeakingVoiceLibrary library, IReadOnlyDictionary<string, F5ReferenceSnapshot> local) =>
         VoiceItem.List(library, local);

@@ -106,7 +106,6 @@ internal sealed partial class VoiceCards
 
     /// <summary>What the style card says is saved, in one sentence: "Saved on this PC (general: exaggeration 0.5, ...)."</summary>
     internal static string StyleState(ChatterboxStyle style) =>
-        (style == ChatterboxStyle.Default ? "Resemble's suggestions (" : "Saved on this PC (") + Lowered(style.Describe()).TrimEnd('.') + ").";
+        (style == ChatterboxStyle.Default ? "Resemble's suggestions (" : "Saved on this PC (") + MainWindow.Lowered(style.Describe()).TrimEnd('.') + ").";
 
-    private static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
 }

@@ -15,7 +15,6 @@ internal sealed partial class ThinkingCards(IThinkingCardsServices services)
     /// <summary>The Model app picker's choice for an app typed by its address.</summary>
     internal const string AnotherAddress = "Another address on this PC";
 
-    private static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
 
     /// <summary>FIXTURE (MARTLET_SIMULATE_SITUATION): Companion › Thinking's buttons that start or end a simulated game and make the
     /// Thinking host simulated away or back. They change nothing saved.</summary>

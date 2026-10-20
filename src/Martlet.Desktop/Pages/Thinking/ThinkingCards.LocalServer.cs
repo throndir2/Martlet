@@ -25,7 +25,7 @@ internal sealed partial class ThinkingCards
 
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
             Text = current is null ? summary
-                : $"Thinking uses {current.ModelId} in {services.LocalServerName(current.Origin)}; " + Lowered(summary) };
+                : $"Thinking uses {current.ModelId} in {services.LocalServerName(current.Origin)}; " + MainWindow.Lowered(summary) };
         AutomationProperties.SetAutomationId(status, "LocalServersStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
@@ -109,7 +109,7 @@ internal sealed partial class ThinkingCards
                     : list.Count > 0 ? $"It lists {list.Count} {(list.Count == 1 ? "model" : "models")}" : "";
             var cannot = unusable.Count > 0 ? $"Martlet can't use {string.Join(", ", unusable.Take(3))}: give it a name of letters, digits, " +
                 "dots, dashes, underscores, slashes or colons in the app" : "";
-            models.Text = listed.Length > 0 && cannot.Length > 0 ? $"{listed}; {Lowered(cannot)}." : listed.Length + cannot.Length > 0 ? listed + cannot + "." : "";
+            models.Text = listed.Length > 0 && cannot.Length > 0 ? $"{listed}; {MainWindow.Lowered(cannot)}." : listed.Length + cannot.Length > 0 ? listed + cannot + "." : "";
             var saved = HasKey(baseUrl);
             keyStatus.Text = saved ? "Your key for this app is saved; leave this empty to keep it or enter a new key."
                 : "Leave this empty unless the app asks for a key (Martlet keeps a key in Windows Credential Manager).";

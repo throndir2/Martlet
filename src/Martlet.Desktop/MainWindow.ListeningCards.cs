@@ -18,12 +18,6 @@ public partial class MainWindow : IListeningCardsServices, ITalkCardsServices
     private TalkCards TalkCards => talkCards ??= new(this);
 
     // The job pages (MainWindow.JobPages.cs) call the cards by these names.
-    private Border LocalListeningCard(SetupRoute? route, PairedHost? thisPc) => ListeningCards.LocalListening(route, thisPc);
-    private Border TalkModeCard() => ListeningCards.TalkMode();
-    private Border EchoCard() => ListeningCards.Echo();
-    private Border PcAudioCard() => ListeningCards.PcAudio();
-    private Border SpeakRepliesCard() => TalkCards.SpeakReplies();
-    private Border QuickSoundsCard() => TalkCards.QuickSounds();
 
     // ---------- IListeningCardsServices ----------
 
