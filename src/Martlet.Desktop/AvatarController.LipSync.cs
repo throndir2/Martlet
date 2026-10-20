@@ -6,7 +6,7 @@ using System.Threading.Channels;
 using System.Windows;
 using Martlet.Audio;
 using Martlet.Avatar.Audio2Face;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Conversation;
@@ -201,12 +201,12 @@ internal sealed partial class AvatarController
                     RendererFailures.Log("Audio2Face lip-sync stopped for a sentence", failure.InnerException ?? failure);
                 }
                 catch (Exception error) when (!token.IsCancellationRequested && error is Audio2FaceException or
-                    Audio2FaceHostException or ContractException or IOException or InvalidOperationException or
+                    HostConnectionException or ContractException or IOException or InvalidOperationException or
                     OperationCanceledException or TimeoutException or System.Net.Http.HttpRequestException)
                 {
                     // The pool already left out (for 30 s) each computer that failed or didn't answer; a busy one stays in.
                     Publish($"Audio2Face wasn't available: {(error is Audio2FaceException a ? a.Failure.ToString() :
-                        error is Audio2FaceHostException h ? h.Message : error is AvatarOperationException reason ? reason.Message :
+                        error is HostConnectionException h ? h.Message : error is AvatarOperationException reason ? reason.Message :
                         "service or mapping failure")}. Mouth movement follows Martlet's voice.");
                 }
             }

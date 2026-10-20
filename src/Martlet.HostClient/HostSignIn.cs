@@ -1,0 +1,854 @@
+using System.Buffers.Text;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Security;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Martlet.Core.Accounts;
+using Martlet.Core.Network;
+
+namespace Martlet.HostClient;
+
+/// <summary>A way to sign in to a host, as the host lists it: "owner" (the owner account: name, password and authenticator
+/// code, typed into Martlet), "martlet" (a household account's Martlet password and authenticator code, when the host keeps
+/// household logins) or a provider that signs in in the browser ("oidc", "discord", "steam").</summary>
+public sealed record HostSignInProvider(string Id, string Kind, string Name)
+{
+    /// <summary>The household accounts' Martlet password, listed by hosts that keep household logins (docs/ACCOUNTS.md).</summary>
+    public const string Martlet = "martlet";
+    public bool InBrowser => Kind is not ("owner" or Martlet);
+    /// <summary>The loopback port the browser must come back to (providers that only take registered redirect URIs, such as
+    /// Discord); null for any free port.</summary>
+    public int? RedirectPort { get; init; }
+}
+
+/// <summary>What an allowed identity's computers get on a host: <see cref="Member"/> (one of the owner's own computers, which
+/// joins the owner's Martlet network) or <see cref="Friend"/> (a friend's computer: that host's engines only, never in the
+/// network). The host decides; the desktop only shows it and asks for it.</summary>
+public static class HostSignInAccess
+{
+    public const string Member = "member";
+    public const string Friend = "friend";
+
+    /// <summary>"friend" stays a friend; anything else (absent, "member", an unknown word from a newer host) is the owner's.</summary>
+    public static string Normalize(string? value) => value == Friend ? Friend : Member;
+
+    /// <summary>The settings change that allows an identity as one of the owner's computers or as a friend. A member entry
+    /// carries no "access" (the host's default), so hosts older than friend sharing still accept it.</summary>
+    public static JsonObject AllowChange(string provider, string subject, string? label, bool friend)
+    {
+        var change = new JsonObject { ["action"] = "allow", ["provider"] = provider, ["subject"] = subject, ["label"] = label };
+        if (friend) change["access"] = Friend;
+        return change;
+    }
+}
+
+/// <summary>Who a computer signed in as (shown to people; the host decides), and the access that sign-in gave
+/// (<see cref="HostSignInAccess"/>).</summary>
+public sealed record HostSignInIdentity(string Provider, string Subject, string? Label)
+{
+    /// <summary>"member" (one of the owner's computers: it joins the network next) or "friend" (that host's engines only).</summary>
+    public string Access { get; init; } = HostSignInAccess.Member;
+    public bool Friend => Access == HostSignInAccess.Friend;
+    /// <summary>The household account the sign-in proved, when the host links the identity to one (hosts older than accounts
+    /// say nothing).</summary>
+    public Guid? AccountId { get; init; }
+    /// <summary>The host's signed statement that <see cref="AccountId"/> proved itself on this computer (check it with
+    /// <see cref="AccountAttestation.Check"/> against the roster); null when the host made none.</summary>
+    public AccountAttestation? Attestation { get; init; }
+
+    public override string ToString() => Label is { Length: > 0 } ? $"{Label} ({Provider})" : $"{Subject} ({Provider})";
+}
+
+/// <summary>What a Prove sign-in on an already paired computer gave (<see cref="HostConnection.ProveAsync"/>): who
+/// signed in, the account it proved and the host's signed attestation for this computer.</summary>
+public sealed record HostAccountProof(HostSignInIdentity Identity, Guid AccountId, AccountAttestation Attestation);
+
+/// <summary>What a host said when it listed join requests: the identity a desktop signed in as to pair there and, when the host
+/// links it to a household account, that account (<see cref="AccountId"/>): the computer joins as one of that person's.</summary>
+public sealed record HostSignInAttestation(string Provider, string Subject, string? Label, DateTimeOffset At)
+{
+    public Guid? AccountId { get; init; }
+}
+
+/// <summary>A sign-in that <c>/signin/begin</c> started: send the proof for <see cref="AttemptId"/> within ten minutes. A
+/// browser provider gives <see cref="AuthorizeUrl"/> to open.</summary>
+public sealed record HostSignInAttempt(string Origin, string AttemptId, string Provider, string State, string Nonce, string? AuthorizeUrl);
+
+/// <summary>
+/// Joining from outside home by signing in, on the computer that is away: it takes the owner's <see cref="NetworkInvite"/>
+/// (host ID, TLS pin, home and outside addresses), pins the host's key before sending anything, lists the ways to sign in,
+/// and finishes with a device credential exactly like pairing. The pairing is kept under the host's home origin from the
+/// invite; reaching it from outside afterwards uses the host's outside addresses.
+/// </summary>
+public static class HostSignInClient
+{
+    private const string SignInPath = "/martlet/v1/signin";
+    private static readonly object Version = new { major = 2, minor = 0 };
+
+    /// <summary>Lists the ways to sign in, trying the invite's outside addresses first and then its home address; returns
+    /// the origin that answered with the pinned key.</summary>
+    public static async Task<(string Origin, IReadOnlyList<HostSignInProvider> Providers)> ReadProvidersAsync(NetworkInvite invite,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(invite);
+        foreach (var origin in invite.Origins())
+        {
+            try
+            {
+                using var http = CreatePinnedClient(origin, invite.SpkiFingerprint);
+                using var request = new HttpRequestMessage(HttpMethod.Get, origin + SignInPath);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(10));
+                using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+                using var document = await HostTransport.ReadJson(response, 16 * 1024, timeout.Token).ConfigureAwait(false);
+                var root = document.RootElement;
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                    throw new HostConnectionException("signin.unsupported",
+                        $"{invite.HostId} runs an older Martlet without sign-in. Update it at home first.");
+                if (response.StatusCode != HttpStatusCode.OK) throw HostTransport.Remote(root);
+                if (root.GetProperty("host_id").GetString() != invite.HostId)
+                    throw new HostConnectionException("host.pin_mismatch", "A different Martlet host answered; check the invite.");
+                var providers = root.GetProperty("providers").EnumerateArray().Take(16).Select(p => new HostSignInProvider(
+                    p.GetProperty("id").GetString()!, p.GetProperty("kind").GetString()!, Clean(p.GetProperty("name").GetString()) ?? "Sign-in")
+                {
+                    RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) && number is >= 1024 and <= 65535
+                        ? number : null
+                }).ToList();
+                // Household accounts' Martlet passwords aren't in the list (older desktops take it as browser providers).
+                if (root.TryGetProperty("martlet_sign_in", out var household) && household.ValueKind == JsonValueKind.True)
+                    providers.Insert(providers.Count(p => p.Kind == "owner"),
+                        new HostSignInProvider(HostSignInProvider.Martlet, HostSignInProvider.Martlet, "Your household account (Martlet password)"));
+                return (origin, providers);
+            }
+            // Not answering (or answering with another key) here: try the invite's next address.
+            catch (HostConnectionException error) when (error.Code is "host.unreachable") { }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+            catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                throw new HostConnectionException("response.invalid", "The host's list of sign-ins was invalid.");
+            }
+        }
+        throw new HostConnectionException("host.unreachable",
+            $"Couldn't reach {invite.HostId} at {string.Join(" or ", invite.Origins().Select(o => new Uri(o).Authority))} with the key in the " +
+            "invite. Check that the host is running and reachable from here, or ask for a new invite.");
+    }
+
+    /// <summary>Starts a sign-in. For a browser provider pass the PKCE challenge (S256 of a verifier this computer keeps) and
+    /// this computer's loopback redirect (http://127.0.0.1:&lt;port&gt;/).</summary>
+    public static async Task<HostSignInAttempt> BeginAsync(NetworkInvite invite, string origin, string provider, string? codeChallenge = null,
+        string? redirectUri = null, CancellationToken cancellationToken = default)
+    {
+        var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object?>
+        {
+            ["protocol_version"] = Version, ["provider"] = provider, ["code_challenge"] = codeChallenge, ["redirect_uri"] = redirectUri
+        }.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value));
+        using var document = await PostAsync(invite, origin, SignInPath + "/begin", body, HttpStatusCode.OK, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var root = document.RootElement;
+            var url = root.TryGetProperty("authorize_url", out var link) && link.ValueKind == JsonValueKind.String ? link.GetString() : null;
+            if (url is not null && (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps))
+                throw new FormatException();
+            return new(origin, root.GetProperty("attempt_id").GetString()!, root.GetProperty("provider").GetString()!,
+                root.GetProperty("state").GetString()!, root.GetProperty("nonce").GetString()!, url);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's answer to the sign-in was invalid.");
+        }
+    }
+
+    /// <summary>Finishes a sign-in with its proof and returns the pairing (kept under the invite's home origin), its secret
+    /// (for the OS vault) and who this computer signed in as.</summary>
+    public static async Task<(HostPairing Pairing, string Secret, HostSignInIdentity Identity)> CompleteAsync(NetworkInvite invite,
+        HostSignInAttempt attempt, string deviceId, string displayName, JsonObject proof, CancellationToken cancellationToken = default)
+    {
+        HostTransport.RequireIdentifier(deviceId, "device ID");
+        var name = new string(displayName.Where(c => c is >= ' ' and <= '~').Take(64).ToArray()).Trim();
+        if (name.Length == 0) name = "Martlet desktop";
+        var body = JsonSerializer.SerializeToUtf8Bytes(new JsonObject
+        {
+            ["protocol_version"] = new JsonObject { ["major"] = 2, ["minor"] = 0 },
+            ["attempt_id"] = attempt.AttemptId, ["device_id"] = deviceId, ["display_name"] = name, ["proof"] = proof.DeepClone()
+        });
+        try
+        {
+            using var document = await PostAsync(invite, attempt.Origin, SignInPath + "/complete", body, HttpStatusCode.Created, cancellationToken)
+                .ConfigureAwait(false);
+            var root = document.RootElement;
+            var credentialId = root.GetProperty("credential_id").GetString()!;
+            var secret = root.GetProperty("credential_secret").GetString()!;
+            if (root.GetProperty("host_id").GetString() != invite.HostId || root.GetProperty("device_id").GetString() != deviceId ||
+                root.GetProperty("lifetime").GetProperty("kind").GetString() != "paired" ||
+                !root.GetProperty("roles").EnumerateArray().Any(role => role.GetString() == "voice") ||
+                !HostTransport.TryBase64Url(credentialId, 16, out _) || !HostTransport.TryBase64Url(secret, 32, out var raw))
+                throw new HostConnectionException("pairing.invalid", "The host returned an unexpected pairing; sign in again.");
+            CryptographicOperations.ZeroMemory(raw);
+            var signedIn = root.GetProperty("signed_in");
+            // A friend's sign-in gives that host's engines only; a host older than friends says nothing, and gave the owner's.
+            var who = new HostSignInIdentity(signedIn.GetProperty("provider").GetString()!, signedIn.GetProperty("subject").GetString()!,
+                signedIn.TryGetProperty("label", out var label) ? Clean(label.GetString()) : null)
+            {
+                Access = HostSignInAccess.Normalize(root.TryGetProperty("access", out var access) && access.ValueKind == JsonValueKind.String
+                    ? access.GetString() : null),
+                AccountId = root.TryGetProperty("account_id", out var account) && account.ValueKind == JsonValueKind.String &&
+                    account.TryGetGuid(out var accountId) ? accountId : null,
+                Attestation = ReadAttestation(root, invite.HostId, deviceId)
+            };
+            var pairing = new HostPairing
+            {
+                Origin = HostTransport.CanonicalOrigin(invite.Origin), HostId = invite.HostId, SpkiFingerprint = invite.SpkiFingerprint,
+                DeviceId = deviceId, CredentialId = credentialId
+            };
+            return (pairing, secret, who);
+        }
+        catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's sign-in answer was invalid.");
+        }
+        finally { CryptographicOperations.ZeroMemory(body); }
+    }
+
+    /// <summary>Signs in with the owner account (name, password, a current authenticator code or an unused recovery code).</summary>
+    public static Task<(HostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInAsOwnerAsync(NetworkInvite invite,
+        string origin, string user, string password, string code, string deviceId, string displayName, CancellationToken cancellationToken = default) =>
+        SignInWithPasswordAsync(invite, origin, "owner", user, password, code, deviceId, displayName, cancellationToken);
+
+    /// <summary>Signs in with a Martlet password: the owner login (<paramref name="provider"/> "owner") or a household account's
+    /// ("martlet"; docs/ACCOUNTS.md). Adding a computer always needs the login's authenticator code or an unused recovery code.</summary>
+    public static async Task<(HostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInWithPasswordAsync(NetworkInvite invite,
+        string origin, string provider, string user, string password, string code, string deviceId, string displayName,
+        CancellationToken cancellationToken = default)
+    {
+        var attempt = await BeginAsync(invite, origin, provider, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await CompleteAsync(invite, attempt, deviceId, displayName,
+            new JsonObject { ["user"] = user, ["password"] = password, ["code"] = code }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Signs in at a provider in the browser (OpenID Connect, Discord, Steam): starts this computer's loopback
+    /// redirect (http://127.0.0.1:&lt;port&gt;/, RFC 8252) and a PKCE verifier, has the host build the provider's URL, opens it
+    /// with <paramref name="openBrowser"/>, waits for the browser to come back (at most <paramref name="timeout"/>) and hands
+    /// what it brought, with the verifier, to the host to check. The provider's client secret never comes here.</summary>
+    public static async Task<(HostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInInBrowserAsync(NetworkInvite invite,
+        string origin, string provider, string deviceId, string displayName, Action<string> openBrowser, TimeSpan timeout,
+        CancellationToken cancellationToken = default, int? redirectPort = null)
+    {
+        var (verifier, challenge) = NewPkce();
+        using var redirect = LoopbackRedirect.Start(redirectPort);
+        var attempt = await BeginAsync(invite, origin, provider, challenge, redirect.RedirectUri, cancellationToken).ConfigureAwait(false);
+        if (attempt.AuthorizeUrl is null) throw new HostConnectionException("response.invalid", "The host didn't say where to sign in.");
+        openBrowser(attempt.AuthorizeUrl);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        wait.CancelAfter(timeout);
+        IReadOnlyDictionary<string, string> query;
+        try { query = await redirect.WaitAsync(wait.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new HostConnectionException("signin.expired", "The browser didn't come back in time. Start the sign-in again.");
+        }
+        if (query.TryGetValue("error", out var error))
+            throw new HostConnectionException("signin.invalid", $"The sign-in was canceled or refused in the browser ({Clean(error)}).");
+        var answer = new JsonObject();
+        foreach (var (name, value) in query) answer[name] = value;
+        return await CompleteAsync(invite, attempt, deviceId, displayName, new JsonObject { ["query"] = answer, ["code_verifier"] = verifier },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Signs in to one host of a share link (docs/NETWORK.md, "Sharing with a link") with the link's secret: pins the
+    /// host's key, finds the address that answers (outside addresses first), and gets a friend's credential (that host's
+    /// engines only). Throws <c>signin.link_unknown</c> when the host doesn't keep this link (its owner hasn't added that host
+    /// yet, or stopped sharing), and <c>signin.link_unsupported</c> when the host is older than share links.</summary>
+    public static async Task<(HostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInWithShareLinkAsync(NetworkInvite invite,
+        ShareLink link, string deviceId, string displayName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        var (origin, _) = await ReadProvidersAsync(invite, cancellationToken).ConfigureAwait(false);
+        HostSignInAttempt attempt;
+        try { attempt = await BeginAsync(invite, origin, "link", cancellationToken: cancellationToken).ConfigureAwait(false); }
+        catch (HostConnectionException error) when (error.Code is "signin.unavailable" or "request.invalid")
+        {
+            throw new HostConnectionException(error.Code == "request.invalid" ? "signin.link_unsupported" : "signin.link_unknown",
+                error.Code == "request.invalid"
+                    ? $"{invite.HostId} runs an older Martlet that can't take share links. Ask its owner to update it."
+                    : $"{invite.HostId} doesn't take this share link (yet). Its owner may still be adding it there, may need to update " +
+                      "Martlet there, or stopped sharing.");
+        }
+        try
+        {
+            var result = await CompleteAsync(invite, attempt, deviceId, displayName, new JsonObject { ["link"] = link.Id, ["secret"] = link.Secret },
+                cancellationToken).ConfigureAwait(false);
+            if (!result.Identity.Friend || result.Identity.Provider != "link")
+                throw new HostConnectionException("response.invalid", $"{invite.HostId} answered the share link with another kind of sign-in.");
+            return result;
+        }
+        catch (HostConnectionException error) when (error.Code == "signin.invalid")
+        {
+            throw new HostConnectionException("signin.link_unknown",
+                $"{invite.HostId} doesn't take this share link: its owner stopped sharing with it, or made a new one. Ask them for a new link.");
+        }
+    }
+
+    private static async Task<JsonDocument> PostAsync(NetworkInvite invite, string origin, string path, byte[] body, HttpStatusCode expected,
+        CancellationToken cancellationToken)
+    {
+        using var http = CreatePinnedClient(origin, invite.SpkiFingerprint);
+        using var request = new HttpRequestMessage(HttpMethod.Post, origin + path) { Content = HostTransport.JsonContent(body) };
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+        var document = await HostTransport.ReadJson(response, 16 * 1024, timeout.Token).ConfigureAwait(false);
+        if (response.StatusCode == expected) return document;
+        using (document)
+        {
+            var code = document.RootElement.TryGetProperty("code", out var value) ? value.GetString() : null;
+            throw Failure(code, response, document.RootElement);
+        }
+    }
+
+    /// <summary>A client for <paramref name="origin"/> (an outside name or address, or the home address) that trusts only the
+    /// pinned key. The certificate names the host's home address, so a name mismatch is expected when connecting from
+    /// outside; the pin is the authority, as for every pairing.</summary>
+    internal static HttpClient CreatePinnedClient(string origin, string spkiFingerprint)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false, UseCookies = false, UseProxy = false, Credentials = null,
+            AutomaticDecompression = DecompressionMethods.None, ConnectTimeout = TimeSpan.FromSeconds(8)
+        };
+        handler.SslOptions.EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+        handler.SslOptions.CertificateChainPolicy = new() { RevocationMode = X509RevocationMode.NoCheck, DisableCertificateDownloads = true };
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+        {
+            if (certificate is null || errors.HasFlag(SslPolicyErrors.RemoteCertificateNotAvailable)) return false;
+            using var owned = new X509Certificate2(certificate);
+            var now = DateTime.UtcNow;
+            return now >= owned.NotBefore.ToUniversalTime() && now <= owned.NotAfter.ToUniversalTime() &&
+                HostTransport.Fingerprint(owned) == spkiFingerprint;
+        };
+        return new HttpClient(handler, disposeHandler: true) { BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan };
+    }
+
+    /// <summary>A fresh PKCE verifier (RFC 7636: 32 random bytes, base64url) and its S256 challenge.</summary>
+    public static (string Verifier, string Challenge) NewPkce()
+    {
+        var verifier = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
+        return (verifier, Base64Url.EncodeToString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(verifier))));
+    }
+
+    internal static string? Clean(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : new string(value.Trim().Take(128).Select(c => char.IsControl(c) ? ' ' : c).ToArray());
+
+    /// <summary>The answer's "attestation" when it is a well-formed one by <paramref name="hostId"/> for
+    /// <paramref name="deviceId"/>; its signature is checked against the roster by whoever relies on it.</summary>
+    internal static AccountAttestation? ReadAttestation(JsonElement root, string hostId, string deviceId)
+    {
+        if (!root.TryGetProperty("attestation", out var element) || element.ValueKind != JsonValueKind.Object) return null;
+        try
+        {
+            var attestation = AccountAttestation.Parse(element);
+            return attestation.HostId == hostId && attestation.DeviceId == deviceId ? attestation : null;
+        }
+        catch (FormatException) { return null; }
+    }
+
+    internal static HostConnectionException Failure(string? code, HttpResponseMessage response, JsonElement root) => code switch
+    {
+        "signin.invalid" => new HostConnectionException(code,
+            "That sign-in didn't work. Check the account name, password and authenticator code; several wrong tries lock sign-in for a while."),
+        "signin.not_allowed" => new HostConnectionException(code,
+            "You signed in, but the host doesn't allow that account yet. Its owner allows it in Martlet (Share › Friends, or the " +
+            "host's Sign-in from outside), then sign in again here."),
+        "signin.device_taken" => new HostConnectionException(code,
+            "The host already pairs this PC's device ID another way or with another account, so it refused this sign-in. Sign in " +
+            "with the account you used before, or ask the host's owner to remove this PC there first."),
+        "signin.friends_full" => new HostConnectionException(code,
+            "The host already keeps as many friends' computers as it allows. Ask its owner to stop sharing it with a computer " +
+            "that no longer uses it, then sign in again."),
+        "signin.needs_authenticator" => new HostConnectionException(code,
+            "This account has no authenticator, so it can't add a computer by signing in. Add an authenticator app to it at home first."),
+        "signin.no_account" => new HostConnectionException(code,
+            "That sign-in isn't linked to a Martlet account on the host. Sign in with a login of your own account."),
+        "signin.no_network" => new HostConnectionException(code,
+            "The host isn't in your Martlet network yet, so it can't vouch for an account. Pair it with a computer in your network first."),
+        "signin.login_taken" => new HostConnectionException(code,
+            "That sign-in is already another account's login in your household, or a friend's. Unlink it there first, or use another one."),
+        "signin.denied" => new HostConnectionException(code,
+            "This PC may not change that on the host. Sign in on this PC as the account first, or ask an admin of your household."),
+        "signin.unavailable" => new HostConnectionException(code, "Signing in that way isn't set up on this host."),
+        "signin.expired" => new HostConnectionException(code, "That sign-in took too long. Start again."),
+        "auth.throttled" or "auth.locked" or "auth.rate" => new HostConnectionException(code,
+            "Too many sign-in attempts. Wait a few minutes, then try again." +
+            (response.Headers.RetryAfter?.Delta is { } wait ? $" (about {Math.Ceiling(wait.TotalMinutes)} min)" : "")),
+        _ => HostTransport.Remote(root)
+    };
+}
+
+/// <summary>A host's sign-in settings as a member desktop sees them (never a secret).</summary>
+public sealed record HostSignInSettings(string HostId, string? OwnerUser, int RecoveryCodesLeft,
+    IReadOnlyList<HostSignInProviderSettings> Providers, IReadOnlyList<HostSignInAllowed> Allowed, IReadOnlyList<HostSignInEnrolled> Enrolled,
+    IReadOnlyList<string>? RecoveryCodes)
+{
+    /// <summary>Identities that signed in at a provider but aren't allowed yet, newest first (DeviceId is the computer that tried).</summary>
+    public IReadOnlyList<HostSignInEnrolled> Refused { get; init; } = [];
+    /// <summary>Computers whose sign-in was removed and that member desktops still have to remove from the network
+    /// (EnrolledAt is when the sign-in was removed).</summary>
+    public IReadOnlyList<HostSignInEnrolled> RemovedFromNetwork { get; init; } = [];
+    /// <summary>Why nobody can sign in to the host now ("signin.not_set_up", "signin.no_allowed_identity"), null when someone
+    /// can. Hosts older than this field report null. While it isn't null the host isn't reachable from outside home.</summary>
+    public string? BlockedReason { get; init; }
+    public bool Usable => BlockedReason is null;
+    /// <summary>The household owner's account the host uses (set by a desktop, or derived from its network); null on hosts
+    /// older than accounts.</summary>
+    public Guid? OwnerAccountId { get; init; }
+    /// <summary>Other household accounts' Martlet password logins on the host (never a secret).</summary>
+    public IReadOnlyList<HostSignInAccount> Accounts { get; init; } = [];
+    /// <summary>The share links the host keeps (docs/NETWORK.md, "Sharing with a link"); null when the host is older than share
+    /// links and can't take one.</summary>
+    public IReadOnlyList<HostSignInLink>? Links { get; init; }
+    public bool SupportsLinks => Links is not null;
+    /// <summary>IDs of share links that were stopped; the host never takes them again.</summary>
+    public IReadOnlyList<string> RemovedLinks { get; init; } = [];
+
+    /// <summary>Whether sign-in would still be usable after <paramref name="change"/> (a settings change as sent to the host):
+    /// an owner account, a provider with an allowed identity, or a share link would remain.</summary>
+    public bool UsableAfter(JsonObject change)
+    {
+        var action = (string?)change["action"];
+        var owner = action == "owner" || OwnerUser is not null && action != "remove-owner";
+        var links = action == "share-link" || (Links ?? []).Any(l => !(action == "remove-share-link" && l.Id == (string?)change["id"]));
+        var removedProvider = action == "remove-provider" ? (string?)change["id"] : null;
+        var providers = Providers.Select(p => p.Id).Where(id => id != removedProvider)
+            .Concat(action == "provider" && change["provider_config"]?["id"] is { } added ? [(string)added!] : []).ToHashSet();
+        var allowed = Allowed.Where(a => a.Provider != removedProvider &&
+                !(action == "disallow" && a.Provider == (string?)change["provider"] && a.Subject == (string?)change["subject"]))
+            .Select(a => a.Provider)
+            .Concat(action == "allow" && (string?)change["provider"] is { } provider ? [provider] : []);
+        return owner || links || allowed.Any(providers.Contains);
+    }
+
+    /// <summary>The identities allowed as friends (this host's engines only).</summary>
+    public IEnumerable<HostSignInAllowed> Friends => Allowed.Where(a => a.Friend);
+
+    /// <summary>Reads the host's <c>/martlet/v1/signin/settings</c> answer (never a secret). Throws <see cref="KeyNotFoundException"/>,
+    /// <see cref="InvalidOperationException"/> or <see cref="FormatException"/> when it isn't one, or names another host.</summary>
+    public static HostSignInSettings Parse(string hostId, JsonElement root)
+    {
+        if (root.GetProperty("host_id").GetString() != hostId) throw new FormatException();
+        string? Text(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? HostSignInClient.Clean(item.GetString()) : null;
+        Guid? Id(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String && item.TryGetGuid(out var id) ? id : null;
+        HostSignInEnrolled Enrolled(JsonElement e) => new(Text(e, "device_id")!, Text(e, "provider")!, e.GetProperty("subject").GetString()!,
+            Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())
+        {
+            Access = Text(e, "access") is { } access ? HostSignInAccess.Normalize(access) : null
+        };
+        var owner = root.TryGetProperty("owner", out var o) && o.ValueKind == JsonValueKind.Object ? o : (JsonElement?)null;
+        return new(hostId, owner is { } account ? Text(account, "user") : null,
+            owner is { } left ? left.GetProperty("recovery_codes_left").GetInt32() : 0,
+            root.GetProperty("providers").EnumerateArray().Take(16).Select(p => new HostSignInProviderSettings(Text(p, "id")!, Text(p, "kind")!,
+                Text(p, "name") ?? "", Text(p, "issuer"), Text(p, "client_id"), Text(p, "scopes"), p.GetProperty("has_client_secret").GetBoolean())
+            {
+                RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) ? number : null
+            }).ToArray(),
+            root.GetProperty("allowed").EnumerateArray().Take(64).Select(a => new HostSignInAllowed(Text(a, "provider")!, a.GetProperty("subject").GetString()!,
+                Text(a, "label")) { Access = HostSignInAccess.Normalize(Text(a, "access")), AccountId = Id(a, "account_id") }).ToArray(),
+            root.GetProperty("enrolled").EnumerateArray().Take(64).Select(Enrolled).ToArray(),
+            root.TryGetProperty("recovery_codes", out var codes) && codes.ValueKind == JsonValueKind.Array
+                ? codes.EnumerateArray().Select(c => c.GetString()!).ToArray() : null)
+        {
+            BlockedReason = root.TryGetProperty("blocked_reason", out var blocked) && blocked.ValueKind == JsonValueKind.String ? blocked.GetString() : null,
+            OwnerAccountId = Id(root, "owner_account_id"),
+            Accounts = root.TryGetProperty("accounts", out var accounts) && accounts.ValueKind == JsonValueKind.Array
+                ? accounts.EnumerateArray().Take(32).Where(a => Id(a, "account_id") is not null && Text(a, "user") is not null)
+                    .Select(a => new HostSignInAccount(Id(a, "account_id")!.Value, Text(a, "user")!,
+                        a.TryGetProperty("has_authenticator", out var totp) && totp.ValueKind == JsonValueKind.True,
+                        a.TryGetProperty("recovery_codes_left", out var left) && left.TryGetInt32(out var count) ? count : 0)).ToArray()
+                : [],
+            Refused = root.TryGetProperty("refused", out var refused) && refused.ValueKind == JsonValueKind.Array
+                ? refused.EnumerateArray().Take(16).Select(Enrolled).ToArray()
+                : [],
+            RemovedFromNetwork = root.TryGetProperty("removed_from_network", out var removed) && removed.ValueKind == JsonValueKind.Array
+                ? removed.EnumerateArray().Take(32).Select(Enrolled).ToArray()
+                : [],
+            Links = root.TryGetProperty("links", out var links) && links.ValueKind == JsonValueKind.Array
+                ? links.EnumerateArray().Take(64).Where(l => Text(l, "id") is not null).Select(l => new HostSignInLink(Text(l, "id")!, Text(l, "label"),
+                    l.TryGetProperty("added_at", out var at) && at.TryGetDateTimeOffset(out var added) ? added : DateTimeOffset.MinValue,
+                    l.TryGetProperty("hosts", out var hosts) && hosts.ValueKind == JsonValueKind.Array
+                        ? hosts.EnumerateArray().Take(64).Select(h => h.GetString()!).Where(h => h is not null).ToArray() : null)).ToArray()
+                : null,
+            RemovedLinks = root.TryGetProperty("removed_links", out var removedLinks) && removedLinks.ValueKind == JsonValueKind.Array
+                ? removedLinks.EnumerateArray().Take(256).Where(r => r.ValueKind == JsonValueKind.String).Select(r => r.GetString()!).ToArray()
+                : []
+        };
+    }
+}
+
+/// <summary>A share link a host keeps (never its verifier): its ID, the name the owner gave the friend, when it was added and
+/// the hosts it covers (null: all of the owner's hosts).</summary>
+public sealed record HostSignInLink(string Id, string? Label, DateTimeOffset AddedAt, IReadOnlyList<string>? Hosts)
+{
+    public bool AllHosts => Hosts is null;
+}
+
+/// <summary>What a host told a friend's computer about the share link it signed in with: the link, whether it covers all of the
+/// owner's hosts and each host it covers, as an invite (ID, pin, home and outside addresses).</summary>
+public sealed record HostSharedHosts(string HostId, string? LinkId, string? Label, string? NetworkId, bool AllHosts, IReadOnlyList<NetworkInvite> Hosts);
+
+public sealed record HostSignInProviderSettings(string Id, string Kind, string Name, string? Issuer, string? ClientId, string? Scopes, bool HasClientSecret)
+{
+    public int? RedirectPort { get; init; }
+}
+
+/// <summary>An identity the host allows (a provider set up there and the account's stable subject), with the access its
+/// computers get (<see cref="HostSignInAccess"/>).</summary>
+public sealed record HostSignInAllowed(string Provider, string Subject, string? Label)
+{
+    public string Access { get; init; } = HostSignInAccess.Member;
+    public bool Friend => Access == HostSignInAccess.Friend;
+    /// <summary>For a member: the household account it signs in as (null: the owner's).</summary>
+    public Guid? AccountId { get; init; }
+}
+
+/// <summary>A household account's Martlet password login on a host: its user name, whether it has an authenticator (needed to
+/// add a computer by signing in) and how many recovery codes are left.</summary>
+public sealed record HostSignInAccount(Guid AccountId, string User, bool HasAuthenticator, int RecoveryCodesLeft);
+
+/// <summary>A computer that signed in (or, in <see cref="HostSignInSettings.Refused"/>, an identity that tried), with the access
+/// its sign-in gave: "member", "friend", or null where the host lists none (refused identities, removals).</summary>
+public sealed record HostSignInEnrolled(string DeviceId, string Provider, string Subject, string? Label, DateTimeOffset EnrolledAt)
+{
+    public string? Access { get; init; }
+    public bool Friend => Access == HostSignInAccess.Friend;
+}
+
+/// <summary>The host's sign-in settings, read and changed by a member desktop at home over its signed, pinned connection.</summary>
+public sealed partial class HostConnection
+{
+    private const string SignInSettingsPath = "/martlet/v1/signin/settings";
+
+    /// <summary>Starts a Prove sign-in on this paired computer (<c>/signin/begin</c> over the pinned connection): provider
+    /// "martlet" for a household account's Martlet password, "owner" for the owner login, or a provider set up on the host
+    /// (then pass the PKCE challenge and this computer's loopback redirect).</summary>
+    public async Task<HostSignInAttempt> BeginProveAsync(string provider, string? codeChallenge = null, string? redirectUri = null,
+        CancellationToken cancellationToken = default)
+    {
+        var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object?>
+        {
+            ["protocol_version"] = new { major = 2, minor = 0 }, ["provider"] = provider, ["code_challenge"] = codeChallenge, ["redirect_uri"] = redirectUri
+        }.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value));
+        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + "/martlet/v1/signin/begin") { Content = HostTransport.JsonContent(body) };
+        using var document = await SendSignInAsync(request, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var root = document.RootElement;
+            var url = root.TryGetProperty("authorize_url", out var link) && link.ValueKind == JsonValueKind.String ? link.GetString() : null;
+            if (url is not null && (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)) throw new FormatException();
+            return new(pairing.Origin, root.GetProperty("attempt_id").GetString()!, root.GetProperty("provider").GetString()!,
+                root.GetProperty("state").GetString()!, root.GetProperty("nonce").GetString()!, url);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's answer to the sign-in was invalid.");
+        }
+    }
+
+    /// <summary>Finishes a Prove sign-in on this paired computer (<c>POST /martlet/v1/signin/prove</c>, signed): the host checks
+    /// the proof and answers its signed attestation that the account proved itself on this computer, valid for
+    /// <paramref name="lifetime"/> (ten minutes when null; one minute to 30 days). Issues no new credential.</summary>
+    public async Task<HostAccountProof> ProveAsync(HostSignInAttempt attempt, JsonObject proof, TimeSpan? lifetime = null,
+        CancellationToken cancellationToken = default, Guid? linkAccount = null)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        ArgumentNullException.ThrowIfNull(proof);
+        var change = new JsonObject
+        {
+            ["protocol_version"] = new JsonObject { ["major"] = 2, ["minor"] = 0 }, ["attempt_id"] = attempt.AttemptId, ["proof"] = proof.DeepClone()
+        };
+        if (lifetime is { } wanted) change["lifetime_seconds"] = (int)wanted.TotalSeconds;
+        // W13: a provider identity the host doesn't allow yet becomes a login of this account (docs/ACCOUNTS.md).
+        if (linkAccount is { } link) change["link_account_id"] = link.ToString();
+        var body = JsonSerializer.SerializeToUtf8Bytes(change);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + "/martlet/v1/signin/prove") { Content = HostTransport.JsonContent(body) };
+            Sign(request, body);
+            using var document = await SendSignInAsync(request, cancellationToken).ConfigureAwait(false);
+            var root = document.RootElement;
+            var signedIn = root.GetProperty("signed_in");
+            var accountId = root.GetProperty("account_id").GetGuid();
+            var attestation = HostSignInClient.ReadAttestation(root, pairing.HostId, pairing.DeviceId);
+            if (root.GetProperty("host_id").GetString() != pairing.HostId || attestation is null || attestation.AccountId != accountId)
+                throw new HostConnectionException("response.invalid", "The host's account attestation was invalid.");
+            var who = new HostSignInIdentity(signedIn.GetProperty("provider").GetString()!, signedIn.GetProperty("subject").GetString()!,
+                signedIn.TryGetProperty("label", out var label) ? HostSignInClient.Clean(label.GetString()) : null)
+            {
+                AccountId = accountId, Attestation = attestation
+            };
+            return new(who, accountId, attestation);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's account attestation was invalid.");
+        }
+        finally { CryptographicOperations.ZeroMemory(body); }
+    }
+
+    /// <summary>A Prove sign-in with a Martlet password login (user name, password and, when the login has an authenticator, its
+    /// current code or a recovery code).</summary>
+    public async Task<HostAccountProof> ProveWithPasswordAsync(string user, string password, string? code, TimeSpan? lifetime = null,
+        CancellationToken cancellationToken = default)
+    {
+        var attempt = await BeginProveAsync(GatewayMartletProvider, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var proof = new JsonObject { ["user"] = user, ["password"] = password };
+        if (code is { Length: > 0 }) proof["code"] = code;
+        return await ProveAsync(attempt, proof, lifetime, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>A Prove sign-in at a provider in the browser, as <see cref="HostSignInClient.SignInInBrowserAsync"/> does for
+    /// joining.</summary>
+    public async Task<HostAccountProof> ProveInBrowserAsync(string provider, Action<string> openBrowser, TimeSpan timeout, TimeSpan? lifetime = null,
+        int? redirectPort = null, CancellationToken cancellationToken = default, Guid? linkAccount = null)
+    {
+        ArgumentNullException.ThrowIfNull(openBrowser);
+        var (verifier, challenge) = HostSignInClient.NewPkce();
+        using var redirect = LoopbackRedirect.Start(redirectPort);
+        var attempt = await BeginProveAsync(provider, challenge, redirect.RedirectUri, cancellationToken).ConfigureAwait(false);
+        if (attempt.AuthorizeUrl is null) throw new HostConnectionException("response.invalid", "The host didn't say where to sign in.");
+        openBrowser(attempt.AuthorizeUrl);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        wait.CancelAfter(timeout);
+        IReadOnlyDictionary<string, string> query;
+        try { query = await redirect.WaitAsync(wait.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new HostConnectionException("signin.expired", "The browser didn't come back in time. Start the sign-in again.");
+        }
+        if (query.TryGetValue("error", out var error))
+            throw new HostConnectionException("signin.invalid", $"The sign-in was canceled or refused in the browser ({HostSignInClient.Clean(error)}).");
+        var answer = new JsonObject();
+        foreach (var (name, value) in query) answer[name] = value;
+        return await ProveAsync(attempt, new JsonObject { ["query"] = answer, ["code_verifier"] = verifier }, lifetime, cancellationToken, linkAccount)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>The provider ID of household Martlet password logins on a host.</summary>
+    public const string GatewayMartletProvider = "martlet";
+
+    private async Task<JsonDocument> SendSignInAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+        var document = await HostTransport.ReadJson(response, 16 * 1024, timeout.Token).ConfigureAwait(false);
+        if (response.IsSuccessStatusCode) return document;
+        using (document)
+        {
+            var code = document.RootElement.TryGetProperty("code", out var value) ? value.GetString() : null;
+            throw HostSignInClient.Failure(code, response, document.RootElement);
+        }
+    }
+
+    public async Task<HostSignInSettings> ReadSignInSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + SignInSettingsPath);
+        Sign(request, []);
+        return await SignInSettingsAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>On a friend's computer that signed in to this host with a share link: the owner's hosts the link covers
+    /// (<c>GET /martlet/v1/signin/shared</c>), so Martlet signs in to those it doesn't use yet. A host older than share links
+    /// answers <c>signin.unsupported</c>.</summary>
+    public async Task<HostSharedHosts> ReadSharedHostsAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + "/martlet/v1/signin/shared");
+        Sign(request, []);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+        using var document = await HostTransport.ReadJson(response, 64 * 1024, timeout.Token).ConfigureAwait(false);
+        var root = document.RootElement;
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            var code = root.TryGetProperty("code", out var value) ? value.GetString() : null;
+            throw code is "request.invalid" or "route.not_found" or "access.friend"
+                ? new HostConnectionException("signin.unsupported", $"{pairing.HostId} runs an older Martlet without share links.")
+                : HostTransport.Remote(root);
+        }
+        try
+        {
+            if (root.GetProperty("host_id").GetString() != pairing.HostId) throw new FormatException();
+            string? Text(JsonElement element, string name) =>
+                element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+            var networkId = Text(root, "network_id");
+            var hosts = new List<NetworkInvite>();
+            foreach (var host in root.GetProperty("hosts").EnumerateArray().Take(64))
+            {
+                var invite = new NetworkInvite
+                {
+                    HostId = host.GetProperty("host_id").GetString()!, SpkiFingerprint = host.GetProperty("spki").GetString()!,
+                    Origin = host.GetProperty("origin").GetString()!,
+                    Addresses = host.TryGetProperty("addresses", out var list) && list.ValueKind == JsonValueKind.Array
+                        ? list.EnumerateArray().Select(a => a.GetString()!).Where(NetworkInvite.IsAddress).Take(NetworkInvite.MaximumAddresses).ToArray() : [],
+                    NetworkId = networkId, Label = ShareLink.Clean(Text(host, "name"))
+                };
+                // A host entry that isn't a valid invite is skipped, not trusted.
+                try { invite.Validate(); hosts.Add(invite); }
+                catch (Martlet.Core.Contracts.ContractException) { }
+            }
+            return new(pairing.HostId, Text(root, "link_id"), HostSignInClient.Clean(Text(root, "label")), networkId,
+                root.TryGetProperty("all_hosts", out var all) && all.ValueKind == JsonValueKind.True, hosts);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's list of shared hosts was invalid.");
+        }
+    }
+
+    /// <summary>Applies one change: <c>{"action":"owner","user","password","totp_secret","code"}</c>,
+    /// <c>"recovery-codes"</c>, <c>"remove-owner"</c>, <c>{"action":"allow","provider","subject","label","access"}</c> (access
+    /// "member", the default, for the owner's own computers, or "friend" for that host's engines only; allowing an identity again
+    /// replaces its entry, and a changed access revokes the computers it signed in with the old one),
+    /// <c>{"action":"disallow","provider","subject"}</c>, <c>{"action":"provider","provider_config":{...}}</c> or
+    /// <c>{"action":"remove-provider","id"}</c>. Household accounts (docs/ACCOUNTS.md): <c>{"action":"owner-account","account_id"}</c>,
+    /// <c>{"action":"account","account_id","user","password","totp_secret","code"}</c> (adds or changes another account's
+    /// Martlet password login; the password may be left out of a change, and an authenticator is added with its secret and a
+    /// current code), <c>{"action":"remove-account-authenticator","account_id"}</c>, <c>{"action":"remove-account","account_id"}</c>,
+    /// <c>"recovery-codes"</c> with an <c>account_id</c>, <c>"allow"</c> with an <c>account_id</c> and
+    /// <c>{"action":"link","provider","subject","account_id"}</c> (no account_id: the owner's account). The answer carries new
+    /// recovery codes once, when the change made some.</summary>
+    public async Task<HostSignInSettings> ChangeSignInSettingsAsync(JsonObject change, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        var body = JsonSerializer.SerializeToUtf8Bytes(change);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + SignInSettingsPath) { Content = HostTransport.JsonContent(body) };
+            Sign(request, body);
+            return await SignInSettingsAsync(request, cancellationToken, friendChange: (string?)change["access"] == HostSignInAccess.Friend)
+                .ConfigureAwait(false);
+        }
+        finally { CryptographicOperations.ZeroMemory(body); }
+    }
+
+    private async Task<HostSignInSettings> SignInSettingsAsync(HttpRequestMessage request, CancellationToken cancellationToken, bool friendChange = false)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+        using var document = await HostTransport.ReadJson(response, 64 * 1024, timeout.Token).ConfigureAwait(false);
+        var root = document.RootElement;
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            var code = root.TryGetProperty("code", out var value) ? value.GetString() : null;
+            throw code switch
+            {
+                "request.invalid" when response.StatusCode == HttpStatusCode.BadRequest && request.Method == HttpMethod.Get =>
+                    new HostConnectionException("signin.unsupported", $"{pairing.HostId} runs an older Martlet without sign-in. Update it first."),
+                // Hosts older than friend sharing refuse the unknown "access" field.
+                "request.invalid" when response.StatusCode == HttpStatusCode.BadRequest && friendChange =>
+                    new HostConnectionException("signin.friends_unsupported",
+                        $"{pairing.HostId} runs an older Martlet that can't share with friends yet. Update it first."),
+                "signin.invalid" => new HostConnectionException(code, "The authenticator code didn't match. Check the app shows this host's entry and try the current code."),
+                "signin.weak_password" => new HostConnectionException(code, "Use a password of at least 12 characters."),
+                "signin.denied" => new HostConnectionException(code, "Only a computer in your Martlet network can change this host's sign-in, and only one " +
+                    "signed in as an owner or admin of your household (or as the account itself, for its own sign-ins)."),
+                "signin.login_taken" => new HostConnectionException(code,
+                    "That sign-in is already another account's login in your household, or a friend's. Unlink it there first."),
+                "signin.unavailable" => new HostConnectionException(code, $"{pairing.HostId} doesn't keep sign-in settings yet; update its host service."),
+                _ => HostTransport.Remote(root)
+            };
+        }
+        try { return HostSignInSettings.Parse(pairing.HostId, root); }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's sign-in settings were invalid.");
+        }
+    }
+}
+
+/// <summary>The one-shot loopback redirect a browser sign-in comes back to (RFC 8252 section 7.3): a socket on 127.0.0.1 and a
+/// free port, answering the first request that carries a sign-in result (a state, code, error or OpenID assertion) with a
+/// short page and returning its query. Nothing else on the computer is opened or registered.</summary>
+public sealed class LoopbackRedirect : IDisposable
+{
+    private readonly System.Net.Sockets.TcpListener listener;
+
+    private LoopbackRedirect(System.Net.Sockets.TcpListener listener) => this.listener = listener;
+
+    public string RedirectUri => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/";
+
+    /// <summary>Listens on 127.0.0.1 at <paramref name="port"/>, or a free port when null.</summary>
+    public static LoopbackRedirect Start(int? port = null)
+    {
+        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, port ?? 0);
+        try { listener.Start(); }
+        catch (System.Net.Sockets.SocketException)
+        {
+            throw new HostConnectionException("signin.port_busy",
+                $"Another program on this PC uses port {port}, which this sign-in must come back to. Close it and try again.");
+        }
+        return new(listener);
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> WaitAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            using var client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+            using var stream = client.GetStream();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            string? line;
+            try
+            {
+                var buffer = new byte[16 * 1024];
+                var read = 0;
+                while (read < buffer.Length && System.Text.Encoding.ASCII.GetString(buffer, 0, read) is var text && !text.Contains("\r\n\r\n", StringComparison.Ordinal))
+                {
+                    var n = await stream.ReadAsync(buffer.AsMemory(read), timeout.Token).ConfigureAwait(false);
+                    if (n == 0) break;
+                    read += n;
+                }
+                line = System.Text.Encoding.ASCII.GetString(buffer, 0, read).Split("\r\n")[0];
+            }
+            catch (Exception error) when (error is IOException or OperationCanceledException && !cancellationToken.IsCancellationRequested) { continue; }
+            var parts = line.Split(' ');
+            var target = parts.Length == 3 && parts[0] == "GET" ? parts[1] : "";
+            var query = target.StartsWith("/?", StringComparison.Ordinal) ? Parse(target[2..]) : new Dictionary<string, string>();
+            var result = query.Keys.Any(k => k is "state" or "code" or "error" || k.StartsWith("openid.", StringComparison.Ordinal));
+            var page = result
+                ? "<!doctype html><meta charset=utf-8><title>Martlet</title><p style=\"font-family:sans-serif\">Martlet got your sign-in. You can close this tab and go back to Martlet.</p>"
+                : "<!doctype html><title>Martlet</title>";
+            var body = System.Text.Encoding.UTF8.GetBytes(page);
+            var head = System.Text.Encoding.ASCII.GetBytes($"HTTP/1.1 {(result ? "200 OK" : "404 Not Found")}\r\nContent-Type: text/html; charset=utf-8\r\n" +
+                $"Content-Length: {body.Length}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+            try
+            {
+                await stream.WriteAsync(head, cancellationToken).ConfigureAwait(false);
+                await stream.WriteAsync(body, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException) { }
+            if (result) return query;
+        }
+    }
+
+    private static Dictionary<string, string> Parse(string query)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries).Take(64))
+        {
+            var equals = pair.IndexOf('=');
+            var name = Uri.UnescapeDataString((equals < 0 ? pair : pair[..equals]).Replace('+', ' '));
+            var value = equals < 0 ? "" : Uri.UnescapeDataString(pair[(equals + 1)..].Replace('+', ' '));
+            if (name.Length is > 0 and <= 128 && value.Length <= 4096) result[name] = value;
+        }
+        return result;
+    }
+
+    public void Dispose() => listener.Stop();
+}

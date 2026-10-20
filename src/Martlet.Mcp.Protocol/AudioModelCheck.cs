@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Conversation;
@@ -233,12 +231,7 @@ internal static class AudioModelCheck
     private static SenseModel Own(DeepThinkingSettings model) => new() { Source = SenseSource.Own, Own = model };
 
     // One canned Chat Completions answer as a stream.
-    private static string Sse(string text)
-    {
-        const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-        return "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(text) + "},\"finish_reason\":null}]}\n\n" +
-            "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-    }
+    private static string Sse(string text) => FixtureChat.Reply(text);
 
     private sealed record Sent(string? Model, bool Audio, string System, string[] Users)
     {
@@ -265,52 +258,21 @@ internal static class AudioModelCheck
     // A minimal HTTP/1.1 endpoint on 127.0.0.1: records each request body and answers with Respond (a stream for 200).
     private sealed class FixtureEndpoint : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
         private readonly List<byte[]> requests = [];
-        private readonly Task serving;
+        private readonly LoopbackHttpServer server;
 
-        internal FixtureEndpoint()
+        internal FixtureEndpoint() => server = new(async exchange =>
         {
-            listener.Start();
-            BaseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
-            serving = ServeAsync();
-        }
+            lock (requests) requests.Add(exchange.Request.Body);
+            var (status, payload) = await Respond(exchange.Request.Body, exchange.Cancellation);
+            await exchange.RespondAsync(status, payload, status == 200 ? "text/event-stream" : "application/json");
+        });
 
-        internal string BaseUrl { get; }
+        internal string BaseUrl => server.V1;
         internal Func<byte[], CancellationToken, Task<(int Status, string Payload)>> Respond { get; set; } =
             (_, _) => Task.FromResult((200, Sse("Fixture reply (not AI).")));
         internal byte[][] Requests { get { lock (requests) return [.. requests]; } }
 
-        private async Task ServeAsync()
-        {
-            try
-            {
-                while (!stop.IsCancellationRequested)
-                {
-                    using var client = await listener.AcceptTcpClientAsync(stop.Token);
-                    await using var stream = client.GetStream();
-                    var body = await HearingCheck.ReadRequestAsync(stream, stop.Token);
-                    lock (requests) requests.Add(body);
-                    var (status, payload) = await Respond(body, stop.Token);
-                    var bytes = Encoding.UTF8.GetBytes(payload);
-                    var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Bad Request")}\r\n" +
-                        $"Content-Type: {(status == 200 ? "text/event-stream" : "application/json")}\r\nContent-Length: {bytes.Length}\r\n" +
-                        "Connection: close\r\n\r\n");
-                    await stream.WriteAsync(head, stop.Token);
-                    await stream.WriteAsync(bytes, stop.Token);
-                    await stream.FlushAsync(stop.Token);
-                }
-            }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            await serving.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 }

@@ -288,6 +288,6 @@ public sealed class ScreenReadingTests
         var role = HostRoles.Get(HostRoles.Ocr);
         Assert.Equal("Reading", role.Name);
         Assert.Equal("martlet.gateway.ocr.v1", role.RouteId);
-        Assert.Equal(HostRoles.Ocr, HostRoles.ForRoute(Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostConnection.OcrRouteId)?.Kind);
+        Assert.Equal(HostRoles.Ocr, HostRoles.ForRoute(Martlet.HostClient.HostConnection.OcrRouteId)?.Kind);
     }
 }

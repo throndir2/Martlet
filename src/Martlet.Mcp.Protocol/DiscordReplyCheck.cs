@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Contracts;
@@ -111,12 +109,9 @@ internal static class DiscordReplyCheck
 
     private static async Task<object> FixtureAsync(CancellationToken cancellation)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         var requests = new List<byte[]>();
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, requests, stop.Token);
+        var server = FixtureChat.Recording(requests, request => FixtureChat.Reply(Answer(request.Text)));
+        var baseUrl = server.V1;
         try
         {
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
@@ -165,9 +160,7 @@ internal static class DiscordReplyCheck
         }
         finally
         {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 
@@ -268,32 +261,13 @@ internal static class DiscordReplyCheck
 
     private static string Trim(string text) => text.Length > 240 ? text[..240] + "…" : text;
 
-    // A minimal HTTP/1.1 endpoint: records each request body and streams a canned reply chosen by what the request asks.
-    private static async Task ServeAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
-    {
-        while (!cancellation.IsCancellationRequested)
-        {
-            using var client = await listener.AcceptTcpClientAsync(cancellation);
-            await using var stream = client.GetStream();
-            var body = await HearingCheck.ReadRequestAsync(stream, cancellation);
-            lock (requests) requests.Add(body);
-            var text = Encoding.UTF8.GetString(body);
-            var answer = text.Contains("answer exactly " + DiscordPrompts.PassMarker, StringComparison.Ordinal) ? DiscordPrompts.PassMarker
-                : text.Contains("tell me everything", StringComparison.Ordinal)
-                    ? string.Concat(Enumerable.Repeat("Here is everything I know, one fixture sentence at a time. ", 60))
-                : text.Contains("voice call", StringComparison.Ordinal) ? "**Loud and clear!** \ud83d\ude00 See [this](https://example.com)."
-                : "Fixture reply (not AI).";
-            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-            var events = "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(answer) +
-                "},\"finish_reason\":null}]}\n\n" + "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-            var payload = Encoding.UTF8.GetBytes(events);
-            var head = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n" +
-                $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(head, cancellation);
-            await stream.WriteAsync(payload, cancellation);
-            await stream.FlushAsync(cancellation);
-        }
-    }
+    // The loopback model's canned reply, chosen by what the request asks.
+    private static string Answer(string text) =>
+        text.Contains("answer exactly " + DiscordPrompts.PassMarker, StringComparison.Ordinal) ? DiscordPrompts.PassMarker
+        : text.Contains("tell me everything", StringComparison.Ordinal)
+            ? string.Concat(Enumerable.Repeat("Here is everything I know, one fixture sentence at a time. ", 60))
+        : text.Contains("voice call", StringComparison.Ordinal) ? "**Loud and clear!** \ud83d\ude00 See [this](https://example.com)."
+        : FixtureChat.Words;
 
     // The check's own clock, so the ambient cooldown can be stepped through without waiting.
     private sealed class StepClock : TimeProvider

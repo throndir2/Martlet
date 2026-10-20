@@ -70,8 +70,8 @@ public sealed class AccountsStatusTests
             var owner = Account.Create("Robin", AccountRoles.Owner);
             var session = AccountSession.Open(data, Sid, () => "Sam Doe", device, Now);
             // The roster and the household's directory arrive after this PC made its own account.
-            File.WriteAllBytes(Path.Combine(data, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName),
-                new Martlet.Avatar.Audio2Face.Remote.NetworkLocalState { Roster = roster }.Write());
+            File.WriteAllBytes(Path.Combine(data, Martlet.HostClient.NetworkLocalState.FileName),
+                new Martlet.HostClient.NetworkLocalState { Roster = roster }.Write());
             AccountSession.SaveDirectory(data, AccountDirectory.Empty.Put(founder, owner, Now));
 
             var status = await StatusAsync(data);

@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Accounts;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
@@ -369,7 +369,7 @@ internal static class CreationRehearsal
             await call();
             return null;
         }
-        catch (Audio2FaceHostException error) { return error.Code; }
+        catch (HostConnectionException error) { return error.Code; }
     }
 
     private static async Task<bool> RefusedAsync(Func<Task> call)
@@ -439,7 +439,7 @@ internal static class CreationRehearsal
     /// <summary>A simulated desktop: its pairings (secrets in memory), its data folder and the production sync engine.</summary>
     private sealed class LabDesktop(string deviceId, string dataDirectory, Guid? account = null, bool owner = false)
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly CreationSync sync = new(dataDirectory);
         internal string DeviceId => deviceId;
         internal string DataDirectory => dataDirectory;
@@ -448,7 +448,7 @@ internal static class CreationRehearsal
         internal async Task PairAsync(CreationHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = deviceId, DisplayName = deviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
@@ -479,7 +479,7 @@ internal static class CreationRehearsal
         }
 
         // A restarted lab host has a new port and forgets volatile pairings; the desktop pairs again, as it would after a reset.
-        private Audio2FaceHostConnection Connect(CreationHost host)
+        private HostConnection Connect(CreationHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
             if (pairing.Origin != host.Origin)
@@ -487,7 +487,7 @@ internal static class CreationRehearsal
                 PairAsync(host).GetAwaiter().GetResult();
                 (pairing, secret) = pairings[host.HostId];
             }
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
     }
 

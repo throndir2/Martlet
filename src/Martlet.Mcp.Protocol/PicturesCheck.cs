@@ -110,7 +110,7 @@ internal static class PicturesCheck
             var path = Path.Combine(dataDirectory, "hosts.json");
             if (!File.Exists(path) || new FileInfo(path).Length > 262_144) return ([], null);
             var hosts = (JsonNode.Parse(File.ReadAllText(path))?["hosts"] as JsonArray ?? []).OfType<JsonObject>()
-                .Where(h => h["access"]?.GetValue<string>() != Martlet.Avatar.Audio2Face.Remote.HostSignInAccess.Friend).ToArray();
+                .Where(h => h["access"]?.GetValue<string>() != Martlet.HostClient.HostSignInAccess.Friend).ToArray();
             return ([.. hosts.Select(h => h["pairing"]?["hostId"]?.GetValue<string>()).OfType<string>()],
                 hosts.FirstOrDefault(h => h["method"]?.GetValue<string>() == "ThisPcDocker")?["pairing"]?["hostId"]?.GetValue<string>());
         }

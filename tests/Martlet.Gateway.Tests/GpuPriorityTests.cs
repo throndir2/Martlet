@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Gateway.Ollama;
 using Microsoft.AspNetCore.Builder;
@@ -82,8 +82,8 @@ public sealed class GpuPriorityTests
         internal HeldOllama Deep { get; private init; } = null!;
         internal GatewayTestHost Host { get; private set; } = null!;
         internal GatewayRequestSigner Signer { get; private set; } = null!;
-        internal Audio2FaceHostConnection Connection { get; private set; } = null!;
-        internal (Audio2FaceHostPairing Pairing, string Secret) Pairing { get; private set; }
+        internal HostConnection Connection { get; private set; } = null!;
+        internal (HostPairing Pairing, string Secret) Pairing { get; private set; }
         internal Dictionary<string, JsonElement> Routes { get; } = new(StringComparer.Ordinal);
         private readonly List<IAsyncDisposable> owned = [];
 
@@ -104,9 +104,9 @@ public sealed class GpuPriorityTests
             var credential = await lab.Host.PairAsync(GatewayRole.Voice, "desktop-raw");
             lab.Signer = new GatewayRequestSigner(lab.Host.Identity, credential, lab.Host.Clock);
             var card = lab.Host.OpenPairing(GatewayRole.Voice, "desktop-test");
-            lab.Pairing = await Audio2FaceHostClient.PairAsync(lab.Host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint,
+            lab.Pairing = await HostTransport.PairAsync(lab.Host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint,
                 "desktop-test", card.PairingId, card.Token.Reveal());
-            lab.Connection = new Audio2FaceHostConnection(lab.Pairing.Pairing, lab.Pairing.Secret, lab.Host.Clock);
+            lab.Connection = new HostConnection(lab.Pairing.Pairing, lab.Pairing.Secret, lab.Host.Clock);
             using var capabilities = await lab.GetJsonAsync("/martlet/v1/capabilities");
             foreach (var route in capabilities.RootElement.GetProperty("routes").EnumerateArray())
                 lab.Routes[route.GetProperty("route_id").GetString()!] = route.Clone();
@@ -492,7 +492,7 @@ public sealed class GpuPriorityTests
         lab.Deep.Release();
         var logged = new List<string>();
         using var holds = new HostLiveGpuHold(id => id == lab.Pairing.Pairing.HostId
-            ? new Audio2FaceHostConnection(lab.Pairing.Pairing, lab.Pairing.Secret, lab.Host.Clock) : null, logged.Add, lab.Host.Clock);
+            ? new HostConnection(lab.Pairing.Pairing, lab.Pairing.Secret, lab.Host.Clock) : null, logged.Add, lab.Host.Clock);
         var hostId = lab.Pairing.Pairing.HostId;
 
         // A minute is shortened to the longest hold, 15 s.
@@ -525,13 +525,13 @@ public sealed class GpuPriorityTests
         public Task<HostGpuHold> HoldGpusAsync(IReadOnlyList<string> routeIds, TimeSpan ttl, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref Calls);
-            throw new Audio2FaceHostException("request.invalid", "The Martlet host refused the request (request.invalid).");
+            throw new HostConnectionException("request.invalid", "The Martlet host refused the request (request.invalid).");
         }
 
         public Task<bool> ReleaseGpusAsync(CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref Calls);
-            throw new Audio2FaceHostException("request.invalid", "The Martlet host refused the request (request.invalid).");
+            throw new HostConnectionException("request.invalid", "The Martlet host refused the request (request.invalid).");
         }
 
         public void Dispose() { }
@@ -542,9 +542,9 @@ public sealed class GpuPriorityTests
     {
         internal bool Disposed;
         public Task<HostGpuHold> HoldGpusAsync(IReadOnlyList<string> routeIds, TimeSpan ttl, CancellationToken cancellationToken = default) =>
-            throw new Audio2FaceHostException("host.unreachable", "Could not reach the Martlet host.");
+            throw new HostConnectionException("host.unreachable", "Could not reach the Martlet host.");
         public Task<bool> ReleaseGpusAsync(CancellationToken cancellationToken = default) =>
-            throw new Audio2FaceHostException("host.unreachable", "Could not reach the Martlet host.");
+            throw new HostConnectionException("host.unreachable", "Could not reach the Martlet host.");
         public void Dispose() => Disposed = true;
     }
 

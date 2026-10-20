@@ -1,6 +1,6 @@
 using System.IO;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Sync;

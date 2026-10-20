@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Contracts;
@@ -84,12 +82,9 @@ internal static class ThinkingStepsCheck
 
     private static async Task<object> FixtureAsync(CancellationToken cancellation)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         var requests = new List<byte[]>();
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, requests, stop.Token);
+        var server = FixtureChat.Recording(requests);
+        var baseUrl = server.V1;
         try
         {
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
@@ -119,9 +114,7 @@ internal static class ThinkingStepsCheck
         }
         finally
         {
-            stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 
@@ -250,26 +243,5 @@ internal static class ThinkingStepsCheck
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
-    }
-
-    // A minimal HTTP/1.1 endpoint: records each request body and streams one canned Chat Completions reply.
-    private static async Task ServeAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
-    {
-        while (!cancellation.IsCancellationRequested)
-        {
-            using var client = await listener.AcceptTcpClientAsync(cancellation);
-            await using var stream = client.GetStream();
-            var body = await HearingCheck.ReadRequestAsync(stream, cancellation);
-            lock (requests) requests.Add(body);
-            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-            var events = "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"Fixture reply (not AI).\"},\"finish_reason\":null}]}\n\n" +
-                "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-            var payload = Encoding.UTF8.GetBytes(events);
-            var head = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n" +
-                $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(head, cancellation);
-            await stream.WriteAsync(payload, cancellation);
-            await stream.FlushAsync(cancellation);
-        }
     }
 }

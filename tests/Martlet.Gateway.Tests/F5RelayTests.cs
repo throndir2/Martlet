@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Gateway.F5;
 using Microsoft.AspNetCore.Builder;
@@ -120,12 +120,12 @@ public sealed class F5RelayTests
 
     private static CorrelationIds NewIds() => new() { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
 
-    private static async Task<(Audio2FaceHostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
+    private static async Task<(HostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
     {
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        var connection = new HostConnection(pairing, secret, host.Clock);
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.F5RouteId);
         return (connection, route);
     }
@@ -209,7 +209,7 @@ public sealed class F5RelayTests
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
         var (connection, route) = await ConnectAsync(host);
         using var owned = connection;
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamSpeechAsync(route, NewIds(), 0, host.Clock.GetUtcNow().AddSeconds(30),
                 Reference(), "Hello")) { }
@@ -220,7 +220,7 @@ public sealed class F5RelayTests
         await using var otherHost = await GatewayTestHost.StartAsync(inferenceWorkers: [other]);
         var (otherConnection, otherRoute) = await ConnectAsync(otherHost);
         using var otherOwned = otherConnection;
-        var mismatch = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var mismatch = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in otherConnection.StreamSpeechAsync(otherRoute, NewIds(), 0,
                 otherHost.Clock.GetUtcNow().AddSeconds(30), Reference(), "Hello")) { }
@@ -258,9 +258,9 @@ public sealed class F5RelayTests
         await using var nano = ChatterboxRelay.Create(new Uri("http://127.0.0.1:50088/"), "chatterbox-nano");
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [relay, turbo, nano]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var routes = await connection.ReadRoutesAsync();
         // Each Chatterbox model has its own route, model and pinned weights.
         Assert.Equal(["chatterbox-nano", "chatterbox-original", "chatterbox-turbo"],
@@ -285,7 +285,7 @@ public sealed class F5RelayTests
         Assert.False(Assert.Single(turboService.Requests).RootElement.TryGetProperty("style", out _));
 
         // A value outside Resemble's ranges never reaches the service.
-        var refused = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var refused = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamSpeechAsync(route, NewIds(), 3, host.Clock.GetUtcNow().AddSeconds(30), Reference(6),
                 "Too much.", default, style with { ExpressiveExaggeration = 3 })) { }

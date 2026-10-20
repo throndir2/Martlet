@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
@@ -85,12 +83,10 @@ internal static class ElevenLabsCheck
         var segment = client.LastSegment;
 
         // 3. A whole spoken reply through the production conversation runtime.
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         var chunks = System.Text.RegularExpressions.Regex.Matches(reply, @"\s*\S+").Select(m => m.Value).ToArray();
-        var serving = SpokenReplyCheck.ServeAsync(listener, chunks, TimeSpan.FromMilliseconds(25), TimeSpan.Zero, stop.Token, [], false);
+        var server = SpokenReplyCheck.Fixture(chunks, TimeSpan.FromMilliseconds(25), TimeSpan.Zero, [], false);
+        var baseUrl = server.V1;
         var sessionsBefore = fixture.Sessions.Count;
         try
         {
@@ -216,8 +212,7 @@ internal static class ElevenLabsCheck
         finally
         {
             stop.Cancel();
-            listener.Stop();
-            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 

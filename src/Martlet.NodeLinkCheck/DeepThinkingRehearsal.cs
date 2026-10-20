@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Gateway;
@@ -34,8 +34,8 @@ internal static class DeepThinkingRehearsal
         var deep = new FixtureOllama("I thought it over: ", "here's the plan.") { Held = true };
         await using var host = await LabHost.StartAsync("lab-deep", conversation, deep);
         var (pairing, secret) = await host.PairAsync("lab-desktop");
-        using var replies = new Audio2FaceHostConnection(pairing, secret);
-        using var thinks = new Audio2FaceHostConnection(pairing, secret);
+        using var replies = new HostConnection(pairing, secret);
+        using var thinks = new HostConnection(pairing, secret);
         HostRoute? thinkingRoute = null, deepRoute = null;
 
         async Task Run(string name, Func<Task<(bool Ok, string Detail)>> action)
@@ -141,7 +141,7 @@ internal static class DeepThinkingRehearsal
             if (thinkingRoute is null || deepRoute is null) return (false, "NOT RUN: a route is missing");
             deep.Hold();
             var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
-            var connections = Enumerable.Range(0, Slots).Select(_ => new Audio2FaceHostConnection(pairing, secret)).ToArray();
+            var connections = Enumerable.Range(0, Slots).Select(_ => new HostConnection(pairing, secret)).ToArray();
             try
             {
                 var started = Enumerable.Range(0, Slots).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
@@ -163,7 +163,7 @@ internal static class DeepThinkingRehearsal
                     await foreach (var _ in thinks.StreamChatAsync(deepRoute, Ids(), 20, deadline, null, [], "One more think.", 0.7, 64, 4_096,
                         cancellationToken: token)) { }
                 }
-                catch (Audio2FaceHostException error) { turnedAway = error.Code; }
+                catch (HostConnectionException error) { turnedAway = error.Code; }
                 var reply = new StringBuilder();
                 await foreach (var delta in replies.StreamChatAsync(thinkingRoute, Ids(), 21, deadline, "You are Martlet.", [], "Still there?",
                     0.7, 256, 8_192, cancellationToken: token))
@@ -253,10 +253,10 @@ internal static class DeepThinkingRehearsal
             }
         }
 
-        internal async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsync(string deviceId)
+        internal async Task<(HostPairing Pairing, string Secret)> PairAsync(string deviceId)
         {
             var card = server.Pairing.OpenWindow(new() { DeviceId = deviceId, DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-            return await Audio2FaceHostClient.PairAsync(origin, hostId, identity.SpkiFingerprint, deviceId, card.PairingId, card.Token.Reveal());
+            return await HostTransport.PairAsync(origin, hostId, identity.SpkiFingerprint, deviceId, card.PairingId, card.Token.Reveal());
         }
 
         public void Record(GatewayAuditEvent gatewayEvent) { }

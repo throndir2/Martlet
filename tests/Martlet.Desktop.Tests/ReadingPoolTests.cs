@@ -1,6 +1,6 @@
 using System.IO;
 using System.Net.Http;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Reading;
@@ -42,14 +42,14 @@ public sealed class ReadingPoolTests : IDisposable
         Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Reading, new PoolList { Area = PoolAreas.Reading.Id, Members = members }));
     }
 
-    private static HostRoute Route(string model) => new(Audio2FaceHostConnection.OcrRouteId, "/martlet/v1/inference/ocr", "ocr", "1",
+    private static HostRoute Route(string model) => new(HostConnection.OcrRouteId, "/martlet/v1/inference/ocr", "ocr", "1",
         "ocr", "ocr-worker", "1", model, "1", new string('0', 64), new string('0', 64), 1, 1, 1, 1, 1, 1, TimeSpan.FromSeconds(15), "none");
 
     private static Task<(HostRoute, IReadOnlyList<ReadLine>)> Reads(string model, string text) =>
         Task.FromResult((Route(model), (IReadOnlyList<ReadLine>)[new ReadLine(text, 0, 0, 10, 10)]));
 
     private static Task<(HostRoute, IReadOnlyList<ReadLine>)> Refuses(string code, string? detail = null) =>
-        Task.FromException<(HostRoute, IReadOnlyList<ReadLine>)>(new Audio2FaceHostException(code, code) { Detail = detail });
+        Task.FromException<(HostRoute, IReadOnlyList<ReadLine>)>(new HostConnectionException(code, code) { Detail = detail });
 
     private PoolScreenTextReader Reader(PoolScreenTextReader.HostRead read, List<string> tried, TimeSpan? wait = null,
         PoolScreenTextReader.LocalRead? local = null) =>
@@ -164,7 +164,7 @@ public sealed class ReadingPoolTests : IDisposable
     {
         Save(PoolMember.Computer("friend-pc"), PoolMember.Computer("gpu-pc"));
         List<string> tried = [];
-        using var reader = Reader((host, _, _) => host.HostId == "friend-pc" ? Refuses("job.busy", Audio2FaceHostException.OwnerDetail)
+        using var reader = Reader((host, _, _) => host.HostId == "friend-pc" ? Refuses("job.busy", HostConnectionException.OwnerDetail)
             : Reads("ppocrv5-server", "Score 12450"), tried);
 
         Assert.Equal("Score 12450", Assert.Single(await ReadAsync(reader)).Text);

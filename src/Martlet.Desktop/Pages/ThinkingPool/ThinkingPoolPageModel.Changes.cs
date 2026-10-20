@@ -1,6 +1,6 @@
 using System.IO;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
@@ -153,7 +153,7 @@ internal sealed partial class ThinkingPoolPageModel
                 : $"{host.HostId} ({next.ModelId}) joined the Thinking pool.");
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is IOException or InvalidOperationException or ContractException or Audio2FaceHostException)
+        catch (Exception error) when (error is IOException or InvalidOperationException or ContractException or HostConnectionException)
         {
             services.ShowStatus(error.Message);
         }

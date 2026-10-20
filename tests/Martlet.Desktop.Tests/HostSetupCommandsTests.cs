@@ -36,7 +36,7 @@ public sealed class HostSetupCommandsTests
         RunSta(() =>
         {
             var opened = 0;
-            var audit = new Martlet.Avatar.Audio2Face.Remote.HostSecurityAudit("gpu-pc", true, false, true, 0, 0, 0, 0, [])
+            var audit = new Martlet.HostClient.HostSecurityAudit("gpu-pc", true, false, true, 0, 0, 0, 0, [])
             {
                 OutsideAccessBlockedReason = "signin.not_set_up", OutsideAccessPaused = true
             };
@@ -728,11 +728,11 @@ public sealed class HostSetupCommandsTests
     [Fact]
     public void A_host_check_reports_how_many_thinks_its_deep_thinking_role_runs_at_once()
     {
-        static Martlet.Avatar.Audio2Face.Remote.HostRoute Route(string id, int slots) => new(id, "/p", "c", "1.0", "d", "w", "1.0", "m",
+        static Martlet.HostClient.HostRoute Route(string id, int slots) => new(id, "/p", "c", "1.0", "d", "w", "1.0", "m",
             "ollama", new string('a', 64), new string('b', 64), 1, 1, 1, 1, 2, 1, TimeSpan.FromMinutes(15), "request_abort", slots);
         var offers = new Dictionary<string, string> { [HostRoles.Ollama] = "gemma4-e4b", [HostRoles.DeepThinking] = "qwen3-8b" };
-        var routes = new[] { Route(Martlet.Avatar.Audio2Face.Remote.HostRoute.OllamaChatRouteId, 1),
-            Route(Martlet.Avatar.Audio2Face.Remote.HostRoute.DeepThinkingRouteId, 3) };
+        var routes = new[] { Route(Martlet.HostClient.HostRoute.OllamaChatRouteId, 1),
+            Route(Martlet.HostClient.HostRoute.DeepThinkingRouteId, 3) };
         Assert.Equal(3, new HostCheck(true, "", offers, Routes: routes).DeepThinkingSlots);
         Assert.Null(new HostCheck(true, "", offers, Routes: routes[..1]).DeepThinkingSlots);
         Assert.Contains("Thinking pool (3 thinks at once)", HostControl.Describe(offers, routes));

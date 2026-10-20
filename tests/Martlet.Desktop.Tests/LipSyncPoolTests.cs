@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Cluster;
@@ -24,8 +24,8 @@ public sealed class LipSyncPoolTests
         {
             Interlocked.Increment(ref Requests);
             await Task.Yield();
-            if (Busy) throw new Audio2FaceHostException("job.busy", "The host is busy.");
-            if (Unreachable) throw new Audio2FaceHostException("host.unreachable", "The host didn't answer.");
+            if (Busy) throw new HostConnectionException("job.busy", "The host is busy.");
+            if (Unreachable) throw new HostConnectionException("host.unreachable", "The host didn't answer.");
             yield return new(0, new Dictionary<string, double> { ["jawOpen"] = 0.5 });
         }
         public void Invalidate()

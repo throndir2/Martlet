@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Logs;
 using Martlet.Diagnostics;
 using Martlet.Gateway;
@@ -237,7 +237,7 @@ internal static class LogRehearsal
     /// engine, run the way the desktop runs it.</summary>
     private sealed class LabDesktop
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         internal string DeviceId { get; }
         internal string LogDirectory { get; }
         internal LogShare Share { get; private set; }
@@ -260,14 +260,14 @@ internal static class LogRehearsal
         internal async Task PairAsync(LabHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = DeviceId, DisplayName = DeviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
-        private Audio2FaceHostConnection Connect(LabHost host)
+        private HostConnection Connect(LabHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
 
         /// <summary>What the desktop's 30-second run does: this PC's own lines from its logs folder, every paired host.</summary>

@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Nodes;
 using static Martlet.NodeLinkCheck.CheckHelpers;
 
@@ -24,7 +24,7 @@ internal static class LiveGatewayCheck
             if (token is null) await Task.Delay(1000);
         }
         Step("token-readable-locally", token is { Length: 43 }, token is null ? "docker exec could not read agent.token" : "read with docker exec (43 characters)");
-        using var connection = new Audio2FaceHostConnection(pairing, pairingSecret);
+        using var connection = new HostConnection(pairing, pairingSecret);
         var runner = new FixtureRunner();
         var agent = new NodeCommandAgent(_ => gateway.ReadAsync(tokenPath), "9.9.9", runner);
         var update = await connection.SendCommandAsync(NodeCommandKinds.Update, new Dictionary<string, string> { ["version"] = "9.9.9" });
@@ -46,7 +46,7 @@ internal static class LiveGatewayCheck
         {
             await Task.Delay(1000);
             try { after = await connection.ReadCommandsAsync(); }
-            catch (Audio2FaceHostException) { }
+            catch (HostConnectionException) { }
         }
         var newToken = await gateway.ReadAsync(tokenPath);
         var oldRefused = await Expect(() => connection.TakeCommandAsync(token ?? "", null, NodeCommandKinds.All), "command.agent");

@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -138,11 +136,8 @@ internal static class QuickSoundCheck
     private static async Task<Turn> TurnAsync(QuickSoundGate gate, IReadOnlyList<QuickSoundClip> clips, int firstWordsMs,
         int? holdMs = null, bool letGo = false, bool reasoning = false, int? pauseAtMs = null, CancellationToken cancellation = default)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, TimeSpan.FromMilliseconds(firstWordsMs), reasoning, stop.Token);
+        var server = Fixture(TimeSpan.FromMilliseconds(firstWordsMs), reasoning);
+        var baseUrl = server.V1;
         try
         {
             var speakers = new Speakers();
@@ -193,10 +188,7 @@ internal static class QuickSoundCheck
         }
         finally
         {
-            await stop.CancelAsync();
-            listener.Stop();
-            try { await serving; }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+            await server.DisposeAsync();
         }
     }
 
@@ -210,31 +202,14 @@ internal static class QuickSoundCheck
 
     // Answers each request after the set wait with one short sentence (a hidden reasoning delta first with reasoning), the way
     // a cloud model streams.
-    internal static async Task ServeAsync(TcpListener listener, TimeSpan firstWords, bool reasoning, CancellationToken cancellation)
+    internal static LoopbackHttpServer Fixture(TimeSpan firstWords, bool reasoning) => new(async exchange =>
     {
-        while (!cancellation.IsCancellationRequested)
-        {
-            using var client = await listener.AcceptTcpClientAsync(cancellation);
-            await using var stream = client.GetStream();
-            await HearingCheck.ReadRequestAsync(stream, cancellation);
-            await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                cancellation);
-            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
-            if (reasoning)
-                await WriteAsync(stream, "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"Thinking it over.\"}," +
-                    "\"finish_reason\":null}]}\n\n", cancellation);
-            await Task.Delay(firstWords, cancellation);
-            await WriteAsync(stream, "data: " + chunk + "\"delta\":{" + (reasoning ? "" : "\"role\":\"assistant\",") +
-                "\"content\":\"Here's the thing, it works.\"},\"finish_reason\":null}]}\n\n", cancellation);
-            await WriteAsync(stream, "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", cancellation);
-        }
-    }
-
-    private static async Task WriteAsync(NetworkStream stream, string text, CancellationToken cancellation)
-    {
-        await stream.WriteAsync(Encoding.UTF8.GetBytes(text), cancellation);
-        await stream.FlushAsync(cancellation);
-    }
+        await exchange.StartAsync();
+        if (reasoning) await exchange.WriteAsync(FixtureChat.Reasoning("Thinking it over."));
+        await Task.Delay(firstWords, exchange.Cancellation);
+        await exchange.WriteAsync(FixtureChat.Content("Here's the thing, it works.", role: !reasoning));
+        await exchange.WriteAsync(FixtureChat.Finish());
+    });
 
     // FIXTURE, NOT AI: each piece is a quarter second of a quiet 220 Hz tone, after 50 ms.
     private sealed class Voice : IHostSpeechClient

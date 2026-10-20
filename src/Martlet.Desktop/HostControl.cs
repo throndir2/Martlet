@@ -2,7 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
 using Martlet.Core.Installation;
@@ -113,7 +113,7 @@ internal static class HostRoles
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
         new(Audio2Face, "Lip-sync", "Lip-sync", "an NVIDIA GPU (RTX 20 series or newer) with at least 4 GB (no NVIDIA account or key)",
-            Audio2FaceHostClient.RouteId, "lip-sync",
+            HostTransport.RouteId, "lip-sync",
             "Moves the character's face with Martlet's voice, so generated voice audio goes to that host."),
         new(Ollama, "Thinks", "Thinking", "Docker; an NVIDIA GPU is recommended",
             HostRoute.OllamaChatRouteId, "thinking",
@@ -128,7 +128,7 @@ internal static class HostRoles
             $"Runs one more Thinking pool model on that host's graphics card {card}, as a Thinking pool member of its own, and a " +
             "job's text (for a think, the task and the conversation so far) goes there.")),
         new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
-            Audio2FaceHostConnection.TranscriptionRouteId, "listening",
+            HostConnection.TranscriptionRouteId, "listening",
             "Turns speech into text on that host, so your recorded speech goes there (it is not stored)."),
         new(Chatterbox, "Speaks", "Speaking (Chatterbox Turbo)", "an NVIDIA GPU with at least 6 GB",
             SpeechEngines.Chatterbox.RouteId, "speaking",
@@ -158,22 +158,22 @@ internal static class HostRoles
             "Speaks replies on that host with Dia, which can laugh, sigh, cough and gasp when a reply asks for it (English only); " +
             "reply text and the selected voice sample go there."),
         new(Singing, "Sings", "Singing", "an NVIDIA GPU with at least 6 GB",
-            Audio2FaceHostConnection.SongRouteId, "singing",
+            HostConnection.SongRouteId, "singing",
             "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer); " +
             "the lyrics, style and the voice's recording go there."),
         new(Pictures, "Draws", "Picture making", "an NVIDIA GPU with at least 8 GB",
-            Audio2FaceHostConnection.PictureRouteId, "pictures",
+            HostConnection.PictureRouteId, "pictures",
             "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle."),
         new(Ocr, "Reads", "Reading", "Docker; RapidOCR runs on the processor, PP-OCRv5 on the processor or an NVIDIA GPU",
-            Audio2FaceHostConnection.OcrRouteId, "reading",
+            HostConnection.OcrRouteId, "reading",
             "Reads the text on your screen on that host while Martlet watches it, with RapidOCR or the more accurate PP-OCRv5; " +
             "screenshots go there, are read in memory and are not kept."),
         new(Motion, "Moves", "Motion", "an NVIDIA GPU with at least 24 GB (optional; not for use in the EU, the UK or South Korea)",
-            Audio2FaceHostConnection.MotionRouteId, "motion",
+            HostConnection.MotionRouteId, "motion",
             "Makes body motions for VRM characters on that host with Tencent's HY-Motion 1.0, from the English descriptions Martlet " +
             "writes and sends there; it downloads about 20 GB."),
         new(VoiceRecognition, "Recognizes voices", "Voice recognition", "Docker; it uses an NVIDIA GPU when there is one, otherwise the processor",
-            Audio2FaceHostConnection.VoiceRecognitionRouteId, "voice recognition",
+            HostConnection.VoiceRecognitionRouteId, "voice recognition",
             "Recognizes who is speaking on that host, with the same voice models as this PC; the speech Martlet hears goes there " +
             "one utterance at a time, is analyzed in memory and is not kept.")
     ];
@@ -242,7 +242,7 @@ internal static class HostRegistry
         // and its owner's home address never changes how this PC reaches its own host at the same address (or the other way).
         foreach (var host in hosts.Where(h => h.Shared))
         {
-            Audio2FaceHostConnection.SendRecordingTo(host.HostId);
+            HostConnection.SendRecordingTo(host.HostId);
             HostRoutes.KeepApart(host.Pairing.Origin, host.Pairing.SpkiFingerprint);
         }
         // Saved outside addresses reach the host until the roster (which wins once this PC syncs it) says otherwise.
@@ -414,7 +414,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         };
         if (shared)
         {
-            Audio2FaceHostConnection.SendRecordingTo(pairing.HostId);
+            HostConnection.SendRecordingTo(pairing.HostId);
             HostRoutes.KeepApart(pairing.Origin, pairing.SpkiFingerprint);
         }
         if (host.OutsideAddresses is { Count: > 0 } outside) HostRoutes.Set(pairing.Origin, pairing.HostId, outside, pairing.SpkiFingerprint);
@@ -533,10 +533,10 @@ internal static class HostControl
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
             return new(false, "Pair this host again.");
-        Audio2FaceHostConnection? connection = null;
+        HostConnection? connection = null;
         try
         {
-            read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), secret));
+            read.Secret.Use(secret => connection = new HostConnection(GatewayAvatarHostLink.Pairing(host), secret));
             var routes = await connection!.ReadRoutesAsync(token);
             var offers = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var route in routes)
@@ -551,15 +551,15 @@ internal static class HostControl
                 version = reported;
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
-            catch (Exception error) when (error is Audio2FaceHostException or IOException or JsonException or TimeoutException or
+            catch (Exception error) when (error is HostConnectionException or IOException or JsonException or TimeoutException or
                 HttpRequestException or InvalidOperationException) { }
             return new(true, text, offers, version, routes);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(false, "Didn't respond in time."); }
-        catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or
+        catch (Exception error) when (error is HostConnectionException or IOException or UnauthorizedAccessException or ContractException or
             InvalidOperationException or ArgumentException or JsonException or TimeoutException or HttpRequestException)
         {
-            return new(false, error.Message) { Code = (error as Audio2FaceHostException)?.Code };
+            return new(false, error.Message) { Code = (error as HostConnectionException)?.Code };
         }
         finally { connection?.Dispose(); }
     }

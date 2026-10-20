@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The client for a Martlet host's API (docs/NETWORK.md): pairing and signed requests, sign-in and accounts, chat, memories,
+       media, cluster and settings, plus the network sync and household sign-in engines. Martlet.Avatar.Audio2Face keeps only
+       the Audio2Face client. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <InternalsVisibleTo Include="Martlet.HostClient.Tests" />
+    <InternalsVisibleTo Include="Martlet.NodeLinkCheck" />
+  </ItemGroup>
+</Project>

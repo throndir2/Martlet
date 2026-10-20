@@ -67,7 +67,7 @@ The script exits 1 when a call fails or an `until` text does not show.
 A feature that MCP cannot reach or observe is not finished. In the same change:
 
 1. Give each new control and status field a stable, unique `AutomationProperties.AutomationId`.
-2. Add passive navigation to `SafeClicks`, and non-secret status fields to `SafeValues`, in `src\Martlet.Mcp.Protocol\AutomationPolicy.cs`. Never expose credentials, personal data, editable fields or file paths.
+2. Add passive navigation to `SafeClicks`, and non-secret status fields to `SafeValues`, in `src\Martlet.Mcp.Protocol\AutomationPolicy.Clicks.cs` and `AutomationPolicy.Values.cs`. Never expose credentials, personal data, editable fields or file paths.
 3. Add a headless tool as a `Tool(...)` registration in `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs`, or add a Doctor probe.
 4. Add a tool that assistants need to `Listed` in `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs`. Keep the short list small.
 5. Name each new tool in `docs\MCP.md`. `McpDocsAgreementTests` fails when a tool and the page do not agree.

@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 
 namespace Martlet.NodeLinkCheck;
 
@@ -27,7 +27,7 @@ internal static class GpuPriorityStatus
                 {
                     hosts.Add(new { host = host.HostId, reachable = true, gpuPriority = true, priority = await connection.ReadPriorityAsync(timeout.Token) });
                 }
-                catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+                catch (HostConnectionException error) when (error.Code == "request.invalid")
                 {
                     hosts.Add(new
                     {
@@ -37,7 +37,7 @@ internal static class GpuPriorityStatus
                     });
                 }
             }
-            catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or
+            catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException or
                 InvalidOperationException or OperationCanceledException && !token.IsCancellationRequested)
             {
                 hosts.Add(new { host = host.HostId, reachable = false, problem = error.Message });

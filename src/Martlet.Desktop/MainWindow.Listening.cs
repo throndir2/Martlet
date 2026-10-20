@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -420,7 +420,7 @@ public partial class MainWindow
         catch (OperationCanceledException) { }
         catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
-            JsonException or ArgumentException or Audio2FaceHostException)
+            JsonException or ArgumentException or HostConnectionException)
         {
             ActionText.Text = error.Message;
         }

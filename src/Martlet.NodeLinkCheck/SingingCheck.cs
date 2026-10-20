@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Processes;
 using Martlet.Core.Singing;
@@ -17,7 +17,7 @@ namespace Martlet.NodeLinkCheck;
 /// singing_check: makes one song through the production path. With a loopback endpoint (or "fixture"), the singing role's
 /// relay (<see cref="SongRelayWorker"/>, the one the Linux host creates for the role) runs inside a real gateway on 127.0.0.1
 /// (Kestrel, pinned TLS, pairing), the gateway's shared speaking-voice list holding a starter voice, and the desktop's paired
-/// client (<see cref="Audio2FaceHostConnection.MakeSongAsync"/>, what <c>SongClient</c> runs) makes the song; the singing
+/// client (<see cref="HostConnection.MakeSongAsync"/>, what <c>SongClient</c> runs) makes the song; the singing
 /// service is a live one on a numeric loopback endpoint, or this checkout's workers/singing service started here with the
 /// FIXTURE - NOT AI engine. With "paired:&lt;data directory&gt;" it goes through a real paired host instead, exactly as the
 /// desktop does: the host from that desktop data directory's hosts.json that offers Singing (or the one named), its own
@@ -25,8 +25,8 @@ namespace Martlet.NodeLinkCheck;
 /// pairing secret read from Windows Credential Manager only to sign the requests (never printed). Nothing is played or
 /// recorded. Reports the service's own status before and after, every stage seen with when, the host's stage timings, and
 /// the three tracks. With split, the song is made as the desktop's two pools make it: a music job
-/// (<see cref="Audio2FaceHostConnection.MakeMusicAsync"/>), then a voice match job on its vocals
-/// (<see cref="Audio2FaceHostConnection.MatchVoiceAsync"/>, the vocals sent in pages), put together on this PC
+/// (<see cref="HostConnection.MakeMusicAsync"/>), then a voice match job on its vocals
+/// (<see cref="HostConnection.MatchVoiceAsync"/>, the vocals sent in pages), put together on this PC
 /// (<see cref="SongVoice"/>); both jobs on the one host.
 /// </summary>
 internal static class SingingCheck
@@ -80,7 +80,7 @@ internal static class SingingCheck
                     try
                     {
                         var connection = await host.PairAsync("singing-check-desktop", open);
-                        var route = (await connection.ReadRoutesAsync(open)).Single(r => r.RouteId == Audio2FaceHostConnection.SongRouteId);
+                        var route = (await connection.ReadRoutesAsync(open)).Single(r => r.RouteId == HostConnection.SongRouteId);
                         // The gateway resolves a song's voice from its shared speaking-voice list, as a paired desktop keeps it.
                         await connection.MergeSpeakingVoicesAsync(voices, open);
                         return new Opened(connection, route, host, starterId, voiceName, null);
@@ -100,7 +100,7 @@ internal static class SingingCheck
 
     /// <summary>A connection ready to make a song: its route, what owns the gateway (a check's own, or none for a paired
     /// host), the voice to sing in and anything else to report.</summary>
-    private sealed record Opened(Audio2FaceHostConnection Connection, HostRoute Route, IAsyncDisposable? Owner, string VoiceId,
+    private sealed record Opened(HostConnection Connection, HostRoute Route, IAsyncDisposable? Owner, string VoiceId,
         string VoiceName, object? Extra);
 
     /// <summary>Through a real paired host: the one in <paramref name="dataDirectory"/>'s hosts.json that offers Singing (or
@@ -122,12 +122,12 @@ internal static class SingingCheck
         {
             foreach (var candidate in hosts)
             {
-                Audio2FaceHostConnection? connection = null;
+                HostConnection? connection = null;
                 try
                 {
                     connection = Connect(candidate);
                     var routes = await connection.ReadRoutesAsync(open);
-                    if (routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) is not { } route)
+                    if (routes.FirstOrDefault(r => r.RouteId == HostConnection.SongRouteId) is not { } route)
                     {
                         tried.Add(new { host = candidate.HostId, singing = false });
                         continue;
@@ -138,7 +138,7 @@ internal static class SingingCheck
                         : live.Where(v => v.Id == voiceId || voiceId.Length >= 8 && v.Id.StartsWith(voiceId, StringComparison.Ordinal))
                             .ToArray() is [var single] ? single : null;
                     if (voice is null)
-                        throw new Audio2FaceHostException("voice.missing",
+                        throw new HostConnectionException("voice.missing",
                             voiceId is null ? $"{candidate.HostId}'s shared voice list has no voices." : $"{candidate.HostId}'s shared voice list has no single voice {voiceId}.");
                     audioSha256 = voice.AudioSha256;
                     chosenId = voice.Id;
@@ -156,13 +156,13 @@ internal static class SingingCheck
                     return opened;
                 }
                 catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException ||
-                    error is Audio2FaceHostException { Code: not "voice.missing" })
+                    error is HostConnectionException { Code: not "voice.missing" })
                 {
                     tried.Add(new { host = candidate.HostId, problem = error.Message });
                 }
                 finally { connection?.Dispose(); }
             }
-            throw new Audio2FaceHostException(SongErrorCodes.Unavailable, "No paired host in that data directory offers Singing: " +
+            throw new HostConnectionException(SongErrorCodes.Unavailable, "No paired host in that data directory offers Singing: " +
                 JsonSerializer.Serialize(tried));
         }, async read =>
         {
@@ -207,13 +207,13 @@ internal static class SingingCheck
 
     /// <summary>A connection to a paired host signed with the device secret its desktop saved in Windows Credential Manager
     /// (as the desktop's ClusterSync.Connect reads it); the secret is only used to sign requests.</summary>
-    internal static Audio2FaceHostConnection Connect(Martlet.Avatar.Hosting.AvatarRemoteHost host)
+    internal static HostConnection Connect(Martlet.Avatar.Hosting.AvatarRemoteHost host)
     {
         using var read = new Martlet.Credentials.Windows.WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != Martlet.Core.Settings.CredentialError.None || read.Secret is null)
             throw new InvalidOperationException($"This PC has no pairing secret for {host.HostId} from that data directory ({read.Error}).");
-        Audio2FaceHostConnection? connection = null;
-        read.Secret.Use(secret => connection = new Audio2FaceHostConnection(new Audio2FaceHostPairing
+        HostConnection? connection = null;
+        read.Secret.Use(secret => connection = new HostConnection(new HostPairing
         {
             Origin = host.Origin, HostId = host.HostId, SpkiFingerprint = host.SpkiFingerprint, DeviceId = host.DeviceId,
             CredentialId = host.CredentialId
@@ -302,10 +302,10 @@ internal static class SingingCheck
             failure = error.Code;
             problem = error.Message;
         }
-        catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or InvalidOperationException
+        catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException or InvalidOperationException
             or ContractException)
         {
-            failure = error is Audio2FaceHostException host ? host.Code : error.GetType().Name;
+            failure = error is HostConnectionException host ? host.Code : error.GetType().Name;
             problem = error.Message;
         }
         var elapsed = watch.Elapsed;
@@ -336,7 +336,7 @@ internal static class SingingCheck
         {
             ok,
             endpoint = endpointLabel,
-            route = Audio2FaceHostConnection.SongRouteId,
+            route = HostConnection.SongRouteId,
             paired = extra,
             voice = voiceName,
             request = new { seconds, quality, voiceMatch, bpm, key, split },
@@ -385,7 +385,7 @@ internal static class SingingCheck
 
     /// <summary>The singing service's own status through the gateway (state, engine, voice matches, queue, models, GPU memory),
     /// or why it could not be read.</summary>
-    private static async Task<object> StatusAsync(Audio2FaceHostConnection connection, HostRoute route, CancellationToken token)
+    private static async Task<object> StatusAsync(HostConnection connection, HostRoute route, CancellationToken token)
     {
         try
         {
@@ -412,7 +412,7 @@ internal static class SingingCheck
                 licenses = models?.Select(m => m.license).Distinct()
             };
         }
-        catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or JsonException or
+        catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException or JsonException or
             InvalidOperationException or KeyNotFoundException)
         {
             return new { answered = false, problem = error.Message };
@@ -422,7 +422,7 @@ internal static class SingingCheck
     /// <summary>What the host measured for the finished song beyond the contract: the word-timing source and its sanity
     /// metric (median word start to vocal onset), the lyric-timing source, the backing bleed removed from the vocals, the
     /// planner, quantization and the worker's graphics-memory peak.</summary>
-    private static async Task<object?> JobReportAsync(Audio2FaceHostConnection connection, HostRoute route, string jobId,
+    private static async Task<object?> JobReportAsync(HostConnection connection, HostRoute route, string jobId,
         CancellationToken token)
     {
         try
@@ -438,7 +438,7 @@ internal static class SingingCheck
                 engine = Field("engine"), timings = Field("timings")
             };
         }
-        catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException)
+        catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException)
         {
             return new { problem = error.Message };
         }

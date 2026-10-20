@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Gateway;
 
@@ -38,7 +38,7 @@ internal static class HostConnectionRehearsal
         forwarder.Start();
         // The desktop reaches the host at the forwarder's address; the gateway's key and the signed requests are unchanged.
         var origin = $"https://127.0.0.1:{forwarder.Port}";
-        Audio2FaceHostPairing pairing = null!;
+        HostPairing pairing = null!;
         var secret = "";
         var answers = new HostAnswers(2);
         var log = new List<string>();
@@ -62,18 +62,18 @@ internal static class HostConnectionRehearsal
         {
             var clock = Stopwatch.StartNew();
             (bool, string) outcome;
-            using (var connection = new Audio2FaceHostConnection(pairing, secret))
+            using (var connection = new HostConnection(pairing, secret))
             {
                 try
                 {
                     await connection.ReadRoutesAsync(token);
                     try { await connection.ReadClusterAsync(token); }
-                    catch (Exception error) when (error is Audio2FaceHostException or IOException or HttpRequestException ||
+                    catch (Exception error) when (error is HostConnectionException or IOException or HttpRequestException ||
                         error is OperationCanceledException && !token.IsCancellationRequested) { }
                     outcome = (true, "");
                 }
                 catch (OperationCanceledException) when (!token.IsCancellationRequested) { outcome = (false, "Didn't respond in time."); }
-                catch (Exception error) when (error is Audio2FaceHostException or IOException or HttpRequestException)
+                catch (Exception error) when (error is HostConnectionException or IOException or HttpRequestException)
                 {
                     outcome = (false, error.Message);
                 }
@@ -87,7 +87,7 @@ internal static class HostConnectionRehearsal
         await Run("The desktop pairs with a real gateway on 127.0.0.1 (pinned TLS) and reaches it through the forwarder", async () =>
         {
             var card = server.Pairing.OpenWindow(new() { DeviceId = "lab-desktop", DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-            var (paired, pairedSecret) = await Audio2FaceHostClient.PairAsync(gatewayOrigin.CanonicalOrigin, HostId, identity.SpkiFingerprint,
+            var (paired, pairedSecret) = await HostTransport.PairAsync(gatewayOrigin.CanonicalOrigin, HostId, identity.SpkiFingerprint,
                 "lab-desktop", card.PairingId, card.Token.Reveal(), token);
             pairing = paired with { Origin = origin };
             secret = pairedSecret;
@@ -173,7 +173,7 @@ internal static class HostConnectionRehearsal
             var saved = Remote(pairing);
             var secrets = new Dictionary<string, string>(StringComparer.Ordinal) { [pairing.CredentialId] = secret };
             var card = server.Pairing.OpenWindow(new() { DeviceId = "lab-desktop", DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-            var (again, againSecret) = await Audio2FaceHostClient.PairAsync(gatewayOrigin.CanonicalOrigin, HostId, identity.SpkiFingerprint,
+            var (again, againSecret) = await HostTransport.PairAsync(gatewayOrigin.CanonicalOrigin, HostId, identity.SpkiFingerprint,
                 "lab-desktop", card.PairingId, card.Token.Reveal(), token);
             again = again with { Origin = origin };
             secrets[again.CredentialId] = againSecret;
@@ -183,15 +183,15 @@ internal static class HostConnectionRehearsal
             var used = HostPairingChoice.For(saved, [Remote(again)]);
             if (!secrets.TryGetValue(used.CredentialId, out var key)) return (false, "the pairing chosen for the saved job has no secret");
             int routes;
-            using (var connection = new Audio2FaceHostConnection(Pairing(used), key)) routes = (await connection.ReadRoutesAsync(token)).Count;
+            using (var connection = new HostConnection(Pairing(used), key)) routes = (await connection.ReadRoutesAsync(token)).Count;
             string old;
             try
             {
-                using var stale = new Audio2FaceHostConnection(pairing, secret);
+                using var stale = new HostConnection(pairing, secret);
                 await stale.ReadRoutesAsync(token);
                 old = "still accepted by the host";
             }
-            catch (Audio2FaceHostException error) { old = $"refused by the host ({error.Code})"; }
+            catch (HostConnectionException error) { old = $"refused by the host ({error.Code})"; }
             pairing = again;
             secret = againSecret;
             return (!savedOpens && used.CredentialId == again.CredentialId && used.CredentialId != saved.CredentialId,
@@ -207,7 +207,7 @@ internal static class HostConnectionRehearsal
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
             scope = "One real gateway on 127.0.0.1 (Kestrel, pinned TLS, signed requests) behind a loopback TCP forwarder stopped and " +
-                "started at the same address, and a simulated desktop using the desktop's paired client (Audio2FaceHostConnection, " +
+                "started at the same address, and a simulated desktop using the desktop's paired client (HostConnection, " +
                 "HostRoutes) and its status tracker (HostAnswers) as the desktop's 15-second sync uses them. Not covered: the desktop " +
                 "window itself, real computers on a LAN, Docker's port proxy, and Windows running out of ports (NoBufferSpaceAvailable), " +
                 "whose wording unit tests check.",
@@ -216,13 +216,13 @@ internal static class HostConnectionRehearsal
         });
     }
 
-    private static AvatarRemoteHost Remote(Audio2FaceHostPairing pairing) => new()
+    private static AvatarRemoteHost Remote(HostPairing pairing) => new()
     {
         Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint, DeviceId = pairing.DeviceId,
         CredentialId = pairing.CredentialId
     };
 
-    private static Audio2FaceHostPairing Pairing(AvatarRemoteHost host) => new()
+    private static HostPairing Pairing(AvatarRemoteHost host) => new()
     {
         Origin = host.Origin, HostId = host.HostId, SpkiFingerprint = host.SpkiFingerprint, DeviceId = host.DeviceId,
         CredentialId = host.CredentialId

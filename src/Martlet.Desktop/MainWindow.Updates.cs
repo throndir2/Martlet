@@ -5,7 +5,7 @@ using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Installation;
 using Martlet.Core.Nodes;
 
@@ -969,7 +969,7 @@ public partial class MainWindow
                 if (sent.State == NodeCommandState.Queued)
                 {
                     try { commands = await connection.ReadCommandsAsync(lifetime.Token); }
-                    catch (Audio2FaceHostException) { }
+                    catch (HostConnectionException) { }
                 }
                 return (sent, commands);
             });
@@ -980,13 +980,13 @@ public partial class MainWindow
                     : $"Asked Martlet on {host.HostId} to update to {Version} ({DateTime.Now:t}); it does when Martlet runs there.");
             return HostUpdateResult.Updated;
         }
-        catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+        catch (HostConnectionException error) when (error.Code == "request.invalid")
         {
             hostUpdates.Note(host.HostId, $"Its host service is older than commands between computers, so open Martlet on {host.HostId} once " +
                 "to bring it up to date (from then on this PC updates it from here).");
             return HostUpdateResult.Failed;
         }
-        catch (Exception error) when (error is Audio2FaceHostException { Code: "host.unreachable" or "gateway.internal" } ||
+        catch (Exception error) when (error is HostConnectionException { Code: "host.unreachable" or "gateway.internal" } ||
             error is OperationCanceledException && !lifetime.IsCancellationRequested)
         {
             hostUpdates.Note(host.HostId, $"{host.HostId}'s host service didn't answer (it may be restarting for an update), so " +
