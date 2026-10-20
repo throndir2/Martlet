@@ -143,8 +143,8 @@ No implicit new-key generation repairs a corrupt existing identity. Deliberately
 creating a new identity at a **different** path produces a different pin and
 requires verified pairing to that identity; it does not erase the old store.
 
-The original [local approval executable](../Martlet.Gateway.Host/README.md) remains a
-Windows-only console application. A separate [Linux host candidate](../Martlet.Gateway.Host.Linux/README.md)
+The original Windows local approval executable (`Martlet.Gateway.Host`) was removed
+because no app used it. The [Linux host](../Martlet.Gateway.Host.Linux/README.md)
 now composes explicit TTY approval/disclosure and approved foreground service
 restart; its native execution remains NOT RUN. Graphical setup, service
 installation and container qualification remain separate work. API capability possession
@@ -412,7 +412,7 @@ DPAPI/ACL/NTFS/atomic-file and certificate mechanics are adapted from held #37
 final source `18daa4acfa90d7c7dff52861c93800a2f63b0823`, byte-identical mechanics
 introduced by `b5073a332ffbe0c73d7ab2064f89a3339730124f`. Its Trust credentials,
 scope flags, schema and reset-on-crash behavior are **not** imported.
-Gateway.Trust remains uncomposed; #37 and preserved branches are untouched.
+The separate Gateway.Trust library was removed (#1039).
 
 Use existing SDK 10.0.401, same-process `DOTNET_ROOT`, unique C: artifacts,
 locked restore and Release tests directly for Gateway and Persistence. Native

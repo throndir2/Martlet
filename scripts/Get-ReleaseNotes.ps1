@@ -23,4 +23,17 @@ $notes = if ($section.Success) { $section.Groups[1].Value.Trim() } else { '' }
 if ($notes -notmatch '(?m)^- \S') {
     throw "CHANGELOG.md has no notes for $Version. Move the Unreleased entries under a '## [$Version] - YYYY-MM-DD' heading in the release PR."
 }
+# The bundled model catalog should be refreshed in each release PR (AGENTS.md, release step 5); warn when it wasn't.
+try {
+    $root = Split-Path $PSScriptRoot -Parent
+    $lastTag = git -C $root describe --tags --abbrev=0 --match 'v*' 2>$null
+    if ($LASTEXITCODE -eq 0 -and $lastTag) {
+        $changed = git -C $root log -1 --format=%ct -- 'src/Martlet.Core/Planning/Catalog/model-catalog.json' 2>$null
+        $tagged = git -C $root log -1 --format=%ct $lastTag 2>$null
+        if ($changed -and $tagged -and [long]$changed -lt [long]$tagged) {
+            Write-Warning "The model catalog snapshot is older than $lastTag. Run .\scripts\Update-ModelCatalog.ps1 and commit it with the release PR."
+        }
+    }
+}
+catch { }
 $notes

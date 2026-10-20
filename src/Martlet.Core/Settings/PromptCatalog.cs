@@ -39,6 +39,7 @@ public static partial class PromptCatalog
     public const string PastConversations = "past_conversations";
     public const string MemoryPeople = "memory_people";
     public const string MemoryBrief = "memory_brief";
+    public const string WhilePlaying = "while_playing";
     public const string MemoryBriefWriting = "memory_brief_writing";
     public const string Notes = "notes";
     public const string GlanceScreen = "glance_screen";
@@ -121,6 +122,7 @@ public static partial class PromptCatalog
     public const string CheckInOthers = "check_in_others";
     public const string CheckInReactions = "check_in_reactions";
     public const string CheckInActions = "check_in_actions";
+    public const string CheckInMemory = "check_in_memory";
     public const string CheckInAhead = "check_in_ahead";
     public const string CheckInCallbacks = "check_in_callbacks";
     public const string CheckInLull = "check_in_lull";

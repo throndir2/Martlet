@@ -247,6 +247,9 @@ internal sealed class LiveConversationOperation
     internal int PastExchanges { get; set; }
     /// <summary>How many sections of an app guide went in the notes of this message (Companion › App guides).</summary>
     internal int GuideSections { get; set; }
+    /// <summary>The app whose guide this reply used (its notes, or search_guide found sections), or null: the speech bubble then
+    /// offers to read more about it.</summary>
+    internal string? GuideKey { get; set; }
     internal long? MemoryStoreRevision { get; set; }
     /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
     internal string? MemoryProblem { get; set; }
@@ -964,6 +967,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             pictureHandler = CreationRegistry.Shared.Handle(PictureCreations.KindName, new CreationHandler(conversationTools.ShowPictureCreationAsync));
         jobs.Changed += WriteJobsStatus;
         jobs.Changed += WritePoolStatus;
+        jobs.Faulted += (id, error) => ErrorLog.Warn($"Background job {id} failed.", error);
         WriteJobsStatus();
         // sense-models-status.json from the start, before a talk window loads the settings (it says so).
         senseSession.QueueSenseStatus();
@@ -1037,6 +1041,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         Cancel(stopListening);
         // Opening the talk window starts the MCP servers in the background, so their tools are ready by the first reply.
         if (next is { SupportsTools: true } && tools is { HasEnabledServers: true }) tools.EnsureStarted(retry: true);
+        // Smart home's list of locks, doors and garages too, so the first reply has it without waiting for Home Assistant.
+        smartHome?.RefreshSafetyLater();
         // The record of conversations is read in the background now, so a message that mentions an earlier one finds it.
         if (history?.Active(next?.Memory) == true) history.Warm();
         // Quick sounds follow the voice: kept ones are read, missing ones made when the voice is free to use.
@@ -1452,6 +1458,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             LiveConversationConfiguration.SilentReply, characterActions: without.Contains(LookActions) ? null : characterActions,
                             gaze: gaze && !without.Contains(LookGaze) ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
                             chattiness: decides ? configured.ChattinessNote(level) : null,
+                            activity: Activity(),
                             controlTags: LiveConversationConfiguration.ControlTags(decides, picture: note is null, configured.Prompts),
                             board: without.Contains(LookNotes) ? null : Join(board.Text, lately));
                         boardSent = !without.Contains(LookNotes);
@@ -1782,8 +1789,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // Martlet answers: the live turn comes first until the reply's voice is made (docs/CONVERSATION.md, Live floor).
             BeginFloorReply(operation);
 
-            // Keeps Smart home's list of locks, doors and garages current before the model may call Home Assistant's tools.
-            if (smartHome is { ModelToolsEnabled: true } safety) await safety.RefreshSafetyAsync(worker).ConfigureAwait(false);
+            // Smart home's list of locks, doors and garages is read again in the background when it is old: the reply never waits
+            // for Home Assistant. Until a list is known, its tool calls that name a device ask first (SmartHome.Policy).
+            smartHome?.RefreshSafetyLater();
             operation.LatencyTimeline?.Mark("preparing");
 
             // What the PC played is never the user: memory, tools and Home Assistant only go by the user's own words, and a
@@ -1794,16 +1802,31 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var own = operation.OnItsOwn || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
             operation.Asked = own;
             DesktopMemoryRecall? memoryResult = null;
+            // Memory and the lorebooks are read at the same time: neither needs the other.
+            var recalling = default(Task<DesktopMemoryRecall?>);
             if (operation.MemoryRequested && (own ?? (straight ? StraightRecallQuery(history) : null)) is { } query)
             {
                 operation.Publish(new("memory.recalling"));
-                memoryResult = await RecallAsync(operation, query, worker).ConfigureAwait(false);
-                operation.Authorization.Check(worker);
-                await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+                recalling = RecallAsync(operation, query, worker);
+            }
+            var scanning = ScanLoreAsync(operation, straight ? "" : input!.UserText, history, persona, worker);
+            if (recalling is not null)
+            {
+                try
+                {
+                    memoryResult = await recalling.ConfigureAwait(false);
+                    operation.Authorization.Check(worker);
+                    await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+                }
+                catch
+                {
+                    scanning.Forget();
+                    throw;
+                }
                 operation.MemoryStoreRevision = memoryResult?.StoreRevision;
                 operation.LatencyTimeline?.Mark("memory");
             }
-            var lore = await ScanLoreAsync(operation, straight ? "" : input!.UserText, history, persona, worker).ConfigureAwait(false);
+            var lore = await scanning.ConfigureAwait(false);
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
@@ -1829,7 +1852,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 (tools.HasTools || builtIns is not null) && configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
                 operation.Publish(new("tools.preparing"));
-                toolset = await tools.PrepareAsync(worker, builtIns).ConfigureAwait(false);
+                // Never waits: servers still starting offer the tools they listed last (McpToolService.Prepare).
+                toolset = tools.Prepare(builtIns);
                 operation.Authorization.Check(worker);
                 operation.Toolset = toolset;
                 operation.LatencyTimeline?.Mark("tools");
@@ -1882,8 +1906,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             string? guide = null;
             if (own is not null && Guides is { On: true } guides)
             {
-                guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections);
+                guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections, out var guideKey);
                 operation.GuideSections = guideSections;
+                if (guideKey is not null) UsedGuide(operation, guideKey);
                 if (ReadUpAsked(guides, own, toolset) is { } reading) guide = guide is null ? reading : guide + "\n\n" + reading;
                 operation.LatencyTimeline?.Mark("app guide");
             }
@@ -1975,6 +2000,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             // instead still reaches it (with tools, it follows the tools prompt).
                             toolset is null && builtIns is { Tools.Count: 0 } ? builtIns.Guidance : null),
                         voices: VoicePromptContext.Block(operation.Heard),
+                        activity: Activity(),
                         messageNotes: Join(brief, home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null && describedNote is null ? null : noticed, recalled, guide, songNote, whileSinging, touchNote),
                         silentReply: operation.MayPass ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
@@ -2005,7 +2031,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         (past is not null || guide is not null || brief is not null || picture is not null || describedNote is not null))
                     {
                         if (past is not null) (past, pastCount) = (null, 0);
-                        else if (guide is not null) (guide, operation.GuideSections) = (null, 0);
+                        else if (guide is not null) (guide, operation.GuideSections, operation.GuideKey) = (null, 0, null);
                         else if (brief is not null) brief = null;
                         else if (picture is not null) picture = null;
                         else describedNote = null;
@@ -3134,8 +3160,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.Publish(new("lorebook.unavailable"));
             return null;
         }
+        // While a game is played its name is scanned too, so lorebook entries for that game (keyed by its name) join in.
+        var activity = Activity();
         var result = LorebookScanner.Scan(loaded.Library,
-            new(current, history.Select(message => message.Text).ToArray(), persona?.Id, persona?.Name), Random.Shared.Next);
+            new(current, history.Select(message => message.Text).ToArray(), persona?.Id, persona?.Name,
+                MemoryActivity.Kind(activity) == MemoryActivity.Gaming ? MemoryActivity.Name(activity) : null), Random.Shared.Next);
         return result.Included.Count == 0 && result.OverBudget.Count == 0 ? null : result;
     }
 

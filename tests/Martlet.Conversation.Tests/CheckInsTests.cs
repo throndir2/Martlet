@@ -40,10 +40,10 @@ public sealed partial class CheckInsTests
         var defaults = CheckIns.All(null);
         Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats, CheckIns.Reactions,
             CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Lull, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Ahead,
-            CheckIns.Actions, CheckIns.Callbacks],
+            CheckIns.Actions, CheckIns.Callbacks, CheckIns.MemoryCare],
             defaults.Select(c => c.Id));
         // Welcome back and Someone else is here wait for a signal and are off until the owner turns them on.
-        Assert.Equal([true, true, true, true, true, true, false, true, true, true, false, true, true, true, true], defaults.Select(c => c.On));
+        Assert.Equal([true, true, true, true, true, true, false, true, true, true, false, true, true, true, true, true], defaults.Select(c => c.On));
         Assert.Equal(1, defaults.Single(c => c.Id == CheckIns.Emotes).EveryMinutes);
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
         Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
@@ -61,10 +61,10 @@ public sealed partial class CheckInsTests
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);
-        Assert.Equal(16, all.Count);
+        Assert.Equal(17, all.Count);
         Assert.Equal((false, 30), (all[1].On, all[1].EveryMinutes));
-        Assert.True(all[15].Custom);
-        Assert.Equal(CheckInOutcome.Say, all[15].Outcome);
+        Assert.True(all[16].Custom);
+        Assert.Equal(CheckInOutcome.Say, all[16].Outcome);
         Assert.Equal("check-in-promises", CheckIns.Source(CheckIns.Promises));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Character)));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Repeats)));
@@ -453,8 +453,8 @@ public sealed partial class CheckInsTests
         Assert.Equal("text and pictures", CheckIns.Describe(ThinkingCapability.Text | ThinkingCapability.Vision));
         Assert.Equal("text and recordings", CheckIns.Describe(ThinkingCapability.Text | ThinkingCapability.Audio));
         Assert.Equal("text, pictures and recordings", CheckIns.Describe(CheckIns.Of(Inputs()).Needs));
-        // Built-in check-ins need text only, but How I react, which calls its tools.
-        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id is CheckIns.Reactions or CheckIns.Actions ? ThinkingCapability.Text | ThinkingCapability.Tools
+        // Built-in check-ins need text only, but How I react, Act on what was said and Memory care, which call their tools.
+        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id is CheckIns.Reactions or CheckIns.Actions or CheckIns.MemoryCare ? ThinkingCapability.Text | ThinkingCapability.Tools
             : ThinkingCapability.Text, c.Needs));
     }
 
@@ -584,7 +584,7 @@ public sealed partial class CheckInsTests
 
     public static TheoryData<string> BuiltInIds => [CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats,
         CheckIns.Reactions, CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Lull,
-        CheckIns.Callbacks];
+        CheckIns.Callbacks, CheckIns.MemoryCare];
 
     [Theory]
     [MemberData(nameof(BuiltInIds))]
@@ -771,6 +771,37 @@ public sealed partial class CheckInsTests
     }
 
     [Fact]
+    public void MemoryCareLooksAfterMemoryInSeveralStepsWithEveryMemoryTool()
+    {
+        var care = Built(CheckIns.MemoryCare);
+        Assert.Equal((true, 60, CheckInOutcome.Tools, PromptCatalog.CheckInMemory, CheckInTriggers.None, CheckInConditions.SomethingNew),
+            (care.On, care.EveryMinutes, care.Outcome, care.PromptId, care.Triggers, care.Conditions));
+        Assert.Equal([MemoryToolSet.Id], care.ToolSets);
+        Assert.True(care.Needs.HasFlag(ThinkingCapability.Tools));
+        Assert.Equal(CheckInFacts.Latest | CheckInFacts.Activity, CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInMemory)));
+        // It runs on its pace, so it never takes manage_memories over from the reply.
+        Assert.False(CheckIns.ActsAfterExchanges(care));
+
+        var host = Host(care, new Dictionary<string, CheckInToolHandler>
+        {
+            [MemoryToolSet.Id] = (_, _, _) => ValueTask.FromResult(new ConversationToolResult("Memory: found 0."))
+        });
+        Assert.Equal(MemoryToolSet.Set.Tools.Select(t => t.Name), host.Tools.Select(t => t.Name));
+        var job = CheckIns.Prepare(care, CheckIns.Focus(care, State()), null, host)!;
+        job.Validate();
+        // Several steps: many rounds, more time and more room to write than a check-in without tools.
+        Assert.Equal((CheckIns.MaximumToolRounds, CheckIns.ToolTimeout, CheckIns.MaximumToolOutputTokens),
+            (job.MaxToolRounds, job.Timeout, job.MaxOutputTokens));
+        Assert.True(CheckIns.MaximumToolRounds > 4 && CheckIns.MaximumToolRounds <= BoundedTextInput.HardMaxToolRounds);
+        Assert.True(CheckIns.ToolTimeout > CheckIns.Timeout);
+        Assert.Contains(CheckIns.Steps, job.Text);
+        Assert.Contains("memory_note", job.Text);
+        var bare = CheckIns.Prepare(care, CheckIns.Focus(care, State()), null)!;
+        Assert.Equal((0, CheckIns.Timeout, CheckIns.MaximumOutputTokens), (bare.MaxToolRounds, bare.Timeout, bare.MaxOutputTokens));
+        Assert.DoesNotContain(CheckIns.Steps, bare.Text);
+    }
+
+    [Fact]
     public async Task TheToolHostKeepsEachCallAndStopsAtTheMostCallsARunMayMake()
     {
         var checkIn = CheckIns.Of(WithTools(CheckInToolSets.NextReplyId, CheckInToolSets.CharacterId));
@@ -796,7 +827,7 @@ public sealed partial class CheckInsTests
         Assert.Equal(("This check-in has no tool called delete_files.", true), (unknown.Output, unknown.IsError));
         Assert.Equal(("The tool failed.", true), (failed.Output, failed.IsError));
         Assert.True(over.IsError);
-        Assert.StartsWith("This check-in already made 8 tool calls", over.Output);
+        Assert.StartsWith($"This check-in already made {CheckIns.MaximumToolCalls} tool calls", over.Output);
         var uses = host.Uses;
         Assert.Equal(CheckIns.MaximumToolCalls + 1, uses.Count);
         Assert.Equal(new CheckInToolUse(CheckInToolSets.NextReplyId, CheckInToolSets.RemindNextReply, new string('x', 117) + "...", false), uses[0]);
@@ -819,7 +850,7 @@ public sealed partial class CheckInsTests
         Assert.Equal("it has no tools to use", CheckIns.Wait(CheckIns.Of(WithTools()), State(), null));
         var note = CheckIns.Of(WithTools(CheckInToolSets.RemindersId) with { Outcome = CheckInOutcome.Note });
         var noteMessage = CheckIns.Message(note, CheckIns.Focus(note, State()), null)!;
-        Assert.Contains("You may call your tools first if they help.\nIf nothing needs doing now, write only: OK", noteMessage);
+        Assert.Contains("You may call your tools first if they help. " + CheckIns.Steps + "\nIf nothing needs doing now, write only: OK", noteMessage);
         Assert.True(CheckIns.Read(note, "REMIND: be gentle", State()).Act);
         Assert.DoesNotContain("You may call your tools", CheckIns.Message(CheckIns.Of(WithTools() with { Outcome = CheckInOutcome.Note }), State(), null)!);
     }

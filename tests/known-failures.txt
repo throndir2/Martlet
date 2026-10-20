@@ -6,9 +6,3 @@
 # Entries tagged "env:" fail only on machines without a capability and are never reported as fixed.
 # One line per test method (all theory cases): the fully qualified name, or python:<worker>/<test id>.
 # Burn-down: https://github.com/throndir2/Martlet/issues/332
-
-
-# Create real symbolic links, which Windows allows only with Developer Mode or as administrator.
-Martlet.Launcher.Tests.LauncherReviewRegressionTests.EvidenceRootCannotHideInsidePayloadThroughAncestorLink  # env: symlink privilege
-Martlet.Updates.Tests.ActivationTests.LinkedActivationSourcesAreRejectedWithoutChangingTheirTargets  # env: symlink privilege
-Martlet.Updates.Tests.SelectionTests.ActualFilesystemLinksAreRefusedWithoutFollowingTheirTargets  # env: symlink privilege

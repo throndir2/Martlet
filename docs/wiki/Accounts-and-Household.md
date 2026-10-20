@@ -71,6 +71,7 @@ A new computer can join as yours. Make an invite in a host's **Sign-in from outs
 
 - Accounts are kept apart, but not secret from a person with administrator rights on the PC or a host.
 - Windows Hello cannot tell apart people who share one Windows login. Use a PIN or a password on a shared login.
+- A PIN or a password alone does not keep out a person who uses the same Windows login: that person can remove the lock. Turn on **Encrypt my files on this PC while locked** to keep them out.
 - After five wrong PINs or passwords, each new try waits longer, up to 15 minutes.
 - **Encrypt my files on this PC while locked** needs a PIN. It encrypts your account's folder while another person uses Martlet or Martlet is closed. If you forget the PIN, this PC's copy can be lost, but your hosts keep your synced things.
 - Voice ID keeps your voiceprint as numbers only, never as a recording.

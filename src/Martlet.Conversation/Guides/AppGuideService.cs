@@ -472,15 +472,12 @@ public sealed class AppGuideService : IDisposable
                 progress?.Report(text);
                 Changed?.Invoke();
             });
-            // What research added to the old guide (GuideAreaResearch) is kept when the wiki is read again.
-            IReadOnlyList<GuideChunk> researched = [];
+            // Reading again keeps what research added to the old guide (GuideAreaResearch), and the pages of the same wiki the new
+            // read doesn't read again (those Read more added), so a guide never shrinks by being read again.
+            AppGuide? old = null;
             if (entry.BuiltAt is not null)
             {
-                try
-                {
-                    researched = [.. ((await Store.LoadGuideAsync(key, cancellationToken).ConfigureAwait(false))?.Chunks ?? [])
-                        .Where(GuideAreaResearch.IsResearched)];
-                }
+                try { old = await Store.LoadGuideAsync(key, cancellationToken).ConfigureAwait(false); }
                 catch (Exception error) when (error is not OperationCanceledException && error is not OutOfMemoryException) { }
             }
             using var stop = new CancellationTokenSource();
@@ -490,7 +487,7 @@ public sealed class AppGuideService : IDisposable
             async Task<bool> KeepSoFarAsync(GuideBuildOutcome sofar, CancellationToken token)
             {
                 said.Report("Saving what it read so far");
-                var kept = await KeepGuideAsync(key, shown, sofar, researched, token).ConfigureAwait(false);
+                var kept = await KeepGuideAsync(key, shown, sofar, old, token).ConfigureAwait(false);
                 return kept.Refused is null && !kept.Full;
             }
             GuideBuildOutcome outcome;
@@ -513,7 +510,7 @@ public sealed class AppGuideService : IDisposable
             if (problem is null)
             {
                 said.Report("Saving the guide");
-                saved = await KeepGuideAsync(key, shown, outcome, researched, cancellationToken).ConfigureAwait(false);
+                saved = await KeepGuideAsync(key, shown, outcome, old, cancellationToken).ConfigureAwait(false);
                 problem = saved.Refused ?? (saved.Guide is not { Chunks.Count: > 0 } ? "the pages it read had no text to keep" : null);
             }
             if (problem is not null)
@@ -550,15 +547,16 @@ public sealed class AppGuideService : IDisposable
     /// <summary>The caps of reading more (<see cref="GuideBuildLimits.More"/>; checks pass a shorter pause).</summary>
     public GuideBuildLimits MoreLimits { get; init; } = GuideBuildLimits.More;
 
-    /// <summary>Reads more of <paramref name="key"/>'s wiki after its first read: the pages its pages link to that
-    /// <paramref name="choose"/> (a Thinking pool member) chooses, and the links of those, within <see cref="MoreLimits"/>, added to
-    /// its guide. It waits a little for a read that runs to end; the page shows it like a read, and Stop reading ends it and keeps
-    /// what it read. The result's counts are what it added.</summary>
-    public async Task<AppGuideBuild> ReadMoreAsync(string key, GuideMore more, Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyList<string>?>> choose,
+    /// <summary>Reads more of <paramref name="key"/>'s wiki: the pages its pages link to that <paramref name="choose"/> (a Thinking
+    /// pool member; null: the most linked titles, with no model) chooses, the links of those, then the wiki's other pages, within
+    /// <see cref="MoreLimits"/>, added to its guide; never a page the guide has. <paramref name="more"/>: what the read just made
+    /// left; null reads what the guide file kept (or finds the wiki again from its pages), so it works after Martlet starts again.
+    /// It waits a little for a read that runs to end; the page shows it like a read, and Stop reading ends it and keeps what it
+    /// read. The result's counts are what it added.</summary>
+    public async Task<AppGuideBuild> ReadMoreAsync(string key, GuideMore? more = null,
+        Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyList<string>?>>? choose = null,
         IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(more);
-        ArgumentNullException.ThrowIfNull(choose);
         var started = clock.GetTimestamp();
         var entry = Library.Apps.FirstOrDefault(a => a.Key == key);
         if (entry is not { BuiltAt: not null }) return new(key, entry?.Name ?? key, 0, 0, 0, [], 0, 0, TimeSpan.Zero, "there's no guide about it yet");
@@ -579,13 +577,24 @@ public sealed class AppGuideService : IDisposable
                 progress?.Report(text);
                 Changed?.Invoke();
             });
+            AppGuide? guide;
+            try { guide = await Store.LoadGuideAsync(key, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (Refusal(error) is { } why)
+            {
+                return new(key, entry.Name, 0, 0, 0, [], 0, 0, clock.GetElapsedTime(started), why);
+            }
+            if (guide is null) return new(key, entry.Name, 0, 0, 0, [], 0, 0, clock.GetElapsedTime(started), "there's no guide about it yet");
+            more ??= GuideMore.Restore(guide.More) ?? GuideMore.ForGuide(guide);
+            if (more is null) return new(key, entry.Name, 0, 0, 0, [], 0, 0, clock.GetElapsedTime(started), WebGuideBuilder.NotAWiki);
             using var stop = new CancellationTokenSource();
             lock (gate) stopping = stop;
             GuideBuildOutcome outcome;
             try
             {
-                outcome = await builder.BuildAsync(new(entry.Name, [], MoreLimits) { More = more, Choose = choose, Stop = stop.Token }, said,
-                    cancellationToken).ConfigureAwait(false);
+                outcome = await builder.BuildAsync(new(entry.Name, [], MoreLimits)
+                {
+                    More = more, Choose = choose, Stop = stop.Token, Have = [.. guide.Sources.Select(s => s.Url)]
+                }, said, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception error) when (error is not OutOfMemoryException)
@@ -597,8 +606,12 @@ public sealed class AppGuideService : IDisposable
                 lock (gate) stopping = null;
             }
             if (outcome.Pages.Count == 0)
+            {
+                // What is left is kept even when nothing was added (a guide kept before Martlet saved it, a list read through).
+                if (outcome.More?.State is { } left) await KeepMoreAsync(key, left, cancellationToken).ConfigureAwait(false);
                 return new(key, entry.Name, 0, 0, 0, outcome.Sites, outcome.Failed, outcome.Bytes, clock.GetElapsedTime(started),
                     outcome.Problem ?? "no more pages were worth reading", Choice: outcome.Choice);
+            }
             said.Report("Saving the guide");
             var (pages, chunks, bytes, refused) = await AddPagesAsync(key, entry.Name, outcome, cancellationToken).ConfigureAwait(false);
             return new(key, entry.Name, pages, chunks, bytes, outcome.Sites, outcome.Failed, outcome.Bytes, clock.GetElapsedTime(started),
@@ -615,6 +628,19 @@ public sealed class AppGuideService : IDisposable
             Changed?.Invoke();
             Trim();
         }
+    }
+
+    // Keeps what is left to read more in the app's guide file, its pages and sections as they are.
+    private async Task KeepMoreAsync(string key, GuideMoreState left, CancellationToken token)
+    {
+        await saving.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            if (await Store.LoadGuideAsync(key, token).ConfigureAwait(false) is { } guide)
+                await Store.SaveGuideAsync(guide with { More = left }, token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (Refusal(error) is not null) { }
+        finally { saving.Release(); }
     }
 
     // Adds the pages read more to the app's guide (pages it has already are left out, as are pages past the store's bounds),
@@ -640,7 +666,7 @@ public sealed class AppGuideService : IDisposable
             var next = old with
             {
                 Sites = [.. old.Sites.Union(outcome.Sites, StringComparer.OrdinalIgnoreCase)], Sources = [.. old.Sources, .. added.Sources],
-                Chunks = [.. wiki, .. added.Chunks, .. research]
+                Chunks = [.. wiki, .. added.Chunks, .. research], More = outcome.More?.State ?? old.More
             };
             AppGuideLibrary read;
             await saving.WaitAsync(token).ConfigureAwait(false);
@@ -677,38 +703,60 @@ public sealed class AppGuideService : IDisposable
     }
 
     // Keeps what was read as the app's guide, the pages read first as far as the store holds them (Full: pages were left out),
-    // and makes its index. Refused: why the store didn't keep it. A guide with no chunks isn't kept.
+    // then, from the old guide, the pages of the sites read now that weren't read again (Read more's pages) and the research
+    // sections, with what is left to read more; and makes its index. Refused: why the store didn't keep it. A guide with no
+    // chunks isn't kept.
     private async Task<(AppGuide? Guide, AppGuideEntry? Entry, bool Full, string? Refused)> KeepGuideAsync(string key, string name,
-        GuideBuildOutcome outcome, IReadOnlyList<GuideChunk> researched, CancellationToken token)
+        GuideBuildOutcome outcome, AppGuide? old, CancellationToken token)
     {
+        var researched = old?.Chunks.Where(GuideAreaResearch.IsResearched).ToList() ?? [];
+        var read = outcome.Pages.Select(p => p.Url).ToHashSet(StringComparer.Ordinal);
+        var hosts = outcome.Sites.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var kept = old?.Sources.Where(s => !read.Contains(s.Url) && Uri.TryCreate(s.Url, UriKind.Absolute, out var url) && hosts.Contains(url.Host))
+            .ToList() ?? [];
         var pages = FileAppGuideStore.MaximumSources;
+        var keepOld = kept.Count > 0;
         while (true)
         {
             var guide = GuideChunker.Guide(key, name, outcome, clock.GetUtcNow(), pages, FileAppGuideStore.MaximumChunks - researched.Count);
             var full = guide.Sources.Count < outcome.Pages.Count;
             if (guide.Chunks.Count == 0) return (guide, null, full, null);
+            if (keepOld)
+            {
+                var sources = kept.Take(Math.Max(0, FileAppGuideStore.MaximumSources - guide.Sources.Count)).ToList();
+                var urls = sources.Select(s => s.Url).ToHashSet(StringComparer.Ordinal);
+                var chunks = old!.Chunks.Where(c => !GuideAreaResearch.IsResearched(c) && urls.Contains(c.Url))
+                    .Take(Math.Max(0, FileAppGuideStore.MaximumChunks - researched.Count - guide.Chunks.Count)).ToList();
+                guide = guide with { Sources = [.. guide.Sources, .. sources], Chunks = [.. guide.Chunks, .. chunks] };
+            }
             if (researched.Count > 0) guide = guide with { Chunks = [.. guide.Chunks, .. researched] };
-            AppGuideLibrary read;
+            guide = guide with
+            {
+                More = outcome.More?.State ??
+                    (old?.More is { } left && Uri.TryCreate(left.Api, UriKind.Absolute, out var api) && hosts.Contains(api.Host) ? left : null)
+            };
+            AppGuideLibrary library;
             await saving.WaitAsync(token).ConfigureAwait(false);
             try
             {
                 try { await Store.SaveGuideAsync(guide, token).ConfigureAwait(false); }
-                // A file larger than the store keeps: fewer pages, the ones read last left out.
-                catch (AppGuideTooLargeException) when (guide.Sources.Count > 1)
+                // A file larger than the store keeps: the old pages go first, then fewer pages, the ones read last left out.
+                catch (AppGuideTooLargeException) when (keepOld || guide.Sources.Count > 1)
                 {
-                    pages = guide.Sources.Count * 4 / 5;
+                    if (keepOld) keepOld = false;
+                    else pages = guide.Sources.Count * 4 / 5;
                     continue;
                 }
                 // The store's bounds (a full library) or a file it can't read: the guide isn't kept.
                 catch (Exception error) when (Refusal(error) is { } why) { return (null, null, full, why); }
-                read = await Store.LoadLibraryAsync(token).ConfigureAwait(false);
+                library = await Store.LoadLibraryAsync(token).ConfigureAwait(false);
             }
             finally { saving.Release(); }
-            var saved = read.Apps.FirstOrDefault(a => a.Key == key);
+            var saved = library.Apps.FirstOrDefault(a => a.Key == key);
             unreadable.TryRemove(key, out _);
             Touch(key);
             indexes[key] = WarmedUp(GuideIndex.Build(guide.Chunks, [name, .. saved?.Programs ?? []]));
-            Keep(read);
+            Keep(library);
             return (guide, saved, full, null);
         }
     }

@@ -17,7 +17,7 @@ internal static class ReactionChangesCheck
     internal static async Task<object> RunAsync(string dataDirectory, bool explicitDirectory, string? personaId, string? modelId,
         string? modelPath, string? tool, string? arguments, string? undo, bool save, string? at, string? checkInId, CancellationToken cancellation)
     {
-        if ((save || undo is not null) && !explicitDirectory) throw new ArgumentException("save and undo need an explicit (disposable) dataDirectory.");
+        if ((save || undo is not null) && !explicitDirectory) throw new ArgumentException("save and undo need an explicit, disposable dataDirectory (not Martlet's own data folder).");
         if (tool is not null && !CharacterReactionTools.Names.Contains(tool))
             throw new ArgumentException("tool is one of " + string.Join(", ", CharacterReactionTools.Names) + ".");
         var now = at is null ? DateTimeOffset.Now : DateTimeOffset.Parse(at, System.Globalization.CultureInfo.InvariantCulture);

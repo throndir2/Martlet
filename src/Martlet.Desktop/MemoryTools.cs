@@ -93,15 +93,104 @@ internal static class MemoryTools
         if (whereProblem is not null && action is "remember" or "update") return Refused(whereProblem);
         switch (action)
         {
+            case "overview":
+                return await service.UseSpaceAsync(configurationRevision, null, false, async (set, _, store, operationToken) =>
+                {
+                    var all = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                    var elsewhere = service.OtherFacts(set);
+                    return Overview(all, [.. elsewhere.Select(f => (MemorySpaces.Label(f.Space, service.Account), f.Fact))], roster);
+                }, token).ConfigureAwait(false);
             case "find":
                 var query = Text(arguments, "query");
+                var skip = Math.Max(0, Number(arguments, "skip") ?? 0);
+                var limit = Math.Clamp(Number(arguments, "limit") ?? MaximumFound, 1, MemoryToolSet.MaximumFindLimit);
                 var near = query is not null && similar is not null ? await similar(query, token).ConfigureAwait(false) : null;
                 return await service.UseSpaceAsync(configurationRevision, null, false, async (set, _, store, operationToken) =>
                 {
                     var here = Current((await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts);
                     var elsewhere = service.OtherFacts(set);
                     return Find([.. here, .. elsewhere.Select(f => f.Fact)], query, person is not null, voice, roster,
-                        elsewhere.ToDictionary(f => f.Fact.Id, f => MemorySpaces.Label(f.Space, service.Account)), near);
+                        elsewhere.ToDictionary(f => f.Fact.Id, f => MemorySpaces.Label(f.Space, service.Account)), near, skip, limit);
+                }, token).ConfigureAwait(false);
+            case "history":
+                if (ids.Count != 1) return Refused("Pass exactly one id from find.");
+                return await service.UseSpaceAsync(configurationRevision, null, false, async (_, _, store, operationToken) =>
+                {
+                    var all = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                    var (target, problem) = Resolve(Current(all), ids[0]);
+                    return target is null ? Refused(problem!) : History(target, all, roster);
+                }, token).ConfigureAwait(false);
+            case "update_many":
+                return await UpdateManyAsync(service, configurationRevision, arguments, roster, speaker, yours, activity, token).ConfigureAwait(false);
+            case "note":
+                if (ids.Count is 0 or > MemoryToolSet.MaximumNoted) return Refused($"Pass 1 to {MemoryToolSet.MaximumNoted} ids from find in ids.");
+                if (Note(Text(arguments, "note")) is not { } note)
+                    return Refused($"Pass the note: a few words of up to {MemoryToolSet.MaximumNoteCharacters} characters, like (in Minecraft).");
+                return await ChangeAsync(service, configurationRevision, ids, async (store, targets, operationToken) =>
+                {
+                    var noted = new List<MemoryCaptureChange>();
+                    int had = 0, tooLong = 0;
+                    foreach (var target in targets)
+                    {
+                        if (target.Content.Contains(note, StringComparison.OrdinalIgnoreCase))
+                        {
+                            had++;
+                            continue;
+                        }
+                        if (Fact(WithNote(target.Content, note)) is not { } content)
+                        {
+                            tooLong++;
+                            continue;
+                        }
+                        var edited = await store.EditAsync(new()
+                        {
+                            Id = target.Id,
+                            ExpectedRevision = target.Revision,
+                            Content = content,
+                            Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), service.UtcNow),
+                            Retention = target.Retention,
+                            VoiceId = target.VoiceId,
+                            KeepHistory = true
+                        }, operationToken).ConfigureAwait(false);
+                        noted.Add(new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId));
+                    }
+                    var said = $"Noted {Count(noted.Count)}." + (had > 0 ? $" {Count(had)} already had the note." : "") +
+                        (tooLong > 0 ? $" {Count(tooLong)} would get longer than {MemoryCapture.MaximumFactCharacters} characters; " +
+                            "correct those with update." : "");
+                    return new MemoryToolOutcome(new(said, noted.Count == 0 && had == 0), $"noted {noted.Count}", noted);
+                }, token).ConfigureAwait(false);
+            case "merge":
+                if (ids.Count is < 2 or > MemoryToolSet.MaximumMerged) return Refused($"Pass 2 to {MemoryToolSet.MaximumMerged} ids from find in ids; the first is kept.");
+                string? merged = null;
+                if (fact is not null && (merged = Fact(fact)) is null)
+                    return Refused($"The fact must be one short sentence of up to {MemoryCapture.MaximumFactCharacters} characters.");
+                return await ChangeAsync(service, configurationRevision, ids, async (store, targets, operationToken) =>
+                {
+                    if (targets.Count < 2) return Refused("Pass at least 2 different facts.");
+                    var keep = targets[0];
+                    var others = targets.Skip(1).ToArray();
+                    var receipt = await store.TidyAsync(new MemoryTidyRequest
+                    {
+                        Merges = [new(keep.Id, keep.Revision, [.. others.Select(o => (o.Id, o.Revision))], merged)]
+                    }, operationToken).ConfigureAwait(false);
+                    if (receipt.Merged == 0) return Refused("Nothing was merged: the facts changed meanwhile. Call find again.");
+                    var changes = others.Select(o => new MemoryCaptureChange(MemoryCaptureKind.Forget, o.Content, o.VoiceId)).ToList();
+                    if (merged is not null && merged != keep.Content) changes.Add(new(MemoryCaptureKind.Update, merged, keep.VoiceId));
+                    return new MemoryToolOutcome(new($"Merged {Count(receipt.Merged)} into {ShortId(keep)}: {merged ?? keep.Content}"),
+                        $"merged {receipt.Merged}", changes);
+                }, token).ConfigureAwait(false);
+            case "outdated":
+                if (ids.Count != 1 || Text(arguments, "by") is not { } by)
+                    return Refused("Pass id (the fact that is no longer true) and by (the newer fact that replaced it), both from find.");
+                return await ChangeAsync(service, configurationRevision, [ids[0], by], async (store, targets, operationToken) =>
+                {
+                    if (targets.Count != 2) return Refused("Pass two different facts: id and by.");
+                    var (old, newer) = (targets[0], targets[1]);
+                    var receipt = await store.TidyAsync(new MemoryTidyRequest { Retirements = [new(old.Id, old.Revision, newer.Id)] },
+                        operationToken).ConfigureAwait(false);
+                    return receipt.Retired == 0 ? Refused("Nothing changed: the facts changed meanwhile. Call find again.")
+                        : new MemoryToolOutcome(new($"Kept {ShortId(old)} as history; {ShortId(newer)} replaced it."), "marked outdated",
+                            [new(MemoryCaptureKind.Forget, old.Content, old.VoiceId)]);
                 }, token).ConfigureAwait(false);
             case "remember":
                 if (Fact(fact) is not { } content)
@@ -167,9 +256,107 @@ internal static class MemoryTools
                         $"forgot {targets.Count}", targets.Select(t => new MemoryCaptureChange(MemoryCaptureKind.Forget, t.Content, t.VoiceId)).ToArray());
                 }, token).ConfigureAwait(false);
             default:
-                return Refused("action must be find, remember, update or forget.");
+                return Refused("action must be overview, find, history, remember, update, update_many, note, merge, outdated or forget.");
         }
     }
+
+    /// <summary>update_many: each edit runs as one update, done or refused on its own; one line for each.</summary>
+    private static async Task<MemoryToolOutcome> UpdateManyAsync(DesktopMemoryService service, Guid configurationRevision, JsonObject arguments,
+        VoiceRoster? roster, KnownVoice? speaker, KnownVoice? yours, string? activity, CancellationToken token)
+    {
+        if (arguments["edits"] is not JsonArray edits || edits.Count is 0 or > MemoryToolSet.MaximumEdits)
+            return Refused($"Pass 1 to {MemoryToolSet.MaximumEdits} edits, each with an id from find and the corrected fact and/or person.");
+        var lines = new List<string>();
+        var changes = new List<MemoryCaptureChange>();
+        var done = 0;
+        for (var index = 0; index < edits.Count; index++)
+        {
+            if (edits[index] is not JsonObject edit)
+            {
+                lines.Add($"{index + 1}: refused: each edit is an object with an id.");
+                continue;
+            }
+            var single = new JsonObject { ["action"] = "update" };
+            foreach (var name in new[] { "id", "fact", "person", "where" })
+                if (Text(edit, name) is { } value) single[name] = value;
+            MemoryToolOutcome outcome;
+            try { outcome = await RunAsync(service, configurationRevision, single.ToJsonString(), roster, speaker, token, yours, activity: activity).ConfigureAwait(false); }
+            catch (MemoryException error) when (error.Failure is MemoryFailure.Conflict or MemoryFailure.NotFound)
+            {
+                outcome = Refused("The fact changed meanwhile; call find again.");
+            }
+            catch (DesktopMemoryException error)
+            {
+                outcome = Refused(error.Message);
+            }
+            if (!outcome.Result.IsError) done++;
+            changes.AddRange(outcome.Changes);
+            lines.Add($"{index + 1}: {(outcome.Result.IsError ? "refused: " : "")}{outcome.Result.Output.Split('\n')[0]}");
+        }
+        return new(new($"Updated {done} of {edits.Count}.\n{string.Join("\n", lines)}", done == 0), $"updated {done} of {edits.Count}", changes);
+    }
+
+    /// <summary>overview: how many facts there are, whose, how many earlier versions are kept, without any fact's text.</summary>
+    internal static MemoryToolOutcome Overview(IReadOnlyList<MemoryFact> facts, IReadOnlyList<(string Kept, MemoryFact Fact)> elsewhere,
+        VoiceRoster? roster)
+    {
+        var current = facts.Where(f => !f.IsHistory).Concat(elsewhere.Select(e => e.Fact)).ToArray();
+        string Day(DateTimeOffset at) => at.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var json = JsonSerializer.Serialize(new
+        {
+            facts = current.Length,
+            history = facts.Count(f => f.IsHistory),
+            withoutSearchWords = current.Count(f => f.SearchWords is null),
+            oldest = current.Length == 0 ? null : Day(current.Min(f => f.UpdatedAtUtc)),
+            newest = current.Length == 0 ? null : Day(current.Max(f => f.UpdatedAtUtc)),
+            people = current.GroupBy(f => MemoryPeople.Label(f.VoiceId, roster) ?? "everyone")
+                .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { person = g.Key, facts = g.Count() }).ToArray(),
+            where = current.GroupBy(f => MemoryActivity.Describe(f.Activity)).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { where = g.Key, facts = g.Count() }).ToArray(),
+            kept = elsewhere.Count == 0 ? null : elsewhere.GroupBy(e => e.Kept).Select(g => new { place = g.Key, facts = g.Count() }).ToArray(),
+            most = MemoryLimits.MaximumFacts
+        }, FoundJson);
+        return new(new(json), $"overview of {current.Length}", []);
+    }
+
+    /// <summary>history: the earlier versions of <paramref name="target"/> (history facts it replaced), newest first.</summary>
+    internal static MemoryToolOutcome History(MemoryFact target, IReadOnlyList<MemoryFact> facts, VoiceRoster? roster)
+    {
+        var earlier = facts.Where(f => f.IsHistory && f.ReplacedBy == target.Id).OrderByDescending(f => f.ReplacedAtUtc)
+            .Take(MaximumFound).Select(f => new
+            {
+                said = f.Content,
+                person = MemoryPeople.Label(f.VoiceId, roster) ?? "everyone",
+                until = f.ReplacedAtUtc!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            }).ToArray();
+        var json = JsonSerializer.Serialize(new { id = ShortId(target), fact = target.Content, where = MemoryActivity.Describe(target.Activity), earlier }, FoundJson);
+        return new(new(earlier.Length == 0 ? json + "\nIt has no earlier versions." : json), $"history with {earlier.Length} earlier", []);
+    }
+
+    /// <summary>The fact with <paramref name="note"/> at its end: a note in brackets goes before the fact's last period.</summary>
+    internal static string WithNote(string content, string note)
+    {
+        var text = content.TrimEnd();
+        return note.StartsWith('(') && text.Length > 1 && text[^1] is '.' or '!' or '?'
+            ? text[..^1].TrimEnd() + " " + note + text[^1]
+            : text + " " + note;
+    }
+
+    private static string? Note(string? value)
+    {
+        var note = value?.Trim();
+        return string.IsNullOrEmpty(note) || note.Length > MemoryToolSet.MaximumNoteCharacters || note.Any(char.IsControl) ||
+            note.Contains(MemoryPromptContext.Label, StringComparison.OrdinalIgnoreCase) ? null : note;
+    }
+
+    private static string Count(int facts) => facts == 1 ? "1 fact" : $"{facts} facts";
+
+    private static int? Number(JsonObject arguments, string name) =>
+        arguments[name] is JsonValue value && (value.TryGetValue<int>(out var number) ||
+            value.TryGetValue<double>(out var real) && real is >= int.MinValue and <= int.MaxValue && (number = (int)real) == real ||
+            value.TryGetValue<string>(out var text) && int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out number))
+            ? number : null;
 
     /// <summary>Finds the facts <paramref name="ids"/> name and runs <paramref name="change"/> with the store of the memory space
     /// they are kept in: the active space's store first (where almost every fact is, so it takes one store opening), else the
@@ -228,9 +415,10 @@ internal static class MemoryTools
     /// word matches a fact's text, whose it is or its hidden search words (which are never shown). History (replaced facts) is
     /// never listed. <paramref name="kept"/> names where a fact from another memory space than the active one is kept.
     /// <paramref name="similar"/> (facts an embedding search found for the query, best first) is fused with that order by the
-    /// search engine's reciprocal rank fusion, so a fact that says it in other words is found too.</summary>
+    /// search engine's reciprocal rank fusion, so a fact that says it in other words is found too. It shows
+    /// <paramref name="limit"/> matches after the first <paramref name="skip"/>, so a check-in can page through them all.</summary>
     internal static MemoryToolOutcome Find(IReadOnlyList<MemoryFact> facts, string? query, bool byPerson, string? voice, VoiceRoster? roster,
-        IReadOnlyDictionary<Guid, string>? kept = null, IReadOnlyList<Guid>? similar = null)
+        IReadOnlyDictionary<Guid, string>? kept = null, IReadOnlyList<Guid>? similar = null, int skip = 0, int limit = MaximumFound)
     {
         var words = Words(query);
         var eligible = facts.Where(f => !f.IsHistory && (!byPerson || Same(f.VoiceId, voice, roster, exact: true))).ToArray();
@@ -249,7 +437,7 @@ internal static class MemoryTools
             var meaning = similar.Where(number.ContainsKey).Select(id => number[id]).ToArray();
             matches = [.. Martlet.Core.Search.SearchFusion.Fuse([lexical, meaning]).Select(i => (eligible[i], 0))];
         }
-        var listed = matches.Take(MaximumFound).Select(m => new
+        var listed = matches.Skip(skip).Take(limit).Select(m => new
         {
             id = ShortId(m.Fact),
             person = MemoryPeople.Label(m.Fact.VoiceId, roster) ?? "everyone",
@@ -258,7 +446,11 @@ internal static class MemoryTools
             updated = m.Fact.UpdatedAtUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             kept = kept?.GetValueOrDefault(m.Fact.Id)
         }).ToArray();
-        var json = JsonSerializer.Serialize(new { count = matches.Length, shown = listed.Length, facts = listed }, FoundJson);
+        var more = skip + listed.Length < matches.Length;
+        var json = JsonSerializer.Serialize(new
+        {
+            count = matches.Length, shown = listed.Length, skipped = skip > 0 ? skip : (int?)null, more = more ? true : (bool?)null, facts = listed
+        }, FoundJson);
         return new(new(matches.Length == 0 ? json + "\nNothing matches." : json), $"found {matches.Length}", []);
     }
 

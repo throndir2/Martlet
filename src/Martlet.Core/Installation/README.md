@@ -93,7 +93,7 @@ owning runtime or role. Host facts cannot be passed as role facts and credential
 data/device facts cannot be shared through a runtime. Required checks here are
 planning items, not probes or requests to access devices/keys. Artifact bytes,
 download sizes/pins, engine/context verification and actual rights/approval
-evidence remain owned by HostArtifacts and later lifecycle/qualification work.
+evidence remain owned by later lifecycle/qualification work.
 
 ## Output, budgets and ownership
 

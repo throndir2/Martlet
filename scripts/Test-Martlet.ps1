@@ -292,6 +292,12 @@ $buildOnly = @($affected | Where-Object { -not $_.IsTest -and ($IsWindows -or -n
 $productChanged = if ($All -or $Project) { @() } else { @($changedProjects | Where-Object { $_ -like 'src/*' } | ForEach-Object { $projects[$_].Name }) }
 
 Write-Host "Martlet validation: $scope"
+$solutionFile = Join-Path $root 'Martlet.slnx'
+if (Test-Path -LiteralPath $solutionFile) {
+    $inSolution = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($node in ([xml](Get-Content -Raw -LiteralPath $solutionFile)).SelectNodes('//Project')) { [void]$inSolution.Add(($node.Path -replace '\\', '/')) }
+    foreach ($rel in $projects.Keys) { if (-not $inSolution.Contains($rel)) { Write-Warning "$rel is not in Martlet.slnx; add it there." } }
+}
 if ($List -or $VerbosePreference -ne 'SilentlyContinue') {
     foreach ($p in $localTests) { Write-Host ("  test   here    {0,-48} {1}" -f $p.Name, $reasons[$p.Rel]) }
     foreach ($p in $linuxTests) { Write-Host ("  test   linux   {0,-48} {1}" -f $p.Name, $reasons[$p.Rel]) }

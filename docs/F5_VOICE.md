@@ -2,8 +2,8 @@
 
 **H04a/H04b software foundation only; no model, GPU, network, or audio
 qualification.** `Martlet.F5` is an isolated .NET 10 library with a dedicated
-test project. It is intentionally outside `Martlet.slnx`, Desktop, Core
-settings, packaging, and the existing provider graph. Nothing in this slice
+test project. Desktop and the gateway reference it, and both projects are
+listed in `Martlet.slnx`. Nothing in this slice
 installs or starts Python, F5-TTS, weights, CUDA, Docker, services, a gateway,
 or an audio device. The deterministic worker is **FIXTURE - NOT AI**.
 
@@ -25,8 +25,7 @@ selection is revalidated atomically with lease reservation. Barrier-controlled
 regressions exercise concurrent disposal and both Apply/acquisition orderings.
 
 The [installation requirements](INSTALLATION_SUPPORT.md), upstream findings
-[S30-S35](RESEARCH.md#s30), and
-[pinned artifact catalog](../src/Martlet.HostArtifacts/README.md) are separate
+and [S30-S35](RESEARCH.md#s30) are separate
 from these typed contracts. The current F5 GHCR source/build closure and locked
 runtime/native/transitive dependency closure remain **unresolved**. A pinned
 image inventory is not a reproducible build, approved runtime, or deployable
