@@ -135,8 +135,11 @@ public partial class MainWindow
             PoolMemberKind.Address => "a service you run",
             _ => "a cloud provider"
         };
-        row.Children.Add(NetworkRowText($"{id}-Member-{i}", $"{i + 1}. {member.Name}",
-            Capitalized(kind) + (facts.Count == 0 ? "." : "; " + string.Join("; ", facts) + ".")));
+        var detail = Capitalized(kind) + (facts.Count == 0 ? "." : "; " + string.Join("; ", facts) + ".");
+        var rowText = NetworkRowText($"{id}-Member-{i}", $"{i + 1}. {member.Name}", detail);
+        // Screen readers and MCP read the row as one sentence ("1: This PC: Each companion PC itself."), not "1. This PC. ...".
+        AutomationProperties.SetName(((Panel)rowText).Children[0], $"{i + 1}: {member.Name}: {detail}");
+        row.Children.Add(rowText);
         panel.Children.Add(row);
         if (companions.Count > 1 || member.OnlyFor.Count > 0)
         {

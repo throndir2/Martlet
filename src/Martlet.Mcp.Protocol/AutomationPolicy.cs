@@ -610,7 +610,7 @@ internal static partial class AutomationPolicy
         // Songs are only performed in conversation; singing_check exercises them headlessly.
         new("CompanionGroupTitle", "Any Companion page", "Shows the page's group in the side list, such as HOW IT WORKS or OPTIONAL EXTRAS; fixed text."),
         new("CompanionPageTitle", "Any Companion page", "Shows the page's name, such as Thinking pool or Picture making; fixed text."),
-        new("CompanionIntro", "Any Companion page", "Shows the page's fixed intro, which starts with 'Optional.' on a page Martlet works without."),
+        new("CompanionIntro", "Any Companion page", "Shows the first sentence of the page's fixed intro, which starts with 'Optional:' on a page Martlet works without; its help text has all of it."),
         new("PicturesNow", "Companion › Picture making", "Shows where Martlet draws now: the first place in the Picture making list and the places that draw when it is busy."),
         new("PicturesTestState", "Companion › Picture making", "Shows what Check or Draw a test picture found: each place ready or why not, or the test picture's size, place and seconds. Never the picture."),
         new("PicturesCheck", "Companion › Picture making", "Shows the label of the Check button."),

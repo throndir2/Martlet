@@ -937,7 +937,7 @@ control, described with Devices › Sharing work): `Pool-vision-...` and `Pool-h
 `SenseJobRouting`: *Nothing in the list is on. Instead: Thinking's own model
 (gemma4:e2b) takes the picture with a reply; diva (qwen2.5vl:7b) in the
 Thinking pool takes screen summaries, touch zones, the character's eyes and
-check-ins with a screenshot.*; `-Member-<i>` reads *1. This PC. Each companion PC
+check-ins with a screenshot.*; `-Member-<i>` reads *1: This PC: Each companion PC
 itself; qwen2.5vl:7b: sees pictures; in use: it takes the pictures first.*).
 Under the members, *Also gets your pictures: the Thinking pool* names every
 Thinking pool model that sees (on Hearing: hears), so the page lists every
@@ -1174,7 +1174,7 @@ The server model is for an NVIDIA graphics card only: on a processor, one read
 takes longer than the gateway's 15 s limit.
 
 Desktop automation: Companion › Reading's list is the shared pool list
-(`Pool-reading-Summary`, `Pool-reading-Member-<i>` such as *1. gpu-pc. A paired
+(`Pool-reading-Summary`, `Pool-reading-Member-<i>` such as *1: gpu-pc: A paired
 computer; runs PP-OCRv5 mobile.*, `Pool-reading-On-<i>`, `-Up-<i>`, `-Down-<i>`,
 `-Remove-<i>`, `-OnlyFor-<i>`, `-AddThisPc` and `-AddHost-<host>`; the pool list
 control is described after `work_sharing_check`). `Pool-reading-Settings-<i>`
@@ -6492,7 +6492,7 @@ area's page) reads through `ui_snapshot` with `idPrefix` `Pool-<area>`:
 `Pool-<area>-Summary` ("One member is on. Requests go to it.", "Off: nothing
 in the list is on.", or for a required area "Nothing in the list is on.
 Instead: Voice loudness on this PC."),
-`Pool-<area>-Member-<i>` ("1. This PC. Each companion PC itself."),
+`Pool-<area>-Member-<i>` ("1: This PC: Each companion PC itself."; the page shows *1. This PC* and the line under it),
 `Pool-<area>-On-<i>` (ticked or not), `Pool-<area>-Up-<i>`, `-Down-<i>`,
 `-Remove-<i>`, `-Settings-<i>`, `-OnlyFor-<i>` and the Add buttons
 (`Pool-<area>-AddThisPc`, `-AddHost-<host>`, `-AddGpu-<host>-<card>`,
@@ -9126,11 +9126,11 @@ Companion's side list starts with *How it works*, the jobs Martlet needs in
 priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
 `CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
 the jobs Martlet works without, each with an intro that starts with
-"Optional.": `CompanionTab-DeepThinking` (Thinking pool),
+"Optional:": `CompanionTab-DeepThinking` (Thinking pool),
 `CompanionTab-Singing`, `CompanionTab-Pictures` (Picture making; its ID keeps the old name), `CompanionTab-Vision`,
 `CompanionTab-Reading` and `CompanionTab-Motion`. Every page shows its group as `CompanionGroupTitle`
 ("HOW IT WORKS", "OPTIONAL EXTRAS", ...), its name as `CompanionPageTitle` (*Thinking*, *Picture making*,
-...) and its intro as `CompanionIntro`.
+...) and its intro as `CompanionIntro` (its first sentence; `help` and `Help-CompanionIntro` have all of it, with what Off means on an optional page).
 
 The desktop character has its own group in Companion's side list, *How it
 looks*: `CompanionTab-Character` (the character model, showing and hiding it,
