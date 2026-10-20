@@ -23,8 +23,13 @@ internal static class BackupThinkingCheck
     private const string Model = "fixture-model";
     private const string Conversation = "The conversation's model answered.";
     private const string Backup = "The backup member answered.";
-    // How far past its due time the backup may be asked here: the fixture runs in real time.
-    private const double Slack = 300;
+    // How far past its due time the backup may be asked here. The fixture runs in real time, and the wait counts from the
+    // conversation's own request; choosing the member and opening its stream come after it. On a busy PC that took 500 ms.
+    // Each scenario's outcome still shows the backup was asked before the conversation's model answered (Room is longer).
+    private const double Slack = 1_000;
+    // How long after the backup's due time the conversation's model answers or fails, in the scenarios that need the backup
+    // asked first: longer than Slack, so a late ask on a busy PC doesn't change who wins.
+    private const int Room = 1_200;
 
     internal static async Task<object> RunAsync(string? scenario, int? delayMs, CancellationToken cancellation)
     {
@@ -50,14 +55,14 @@ internal static class BackupThinkingCheck
                 // The conversation's model is slow (3 s to its first words); the member answers 100 ms after it is asked.
                 "backup-wins" => await TurnAsync(delay, conversationMs: 3_000, backupMs: 100, cancellation: cancellation),
                 "conversation-wins" => await TurnAsync(delay, conversationMs: 200, backupMs: 100, cancellation: cancellation),
-                // Asked at the delay, but the conversation's model starts 400 ms later, before the member (1.5 s).
-                "late-conversation" => await TurnAsync(delay, conversationMs: delay + 400, backupMs: 1_500, cancellation: cancellation),
+                // Asked at the delay, but the conversation's model starts Room later, before the member (Room + 1 s).
+                "late-conversation" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: Room + 1_000, cancellation: cancellation),
                 // The conversation's model fails after the member was asked; the member answers.
-                "conversation-fails" => await TurnAsync(delay, conversationMs: delay + 200, backupMs: 600, conversationFails: true,
+                "conversation-fails" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: Room + 600, conversationFails: true,
                     cancellation: cancellation),
-                "no-member" => await TurnAsync(delay, conversationMs: delay + 600, backupMs: 100, noMember: true, cancellation: cancellation),
+                "no-member" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: 100, noMember: true, cancellation: cancellation),
                 // A member is chosen, but its stream can't be opened (a wrong key, a network error): a failure, not "no member".
-                "open-fails" => await TurnAsync(delay, conversationMs: delay + 600, backupMs: 100, openFails: true, cancellation: cancellation),
+                "open-fails" => await TurnAsync(delay, conversationMs: delay + Room, backupMs: 100, openFails: true, cancellation: cancellation),
                 // A reply started early, held for 1.5 s, with only a paid cloud member that may answer: asked once it is taken.
                 "held" => await TurnAsync(delay, conversationMs: 4_000, backupMs: 100, holdMs: 1_500, paidOnly: true, cancellation: cancellation),
                 // A reply started early and let go at 1.5 s, after its member (on the home network) was asked: both stop.
