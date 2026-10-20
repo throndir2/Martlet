@@ -84,7 +84,7 @@ public static partial class NetworkRecommender
                 }
         }
 
-        private static bool LiveOn(Node node, int card) => node.Roles.Any(r => r.Card == card && r.Kind != DeepThinkingRole);
+        private static bool LiveOn(Node node, int card) => node.Roles.Any(r => r.On(card) && r.Kind != DeepThinkingRole);
 
         /// <summary>Needed jobs before optional extras (<see cref="ComponentRanking"/>): today's singing, pictures, motion and Reading
         /// roles stay where the jobs Martlet needs to talk (Thinking, the voice, listening, lip-sync) and their pools left room, and go
@@ -109,7 +109,7 @@ public static partial class NetworkRecommender
                             "the jobs Martlet needs to talk, which come first.");
         }
 
-        private bool VoiceOnWindowsCard(Node node, int card) => node.OnWindows && node.Roles.Any(r => r.Card == card && IsVoice(r.Kind));
+        private bool VoiceOnWindowsCard(Node node, int card) => node.OnWindows && node.Roles.Any(r => r.On(card) && IsVoice(r.Kind));
 
         /// <summary>People (rank 9, docs/RECOMMENDED_SETUPS.md#people-in-the-recommended-setup): while this PC's People choice is on
         /// and a host answers, a host recognizes voices with Martlet's Voice recognition role and goes first in Companion › People's
@@ -162,9 +162,10 @@ public static partial class NetworkRecommender
                 n.Machine.Manageable && !optOut.Contains(n.Id) && !n.Roles.Any(r => r.Kind == DeepThinkingRole)))
             {
                 if (DeepSlot(node) is not { } slot) continue;
-                var card = slot.Card is { } c && LiveOn(node, c) ? "beside the live jobs, which come first" : "that no live job uses";
+                var card = slot.Span is { Length: > 1 } ? $"split across cards no live job uses (no single card has room for it)"
+                    : slot.Card is { } c && LiveOn(node, c) ? "a card beside the live jobs, which come first" : "a card that no live job uses";
                 Place(slot, DeepThinkingRole, ThinkingPoolPlace, SetupChangeBenefit.Improvement,
-                    $"{Plain(slot.Option)} on {CardText(slot)}, a card {card}: more background thinking, and {node.Name} joins the Thinking pool by itself.");
+                    $"{Plain(slot.Option)} on {SplitText(slot)}, {card}: more background thinking, and {node.Name} joins the Thinking pool by itself.");
             }
             // Rule 6: with a host that answers, a companion PC runs no models, so its own Deep thinking goes.
             var hostAnswers = nodes.Any(n => !n.Companion && n.Presence == Presence.Here);
@@ -177,16 +178,19 @@ public static partial class NetworkRecommender
         }
 
         /// <summary>Bigger models for big hardware (#663): today's Deep thinking role on a host Martlet can change switches to a
-        /// model at least one quality step smarter when a card there has room for it (<see cref="DeepSlot"/>, as if today's model
-        /// were gone). Deep thinking runs in the background, so a bigger model adds no conversation latency. Once switched, no
-        /// smarter model fits, so the setup stays stable.</summary>
+        /// bigger model at least one quality step smarter when a card there (or several, split) has room for it
+        /// (<see cref="DeepSlot"/>, as if today's model were gone). Deep thinking runs in the background, so a bigger model adds no
+        /// conversation latency. Once switched, no smarter model fits, so the setup stays stable.</summary>
         private bool Bigger(Node node, Role role)
         {
             if (node.Companion || !node.Machine.Manageable || optOut.Contains(node.Id) || role.Option is not { } now) return false;
             if (DeepSlot(node) is not { } slot || slot.Option.QualityTier < now.QualityTier + 1) return false;
-            var card = slot.Card is { } c && LiveOn(node, c) ? "beside the live jobs, which come first" : "that no live job uses";
+            // Bigger models for big hardware: never a smaller model in place of a big one the owner runs.
+            if (now.UsesGpu && slot.Option.GpuGb <= now.GpuGb) return false;
+            var card = slot.Span is { Length: > 1 } ? "cards no live job uses, split across them because no single card has room for it,"
+                : slot.Card is { } c && LiveOn(node, c) ? "a card beside the live jobs, which come first," : "a card that no live job uses,";
             Place(slot, DeepThinkingRole, ThinkingPoolPlace, SetupChangeBenefit.Improvement,
-                $"{CardText(slot)}, a card {card}, has room for {Plain(slot.Option)}, which thinks better than {Plain(now)}. Deep " +
+                $"{SplitText(slot)}, {card} has room for {Plain(slot.Option)}, which thinks better than {Plain(now)}. Deep " +
                 "thinking runs in the background, so replies come as soon as before.");
             return true;
         }
@@ -198,6 +202,25 @@ public static partial class NetworkRecommender
             {
                 Commit(node, role, role.Card, purpose);
                 return;
+            }
+            if (role.Span is { Length: > 1 } span)
+            {
+                // A model split across several cards: it stays on them while each still has room for its share and no other model.
+                if (span.All(c => SplitCardFree(node, c) && node.Free(c) + Epsilon >= SplitGb(option.GpuGb, span.Length)))
+                {
+                    Commit(node, role, own, purpose);
+                    return;
+                }
+                if (SplitSlot(node, [option], new Query(DeepThinkingRole) { Optional = true, Only = node.Id, Companions = singlePc }, 0) is { Span: { } again })
+                {
+                    role.Span = again;
+                    role.Benefit = SetupChangeBenefit.Improvement;
+                    role.Why = "Its cards are needed for the live jobs, so it moves to other cards no live job uses.";
+                    Commit(node, role, again[0], purpose);
+                    return;
+                }
+                // No room to split it here any more: it is planned as a model on one card (and goes when none has room).
+                role.Span = null;
             }
             var cards = (node.Pinnable ? node.Cards(option).ToList() : [own])
                 .OrderBy(c => LiveOn(node, c) ? 1 : 0).ThenBy(c => c == own ? 0 : 1).ThenByDescending(node.Free).ThenBy(c => c);
@@ -265,13 +288,55 @@ public static partial class NetworkRecommender
             var query = new Query(DeepThinkingRole) { Optional = true, StrictWindows = true, Only = node.Id, Companions = singlePc };
             var cards = (node.Pinnable ? node.Nvidia : node.MainCard is { } main ? [main] : [])
                 .OrderBy(c => LiveOn(node, c) ? 1 : 0).ThenByDescending(node.Free).ThenBy(c => c);
+            Slot? single = null;
             foreach (var card in cards)
+            {
                 foreach (var option in options)
                     if (node.Cards(option).Contains(card) && Eligible(node, query) && Valid(node, card, option, query) &&
                         Key(node, card, option, query) is not null)
-                        return new(node, card, option, false);
+                    {
+                        single = new(node, card, option, false);
+                        break;
+                    }
+                if (single is not null) break;
+            }
+            // Tensor split: a smarter model than any single card has room for, split across cards no live job uses.
+            return SplitSlot(node, options, query, single?.Option.QualityTier ?? 0) ?? single;
+        }
+
+        /// <summary>One model split across several NVIDIA cards (tensor split, #663) on <paramref name="node"/>: the first of
+        /// <paramref name="options"/> smarter than <paramref name="floor"/> that the fewest cards (2 to <see cref="MaxSplitCards"/>)
+        /// no live job or other model uses have room for, each taking its share (<see cref="SplitGb"/>). Ollama splits a model across
+        /// the cards it sees (CUDA_VISIBLE_DEVICES lists them; martlet-host choice.gpu=GPU-a,GPU-b). Only for Deep thinking: the
+        /// cards pass each token along, which a live reply's first word can't wait for.</summary>
+        private Slot? SplitSlot(Node node, IEnumerable<ComponentOption> options, Query query, int floor)
+        {
+            if (!node.Pinnable || !Eligible(node, query) || node.Roles.Any(r => !r.Native && r.Kind == query.Kind)) return null;
+            foreach (var option in options.Where(o => o.QualityTier > floor && o.UsesGpu && !o.NativeOnly && o.RunsOn(node.Spec.Platform)))
+            {
+                var free = node.Cards(option).Where(c => SplitCardFree(node, c) &&
+                        !node.Pending.Any(r => r.On(c) && r.Kind != query.Kind && Reserved(node, r, query)))
+                    .OrderByDescending(node.Free).ThenBy(c => c).ToList();
+                // Room for one card's share is not room for the model: a model that fits one card isn't split.
+                if (free.Any(c => node.Free(c) + Epsilon >= option.GpuGb)) continue;
+                if (node.RamCapacity - node.RamUsed + Epsilon < option.Peak.RamGb) continue;
+                if (node.DiskCapacity > 0 && !KeptOnDisk(node, query.Kind, option) && node.DiskCapacity - node.DiskUsed + Epsilon < option.Peak.DiskGb) continue;
+                for (var count = 2; count <= Math.Min(MaxSplitCards, free.Count); count++)
+                {
+                    var cards = free.Take(count).ToList();
+                    if (cards.All(c => node.Free(c) + Epsilon >= SplitGb(option.GpuGb, count)))
+                    {
+                        int[] span = [.. cards.Order()];
+                        return new(node, span[0], option, false) { Span = span };
+                    }
+                }
+            }
             return null;
         }
+
+        /// <summary>A card a split model may take: no live job and no other language model on it, and not the voice's Windows card.</summary>
+        private bool SplitCardFree(Node node, int card) =>
+            !LiveOn(node, card) && !VoiceOnWindowsCard(node, card) && !node.Roles.Any(r => r.On(card) && r.IsModel);
 
         /// <summary>Today's roles no step kept: they go (rule 6 on companion PCs; Minor tidy-ups on hosts).</summary>
         private void Leftovers()

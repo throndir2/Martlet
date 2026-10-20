@@ -133,17 +133,23 @@ public static partial class NetworkRecommender
             {
                 var option = OptionFor(placement.Kind, placement.Model, node);
                 int? card = null;
+                int[]? span = null;
                 if (option is { UsesGpu: true })
                 {
                     var usable = node.Cards(option).ToList();
-                    card = placement.GpuIndex is { } index && usable.Contains(index) ? index
+                    span = placement.GpuIndexes is { Count: > 1 } split && split.All(usable.Contains) ? [.. split.Distinct()]
+                        : placement.GpuIndex is null ? PresumedSpan(node, option, usable, presumed) : null;
+                    card = span is { Length: > 1 } ? span[0]
+                        : placement.GpuIndex is { } index && usable.Contains(index) ? index
                         : usable.Count == 0 ? null
                         : usable.OrderByDescending(c => node.Capacity[c] - presumed[c]).ThenBy(c => c).First();
-                    if (card is { } c) presumed[c] += option.GpuGb;
+                    if (span is { Length: > 1 }) foreach (var c in span) presumed[c] += SplitGb(option.GpuGb, span.Length);
+                    else if (card is { } c) presumed[c] += option.GpuGb;
                 }
                 var role = new Role
                 {
                     Kind = placement.Kind, Model = placement.Model, Option = option, Card = card, Was = placement,
+                    Span = span is { Length: > 1 } ? span : null, WasSpan = span is { Length: > 1 } ? span : null,
                     Fixed = node.Presence != Presence.Here || !Managed(placement.Kind) && !Extra(placement.Kind)
                 };
                 node.Today.Add(role);
@@ -163,6 +169,22 @@ public static partial class NetworkRecommender
                 node.Today.Add(role);
                 (role.Fixed ? node.Roles : node.Pending).Add(role);
             }
+        }
+
+        /// <summary>A Thinking pool model no single card here has room for, on a computer with several NVIDIA cards, runs split
+        /// across the fewest cards with the most room (the host doesn't report which cards; tensor split, #663). Null otherwise.</summary>
+        private static int[]? PresumedSpan(Node node, ComponentOption option, IReadOnlyList<int> usable, double[] presumed)
+        {
+            if (!node.Pinnable || option.HostRoleKind != DeepThinkingRole || usable.Any(c => node.Capacity[c] - presumed[c] + Epsilon >= option.GpuGb))
+                return null;
+            var roomiest = usable.OrderByDescending(c => node.Capacity[c] - presumed[c]).ThenBy(c => c).ToList();
+            for (var count = 2; count <= Math.Min(MaxSplitCards, roomiest.Count); count++)
+            {
+                var share = SplitGb(option.GpuGb, count);
+                var cards = roomiest.Take(count).ToList();
+                if (cards.All(c => node.Capacity[c] - presumed[c] + Epsilon >= share)) return [.. cards.Order()];
+            }
+            return null;
         }
 
         /// <summary>The catalog option a host role of <paramref name="kind"/> with <paramref name="model"/> runs on
@@ -188,6 +210,8 @@ public static partial class NetworkRecommender
                     {
                         Id = $"{template.Id}~{model}", DisplayName = model, ModelId = model, HearsAudio = false, FirstWordMs = null,
                         Steady = template.Steady with { VramGb = gb }, Peak = template.Peak with { VramGb = gb },
+                        // How smart it is: the model catalog's words, else the size in its name (a 70B is no Gemma 4 E2B).
+                        QualityTier = catalog.Tier(model),
                         Evidence = FootprintEvidence.Estimate, Source = "Estimate from the model's size in its name"
                     };
                 named = ofKind;
@@ -373,8 +397,8 @@ public static partial class NetworkRecommender
             if (card is { } c)
             {
                 if (!cardAllowed) return false;
-                var onCard = node.Roles.Where(r => r.Card == c).ToList();
-                var reserved = node.Pending.Where(r => r.Card == c && !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r, query)).ToList();
+                var onCard = node.Roles.Where(r => r.On(c)).ToList();
+                var reserved = node.Pending.Where(r => r.On(c) && !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r, query)).ToList();
                 if (node.Free(c) - reserved.Sum(r => r.Gb) + Epsilon < option.GpuGb) return false;
                 if (onCard.Any(r => r.Option is { CanShareGpu: false }) || !option.CanShareGpu && onCard.Count > 0) return false;
                 if (query.Kind is ThinkingRole or DeepThinkingRole && onCard.Concat(reserved).Any(r => r.IsModel)) return false;
@@ -467,9 +491,9 @@ public static partial class NetworkRecommender
         /// <summary>Rule 7: the card of Thinking's model (placed, or where it runs today until the Thinking step decides), which
         /// other roles leave to it when another card has room, so the first sentence comes from an idle card.</summary>
         private bool ThinkingCard(Node node, int card) =>
-            node.Roles.Any(r => r.Card == card && r.Purpose == ClusterJobs.Thinking && !r.Native) ||
+            node.Roles.Any(r => r.On(card) && r.Purpose == ClusterJobs.Thinking && !r.Native) ||
             !decisions.ContainsKey(ClusterJobs.Thinking) && TodayJob(ClusterJobs.Thinking)?.HostId == node.Id &&
-            node.Pending.Any(r => r.Card == card && r.Kind == ThinkingRole && !r.Native && Useful(r));
+            node.Pending.Any(r => r.On(card) && r.Kind == ThinkingRole && !r.Native && Useful(r));
 
         private static int Compare(double[] a, double[] b)
         {
@@ -486,8 +510,8 @@ public static partial class NetworkRecommender
         private List<Role> Others(Node node, int? card, Query query)
         {
             if (card is null) return [];
-            return node.Roles.Where(r => r.Card == card)
-                .Concat(node.Pending.Where(r => r.Card == card && Useful(r) && r.Kind != DeepThinkingRole &&
+            return node.Roles.Where(r => r.On(card))
+                .Concat(node.Pending.Where(r => r.On(card) && Useful(r) && r.Kind != DeepThinkingRole &&
                     !(r.Kind == query.Kind && r.Native == query.Native)))
                 .ToList();
         }
@@ -496,7 +520,7 @@ public static partial class NetworkRecommender
         private bool Displaces(Node node, int? card, ComponentOption option, Query query)
         {
             if (card is not { } c) return false;
-            var onCard = node.Pending.Where(r => r.Card == c && Useful(r) && !(r.Kind == query.Kind && r.Native == query.Native)).ToList();
+            var onCard = node.Pending.Where(r => r.On(c) && Useful(r) && !(r.Kind == query.Kind && r.Native == query.Native)).ToList();
             if (query.Kind is ThinkingRole or DeepThinkingRole && onCard.Any(r => r.IsModel)) return true;
             return node.Free(c) - onCard.Sum(r => r.Gb) + Epsilon < option.GpuGb;
         }
@@ -511,7 +535,7 @@ public static partial class NetworkRecommender
             var sameModel = old is not null && (old.Option == slot.Option || Same(old.Model, slot.Option.ModelId));
             var role = new Role
             {
-                Kind = kind, Option = slot.Option, Card = slot.Card, Native = slot.Native, Was = old?.Was,
+                Kind = kind, Option = slot.Option, Card = slot.Card, Span = slot.Span, Native = slot.Native, Was = old?.Was,
                 OnDisk = !slot.Native && !sameModel && KeptOnDisk(node, kind, slot.Option),
                 Model = sameModel ? old!.Model : slot.Option.ModelId, Purpose = purpose, Benefit = benefit, Why = why
             };
@@ -526,6 +550,8 @@ public static partial class NetworkRecommender
         {
             node.Pending.Remove(role);
             role.Card = card;
+            // A split model stays split only on the same cards; committed to another card, it runs on that one.
+            if (role.Span is { } span && span[0] != card) role.Span = null;
             role.Purpose = purpose;
             node.Roles.Add(role);
         }
@@ -580,7 +606,7 @@ public static partial class NetworkRecommender
 
         private Problem Fits(Node node, int card, Role role)
         {
-            var onCard = node.Roles.Where(r => r.Card == card).ToList();
+            var onCard = node.Roles.Where(r => r.On(card)).ToList();
             if (IsVoice(role.Kind) && node.Roles.Any(r => IsVoice(r.Kind))) return Problem.SharesVoice;
             if (role.IsModel && onCard.Any(r => r.IsModel)) return Problem.SharesModel;
             if (onCard.Any(r => r.Option is { CanShareGpu: false })) return Problem.NoRoom;
@@ -590,7 +616,7 @@ public static partial class NetworkRecommender
         /// <summary>How busy a role's card is today: the other roles on it, and on a companion PC its games and the character's
         /// renderer (a voice took about twice as long beside the character; docs/VOICE_LATENCY.md).</summary>
         private static int Contention(Node node, Role role) =>
-            (role.Card is { } card ? node.Today.Count(r => r != role && r.Card == card && !OnDemand(r.Kind)) : 0) +
+            (role.Card is { } card ? node.Today.Count(r => r != role && r.On(card) && !OnDemand(r.Kind)) : 0) +
             (node.Companion ? CompanionLoad : 0);
 
         /// <summary>A companion PC's card counts as this many busy roles (its games and the character's renderer).</summary>
@@ -607,5 +633,15 @@ public static partial class NetworkRecommender
             node.Spec.Gpus[card].Name + (node.Spec.Gpus.Count > 1 ? $" (card {card + 1})" : "");
 
         private static string CardText(Slot slot) => CardText(slot.Node, slot.Card);
+
+        /// <summary>Where a role runs in words: its card, or the cards a split model runs on ("gpu-box's NVIDIA GeForce RTX 5090
+        /// cards 1 and 2").</summary>
+        private static string SplitText(Node node, Role role) => role.Span is { Length: > 1 } span
+            ? $"{node.Name}'s {node.Spec.Gpus[span[0]].Name} cards {List([.. span.Select(c => (c + 1).ToString(System.Globalization.CultureInfo.InvariantCulture))])}"
+            : CardText(node, role.Card);
+
+        private static string SplitText(Slot slot) => slot.Span is { Length: > 1 } span
+            ? $"{slot.Node.Name}'s {slot.Node.Spec.Gpus[span[0]].Name} cards {List([.. span.Select(c => (c + 1).ToString(System.Globalization.CultureInfo.InvariantCulture))])}"
+            : CardText(slot);
     }
 }

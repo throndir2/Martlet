@@ -172,6 +172,22 @@ public sealed class SenseModelCardsTests
         Assert.False(pictures["lighthouse"].Content.Span.SequenceEqual(pictures["snowman"].Content.Span));
     }
 
+    [Fact]
+    public void A_blank_or_filled_drawing_is_not_the_test_picture()
+    {
+        // WPF can hand back transparent black without an error (issue #1060); Render draws again, then refuses it.
+        var size = VisionTestPicture.Width * VisionTestPicture.Height * 4;
+        Assert.False(VisionTestPicture.IsDrawn(new byte[size]));
+        var white = Enumerable.Repeat((byte)255, size).ToArray();
+        Assert.False(VisionTestPicture.IsDrawn(white));
+        var black = Enumerable.Range(0, size).Select(i => i % 4 == 3 ? (byte)255 : (byte)0).ToArray();
+        black[0] = black[1] = black[2] = 255;
+        Assert.False(VisionTestPicture.IsDrawn(black));
+        var word = (byte[])white.Clone();
+        for (var i = 0; i < size / 20; i += 4) word[size / 2 + i] = word[size / 2 + i + 1] = word[size / 2 + i + 2] = 0;
+        Assert.True(VisionTestPicture.IsDrawn(word));
+    }
+
     private static async Task OnDispatcher(Action action)
     {
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
