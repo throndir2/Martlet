@@ -186,6 +186,14 @@ internal static class PageKit
         return option;
     }
 
+    /// <summary>A wrapping status line with an automation ID (MCP reads it as a value).</summary>
+    internal static TextBlock Status(string text, string id, double size = 14)
+    {
+        var block = new TextBlock { Text = text, FontSize = size, TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetAutomationId(block, id);
+        return block;
+    }
+
     /// <summary>A page's Now card: what it uses, then any problem that stops it. <paramref name="id"/> names its status text for
     /// UI Automation ("<c>id</c>" and "<c>id</c>Problem").</summary>
     internal static Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem, string? id = null, string? warning = null)

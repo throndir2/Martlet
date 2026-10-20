@@ -135,8 +135,8 @@ returns the reply, or null to stay quiet.
 ## Companion presence
 
 `DiscordCompanion` (`src\Martlet.Discord`, rules in `DiscordCompanion.cs`) holds the decisions; `DiscordService.Companion.cs`
-wires it to the bot (`NetCordCompanionTransport`) and `MainWindow.Discord.Companion.cs` to the character, the conversation and
-Companion › Discord's **Friends and calls** card. Its state is `discord-companion.json` beside `discord.json` (waiting requests,
+wires it to the bot (`NetCordCompanionTransport`) and `MainWindow.Discord.Companion.cs` to the character and the conversation.
+Companion › Discord's **Friends and calls** card is `Pages\Discord\DiscordPage.Friends.cs`. Its state is `discord-companion.json` beside `discord.json` (waiting requests,
 recent declines, call channels it made, when the picture last changed; no secrets). MCP's `discord_companion_check` rehearses
 it all against an in-memory Discord.
 
