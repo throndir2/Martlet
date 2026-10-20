@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
@@ -911,24 +910,22 @@ internal static class ThinkLongerCheck
                 new { name = thinking, size = 6_583_656_505L }, new { name = large, size = 8_021_618_941L }, new { name = small, size = 1_400_000_000L }
             }
         });
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeOllamaAsync(listener, new Dictionary<string, string> { ["/api/ps"] = ps, ["/api/tags"] = tags }, stop.Token);
+        var answers = new Dictionary<string, string> { ["/api/ps"] = ps, ["/api/tags"] = tags };
+        // A minimal Ollama on 127.0.0.1: each path answers with its canned JSON.
+        var server = LoopbackHttpServer.Answering(request => answers.TryGetValue(request.Target, out var json)
+            ? (200, "application/json", json) : (404, "application/json", "{\"error\":\"not found\"}"));
         IReadOnlyList<OllamaLoadedModel>? loaded;
         IReadOnlyDictionary<string, long>? downloads;
         try
         {
             using var client = new HttpClient();
-            var origin = new Uri($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
+            var origin = new Uri(server.Origin + "/");
             loaded = await OllamaSideBySide.LoadedAsync(client, origin, cancellation);
             downloads = await OllamaSideBySide.DownloadsAsync(client, origin, cancellation);
         }
         finally
         {
-            await stop.CancelAsync();
-            listener.Stop();
-            await serving.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await server.DisposeAsync();
         }
         var read = loaded is [{ Name: thinking, OnGraphicsCard: true }] && downloads is { Count: 3 };
         loaded ??= [];
@@ -969,29 +966,6 @@ internal static class ThinkLongerCheck
         static double? Gb(long? bytes) => bytes is { } b ? Math.Round(b / (double)gib, 1) : null;
     }
 
-    // A minimal Ollama on 127.0.0.1: each GET path answers with its canned JSON.
-    private static async Task ServeOllamaAsync(TcpListener listener, IReadOnlyDictionary<string, string> answers, CancellationToken cancellation)
-    {
-        try
-        {
-            while (!cancellation.IsCancellationRequested)
-            {
-                using var client = await listener.AcceptTcpClientAsync(cancellation);
-                await using var stream = client.GetStream();
-                using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
-                var line = await reader.ReadLineAsync(cancellation) ?? "";
-                while (await reader.ReadLineAsync(cancellation) is { Length: > 0 }) { }
-                var path = line.Split(' ') is [_, var target, ..] ? target : "";
-                var payload = Encoding.UTF8.GetBytes(answers.TryGetValue(path, out var json) ? json : "{\"error\":\"not found\"}");
-                var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {(json is null ? "404 Not Found" : "200 OK")}\r\nContent-Type: application/json\r\n" +
-                    $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
-                await stream.WriteAsync(head, cancellation);
-                await stream.WriteAsync(payload, cancellation);
-                await stream.FlushAsync(cancellation);
-            }
-        }
-        catch (Exception error) when (error is OperationCanceledException or SocketException or IOException or ObjectDisposedException) { }
-    }
     private static readonly TextGenerationLimits ReplyLimits = new()
     {
         MaxInputBytes = BoundedTextInput.HardMaxInputUtf8Bytes, MaxInputTokens = 181_968, MaxOutputTokens = GenerationSettings.ChatReplyTokens,
@@ -1051,24 +1025,20 @@ internal static class ThinkLongerCheck
     /// client hung up on it.</summary>
     private sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
+        private readonly LoopbackHttpServer server;
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private readonly List<ServedRequest> served = [];
         private readonly Dictionary<int, (string Kind, string Body, long StartMs)> open = [];
         private readonly TimeSpan reasoning;
-        private readonly Task accepting;
         private int next;
 
         internal Fixture(TimeSpan reasoning)
         {
             this.reasoning = reasoning;
-            listener.Start();
-            BaseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
-            accepting = AcceptAsync();
+            server = new LoopbackHttpServer(HandleAsync, concurrent: true);
         }
 
-        internal string BaseUrl { get; }
+        internal string BaseUrl => server.V1;
         internal long Now => clock.ElapsedMilliseconds;
 
         internal IReadOnlyList<ServedRequest> Served(string kind) { lock (served) return [.. served.Where(s => s.Kind == kind)]; }
@@ -1084,73 +1054,58 @@ internal static class ThinkLongerCheck
             lock (served) return open.Values.Count(o => o.Kind == kind) + (inFlight ? 0 : served.Count(s => s.Kind == kind));
         }
 
-        private async Task AcceptAsync()
+        private async Task HandleAsync(LoopbackExchange exchange)
         {
-            try
-            {
-                while (!stop.IsCancellationRequested)
-                {
-                    var client = await listener.AcceptTcpClientAsync(stop.Token);
-                    _ = Task.Run(() => HandleAsync(client));
-                }
-            }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-        }
-
-        private async Task HandleAsync(TcpClient client)
-        {
-            using var _ = client;
             var number = Interlocked.Increment(ref next);
             string kind = "?", body = "";
             long start = Now;
             bool aborted = false, done = false;
             try
             {
-                await using var stream = client.GetStream();
-                body = Encoding.UTF8.GetString(await HearingCheck.ReadRequestAsync(stream, stop.Token));
+                body = exchange.Request.Text;
                 kind = Classify(body);
                 start = Now;
                 lock (served) open[number] = (kind, body, start);
-                await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+                await exchange.StartAsync();
                 switch (kind)
                 {
                     case "reply":
-                        await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(Acknowledged) + "}");
+                        await ChunkAsync(exchange, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(Acknowledged) + "}");
                         var arguments = JsonSerializer.Serialize(new { task = TaskText, reason = "Song lyrics need real writing." });
-                        await ChunkAsync(stream, "{\"tool_calls\":[{\"index\":0,\"id\":\"call_think\",\"type\":\"function\",\"function\":" +
+                        await ChunkAsync(exchange, "{\"tool_calls\":[{\"index\":0,\"id\":\"call_think\",\"type\":\"function\",\"function\":" +
                             "{\"name\":\"think_longer\",\"arguments\":" + JsonSerializer.Serialize(arguments) + "}}]}");
-                        await FinishAsync(stream, "tool_calls");
+                        await FinishAsync(exchange, "tool_calls");
                         break;
                     case "after-tool":
-                        await FinishAsync(stream, "stop");
+                        await FinishAsync(exchange, "stop");
                         break;
                     case "think":
                         // Hidden reasoning a little at a time (it shows the model is working), then the lyrics.
                         var thought = Stopwatch.StartNew();
-                        await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"Thinking about rhymes.\"}");
+                        await ChunkAsync(exchange, "{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"Thinking about rhymes.\"}");
                         while (thought.Elapsed < reasoning)
                         {
-                            await Task.Delay(50, stop.Token);
-                            await ChunkAsync(stream, "{\"reasoning\":\" more.\"}");
+                            await Task.Delay(50, exchange.Cancellation);
+                            await ChunkAsync(exchange, "{\"reasoning\":\" more.\"}");
                         }
                         foreach (var line in Lyrics.Split('\n'))
-                            await ChunkAsync(stream, "{\"content\":" + JsonSerializer.Serialize(line == Lyrics.Split('\n')[^1] ? line : line + "\n") + "}");
-                        await FinishAsync(stream, "stop");
+                            await ChunkAsync(exchange, "{\"content\":" + JsonSerializer.Serialize(line == Lyrics.Split('\n')[^1] ? line : line + "\n") + "}");
+                        await FinishAsync(exchange, "stop");
                         break;
                     case "chat":
-                        await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":\"Sure thing, here you go.\"}");
-                        await FinishAsync(stream, "stop");
+                        await ChunkAsync(exchange, "{\"role\":\"assistant\",\"content\":\"Sure thing, here you go.\"}");
+                        await FinishAsync(exchange, "stop");
                         break;
                     default:
-                        await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(Report) + "}");
-                        await FinishAsync(stream, "stop");
+                        await ChunkAsync(exchange, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(Report) + "}");
+                        await FinishAsync(exchange, "stop");
                         break;
                 }
                 done = true;
             }
             catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
             {
-                aborted = !stop.IsCancellationRequested;
+                aborted = !exchange.Cancellation.IsCancellationRequested;
             }
             finally
             {
@@ -1175,27 +1130,11 @@ internal static class ThinkLongerCheck
                 : JsonNode.Parse(body)?["tools"] is null ? "chat" : "reply";
         }
 
-        private Task ChunkAsync(NetworkStream stream, string delta) =>
-            WriteAsync(stream, "data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0," +
-                "\"delta\":" + delta + ",\"finish_reason\":null}]}\n\n");
+        private static Task ChunkAsync(LoopbackExchange exchange, string delta) => exchange.WriteAsync(FixtureChat.Delta(delta));
 
-        private Task FinishAsync(NetworkStream stream, string reason) =>
-            WriteAsync(stream, "data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0," +
-                "\"delta\":{},\"finish_reason\":\"" + reason + "\"}]}\n\ndata: [DONE]\n\n");
+        private static Task FinishAsync(LoopbackExchange exchange, string reason) => exchange.WriteAsync(FixtureChat.Finish(reason));
 
-        private async Task WriteAsync(NetworkStream stream, string text)
-        {
-            await stream.WriteAsync(Encoding.UTF8.GetBytes(text), stop.Token);
-            await stream.FlushAsync(stop.Token);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await accepting; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 
     // A clock whose timers fail while Broken is set (as a disposed clock would at shutdown).

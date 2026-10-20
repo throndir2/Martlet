@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -644,63 +643,37 @@ internal static class ResearchCheck
     /// research; a research step asks for another search and a page first, then writes the report.</summary>
     private sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
+        private readonly LoopbackHttpServer server;
         private readonly List<(string Kind, string Body)> bodies = [];
         private readonly List<string> paths = [];
         private readonly List<string> queries = [];
-        private readonly Task accepting;
 
-        internal Fixture()
-        {
-            listener.Start();
-            BaseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
-            accepting = AcceptAsync();
-        }
+        internal Fixture() => server = new LoopbackHttpServer(HandleAsync, concurrent: true);
 
-        internal string BaseUrl { get; }
+        internal string BaseUrl => server.Origin;
         internal IReadOnlyList<string> Queries { get { lock (paths) return [.. queries]; } }
         internal IReadOnlyList<string> Paths { get { lock (paths) return [.. paths]; } }
         internal int Fetched(string path) { lock (paths) return paths.Count(p => p == path); }
         internal IReadOnlyList<string> Bodies(string kind) { lock (paths) return [.. bodies.Where(b => b.Kind == kind).Select(b => b.Body)]; }
 
-        private async Task AcceptAsync()
+        private async Task HandleAsync(LoopbackExchange exchange)
         {
-            try
+            var (method, target, body) = (exchange.Request.Method, exchange.Request.Target, exchange.Request.Text);
+            var path = exchange.Request.Path;
+            lock (paths)
             {
-                while (!stop.IsCancellationRequested)
-                {
-                    var client = await listener.AcceptTcpClientAsync(stop.Token);
-                    _ = Task.Run(() => HandleAsync(client));
-                }
+                paths.Add(path);
+                if (path == "/search")
+                    queries.Add(Uri.UnescapeDataString(target.Split("q=", 2).ElementAtOrDefault(1)?.Split('&')[0] ?? "").Replace('+', ' '));
             }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-        }
-
-        private async Task HandleAsync(TcpClient client)
-        {
-            using var _ = client;
-            try
-            {
-                await using var stream = client.GetStream();
-                var (method, target, body) = await ReadAsync(stream);
-                var path = target.Split('?')[0];
-                lock (paths)
-                {
-                    paths.Add(path);
-                    if (path == "/search")
-                        queries.Add(Uri.UnescapeDataString(target.Split("q=", 2).ElementAtOrDefault(1)?.Split('&')[0] ?? "").Replace('+', ' '));
-                }
-                if (method == "POST" && path == "/v1/chat/completions") await ChatAsync(stream, body);
-                else if (path == "/search") await PageAsync(stream, "text/html", SearchPage());
-                else if (path == "/page/1") await PageAsync(stream, "text/html", Page("Wand toys - Cat Care", "Wand toys let cats stalk and pounce like they hunt prey. Most cats play with them daily.", script: true));
-                else if (path == "/page/2") await PageAsync(stream, "application/pdf", "%PDF-1.4");
-                else if (path == "/page/3") await WriteAsync(stream, "HTTP/1.1 302 Found\r\nLocation: http://192.168.1.1/page/5\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                else if (path == "/page/4") await PageAsync(stream, "text/html", Page("Crinkle balls", "Crinkle balls make a sound cats find exciting; they bat them around for hours."));
-                else if (path == "/page/6") await PageAsync(stream, "text/html", Page("Laser pointers, carefully", "Laser pointers should end on a real toy so the cat can catch something."));
-                else await WriteAsync(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-            }
-            catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or OperationCanceledException or JsonException) { }
+            if (method == "POST" && path == "/v1/chat/completions") await ChatAsync(exchange, body);
+            else if (path == "/search") await PageAsync(exchange, "text/html", SearchPage());
+            else if (path == "/page/1") await PageAsync(exchange, "text/html", Page("Wand toys - Cat Care", "Wand toys let cats stalk and pounce like they hunt prey. Most cats play with them daily.", script: true));
+            else if (path == "/page/2") await PageAsync(exchange, "application/pdf", "%PDF-1.4");
+            else if (path == "/page/3") await exchange.RespondAsync(302, "", "", ("Location", "http://192.168.1.1/page/5"));
+            else if (path == "/page/4") await PageAsync(exchange, "text/html", Page("Crinkle balls", "Crinkle balls make a sound cats find exciting; they bat them around for hours."));
+            else if (path == "/page/6") await PageAsync(exchange, "text/html", Page("Laser pointers, carefully", "Laser pointers should end on a real toy so the cat can catch something."));
+            else await exchange.RespondAsync(404, "", "");
         }
 
         private string Link(string path) => "//duckduckgo.com/l/?uddg=" + Uri.EscapeDataString(BaseUrl + path) + "&amp;rut=fixture";
@@ -721,87 +694,43 @@ internal static class ResearchCheck
             $"<article><h1>{title}</h1><p>{text}</p><p>FIXTURE - NOT AI web page for research_check.</p></article>" +
             (script ? "<script>trackingScript()</script>" : "") + "<footer>Copyright</footer></body></html>";
 
-        private async Task ChatAsync(NetworkStream stream, string body)
+        private async Task ChatAsync(LoopbackExchange exchange, string body)
         {
             var last = Last(body);
             var role = (string?)JsonNode.Parse(body)?["messages"]?.AsArray().LastOrDefault()?["role"];
             var kind = role == "tool" ? "after-tool" : last.Contains("A background task from Martlet", StringComparison.Ordinal) ? "step" : "reply";
             lock (paths) bodies.Add((kind, body));
-            await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+            await exchange.StartAsync();
             switch (kind)
             {
                 case "reply":
-                    await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(Acknowledged) + "}");
+                    await ChunkAsync(exchange, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(Acknowledged) + "}");
                     var arguments = JsonSerializer.Serialize(new { topic = Topic, what_to_find = Find });
-                    await ChunkAsync(stream, "{\"tool_calls\":[{\"index\":0,\"id\":\"call_research\",\"type\":\"function\",\"function\":" +
+                    await ChunkAsync(exchange, "{\"tool_calls\":[{\"index\":0,\"id\":\"call_research\",\"type\":\"function\",\"function\":" +
                         "{\"name\":\"research\",\"arguments\":" + JsonSerializer.Serialize(arguments) + "}}]}");
-                    await FinishAsync(stream, "tool_calls");
+                    await FinishAsync(exchange, "tool_calls");
                     break;
                 case "after-tool":
-                    await FinishAsync(stream, "stop");
+                    await FinishAsync(exchange, "stop");
                     break;
                 default:
                     var answer = last.Contains("step 1 of", StringComparison.Ordinal)
                         ? $"NOTES:\n- {FixtureNote}\nFOUND: {Found}\nSEARCH: laser pointer cats safe\nREAD: {BaseUrl}/page/6"
                         : "TITLE: Toys cats like best\nSUMMARY: " + Summary + "\nREPORT:\nMost cats prefer toys that move like prey: wand toys [1] " +
                           "and crinkle balls [3]. Laser pointers are fine if the game ends on a toy they can catch [2].";
-                    await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(answer) + "}");
-                    await FinishAsync(stream, "stop");
+                    await ChunkAsync(exchange, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(answer) + "}");
+                    await FinishAsync(exchange, "stop");
                     break;
             }
         }
 
-        private static async Task<(string Method, string Target, string Body)> ReadAsync(NetworkStream stream)
-        {
-            var buffer = new List<byte>();
-            var one = new byte[1];
-            while (buffer.Count < 65_536)
-            {
-                if (await stream.ReadAsync(one) == 0) break;
-                buffer.Add(one[0]);
-                if (buffer.Count >= 4 && buffer[^1] == '\n' && buffer[^2] == '\r' && buffer[^3] == '\n' && buffer[^4] == '\r') break;
-            }
-            var head = Encoding.ASCII.GetString(buffer.ToArray());
-            var line = head.Split("\r\n")[0].Split(' ');
-            var length = head.Split("\r\n").Select(h => h.Split(':', 2)).Where(h => h.Length == 2 && h[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
-                .Select(h => int.Parse(h[1].Trim(), System.Globalization.CultureInfo.InvariantCulture)).FirstOrDefault();
-            var body = new byte[length];
-            var read = 0;
-            while (read < length)
-            {
-                var n = await stream.ReadAsync(body.AsMemory(read));
-                if (n == 0) break;
-                read += n;
-            }
-            return (line[0], line.Length > 1 ? line[1] : "/", Encoding.UTF8.GetString(body, 0, read));
-        }
+        private static Task PageAsync(LoopbackExchange exchange, string type, string content) =>
+            exchange.RespondAsync(200, content, type + "; charset=utf-8");
 
-        private Task PageAsync(NetworkStream stream, string type, string content)
-        {
-            var bytes = Encoding.UTF8.GetBytes(content);
-            return WriteAsync(stream, $"HTTP/1.1 200 OK\r\nContent-Type: {type}; charset=utf-8\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n" + content);
-        }
+        private static Task ChunkAsync(LoopbackExchange exchange, string delta) => exchange.WriteAsync(FixtureChat.Delta(delta));
 
-        private Task ChunkAsync(NetworkStream stream, string delta) =>
-            WriteAsync(stream, "data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0," +
-                "\"delta\":" + delta + ",\"finish_reason\":null}]}\n\n");
+        private static Task FinishAsync(LoopbackExchange exchange, string reason) => exchange.WriteAsync(FixtureChat.Finish(reason));
 
-        private Task FinishAsync(NetworkStream stream, string reason) =>
-            WriteAsync(stream, "data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0," +
-                "\"delta\":{},\"finish_reason\":\"" + reason + "\"}]}\n\ndata: [DONE]\n\n");
-
-        private async Task WriteAsync(NetworkStream stream, string text)
-        {
-            await stream.WriteAsync(Encoding.UTF8.GetBytes(text), stop.Token);
-            await stream.FlushAsync(stop.Token);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await accepting; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 }

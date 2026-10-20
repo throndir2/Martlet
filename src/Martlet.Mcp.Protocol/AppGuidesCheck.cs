@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Conversation;
@@ -891,20 +889,13 @@ internal static class AppGuidesCheck
     /// second wiki found only through the search, and /robots.txt allows everything.</summary>
     private sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource stop = new();
+        private readonly LoopbackHttpServer server;
         private readonly List<string> paths = [];
         private readonly List<string> queries = [];
-        private readonly Task accepting;
 
-        internal Fixture()
-        {
-            listener.Start();
-            BaseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
-            accepting = AcceptAsync();
-        }
+        internal Fixture() => server = new LoopbackHttpServer(HandleAsync, concurrent: true);
 
-        internal string BaseUrl { get; }
+        internal string BaseUrl => server.Origin;
         internal IReadOnlyList<string> Queries { get { lock (paths) return [.. queries]; } }
         internal IReadOnlyList<string> Paths { get { lock (paths) return [.. paths]; } }
         /// <summary>The series wiki's pages asked for (action=parse), in order.</summary>
@@ -972,88 +963,65 @@ internal static class AppGuidesCheck
             }
         }
 
-        private async Task AcceptAsync()
+        private async Task HandleAsync(LoopbackExchange exchange)
         {
-            try
+            var target = exchange.Request.Target;
+            var path = target.Split('?')[0];
+            var query = path == "/search"
+                ? Uri.UnescapeDataString((target.Split("q=", 2).ElementAtOrDefault(1)?.Split('&')[0] ?? "").Replace('+', ' ')) : "";
+            lock (paths)
             {
-                while (!stop.IsCancellationRequested)
-                {
-                    var client = await listener.AcceptTcpClientAsync(stop.Token);
-                    _ = Task.Run(() => HandleAsync(client));
-                }
+                paths.Add(path);
+                if (path == "/search") queries.Add(query);
             }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-        }
-
-        private async Task HandleAsync(TcpClient client)
-        {
-            using var _ = client;
-            try
+            var (type, body) = path switch
             {
-                await using var stream = client.GetStream();
-                var target = await ReadAsync(stream);
-                var path = target.Split('?')[0];
-                var query = path == "/search"
-                    ? Uri.UnescapeDataString((target.Split("q=", 2).ElementAtOrDefault(1)?.Split('&')[0] ?? "").Replace('+', ' ')) : "";
-                lock (paths)
-                {
-                    paths.Add(path);
-                    if (path == "/search") queries.Add(query);
-                }
-                var (type, body) = path switch
-                {
-                    "/robots.txt" => ("text/plain", "User-agent: *\nAllow: /\n"),
-                    "/search" => ("text/html", SearchPage(query)),
-                    "/series/api.php" => ("application/json", SeriesApi(target)),
-                    SeriesStart => ("text/html", "<html><head><link rel=\"EditURI\" type=\"application/rsd+xml\" href=\"" + BaseUrl +
-                        "/series/api.php?action=rsd\"/></head><body><p>The Starfall Saga Wiki is about every Starfall game (FIXTURE).</p></body></html>"),
-                    // Every other page of the series wiki names its api.php too (Read more finds the wiki again from a page).
-                    _ when path.StartsWith("/series/wiki/", StringComparison.Ordinal) => ("text/html", "<html><head><link rel=\"EditURI\" " +
-                        "type=\"application/rsd+xml\" href=\"" + BaseUrl + "/series/api.php?action=rsd\"/></head><body><p>A page of the Starfall " +
-                        "Saga Wiki (FIXTURE).</p></body></html>"),
-                    "/wiki/Sunken_Crypt" => ("text/html", Page("Sunken Crypt",
-                        "<p>The Sunken Crypt is a flooded dungeon under the old chapel in Starfall Valley (FIXTURE).</p><h2>Getting in</h2>" +
-                        "<p>Drain the Sunken Crypt by turning the three bronze valves in the chapel cellar; the water drops one floor with " +
-                        "each valve.</p><h2>Dangers</h2><p>Drowned knights guard the lowest floor of the Sunken Crypt. They are weak to " +
-                        "fire, so bring torches, and leave before midnight, when the water rises again.</p>")),
-                    "/wiki/Main_Page" or "/wiki/" or "/wiki" => ("text/html", Page("Starfall Valley Wiki",
-                        "<p>Welcome to the Starfall Valley Wiki, the fan wiki about the farming game Starfall Valley (FIXTURE).</p>" +
-                        "<h2>Mining</h2><h3>Iron ore</h3><p>Iron ore is found in the Ember Mines below level 40. Bring a steel pickaxe; " +
-                        "each iron node gives two or three ore. Smelt five iron ore in a furnace to make one iron bar.</p>" +
-                        "<h2>Weapons</h2><h3>Moonstone sword</h3><p>The Moonstone sword is forged by the blacksmith Orla from three " +
-                        "moonstones and one iron bar. Moonstones drop from crystal golems in the Frost Caves.</p>" +
-                        "<h2>Seasons</h2><p>Each season lasts twenty-eight days. Crops die when the season changes unless they grow in " +
-                        "the greenhouse.</p>" +
-                        "<ul><li><a href=\"/wiki/Iron_Ore\">Iron Ore</a></li><li><a href=\"/wiki/Moonstone_Sword\">Moonstone Sword</a></li>" +
-                        "<li><a href=\"/wiki/Special:Random\">Random page</a></li><li><a href=\"/wiki/User:Bob\">Bob</a></li></ul>")),
-                    "/wiki/Iron_Ore" => ("text/html", Page("Iron Ore",
-                        "<p>Iron Ore is a common mineral in Starfall Valley (FIXTURE).</p><h2>Where to find</h2><p>Iron ore nodes appear " +
-                        "in the Ember Mines from level 40 to level 80, and rarely in the Quarry after rain.</p><h2>Uses</h2><p>Five iron " +
-                        "ore smelt into one iron bar, used for tools, sprinklers and the Moonstone sword.</p>")),
-                    "/wiki/Moonstone_Sword" => ("text/html", Page("Moonstone Sword",
-                        "<p>The Moonstone Sword is a late-game weapon in Starfall Valley (FIXTURE).</p><h2>How to get it</h2><p>Bring " +
-                        "three moonstones and one iron bar to Orla the blacksmith; she forges it overnight. It deals more damage at night " +
-                        "and glows near hidden doors, so many players carry it into the Frost Caves to find the secret rooms.</p>")),
-                    "/w/abyss/Main_Page" => ("text/html", Page("Moonlit Abyss Wiki",
-                        "<p>The Moonlit Abyss Wiki is about the diving game Moonlit Abyss (FIXTURE).</p><h2>Oxygen</h2><p>Your tank " +
-                        "holds ninety seconds of air; blue coral refills it by ten seconds. A bigger tank from the harbour shop holds three " +
-                        "minutes, and the rebreather perk makes each breath last a little longer.</p><h2>Getting started</h2><p>Your first " +
-                        "dives are in the shallow reef, where the currents are gentle and the fish are friendly.</p>" +
-                        "<ul><li><a href=\"/w/abyss/Trenches\">Trenches</a></li></ul>", "/w/abyss/Main_Page")),
-                    "/w/abyss/Trenches" => ("text/html", Page("Trenches",
-                        "<p>Trenches in Moonlit Abyss are the deepest dives (FIXTURE).</p><h2>Pressure</h2><p>Below two hundred " +
-                        "metres the hull creaks; upgrade it at the dock before diving. Lanterns attract the anglerfish, so dim them in the " +
-                        "Black Trench and follow the glowing kelp back to the surface when your air runs low.</p>", "/w/abyss/Main_Page")),
-                    _ => ("", "")
-                };
-                if (type.Length == 0) await WriteAsync(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                else
-                {
-                    var bytes = Encoding.UTF8.GetByteCount(body);
-                    await WriteAsync(stream, $"HTTP/1.1 200 OK\r\nContent-Type: {type}; charset=utf-8\r\nContent-Length: {bytes}\r\nConnection: close\r\n\r\n" + body);
-                }
-            }
-            catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or OperationCanceledException) { }
+                "/robots.txt" => ("text/plain", "User-agent: *\nAllow: /\n"),
+                "/search" => ("text/html", SearchPage(query)),
+                "/series/api.php" => ("application/json", SeriesApi(target)),
+                SeriesStart => ("text/html", "<html><head><link rel=\"EditURI\" type=\"application/rsd+xml\" href=\"" + BaseUrl +
+                    "/series/api.php?action=rsd\"/></head><body><p>The Starfall Saga Wiki is about every Starfall game (FIXTURE).</p></body></html>"),
+                // Every other page of the series wiki names its api.php too (Read more finds the wiki again from a page).
+                _ when path.StartsWith("/series/wiki/", StringComparison.Ordinal) => ("text/html", "<html><head><link rel=\"EditURI\" " +
+                    "type=\"application/rsd+xml\" href=\"" + BaseUrl + "/series/api.php?action=rsd\"/></head><body><p>A page of the Starfall " +
+                    "Saga Wiki (FIXTURE).</p></body></html>"),
+                "/wiki/Sunken_Crypt" => ("text/html", Page("Sunken Crypt",
+                    "<p>The Sunken Crypt is a flooded dungeon under the old chapel in Starfall Valley (FIXTURE).</p><h2>Getting in</h2>" +
+                    "<p>Drain the Sunken Crypt by turning the three bronze valves in the chapel cellar; the water drops one floor with " +
+                    "each valve.</p><h2>Dangers</h2><p>Drowned knights guard the lowest floor of the Sunken Crypt. They are weak to " +
+                    "fire, so bring torches, and leave before midnight, when the water rises again.</p>")),
+                "/wiki/Main_Page" or "/wiki/" or "/wiki" => ("text/html", Page("Starfall Valley Wiki",
+                    "<p>Welcome to the Starfall Valley Wiki, the fan wiki about the farming game Starfall Valley (FIXTURE).</p>" +
+                    "<h2>Mining</h2><h3>Iron ore</h3><p>Iron ore is found in the Ember Mines below level 40. Bring a steel pickaxe; " +
+                    "each iron node gives two or three ore. Smelt five iron ore in a furnace to make one iron bar.</p>" +
+                    "<h2>Weapons</h2><h3>Moonstone sword</h3><p>The Moonstone sword is forged by the blacksmith Orla from three " +
+                    "moonstones and one iron bar. Moonstones drop from crystal golems in the Frost Caves.</p>" +
+                    "<h2>Seasons</h2><p>Each season lasts twenty-eight days. Crops die when the season changes unless they grow in " +
+                    "the greenhouse.</p>" +
+                    "<ul><li><a href=\"/wiki/Iron_Ore\">Iron Ore</a></li><li><a href=\"/wiki/Moonstone_Sword\">Moonstone Sword</a></li>" +
+                    "<li><a href=\"/wiki/Special:Random\">Random page</a></li><li><a href=\"/wiki/User:Bob\">Bob</a></li></ul>")),
+                "/wiki/Iron_Ore" => ("text/html", Page("Iron Ore",
+                    "<p>Iron Ore is a common mineral in Starfall Valley (FIXTURE).</p><h2>Where to find</h2><p>Iron ore nodes appear " +
+                    "in the Ember Mines from level 40 to level 80, and rarely in the Quarry after rain.</p><h2>Uses</h2><p>Five iron " +
+                    "ore smelt into one iron bar, used for tools, sprinklers and the Moonstone sword.</p>")),
+                "/wiki/Moonstone_Sword" => ("text/html", Page("Moonstone Sword",
+                    "<p>The Moonstone Sword is a late-game weapon in Starfall Valley (FIXTURE).</p><h2>How to get it</h2><p>Bring " +
+                    "three moonstones and one iron bar to Orla the blacksmith; she forges it overnight. It deals more damage at night " +
+                    "and glows near hidden doors, so many players carry it into the Frost Caves to find the secret rooms.</p>")),
+                "/w/abyss/Main_Page" => ("text/html", Page("Moonlit Abyss Wiki",
+                    "<p>The Moonlit Abyss Wiki is about the diving game Moonlit Abyss (FIXTURE).</p><h2>Oxygen</h2><p>Your tank " +
+                    "holds ninety seconds of air; blue coral refills it by ten seconds. A bigger tank from the harbour shop holds three " +
+                    "minutes, and the rebreather perk makes each breath last a little longer.</p><h2>Getting started</h2><p>Your first " +
+                    "dives are in the shallow reef, where the currents are gentle and the fish are friendly.</p>" +
+                    "<ul><li><a href=\"/w/abyss/Trenches\">Trenches</a></li></ul>", "/w/abyss/Main_Page")),
+                "/w/abyss/Trenches" => ("text/html", Page("Trenches",
+                    "<p>Trenches in Moonlit Abyss are the deepest dives (FIXTURE).</p><h2>Pressure</h2><p>Below two hundred " +
+                    "metres the hull creaks; upgrade it at the dock before diving. Lanterns attract the anglerfish, so dim them in the " +
+                    "Black Trench and follow the glowing kelp back to the surface when your air runs low.</p>", "/w/abyss/Main_Page")),
+                _ => ("", "")
+            };
+            if (type.Length == 0) await exchange.RespondAsync(404, "", "");
+            else await exchange.RespondAsync(200, body, type + "; charset=utf-8");
         }
 
         private string Link(string path) => Away(BaseUrl + path);
@@ -1085,32 +1053,6 @@ internal static class AppGuidesCheck
             $"<nav><a href=\"{home}\">Home</a> | <a href=\"/wiki/Special:RecentChanges\">Recent changes</a></nav>" +
             $"<main><article><h1>{title}</h1>{content}</article></main><footer>Fixture wiki for app_guides_check.</footer></body></html>";
 
-        private static async Task<string> ReadAsync(NetworkStream stream)
-        {
-            var buffer = new List<byte>();
-            var one = new byte[1];
-            while (buffer.Count < 65_536)
-            {
-                if (await stream.ReadAsync(one) == 0) break;
-                buffer.Add(one[0]);
-                if (buffer.Count >= 4 && buffer[^1] == '\n' && buffer[^2] == '\r' && buffer[^3] == '\n' && buffer[^4] == '\r') break;
-            }
-            var line = Encoding.ASCII.GetString(buffer.ToArray()).Split("\r\n")[0].Split(' ');
-            return line.Length > 1 ? line[1] : "/";
-        }
-
-        private async Task WriteAsync(NetworkStream stream, string text)
-        {
-            await stream.WriteAsync(Encoding.UTF8.GetBytes(text), stop.Token);
-            await stream.FlushAsync(stop.Token);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            stop.Cancel();
-            listener.Stop();
-            try { await accepting; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-            stop.Dispose();
-        }
+        public ValueTask DisposeAsync() => server.DisposeAsync();
     }
 }
