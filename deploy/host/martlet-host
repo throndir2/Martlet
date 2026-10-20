@@ -504,20 +504,34 @@ conf_any_value() {
   return 0
 }
 
+# Whether $1 is a model name an open choice (role.conf choice_open=VAR) takes: an Ollama tag ("llama3.3:70b") or a Hugging
+# Face GGUF ("hf.co/unsloth/Qwen3-32B-GGUF:Q4_K_M"). The same pattern as the gateway's role records: letters, digits and
+# . _ : / -, at most 128 characters, so it is safe in the role's commands.
+open_value() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ && ${#1} -le 128 && "$1" != *..* ]]
+}
+
 # Asks role choice $1 ("VAR|label|options|default"; $2, when it is one of the options, is the default instead: what an
 # installed role runs with now, or the suggestion) for cmd_add unless Martlet answered it, and records the answer in
 # cmd_add's chosen and env_lines and in ROLE_CHOSEN.
 ask_choice() {
-  local var label options default value
+  local var label options default value open=0 hint=""
   IFS='|' read -r var label options default <<< "$1"
-  if [[ -n "${2:-}" && " ${options} " == *" ${2} "* ]]; then default="$2"; fi
+  # cmd_add's role.conf: choice_open=VAR lets the choice also take any model name (open_value), not only the options listed.
+  if [[ " $(conf_values "${conf:-/dev/null}" choice_open | tr '\n' ' ') " == *" ${var} "* ]]; then open=1; hint=" or another model name"; fi
+  if [[ -n "${2:-}" ]] && { [[ " ${options} " == *" ${2} "* ]] || { (( open )) && open_value "${2}"; }; }; then default="$2"; fi
   value="${INPUT[choice.${var}]:-}"
   if [[ -z "${value}" ]]; then
     if unattended; then value="${default}"
-    else read -r -p "${label} [${options// //}] (default ${default}): " value; fi
+    else read -r -p "${label} [${options// //}${hint}] (default ${default}): " value; fi
   fi
   value="${value:-${default}}"
-  [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
+  if (( open )); then
+    [[ " ${options} " == *" ${value} "* ]] || open_value "${value}" ||
+      fail "Choose one of: ${options}, or a model name (letters, digits and . _ : / -, 128 characters at most)."
+  else
+    [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
+  fi
   note "${label}: ${value}"
   chosen["${var}"]="${value}"
   ROLE_CHOSEN["${var}"]="${value}"
@@ -638,6 +652,10 @@ cmd_describe() {
   while IFS= read -r line; do
     [[ -n "${line}" ]] && printf 'role.choice=%s\n' "${line}"
   done < <(conf_values "${conf}" choice)
+  # Choices that also take any model name (an Ollama tag or hf.co/... GGUF), not only the options listed.
+  while IFS= read -r line; do
+    [[ "${line}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && printf 'role.choice_open=%s\n' "${line}"
+  done < <(conf_values "${conf}" choice_open)
   # Choices the host suggests by its GPU memory, and whether it can run on the GPU or the CPU (the host decides unless told).
   while IFS= read -r line; do
     [[ -n "${line}" ]] && printf 'role.suggested=%s\n' "${line%%|*}"
@@ -964,10 +982,11 @@ gpu_sharing_note() {
 # its options (a variant's own choice only when that variant runs; installs from before the role had variants run its
 # profile_legacy), and "accelerator|gpu" or "accelerator|cpu" for a role with a gpu entry. Nothing when it isn't installed.
 role_current() {
-  local role="$1" file="${PROJECTS}/$1/.env" conf condition line var label options default value from legacy when
+  local role="$1" file="${PROJECTS}/$1/.env" conf condition line var label options default value from legacy when open
   [[ -f "$(installed_file "${role}")" && -f "${file}" ]] || return 0
   conf="$(role_dir "${role}")/role.conf"
   from="$(conf_value "${conf}" profile_from)"; legacy="$(conf_value "${conf}" profile_legacy)"
+  open=" $(conf_values "${conf}" choice_open | tr '\n' ' ') "
   while IFS=$'\t' read -r condition line; do
     [[ "${line%%=*}" == choice ]] || continue
     IFS='|' read -r var label options default <<< "${line#*=}"
@@ -979,7 +998,9 @@ role_current() {
     fi
     value="$(conf_value "${file}" "${var}")"
     if [[ -z "${value}" && -n "${from}" && "${var}" == "${from}" ]]; then value="${legacy}"; fi
-    if [[ -n "${value}" && " ${options} " == *" ${value} "* ]]; then printf 'choice|%s|%s\n' "${var}" "${value}"; fi
+    if [[ -n "${value}" ]] && { [[ " ${options} " == *" ${value} "* ]] || { [[ "${open}" == *" ${var} "* ]] && open_value "${value}"; }; }; then
+      printf 'choice|%s|%s\n' "${var}" "${value}"
+    fi
   done < <(conf_lines "${conf}")
   value="$(conf_value "${file}" MARTLET_ACCELERATOR)"
   if [[ "${value}" == gpu || "${value}" == cpu ]]; then printf 'accelerator|%s\n' "${value}"; fi

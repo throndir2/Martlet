@@ -27,6 +27,7 @@ internal static class RecommendedSetupStatus
     internal const string ServedFixtureName = "served";
     internal const string HostModelsFixtureName = "hostmodels";
     internal const string BetterFixtureName = "better";
+    internal const string BigHostFixtureName = "bighost";
 
     /// <summary>The made-up measurements of the "better" fixture: Gemma 4 E2B on gpu-box.</summary>
     private static (MeasuredModelMemory Memory, MeasuredFirstWords Speed) BetterMeasurements(DateTimeOffset now)
@@ -85,7 +86,14 @@ internal static class RecommendedSetupStatus
                     "0.18 s over 3 replies and Ollama held it in 3.6 GB on the card. A smarter model fits there, so Thinking gets a suggestion " +
                     "(pass preferences.locks [{ job: \"thinking\", locked: false }] to let Martlet choose it)";
             }
-            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\" or \"{BetterFixtureName}\".");
+            else if (fixture == BigHostFixtureName)
+            {
+                sources = RecommendedSetupInputs.BigHostFixture(DateTimeOffset.UtcNow);
+                source = "fixture bighost (NOT real computers): this PC (a companion PC without a graphics card) and big-box (a Linux host " +
+                    "with five RTX 5090s, 32 GB each) that thinks with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B; it plans with the " +
+                    "model catalog, so Deep thinking gets a bigger model while live Thinking stays fast";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\", \"{BetterFixtureName}\" or \"{BigHostFixtureName}\".");
         }
         else
         {
@@ -191,7 +199,12 @@ internal static class RecommendedSetupStatus
                 found = build.Request.ServedModels.Select(m => new
                 {
                     model = m.ModelId, app = m.AppName, address = m.BaseUrl, computer = Name(m.MachineId), chat = ServedModels.Chats(m.ModelId),
-                    downloadGb = m.SizeGb, estimatedGb = ServedModels.Gb(m), option = ServedModels.OptionId(m.ModelId)
+                    downloadGb = m.SizeGb, estimatedGb = ServedModels.Gb(m, PlanningCatalog.Models), option = ServedModels.OptionId(m.ModelId),
+                    // Loaded now (Ollama /api/ps, LM Studio's loaded state) and the graphics memory it holds: the card's memory in
+                    // use counts it already, so the first-run plan adds only newGb.
+                    loaded = m.LoadedGb is not null, loadedGb = m.LoadedGb,
+                    newGb = ServedModels.Gb(m, PlanningCatalog.Models) is { } planned ? ServedModels.Extra(m, planned) : (double?)null,
+                    sizeFrom = ServedModels.Option(m, PlanningCatalog.Models).Source
                 }),
                 // The review's explicit choices (Think with it, RecommendedSetupUseServed-<n>), in its order.
                 choices = chosen.UseServedModels

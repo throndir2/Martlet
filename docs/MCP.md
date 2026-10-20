@@ -1552,7 +1552,11 @@ Recommended setup's options come from, by reading files only:
 plus Martlet's own list), `planning.catalog_snapshot` (the snapshot shipped
 with Martlet, because no newer daily copy is on this PC) or
 `planning.seed_only` (a Warning: the catalog can't be read, so only Martlet's
-own list). `recommended_setup_status` gives the details for each option.
+own list). It says `planning.catalog_refresh_failing` (a Warning) when the
+daily refresh tried in the last week, a source failed, and no refresh read
+every source for more than seven days (`model-catalog-status.json`): Martlet
+plans with the last good copy. `recommended_setup_status` gives the details
+for each option, and `model_catalog_status` the refresh's details.
 
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
@@ -6569,6 +6573,13 @@ E2B and `suggestions` has *Gemma 4 12B on gpu-box: smarter, ...*; with
 `preferences.locks` `[{ "job": "thinking", "locked": false }]` the change
 `ChangeModel` to `gemma4:12b` is in the recommendation and the suggestion is
 `applied`.
+Give `fixture: "bighost"` to plan the built-in big-hardware network (**NOT real
+computers**) with the model catalog: this PC, a companion PC with no graphics
+card, and `big-box`, a Linux host with five RTX 5090s (32 GB each) that thinks
+with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B. Its recommendation
+keeps live Thinking on the fast Gemma 4 E2B and has a `ChangeModel` that
+switches Deep thinking to a smarter model a free card has room for (Gemma 4 26B
+with the 2026-10-10 snapshot), because Deep thinking runs in the background.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.
@@ -6631,9 +6642,16 @@ alone, as before the catalog, to compare. The result has:
   (models were looked for: the fixture's, or `lookOnThisPc`), `found` (each
   model's `model`, `app`, `address`, `computer`, `chat` (false for an
   embedding, speech or picture model, which Thinking can't use), `downloadGb`
-  (the app's own size; only Ollama says it), `estimatedGb` (the graphics
-  memory the planner counts) and `option` (`served:<model>`, the job option
-  the recommendation uses)), `choices` (the review's explicit Thinking choices,
+  (the app's own size: Ollama's `/api/tags`, LM Studio's `/api/v1/models`
+  `size_bytes`, or its older `/api/v0/models` quantization at the parameters
+  in the name), `estimatedGb` (the graphics memory the planner counts),
+  `loaded` and `loadedGb` (the app has the model loaded now: Ollama's
+  `/api/ps` `size_vram`, or LM Studio's loaded state, where `loadedGb` is 0
+  because it doesn't say the memory), `newGb` (what the first-run plan adds to
+  the graphics memory in use, which counts a loaded model already), `sizeFrom`
+  (where the size comes from: the app's size, the model catalog's parameters
+  or the name) and `option` (`served:<model>`, the job option the
+  recommendation uses)), `choices` (the review's explicit Thinking choices,
   in its order: each `button` `RecommendedSetupUseServed-<n>`, its `line`,
   `model` and `address`; empty when the choice is off) and `note`.
 - `hostModels`: `prefer` (*Prefer models your hosts already have* is on: the
