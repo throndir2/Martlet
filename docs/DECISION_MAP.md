@@ -300,7 +300,7 @@ with the find question in `HostFind` (`src\Martlet.Core\Network\HostFind.cs`).
 `HostRegistry.Moved` (`src\Martlet.Desktop\HostControl.cs`) keeps the new
 address with the pairing (`movedTo`) and moves an SSH target that named the old
 one. On a host, `GatewayHomeListeners` (`src\Martlet.Gateway`) and the Docker
-keeper's `follow_home` (`deploy\host\martlet-host`) decide where it listens.
+keeper's `follow_home` (`deploy\host\lib\docker.sh`) decide where it listens.
 
 **Tests:** `HostFindTests` (Martlet.Core.Tests), `HostMoveTests`
 (Martlet.Avatar.Audio2Face.Tests), `HomeListenerTests` (Martlet.Gateway.Tests),

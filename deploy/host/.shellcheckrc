@@ -1,0 +1,2 @@
+# martlet-host sources its modules from lib/ next to it.
+source-path=SCRIPTDIR

@@ -4157,7 +4157,7 @@ gateway container built from this checkout (not the real host service).
 
 `host_engine_check` (no arguments) checks that a host runs
 [changes side by side](../deploy/host/README.md#changes-side-by-side) with this
-checkout's real `deploy\host\martlet-host`: it starts one disposable
+checkout's real `deploy\host\martlet-host` and its modules (`deploy\host\lib\*.sh`): it starts one disposable
 `ubuntu:24.04` container (`--network none`, `--pull never`, removed afterwards,
 the engine in native mode against a fixture setup under `/tmp`; Martlet's own
 host containers and volumes are never touched) and returns `{exitCode, report:

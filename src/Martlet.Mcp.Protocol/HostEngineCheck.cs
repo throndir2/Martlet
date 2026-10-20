@@ -6,7 +6,8 @@ using Martlet.Core.Nodes;
 
 namespace Martlet.Mcp;
 
-/// <summary>host_engine_check: runs this checkout's real martlet-host engine (deploy\host\martlet-host) in one disposable
+/// <summary>host_engine_check: runs this checkout's real martlet-host engine (deploy\host\martlet-host and its modules in
+/// deploy\host\lib) in one disposable
 /// ubuntu:24.04 container (no network, never pulled, removed afterwards; it never touches Martlet's own host containers or
 /// volumes) and checks that a host runs changes side by side and makes only colliding ones wait: a change holds and records
 /// its locks, read-only commands still run, status names the holders, an automatic run (no terminal, no --yes) stops at
@@ -43,7 +44,12 @@ internal static class HostEngineCheck
         var script = new StringBuilder()
             .Append("mkdir -p /m/deploy/host\nbase64 -d > /m/deploy/host/martlet-host <<'MARTLET_ENGINE'\n")
             .Append(Convert.ToBase64String(await File.ReadAllBytesAsync(engine, cancellation), Base64FormattingOptions.InsertLineBreaks).Replace("\r\n", "\n"))
-            .Append("\nMARTLET_ENGINE\nchmod 755 /m/deploy/host/martlet-host\n");
+            .Append("\nMARTLET_ENGINE\nchmod 755 /m/deploy/host/martlet-host\nmkdir -p /m/deploy/host/lib\n");
+        // The engine's modules (deploy/host/lib/*.sh), which martlet-host sources from the folder next to it.
+        foreach (var module in Directory.GetFiles(Path.Combine(Path.GetDirectoryName(engine)!, "lib"), "*.sh").Order(StringComparer.Ordinal))
+            script.Append($"base64 -d > /m/deploy/host/lib/{Path.GetFileName(module)} <<'MARTLET_ENGINE'\n")
+                .Append(Convert.ToBase64String(await File.ReadAllBytesAsync(module, cancellation), Base64FormattingOptions.InsertLineBreaks).Replace("\r\n", "\n"))
+                .Append("\nMARTLET_ENGINE\n");
         // A real role's files, as the host image has them (deploy/host/roles), for the steps that check the engine reads them.
         foreach (var role in RealRoles)
         {
