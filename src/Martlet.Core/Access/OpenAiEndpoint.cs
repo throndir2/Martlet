@@ -49,12 +49,12 @@ public sealed record OpenAiEndpointSettings
         if (!value.Contains("://", StringComparison.Ordinal)) value = "https://" + value;
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Host.Length == 0)
         {
-            problem = "That isn't a web address. Type it like https://llm.example.com/v1.";
+            problem = "That isn't a web address: type it like https://llm.example.com/v1.";
             return null;
         }
         if (uri.Scheme != Uri.UriSchemeHttps)
         {
-            problem = "Use an https address. Apps send the key with every request, so it must travel encrypted.";
+            problem = "Use an https address: apps send the key with every request, so it must travel encrypted.";
             return null;
         }
         if (uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0)
@@ -208,18 +208,12 @@ public static class OpenAiEndpoint
     /// an address reaches a Martlet front door.</summary>
     public const string FrontDoorMissingKey = "missing_api_key";
 
-    /// <summary>The help behind the "?" next to the address (Share › Share your language models): how to give the front door
-    /// an https address with a real certificate, from the simplest way to the most hands-on.</summary>
+    /// <summary>The help behind the "?" next to the address (Share › Share your language models): the ways to give the front door
+    /// an https address with a real certificate. The wiki (Sharing-with-Friends#get-an-https-address) has the steps.</summary>
     public const string ExposeHelp =
-        "Apps that use the OpenAI API need an https address with a real certificate. Your hosts use their own certificate, so " +
-        "something in front of the front door gives it one. Pick the way that fits you:\n\n" +
-        "• No domain: Tailscale Funnel. Install Tailscale on the front door's computer, then run the command Show setup gives you. " +
-        "Tailscale gives you https://<computer>.<your-tailnet>.ts.net for free.\n" +
-        "• A domain on Cloudflare: Cloudflare Tunnel. No router port; the tunnel runs on any computer at home.\n" +
-        "• Nginx Proxy Manager, Nginx or Caddy: add a site for your name (for example martlet.example.com) that sends everything to " +
-        "the front door's address. Your router sends port 443 to that computer.\n\n" +
-        "Then type the address here and choose Check address. The front door serves only Martlet's web page and the " +
-        "OpenAI-compatible API, and every request needs a key you made. Never point a proxy at the gateway's own port (9443).";
+        "Apps need an https address with a real certificate in front of the front door. Use Tailscale Funnel (no domain), " +
+        "Cloudflare Tunnel (a domain on Cloudflare) or Nginx Proxy Manager, Nginx or Caddy (your own domain); Show setup gives the " +
+        "exact text. Then type the address here and choose Check address.";
 
     /// <summary>An nginx server block that serves <paramref name="serverName"/> with a real certificate and sends it to the
     /// front door (<paramref name="upstreamOrigin"/>, https://&lt;home address&gt;:&lt;front door port&gt;). The front door serves

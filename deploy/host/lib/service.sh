@@ -59,7 +59,7 @@ render_gpus() {
     kind="$(conf_value "${file}" kind)"
     [[ "${kind}" =~ ^[a-z0-9-]+$ ]] || continue
     place="$(role_place "$(basename "${file}" .role)")"
-    if [[ "${place}" =~ ^GPU-[A-Za-z0-9-]+$ || "${place}" == cpu ]]; then entries+=("\"${kind}\":[\"${place}\"]"); fi
+    if gpu_list "${place}" || [[ "${place}" == cpu ]]; then entries+=("\"${kind}\":[\"${place//,/\",\"}\"]"); fi
   done
   local joined; joined="$(IFS=,; printf '%s' "${entries[*]:-}")"
   printf '{"schemaVersion":1,"roles":{%s}}\n' "${joined}"

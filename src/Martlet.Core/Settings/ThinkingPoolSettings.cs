@@ -56,7 +56,7 @@ public sealed record ThinkingPoolSettings
         ArgumentException.ThrowIfNullOrEmpty(key);
         if (OffMembers.FirstOrDefault(m => m.Key == key) is not { } member) return this;
         ContractRules.Require(Members.Count < DeepThinkingSettings.MaxPlaces,
-            $"The Thinking pool has at most {DeepThinkingSettings.MaxPlaces} machines on. Turn one off first.");
+            $"The Thinking pool has at most {DeepThinkingSettings.MaxPlaces} machines on; turn one off first.");
         var next = this with { Members = [.. Members, member], OffMembers = [.. OffMembers.Where(m => m.Key != key)] };
         return member is { Place: DeepThinkingPlace.Host, HostId: { } host } && Left(host) ? next.KeepOut(host, false) : next;
     }
@@ -329,8 +329,8 @@ public sealed record ThinkingPoolSettings
         IReadOnlyCollection<string>? offline = null)
     {
         if (Members.Count == 0 && !UseConversationModelWhenEmpty)
-            return new([new DeepThinkingSpot(new(), new(false, "The Thinking pool has no member that is on, and Use the conversation model when " +
-                "the pool is empty is off. Add a machine or turn one on in Companion › Thinking pool."), "no member")]);
+            return new([new DeepThinkingSpot(new(), new(false, "The Thinking pool has no member that is on; add a machine or turn one on in " +
+                "Companion › Thinking pool."), "no member")]);
         var pool = DeepThinkingPool.For(Places, routes, sharing, device, offline);
         if (Members.Count == 0 || !UseConversationModelWhenEmpty || pool.Plan is not { Available: false, Offline: true } gone) return pool;
         // The members that would run are all offline: the conversation model stands in, as for an empty pool, until one answers.
@@ -338,7 +338,7 @@ public sealed record ThinkingPoolSettings
         if (!conversation.Plan.Available) return pool;
         return new([conversation with
         {
-            Plan = conversation.Plan with { Why = $"{gone.Why} Meanwhile thinking longer and research use the conversation model. {conversation.Plan.Why}" }
+            Plan = conversation.Plan with { Why = $"{gone.Why.TrimEnd('.')}; meanwhile thinking longer and research use the conversation model." }
         }, .. pool.Spots]);
     }
 

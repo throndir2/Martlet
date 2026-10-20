@@ -153,8 +153,8 @@ public partial class MainWindow
             return;
         }
         var friends = FriendsOverview.Build(friendsRead, shareLinks.Made);
-        FriendsStatusText.Text = FriendsOverview.Status(friends, friendsRead.Count, friendsRead.Count + friendsProblems.Count) +
-            $" Checked {friendsCheckedAt:t}.";
+        FriendsStatusText.Text = FriendsOverview.Status(friends, friendsRead.Count, friendsRead.Count + friendsProblems.Count)[..^1] +
+            $" (checked {friendsCheckedAt:t}).";
         foreach (var friend in friends) FriendsPanel.Children.Add(FriendRow(friend));
         foreach (var (hostId, problem) in friendsProblems.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
@@ -176,9 +176,9 @@ public partial class MainWindow
             DockPanel.SetDock(buttons, Dock.Right);
             row.Children.Add(buttons);
             var linkComputers = friend.Hosts.SelectMany(h => h.Computers.Select(c => $"{c.DeviceId} on {h.HostId} (signed in {c.EnrolledAt.ToLocalTime():g})")).ToArray();
-            row.Children.Add(NetworkRowText("Friend-" + friend.Key, $"{friend.Name} (share link)", ShareLinkDetail(friend) + " " + (linkComputers.Length > 0
-                ? "Their computers: " + string.Join(", ", linkComputers) + "."
-                : "No computer of theirs has used the link yet.")));
+            row.Children.Add(NetworkRowText("Friend-" + friend.Key, $"{friend.Name} (share link)", ShareLinkDetail(friend) + " · " + (linkComputers.Length > 0
+                ? "their computers: " + string.Join(", ", linkComputers)
+                : "no computer of theirs has used the link yet") + "."));
             return NetworkRowCard(row, warning: false);
         }
         foreach (var place in friend.Hosts)
@@ -195,17 +195,19 @@ public partial class MainWindow
         DockPanel.SetDock(buttons, Dock.Right);
         row.Children.Add(buttons);
         var parts = new List<string>();
-        if (friend.SharedOn.Any()) parts.Add($"Shares {string.Join(", ", friend.SharedOn)}: their engines only.");
+        if (friend.SharedOn.Any()) parts.Add($"Shares {string.Join(", ", friend.SharedOn)}: their engines only");
         var computers = friend.Hosts.SelectMany(h => h.Computers.Select(c => $"{c.DeviceId} on {h.HostId} (signed in {c.EnrolledAt.ToLocalTime():g})")).ToArray();
-        if (computers.Length > 0) parts.Add("Their computers: " + string.Join(", ", computers) + ".");
-        else if (friend.SharedOn.Any()) parts.Add("No computer of theirs has signed in yet: send them the host's invite (Sign-in from outside).");
+        if (computers.Length > 0) parts.Add("their computers: " + string.Join(", ", computers));
+        else if (friend.SharedOn.Any()) parts.Add("no computer of theirs has signed in yet: send them the host's invite (Sign-in from outside)");
         foreach (var asked in friend.Hosts.Where(h => h.State == FriendHostState.Asked))
-            parts.Add($"Signed in to {asked.HostId} {asked.AskedAt?.ToLocalTime():g} and waits for you to share it.");
+            parts.Add($"signed in to {asked.HostId} {asked.AskedAt?.ToLocalTime():g} and waits for you to share it");
         foreach (var member in friend.Hosts.Where(h => h.State == FriendHostState.Member))
-            parts.Add($"One of your own computers' sign-ins on {member.HostId} (change it in that host's Sign-in from outside).");
+            parts.Add($"one of your own computers' sign-ins on {member.HostId} (change it in that host's Sign-in from outside)");
         var unable = friend.Hosts.Where(h => h.State is FriendHostState.NotShared && !h.ProviderReady).Select(h => h.HostId).ToArray();
-        if (unable.Length > 0) parts.Add($"Set up {friend.Provider} sign-in on {string.Join(", ", unable)} to share {(unable.Length == 1 ? "it" : "them")} too.");
-        row.Children.Add(NetworkRowText("Friend-" + friend.Key, $"{friend.Name} ({friend.Provider})", string.Join(" ", parts)));
+        if (unable.Length > 0) parts.Add($"set up {friend.Provider} sign-in on {string.Join(", ", unable)} to share {(unable.Length == 1 ? "it" : "them")} too");
+        var detail = string.Join(" · ", parts);
+        row.Children.Add(NetworkRowText("Friend-" + friend.Key, $"{friend.Name} ({friend.Provider})",
+            detail.Length == 0 ? "" : char.ToUpperInvariant(detail[0]) + detail[1..] + "."));
         return NetworkRowCard(row, warning: friend.Asking && !friend.SharedOn.Any());
     }
 
@@ -215,11 +217,9 @@ public partial class MainWindow
     {
         if (store is null || closing || FriendsHosts().FirstOrDefault(h => h.HostId == hostId) is not { } host) return;
         var question = share
-            ? $"Share {hostId} with {friend.Name} ({friend.Provider})? Once they sign in there with the host's invite, their Martlet may use " +
-              $"{hostId}'s engines: thinking, listening, speaking, lip-sync and reading. They never join your Martlet network and never see " +
-              "your settings, memories, voices, logs, API keys or other computers. Your own work always goes first: theirs stops when yours " +
-              "needs the graphics card."
-            : $"Stop sharing {hostId} with {friend.Name}? {hostId} revokes their computers at once, and a request of theirs that is running stops.";
+            ? $"Share {hostId} with {friend.Name} ({friend.Provider})? Their Martlet can then use its engines, but never your settings, " +
+              "memories, API keys or other computers."
+            : $"Stop sharing {hostId} with {friend.Name}? Their computers lose access to it at once.";
         if (!ConfirmationDialog.Confirm(this, question, share ? $"Share {hostId}" : "Stop sharing")) return;
         JsonObject change = share
             ? HostSignInAccess.AllowChange(friend.Provider, friend.Subject, friend.Label, friend: true)
@@ -233,7 +233,7 @@ public partial class MainWindow
             SaveFriendsSummary();
             LogFriends();
             ActionText.Text = share
-                ? $"{hostId} is shared with {friend.Name}. Send them its invite (Sign-in from outside › Make invite) if they don't have it."
+                ? $"{hostId} is shared with {friend.Name}; send them its invite (Sign-in from outside › Make invite) if they don't have it."
                 : $"Stopped sharing {hostId} with {friend.Name}; their computers lost access there.";
             ErrorLog.Info($"Friends: {(share ? "shared" : "stopped sharing")} {hostId} with {friend.Name} ({friend.Provider}).");
             // The host's network answer marks (or no longer lists) their computers on the next sync.
@@ -312,13 +312,12 @@ public partial class MainWindow
         SharedHostsPanel.Children.Clear();
         if (sharedHosts.Count == 0)
         {
-            SharedHostsStatusText.Text = "No friend shares a host with this PC. When a friend sends you a share link, click it, or choose " +
+            SharedHostsStatusText.Text = "No friend shares a host with this PC yet: click the share link a friend sends you, or choose " +
                 "Accept a share link and paste it.";
             return;
         }
-        SharedHostsStatusText.Text = (sharedHosts.Count == 1 ? "1 host a friend shares with this PC." : $"{sharedHosts.Count} hosts friends share with this PC.") +
-            " Martlet uses them only on this PC and only for their engines; they never join your Martlet network, and their owners' own " +
-            "work comes first." + (sharedHostsCheckedAt is { } at ? $" Checked {at:t}." : "");
+        SharedHostsStatusText.Text = (sharedHosts.Count == 1 ? "1 host a friend shares with this PC" : $"{sharedHosts.Count} hosts friends share with this PC") +
+            (sharedHostsCheckedAt is { } at ? $" (checked {at:t})." : ".");
         foreach (var host in sharedHosts) SharedHostsPanel.Children.Add(SharedHostRow(host));
     }
 
@@ -357,16 +356,18 @@ public partial class MainWindow
         row.Children.Add(buttons);
         var state = check switch
         {
-            null => "Not checked yet.",
-            { Reachable: null } => "Checking...",
-            { Reachable: true } found => $"Offers this PC: {SharedOffers(found)}.",
-            { Code: "auth.revoked" } => "Its owner stopped sharing it with this PC. Forget it, or sign in again with a new invite from them.",
-            _ => $"Not reachable right now ({check.Text})."
+            null => "not checked yet",
+            { Reachable: null } => "checking...",
+            { Reachable: true } found => $"offers this PC: {SharedOffers(found)}",
+            { Code: "auth.revoked" } => "its owner stopped sharing it with this PC: forget it, or sign in again with a new invite from them",
+            _ => $"not reachable right now ({check.Text})"
         };
-        var detail = $"Shared by a friend{(host.SignedInAs is { } who ? $"; you signed in as {who}" : "")}. {state} " +
-            (SharedHostModelsText(host.HostId) is { } models ? models + " " : "") +
-            (uses.Count > 0 ? $"This PC uses it for {string.Join(", ", uses)}." : "This PC doesn't use it for anything yet.") +
-            (host.OutsideAddresses is { Count: > 0 } outside ? $" Reached at {outside.Count} outside address{(outside.Count == 1 ? "" : "es")} from the invite." : "");
+        var parts = new List<string> { $"Shared by a friend{(host.SignedInAs is { } who ? $"; you signed in as {who}" : "")}", state };
+        if (SharedHostModelsText(host.HostId) is { } models) parts.Add(char.ToLowerInvariant(models[0]) + models[1..].TrimEnd('.'));
+        parts.Add(uses.Count > 0 ? $"this PC uses it for {string.Join(", ", uses)}" : "this PC doesn't use it for anything yet");
+        if (host.OutsideAddresses is { Count: > 0 } outside)
+            parts.Add($"reached at {outside.Count} outside address{(outside.Count == 1 ? "" : "es")} from the invite");
+        var detail = string.Join(" · ", parts) + ".";
         row.Children.Add(NetworkRowText("SharedHost-" + host.HostId, host.HostId, detail));
         return NetworkRowCard(row, warning: check is { Reachable: false });
     }
@@ -378,15 +379,15 @@ public partial class MainWindow
         var uses = SharedUses(host.HostId);
         if (!ConfirmationDialog.Confirm(this,
                 $"Forget {host.HostId}? This PC stops using it" + (uses.Count > 0 ? $" for {string.Join(", ", uses)}" : "") +
-                " and removes its pairing. Its owner still lists this PC until they stop sharing it with you.", "Forget host"))
+                " and removes its pairing.", "Forget host"))
             return;
         await HostTaskAsync(async token =>
         {
             ForgetReadingHost(host.HostId);
             var stranded = await ForgetPairingAsync(host, token);
             SkipShareLinkHost(host.HostId);
-            ActionText.Text = $"Forgot {host.HostId}, the host a friend shared." +
-                (stranded.Count > 0 ? $" Nobody handles {string.Join(" or ", stranded)} now. Choose another device in Companion or Devices." : "");
+            ActionText.Text = $"Forgot {host.HostId}, the host a friend shared" +
+                (stranded.Count > 0 ? $"; nobody handles {string.Join(" or ", stranded)} now, so choose another device in Companion or Devices." : ".");
             ErrorLog.Info($"Shared hosts: forgot {host.HostId}.");
         });
         await RefreshHomeAsync();

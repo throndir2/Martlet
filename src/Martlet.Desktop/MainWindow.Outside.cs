@@ -162,8 +162,8 @@ public partial class MainWindow
         {
             if (blocked is not null)
             {
-                ActionText.Text = $"{host.HostId} needs sign-in set up before it can be reached from outside. Make a share link (Share › Friends), " +
-                    "or set up sign-in, first.";
+                ActionText.Text = $"{host.HostId} needs sign-in set up before it can be reached from outside: make a share link (Share › Friends) " +
+                    "or set up sign-in first.";
                 return;
             }
             ActionText.Text = "Asking your router to open a port for this PC's host service...";
@@ -191,7 +191,7 @@ public partial class MainWindow
         }
         if (blocked is not null && normalized.Any(a => !current.Contains(a!, StringComparer.Ordinal)))
         {
-            ActionText.Text = $"{host.HostId} needs sign-in set up before it gets new outside addresses. Set up sign-in first, then add them.";
+            ActionText.Text = $"{host.HostId} needs sign-in set up before it gets new outside addresses, so set up sign-in first, then add them.";
             return;
         }
         // Docker hides where a connection comes from: with a router port open, every connection must count as outside home, so the
@@ -209,7 +209,7 @@ public partial class MainWindow
                 {
                     ErrorLog.Warn("Router port: couldn't close the port on the router again: " + error.Message);
                 }
-                ActionText.Text = "The host didn't take the new outside access, so Martlet closed the router port again. See the progress window.";
+                ActionText.Text = "The host didn't take the new outside access, so Martlet closed the router port again (the progress window has details).";
             }
             return;
         }
@@ -220,8 +220,8 @@ public partial class MainWindow
                 $"for {host.HostId}" + (opened.AnsweredFromInside == true ? "; it answers there from this PC." : "; this PC can't test it from inside your home."));
             if (!await WindowsFirewall.OutsideRuleExistsAsync(lifetime.Token) &&
                 await WindowsFirewall.ApplyOutsideAsync(true, opened.InternalPort, lifetime.Token) != WindowsFirewall.Outcome.Applied)
-                ActionText.Text = "The router forwards the port, but Windows Firewall still lets only your home network in. Open Outside access again " +
-                    "and agree to Windows' prompt.";
+                ActionText.Text = "The router forwards the port, but Windows Firewall still lets only your home network in: open Outside access " +
+                    "again and agree to Windows' prompt.";
         }
         networkSecurity.Remove(host.HostId);
         ErrorLog.Info($"Martlet network: {host.HostId} outside access set: {normalized.Length} outside address(es), typed pairing codes from " +
@@ -238,31 +238,31 @@ public partial class MainWindow
         string? homeAddress = null)
     {
         var dialog = new HostInputDialog("Outside access", $"Reach {name} from outside home",
-            $"Addresses that reach {name}'s gateway when your laptop isn't at home, or for a friend you share it with: an overlay " +
-            "network address (Tailscale, ZeroTier, WireGuard; recommended) or your router's public address with a forwarded port. " +
-            "Desktops try the home address first and " +
-            "these only when it doesn't answer, always checking the same host key, so a proxy that ends TLS won't work. Separate " +
-            "up to four with commas; leave empty to remove them. Saving restarts the host's gateway; your network learns the " +
-            "addresses on its next sync. With outside addresses the host also listens on its own Tailscale address (and on any " +
-            "of its addresses you name here)." + (docker ? " Docker publishes the gateway's port: with outside addresses, on every " +
-            "address of the host, so an overlay network reaches it; without them, on its home address only. The host can't tell a connection " +
-            "from home apart from one from outside: keep \"Treat every connection as coming from outside home\" on when the " +
-            "port is reachable from outside. Typed pairing codes then need \"Allow typed pairing codes from outside home\", even " +
-            "at home; Martlet pairing with its own host service doesn't." : "") +
-            (!routerPort && homeAddress is not null ? $" To forward a port by hand: in your router's settings, forward a TCP port to {homeAddress}, " +
-                "then add your public address with that port here." : ""), "Save and restart gateway");
+            $"Addresses that reach {name}'s gateway when your laptop isn't at home, or for a friend you share it with: a Tailscale, " +
+            "ZeroTier or WireGuard address (recommended) or your router's public address with a forwarded port.", "Save and restart gateway");
+        dialog.AddExplanation("OutsideAccessAbout", "outside addresses", "Separate up to four addresses with commas, or leave the box empty " +
+            "to remove them. Desktops try the home address first and these only when it doesn't answer, always checking the same host " +
+            "key, so a proxy that ends TLS won't work. Saving restarts the host's gateway, and your network learns the addresses on its next sync.",
+            wiki: "Sharing-with-Friends#outside-addresses");
+        if (docker)
+            dialog.AddExplanation("OutsideAccessDocker", "Docker and outside connections", "Behind Docker the host can't tell a connection " +
+                "from home apart from one from outside, so keep Treat every connection as coming from outside home on when the port is " +
+                "reachable from outside. Typed pairing codes then need Allow typed pairing codes from outside home, even at home; Martlet " +
+                "pairing with its own host service doesn't.", wiki: "Sharing-with-Friends#outside-addresses");
+        if (!routerPort && homeAddress is not null)
+            dialog.AddExplanation("OutsideAccessByHand", "forwarding a port", $"To forward a port by hand, forward a TCP port to {homeAddress} " +
+                "in your router's settings and add your public address with that port here.", wiki: "Sharing-with-Friends#outside-addresses");
         // A host becomes reachable from outside only once sign-in is set up on it (the host enforces it too).
         var blocked = audit?.OutsideAccessBlockedReason ?? (pausedFromHere ? "signin.not_set_up" : null);
         if (blocked is not null)
-            dialog.AddNote("OutsideAccessBlockedReason", ((audit?.OutsideAccessPaused ?? pausedFromHere) && current.Count > 0
-                    ? "Outside access paused: sign-in is off. " : "") +
-                (blocked == "signin.no_allowed_identity"
-                    ? "Sign-in on this host has no allowed identity, "
-                    : "Sign-in isn't set up on this host, ") +
-                "so it can't get new outside addresses or accept typed codes from outside home. Set up an owner account with an " +
-                "authenticator, or a provider with an allowed identity, first. Until then you can only remove addresses (they are " +
-                $"kept otherwise) or change how connections are treated. ({blocked})",
+        {
+            var why = blocked == "signin.no_allowed_identity" ? "sign-in on this host has no allowed identity" : "sign-in isn't set up on this host";
+            var paused = (audit?.OutsideAccessPaused ?? pausedFromHere) && current.Count > 0;
+            dialog.AddNote("OutsideAccessBlockedReason", (paused ? "Outside access is paused because " + why : char.ToUpperInvariant(why[0]) + why[1..]) +
+                ", so set up an owner account with an authenticator, or a provider with an allowed identity, before you add addresses " +
+                $"or allow typed codes from outside home ({blocked}).",
                 "Set up sign-in first", "OutsideAccessSetUpSignIn", setUpSignIn);
+        }
         dialog.AddText("addresses", "Outside addresses", string.Join(", ", current),
             "For example gpu-box.tailnet.ts.net:9443, 100.101.102.103:9443 or home.example.net:9443.", optional: true, maxLength: 600);
         if (routerPort)
@@ -271,11 +271,9 @@ public partial class MainWindow
                 "open while Martlet runs", router is not null, enabled: blocked is null || router is not null);
             dialog.AddNote("OutsideAccessRouterPort", router is { } open
                 ? $"Your router{(open.RouterName is { } routerName ? $" ({routerName})" : "")} forwards port {open.ExternalPort} to this PC " +
-                  $"(since {open.OpenedAt.ToLocalTime():g}, renewed {open.RenewedAt.ToLocalTime():g})." +
-                  (open.Problem is { } problem ? " Last problem: " + problem : "") + " Clear the box to close it."
-                : "Most home routers open a port when Martlet asks (UPnP must be on in the router). Martlet checks that your router " +
-                  "has a real internet address first; if your provider shares one address among many homes, use Tailscale instead. " +
-                  "Windows asks once to let connections from outside your home through the firewall. Every request still needs a " +
+                  $"(since {open.OpenedAt.ToLocalTime():g}, renewed {open.RenewedAt.ToLocalTime():g}" +
+                  (open.Problem is { } problem ? "; last problem: " + problem.TrimEnd('.') : "") + "): clear the box to close it."
+                : "Most home routers open a port when Martlet asks (UPnP must be on in the router), and every request still needs a " +
                   "Martlet sign-in or share link.");
         }
         var codesOn = audit?.AllowPairingOutsideHome ?? false;

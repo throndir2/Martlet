@@ -453,13 +453,15 @@ internal static class RecommendedSetupInputs
         };
     }
 
-    /// <summary>FIXTURE bighost (NOT real computers): this PC (no graphics card) and big-box, a Linux host with five RTX 5090s
-    /// (32 GB each) that thinks with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B. Its cards have room for much bigger
-    /// models, so Deep thinking gets a bigger model from the model catalog while live Thinking stays fast (#663).</summary>
-    internal static SetupSources BigHostFixture(DateTimeOffset now)
+    /// <summary>FIXTURE bighost (NOT real computers): this PC (no graphics card) and big-box, a Linux host with six RTX 5090s
+    /// (32 GB each) that thinks with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B (<paramref name="deepModel"/>). Its
+    /// cards have room for much bigger models, so Deep thinking gets a bigger model from the model catalog while live Thinking
+    /// stays fast (#663). With "llama3.3:70b" (fixture bigsplit) no single card has room for it, so it runs split across two
+    /// cards no live job uses.</summary>
+    internal static SetupSources BigHostFixture(DateTimeOffset now, string deepModel = "gemma4:e4b")
     {
         var report = new HostHardware("big-box", "https://big-box.lan:8443", now, now, "docker", "Ubuntu 24.04", "6.8.0", "Fixture processor",
-            64, 256, "docker", "yes", [.. Enumerable.Range(0, 5).Select(_ => new HostGpu("NVIDIA GeForce RTX 5090", "nvidia", 32 * 1024, "580"))])
+            64, 256, "docker", "yes", [.. Enumerable.Range(0, 6).Select(_ => new HostGpu("NVIDIA GeForce RTX 5090", "nvidia", 32 * 1024, "580"))])
         { Platform = "linux" };
         var plan = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "big-box", false, true, null, "fixture-desk", now);
         return new SetupSources(
@@ -468,7 +470,7 @@ internal static class RecommendedSetupInputs
             new("big-box", "big-box", NetworkMachineKind.Host)
             {
                 Hardware = report, HasHostService = true, Reachable = true,
-                Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:e2b", ["deep-thinking"] = "gemma4:e4b" }
+                Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:e2b", ["deep-thinking"] = deepModel }
             }
         ])
         {

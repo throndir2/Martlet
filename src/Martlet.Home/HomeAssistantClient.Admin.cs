@@ -221,7 +221,7 @@ public sealed partial class HomeAssistantClient
                 .FirstOrDefault(id => id is not null && id.EndsWith(".local", StringComparison.Ordinal))
             : null;
         if (local is null)
-            throw new HomeAssistantException(HomeAssistantFailure.BadResponse, "Home Assistant has no local backup location. Open its Backups page.");
+            throw new HomeAssistantException(HomeAssistantFailure.BadResponse, "Home Assistant has no local backup location: open its Backups page.");
         await socket.CommandAsync(new JsonObject
         {
             ["type"] = "backup/generate", ["agent_ids"] = new JsonArray(local), ["include_homeassistant"] = true,

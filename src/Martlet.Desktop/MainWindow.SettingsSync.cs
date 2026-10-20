@@ -451,25 +451,27 @@ public partial class MainWindow
         }
         var shared = settingsNode.Document.Settings.Count(s => !SharedSettings.IsDeviceKey(s.Key) && (accounts is null || !SettingScopes.IsAccountKey(s.Key)));
         var own = accountNode?.Document.Settings.Count(s => !SharedSettings.IsDeviceKey(s.Key)) ?? 0;
-        string text;
-        if (!clusterEnabled) text = "Settings stay on this PC while this is off; changes made here are shared when you turn it on.";
-        else if (settingsCheckedAt is not { } checkedAt) text = "Settings: checking your hosts...";
-        else if (settingsHosts.Hosts == 0) text = "Settings: pair a Martlet host to share them with your other computers.";
+        var parts = new List<string>();
+        if (!clusterEnabled) parts.Add("Settings stay on this PC while this is off; changes made here are shared when you turn it on");
+        else if (settingsCheckedAt is not { } checkedAt) parts.Add("Settings: checking your hosts");
+        else if (settingsHosts.Hosts == 0) parts.Add("Settings: pair a Martlet host to share them with your other computers");
         else
-            text = $"Settings: {shared} shared{(accounts is null ? "" : $" by the household and {own} of yours")}, the same on " +
-                $"{settingsHosts.Current} of {settingsHosts.Hosts} host{(settingsHosts.Hosts == 1 ? "" : "s")}; " +
-                $"checked {checkedAt.ToLocalTime():t}." +
-                (settingsHosts.Down > 0 ? $" {settingsHosts.Down} not responding." : "") +
-                (settingsHosts.Old > 0 ? $" Update {(settingsHosts.Old == 1 ? "one host" : settingsHosts.Old + " hosts")} to share settings." : "") +
-                (accountNode is not null && accountHosts.Old > settingsHosts.Old
-                    ? $" Update {(accountHosts.Old == 1 ? "one host" : accountHosts.Old + " hosts")} to keep each person's settings on all " +
-                      "your computers." : "");
-        if (accounts is not null && accountNode is null) text += " Your own settings don't sync until this PC finishes switching to you.";
-        if (settingsLastChange is not null && clusterEnabled) text += " " + settingsLastChange;
-        SettingsSyncStatusText.Text = text;
+        {
+            parts.Add($"Settings: {shared} shared{(accounts is null ? "" : $" by the household and {own} of yours")}, the same on " +
+                $"{settingsHosts.Current} of {settingsHosts.Hosts} host{(settingsHosts.Hosts == 1 ? "" : "s")}, " +
+                $"checked {checkedAt.ToLocalTime():t}" +
+                (settingsHosts.Down > 0 ? $", {settingsHosts.Down} not responding" : ""));
+            if (settingsHosts.Old > 0) parts.Add($"update {(settingsHosts.Old == 1 ? "one host" : settingsHosts.Old + " hosts")} to share settings");
+            if (accountNode is not null && accountHosts.Old > settingsHosts.Old)
+                parts.Add($"update {(accountHosts.Old == 1 ? "one host" : accountHosts.Old + " hosts")} to keep each person's settings on all " +
+                    "your computers");
+        }
+        if (accounts is not null && accountNode is null) parts.Add("your own settings don't sync until this PC finishes switching to you");
+        if (settingsLastChange is not null && clusterEnabled) parts.Add(settingsLastChange.TrimEnd('.'));
+        SettingsSyncStatusText.Text = string.Join("; ", parts) + ".";
         var waiting = settingsNode.Waiting.Concat(accountNode?.Waiting ?? new Dictionary<string, string>()).ToArray();
         SettingsSyncWaitingText.Text = waiting.Length == 0 ? "" :
-            "Not followed here yet: " + string.Join(" ", waiting.Select(w => $"{Sentence(SharedTitle(w.Key))}: {w.Value}"));
+            "Not followed here yet: " + string.Join("; ", waiting.Select(w => $"{SharedTitle(w.Key)} ({w.Value.TrimEnd('.')})")) + ".";
         SettingsSyncWaitingText.Visibility = waiting.Length == 0 || !clusterEnabled ? Visibility.Collapsed : Visibility.Visible;
         SettingsSyncClaimButton.IsEnabled = clusterEnabled;
     }
@@ -477,13 +479,9 @@ public partial class MainWindow
     private async void SettingsSyncClaim_Click(object sender, RoutedEventArgs e)
     {
         if (settingsNode is null || closing || !clusterEnabled) return;
-        if (!ConfirmationDialog.Confirm(this, "Make all your computers use this PC's settings? How Martlet thinks, listens and speaks " +
-                "(with this PC's API keys), its character with its emotes and motions, personality, replies, prompts, lorebooks, how you " +
-                "talk, the theme, Voice ID, recognizing voices, what Martlet may do with Home Assistant, app updates and what Thinking models " +
-                "hear and see are copied from " +
-                "this PC to every paired computer, replacing what they have." +
-                (accountNode is null ? "" : " Your own settings (personality, replies, prompts, lorebooks, the character, how you talk, " +
-                    "the theme and Voice ID) go to the computers where you are signed in; other people's stay as they are."),
+        if (!ConfirmationDialog.Confirm(this, "Make all your computers use this PC's settings? This PC's settings and API keys replace what " +
+                "every paired computer has" +
+                (accountNode is null ? "." : ", and your own settings go only to the computers where you are signed in."),
                 "Use this PC's settings"))
             return;
         while (settingsBusy && !closing) await Task.Delay(100);
@@ -553,7 +551,7 @@ public partial class MainWindow
         }, (setting, _) =>
         {
             if (Appearance.ParseCustom(setting.Value) is not { } colors)
-                return Task.FromResult(SharedApply.Waiting("It was made on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was made on a newer Martlet; update this PC to use it."));
             Appearance.SaveCustom(directory, colors);
             FollowCustomTheme(colors);
             return Task.FromResult(SharedApply.Done);
@@ -567,7 +565,7 @@ public partial class MainWindow
         {
             var name = JsonSerializer.Deserialize<string>(setting.Value);
             if (Appearance.Parse(name) is not { } theme)
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
             Appearance.Save(directory, theme);
             if (IsLoaded) ThemeChoice.SelectedIndex = (int)theme;
             else (Application.Current as App)?.ApplyTheme(theme,
@@ -665,7 +663,7 @@ public partial class MainWindow
             {
                 if (print.Embedding is not { Length: Martlet.Audio.SpeakerEncoder.EmbeddingSize } || print.Embedding.Any(v => !float.IsFinite(v)) ||
                     !float.IsFinite(print.Threshold) || print.Threshold is < VoiceIdentity.MinimumThreshold or > VoiceIdentity.MaximumThreshold)
-                    return Task.FromResult(SharedApply.Waiting("Its voiceprint was made by a newer Martlet. Update this PC to use it."));
+                    return Task.FromResult(SharedApply.Waiting("Its voiceprint was made by a newer Martlet; update this PC to use it."));
                 var current = voiceIdentity.Current;
                 if (current is null || !current.Embedding.SequenceEqual(print.Embedding) || current.Threshold != print.Threshold ||
                     current.Consistency != print.Consistency || current.CreatedAt != print.CreatedAt || current.SpeechSeconds != print.SpeechSeconds)
@@ -709,7 +707,7 @@ public partial class MainWindow
         {
             var value = JsonSerializer.Deserialize<SharedUpdates>(setting.Value, SharedJson) ?? throw new JsonException();
             if (!UpdatePreferences.Intervals.Contains(value.IntervalMinutes))
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
             ApplySharedUpdates(value.Checks, new UpdatePreferences
             {
                 IntervalMinutes = value.IntervalMinutes, AutoInstall = value.AutoInstall, AutoUpdateHosts = value.AutoUpdateHosts
@@ -726,7 +724,7 @@ public partial class MainWindow
         }, (setting, _) =>
         {
             if (ModelAbilities.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet; update this PC to use it."));
             if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
             conversation?.ReloadAbilities();
             return Task.FromResult(SharedApply.Done);
@@ -741,7 +739,7 @@ public partial class MainWindow
         }, (setting, _) =>
         {
             if (WorkSharingSettings.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet; update this PC to use it."));
             if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
             if (DevicesPage.IsVisible) RenderWorkSharing();
             return Task.FromResult(SharedApply.Done);
@@ -755,7 +753,7 @@ public partial class MainWindow
         }, (setting, _) =>
         {
             if (Martlet.Core.Motion.MotionSettings.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
             return Task.FromResult(shared.Save(directory) ? SharedApply.Done : SharedApply.Waiting("It couldn't be saved on this PC."));
         });
         // Share › Share your language models: the address people use and the host the proxy sends it to (openai-endpoint.json),
@@ -768,7 +766,7 @@ public partial class MainWindow
         }, (setting, _) =>
         {
             if (Martlet.Core.Access.OpenAiEndpointSettings.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
             if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
             if (SharePage.IsVisible) RenderOpenAi();
             return Task.FromResult(SharedApply.Done);
@@ -784,7 +782,7 @@ public partial class MainWindow
         }, (setting, _) =>
         {
             if (Martlet.Core.Planning.RecommendationPreferences.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("They were chosen on a newer Martlet. Update this PC to use them."));
+                return Task.FromResult(SharedApply.Waiting("They were chosen on a newer Martlet; update this PC to use them."));
             if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("They couldn't be saved on this PC."));
             if (SettingsPage.IsVisible) RenderRecommendationPreferences();
             return Task.FromResult(SharedApply.Done);
@@ -799,7 +797,7 @@ public partial class MainWindow
         }, async (setting, _) =>
         {
             if (PoolSettings.Parse(setting.Value) is not { } shared)
-                return SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it.");
+                return SharedApply.Waiting("It was written by a newer Martlet; update this PC to use it.");
             if (!shared.Save(directory)) return SharedApply.Waiting("It couldn't be saved on this PC.");
             // Speaking and Listening turn off (or on again) with their lists, as on the computer that changed them.
             try
@@ -887,11 +885,11 @@ public partial class MainWindow
             // A VRoid Hub character is shown from VRoid Hub on each computer with that computer's own link; never copied.
             if (RemoteCharacterModels.VRoidHubId(path) is null) throw new JsonException();
             if (vroidHub?.Tokens() is null)
-                return SharedApply.Waiting("That character is from VRoid Hub. Link VRoid Hub on this PC (Account › Linked services) to show it here.");
+                return SharedApply.Waiting("That character is from VRoid Hub, so link VRoid Hub on this PC in Account › Linked services.");
         }
         else if (!BundledLive2D.IsBuiltIn(path) && !File.Exists(path))
-            return SharedApply.Waiting($"Its model file isn't on this PC ({Path.GetFileName(path)}). Add it in Companion › Character › Your " +
-                "characters on the computer that has it, so it is copied here.");
+            return SharedApply.Waiting($"Its model file {Path.GetFileName(path)} isn't on this PC; add it in Companion › Character › Your " +
+                "characters on the computer that has it.");
         // A new PC takes the character before anything else is set up on it (its first settings give the profile its ID).
         AvatarProfile profile;
         string? revision;
@@ -924,10 +922,10 @@ public partial class MainWindow
             case SharedRoute.Parakeet:
                 return SharedParakeetWaiting(route.Model, model => parakeet?.Installed(model) == true);
             case SharedRoute.ChatCompletions when route.Origin == LocalOllamaBaseUrl:
-                if (LocalOllama.Executable() is null) return "Ollama isn't installed on this PC. Set it up in Companion › Thinking.";
+                if (LocalOllama.Executable() is null) return "Ollama isn't installed on this PC; set it up in Companion › Thinking.";
                 var models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(3), token);
                 return models is not null && !LocalOllama.Serves(models, route.Model)
-                    ? $"Ollama on this PC doesn't have {route.Model} yet. Download it in Companion › Thinking."
+                    ? $"Ollama on this PC doesn't have {route.Model} yet; download it in Companion › Thinking."
                     : null;
             default:
                 return null;

@@ -3,6 +3,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Martlet.Core.Contracts;
+using static Martlet.Conversation.CheckInAnswers;
+using static Martlet.Conversation.CheckInPrompts;
+using static Martlet.Conversation.CheckInSchedule;
+using static Martlet.Conversation.CheckInText;
 
 namespace Martlet.Conversation;
 
@@ -87,7 +91,7 @@ public static partial class CheckIns
 
     // Waits for the signal conditions and the per-hour cap, after the other conditions. With Check now, only for what there must
     // be to check: no script to compare, a call, nobody else heard, no question asked.
-    private static string? WaitForSignals(CheckIn checkIn, CheckInState state, CheckInRun? last, bool now)
+    internal static string? WaitForSignals(CheckIn checkIn, CheckInState state, CheckInRun? last, bool now)
     {
         var when = checkIn.Conditions;
         if (when.HasFlag(CheckInConditions.ScriptChanged) && !checkIn.RunsScript) return "it has no script whose output could change";

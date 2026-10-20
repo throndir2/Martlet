@@ -69,7 +69,7 @@ internal static class MessagingCheck
         string[] seen;
         lock (states) seen = [.. states];
         Step("unexpectedErrorRetries", seen.Contains("Retrying") && seen.Contains("Running"), new { states = seen, failures });
-        Step("failedAnswerKeepsTheBatch", fake.Sent.SequenceEqual(["Martlet couldn't answer that. Try again in a moment.", "pong"]),
+        Step("failedAnswerKeepsTheBatch", fake.Sent.SequenceEqual(["Martlet couldn't answer that, so try again in a moment.", "pong"]),
             new { sent = fake.Sent, typingFailures = fake.TypingCalls });
         Step("stopsAsOff", bridge.Status.State == MessagingState.Off, bridge.Status.State.ToString());
 

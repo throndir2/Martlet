@@ -400,7 +400,8 @@ These match the tasks in [#663](https://github.com/throndir2/Martlet/issues/663)
    Ollama tag or `hf.co/{repo}:{quant}`).
 6. Bigger models for big hardware: Deep thinking on a host takes the smartest
    model a card has room for, a mixture-of-experts model by its active
-   parameters, and switches to it when a card has room; live Thinking keeps its
-   first-word rule (Built). Real sizes and loaded models from the model apps
+   parameters, and switches to a bigger, smarter model when its cards have room;
+   a model no single card has room for is split across several free cards
+   (tensor split); live Thinking keeps its first-word rule (Built). Real sizes and loaded models from the model apps
    (Ollama `/api/ps`, LM Studio `/api/v1/models` and `/api/v0/models`), so a
    loaded model isn't counted twice (Built).

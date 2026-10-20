@@ -13,6 +13,8 @@ Open **Companion › App guides**. Two choices control it:
 
 If you turned App guides off in an earlier version of Martlet, they stay off. Tick the box to turn them on.
 
+If Martlet can't read your guide library (for example a damaged file), it doesn't change it. Turning App guides on then starts a new library and keeps a copy of the old file. When a newer Martlet wrote the file, Martlet leaves it alone; update Martlet on this PC.
+
 ## Reading up when you start a game
 
 When you start a game (or an app on your list) that she has no guide for, Martlet reads up on it on her own, once a session:
@@ -45,9 +47,10 @@ Say *"read up on Stardew Valley"*. Or add an app yourself:
 
 ## Your apps
 
-**Your apps** lists each app with its pages, size, when it was read, the sites it reads from and its last problem. Each app has:
+**Your apps** lists each app with its pages, size, when it was read, the sites it reads from and its last problem. When a guide can't be used (for example a damaged file), press **Read again** to make a new one. Each app has:
 
 - **Read up now**, or **Read again** for an app with a guide. Read again also makes a very large guide from an older Martlet smaller.
+- **Read more** reads up to 300 more pages of the same wiki each time. A Thinking pool helper chooses them when one can; otherwise Martlet takes the pages that the guide links to most. You can also press **Read more** in the talk window or on the speech bubble.
 - **Delete** removes the app and its guide.
 - **Allow again**, after you told her no.
 

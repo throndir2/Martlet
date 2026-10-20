@@ -28,6 +28,10 @@ public partial class MainWindow
 
     private static string TestOf(SenseKind kind, string origin, string model) => $"{kind}|{origin}|{model}";
 
+    /// <summary>A test's summary with how long the model took to answer, in one sentence.</summary>
+    private static string WithTime(string summary, long? milliseconds) =>
+        milliseconds is { } ms ? $"{summary.TrimEnd('.')} (it answered in {ms:N0} ms)." : summary;
+
     private readonly HashSet<string> modelTestsRunning = new(StringComparer.Ordinal);
     /// <summary>What the last Test hearing or Test vision of each model found (never anything you said or showed).</summary>
     private readonly Dictionary<string, string> modelTestResults = new(StringComparer.Ordinal);
@@ -170,7 +174,7 @@ public partial class MainWindow
             var pcm = await WindowsTestSpeech.SayAsync(ModelHearingTest.Spoken(word), lifetime.Token);
             var clip = BoundedWaveAudio.FromPcm(new PcmFormat { SampleRate = 24_000, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian }, pcm);
             var report = await Task.Run(() => HostHearingTest.RunAsync(host, thinking.ModelId, clip, word, lifetime.Token), lifetime.Token);
-            modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
+            modelTestResults[test] = WithTime(report.Summary, report.Milliseconds);
             ErrorLog.Info($"Test hearing: {report.Summary}");
             if (report.Hears is { } hears)
                 RecordModelAbility(new() { Origin = thinking.Origin, ModelId = thinking.ModelId, Hears = hears, Source = "a test request",
@@ -209,8 +213,7 @@ public partial class MainWindow
         (kind == SenseKind.Image
             ? $"Sends {model} one picture of a single word, drawn on this PC (never your screen), and asks which word it shows"
             : $"Sends {model} one short recording of a single word, made by Windows speech (never your voice), and asks which word it heard") +
-        (local ? "; it stays on this PC." : $", to {destination}. It's one small request that may cost a little.") +
-        " Choosing a model already asks its server what it takes, when the server says.";
+        (local ? "; it stays on this PC." : $", to {destination} (one small request that may cost a little).");
 
     // A test started or ended: the open Listening, Vision or Thinking page shows it.
     private void ShowModelTest()
@@ -245,14 +248,14 @@ public partial class MainWindow
     /// <summary>What Test tools sends, and where.</summary>
     internal static string ToolsTestAbout(string model, bool local, string destination) =>
         $"Sends {model} one made-up tool and asks it to call the tool with a test word (never anything you said or typed)" +
-        (local ? "; it stays on this PC." : $", to {destination}. It's one small request that may cost a little.");
+        (local ? "; it stays on this PC." : $", to {destination} (one small request that may cost a little).");
 
     private async Task TestToolsAsync(ModelProbe probe)
     {
         var test = ToolsTest(probe);
         if (closing || modelTestsRunning.Contains(test)) return;
         if (!probe.Local && !ConfirmationDialog.Confirm(this, $"Send {probe.ModelId} one request with a made-up tool at {probe.Destination} " +
-                "to see whether it calls tools? Nothing you said or typed is sent. It's one small request with your API key and may cost a little.",
+                "to see whether it calls tools (nothing you said or typed; it uses your API key and may cost a little)?",
                 "Test tools"))
             return;
         modelTestsRunning.Add(test);
@@ -264,7 +267,7 @@ public partial class MainWindow
             var key = await Task.Run(probe.Key, lifetime.Token);
             using var client = ModelContextProbe.CreateClient(probe.Local);
             var report = await ModelToolTest.RunAsync(client, probe.Origin, probe.ModelId, key, word, probe.Server, lifetime.Token);
-            modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
+            modelTestResults[test] = WithTime(report.Summary, report.Milliseconds);
             ErrorLog.Info($"Test tools: {report.Summary}");
             RecordAnswer(probe, report.Status);
             if (report.Tools is { } tools)
@@ -296,7 +299,7 @@ public partial class MainWindow
         };
         if (ModelSenses.Retired(thinking, abilities) is { } retired)
             return $"{retired.Server} retired {thinking.ModelId}" +
-                (retired.Since is { } since ? $" ({retired.Source}, {since.LocalDateTime:d MMM})" : "") + $". {retired.Remedy}";
+                (retired.Since is { } since ? $" ({retired.Source}, {since.LocalDateTime:d MMM})" : "") + $": {retired.Remedy}";
         var hearing = HearingModelCatalog.CarriesAudio(thinking.RouteType)
             ? Answer(found?.Hears, ModelFact.Hears, HearingModelCatalog.Classify(thinking.ModelId) switch
                 { HearingSupport.Supported => true, HearingSupport.Unsupported => false, _ => null })
@@ -310,8 +313,8 @@ public partial class MainWindow
         if (found?.Sees is null) unknown.Add("Test vision (Companion › Vision)");
         if (found?.Tools is null && thinking.RouteType == SetupRouteType.ChatCompletions) unknown.Add("Test tools");
         return $"What Martlet knows about {thinking.ModelId}: hears recordings: {hearing}; sees pictures: {seeing}; takes video: " +
-            $"{Answer(found?.Video, ModelFact.Video)}; calls tools: {tools}." +
-            (unknown.Count > 0 && thinking.RouteType == SetupRouteType.ChatCompletions ? $" To find out for sure: {string.Join(", ", unknown)}." : "");
+            $"{Answer(found?.Video, ModelFact.Video)}; calls tools: {tools}" +
+            (unknown.Count > 0 && thinking.RouteType == SetupRouteType.ChatCompletions ? $" (to find out for sure: {string.Join(", ", unknown)})." : ".");
     }
 
     private async Task TestHearingAsync(ModelProbe probe)
@@ -319,7 +322,7 @@ public partial class MainWindow
         var test = probe.Test(SenseKind.Audio);
         if (closing || modelTestsRunning.Contains(test)) return;
         if (!probe.Local && !ConfirmationDialog.Confirm(this, $"Send {probe.ModelId} one short recording of a test word (made by Windows " +
-                $"speech, not your voice) at {probe.Destination} to see whether it hears? It's one small request with your API key and may cost a little.",
+                $"speech, not your voice) at {probe.Destination} to see whether it hears (it uses your API key and may cost a little)?",
                 "Test hearing"))
             return;
         modelTestsRunning.Add(test);
@@ -333,7 +336,7 @@ public partial class MainWindow
             var key = await Task.Run(probe.Key, lifetime.Token);
             using var client = ModelContextProbe.CreateClient(probe.Local);
             var report = await ModelHearingTest.RunAsync(client, probe.Origin, probe.ModelId, key, clip, word, probe.Server, lifetime.Token);
-            modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
+            modelTestResults[test] = WithTime(report.Summary, report.Milliseconds);
             ErrorLog.Info($"Test hearing: {report.Summary}");
             RecordAnswer(probe, report.Status);
             if (report.Hears is { } hears)
@@ -353,7 +356,7 @@ public partial class MainWindow
         var test = probe.Test(SenseKind.Image);
         if (closing || modelTestsRunning.Contains(test)) return;
         if (!probe.Local && !ConfirmationDialog.Confirm(this, $"Send {probe.ModelId} one picture of a test word (drawn on this PC, not your " +
-                $"screen) at {probe.Destination} to see whether it sees? It's one small request with your API key and may cost a little.",
+                $"screen) at {probe.Destination} to see whether it sees (it uses your API key and may cost a little)?",
                 "Test vision"))
             return;
         modelTestsRunning.Add(test);
@@ -366,7 +369,7 @@ public partial class MainWindow
             var key = await Task.Run(probe.Key, lifetime.Token);
             using var client = ModelContextProbe.CreateClient(probe.Local);
             var report = await ModelVisionTest.RunAsync(client, probe.Origin, probe.ModelId, key, picture, word, probe.Server, lifetime.Token);
-            modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
+            modelTestResults[test] = WithTime(report.Summary, report.Milliseconds);
             ErrorLog.Info($"Test vision: {report.Summary}");
             RecordAnswer(probe, report.Status);
             if (report.Sees is { } sees)
@@ -429,7 +432,7 @@ public partial class MainWindow
                 { Refused: true } => new VisionTestReport(false, $"{name} refused the picture, so it can't see.", true),
                 _ => new VisionTestReport(null, $"Couldn't test {name}: {answer.Problem ?? "it didn't answer"}.", false)
             };
-            modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
+            modelTestResults[test] = WithTime(report.Summary, report.Milliseconds);
             ErrorLog.Info($"Test vision: {report.Summary}");
             // The runner keeps a refused picture itself.
             if (answer.Text is not null && report.Sees is { } sees)

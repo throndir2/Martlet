@@ -49,13 +49,13 @@ public sealed class OllamaRecoveryHealthTests
     public void OllamaRecovery_Home_gives_guidance_when_Martlet_cant_fix_it()
     {
         var (_, unknown) = MainWindow.OllamaHealthText("gemma4:e2b", Diagnosis(knownShape: false), false, null);
-        Assert.EndsWith(@"Open Ollama's settings, set its model location to E:\Ollama\models, then start Ollama again. (Martlet can't change " +
-            "it itself: Ollama's app settings have no models column.)", unknown, StringComparison.Ordinal);
+        Assert.EndsWith(@"Open Ollama's settings, set its model location to E:\Ollama\models, then start Ollama again (Martlet can't change " +
+            "it itself: Ollama's app settings have no models column).", unknown, StringComparison.Ordinal);
 
         var (title, other) = MainWindow.OllamaHealthText("gemma4:e2b",
             Diagnosis(app: false, error: "Error: listen tcp 127.0.0.1:11434: bind: Only one usage of each socket address."), false, null);
         Assert.Equal("Ollama keeps stopping on this PC", title);
         Assert.Contains("Ollama says: \"listen tcp 127.0.0.1:11434: bind: Only one usage of each socket address\".", other, StringComparison.Ordinal);
-        Assert.EndsWith($"Its logs are in {Places.DataDirectory}.", other, StringComparison.Ordinal);
+        Assert.EndsWith($"(its logs are in {Places.DataDirectory}).", other, StringComparison.Ordinal);
     }
 }

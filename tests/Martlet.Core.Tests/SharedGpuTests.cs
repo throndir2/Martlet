@@ -32,13 +32,12 @@ public sealed class SharedGpuTests
         Assert.Equal(["Listening"], SharedGpu.Neighbours(["stt", "ocr"], false, new Dictionary<string, string> { ["ocr"] = "rapidocr-ppocrv4" }));
         Assert.Equal(["Listening", "Reading"], SharedGpu.Neighbours(["stt", "ocr"], false, new Dictionary<string, string> { ["ocr"] = "ppocrv5-mobile" }));
 
-        Assert.Equal("diva-host runs on Windows, so Chatterbox Turbo shares its graphics card with Lip-sync and Listening. When the " +
-            "card's memory runs short, Windows quietly moves part of it into main memory instead of failing, and the voice can then " +
-            "start seconds late or pause mid-sentence. For a steady voice, give it a card of its own: move those jobs or the voice " +
-            "to another computer.", SharedGpu.Warning("diva-host", true, "Chatterbox Turbo", ["Lip-sync", "Listening"]));
+        Assert.Equal("diva-host runs on Windows, so Chatterbox Turbo shares its graphics card with Lip-sync and Listening, and the " +
+            "voice can start seconds late or pause mid-sentence when the card's memory runs short; for a steady voice, move those jobs " +
+            "or the voice to another computer.", SharedGpu.Warning("diva-host", true, "Chatterbox Turbo", ["Lip-sync", "Listening"]));
         Assert.EndsWith("move that job or the voice to another computer.", SharedGpu.Warning("This PC", true, "F5-TTS", ["Singing"]));
-        Assert.StartsWith("This PC runs on Windows and already uses its graphics card for Lip-sync, Listening and Singing. A voice " +
-            "engine there would share it.", SharedGpu.Warning("This PC", true, null, ["Lip-sync", "Listening", "Singing"]));
+        Assert.StartsWith("This PC runs on Windows and already uses its graphics card for Lip-sync, Listening and Singing, so a voice " +
+            "engine there would share it,", SharedGpu.Warning("This PC", true, null, ["Lip-sync", "Listening", "Singing"]));
         Assert.Null(SharedGpu.Warning("linux-host", false, "Chatterbox Turbo", ["Lip-sync"]));
         Assert.Null(SharedGpu.Warning("diva-host", true, "Chatterbox Turbo", []));
     }

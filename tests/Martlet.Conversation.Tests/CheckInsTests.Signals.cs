@@ -25,29 +25,29 @@ public sealed partial class CheckInsTests
         var state = Signals();
         var last = new CheckInRun(Now.AddMinutes(-3), 4, "nothing", false);
 
-        Assert.Null(CheckIns.Wait(Signal(CheckInConditions.CameBack), state, null));
+        Assert.Null(CheckInSchedule.Wait(Signal(CheckInConditions.CameBack), state, null));
         Assert.Equal("it waits for you to come back after 10 min or more away",
-            CheckIns.Wait(Signal(CheckInConditions.CameBack), state with { CameBackAt = Now.AddMinutes(-4) }, last));
-        Assert.NotNull(CheckIns.Wait(Signal(CheckInConditions.CameBack), state with { CameBackAt = Now.AddMinutes(-6) }, null));
-        Assert.NotNull(CheckIns.Wait(Signal(CheckInConditions.CameBack), state with { CameBackAt = null }, null));
+            CheckInSchedule.Wait(Signal(CheckInConditions.CameBack), state with { CameBackAt = Now.AddMinutes(-4) }, last));
+        Assert.NotNull(CheckInSchedule.Wait(Signal(CheckInConditions.CameBack), state with { CameBackAt = Now.AddMinutes(-6) }, null));
+        Assert.NotNull(CheckInSchedule.Wait(Signal(CheckInConditions.CameBack), state with { CameBackAt = null }, null));
 
-        Assert.Equal("you're on a call", CheckIns.Wait(Signal(CheckInConditions.NotOnCall), state, null));
-        Assert.Equal("you're on a call", CheckIns.Wait(Signal(CheckInConditions.NotOnCall), state, null, now: true));
-        Assert.Null(CheckIns.Wait(Signal(CheckInConditions.NotOnCall), state with { OnCall = false }, null));
+        Assert.Equal("you're on a call", CheckInSchedule.Wait(Signal(CheckInConditions.NotOnCall), state, null));
+        Assert.Equal("you're on a call", CheckInSchedule.Wait(Signal(CheckInConditions.NotOnCall), state, null, now: true));
+        Assert.Null(CheckInSchedule.Wait(Signal(CheckInConditions.NotOnCall), state with { OnCall = false }, null));
 
-        Assert.Null(CheckIns.Wait(Signal(CheckInConditions.ActivityChanged), state, last));
+        Assert.Null(CheckInSchedule.Wait(Signal(CheckInConditions.ActivityChanged), state, last));
         Assert.Equal("what you do hasn't changed since the last check",
-            CheckIns.Wait(Signal(CheckInConditions.ActivityChanged), state with { ActivityChangedAt = Now.AddMinutes(-4) }, last));
+            CheckInSchedule.Wait(Signal(CheckInConditions.ActivityChanged), state with { ActivityChangedAt = Now.AddMinutes(-4) }, last));
         Assert.StartsWith("Martlet doesn't know what you're doing",
-            CheckIns.Wait(Signal(CheckInConditions.ActivityChanged), state with { Activity = null, ActivityChangedAt = null }, null));
+            CheckInSchedule.Wait(Signal(CheckInConditions.ActivityChanged), state with { Activity = null, ActivityChangedAt = null }, null));
 
-        Assert.Null(CheckIns.Wait(Signal(CheckInConditions.Attention), state, last));
-        Assert.NotNull(CheckIns.Wait(Signal(CheckInConditions.Attention), state with { AttentionAt = Now.AddMinutes(-4) }, last));
-        Assert.Null(CheckIns.Wait(Signal(CheckInConditions.SongEnded), state, last));
+        Assert.Null(CheckInSchedule.Wait(Signal(CheckInConditions.Attention), state, last));
+        Assert.NotNull(CheckInSchedule.Wait(Signal(CheckInConditions.Attention), state with { AttentionAt = Now.AddMinutes(-4) }, last));
+        Assert.Null(CheckInSchedule.Wait(Signal(CheckInConditions.SongEnded), state, last));
         Assert.Equal("no song played to its end since the last check",
-            CheckIns.Wait(Signal(CheckInConditions.SongEnded), state with { SongEndedAt = null }, last));
+            CheckInSchedule.Wait(Signal(CheckInConditions.SongEnded), state with { SongEndedAt = null }, last));
         // Check now runs without the new signal, but not without something to check.
-        Assert.Null(CheckIns.Wait(Signal(CheckInConditions.SongEnded), state with { SongEndedAt = null }, last, now: true));
+        Assert.Null(CheckInSchedule.Wait(Signal(CheckInConditions.SongEnded), state with { SongEndedAt = null }, last, now: true));
     }
 
     [Theory]
@@ -63,9 +63,9 @@ public sealed partial class CheckInsTests
         Assert.Equal(runs, CheckIns.InHours(from, until, hour));
         var checkIn = Signal(CheckInConditions.Between) with { FromHour = from, UntilHour = until };
         var at = new DateTimeOffset(2026, 10, 7, hour, 30, 0, Now.Offset);
-        var wait = CheckIns.Wait(checkIn, Signals() with { Now = at, Said = [], Quiet = TimeSpan.FromMinutes(2) }, null);
+        var wait = CheckInSchedule.Wait(checkIn, Signals() with { Now = at, Said = [], Quiet = TimeSpan.FromMinutes(2) }, null);
         Assert.Equal(runs ? null : $"it runs only between {CheckIns.Clock(from)} and {CheckIns.Clock(until)}", wait);
-        Assert.Null(CheckIns.Wait(checkIn, Signals() with { Now = at }, null, now: true));
+        Assert.Null(CheckInSchedule.Wait(checkIn, Signals() with { Now = at }, null, now: true));
     }
 
     [Theory]
@@ -85,17 +85,17 @@ public sealed partial class CheckInsTests
     {
         var checkIn = Built(CheckIns.Unanswered) with { On = true };
         var asked = State() with { Said = [new(Now.AddMinutes(-4), "So, which boss is next?")], Quiet = TimeSpan.FromMinutes(4) };
-        Assert.Null(CheckIns.Wait(checkIn, asked, null));
+        Assert.Null(CheckInSchedule.Wait(checkIn, asked, null));
         Assert.Equal("it gives you 2 min to answer",
-            CheckIns.Wait(checkIn, asked with { Said = [new(Now.AddMinutes(-1), "Which boss?")], Quiet = TimeSpan.FromMinutes(1) }, null));
-        Assert.Equal("the conversation went on after the question", CheckIns.Wait(checkIn, asked with { Quiet = TimeSpan.FromMinutes(1) }, null));
-        Assert.Equal("you aren't at the PC", CheckIns.Wait(checkIn, asked with { Away = TimeSpan.FromMinutes(5) }, null));
-        Assert.Equal("Martlet's last remark didn't ask anything", CheckIns.Wait(checkIn, State(), null));
+            CheckInSchedule.Wait(checkIn, asked with { Said = [new(Now.AddMinutes(-1), "Which boss?")], Quiet = TimeSpan.FromMinutes(1) }, null));
+        Assert.Equal("the conversation went on after the question", CheckInSchedule.Wait(checkIn, asked with { Quiet = TimeSpan.FromMinutes(1) }, null));
+        Assert.Equal("you aren't at the PC", CheckInSchedule.Wait(checkIn, asked with { Away = TimeSpan.FromMinutes(5) }, null));
+        Assert.Equal("Martlet's last remark didn't ask anything", CheckInSchedule.Wait(checkIn, State(), null));
         Assert.Equal("it already followed up on Martlet's last question",
-            CheckIns.Wait(checkIn, asked with { Said = [new(Now.AddMinutes(-9), "Which boss?")], Quiet = TimeSpan.FromMinutes(9) },
+            CheckInSchedule.Wait(checkIn, asked with { Said = [new(Now.AddMinutes(-9), "Which boss?")], Quiet = TimeSpan.FromMinutes(9) },
                 new CheckInRun(Now.AddMinutes(-6), 4, "Martlet brings it up", true)));
-        Assert.Equal("you're on a call", CheckIns.Wait(checkIn, asked with { OnCall = true }, null));
-        Assert.Equal("Martlet's last remark didn't ask anything", CheckIns.Wait(checkIn, asked with { Said = [new(Now.AddMinutes(-45), "Which boss?")] }, null));
+        Assert.Equal("you're on a call", CheckInSchedule.Wait(checkIn, asked with { OnCall = true }, null));
+        Assert.Equal("Martlet's last remark didn't ask anything", CheckInSchedule.Wait(checkIn, asked with { Said = [new(Now.AddMinutes(-45), "Which boss?")] }, null));
     }
 
     [Fact]
@@ -103,15 +103,15 @@ public sealed partial class CheckInsTests
     {
         var checkIn = Built(CheckIns.Others) with { On = true };
         var state = Signals();
-        Assert.Null(CheckIns.Wait(checkIn, state, null));
-        Assert.Equal("Martlet heard nobody else lately", CheckIns.Wait(checkIn, state with { Voices = [state.Voices[0]] }, null));
+        Assert.Null(CheckInSchedule.Wait(checkIn, state, null));
+        Assert.Equal("Martlet heard nobody else lately", CheckInSchedule.Wait(checkIn, state with { Voices = [state.Voices[0]] }, null));
         // Without the user's own voice marked, one voice is the user's and two different ones mean someone else is here.
         Assert.Equal("Martlet heard nobody else lately",
-            CheckIns.Wait(checkIn, state with { OwnerVoiceKnown = false, Voices = [new(null, false, Now.AddMinutes(-1)) { Id = "v2" }] }, null));
-        Assert.Null(CheckIns.Wait(checkIn, state with { OwnerVoiceKnown = false }, null));
+            CheckInSchedule.Wait(checkIn, state with { OwnerVoiceKnown = false, Voices = [new(null, false, Now.AddMinutes(-1)) { Id = "v2" }] }, null));
+        Assert.Null(CheckInSchedule.Wait(checkIn, state with { OwnerVoiceKnown = false }, null));
         Assert.Equal("Martlet heard nobody else lately",
-            CheckIns.Wait(checkIn, state with { Voices = [.. state.Voices.Select(v => v with { At = Now.AddMinutes(-11) })] }, null));
-        Assert.Equal("nobody else spoke since the last check", CheckIns.Wait(checkIn with { EveryMinutes = 1 },
+            CheckInSchedule.Wait(checkIn, state with { Voices = [.. state.Voices.Select(v => v with { At = Now.AddMinutes(-11) })] }, null));
+        Assert.Equal("nobody else spoke since the last check", CheckInSchedule.Wait(checkIn with { EveryMinutes = 1 },
             state with { Voices = [state.Voices[0], state.Voices[1] with { At = Now.AddMinutes(-3) }] }, new CheckInRun(Now.AddMinutes(-2), 4, "nothing", false)));
     }
 
@@ -133,8 +133,8 @@ public sealed partial class CheckInsTests
         Assert.Contains("While they were away:\n- Thinking longer finished: a trip plan\n- A reminder came due at 10:00 PM: the oven", away);
         Assert.Equal("The user hasn't been away from this PC lately.", CheckIns.Away(State()));
 
-        Assert.Equal(CheckInFacts.Activity | CheckInFacts.People | CheckInFacts.WhileAway, CheckIns.Placed("{activity}, {people}, {away}"));
-        var message = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        Assert.Equal(CheckInFacts.Activity | CheckInFacts.People | CheckInFacts.WhileAway, CheckInPrompts.Placed("{activity}, {people}, {away}"));
+        var message = CheckInPrompts.Message(CheckIns.Of(new CustomCheckIn
         {
             Id = "c1", Name = "Signals", Task = "Who: {people}", Facts = CheckInFacts.People | CheckInFacts.Activity | CheckInFacts.WhileAway
         }), state, null)!;
@@ -148,20 +148,20 @@ public sealed partial class CheckInsTests
     public void TheSignalCheckInsAskWithTheirFactsAndReadTheirAnswers()
     {
         var state = Signals();
-        var welcome = CheckIns.Message(Built(CheckIns.Welcome), state, null)!;
+        var welcome = CheckInPrompts.Message(Built(CheckIns.Welcome), state, null)!;
         Assert.Contains("after 25 min away", welcome);
         Assert.Contains("starts with SAY:", welcome);
         Assert.Contains("Mira is playful", welcome);
-        var aside = CheckIns.Message(Built(CheckIns.Aside), state, null)!;
+        var aside = CheckInPrompts.Message(Built(CheckIns.Aside), state, null)!;
         Assert.Contains("in a call in Discord", aside);
         Assert.Contains("starts with ASIDE:", aside);
-        var others = CheckIns.Message(Built(CheckIns.Others), state, null)!;
+        var others = CheckInPrompts.Message(Built(CheckIns.Others), state, null)!;
         Assert.Contains("- Sam (the user's own voice), 2 min ago", others);
         Assert.Contains("not to share private things", others);
-        Assert.Contains("follow up once", CheckIns.Message(Built(CheckIns.Unanswered), state, null)!);
-        Assert.Equal("Welcome back!", CheckIns.Read(Built(CheckIns.Welcome), "SAY: Welcome back!", state).Text);
-        Assert.False(CheckIns.Read(Built(CheckIns.Unanswered), "OK", state).Act);
-        Assert.Equal("in a Discord call", CheckIns.Read(Built(CheckIns.Aside), "ASIDE: in a Discord call", state).Text);
+        Assert.Contains("follow up once", CheckInPrompts.Message(Built(CheckIns.Unanswered), state, null)!);
+        Assert.Equal("Welcome back!", CheckInAnswers.Read(Built(CheckIns.Welcome), "SAY: Welcome back!", state).Text);
+        Assert.False(CheckInAnswers.Read(Built(CheckIns.Unanswered), "OK", state).Act);
+        Assert.Equal("in a Discord call", CheckInAnswers.Read(Built(CheckIns.Aside), "ASIDE: in a Discord call", state).Text);
         Assert.All(new[] { CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others },
             id => Assert.Equal(PromptCatalog.CheckInGroup, PromptCatalog.Find(Built(id).PromptId!)!.Group));
     }
@@ -180,17 +180,17 @@ public sealed partial class CheckInsTests
         Assert.False(CheckIns.ScriptUnchanged(scripted, hash, last, now: true));
         Assert.False(CheckIns.ScriptUnchanged(scripted, hash, null, now: false));
         Assert.False(CheckIns.ScriptUnchanged(Signal(CheckInConditions.None, "Get-Date"), hash, last, now: false));
-        Assert.Null(CheckIns.Wait(scripted, State(), last));
-        Assert.Equal("it has no script whose output could change", CheckIns.Wait(Signal(CheckInConditions.ScriptChanged), State(), null));
+        Assert.Null(CheckInSchedule.Wait(scripted, State(), last));
+        Assert.Equal("it has no script whose output could change", CheckInSchedule.Wait(Signal(CheckInConditions.ScriptChanged), State(), null));
 
         var capped = Signal(CheckInConditions.None) with { MostPerHour = 2 };
         var recent = CheckIns.Recent(new CheckInRun(Now.AddMinutes(-70), 4, "nothing", false) { Recent = [Now.AddMinutes(-90), Now.AddMinutes(-70)] }, Now.AddMinutes(-30));
         Assert.Equal([Now.AddMinutes(-70), Now.AddMinutes(-30)], recent);
         var twice = new CheckInRun(Now.AddMinutes(-2), 4, "nothing", false) { Recent = [Now.AddMinutes(-30), Now.AddMinutes(-2)] };
-        Assert.Equal("it ran 2 times in the last hour, its most", CheckIns.Wait(capped, State(), twice));
-        Assert.Null(CheckIns.Wait(capped, State() with { Now = Now.AddMinutes(31) }, twice));
-        Assert.Null(CheckIns.Wait(capped, State(), twice, now: true));
-        Assert.Null(CheckIns.Wait(capped with { MostPerHour = 0 }, State(), twice));
+        Assert.Equal("it ran 2 times in the last hour, its most", CheckInSchedule.Wait(capped, State(), twice));
+        Assert.Null(CheckInSchedule.Wait(capped, State() with { Now = Now.AddMinutes(31) }, twice));
+        Assert.Null(CheckInSchedule.Wait(capped, State(), twice, now: true));
+        Assert.Null(CheckInSchedule.Wait(capped with { MostPerHour = 0 }, State(), twice));
     }
 
     [Fact]

@@ -215,6 +215,11 @@ internal sealed class HostInputDialog : ThemedWindow
         values[key] = () => box.IsChecked == true ? "yes" : "";
     }
 
+    /// <summary>A muted line that shows the first sentence of <paramref name="text"/>, with a "?" (Help-<paramref name="id"/>) that
+    /// has all of it and links to <paramref name="wiki"/> ("Page#anchor").</summary>
+    internal void AddExplanation(string id, string topic, string text, string wiki) =>
+        fields.Children.Add(HelpTip.Explain(text, new Thickness(0, 0, 0, 8), id, topic, wiki));
+
     /// <summary>A highlighted note (status text, automation ID <paramref name="id"/>) with an optional button beside it that
     /// runs <paramref name="action"/> (automation ID <paramref name="actionId"/>).</summary>
     internal void AddNote(string id, string text, string? actionLabel = null, string? actionId = null, Action? action = null)
@@ -381,13 +386,18 @@ internal sealed class HostInputDialog : ThemedWindow
     /// never moves it.</summary>
     private static void AddGpuChoice(HostInputDialog dialog, HostRoleInputs inputs, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
     {
-        string Name(string id) => inputs.Gpus.FirstOrDefault(g => g.Id == id)?.Name ?? (id == "all" ? "every card" : id);
+        string One(string id) => inputs.Gpus.FirstOrDefault(g => g.Id == id)?.Name ?? (id == "all" ? "every card" : id);
+        string Name(string id) => id.Contains(',', StringComparison.Ordinal) ? string.Join(" and ", id.Split(',').Select(One)) : One(id);
+        // A model split across several cards (choice.gpu GPU-a,GPU-b) is a choice of its own while it runs that way.
+        (string Value, string Text)[] split = inputs.GpuCurrent is { } across && across.Contains(',', StringComparison.Ordinal)
+            ? [(across, $"{Name(across)} (one model split across them)")] : [];
         (string Value, string Text)[] cards =
         [
             (Automatic, inputs.GpuCurrent is { } current
                 ? "Automatic (keeps " + Name(current) + ")"
                 : "Automatic (a card no other role uses, with the most free memory)"),
             .. inputs.Gpus.Select((g, i) => (g.Id, $"Card {i + 1}: {g.Describe()}")),
+            .. split,
             ("all", "All cards (one model spread over every card)")
         ];
         var now = inputs.Installed && inputs.GpuCurrent is { } runs && cards.Any(c => c.Value == runs) ? runs : null;

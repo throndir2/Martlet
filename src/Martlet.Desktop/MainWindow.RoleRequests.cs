@@ -44,7 +44,7 @@ public partial class MainWindow
     private SharedApply FollowRoleRequest(SharedSetting setting)
     {
         if (SharedPc.ReadRole(setting.Value) is not { } wanted)
-            return SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to follow it.");
+            return SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to follow it.");
         if (wanted == Role && deviceRole is not null) return SharedApply.Done;
         var host = wanted == DeviceRole.Host;
         if (host && Talking)
@@ -55,7 +55,7 @@ public partial class MainWindow
         SetRole(wanted);
         Navigate(NavHome);
         ActionText.Text = host
-            ? $"{by} made this PC a Martlet host. Home shows its host service and what it still needs."
+            ? $"{by} made this PC a Martlet host; Home shows its host service and what it still needs."
             : $"{by} made this PC your companion PC again.";
         return SharedApply.Done;
     }
@@ -78,15 +78,12 @@ public partial class MainWindow
         }
         var withdraw = now == role;
         if (!withdraw && !ConfirmationDialog.Confirm(this, host
-                ? $"Make {name} a host PC? Martlet there stops talking and listening (after a reply it is giving), shows its host " +
-                  "dashboard and starts its host service's roles by itself. " +
+                ? $"Make {name} a host PC? Martlet there stops talking and listening, " +
                   (computer.HostId is null && PairedHostOf(computer) is null
-                      ? $"{name} has no host service yet: someone at it sets one up once (Set up host service on its Home; Windows may " +
-                        "ask to allow it). "
-                      : "") +
-                  "Its companion choices are kept, and you can make it a companion PC again from here or there."
-                : $"Make {name} a companion PC again? Martlet there shows the character and listens again as it did before it became a " +
-                  "host (or as its startup choices say). A host service it runs keeps serving your other computers.",
+                      ? "and someone at it must set up its host service once on its Home."
+                      : "and starts its host service's roles by itself.")
+                : $"Make {name} a companion PC again? Martlet there shows the character and listens again, and a host service it runs " +
+                  "keeps serving your other computers.",
                 host ? "Make it a host PC" : "Make it a companion PC"))
             return;
         while (settingsBusy && !closing) await Task.Delay(100);
@@ -105,8 +102,7 @@ public partial class MainWindow
             : $"Asked {name} ({deviceId}) to become a {what} PC.");
         ActionText.Text = withdraw
             ? $"{name} stays a {what} PC."
-            : $"Asked {name} to become a {what} PC. It switches within a minute while Martlet runs there, or when Martlet starts there " +
-              "next. Martlet says here when it has.";
+            : $"Asked {name} to become a {what} PC; it switches within a minute while Martlet runs there, or when Martlet starts there next.";
         RenderDevicePages();
         if (SettingsPage.IsVisible) RenderOtherRoles();
         await SyncSettingsAsync();
@@ -126,8 +122,9 @@ public partial class MainWindow
             if (computer?.Role == wanted)
             {
                 roleAsks.Remove(device);
-                var text = $"{name} is a {what} PC now, as you asked." +
-                    (wanted == DeviceRole.Host && computer.HostId is null && PairedHostOf(computer) is null ? " " + NetworkMap.NoHostServiceYet : "");
+                var text = $"{name} is a {what} PC now, as you asked" +
+                    (wanted == DeviceRole.Host && computer.HostId is null && PairedHostOf(computer) is null
+                        ? "; to give it work, choose Set up host service on its Home." : ".");
                 ErrorLog.Info(text);
                 ActionText.Text = text;
                 continue;
@@ -161,8 +158,7 @@ public partial class MainWindow
             : !clusterEnabled
             ? "Turn on Keep Martlet the same on all my computers (Devices, Settings for all devices) to switch them from here: the switch " +
               "travels with the shared settings."
-            : "Make one a host PC or a companion PC from here. It switches within a minute while Martlet runs there, or when Martlet " +
-              "starts there next.";
+            : "Make one a host PC or a companion PC from here; it switches within a minute while Martlet runs there.";
         foreach (var (computer, line, command) in lines)
         {
             var row = NetworkRowFrame();

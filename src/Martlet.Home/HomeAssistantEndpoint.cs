@@ -25,7 +25,7 @@ public static class HomeAssistantEndpoint
         if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
             uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0 || uri.Host.Length == 0)
             throw new HomeAssistantException(HomeAssistantFailure.InvalidAddress,
-                $"That isn't a Home Assistant address. Use the address you open Home Assistant with, for example {Example}.");
+                $"That isn't a Home Assistant address: use the address you open Home Assistant with, for example {Example}.");
         var builder = new UriBuilder(uri);
         if (!typedScheme && uri.IsDefaultPort) builder.Port = DefaultPort;
         var path = builder.Path.TrimEnd('/');

@@ -623,32 +623,18 @@ public partial class MainWindow
             string? stopped = null;
             async Task<string> Continue(HostRunWindow run, PairedHost pc)
             {
-                var target = pc.Target(Version);
-                await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                target = await HostLocal.EngineForChangeAsync(target, HostRoles.Pictures, run);
-                var inputs = await HostLocal.DescribeAsync(target, HostRoles.Pictures, run.Output, run.Token);
-                var chosen = HostInputDialog.WithGpu(run, "this PC", "Picture making", inputs, answers) ?? throw new OperationCanceledException();
-                run.Status("Installing Picture making on this PC (a large download)...");
-                var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Pictures], SetupProgress(run, "Picture making", why => stopped ??= why),
-                    run.Token, answers: chosen);
-                if (exit != 0)
-                    throw new InvalidOperationException($"Installing Picture making stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped.TrimEnd('.'))}; the output has details.");
+                await InstallRoleHereAsync(run, pc, new(HostRoles.Pictures, "Picture making", answers,
+                    "Installing Picture making on this PC (a large download)...",
+                    exit => $"Installing Picture making stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped.TrimEnd('.'))}; the output has details.")
+                    { Stopped = why => stopped ??= why });
                 run.Status("Checking Picture making on this PC...");
                 if (await WaitForPicturesAsync(pc, run.Token) is { } why)
                     throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Picture making yet ({why}), so check this PC in a minute.");
                 Dispatcher.Invoke(() => UsePicturesHost(pc.HostId, "this PC", thisPc: true));
                 return "Picture making is ready on this PC: ask Martlet to draw you something.";
             }
-            string? status;
-            if (thisPc is not null)
-                status = await HostRunWindow.RunAsync(this, "Set up Picture making on this PC", run => Continue(run, thisPc)) ??
-                    (stopped is null ? "Picture making wasn't set up; the run window has details." : $"Picture making wasn't set up: {stopped}");
-            else
-            {
-                (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,
-                    text => ActionText.Text = text, lifetime.Token, Continue, "Set up Picture making on this PC");
-                await ReadMachineAsync();
-            }
+            var status = await RunRoleSetupHereAsync(thisPc, "Set up Picture making on this PC", "Set up Picture making on this PC", Continue,
+                () => stopped is null ? "Picture making wasn't set up; the run window has details." : $"Picture making wasn't set up: {stopped}");
             if (!closing && status is not null)
             {
                 ActionText.Text = status;
@@ -691,28 +677,17 @@ public partial class MainWindow
 
     /// <summary>After martlet-host added the role, checks <paramref name="host"/> (about a minute) until its gateway offers the
     /// pictures route and its ComfyUI answers ready. Returns null once it does, else what it saw last.</summary>
-    private async Task<string?> WaitForPicturesAsync(PairedHost host, CancellationToken token)
+    private Task<string?> WaitForPicturesAsync(PairedHost host, CancellationToken token) => WaitForRoleAsync(host, async check =>
     {
-        for (var attempt = 0; ; attempt++)
+        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.PictureRouteId) != true || store is null) return new(check.Text);
+        using var api = new GatewayComfyApi(store.DataDirectory, host.HostId);
+        try
         {
-            var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, token);
-            hostChecks[host.HostId] = check;
-            var why = check.Text;
-            if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.PictureRouteId) == true && store is not null)
-            {
-                using var api = new GatewayComfyApi(store.DataDirectory, host.HostId);
-                try
-                {
-                    var status = await api.StatusAsync(token);
-                    if (status["state"]?.ToString() == "ready") return null;
-                    why = $"its ComfyUI is {status["state"]}";
-                }
-                catch (PictureException error) { why = error.Message; }
-            }
-            if (attempt >= 12) return why;
-            await Task.Delay(TimeSpan.FromSeconds(5), token);
+            var status = await api.StatusAsync(token);
+            return status["state"]?.ToString() == "ready" ? null : new($"its ComfyUI is {status["state"]}");
         }
-    }
+        catch (PictureException error) { return new(error.Message); }
+    }, token);
 
     // ---------- Check and Draw a test picture ----------
 

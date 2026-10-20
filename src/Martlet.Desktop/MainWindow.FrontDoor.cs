@@ -53,13 +53,10 @@ public partial class MainWindow
         var heading = new StackPanel { Orientation = Orientation.Horizontal };
         heading.Children.Add(new TextBlock { Text = "Front door", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         var help = HelpTip.For("The front door",
-            "The front door is one of your hosts with a second, public port. That port serves only Martlet's web page and the " +
-            "OpenAI-compatible API: never pairing, your network, your settings or anything else of Martlet. Every request needs a key " +
-            "you made, and your own work comes first.\n\nChoose a host that is always on. It runs the models it has and sends the " +
-            "others to the host of your network that has them, so it needs no graphics card of its own. Opening it restarts that " +
-            "host's gateway for a few seconds.\n\nThe front door listens on its home address and on 127.0.0.1, so a proxy on " +
-            "your home network or Tailscale on the same computer can reach it. Then give it an https address (the ? next to the address).",
-            "OpenAiFrontDoor");
+            "The front door is a second, public port on one of your hosts; it serves only Martlet's web page and the OpenAI-compatible " +
+            "API, and every request needs a key you made. Choose a host that is always on: it sends models it doesn't have to the host " +
+            "that has them. Opening it restarts that host's gateway for a few seconds.",
+            "OpenAiFrontDoor", wiki: "Sharing-with-Friends#open-the-front-door");
         help.Margin = new Thickness(8, 0, 0, 0);
         heading.Children.Add(help);
         stack.Children.Add(heading);
@@ -69,9 +66,9 @@ public partial class MainWindow
         status.SetResourceReference(StyleProperty, "Muted");
         status.Text = open is { } door
             ? $"Open on {door.Host.HostId}, port {door.Port}" +
-              (door.Listening.Count > 0 ? $" (listening on {string.Join(" and ", door.Listening)})." : ", but it isn't listening: see that host's log.") +
-              (FrontDoors().Count > 1 ? $" Also open on {string.Join(", ", FrontDoors().Where(d => d.Host.HostId != door.Host.HostId).Select(d => d.Host.HostId))}." : "")
-            : openAiCheckedAt is null ? "Not checked yet." : "No front door yet. Open one on a host that is always on.";
+              (door.Listening.Count > 0 ? $" (listening on {string.Join(" and ", door.Listening)})" : ", but it isn't listening: see that host's log") +
+              (FrontDoors().Count > 1 ? $"; also open on {string.Join(", ", FrontDoors().Where(d => d.Host.HostId != door.Host.HostId).Select(d => d.Host.HostId))}" : "") + "."
+            : openAiCheckedAt is null ? "Not checked yet." : "No front door yet: open one on a host that is always on.";
         AutomationProperties.SetAutomationId(status, "OpenAiFrontDoorStatus");
         stack.Children.Add(status);
 
@@ -80,8 +77,8 @@ public partial class MainWindow
         {
             var note = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), FontSize = 12 };
             note.SetResourceReference(StyleProperty, "Muted");
-            note.Text = $"Martlet can't run commands on your hosts from this PC. On the host, run: martlet-host exposure --front-door " +
-                $"{OpenAiEndpoint.DefaultFrontDoorPort}";
+            note.Text = $"Martlet can't run commands on your hosts from this PC; to open the front door, run this on the host: " +
+                $"martlet-host exposure --front-door {OpenAiEndpoint.DefaultFrontDoorPort}";
             stack.Children.Add(note);
             return stack;
         }
@@ -139,15 +136,15 @@ public partial class MainWindow
         if (!int.TryParse(frontDoorPortBox?.Text.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var port) ||
             port is < 1024 or > 65535 || port == new Uri(host.Pairing.Origin).Port)
         {
-            ActionText.Text = $"Type a port from 1024 to 65535 for the front door, other than the gateway's own ({new Uri(host.Pairing.Origin).Port}). " +
-                $"{OpenAiEndpoint.DefaultFrontDoorPort} is a good choice.";
+            ActionText.Text = $"Type a port from 1024 to 65535 for the front door, other than the gateway's own ({new Uri(host.Pairing.Origin).Port}), " +
+                $"for example {OpenAiEndpoint.DefaultFrontDoorPort}.";
             return;
         }
         var others = FrontDoors().Where(d => d.Host.HostId != host.HostId).Select(d => d.Host).ToArray();
         if (!ConfirmationDialog.Confirm(this,
-                $"Open the front door on {host.HostId}, port {port}? Its gateway restarts, which takes a few seconds. The front door serves " +
-                "only Martlet's web page and the OpenAI-compatible API, and every request needs a key you made." +
-                (others.Length > 0 ? $" The front door on {string.Join(", ", others.Select(o => o.HostId))} closes." : ""),
+                $"Open the front door on {host.HostId}, port {port}" +
+                (others.Length > 0 ? $", and close the one on {string.Join(", ", others.Select(o => o.HostId))}" : "") +
+                "? Its gateway restarts for a few seconds, and then apps with a key you made can use your language models through it.",
                 "Open the front door", yes: "_Open", no: "_Cancel", questionId: "FrontDoorOpenQuestion"))
             return;
         foreach (var other in others.Where(o => o.CanLaunch))
@@ -156,7 +153,7 @@ public partial class MainWindow
         var settings = OpenAiEndpointSettings.Load(store.DataDirectory) with { FrontDoorHostId = host.HostId };
         if (settings.Save(store.DataDirectory)) QueueSettingsSync();
         ErrorLog.Info($"Share: the front door is open on {host.HostId}, port {port}.");
-        ActionText.Text = $"The front door is open on {host.HostId}, port {port}. Point your proxy at {FrontDoorOrigin(host, port)} (Show setup).";
+        ActionText.Text = $"The front door is open on {host.HostId}, port {port}: point your proxy at {FrontDoorOrigin(host, port)} (Show setup).";
         foreach (var each in others.Append(host)) networkSecurity.Remove(each.HostId);
         await ReadOpenAiModelsAsync();
     }
@@ -166,7 +163,7 @@ public partial class MainWindow
         if (store is null || closing || FrontDoors() is not { Count: > 0 } open) return;
         if (!ConfirmationDialog.Confirm(this,
                 $"Close the front door on {string.Join(", ", open.Select(d => d.Host.HostId))}? Apps and the web page can't reach your " +
-                "language models through your address any more. Keys stay; open it again at any time.",
+                "language models through your address any more; keys stay.",
                 "Close the front door", yes: "_Close it", no: "_Cancel", questionId: "FrontDoorCloseQuestion"))
             return;
         foreach (var (host, _, _) in open.Where(d => d.Host.CanLaunch))
@@ -238,25 +235,25 @@ internal static class FrontDoorCheck
             catch (JsonException) { }
             return (status, code) switch
             {
-                (401, OpenAiEndpoint.FrontDoorMissingKey) => $"Works: {address} reaches your front door. People with a key can use it now.",
-                (401 or 403, not null) => $"{address} reaches a Martlet gateway, but not its front door. Point your proxy at {pointTo}, " +
+                (401, OpenAiEndpoint.FrontDoorMissingKey) => $"Works: {address} reaches your front door, so people with a key can use it now.",
+                (401 or 403, not null) => $"{address} reaches a Martlet gateway, but not its front door: point your proxy at {pointTo}, " +
                     "never at the gateway's own port.",
-                (502 or 503 or 504, _) => $"Your proxy answers ({status}) but can't reach Martlet. Check that it sends to {pointTo}.",
-                (301 or 302 or 307 or 308, _) => $"{address} redirects ({status}) to {response.Headers.Location}. Save the address it ends at.",
-                _ => $"{address} answers {status}, but not as Martlet. Check that your proxy sends everything to {pointTo} (Show setup)."
+                (502 or 503 or 504, _) => $"Your proxy answers ({status}) but can't reach Martlet: check that it sends to {pointTo}.",
+                (301 or 302 or 307 or 308, _) => $"{address} redirects ({status}) to {response.Headers.Location}: save the address it ends at.",
+                _ => $"{address} answers {status}, but not as Martlet: check that your proxy sends everything to {pointTo} (Show setup)."
             };
         }
         catch (HttpRequestException error) when (error.InnerException is AuthenticationException)
         {
-            return $"{address} has no trusted certificate. Give your proxy a real certificate (for example Let's Encrypt), or use Tailscale Funnel.";
+            return $"{address} has no trusted certificate: give your proxy a real one (for example from Let's Encrypt) or use Tailscale Funnel.";
         }
         catch (HttpRequestException error)
         {
-            return $"Nothing answered at {address} ({error.HttpRequestError}). Check its DNS name, your router's port 443 and the proxy.";
+            return $"Nothing answered at {address} ({error.HttpRequestError}): check its DNS name, your router's port 443 and the proxy.";
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return $"{address} didn't answer in 15 seconds. Check the proxy and that it sends to {pointTo}.";
+            return $"{address} didn't answer in 15 seconds: check the proxy and that it sends to {pointTo}.";
         }
         catch (IOException error)
         {

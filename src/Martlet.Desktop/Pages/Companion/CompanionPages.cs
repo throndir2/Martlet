@@ -155,7 +155,8 @@ internal static class CompanionPages
     };
 
     /// <summary>The line under the page title: what the page decides, in one or two sentences. Every Optional extras page starts
-    /// with "Optional." and ends with what Off means (<see cref="OptionalExtras.OffMeans"/>).</summary>
+    /// with "Optional:" and ends with what Off means (<see cref="OptionalExtras.OffMeans"/>). The page shows only the first
+    /// sentence; all of it is behind a "?" (Help-CompanionIntro).</summary>
     internal static string TabIntro(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Martlet needs Thinking to answer you: choose where it thinks and which model it uses.",
@@ -190,6 +191,7 @@ internal static class CompanionPages
         _ => ""
     };
 
-    /// <summary>An Optional extras page's intro: "Optional.", what it does, then what Off means.</summary>
-    internal static string Extra(CompanionTab section, string what) => $"Optional. {what} Off: {OptionalExtras.OffMeans(section)}.";
+    /// <summary>An Optional extras page's intro: "Optional:" and what it does in one sentence (the page shows only that), then
+    /// what Off means (behind the intro's "?").</summary>
+    internal static string Extra(CompanionTab section, string what) => $"Optional: {what} Off: {OptionalExtras.OffMeans(section)}.";
 }

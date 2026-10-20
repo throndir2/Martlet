@@ -81,7 +81,7 @@ public partial class McpConfigWindow : ThemedWindow
             {
                 WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             });
-            StatusText.Text = $"Added \"{name}\". It lets Martlet use files in your Documents folder and requires Node.js. Change the folder if needed, then save.";
+            StatusText.Text = $"Added \"{name}\", which lets Martlet use files in your Documents folder and needs Node.js: change the folder if needed, then save.";
         }
         catch (Exception error) when (error is JsonException or McpConfigurationException)
         {

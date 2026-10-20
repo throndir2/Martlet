@@ -122,8 +122,8 @@ public static partial class NetworkRecommender
         {
             if (!node.OnWindows || role.Card is not { } card) return;
             var voice = IsVoice(role.Kind);
-            var others = node.Roles.Where(r => r != role && r.Card == card)
-                .Concat(node.Pending.Where(r => r.Card == card && Useful(r) && r.Kind != DeepThinkingRole)).ToList();
+            var others = node.Roles.Where(r => r != role && r.On(card))
+                .Concat(node.Pending.Where(r => r.On(card) && Useful(r) && r.Kind != DeepThinkingRole)).ToList();
             if (voice ? others.Count == 0 : !others.Any(r => IsVoice(r.Kind))) return;
             var busy = Contention(node, role);
             Unplace(node, role);
@@ -157,9 +157,9 @@ public static partial class NetworkRecommender
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.OnWindows))
                 foreach (var card in Enumerable.Range(0, node.Spec.Gpus.Count))
                 {
-                    if (!node.Roles.Any(r => r.Card == card && IsVoice(r.Kind)) && !node.Pending.Any(r => r.Card == card && IsVoice(r.Kind) && Useful(r)))
+                    if (!node.Roles.Any(r => r.On(card) && IsVoice(r.Kind)) && !node.Pending.Any(r => r.On(card) && IsVoice(r.Kind) && Useful(r)))
                         continue;
-                    foreach (var role in node.Roles.Where(r => r.Card == card && !IsVoice(r.Kind) && !r.Native && !r.Fixed && r.Option is not null &&
+                    foreach (var role in node.Roles.Where(r => r.On(card) && !IsVoice(r.Kind) && !r.Native && !r.Fixed && r.Option is not null &&
                         r.Purpose is ClusterJobs.Thinking or ClusterJobs.Listening or ClusterJobs.LipSync).ToList())
                         Isolate(role.Purpose, role, node, role.Option!, role.Purpose switch
                         {
@@ -167,7 +167,7 @@ public static partial class NetworkRecommender
                             ClusterJobs.Listening => SameModel(role.Option, ListeningRole),
                             _ => FaceOptions()
                         });
-                    if (node.Roles.FirstOrDefault(r => r.Card == card && IsVoice(r.Kind) && !r.Fixed && r.Purpose == ClusterJobs.Speaking) is
+                    if (node.Roles.FirstOrDefault(r => r.On(card) && IsVoice(r.Kind) && !r.Fixed && r.Purpose == ClusterJobs.Speaking) is
                         { Option: { } option } voice)
                         Isolate(ClusterJobs.Speaking, voice, node, option, EngineOptions());
                 }
@@ -238,12 +238,12 @@ public static partial class NetworkRecommender
             var names = List([.. served.Take(3).Select(o => $"{Plain(o)} in {o.ServedBy}")]);
             if (now is { IsLocal: false })
             {
-                notes.Add($"You also run {names}. Choose it in Companion › Thinking to think with it instead of {now.DisplayName}.");
+                notes.Add($"You also run {names}; choose it in Companion › Thinking to think with it instead of {now.DisplayName}.");
                 return false;
             }
             if (nodes.FirstOrDefault(n => n.Presence == Presence.Here && !n.Companion) is { } host)
             {
-                notes.Add($"You also run {names}, but {host.Name} can think for you, so your companion PC stays light. Choose it in Companion › Thinking to think with it.");
+                notes.Add($"You also run {names}, but {host.Name} can think for you, so your companion PC stays light; choose it in Companion › Thinking to think with it.");
                 return false;
             }
             var here = nodes.Where(n => n.Presence == Presence.Here && n.Companion).ToList();
@@ -265,7 +265,7 @@ public static partial class NetworkRecommender
             }
             var benefit = now is null ? SetupChangeBenefit.Required : SetupChangeBenefit.Improvement;
             var why = $"You already run {Plain(slot.Option)} in {slot.Option.ServedBy}, so Martlet thinks with it on {CardText(slot)}" +
-                (now is null ? "." : $" instead of {Plain(now)}. Its first word may come later.");
+                (now is null ? "." : $" instead of {Plain(now)}, though its first word may come later.");
             Place(slot, ThinkingRole, job, benefit, why);
             Decide(job, null, slot.Option.Id, why, benefit);
             return true;
