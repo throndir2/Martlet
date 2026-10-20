@@ -611,6 +611,15 @@ Conversations are shared too: each person's [record of conversations](MEMORY.md#
 is the same on every computer where they are signed in, and what Martlet makes from them travels as the
 [shared creations](#the-shared-creations).
 
+**On a Linux or Mac companion** ([Martlet for Linux and macOS](DESKTOP_LINUX_MACOS.md)), pair a host in
+Settings › *Your other computers* with the address and code it shows. The companion then takes and shares
+`thinking`, `listening` and `speaking` (OpenAI or an OpenAI-compatible server, with the API key) and
+`companion` (the character's name and persona are the active personality; the others are kept) through the
+same hosts and the same sync engine, every 15 seconds. It has no accounts yet, so it follows the owner's
+settings, like an older Martlet. A shared choice that computer can't run (Parakeet, a Windows voice, a
+model a newer Martlet added) keeps that computer's choice, and *Your other computers* says why
+(`CompanionGuardrails.Admit`). Keys stay in Secret Service or the Keychain, never in its files.
+
 ### Each person's settings
 
 With [accounts](ACCOUNTS.md#account-settings), the settings above are split
@@ -667,6 +676,7 @@ with the reason from its row here; `SettingsFilesTests` checks that they agree.
 | Whether Martlet answers Telegram and WhatsApp on this PC, where this PC keeps their secrets, and WhatsApp's webhook port and own public address (`messaging.json`; the rest travels as `messaging`) | Only one program may read a bot's or a number's messages |
 | The colors made from each character model's textures (`character-themes.json`), and the pictures beside its touch zones and eye measurement (`character-touch-zones\`, `character-eyes\`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
 | The last clips of voices you haven't named (the `voice-clips\` folder; whether they are kept is the shared `voice-clips` setting) | Recordings of what this PC heard; never sent |
+| On a Linux or Mac companion (`src/Martlet.Companion`): the push-to-talk key, the character file, whether the character shows, lip-sync and the consent to send to a cloud provider (in its `settings.json`; the rest travels as `thinking`, `listening`, `speaking` and `companion`) | This computer's keyboard and files (F8 is a media key on a Mac), and the consent is given at the computer that sends |
 
 ### Conflicts and offline changes
 

@@ -131,6 +131,16 @@ public sealed class AppSettingsSections
 
     internal static string Write<T>(T value) => JsonSerializer.Serialize(value, Json);
 
+    /// <summary>A route's shared value, exactly as the desktop writes it (for the Linux and macOS companion's sections).</summary>
+    public static string WriteRoute(SharedRoute route) => Write(route);
+
+    /// <summary>The personalities' shared value (<see cref="Companion"/>), exactly as the desktop writes it.</summary>
+    public static string WriteCompanion(CompanionSettings companion) => Write(companion);
+
+    /// <summary>Reads the personalities' shared value as the desktop does. Throws <see cref="ContractException"/> for one this
+    /// Martlet can't use.</summary>
+    public static CompanionSettings ReadCompanion(string json) => ReadContract<CompanionSettings>(json);
+
     internal static T Read<T>(string json) where T : class
     {
         try { return JsonSerializer.Deserialize<T>(json, Json) ?? throw new ContractException(ErrorCode.InvalidContract, "It is empty."); }

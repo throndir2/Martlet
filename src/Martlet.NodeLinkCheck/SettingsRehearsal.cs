@@ -523,7 +523,56 @@ internal static class SettingsRehearsal
                     $"F has E's Vision list: {list.SequenceEqual([server.Key])}; its key in F's own credential store: {keyOnF}; " +
                     $"the check-in without its script: {checkIn is { Name: "Tea break", Script: "" }}; Chatterbox's style: {style}; " +
                     $"no key or script in the shared values or F's files: {noSecrets}");
-            });        }
+            });
+
+            // #980: the Linux and macOS companion joins the same shared settings through the same hosts.
+            var g = new LabCompanion(Path.Combine(root, "g"));
+            await Run("A Linux companion (Martlet.Companion's settings, sections and paired hosts) pairs with both hosts and takes A's Thinking route, its key and the personality; its push-to-talk key and character file stay its own", async () =>
+            {
+                foreach (var host in hosts) await g.PairAsync(host);
+                await a.SyncAsync(hosts, token);
+                var report = await g.Sync.SyncPairedAsync(token);
+                var aSettings = await a.SettingsAsync();
+                var route = aSettings.ThinkingRoute()!;
+                var key = a.Key(aSettings, SetupRole.Llm);
+                var settings = g.Settings;
+                var thinking = route.RouteType == SetupRouteType.ChatCompletions
+                    ? settings is { Thinking: "chat-completions" } && settings.ChatBaseUrl == route.Origin && settings.ChatModel == route.ModelId &&
+                      g.Key(Martlet.Companion.CompanionSettings.ChatCompletionsKey) == key
+                    : settings is { Thinking: "openai-llm" } && settings.OpenAiModel == route.ModelId && g.Key(Martlet.Companion.CompanionSettings.OpenAiKey) == key;
+                var persona = aSettings.Companion!.ActivePersona;
+                var own = settings is { PushToTalkKey: "Control+Space", CharacterModel: "/home/lab/robin.vrm" };
+                var noKey = key is null || !Directory.EnumerateFiles(g.Folder).Any(f => File.ReadAllText(f).Contains(key, StringComparison.Ordinal));
+                return (report.Reached == 2 && thinking && settings.CharacterName == persona.Name && settings.Persona == persona.Text && own && noKey,
+                    $"reached {report.Reached} of {report.Hosts}; took {string.Join(", ", report.Took)}; Thinking {settings.Thinking} {settings.ChatBaseUrl} " +
+                    $"{settings.ChatModel}, key matches A's: {thinking}; personality {settings.CharacterName}; own push-to-talk key and character file: {own}; " +
+                    $"no key in the companion's files: {noKey}");
+            });
+
+            await Run("The owner edits the persona on the Linux companion; desktop A follows and keeps its other personalities", async () =>
+            {
+                var before = (await a.SettingsAsync()).Companion!.Personas.Count;
+                g.Store.Save(g.Settings with { Persona = "Martlet is cheerful, written on the Linux companion." });
+                var report = await g.Sync.SyncPairedAsync(token);
+                await a.SyncAsync(hosts, token);
+                var companion = (await a.SettingsAsync()).Companion!;
+                return (report.Shared.Contains("Personality") && companion.ActivePersona.Text == "Martlet is cheerful, written on the Linux companion." &&
+                        companion.Personas.Count == before,
+                    $"shared from the companion: {string.Join(", ", report.Shared)}; A's persona: {companion.ActivePersona.Text}; personalities {before} -> {companion.Personas.Count}");
+            });
+
+            await Run("Parakeet listening chosen on a Windows desktop waits on the Linux companion with the platform catalog's reason; it keeps its own listening", async () =>
+            {
+                var parakeet = AppSettingsSections.WriteRoute(new SharedRoute { Type = SharedRoute.Parakeet, Model = Parakeet });
+                var copy = (await a.ReadAsync(h1, token)).Put(AppSettingsSections.Listening, parakeet, null, "lab-desktop-a", DateTimeOffset.UtcNow);
+                foreach (var host in hosts) await a.MergeAsync(host, copy, token);
+                var listening = g.Settings.Listening;
+                var report = await g.Sync.SyncPairedAsync(token);
+                var why = report.Waiting.GetValueOrDefault("Listening");
+                return (why is { Length: > 0 } && g.Settings.Listening == listening,
+                    $"Listening stays {g.Settings.Listening}; why: {why}");
+            });
+        }
         finally
         {
             try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
@@ -543,7 +592,7 @@ internal static class SettingsRehearsal
                 "Credential Manager; a fourth simulated desktop on this Martlet keeps each person's settings apart (the household's node, " +
                 "the signed-in account's node in accounts\\<id>, the owner's bridge to older desktops, switching account) against the " +
                 "hosts' /settings/accounts routes; two more simulated desktops share keeping voice clips, touch zones, VRoid Hub credits, Discord " +
-                "with its bot token and messaging with its secrets through the same hosts (stand-in credential stores). Not covered: the desktop window and its 15-second sync, its own preference files " +
+                "with its bot token and messaging with its secrets through the same hosts (stand-in credential stores); a simulated Linux companion (Martlet.Companion's settings.json, hosts.json, guardrails, sections and sync, keys in memory) pairs with both hosts, takes the desktop's Thinking route, key and personality, shares a persona edit back and keeps its own listening when Parakeet is shared. Not covered: the desktop window and its 15-second sync, its own preference files " +
                 "(character, how you talk, speech bubbles, theme), the account picker, the Linux host's files, a real Credential Manager " +
                 "and two real computers on a LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
@@ -591,6 +640,41 @@ internal static class SettingsRehearsal
         public bool Write(Martlet.Messaging.MessagingApp app, Guid credentialId, string secret) { items[$"{app}/{credentialId:N}"] = secret; return true; }
         public void Delete(Martlet.Messaging.MessagingApp app, Guid credentialId) => items.Remove($"{app}/{credentialId:N}");
         internal bool Has(string value) => items.ContainsValue(value);
+    }
+
+    /// <summary>A simulated Linux companion (src/Martlet.Companion): its real settings.json, hosts.json and shared-settings.json in
+    /// its folder, the companion's guardrails for Linux, its sections and sync, and keys in memory (its stand-in for Secret Service).</summary>
+    private sealed class LabCompanion
+    {
+        internal LabCompanion(string folder)
+        {
+            Folder = folder;
+            Store = new Martlet.Companion.CompanionSettingsStore(folder);
+            Guardrails = new Martlet.Companion.CompanionGuardrails(new Martlet.Companion.Platform.PlatformInfo
+            {
+                Platform = Martlet.Core.Platforms.DevicePlatform.Linux, OsDescription = "Linux (lab)",
+                Architecture = System.Runtime.InteropServices.Architecture.X64, Gpus = [], MemoryGb = 16,
+                DisplayServer = Martlet.Companion.Platform.DisplayServer.X11
+            });
+            Store.Save(Martlet.Companion.CompanionSettingsStore.Defaults(Guardrails) with { PushToTalkKey = "Control+Space", CharacterModel = "/home/lab/robin.vrm" });
+            Sync = new Martlet.Companion.CompanionSync(folder, Store, Guardrails, Keys, deviceId: "lab-companion-g");
+        }
+
+        internal string Folder { get; }
+        internal Martlet.Companion.CompanionSettingsStore Store { get; }
+        internal Martlet.Companion.CompanionGuardrails Guardrails { get; }
+        internal Martlet.Companion.Platform.SessionCredentialStore Keys { get; } = new();
+        internal Martlet.Companion.CompanionSync Sync { get; }
+        internal Martlet.Companion.CompanionSettings Settings => Store.Load(Guardrails).Settings;
+        internal string? Key(string name) => Keys.GetAsync(name, CancellationToken.None).Result;
+
+        internal async Task PairAsync(LabHost host)
+        {
+            var card = host.Server.Pairing.OpenWindow(new() { DeviceId = Sync.DeviceId, DisplayName = "LAB-COMPANION-G", Roles = [GatewayRole.Voice] });
+            var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, Sync.DeviceId,
+                card.PairingId, card.Token.Reveal());
+            await Sync.Hosts.AddAsync(pairing, secret, CancellationToken.None);
+        }
     }
 
     /// <summary>A simulated desktop: real settings files in its folder, its pairings (secrets in memory), the real sync engine and
