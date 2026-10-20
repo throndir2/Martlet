@@ -136,7 +136,7 @@ public sealed class LiveConversationTests
             Settings = paired with { Generation = new() { ContextTokens = 2_048 } }
         })!.TextLimits.MaxOutputTokens);
         Assert.Contains("maximum length is 4096 tokens, including any hidden thinking",
-            MainWindow.DescribeGeneration(null, paired.Setup!.Routes.Single(r => r.Role == SetupRole.Llm)));
+            RepliesPageModel.DescribeGeneration(null, paired.Setup!.Routes.Single(r => r.Role == SetupRole.Llm)));
         Assert.Contains("your Martlet host fixture-host", configuration.Disclosure(false));
         var request = configuration.Request(new("Hello host"), false, [], null, null, out _, out _, out _);
         Assert.Equal(SelfHostSetup.GatewayOllamaAlias, request.Model.ModelAlias);
@@ -1356,8 +1356,8 @@ public sealed class LiveConversationTests
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
         // MainWindow's statics need WPF's pack: scheme, which a test that shows no window hasn't registered yet.
         _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
-        Assert.Contains("spoken replies don't start with a short first sentence", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
-        Assert.Contains("spoken replies start with a short first sentence", MainWindow.DescribeGeneration(null));
+        Assert.Contains("spoken replies don't start with a short first sentence", RepliesPageModel.DescribeGeneration(new() { ShortFirstSentence = false }));
+        Assert.Contains("spoken replies start with a short first sentence", RepliesPageModel.DescribeGeneration(null));
     }
 
     [Fact]

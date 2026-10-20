@@ -184,9 +184,9 @@ public sealed class ScreenCommentaryTests
         finally { ScreenGlancer.SeesPrivateWindows = before; }
         // MainWindow's static styles are pack:// addresses; register the scheme in case no WPF type did yet in this run.
         _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
-        Assert.DoesNotContain("messages", MainWindow.DescribeGeneration(null));
-        Assert.Contains("Martlet may read your messages;", MainWindow.DescribeGeneration(new() { PersonalContent = PersonalContent.Messages }));
-        Assert.Contains("see private windows", MainWindow.DescribeGeneration(new() { PersonalContent = PersonalContent.Everything }));
+        Assert.DoesNotContain("messages", RepliesPageModel.DescribeGeneration(null));
+        Assert.Contains("Martlet may read your messages;", RepliesPageModel.DescribeGeneration(new() { PersonalContent = PersonalContent.Messages }));
+        Assert.Contains("see private windows", RepliesPageModel.DescribeGeneration(new() { PersonalContent = PersonalContent.Everything }));
     }
 
     [Fact]
