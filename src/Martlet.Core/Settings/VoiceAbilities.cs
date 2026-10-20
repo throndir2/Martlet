@@ -54,7 +54,7 @@ public sealed record VoiceAbilities(bool Cloning, bool Sounds, EmotionSupport Em
         {
             EmotionSupport.Tags => new("Emotions", AbilityLevel.Yes, null, "Speaks angrily, sadly, happily and so on where the reply asks."),
             EmotionSupport.WhisperOnly => new("Emotions", AbilityLevel.Partly, "whispering only",
-                "The voice model itself whispers where the reply asks, but only now and then. Tones such as angry or sad don't change the voice; they only move the character."),
+                "The voice model itself whispers where the reply asks, but only now and then; tones such as angry or sad only move the character."),
             EmotionSupport.Intensity => new("Emotions", AbilityLevel.Partly, "calm or expressive",
                 "The reply makes each sentence calm or expressive, but can't pick an emotion such as angry or sad."),
             _ => new("Emotions", AbilityLevel.No, null,
@@ -64,7 +64,7 @@ public sealed record VoiceAbilities(bool Cloning, bool Sounds, EmotionSupport Em
 
     /// <summary>The rundown in one line, for screen readers and MCP: "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions:
     /// whispering only."</summary>
-    public string Describe() => string.Join(" ", Items.Select(item => item + "."));
+    public string Describe() => string.Join("; ", Items.Select(item => item.ToString())) + ".";
 
     /// <summary>The tags of an engine's catalog that do what <paramref name="item"/> says: its sounds for laughs &amp; sighs,
     /// and for emotions the tones that change the voice (all of them with <see cref="EmotionSupport.Tags"/> or

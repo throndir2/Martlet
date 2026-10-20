@@ -66,16 +66,16 @@ public partial class CharacterFinderWindow : ThemedWindow
     private void ShowVRoidHub()
     {
         var linked = host.VRoidHub.Tokens();
-        VRoidHubText.Text = !VRoidHubService.CanLink ? "This Martlet build can't link VRoid Hub. VRoid Hub models are listed, but only free Open Source Avatars models can be used."
-            : linked is not null ? $"Linked as {linked.UserName}. Your own VRoid Hub models come first, and models their creators let anyone use can be shown."
-            : "Not linked. Link your VRoid Hub account to show VRoid Hub models (you sign in on VRoid Hub's own page).";
+        VRoidHubText.Text = !VRoidHubService.CanLink ? "This Martlet build can't link VRoid Hub, so only free Open Source Avatars models can be used."
+            : linked is not null ? $"Linked as {linked.UserName}; your own VRoid Hub models come first."
+            : "Not linked: link your VRoid Hub account on VRoid Hub's own page to show its models.";
         LinkButton.Visibility = VRoidHubService.CanLink && linked is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void Link_Click(object sender, RoutedEventArgs e)
     {
         LinkButton.IsEnabled = false;
-        StatusText.Text = "Sign in on VRoid Hub's page in your browser and allow Martlet. This window waits up to 5 minutes.";
+        StatusText.Text = "Sign in on VRoid Hub's page in your browser and allow Martlet (this window waits up to 5 minutes).";
         try
         {
             var tokens = await host.VRoidHub.LinkAsync(lifetime.Token);
@@ -119,7 +119,7 @@ public partial class CharacterFinderWindow : ThemedWindow
             var linkedNow = host.VRoidHub.Tokens() is not null;
             results = found.Candidates.Select((c, i) => (c, i)).OrderByDescending(x => x.c.Own)
                 .ThenByDescending(x => x.c.Usable && (x.c.Kept || linkedNow)).ThenBy(x => x.i).Select(x => x.c).ToArray();
-            ResultsText.Text = (results.Count == 0 ? "No looks were found. Try another spelling or a shorter name, or use the character without a new look."
+            ResultsText.Text = (results.Count == 0 ? "No looks were found; try another spelling or a shorter name, or use the character without a new look."
                 : $"{results.Count} look{(results.Count == 1 ? "" : "s")} found: {results.Count(r => r.Source == CharacterModelCandidate.VRoidHubSource)} on VRoid Hub, " +
                   $"{results.Count(r => r.Source == CharacterModelCandidate.OpenSourceAvatarsSource)} on Open Source Avatars.") +
                 (found.Notes.Count > 0 ? " " + string.Join(" ", found.Notes) : "");
@@ -168,9 +168,9 @@ public partial class CharacterFinderWindow : ThemedWindow
             if (text is { Length: > 0 })
             {
                 PersonalityText.Text = text;
-                PersonalityStateText.Text = "Written by the Thinking model. Change anything you like before you use it.";
+                PersonalityStateText.Text = "Written by the Thinking model; change anything you like before you use it.";
             }
-            else PersonalityStateText.Text = $"The Thinking model didn't write one ({failure ?? "no answer"}). Type a personality yourself, or try again.";
+            else PersonalityStateText.Text = $"The Thinking model didn't write one ({failure ?? "no answer"}); type a personality yourself, or try again.";
         }
         catch (OperationCanceledException) { }
         finally { WriteButton.IsEnabled = true; }
@@ -222,8 +222,8 @@ public partial class CharacterFinderWindow : ThemedWindow
         text.Children.Add(conditions);
         var how = candidate.Kept
             ? "Martlet downloads it once and keeps it with your characters, shared with your Martlet computers."
-            : "Shown from VRoid Hub each time with your linked account. Martlet never saves the model file." +
-              (candidate.CreditRequired ? " Martlet shows the creator's name with it." : "");
+            : "Shown from VRoid Hub each time with your linked account, and Martlet never saves the model file" +
+              (candidate.CreditRequired ? " and shows the creator's name with it." : ".");
         var why = !candidate.Usable ? "Its creator doesn't let others use it as a character."
             : candidate.Source == CharacterModelCandidate.VRoidHubSource && !linked
                 ? VRoidHubService.CanLink ? "Link VRoid Hub above to use it." : "This Martlet build can't show VRoid Hub models."

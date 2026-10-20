@@ -362,8 +362,9 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Household characters"),
-            Note("Characters other people in your household share. Use a copy to make one your own, with its own memories. Talk to a " +
-                "character shared together and it remembers everyone it talks to.", new Thickness(0, 0, 0, 8))
+            HelpTip.Explain("Characters other people in your household share. Use a copy to make one your own, with its own memories. Talk " +
+                "to a character shared together and it remembers everyone it talks to.", new Thickness(0, 0, 0, 8), "HouseholdCharacters",
+                "household characters", wiki: "Personality-and-Characters#sharing-a-character-with-your-household")
         };
         TextBlock Status(string text)
         {

@@ -20,7 +20,7 @@ public sealed class VoiceRecognitionPoolTests : IDisposable
     {
         HostRegistry.Save(directory, [Paired("gpu-pc", 11), Paired("m3-host", 13)]);
         // No clips are written in the background, so the folder can be deleted at once.
-        File.WriteAllText(Path.Combine(directory, VoiceClips.ChoiceFile), "off");
+        File.WriteAllText(Path.Combine(directory, Martlet.Core.Speakers.VoiceChoices.ClipsFile), "off");
     }
 
     public void Dispose()

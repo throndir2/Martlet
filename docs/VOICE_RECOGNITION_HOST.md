@@ -35,10 +35,10 @@ The role requires Docker. It builds an image on the host from
 `workers/voice-recognition/host/Dockerfile`:
 
 - `python:3.12.10-slim-bookworm` and hash-pinned PyPI wheels.
-- On the processor (`martlet-voice-recognition:1`): sherpa-onnx `1.13.8` with
+- On the processor (`martlet-voice-recognition:2`): sherpa-onnx `1.13.8` with
   ONNX Runtime `1.28.2` and NumPy `2.5.3`, for Linux x86_64 and aarch64. These
   are the same pins as the Parakeet worker and the same runtime as the desktop.
-- On the graphics card (`martlet-voice-recognition-cuda:1`, `compose.gpu.yaml`):
+- On the graphics card (`martlet-voice-recognition-cuda:2`, `compose.gpu.yaml`):
   sherpa-onnx `1.13.8`'s own CUDA 12 build with ONNX Runtime `1.28.2` (from
   k2-fsa's Hugging Face wheels, pinned to a commit and SHA-256) and NVIDIA's
   CUDA 12 and cuDNN 9 libraries from PyPI, about 2 GB more. It needs an NVIDIA

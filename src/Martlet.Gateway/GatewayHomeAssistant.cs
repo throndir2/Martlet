@@ -180,16 +180,16 @@ internal sealed record SharedHomeAssistantConnection
     public required DateTimeOffset UpdatedAt { get; init; }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayHomeAssistantRoutes(GatewayHttpServices services, GatewayHomeAssistantStore homeAssistant) : GatewayRouteHandler(services)
 {
     internal const string HomeAssistantPath = "/martlet/v1/home-assistant";
     private const int MaximumHomeAssistantResponseBytes = 32 * 1024;
 
-    internal GatewayHomeAssistantStore HomeAssistant { get; } = new();
+    internal GatewayHomeAssistantStore HomeAssistant { get; } = homeAssistant;
 
     /// <summary>GET returns this host's shared Home Assistant connection; POST replaces it when the incoming revision wins.
     /// Any paired device may read or write it, including the token, over its signed and pinned connection.</summary>
-    private async ValueTask InvokeHomeAssistantAsync(HttpContext context)
+    internal async ValueTask InvokeHomeAssistantAsync(HttpContext context)
     {
         SharedHomeAssistantConnection? result;
         if (context.Request.Method == HttpMethods.Get)

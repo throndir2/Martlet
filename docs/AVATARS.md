@@ -1395,8 +1395,8 @@ changes in effect: what each does, until when, when it was made and why.
 newest five that ended, and who ended them. Touch zones' **Start over** ends
 them too, at its *The character's own changes* level (and at *Everything*).
 The changes are kept in
-`character-reaction-changes.json` on this PC only; they don't travel with the
-shared settings. To stop new changes, turn off How I react on Companion ›
+`character-reaction-changes.json`, the same on every computer where you are signed in
+(the `character-reaction-changes` shared setting). To stop new changes, turn off How I react on Companion ›
 Check-ins.
 
 ## 1. Choose a renderer, analyzer and feature owners separately

@@ -16,7 +16,7 @@ public sealed class BackgroundDutiesTests
             Assert.Null(BackgroundDuties.Singer(directory));
             Assert.Null(BackgroundDuties.Painter(directory));
 
-            new SingingPreferences(Host: "singer").Save(directory);
+            new Martlet.Core.Singing.SingingPreferences(Host: "singer").Save(directory);
             Assert.True(new PicturesSettings { Place = PicturePlace.Host, HostId = "painter" }.Save(directory));
             var kept = BackgroundDuties.Of(directory);
             Assert.Equal([BackgroundDuties.Singing], kept["singer"]);

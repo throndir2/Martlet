@@ -55,7 +55,7 @@ public sealed class CompanionWarmupTests
     [Fact]
     public void Holdings_say_what_Martlet_uses_this_PC_for()
     {
-        Assert.Equal("Martlet holds no models on this PC now. The character and the conversation are off.",
+        Assert.Equal("Martlet holds no models on this PC now, so the character and the conversation are off.",
             CompanionWarmup.HoldingsLine(PcHoldings.Nothing));
         Assert.False(PcHoldings.Nothing.Any);
 

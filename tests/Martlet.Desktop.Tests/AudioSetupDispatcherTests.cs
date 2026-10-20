@@ -112,14 +112,14 @@ public sealed class AudioSetupDispatcherTests
             Assert.Equal(0, fixture.Output.Opens);
             Assert.Equal(InputPolicy.FollowDefaultOnNextPress, fixture.Capture.Selected!.Policy);
             fixture.Capture.Packet(count: 49);
-            await Wait(() => Text(window, "ResultText").Contains("Sound was received and discarded", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("sound was received and discarded", StringComparison.Ordinal));
             Assert.Contains("Final microphone check", Text(window, "LevelText"));
             Assert.DoesNotContain("samples", Text(window, "LevelText"), StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("Level is strong enough", Text(window, "LevelText"));
+            Assert.Contains("level is strong enough", Text(window, "LevelText"));
             var saved = await Saved(fixture, audio => audio.Input.Checkpoint is not null);
             Assert.Equal(LocalAudioOutcome.SamplesReceived, saved.Input.Checkpoint!.Outcome);
             Assert.Null(saved.Output.Checkpoint);
-            Assert.Contains("Sound was received", Text(window, "StatusText"));
+            Assert.Contains("sound was received", Text(window, "StatusText"));
             Assert.DoesNotContain("PRIVATE", Text(window, "StatusText"));
             Assert.Equal(1, fixture.Capture.Disposals);
             Assert.Equal(0, fixture.Output.Opens);
@@ -216,7 +216,7 @@ public sealed class AudioSetupDispatcherTests
             Click(window, "MicButton");
             await Wait(() => Text(window, "LevelText").Contains("Live microphone check", StringComparison.Ordinal));
             fixture.Capture.Packet(count: 49);
-            await Wait(() => Text(window, "ResultText").Contains("Sound was received and discarded", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("sound was received and discarded", StringComparison.Ordinal));
             Assert.Equal(LocalAudioOutcome.SamplesReceived, (await Saved(fixture, audio => audio.Input.Checkpoint is not null)).Input.Checkpoint!.Outcome);
 
             fixture.Capture.Packet(0, count: 50);
@@ -292,10 +292,10 @@ public sealed class AudioSetupDispatcherTests
                     ? (short)16384 : (short)0);
             Click(window, "MicButton");
             await Wait(() => Text(window, "ResultText").Contains("Sound was too brief", StringComparison.Ordinal) ||
-                Text(window, "ResultText").Contains("Sound was received and discarded", StringComparison.Ordinal));
+                Text(window, "ResultText").Contains("sound was received and discarded", StringComparison.Ordinal));
             var lowCoverage = expected == AudioInputSignal.IntermittentAmplitude;
             Assert.Contains(lowCoverage ? "brief click" : "Sound was received and discarded", Text(window, "ResultText"), StringComparison.OrdinalIgnoreCase);
-            Assert.Contains(lowCoverage ? "Needs more steady sound" : "Level is strong enough", Text(window, "LevelText"));
+            Assert.Contains(lowCoverage ? "needs more steady sound" : "level is strong enough", Text(window, "LevelText"));
             Assert.DoesNotContain("samples", Text(window, "LevelText"), StringComparison.OrdinalIgnoreCase);
             var checkpoint = (await Saved(fixture, audio => lowCoverage ? audio.Input.Checkpoint is null : audio.Input.Checkpoint is not null)).Input.Checkpoint;
             if (lowCoverage) Assert.Null(checkpoint);
@@ -392,7 +392,7 @@ public sealed class AudioSetupDispatcherTests
             Assert.Equal("PRIVATE-output", fixture.Output.Selected.EndpointId);
             var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
             Assert.Equal(SyntheticTone.Frames(ids, 0).SelectMany(frame => frame.Data.ToArray()).ToArray(), fixture.Output.Bytes.ToArray());
-            Assert.Contains("Confirm if you heard it", Text(window, "ResultText"));
+            Assert.Contains("confirm if you heard it", Text(window, "ResultText"));
             Click(window, "HeardButton");
             Assert.Equal(LocalAudioOutcome.Heard, (await Saved(fixture, audio => audio.Output.Checkpoint?.Outcome == LocalAudioOutcome.Heard)).Output.Checkpoint!.Outcome);
             Control<ComboBox>(window, "OutputChoice").SelectedIndex = 0;

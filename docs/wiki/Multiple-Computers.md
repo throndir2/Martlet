@@ -40,6 +40,37 @@ On **Home**, **Recommended setup** plans the best use of all your computers at o
 
 Change the plan's preferences in the review or in **Settings › Recommended setup preferences**. On a PC by itself, the button runs **Set it all up for me**.
 
+### The preferences
+
+A change to a preference plans again at once. The preferences are the same on all your computers, but each companion PC keeps its own answer about games.
+
+- **Quality**: Martlet picks the smartest Thinking model whose first word comes within the time you choose. **Quick replies** prefers the smaller of two models that are almost the same.
+- **Prefer models that hear you**: a Thinking model that hears your voice wins over a smarter one when it is no more than one step behind. When this is off, Thinking gets only the words you said.
+- **Host graphics card share**: how much of each host's graphics card Martlet may plan with. Choose less for a host that also does other work.
+- **Prefer models your hosts already have**: Thinking uses the best model that your hosts already run or keep, so nothing downloads. Its first word can come later than with a smaller model.
+
+### The review
+
+- Martlet sets up the parts at the top of the list first. The needed parts make a conversation work. An optional part can be off: tick **Off** to plan without it. Vision, Reading, Hearing, People and Smart home turn off on their own Companion pages.
+- Companion PCs stay light, so that your games keep their graphics card. Each graphics card runs at most one language model.
+- A locked job keeps its model. Martlet only suggests a clearly better one: smarter at the same speed, or as smart with less memory. **Use this suggestion** plans that suggestion once, and the job stays locked. A job that you change by hand locks again.
+- When a change needs a key, type it in the review. Martlet skips a change whose key you leave empty, and that computer shows that it needs attention.
+- When Ollama must download a model, the model's own license applies. Ollama must be installed on the computer first.
+- Your other companion PCs follow this PC's Thinking and Listening through the shared settings once they can.
+- Online services get the data that the review lists for each part, and their requests can cost money.
+
+### While you play or when a host is away
+
+The review shows three plans: **Normal**, **While gaming** and **Host away**. Martlet changes between them by itself: while a game runs on a companion PC that you use for games, and while a host doesn't answer. Each job comes back when the game ends or the host answers again.
+
+### When Martlet can't make a change
+
+- **Reconfigure** shows its progress in **Background tasks**. Check the recommended setup again when it is done. If Martlet closed before a change was made, check again too.
+- Martlet makes changes on other computers only through their host service. Make the change at that computer, or connect it on the **Devices** map and set how Martlet reaches it.
+- A computer that isn't paired with this PC pairs by itself once it is in your Martlet network. Check again then.
+- When **Keep Martlet the same on all my computers** is off on this PC, who does what can't change on your other computers. Turn it on in **Devices**, then choose **Reconfigure** again.
+- When a host's role doesn't offer a model yet, update Martlet on that host, then check again.
+
 ## The Devices map
 
 Open **Devices** to see all your computers: this PC in the middle, your other computers, your hosts and the cloud services your jobs use. Choose **Map** or **List**. The list shows by itself when the map is too full, and it has a **Find** box.
@@ -54,7 +85,7 @@ Select a computer to see what it does, whether it answers and its Martlet versio
 
 Each job (voice, listening, lip-sync, reading, seeing, hearing, pictures and singing) has a list of machines, in order, on its Companion page. Add this PC, one of your computers, a graphics card or a cloud provider, and turn each one on or off.
 
-- The first machine does the job. When it is busy or offline, the next one takes over.
+- The first machine does the job. When it is busy or offline, the next one takes over. The lists are the same on all your computers.
 - **Companion › Thinking** lists the computers that may answer when your Thinking model is busy. The list is empty by default.
 - A job that a host does can have **Fail over automatically**. When the host stops answering for about 30 seconds, the job moves to another of your hosts with the same engine.
 - Work goes only to machines that you put on a list or chose as a backup. Martlet never moves your work to a cloud service by itself.

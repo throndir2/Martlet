@@ -38,11 +38,11 @@ public partial class MainWindow
     [
         new(GenerationSetting.MaxReplyTokens, "RepliesMaxReplyTokens", "_Max reply length",
             $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = {GenerationSettings.DefaultMaxReplyTokens}",
-            "Stops unusually long replies. If a reply hits the limit, it may end early.", true),
+            "Stops unusually long replies; a reply that hits it may end early.", true),
         new(GenerationSetting.Temperature, "RepliesTemperature", "_Temperature", "0-2",
-            "Higher is more varied. Lower is more predictable.", false),
+            "Higher is more varied, lower is more predictable.", false),
         new(GenerationSetting.TopP, "RepliesTopP", "Top _P", "above 0, at most 1",
-            "Controls how many likely words the model considers. 1 turns it off.", false),
+            "Controls how many likely words the model considers (1 turns it off).", false),
         new(GenerationSetting.TopK, "RepliesTopK", "Top _K", $"1-{GenerationSettings.MaximumTopK}",
             "Limits the model to this many likely words.", true),
         new(GenerationSetting.MinP, "RepliesMinP", "M_in P", "0-1",
@@ -56,16 +56,15 @@ public partial class MainWindow
         new(GenerationSetting.ContextTokens, "RepliesContextTokens", "_Context size",
             $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumContextTokens} tokens, blank = {GenerationSettings.DefaultContextTokens}",
             "How much the model keeps in mind: persona, lore, memory, the conversation so far and the reply. Older exchanges are " +
-            "left out once a conversation outgrows it. Larger sizes send more with each reply, which costs more on paid providers.", true)
+            "left out once a conversation outgrows it, and a larger size costs more on paid providers.", true)
     ];
 
     /// <summary>Companion › Replies › Thinking steps: each choice and what it saves as <see cref="GenerationSettings.Reasoning"/>.
     /// Off is the default: it saves nothing (null), and a saved false from earlier versions also reads as Off.</summary>
     private static readonly IReadOnlyList<(string Name, bool? Value)> ThinkingChoices = [("Off", null), ("On", true)];
     private const string ThinkingRange = "Off (default) or On";
-    private const string ThinkingHelp = "Reasoning models think step by step before they answer. Off skips that, so replies start " +
-        "sooner. On asks for it, which can help with hard questions but waits seconds before the first word. A model that always " +
-        "thinks refuses Off; Martlet then uses the model's own default.";
+    private const string ThinkingHelp = "Off lets replies start sooner; On lets a reasoning model think step by step first. On can " +
+        "help with hard questions but waits seconds before the first word.";
 
     private static int ThinkingIndex(bool? reasoning) => GenerationSettings.ThinkingSteps(new() { Reasoning = reasoning }) ? 1 : 0;
 
@@ -73,9 +72,8 @@ public partial class MainWindow
     /// <see cref="GenerationSettings.ShortFirstSentence"/>. On is the default: it saves nothing (null).</summary>
     private static readonly IReadOnlyList<(string Name, bool? Value)> ShortFirstChoices = [("On", null), ("Off", false)];
     private const string ShortFirstRange = "On (default) or Off";
-    private const string ShortFirstHelp = "Martlet begins each spoken reply with a few words, such as \"Oh, nice one!\", and then " +
-        "goes on. Its voice says the first sentence as soon as it is written, so a short one lets it start talking sooner. The " +
-        "words it is asked for are the Short first sentence prompt on Prompts.";
+    private const string ShortFirstHelp = "Martlet begins each spoken reply with a few quick words, such as \"Oh, nice one!\", so " +
+        "its voice starts sooner. The Short first sentence prompt on Prompts asks for them.";
 
     private static int ShortFirstIndex(bool? shortFirst) => GenerationSettings.StartsShort(new() { ShortFirstSentence = shortFirst }) ? 0 : 1;
 
@@ -83,11 +81,8 @@ public partial class MainWindow
     /// Off is the default: it saves nothing (null).</summary>
     private static readonly IReadOnlyList<(string Name, bool? Value)> AdultChoices = [("Off", null), ("On (18+)", true)];
     private const string AdultRange = "Off (default) or On, only if you are 18 or older";
-    private const string AdultHelp = "On lets Martlet flirt, be sexual and react explicitly, always true to its personality, when " +
-        "its character is an adult; it never does with a character under 18. Touches on intimate parts then count as sexual, and " +
-        "when you keep touching one, Martlet takes it as deliberate and reacts more and more. Never in a Discord call, where others " +
-        "can hear. Many cloud models refuse such content; models you run yourself usually don't. The words it is given are the " +
-        "Adult content prompt on Prompts.";
+    private const string AdultHelp = "On lets Martlet flirt and be sexual when its character is an adult, never with a character " +
+        "under 18. It never does in a Discord call, and many cloud models refuse such content.";
 
     private static int AdultIndex(bool? adult) => GenerationSettings.Adult(new() { AdultContent = adult }) ? 1 : 0;
 
@@ -96,11 +91,8 @@ public partial class MainWindow
     private static readonly IReadOnlyList<(string Name, PersonalContent? Value)> PersonalChoices =
         [("Keep private", null), ("Read my messages", PersonalContent.Messages), ("Everything", PersonalContent.Everything)];
     private const string PersonalRange = "Keep private (default), Read my messages or Everything";
-    private const string PersonalHelp = "What Martlet may do with personal things it sees on your screen or camera. Keep private: " +
-        "it never reads out messages, chats, emails or numbers, and says only who a message is from. Read my messages: it may " +
-        "read, quote and talk about your messages, chats, chat history, emails and notifications. Everything: also lets it " +
-        "see password managers, private browsing, authenticator and banking windows, which it otherwise greys out. What it sees " +
-        "goes to your Thinking or image model. The words it is given are the Personal content prompts on Prompts.";
+    private const string PersonalHelp = "What Martlet may do with personal things it sees on your screen or camera. Keep private " +
+        "never reads them out, Read my messages may quote your messages, and Everything also shows password and banking windows.";
 
     private static int PersonalIndex(PersonalContent? personal) =>
         GenerationSettings.Personal(new() { PersonalContent = personal }) switch
@@ -176,8 +168,8 @@ public partial class MainWindow
         }));
         tabAutoSave = autoSave;
         page.Children.Add(Card(Heading("Thinking longer"),
-            Note("Martlet can think a hard task through in the background while you keep talking. Choose where and how on " +
-                "Thinking pool.", new Thickness(0, 0, 0, 0)),
+            Note("Martlet can think a hard task through in the background while you keep talking (Thinking pool sets where and how).",
+                new Thickness(0, 0, 0, 0)),
             Row(PageButton("Open Thinking pool", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: "RepliesOpenDeepThinking"))));
         thinking.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
         AddRepliesRow(grid, new Label { Content = "T_hinking steps", Target = thinking, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
@@ -215,7 +207,8 @@ public partial class MainWindow
             var rangeText = new TextBlock { Text = range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
             AutomationProperties.SetAutomationId(rangeText, setting.Id + "Range");
             about.Children.Add(rangeText);
-            about.Children.Add(Note(setting.Help, new Thickness(0, 2, 0, 0)));
+            about.Children.Add(HelpTip.Explain(setting.Help, new Thickness(0, 2, 0, 0), setting.Id, "this setting",
+                wiki: "Thinking#reply-settings"));
             if (route is not null)
             {
                 var context = setting.Setting == GenerationSetting.ContextTokens;
@@ -262,7 +255,7 @@ public partial class MainWindow
             autoSave.SaveNowAsync().Forget();
         }, id: "RepliesDefaults");
         page.Children.Add(Card(Heading("Reply settings"),
-            Note("Leave a field blank to use the model default. Changes save as you type; reload an open conversation to use them.",
+            Note("Leave a field blank to use the model default; changes save as you type and apply when you reload an open conversation.",
                 new Thickness(0, 0, 0, 4)),
             grid,
             Row(defaults)));
@@ -276,7 +269,8 @@ public partial class MainWindow
         if (status?.Use == GenerationSettingUse.Unused) label.Opacity = 0.6;
         var about = new StackPanel { Margin = new Thickness(0, 8, 0, 10) };
         about.Children.Add(new TextBlock { Text = range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        about.Children.Add(Note(help, new Thickness(0, 2, 0, 0)));
+        about.Children.Add(HelpTip.Explain(help, new Thickness(0, 2, 0, 0), AutomationProperties.GetAutomationId(control), "this setting",
+            wiki: "Thinking#reply-settings"));
         if (status is { } shown)
         {
             var line = new TextBlock { Text = shown.Text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
@@ -306,7 +300,7 @@ public partial class MainWindow
         GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning) switch
         {
             GenerationSettingUse.Used when route.RouteType == SetupRouteType.GatewayOllama =>
-                $"Used by {place}. If replies fail after changing it, update the host to this Martlet version.",
+                $"Used by {place} (if replies fail after a change, update the host to this Martlet version).",
             GenerationSettingUse.Used => $"Used by {place}.",
             GenerationSettingUse.ServerDependent =>
                 $"Depends on the model at {place}: a model that can't turn thinking off or on may ignore it or refuse it; Martlet " +
@@ -317,7 +311,7 @@ public partial class MainWindow
     private static string UseText(GenerationSettingUse use, GenerationSetting setting, SetupRoute route, string place) => use switch
     {
         GenerationSettingUse.Used => $"Used by {place}.",
-        GenerationSettingUse.ServerDependent => $"May not work with {place}. If replies fail, clear this field.",
+        GenerationSettingUse.ServerDependent => $"May not work with {place}, so clear this field if replies fail.",
         _ when IsLocalOllama(route) => $"Not used by {place}.",
         _ => $"Not supported by {place}."
     };
@@ -416,7 +410,7 @@ public partial class MainWindow
         }
         // Thinking longer is saved with the reply settings but set on Deep thinking: it is kept as saved.
         return await SaveRepliesAsync(saved_ => GenerationSettings.Normalize(generation with { ThinkLonger = saved_?.ThinkLonger }), saved,
-            "Reply settings saved. Reload an open conversation to use them.");
+            "Reply settings saved; reload an open conversation to use them.");
     }
 
     /// <summary>Saves the reply settings <paramref name="update"/> makes of the newest saved ones, after any change still saving.

@@ -11,7 +11,7 @@ internal sealed partial class CharacterTouchZoneService
     /// rest, Martlet notices and own words. The zones and their boxes stay. Returns why it couldn't be saved, or null.</summary>
     internal async Task<string?> ResetReactionsAsync(Func<CharacterTouchZone, CharacterTouchReaction> fresh, CancellationToken token)
     {
-        if (Busy) return "Martlet is placing or finding the zones now. Wait until it is done, or press Stop.";
+        if (Busy) return "Martlet is placing or finding the zones now; wait until it is done, or press Stop.";
         if (Current is not { } settings) return null;
         ClearStreaks();
         return await SaveAsync(CharacterTouchZones.WithFreshReactions(settings, fresh), token);
@@ -22,7 +22,7 @@ internal sealed partial class CharacterTouchZoneService
     /// or null.</summary>
     internal async Task<string?> ForgetAsync(CancellationToken token)
     {
-        if (Busy) return "Martlet is placing or finding the zones now. Wait until it is done, or press Stop.";
+        if (Busy) return "Martlet is placing or finding the zones now; wait until it is done, or press Stop.";
         if (dataDirectory is null) return "Martlet's data folder isn't available.";
         if (ModelId is not { } id) return "No model is shown.";
         try { await CharacterTouchZones.RemoveAsync(dataDirectory, id, token); }

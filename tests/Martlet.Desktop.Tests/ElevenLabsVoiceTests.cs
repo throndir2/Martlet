@@ -51,8 +51,8 @@ public sealed class ElevenLabsVoiceTests
     }
 
     [Theory]
-    [InlineData(ProviderFailureCode.ModelUnsupported, ElevenLabsSetup.V4Turbo, "ElevenLabs refused Eleven v4 Turbo. Choose Eleven v3 Conversational")]
-    [InlineData(ProviderFailureCode.ModelUnsupported, ElevenLabsSetup.V3Conversational, "Choose Eleven v4 Turbo")]
+    [InlineData(ProviderFailureCode.ModelUnsupported, ElevenLabsSetup.V4Turbo, "ElevenLabs refused Eleven v4 Turbo, so choose Eleven v3 Conversational")]
+    [InlineData(ProviderFailureCode.ModelUnsupported, ElevenLabsSetup.V3Conversational, "choose Eleven v4 Turbo")]
     [InlineData(ProviderFailureCode.Authentication, ElevenLabsSetup.V4Turbo, "didn't accept your API key")]
     [InlineData(ProviderFailureCode.VoiceUnsupported, ElevenLabsSetup.V4Turbo, "verify it on elevenlabs.io")]
     [InlineData(ProviderFailureCode.QuotaExceeded, ElevenLabsSetup.V4Turbo, "out of credits")]

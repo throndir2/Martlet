@@ -1040,10 +1040,14 @@ public sealed class NetworkRecommenderTests
         var roles = RolesOf(recommendation, "h1");
         Assert.Equal(0, roles.Single(r => r.Kind == "chatterbox").GpuIndex);
         Assert.Equal(1, roles.Single(r => r.Kind == "deep-thinking").GpuIndex);
-        var move = recommendation.Changes.Single();
-        Assert.Equal(SetupChangeKind.MoveToGpu, move.Kind);
+        var move = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.MoveToGpu);
         Assert.Equal(SetupChangeBenefit.Improvement, move.Benefit);
         Assert.Contains("no live job uses", move.Why, StringComparison.Ordinal);
+        // The free 16 GB card has room for a smarter model, so Deep thinking switches to it there (#663).
+        var bigger = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.ChangeModel);
+        Assert.Equal(("gemma4:e4b", "gemma4:12b", SetupChangeBenefit.Improvement), (bigger.FromModel, bigger.Model, bigger.Benefit));
+        Assert.Contains("thinks better", bigger.Why, StringComparison.Ordinal);
+        Assert.Equal(2, recommendation.Changes.Count);
     }
 
     [Fact]

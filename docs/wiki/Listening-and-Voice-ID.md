@@ -31,6 +31,61 @@ With Parakeet, your speech stays on this PC and recordings are not saved. The
 **Microphone** card shows the microphone that Martlet uses. Click **Test or
 change microphone** to change it.
 
+A Parakeet model chosen on another of your computers doesn't download by
+itself. Download it on this PC too, in **Companion › Listening › Parakeet in
+Martlet**. A model chosen on a newer Martlet needs that newer Martlet on this
+PC.
+
+Whisper on the graphics card needs a recent NVIDIA driver. When the driver is
+too old, Martlet tells you the version it needs and the version this PC has.
+Update the driver, then click **Check the graphics card again**.
+
+### Test your microphone and speakers
+
+Click **Test or change microphone** to open the **Microphone and speakers**
+window.
+
+1. Pick a microphone and your speakers or headphones. The Windows defaults
+   work unless you pick something else. Each time you open a list, Martlet
+   looks again, so a device that you just plugged in shows up.
+2. Click **Test microphone** and approve the test. Talk or hum for up to 5
+   seconds. The bar shows the level. The level checks only the volume, not
+   speech recognition.
+3. Check your volume. Click **Play test sound** and approve it. Martlet plays
+   a short, quiet beep. If you heard it, click **Yes, I heard it**. If not,
+   check your volume and the device that you picked, then play it again.
+
+Good to know:
+
+- Your choices save as you go. Test a device again any time.
+- Martlet lists device names without opening the devices.
+- A test runs only after you approve it. No recording is saved or sent.
+- Martlet never changes your volume or your Windows default devices.
+- With no microphone, you can still type to Martlet.
+- **Details** shows the last result and the test history.
+- When your settings changed in another window, or saving didn't finish,
+  click **Reload**. Then check your choices and pick again.
+
+### When an audio test fails
+
+| Martlet says | What to do |
+| --- | --- |
+| No sound came through | Check that the microphone is plugged in. Then open Windows **Settings › Privacy & security › Microphone** and let desktop apps use the microphone. |
+| Windows is blocking the microphone | Open Windows **Settings › Privacy & security › Microphone** and let desktop apps use the microphone. |
+| Too quiet | Check that the microphone isn't muted, also with a switch on the device. Turn up its input level in Windows **Sound settings**. |
+| The microphone stopped sending sound partway through | Check the cable or the wireless connection, then test again. |
+| Only a short sound came through, or a brief click isn't enough | Keep talking or humming for the whole test. |
+| No microphone found, or no speakers or headset found | Plug the device in or turn it on in Windows **Sound settings**. Then open the list again. |
+| *Device* isn't connected | Plug it in, or pick another device in the list. |
+| Another app is using this device | Close that app, for example a call app, then try again. |
+| This device uses an audio format Martlet can't open | Pick another device. |
+| The device was unplugged or changed | Reconnect it, then pick it again from the list. |
+| The test took too long, or the device didn't respond in time | Wait a moment, then try again. |
+| The device stopped responding | Close the apps that use the device and try again. If tests stay unavailable, restart Martlet. |
+| Another setup task is still finishing | Wait for the other task to finish. The test buttons come back by themselves. |
+| Windows is locked | Unlock Windows, then start a new test. |
+| Couldn't list devices | Martlet uses your Windows defaults. Open a list to look again. |
+
 ### When the computer that listens goes away
 
 Sometimes another computer or OpenAI can't hear you. For example, the computer
@@ -83,12 +138,16 @@ More detail: [Image and audio models](https://github.com/throndir2/Martlet/blob/
 ## People
 
 Open **Companion › People**. **Recognize voices in conversations** is on by
-default. Its files come with Martlet, so nothing downloads.
+default. Its files come with Martlet, so nothing downloads. Voice matching
+happens on this PC. The voiceprints come from this PC or from a computer in
+the **Where it runs** list. When you turn recognition on, open conversations
+use it from your next message. When you turn it off, Martlet doesn't check
+who is talking, and it keeps the saved voices.
 
 - **Voices Martlet knows** lists the voices Martlet has heard, up to 1,000.
   Type a name to say who a voice is. Add all the other names the person goes by
   (up to 40). Click a name to make it the one Martlet uses. A name with **?**
-  was only heard in conversation.
+  was only heard in conversation. Changes sync to all your computers.
 - Martlet also learns names from what people say, such as "my name is Sam".
   It never learns a voice from a guess.
 - **Hear them** plays the last clips of a voice you haven't named, so you can
@@ -98,16 +157,32 @@ default. Its files come with Martlet, so nothing downloads.
 - **This voice is** with your name after it links a voice to your account, so
   Martlet knows it is you talking. Each voice belongs to at most one person in
   the household. A voice never signs anyone in. See [Accounts and Household](Accounts-and-Household).
+  Before you sign in, the box is called **This is me**. When a voice belongs
+  to another person's account, Martlet asks before it makes the voice yours.
+  Then Martlet treats that voice as you on all your computers.
 - **Same person as...** and then **Merge** join two voices of one person.
-  **Memories** shows what Martlet remembers about that person. **Forget**
-  deletes one voice. **Forget all voices** clears the list.
+  Martlet then treats them as one person on all your computers. You can't undo
+  a merge. When two voices have the same name, People tells you, so you can
+  merge them.
+- **Memories** shows what Martlet remembers about that person.
+- **Forget** deletes one voice and its names from all your computers. If
+  Martlet hears that voice again, it shows up as a new voice. **Forget all
+  voices** clears the list; recognition stays on and starts over. What Martlet
+  remembers about a forgotten voice stays in **Memory** under **Forgotten
+  voices**, where you can delete it.
+- The voice list has a size limit. When it is full, forget or merge some
+  voices.
 - A guest who says only a little shows up after a few short remarks within 30
   minutes.
 - **Where it runs** lists this PC's processor and your computers that run the
   **Voice recognition** role, in order. Home's **Recommended setup** can set
-  this up on one of your computers. When no computer answers in time, this PC
-  recognizes the voice itself, so a slow computer never holds it up. **Check
-  it now** tests the list with a test tone.
+  this up on one of your computers. Another computer uses its NVIDIA graphics
+  card when it has one. A computer that answers before this PC would have
+  finished recognizes the voice. When no computer answers in time, this PC
+  recognizes the voice itself, so a slow computer never holds it up. The list
+  is the same on all your computers. **Check it now** sends three seconds of a
+  test tone through the list, in order, the way your voice goes. It learns and
+  keeps nothing.
 
 Voice recognition is a convenience, not a lock. Similar voices, recordings, a
 cold, distance or a new microphone can fool it. It can also split one person
@@ -121,10 +196,30 @@ what.
 
 1. Open **Companion › Listening › How you talk**.
 2. Click **Set up Voice ID**.
-3. Record three phrases. Recording stops when you pause.
-4. Click **Test voice**. Move **Match threshold** lower only if Martlet often
-   misses you.
-5. Close the window and tick **Only answer my voice**.
+3. Tick **Allow microphone recording**. Martlet records up to 10 seconds for
+   each phrase. Nothing is uploaded, and the recordings are never saved.
+4. Record three phrases. Use your usual microphone and your normal voice.
+   Recording stops when you pause. Each phrase needs at least 1.5 seconds of
+   speech: if Martlet heard less, move closer or speak up, then record it
+   again.
+5. Click **Test voice** and say anything for at least a second. Move **Match
+   threshold** lower only if Martlet often misses you.
+6. Close the window and tick **Only answer my voice**.
+
+After the third phrase, Martlet saves your voiceprint and suggests a match
+threshold. It also shows the speech that it used and how consistent the
+phrases were. When the phrases sounded different, start over somewhere
+quieter if the test misses you. **Start over** doesn't change the saved
+voiceprint until you finish all three phrases again.
+
+**Test voice** shows a score. When the score is at or above the match
+threshold, Martlet recognized you. A higher threshold is stricter: fewer other
+voices get through, but Martlet may miss you more often. When your score is
+often just below the threshold, lower it a little.
+
+When Voice ID can't read, save or delete your voiceprint, check that Martlet
+can write to its data folder, then enroll again. When another Martlet action
+uses the microphone, stop it and try again.
 
 With it on, Martlet checks each recording on this PC before it sends it
 anywhere. Another voice, the TV or too little speech is dropped and never goes

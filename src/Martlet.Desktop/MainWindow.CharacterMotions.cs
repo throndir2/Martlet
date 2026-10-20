@@ -171,7 +171,7 @@ public partial class MainWindow
                 step => Dispatcher.InvokeAsync(() => status.Text = step + "..."), lifetime.Token), lifetime.Token);
             await characterActions.RefreshKeptMotionsAsync(lifetime.Token);
             Say($"Kept {arguments.Name} ({creation.Key}){(made.Fixture ? ", a FIXTURE test motion (NOT AI)" : "")}, made on {made.Where} in " +
-                $"{made.Took.TotalSeconds:0.#} s. It's in the list below; Try plays it.");
+                $"{made.Took.TotalSeconds:0.#} s; it's in the list below, and Try plays it.");
             ErrorLog.Info($"Motions: the owner made {arguments.Name} ({creation.Key}) on {made.Where}{(made.Fixture ? ", FIXTURE - NOT AI" : "")}.");
             if (openTab == CompanionTab.Emotes && !CompanionContent.IsKeyboardFocusWithin) RenderTab();
         }
@@ -191,10 +191,10 @@ public partial class MainWindow
                 var sources = catalog.For("{" + tag + "}");
                 if (sources.Count == 0) return null;
                 if (!window.avatar.IsShowing || window.characterActions.For(window.avatar.InspectedProfile?.ModelPath) is null)
-                    return $"The character is hidden now, so it can't do {tag}. Carry on without it.";
+                    return $"The character is hidden now, so it can't do {tag}; carry on without it.";
                 var started = false;
                 foreach (var source in sources) started |= await window.avatar.PlayActionAsync(source, reason, null, token);
-                return started ? MotionTools.Played(tag) : $"The character couldn't do {tag} now. Carry on without it.";
+                return started ? MotionTools.Played(tag) : $"The character couldn't do {tag} now; carry on without it.";
             }).Task.Unwrap();
 
         public async Task<string?> PlayKeptAsync(string key, string reason, CancellationToken token)

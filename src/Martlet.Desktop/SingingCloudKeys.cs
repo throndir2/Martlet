@@ -85,7 +85,7 @@ internal static class SingingCloudKeys
         public async Task<SharedApply> ApplyAsync(SharedSetting setting, string? secret, CancellationToken token)
         {
             if (SingingKeys.Parse(setting.Value) is not { } providers)
-                return SharedApply.Waiting("They were saved by a newer Martlet. Update this PC to use them.");
+                return SharedApply.Waiting("They were saved by a newer Martlet, so update this PC to use them.");
             var keys = SingingKeys.Unbundle(secret);
             if (keys.Count < providers.Count) return SharedApply.Waiting("Their API keys haven't reached this PC yet.");
             var saved = SingingKeys.Load(directory);
@@ -120,7 +120,7 @@ internal static class SingingCloudKeys
             if (!next.Save(directory))
             {
                 foreach (var made in written) vault.Delete(made);
-                return SharedApply.Waiting("This PC's Singing keys couldn't be saved. Check access to Martlet's data folder.");
+                return SharedApply.Waiting("This PC's Singing keys couldn't be saved; check access to Martlet's data folder.");
             }
             foreach (var old in gone) vault.Delete(old);
             return SharedApply.Done;

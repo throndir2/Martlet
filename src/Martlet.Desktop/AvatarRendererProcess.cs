@@ -299,14 +299,14 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         int? exitCode)
     {
         var code = exitCode is { } value ? $"0x{value:X8}" : "unknown";
-        const string Closed = "its window was closed or it stopped after an error. See avatar-renderer.log for why.";
+        const string Closed = "its window was closed or it stopped after an error (avatar-renderer.log tells why).";
         if (endedFor is not null) return ("INFO", $"Avatar renderer ended by Martlet (code {code}) because it stopped answering properly.");
         if (brokenFor is RendererStoppedException { ErrorCode: { } error })
-            return ("WARN", $"Avatar renderer closed itself after an error ({error}). See avatar-renderer.log for why.");
+            return ("WARN", $"Avatar renderer closed itself after an error ({error}); avatar-renderer.log tells why.");
         if (brokenFor is RendererStoppedException && exitCode == 0) return ("WARN", $"Avatar renderer closed itself (code {code}): {Closed}");
         if (stoppedByMartlet && brokenFor is not RendererStoppedException) return ("INFO", "Avatar renderer stopped by Martlet.");
         if (exitCode == 0) return ("WARN", $"Avatar renderer closed itself (code {code}): {Closed}");
-        return ("ERROR", $"Avatar renderer exited unexpectedly with code {code}. See avatar-renderer.log.");
+        return ("ERROR", $"Avatar renderer exited unexpectedly with code {code}; see avatar-renderer.log.");
     }
 
     private static int? SafeExitCode(Process process)

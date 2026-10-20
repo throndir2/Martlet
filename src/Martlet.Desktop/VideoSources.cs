@@ -249,9 +249,9 @@ internal sealed class VideoInput : IVideoInput
 
     private static string Describe(Exception error, WatchSource source)
     {
-        if (error is TaskCanceledException) return "The camera didn't answer in time. Check that it is on the same network and try again.";
+        if (error is TaskCanceledException) return "The camera didn't answer in time: check that it is on the same network, then try again.";
         if (error is HttpRequestException)
-            return "Couldn't reach the camera. Check the address and network, then try again.";
+            return "Couldn't reach the camera: check the address and network, then try again.";
         var code = error is ExternalException external ? external.HResult : error.HResult;
         return MediaReader.Explain(code, source.Kind == WatchKind.Camera);
     }
@@ -421,13 +421,13 @@ internal sealed class MediaReader : IDisposable
     /// <summary>Plain-language advice for a Media Foundation failure.</summary>
     internal static string Explain(int code, bool camera) => unchecked((uint)code) switch
     {
-        0x80070005 => "Windows is blocking camera access. Allow desktop apps to use the camera in Windows Settings.",
-        0xC00D3704 or 0x800700AA or 0xC00D3EA3 or 0x80070020 => "Another app is using the camera. Close it or choose another camera.",
-        0xC00D36C3 or 0xC00D36C4 or 0xC00D36C2 => "Windows can't open that address. Use a snapshot, MJPEG address, or webcam source.",
-        0xC00D36B4 or 0xC00D5212 => "Windows can't read this video format. Use MJPEG, a snapshot, or H.264 video.",
+        0x80070005 => "Windows is blocking camera access: allow desktop apps to use the camera in Windows Settings.",
+        0xC00D3704 or 0x800700AA or 0xC00D3EA3 or 0x80070020 => "Another app is using the camera: close it or choose another camera.",
+        0xC00D36C3 or 0xC00D36C4 or 0xC00D36C2 => "Windows can't open that address: use a snapshot, MJPEG address or webcam source.",
+        0xC00D36B4 or 0xC00D5212 => "Windows can't read this video format: use MJPEG, a snapshot or H.264 video.",
         0x80070002 or 0x80070003 => camera ? "That camera isn't connected right now." : "Nothing was found at that address or file path.",
-        0x80072EE7 or 0x80072EFD or 0x80072EE2 or 0xC00D2EE0 => "Couldn't reach that address. Check the address and network.",
-        _ => (camera ? "The camera couldn't be read" : "The video source couldn't be read") + $". Reconnect it or choose another source."
+        0x80072EE7 or 0x80072EFD or 0x80072EE2 or 0xC00D2EE0 => "Couldn't reach that address: check the address and network.",
+        _ => (camera ? "The camera couldn't be read" : "The video source couldn't be read") + ": reconnect it or choose another source."
     };
 
     private void Seek(long position)

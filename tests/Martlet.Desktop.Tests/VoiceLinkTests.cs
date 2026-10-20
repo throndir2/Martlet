@@ -99,9 +99,9 @@ public sealed class VoiceLinkTests : IDisposable
     [Fact]
     public void PeopleSaysHowManyVoicesAreLinkedWithoutNames()
     {
-        Assert.Equal("No voice is marked as yours yet. Tick This is me on yours.", MainWindow.PeopleLinkStatus(2, 0, 0, accounts: false));
-        Assert.StartsWith("1 of 3 voices is linked to people's accounts. Your account has 1 voice.", MainWindow.PeopleLinkStatus(3, 1, 1, accounts: true));
-        Assert.StartsWith("2 of 2 voices are linked to people's accounts. None is yours yet", MainWindow.PeopleLinkStatus(2, 2, 0, accounts: true));
+        Assert.Equal("No voice is marked as yours yet: tick This is me on yours.", MainWindow.PeopleLinkStatus(2, 0, 0, accounts: false));
+        Assert.Equal("1 of 3 voices is linked to people's accounts; your account has 1 voice.", MainWindow.PeopleLinkStatus(3, 1, 1, accounts: true));
+        Assert.StartsWith("2 of 2 voices are linked to people's accounts; none is yours yet", MainWindow.PeopleLinkStatus(2, 2, 0, accounts: true));
     }
 
     public void Dispose()

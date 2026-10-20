@@ -86,7 +86,7 @@ public partial class MainWindow : ICharacterFinderHost
     {
         OpenCompanion(CompanionTab.Voice);
         Activate();
-        ActionText.Text = "Press Add a voice... and choose the clip you downloaded. Voices need a voice engine that copies voices.";
+        ActionText.Text = "Press Add a voice... and choose the clip you downloaded (it needs a voice engine that copies voices).";
     }
 
     async Task<string> ICharacterFinderHost.CreateCharacterAsync(string name, string personality, CharacterModelCandidate? look, Action<string> progress,
@@ -180,7 +180,7 @@ public partial class MainWindow : ICharacterFinderHost
         if (store is null || closing) return;
         if (avatarWindowOpen)
         {
-            ActionText.Text = "The character settings window is open. Close it first.";
+            ActionText.Text = "The character settings window is open; close it first.";
             return;
         }
         ChangeTurns.Turn? turn = null;
@@ -189,8 +189,8 @@ public partial class MainWindow : ICharacterFinderHost
             turn = await ChangeTurnAsync();
             vroidHub?.Remember(look with { UsedAt = DateTimeOffset.UtcNow });
             var name = await SwitchRemoteLookAsync(look.Path, lifetime.Token);
-            ActionText.Text = (avatar.IsShowing ? $"Martlet now shows '{name}' on this PC." : $"'{name}' is this PC's character. Press Show character to see it.") +
-                $" Look: {look.Credit}.";
+            ActionText.Text = (avatar.IsShowing ? $"Martlet now shows '{name}' on this PC" : $"'{name}' is this PC's character; press Show character to see it") +
+                $" (look: {look.Credit}).";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
@@ -227,7 +227,7 @@ public partial class MainWindow : ICharacterFinderHost
         {
             var key = "vroidhub-" + look.Id;
             var inUse = shownPath == look.Path;
-            var detail = $"VRoid Hub, by {look.Author}. Conditions of use: {string.Join(" · ", look.Conditions)}";
+            var detail = $"VRoid Hub, by {look.Author}; conditions of use: {string.Join(" · ", look.Conditions)}";
             stack.Add(CharacterRow(look.Name + " (VRoid Hub)", detail, inUse, key, () => UseRemoteLookAsync(look),
                 inUse ? null : () => { vroidHub?.Forget(look.Id); RenderTab(); return Task.CompletedTask; }, available: vroidHub?.Tokens() is not null));
         }
