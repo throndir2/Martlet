@@ -61,7 +61,7 @@ public partial class MainWindow
         SetRole(wanted);
         Navigate(NavHome);
         ActionText.Text = host
-            ? "Another Windows user of this PC made it a Martlet host. Home shows its host service and what it still needs."
+            ? "Another Windows user of this PC made it a Martlet host, so Home shows its host service and what it still needs."
             : "Another Windows user of this PC made it your companion PC again.";
     }
 

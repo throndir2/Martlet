@@ -50,7 +50,7 @@ internal static class HostAgentRun
             if (action.Verb == HostVerb.Exposure && list.Agent is { } agent && !agent.Kinds.Contains(NodeCommandKinds.Exposure))
                 throw new InvalidOperationException($"Martlet on {name} is older than Outside access. Update it first (Update host), then try again.");
             if (role is not null && action.Verb == HostVerb.Remove && !confirmed && !ConfirmationDialog.Confirm(run,
-                    $"Stop {role} on {name} and remove it from its gateway? Its data volumes are kept, so adding it again is quick.", "Remove role"))
+                    $"Stop {role} on {name} and remove it from its gateway (its data stays, so adding it again is quick)?", "Remove role"))
                 throw new OperationCanceledException();
 
             var input = answers;
@@ -77,8 +77,8 @@ internal static class HostAgentRun
             };
             run.Status(action.Verb switch
             {
-                HostVerb.Add when action.Changing => $"Changing {role} on {name}. A new model can take a while to download; this PC follows it when it's ready.",
-                HostVerb.Add => $"Installing {role} on {name}. Large downloads can take a while; this PC picks the role up when it runs.",
+                HostVerb.Add when action.Changing => $"Changing {role} on {name}; a new model can take a while to download, and this PC follows it when it's ready.",
+                HostVerb.Add => $"Installing {role} on {name}; large downloads can take a while, and this PC picks the role up when it runs.",
                 HostVerb.Remove => $"Removing {role} from {name}...",
                 HostVerb.Update => $"Updating {name} to Martlet {version}...",
                 HostVerb.Exposure => $"Saving how {name} is reached from outside home; its gateway restarts...",
@@ -104,13 +104,13 @@ internal static class HostAgentRun
     internal static string AgentText(string name, NodeAgentInfo? agent)
     {
         if (agent is null)
-            return $"Martlet on {name} hasn't checked in since its host service started. Commands wait until Martlet runs there " +
-                "(open it there, or let it start with Windows). A Linux computer without Martlet is reached over SSH instead.";
+            return $"Martlet on {name} hasn't checked in since its host service started, so commands wait until Martlet runs there " +
+                "(open it there, or let it start with Windows).";
         var ago = DateTimeOffset.UtcNow - agent.SeenAt;
         var version = agent.Version is null ? "" : $" (Martlet {agent.Version})";
         return ago < TimeSpan.FromMinutes(1)
             ? $"Martlet on {name} is running{version} and takes commands from this PC."
-            : $"Martlet on {name}{version} last checked in {Ago(ago)} ago. The command waits until it runs there again.";
+            : $"Martlet on {name}{version} last checked in {Ago(ago)} ago, so the command waits until it runs there again.";
     }
 
     private static string Ago(TimeSpan span) =>
@@ -165,7 +165,7 @@ internal static class HostAgentRun
                     catch (OperationCanceledException) when (!run.Token.IsCancellationRequested) { }
                 }
                 run.Status(command.State == NodeCommandState.Queued
-                    ? waitingBehind ?? $"Waiting for Martlet on {name} to take it. It runs as soon as Martlet is open there; Cancel withdraws it."
+                    ? waitingBehind ?? $"Waiting for Martlet on {name} to take it; it runs as soon as Martlet is open there."
                     : command.CancelRequested ? $"Asked Martlet on {name} to stop..."
                     : $"Running on {name}" + (command.Summary is { } summary ? $": {summary}" : "..."));
                 await Task.Delay(PollInterval, run.Token);
@@ -213,7 +213,7 @@ internal static class HostAgentRun
             try { return await call(); }
             catch (Exception error) when (Restarting(error, run.Token) && DateTimeOffset.UtcNow - since < SendPatience)
             {
-                run.Status($"{name}'s host service isn't answering right now (it restarts while it updates). Trying again...");
+                run.Status($"{name}'s host service isn't answering right now (it restarts while it updates); trying again...");
                 await Task.Delay(SendRetryDelay, run.Token);
             }
         }

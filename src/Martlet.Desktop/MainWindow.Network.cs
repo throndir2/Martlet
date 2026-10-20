@@ -203,8 +203,8 @@ public partial class MainWindow
                 foreach (var join in through) networkPreapproved.Remove(join.DeviceId);
                 var names = string.Join(" and ", through.Select(j => j.DisplayName));
                 ChangeNetwork((engine, current) => engine.ApproveThrough(current, through, own).State,
-                    $"{names} joined your Martlet network by itself: it paired with this PC's host service ({through[0].HostId}), which you " +
-                    "approved here, so it needs no second Allow. It pairs with your other hosts automatically.");
+                    $"{names} joined your Martlet network through this PC's host service ({through[0].HostId}), which you approved here; " +
+                    "it pairs with your other hosts automatically.");
                 messages.Clear();
             }
             // A computer that paired by signing in (the owner account or an identity the owner allowed on that host) was
@@ -219,8 +219,8 @@ public partial class MainWindow
                     var who = string.Join(" and ", signedIn.Select(j => $"{j.DisplayName} (signed in as {j.SignIn!.Label ?? j.SignIn.Subject}" +
                         (j.SignIn.AccountId is { } account ? $", {HouseholdAccountName(directory, account)}'s computer" : "") + ")"));
                     ChangeNetwork((engine, current) => engine.ApproveSignedIn(current, signedIn).State,
-                        $"{who} joined your Martlet network by itself: it signed in to {signedIn[0].HostId} with a sign-in you allowed, so it " +
-                        "needs no check number. It pairs with your other hosts automatically.");
+                        $"{who} joined your Martlet network with a sign-in you allowed on {signedIn[0].HostId}; it pairs with your " +
+                        "other hosts automatically.");
                     messages.Clear();
                 }
             }
@@ -238,7 +238,7 @@ public partial class MainWindow
             if (pending.FirstOrDefault(j => networkAnnounced.Add(j.DeviceId + "|" + j.Key)) is { } fresh)
             {
                 ErrorLog.Info($"Martlet network: {fresh.DeviceId} ({fresh.DisplayName}) asks to join (check number {fresh.CheckNumber}).");
-                messages.Add($"{fresh.DisplayName} wants to join your Martlet network (check number {fresh.CheckNumber}). Allow it " +
+                messages.Add($"{fresh.DisplayName} wants to join your Martlet network (check number {fresh.CheckNumber}); allow it " +
                     (Role == DeviceRole.Host ? "on Home, or " : "") + "under Share, Your Martlet network.");
             }
             if (messages.Count > 0) ActionText.Text = string.Join(" ", messages);
@@ -375,8 +375,8 @@ public partial class MainWindow
             return;
         }
         if (!ConfirmationDialog.Confirm(this,
-                $"Let {join.DisplayName} ({join.DeviceId}) into your Martlet network? Only allow it if that computer shows check number " +
-                $"{join.CheckNumber}. It can then use every host in your network and pairs with them by itself; you can remove it here later.",
+                $"Let {join.DisplayName} ({join.DeviceId}), which must show check number {join.CheckNumber}, into your Martlet network " +
+                "to use all its hosts?",
                 "Allow into your network"))
             return;
         networkJoins = networkJoins.Where(j => j.DeviceId != join.DeviceId).ToArray();
@@ -409,15 +409,15 @@ public partial class MainWindow
     {
         // Counts only: the addresses themselves show in the Outside addresses dialog, not in the row (or MCP snapshots).
         var count = member.Addresses?.Count ?? 0;
-        var text = count == 0 ? "No outside addresses." : count == 1 ? "1 outside address." : $"{count} outside addresses.";
+        var text = count == 0 ? "No outside addresses" : count == 1 ? "1 outside address" : $"{count} outside addresses";
         return HostRoutes.For(member.Origin, member.Spki) switch
         {
-            { Route: "home", MovedTo: not null } => text + " Reached at home, at the new address its computer got (Martlet found it by itself).",
-            { Route: "home" } => text + " Reached at home.",
-            { Route: "outside", Address: { } at } => text + $" Reached from outside home (outside address {Array.IndexOf(member.Addresses?.ToArray() ?? [], at) + 1}).",
-            { Error: not null } when count > 0 => text + " Not reachable at home or outside right now (the log names each address tried).",
-            { Error: not null } => text + " Not reachable at home right now.",
-            _ => text
+            { Route: "home", MovedTo: not null } => text + "; reached at home, at the new address its computer got (Martlet found it by itself).",
+            { Route: "home" } => text + "; reached at home.",
+            { Route: "outside", Address: { } at } => text + $"; reached from outside home (outside address {Array.IndexOf(member.Addresses?.ToArray() ?? [], at) + 1}).",
+            { Error: not null } when count > 0 => text + "; not reachable at home or outside right now (the log names each address tried).",
+            { Error: not null } => text + "; not reachable at home right now.",
+            _ => text + "."
         };
     }
 
@@ -425,11 +425,8 @@ public partial class MainWindow
     private void EditOutsideAddresses(NetworkMember member)
     {
         var dialog = new HostInputDialog("Outside addresses", $"Reach {member.Name} from outside home",
-            $"Addresses that reach {member.Name}'s gateway (home address {member.Origin?[8..]}) when this computer isn't at home: an overlay " +
-            "network address (Tailscale, ZeroTier, WireGuard; recommended) or your router's public name with a forwarded port. Martlet " +
-            "tries the home address first and these only when it doesn't answer, always checking the same host key, so a proxy that " +
-            "ends TLS (an HTTP tunnel) won't work. Separate up to four with commas; leave empty to remove them. With any set, the host " +
-            "limits failed attempts and pairing codes from every address (see docs/NETWORK.md).", "Save");
+            $"Addresses that reach {member.Name}'s gateway (home address {member.Origin?[8..]}) when this computer isn't at home, such as " +
+            "a Tailscale address or a forwarded port; separate up to four with commas, or leave it empty to remove them.", "Save");
         dialog.AddText("addresses", "Outside addresses", string.Join(", ", member.Addresses ?? []),
             "For example gpu-box.tailnet.ts.net:9443, 100.101.102.103:9443 or home.example.net:9443.", optional: true, maxLength: 600);
         if (dialog.Ask(this) is not { } values) return;
@@ -442,8 +439,8 @@ public partial class MainWindow
     private void RemoveFromNetwork(NetworkMember member)
     {
         var question = member.IsDesktop
-            ? $"Remove {member.Name} ({member.Id}) from your Martlet network? Every host revokes it and it forgets your hosts. To come back it has to ask again and be allowed."
-            : $"Remove {member.Id} from your Martlet network? It stops trusting every computer in your network, and they forget it. Pair it again with Add a computer to bring it back.";
+            ? $"Remove {member.Name} ({member.Id}) from your Martlet network, so every host revokes it and it must ask again to come back?"
+            : $"Remove {member.Id} from your Martlet network, so every computer forgets it and you must pair it again to bring it back?";
         if (!ConfirmationDialog.Confirm(this, question, "Remove from network")) return;
         ChangeNetwork((engine, state) => engine.Remove(state, member.Kind, member.Id),
             $"Removed {member.Name} from your Martlet network; your hosts hear about it within a minute.");
@@ -678,8 +675,8 @@ public partial class MainWindow
             var gap = paired && reach is { Reached: false } ? null
                 : paired ? networkReach.HostText(h.Id, AppVersions.Current)
                 : $"In your Martlet network (added on {roster.Desktop(h.UpdatedBy)?.Name ?? h.UpdatedBy}) but not paired with this PC yet" +
-                  (networkNotes.GetValueOrDefault(h.Id) is { } note ? $": {note.Replace("Not paired yet: ", "", StringComparison.Ordinal).TrimEnd('.')}." : ".") +
-                  " This PC pairs with it by itself as soon as it reaches it.";
+                  (networkNotes.GetValueOrDefault(h.Id) is { } note ? $": {note.Replace("Not paired yet: ", "", StringComparison.Ordinal).TrimEnd('.')}" : "") +
+                  "; this PC pairs with it by itself as soon as it reaches it.";
             return new NetworkHostState(h.Id, h.Origin ?? "", paired, gap);
         }).ToArray();
 
@@ -692,23 +689,22 @@ public partial class MainWindow
             var others = roster.ActiveDesktops.Count() - 1;
             var hosts = roster.ActiveHosts.Count();
             var away = roster.ActiveHosts.Count(h => HostRoutes.For(h.Origin, h.Spki) is { Route: "outside" });
-            return $"This PC is in your Martlet network with {Count(others, "other computer")} and {Count(hosts, "host")}. " +
-                (away > 0 ? $"{Count(away, "host")} {(away == 1 ? "is" : "are")} reached from outside home right now. " : "") +
-                "Hosts you pair on any of them are shared with all of them" +
+            return $"This PC is in your Martlet network with {Count(others, "other computer")} and {Count(hosts, "host")}" +
+                (away > 0 ? $", {away} reached from outside home right now" : "") +
                 (networkCheckedAt is { } at ? $"; checked {at:t}." : ".");
         }
         if (networkState.Waiting is { } wait)
-            return $"Waiting to join: on one of your other computers open Share and allow {NetworkIdentity.DeviceId(homeHosts)} under Your Martlet network. " +
-                $"Check that it shows {wait.CheckNumber}. (Asked through {wait.HostId}.)";
+            return $"Waiting to join: on another of your computers, open Share and allow {NetworkIdentity.DeviceId(homeHosts)} under Your Martlet " +
+                $"network if it shows {wait.CheckNumber} (asked through {wait.HostId}).";
         if (homeHosts.Count == 0)
-            return "Not in a network yet. Add a computer: the first host you pair starts your Martlet network, and your other computers can join it.";
+            return "Not in a network yet: add a computer, and the first host you pair starts your Martlet network.";
         if (networkState.RemovedFrom is not null)
-            return "This PC was removed from its Martlet network. Pair a host of that network again to ask to join, or pair a new host to start a network.";
+            return "This PC was removed from its Martlet network; pair a host to ask to join again or to start a new network.";
         if (networkWatchOnly)
-            return "This host PC is in no Martlet network of its own: the network of the main PC that pairs with its host service takes it. " +
-                "Computers that use its hosts are listed below as its hosts report them" + (networkCheckedAt is { } seen ? $"; checked {seen:t}." : ".");
+            return "This host PC has no Martlet network of its own; it joins the network of the main PC that pairs with its host service" +
+                (networkCheckedAt is { } seen ? $" (checked {seen:t})." : ".");
         return networkCheckedAt is null ? "Checking your hosts..."
-            : "Not in a network: your hosts run an older Martlet or didn't answer. Update them (Update host) to share them with your other computers.";
+            : "Not in a network: your hosts run an older Martlet or didn't answer, so update them with Update host.";
 
         static string Count(int count, string what) => count == 1 ? $"1 {what}" : $"{count} {what}s";
     }
@@ -731,7 +727,7 @@ public partial class MainWindow
         DockPanel.SetDock(buttons, Dock.Right);
         row.Children.Add(buttons);
         row.Children.Add(NetworkRowText("NetworkJoin-" + join.DeviceId, $"{join.DisplayName} asks to join",
-            $"{join.DeviceId}, through {join.HostId}. Check number {join.CheckNumber}: allow it only if that computer shows the same number."));
+            $"{join.DeviceId}, through {join.HostId}, check number {join.CheckNumber}: allow it only if that computer shows the same number."));
         return NetworkRowCard(row, warning: true);
     }
 
@@ -780,13 +776,11 @@ public partial class MainWindow
         var row = NetworkRowFrame();
         var hosts = networkViews.Values.Where(v => v.Devices?.Any(d => d.DeviceId == device.DeviceId) == true).Select(v => v.HostId).Order(StringComparer.Ordinal);
         var detail = device.Friend
-            ? $"A friend's computer. It signed in to {string.Join(", ", FriendHosts(device.DeviceId))} as a friend and uses only " +
-              $"{(FriendHosts(device.DeviceId).Count() == 1 ? "that host's" : "those hosts'")} engines; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}. " +
-              "It never joins your Martlet network, and your own work goes first. Stop sharing under Friends."
-            : $"Uses {string.Join(", ", hosts)}; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}. " + (networkState.Roster is null
-                ? "It is paired with this PC's host service; this PC is in no Martlet network itself."
-                : "Not in your Martlet network, so it doesn't see your other hosts or computers. To bring it in, update Martlet on it: it " +
-                  "then asks to join by itself and you allow it here. Or, on it, choose Add a computer › Martlet on your network.");
+            ? $"A friend's computer that signed in to {string.Join(", ", FriendHosts(device.DeviceId))} as a friend and uses only " +
+              $"{(FriendHosts(device.DeviceId).Count() == 1 ? "that host's" : "those hosts'")} engines; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}."
+            : $"Uses {string.Join(", ", hosts)}; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}; " + (networkState.Roster is null
+                ? "it is paired with this PC's host service, and this PC is in no Martlet network itself."
+                : "it isn't in your Martlet network, so update Martlet on it to make it ask to join.");
         row.Children.Add(NetworkRowText((device.Friend ? "NetworkFriend-" : "NetworkPaired-") + device.DeviceId,
             device.DisplayName != device.DeviceId ? $"{device.DisplayName} ({device.DeviceId})" : device.DeviceId, detail));
         return NetworkRowCard(row, warning: false);

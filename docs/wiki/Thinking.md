@@ -49,6 +49,12 @@ Where one of your computers can already think, the key goes to **If Thinking fai
 
 **Look again** looks for apps again. Martlet looks only on this PC and starts or installs nothing.
 
+- Using a model app costs nothing for each request. Your messages go to that app on this PC, and the app decides what it keeps and whether anything leaves the PC. LiteLLM, for example, may send requests on to cloud providers.
+- Leave **API key** empty unless the app asks for one. When it does, enter the key you set in the app, then choose **Find models** or **Test model**. Martlet keeps the key in Windows Credential Manager.
+- When the app lists no models, load one in the app or type its name. Martlet can use only model names made of letters, digits, dots, dashes, underscores, slashes and colons; rename other models in the app.
+- When the app doesn't list the model you typed, Martlet asks before it switches. Some apps load a model only when they are asked for it.
+- Test a model before you use it. When the test or the check fails, Thinking doesn't change.
+
 ## Choosing and checking a model
 
 - Martlet's own model list updates every day, so new models show up without a Martlet update. Each model says what it takes in (text, pictures, sound and video), how smart it is and what it needs.

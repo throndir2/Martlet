@@ -172,9 +172,9 @@ public partial class MainWindow
                 "your other computers.";
         if (local.HostId == host) return local.Here ? $"Your other computers use this PC for {job}, through {host}." : null;
         var by = assignment.UpdatedBy == ClusterDevice ? "" : $", as chosen on {assignment.UpdatedBy}";
-        return $"Your Martlet network does {job} on {host}{by}. " + (clusterFollow.TryGetValue(job, out var why)
-            ? "This PC switches to it as soon as it can: " + why
-            : "This PC switches to it on its next check.");
+        return $"Your Martlet network does {job} on {host}{by}, and this PC switches to it " + (clusterFollow.TryGetValue(job, out var why)
+            ? "as soon as it can: " + why
+            : "on its next check.");
     }
 
     /// <summary>Marks a forgotten host as removed in the shared plan, so its entry does not return from an older copy.</summary>
@@ -197,9 +197,8 @@ public partial class MainWindow
         // A job on a host a friend shares is this PC's own: failover concerns what your network chose.
         var owner = current is null ? local.Shared ? new LocalJob(null, false) : local : new LocalJob(current.HostId, current.Off);
         if (on && !ConfirmationDialog.Confirm(this,
-                $"Turn on failover for {ClusterSync.Title(job).ToLowerInvariant()}? If {(owner.HostId is { } host ? host : "its host")} stops responding, " +
-                "Martlet moves it to another paired host that can handle it. That host will receive this job's data." +
-                (job == ClusterJobs.Speaking ? " The selected voice goes with it." : ""),
+                $"Turn on failover for {ClusterSync.Title(job).ToLowerInvariant()}, so that Martlet moves it to another paired host, which gets " +
+                $"this job's data{(job == ClusterJobs.Speaking ? " and the selected voice" : "")}, if {(owner.HostId is { } host ? host : "its host")} stops responding?",
                 "Turn on failover"))
         {
             RenderMap();
@@ -219,7 +218,7 @@ public partial class MainWindow
         try { ClusterSync.SavePlan(store.DataDirectory, clusterPlan); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
         {
-            ActionText.Text = "Couldn't save device sync. Hosts keep their last copy.";
+            ActionText.Text = "Couldn't save device sync, so hosts keep their last copy.";
         }
     }
 
@@ -610,17 +609,17 @@ public partial class MainWindow
         if (clusterEnabled && local is { Here: true, HostId: { } own } && assignment?.HostId == own &&
             clusterProbes.GetValueOrDefault(own) is { Reachable: true } ownProbe && !ownProbe.Serves(job))
             parts.Add($"Your other computers use this PC for {job} through {own}, which doesn't run " +
-                $"{HostRoles.Get(ClusterSync.RoleKind(job)).Name} yet. Add it to {own} so they can.");
+                $"{HostRoles.Get(ClusterSync.RoleKind(job)).Name} yet, so add it to {own}.");
         else if (clusterEnabled && local.HostId is { } host && clusterProbes.ContainsKey(host) &&
             clusterMisses.GetValueOrDefault(host + "/" + job) > 0)
         {
-            parts.Add(assignment?.Failover != true ? $"{host} isn't handling this right now. Turn on failover to move it automatically."
+            parts.Add(assignment?.Failover != true ? $"{host} isn't handling this right now; turn on failover to move it automatically."
                 : ClusterSync.FailoverTarget(clusterPlan, job, host, clusterProbes.Values, HardwareStore?.Load() ?? []) is null
                     ? $"{host} isn't handling this, and no other paired host can take over."
-                    : $"{host} isn't handling this. Martlet will move it if this continues.");
+                    : $"{host} isn't handling this, so Martlet will move it if this continues.");
         }
         if (assignment is { MovedFrom: { } from } && assignment.HostId == local.HostId && assignment.HostId is not null)
-            parts.Add($"Moved from {from} after it stopped responding. Choose {from} to move it back.");
+            parts.Add($"Moved from {from} after it stopped responding; choose {from} to move it back.");
         return parts.Count == 0 ? null : string.Join(" ", parts);
     }
 }

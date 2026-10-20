@@ -15,8 +15,9 @@ public partial class MainWindow
     private void AddResourcesSection(NetworkNode node)
     {
         if (node.Kind is not (NodeKind.ThisPc or NodeKind.Host) || CapacityFor(node) is not { } view) return;
-        DetailContent.Children.Add(DetailSection("Resources", "Planned from Martlet's estimates. A range is what the jobs usually hold, " +
-            "then the most they take while they work hardest. \"In use now\" is what the device reports."));
+        DetailContent.Children.Add(DetailSection("Resources", "Planned from Martlet's estimates.", HelpTip.For("resources",
+            "A range is what the jobs usually hold, then the most they take while they work hardest. \"In use now\" is what the device reports.",
+            "DeviceResourcesPlan", wiki: "Multiple-Computers#machine-cards")));
         var panel = new StackPanel();
         AutomationProperties.SetName(panel, "Resources");
         var specs = new TextBlock { Text = view.Specs, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10) };

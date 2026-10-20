@@ -61,8 +61,8 @@ public partial class MainWindow
         }, hidden: true);
         if (closing) return;
         ShowHostAutoStart(done is not null
-            ? $"{done} Martlet started them by itself at {DateTime.Now:t}."
-            : $"Martlet couldn't start this host's roles by itself at {DateTime.Now:t}. Background tasks shows why ({HostAutoStartRun}).");
+            ? $"Martlet started this host's roles by itself at {DateTime.Now:t}, and their models are loaded."
+            : $"Martlet couldn't start this host's roles by itself at {DateTime.Now:t}; Background tasks shows why ({HostAutoStartRun}).");
         await ReadMachineAsync();
     }
 

@@ -18,19 +18,19 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
     internal static readonly HostJob Thinking = new(SetupRole.Llm, SetupRouteType.GatewayOllama, HostRoles.Ollama,
         HostRoute.OllamaChatRouteId, "thinking", "conversation model", "answer your conversations", "thinking-cloud.json",
         "Your messages and recent conversation",
-        "Your messages and recent conversation go to that computer instead of a cloud provider. There is no per-request charge.");
+        "Your messages and recent conversation go to that computer instead of a cloud provider, with no per-request charge.");
 
     internal static readonly HostJob Listening = new(SetupRole.Stt, SetupRouteType.GatewayStt, HostRoles.Stt,
         Audio2FaceHostConnection.TranscriptionRouteId, "listening", "speech recognition", "turn what you say into text", "listening-previous.json",
         "Your recorded speech",
-        "Your speech goes to that computer for transcription instead of a cloud provider. It is not stored. There is no per-request charge.");
+        "Your speech goes to that computer for transcription instead of a cloud provider; it isn't stored, and there is no per-request charge.");
 
     internal static HostJob Speaking => SpeakingFor(SpeakingEngineChoice.Current);
 
     private static readonly HostJob F5Speaking = new(SetupRole.Tts, SetupRouteType.GatewayF5, HostRoles.F5,
         HostRoute.F5RouteId, "speaking", "voice service", "speak your replies", "speaking-previous.json",
         "Reply text",
-        "Reply text and the selected voice sample go to that computer instead of a cloud voice. There is no per-request charge.");
+        "Reply text and the selected voice sample go to that computer instead of a cloud voice, with no per-request charge.");
 
     /// <summary>The Speaking job done by <paramref name="engine"/>'s host role, with its model licence in the disclosure.</summary>
     internal static HostJob SpeakingFor(SpeechEngine engine) => engine.Key == SpeechEngines.F5.Key ? F5Speaking : F5Speaking with
@@ -146,7 +146,7 @@ public partial class MainWindow
         if (check.Reachable != true)
         {
             ActionText.Text = check.Code == "auth.revoked" ? $"{job.Title} wasn't moved: {host.HostId}'s owner stopped sharing it with this PC."
-                : $"{job.Title} wasn't moved. {host.HostId} didn't respond ({check.Text}).";
+                : $"{job.Title} wasn't moved because {host.HostId} didn't respond ({check.Text}).";
             return;
         }
         var route = check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId);
@@ -156,25 +156,24 @@ public partial class MainWindow
             (job, route) = (HostJob.SpeakingFor(SpeechEngines.ForRoute(voiceRoute.RouteId)!), voiceRoute);
         if (route is null)
         {
-            ActionText.Text = $"{job.Title} wasn't moved. {host.HostId} doesn't offer {job.Job} to this PC; only its owner can add it there.";
+            ActionText.Text = $"{job.Title} wasn't moved: {host.HostId} doesn't offer {job.Job} to this PC, and only its owner can add it there.";
             return;
         }
         F5ReferenceSnapshot? voice = null;
         if (job.RouteType == SetupRouteType.GatewayF5)
             voice = await F5Voices.DefaultAsync(store!.DataDirectory, route.DestinationId, lifetime.Token, SpeechEngines.ForRoute(job.RouteId));
         var withVoice = voice is null ? "" : $" using \"{voice.PresetName}\"";
+        // One sentence: what goes to a friend's computer, and that only this PC uses it. The rest is in the wiki.
+        var sent = Lowered(job.Sent) + (job.Role == SetupRole.Tts ? " and the voice's recording" : "");
         if (!ConfirmationDialog.Confirm(this,
-                $"Use {host.HostId} for {job.Job} on this PC? A friend shares it with you. It will {job.Use}{withVoice}. Only this PC uses " +
-                "it: your other computers keep your network's choice. Its owner's own work comes first, so it may turn this PC away while " +
-                "it is busy; then Martlet uses another of your computers that runs it, or tries it again on the next request." +
-                (job.Role == SetupRole.Tts ? " The voice's recording goes with each sentence, and that host keeps nothing." : "") +
-                " " + job.Disclosure, $"Use {host.HostId}"))
+                $"Use {host.HostId}, a friend's computer, for {job.Job} on this PC only{withVoice}, sending {sent} there while its owner's " +
+                "own work comes first?", $"Use {host.HostId}"))
             return;
         pendingJobHosts.Remove(job.Role);
         await SaveJobHostAsync(job, host, route, voice);
         clusterObserved[job.Job] = ObservedJob(job.Job);
         ErrorLog.Info($"Shared hosts: {job.Job} on this PC now uses {host.HostId}, a host a friend shares (not in the shared plan).");
-        ActionText.Text = $"{job.Title} now uses {host.HostId} on this PC{withVoice}. A friend shares it, so only this PC uses it.{OpenConversationFollows}";
+        ActionText.Text = $"{job.Title} now uses {host.HostId}, a friend's computer, on this PC only{withVoice}.{OpenConversationFollows}";
     }
 
     /// <summary>The route this job uses when no host does it: the current one, or the one kept aside while a host does it.</summary>
@@ -226,25 +225,23 @@ public partial class MainWindow
             hostChecks[host.HostId] = check;
             if (check.Reachable != true)
             {
-                ActionText.Text = $"{job.Title} wasn't moved. {host.HostId} didn't respond ({check.Text}).";
+                ActionText.Text = $"{job.Title} wasn't moved because {host.HostId} didn't respond ({check.Text}).";
                 return;
             }
             var route = check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId);
             if (route is null && CannotHand(host.HostId, job.HostRoleKind, job.Job) is { } cannot)
             {
-                ActionText.Text = $"{job.Title} wasn't moved. {cannot}";
+                ActionText.Text = $"{job.Title} wasn't moved: {cannot}";
                 return;
             }
             // One voice engine runs on a computer (role.conf exclusive=voice): speaking with another engine there stops the
             // others, so the model each keeps in the graphics card's memory never starves the engine that speaks.
             var others = job.Role == SetupRole.Tts ? HostRoles.OtherVoiceEngines(check.Offers, job.HostRoleKind) : [];
-            var replaces = others.Count == 0 ? ""
-                : $" Only one voice engine runs on a computer, so {HostRoles.Names(others.Select(o => o.Kind))} there stops and frees the " +
-                  "graphics card's memory. Downloads are kept, so switching back is quick.";
             // The engine Speaking leaves on another computer stops there once Speaking has moved.
             var leaving = job.Role == SetupRole.Tts ? LeavingEngine(host.HostId, SpeechEngines.ForRoute(job.RouteId)) : null;
-            replaces += LeavingNote(leaving);
-            var pauses = others.Count > 0 && NetworkMap.JobHost(homeSettings, job.Role) == host.HostId;
+            var stops = StopsClause(others, leaving);
+            // Speaking already on that host stops with the engine it replaces there, so it pauses until the new one is ready.
+            var pauses = others.Count > 0 && NetworkMap.JobHost(homeSettings, job.Role) == host.HostId ? $", so {job.Job} pauses until then" : "";
             // The engines copy a reference voice. Handing Speaking to a host keeps the voice chosen on all computers (else the one
             // applied here, else the first in the list); Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
@@ -252,37 +249,25 @@ public partial class MainWindow
                 voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token,
                     SpeechEngines.ForRoute(job.RouteId));
             var withVoice = voice is null ? "" : $" using \"{voice.PresetName}\"";
-            var changeVoice = voice is null ? "" : " You can change voices in Companion > Voice.";
             if (route is null)
             {
                 var role = HostRoles.Get(job.HostRoleKind);
                 // On this PC Martlet already knows what suits it, so the install asks nothing more: whisper goes on the
                 // graphics card or the processor by what already runs there, F5 has nothing to choose.
                 IReadOnlyDictionary<string, string>? answers = null;
-                var how = host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
-                    ? "Martlet will install it on that computer and show progress. "
-                    : host.Method == HostSetupMethod.Agent ? $"Martlet on {host.HostId} will install it and show progress here. "
-                    : host.CanLaunch ? "Martlet will install it in this PC's host service and show progress. "
-                    : "Set how Martlet reaches that computer on the Devices map first. ";
                 if (host.Method == HostSetupMethod.ThisPcDocker && job.Role == SetupRole.Stt)
                 {
                     var advice = await ListeningAdviceAsync();
                     answers = advice.InstallAnswers(advice.UseGpu);
-                    how = "Martlet will install it in this PC's host service with the recommended settings and show progress. ";
                 }
                 else if (host.Method == HostSetupMethod.ThisPcDocker && job.RouteType == SetupRouteType.GatewayF5)
-                {
                     answers = new Dictionary<string, string>(StringComparer.Ordinal);
-                    how = "Martlet will install it in this PC's host service and show progress. ";
-                }
+                // One sentence: what it installs, what it needs and what it stops; until the role is ready the job stays where it is.
+                var needs = HostCan(host.HostId, job.HostRoleKind) is { Verdict: Martlet.Core.Platforms.PlatformVerdict.Unknown }
+                    ? $"it needs {role.Needs}, which Martlet can't confirm there" : $"it needs {role.Needs}";
                 if (!ConfirmationDialog.Confirm(this,
-                        $"{host.HostId} isn't ready for {job.Job}. Install the needed role there and switch {job.Job} to it when it's ready? " + how +
-                        $"It needs {role.Needs}." +
-                        (HostCan(host.HostId, job.HostRoleKind) is { Verdict: Martlet.Core.Platforms.PlatformVerdict.Unknown } unsure ? " " + unsure.Reason : "") +
-                        replaces +
-                        (pauses ? $" {job.Title} pauses until the new engine is ready, then switches over{withVoice}."
-                            : $" Martlet keeps {job.Job} where it is until the role is ready, then switches over{withVoice}.") +
-                        changeVoice + " " + job.Disclosure + HostCaveats(host.HostId), "Install and switch"))
+                        $"Install the {role.Name} role on {host.HostId} ({needs}) and switch {job.Job} to it{withVoice} when it's ready{stops}{pauses}?",
+                        "Install and switch"))
                     return;
                 pendingJobHosts[job.Role] = host.HostId;
                 if (voice is not null) pendingJobVoices[job.Role] = voice;
@@ -290,10 +275,7 @@ public partial class MainWindow
                 WatchJobHandoffAsync(job, host, leaving).Forget();
                 return;
             }
-            if (!ConfirmationDialog.Confirm(this,
-                    $"Use {host.HostId} for {job.Job}? It will {job.Use}{withVoice}.{changeVoice}{replaces} {job.Disclosure}" +
-                    HostCaveats(host.HostId),
-                    $"Use {host.HostId}"))
+            if (!ConfirmationDialog.Confirm(this, $"Use {host.HostId} to {job.Use}{withVoice}{stops}?", $"Use {host.HostId}"))
                 return;
             pendingJobHosts.Remove(job.Role);
             await SaveJobHostAsync(job, host, route, voice);
@@ -379,9 +361,8 @@ public partial class MainWindow
         var name = NetworkMap.ProviderName(saved);
         var leaving = job.Role == SetupRole.Tts ? LeavingEngine(null, null) : null;
         if (!ConfirmationDialog.Confirm(this,
-                $"Use {name} for {job.Job} again? " +
-                (IsCloud(saved) ? $"{job.Sent} go to that provider again, and requests may cost money." : "It runs on this PC again.") +
-                LeavingNote(leaving),
+                (IsCloud(saved) ? $"Use {name} for {job.Job} again, sending {Lowered(job.Sent)} there where requests may cost money"
+                    : $"Use {name} for {job.Job} again on this PC") + StopsClause([], leaving) + "?",
                 "Use the Setup choice"))
             return;
         await HandBackAsync(job, saved);
@@ -408,7 +389,18 @@ public partial class MainWindow
         else clusterObserved[job.Job] = ObservedJob(job.Job);
         ActionText.Text = $"{job.Title} now uses {name}.{OpenConversationFollows}" +
             (saved.CredentialId is not null && next.Setup!.Routes.First(r => r.Role == job.Role).CredentialId is null
-                ? " Its key is missing. Save it again in Setup." : "");
+                ? " Its key is missing, so save it again in Setup." : "");
+    }
+
+    /// <summary>", stopping XTTS-v2 there and F5-TTS on gpu-1 to free graphics card memory": the voice engines a move stops
+    /// (<paramref name="others"/> on the new host, <paramref name="leaving"/> where Speaking was), for a one-sentence
+    /// confirmation; nothing when it stops none. Their downloads stay (docs/wiki/Multiple-Computers.md).</summary>
+    private string StopsClause(IReadOnlyList<HostRoleInfo> others, (PairedHost Host, SpeechEngine Engine)? leaving)
+    {
+        var parts = new List<string>();
+        if (others.Count > 0) parts.Add($"{HostRoles.Names(others.Select(o => o.Kind))} there");
+        if (leaving is { } left) parts.Add($"{left.Engine.Name} on {HostWhere(left.Host)}");
+        return parts.Count == 0 ? "" : $", stopping {string.Join(" and ", parts)} to free graphics card memory";
     }
 
     /// <summary>After an install started from a handoff, checks the host until its route appears (up to an hour, as model

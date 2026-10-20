@@ -703,7 +703,7 @@ public static class PlacementEngine
                     : HostingRules.LiveLocal(Preference) ? KeptLocalWords
                     : "no hosted provider is allowed";
                 dropped.Add(new(PlanComponent.Thinking, HostingRules.LiveLocal(Preference) ? DropReason.KeptLocal : DropReason.NoRoom,
-                    $"No computer has room for a Thinking model, and {lack}. Martlet can't reply until one is set up."));
+                    $"No computer has room for a Thinking model, and {lack}, so Martlet can't reply until one is set up."));
                 return;
             }
             Place(chosen, AssignmentRole.Primary, why);

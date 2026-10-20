@@ -49,8 +49,8 @@ internal static class JobOptions
             if (Here(downloaded, model.Id, footprint) is { } here) facts.Insert(Math.Min(1, facts.Count), here);
             var summary = model == recommended
                 ? "Fastest: replies start soonest, and it hears your voice."
-                : "Smarter but slower" + (model == smartest ? ": the largest that fits this PC's graphics card" : "") + ". " +
-                  (model.Hears ? "It hears your voice." : "It gets the transcript of what you say.");
+                : "Smarter but slower" + (model == smartest ? ": the largest that fits this PC's graphics card" : "") + "; " +
+                  (model.Hears ? "it hears your voice." : "it gets the transcript of what you say.");
             options.Add(new(model.Id, footprint?.DisplayName ?? model.Id, summary)
             {
                 Badge = model.Id == inUse ? InUse : model == recommended ? Recommended : model == smartest ? "smartest that fits" : null,
@@ -64,8 +64,8 @@ internal static class JobOptions
             List<OptionFact> facts = [.. OptionFacts.ThinkingModel(option, cardGb, Math.Ceiling(option.GpuGb + 2), callsTools: null)];
             if (Here(downloaded, id, option) is { } here) facts.Insert(Math.Min(1, facts.Count), here);
             options.Add(new(id, option.DisplayName,
-                $"From Martlet's model catalog, which updates every day{(option.Smartness is { } smart ? $": {smart}" : "")}. " +
-                (option.HearsAudio ? "It hears your voice." : "It gets the transcript of what you say."))
+                $"From Martlet's model catalog, which updates every day{(option.Smartness is { } smart ? $": {smart}" : "")}; " +
+                (option.HearsAudio ? "it hears your voice." : "it gets the transcript of what you say."))
             {
                 Badge = id == inUse ? InUse : "from the catalog", InUse = id == inUse,
                 Facts = OptionFacts.Lead(facts, "fits", "here", "vram", "speed", "hears")
@@ -74,7 +74,7 @@ internal static class JobOptions
         var others = (downloaded ?? []).Append(inUse).OfType<string>().Distinct(StringComparer.Ordinal)
             .Where(id => suggestions.All(m => m.Id != id) && catalogModels.All(o => o.ModelId != id));
         foreach (var id in others)
-            options.Add(new(id, id, "Martlet has no numbers for this model. Test model shows how it does on this PC.")
+            options.Add(new(id, id, "Martlet has no numbers for this model, so Test model shows how it does on this PC.")
             {
                 Badge = id == inUse ? InUse : null, InUse = id == inUse,
                 Facts = [OllamaRunsOn, .. Here(downloaded, id, null) is { } here ? [here] : Array.Empty<OptionFact>()]
@@ -112,7 +112,7 @@ internal static class JobOptions
         var options = new List<PickerOption>
         {
             new(OllamaApp, "Ollama",
-                "Martlet installs Ollama, downloads a model that fits this PC and keeps it ready. Any Ollama model works, including your own.")
+                "Martlet installs Ollama, downloads a model that fits this PC and keeps it ready; any Ollama model works, including your own.")
             {
                 Badge = ollamaInUse ? InUse : Recommended, InUse = ollamaInUse,
                 Facts =
@@ -129,7 +129,7 @@ internal static class JobOptions
         {
             var used = server.ChatCompletionsBaseUrl == inUseBaseUrl;
             var models = server.NeedsKey ? "asks for an API key first" : server.Models.Count == 1 ? "1 model" : $"{server.Models.Count} models";
-            options.Add(new(AppKey(server), server.Name, $"Your {server.Name} at {server.ChatCompletionsBaseUrl}. Martlet uses the models it serves.")
+            options.Add(new(AppKey(server), server.Name, $"Your {server.Name} at {server.ChatCompletionsBaseUrl}, with the models it serves.")
             {
                 Badge = used ? InUse : null, InUse = used,
                 Facts =
@@ -146,7 +146,7 @@ internal static class JobOptions
         var typed = inUseBaseUrl is not null && found.All(s => s.ChatCompletionsBaseUrl != inUseBaseUrl);
         options.Add(new(AddressApp, "Another app, by its address",
             "LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner or any app with an OpenAI-compatible " +
-            "server on this PC. " + (looking ? "Looking for them on this PC..." : found.Count == 0 ? "None answers on this PC now." : "Type the address it shows."))
+            "server on this PC" + (looking ? " (looking for them now...)." : found.Count == 0 ? "; none answers on this PC now." : "; type the address it shows."))
         {
             Badge = typed ? InUse : null, InUse = typed,
             Facts =
@@ -216,7 +216,7 @@ internal static class JobOptions
                 "nvidia-build" => $"Free keys from NVIDIA; recommended: {model}.",
                 "openrouter" => $"Hundreds of models behind one key, some free; recommended: {model}.",
                 "google-gemini" => $"Free on Google's free tier; recommended: {model}.",
-                "ollama" => $"A model in Ollama on this PC, such as {model}. Nothing leaves this PC.",
+                "ollama" => $"A model in Ollama on this PC, such as {model}; nothing leaves this PC.",
                 "custom" => "Any OpenAI-compatible server, by its HTTPS address and the exact model ID.",
                 _ => $"Recommended: {model}."
             };
@@ -244,7 +244,7 @@ internal static class JobOptions
     /// <summary>The cloud voices: OpenAI's built-in voices and ElevenLabs with a voice cloned from yours.</summary>
     internal static IReadOnlyList<PickerOption> CloudVoices(bool openAiInUse, bool elevenLabsInUse) =>
     [
-        new("openai", "OpenAI voice", "OpenAI's built-in voices, such as alloy. Quick and clear, but not your voice.")
+        new("openai", "OpenAI voice", "OpenAI's built-in voices, such as alloy: quick and clear, but not your voice.")
         {
             Badge = openAiInUse ? InUse : null, InUse = openAiInUse,
             Facts = OptionFacts.Voice(PlanningCatalog.Current.Find(FootprintCatalog.OpenAiVoiceId), VoiceAbilities.OpenAiVoice,
@@ -274,7 +274,7 @@ internal static class JobOptions
             var (footprintId, summary, accuracy) = model.Id switch
             {
                 ParakeetModels.Tdt110mEnglishId => ("parakeet-tdt-110m-en-cpu",
-                    "Fastest in English: a short sentence becomes text in about 0.1 s. Less accurate with background noise or a distant microphone.",
+                    "Fastest in English (a short sentence becomes text in about 0.1 s), but less accurate with background noise or a distant microphone.",
                     "good; less accurate with background noise or a distant microphone"),
                 ParakeetModels.V2EnglishId => ("parakeet-tdt-0.6b-v2-cpu",
                     "Most accurate in English: it hears noisy rooms and distant microphones best, about 0.2 s slower.",
@@ -296,14 +296,14 @@ internal static class JobOptions
                     new("here", "On this PC", installed ? "downloaded" : $"downloads once: {size}", installed ? "downloaded" : null),
                     new("setup", "Set up by", "Martlet, inside the app: no Docker", null)),
                 State = state.Downloading == model.Id ? state.Progress ?? "Downloading..." : installed ? "Downloaded." : $"Downloads once: {size}.",
-                Unavailable = state.RuntimeReady ? null : "Martlet's speech runtime (sherpa-onnx) isn't on this PC. Install Martlet again to add it."
+                Unavailable = state.RuntimeReady ? null : "Martlet's speech runtime (sherpa-onnx) isn't on this PC, so install Martlet again to add it."
             });
         }
         var advice = state.Advice;
         var gpuFootprint = PlanningCatalog.Current.Find(advice?.GpuModel == "small" ? "whisper-small-cuda" : "whisper-large-v3-turbo-cuda")!;
         const string whisperLanguages = "English and 98 other languages";
         options.Add(new(WhisperGpu, "Whisper on the graphics card",
-            "Fast and accurate in many languages. It runs in Martlet's host service in Docker on this PC.")
+            "Fast and accurate in many languages, in Martlet's host service in Docker on this PC.")
         {
             Badge = state.GpuInUse ? InUse : null, InUse = state.GpuInUse,
             Facts = With(OptionFacts.SpeechRecognizer(gpuFootprint, whisperLanguages, "very good, also in noisy rooms", streams: false)
@@ -314,7 +314,7 @@ internal static class JobOptions
             Unavailable = advice?.GpuBlocked
         });
         var cpuModel = advice?.CpuModel ?? (state.Threads >= 6 ? "small" : "base");
-        options.Add(new(WhisperCpu, "Whisper on the processor", $"Works on any PC and keeps the graphics card free, but slower. Uses the {cpuModel} model.")
+        options.Add(new(WhisperCpu, "Whisper on the processor", $"Works on any PC with the {cpuModel} model and keeps the graphics card free, but slower.")
         {
             Badge = state.CpuInUse ? InUse : null, InUse = state.CpuInUse,
             Facts = With(OptionFacts.SpeechRecognizer(PlanningCatalog.Current.Find("whisper-small-cpu")!, whisperLanguages, "good", streams: false)

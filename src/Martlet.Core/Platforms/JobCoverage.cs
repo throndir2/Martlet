@@ -224,6 +224,10 @@ public static class JobCoverageRules
 
     private static string BackTo(JobSituation job) => job.Fallback is { } fallback
         ? $"{Title(job.Job)} goes back to your Setup choice, {fallback}" +
-            (job.FallbackIsCloud ? $". {char.ToUpperInvariant(Sent(job.Job)[0])}{Sent(job.Job)[1..]} go there again, and requests may cost money." : ".")
-        : $"{Title(job.Job)}: nobody will do it. {Effect(job.Job)} Choose another in Setup or on the Devices page.";
+            (job.FallbackIsCloud ? $", which gets {Sent(job.Job)} again and may cost money." : ".")
+        : $"{Title(job.Job)}: nobody will do it, so {Continued(Effect(job.Job))}";
+
+    /// <summary><paramref name="sentence"/> to go on after a comma: its first letter small, except in "Martlet".</summary>
+    private static string Continued(string sentence) => sentence.StartsWith("Martlet", StringComparison.Ordinal) ? sentence
+        : char.ToLowerInvariant(sentence[0]) + sentence[1..];
 }

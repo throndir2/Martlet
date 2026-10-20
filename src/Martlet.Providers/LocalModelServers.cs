@@ -81,7 +81,7 @@ public static class LocalModelServers
     [
         new("ollama", "Ollama", 11434, "/v1", "Martlet installs and starts Ollama itself; or start the Ollama app.") { OllamaTags = true },
         new("lm-studio", "LM Studio", 1234, "/v1",
-            "In LM Studio, open Developer (or Local Server) and turn on Start server. Load a model, or turn on loading models on demand."),
+            "In LM Studio, open Developer (or Local Server) and turn on Start server, then load a model or turn on loading models on demand."),
         new("llama-cpp", "llama.cpp server", 8080, "/v1",
             "Start llama-server with your model, for example llama-server -m model.gguf --jinja (--jinja lets the model use tools).")
         { OwnedBy = "llamacpp" },
@@ -96,7 +96,7 @@ public static class LocalModelServers
         new("gpt4all", "GPT4All", 4891, "/v1", "In GPT4All, open Settings › Application and turn on Enable Local API Server."),
         new("docker-model-runner", "Docker Model Runner", 12434, "/engines/v1",
             "In Docker Desktop, open Settings › AI and turn on host-side TCP support for Docker Model Runner (port 12434)."),
-        new("litellm", "LiteLLM", 4000, "/v1", "Start the LiteLLM proxy. It may send requests on to cloud providers.")
+        new("litellm", "LiteLLM", 4000, "/v1", "Start the LiteLLM proxy, which may send requests on to cloud providers.")
     ]);
 
     /// <summary>The app at exactly this base URL when no other app Martlet knows uses its port (so the name is certain), else

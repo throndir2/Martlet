@@ -67,11 +67,11 @@ public partial class MainWindow
         if (looking && found is null) return "Looking for model apps on this PC...";
         if (found is null) return "Martlet hasn't looked for model apps on this PC yet.";
         var others = found.Where(s => s.Id != "ollama").ToList();
-        var ollama = ollamaRunning || found.Any(s => s.Id == "ollama") ? " Ollama is running too; choose Ollama above to use it." : "";
+        var ollama = ollamaRunning || found.Any(s => s.Id == "ollama") ? ", and Ollama is running too (choose Ollama above to use it)." : ".";
         if (others.Count == 0)
-            return "No other model app answers on this PC. Start your app's local server, then choose Look again, or enter its address." + ollama;
+            return "No other model app answers on this PC, so start your app's local server, then choose Look again or enter its address" + ollama;
         return "Found on this PC: " + string.Join("; ", others.Select(s => $"{s.Name} at {s.ChatCompletionsBaseUrl} (" +
-            (s.NeedsKey ? "asks for a key" : s.Models.Count == 1 ? "1 model" : $"{s.Models.Count} models") + ")")) + "." + ollama;
+            (s.NeedsKey ? "asks for a key" : s.Models.Count == 1 ? "1 model" : $"{s.Models.Count} models") + ")")) + ollama;
     }
 
     /// <summary>Looks for model apps on this PC (loopback only, about 1.5 s), then shows the page again. <paramref name="quiet"/>:
@@ -130,8 +130,9 @@ public partial class MainWindow
         var found = OtherLocalServers();
 
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
-            Text = LocalServersSummary(localServers, lookingForLocalServers, ollamaModels is not null) +
-                (current is null ? "" : $" Thinking uses {current.ModelId} in {LocalServerName(current.Origin)}.") };
+            Text = current is null ? LocalServersSummary(localServers, lookingForLocalServers, ollamaModels is not null)
+                : $"Thinking uses {current.ModelId} in {LocalServerName(current.Origin)}; " +
+                  Lowered(LocalServersSummary(localServers, lookingForLocalServers, ollamaModels is not null)) };
         AutomationProperties.SetAutomationId(status, "LocalServersStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
@@ -162,6 +163,8 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(keyStatus, "LocalServerKeyStatus");
         var hint = Note("", new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(hint, "LocalServerHint");
+        var privacy = Note("", new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(privacy, "LocalServerPrivacy");
 
         LocalModelServer? Picked() => picked;
         string? BaseUrl(out string problem)
@@ -180,7 +183,7 @@ public partial class MainWindow
         {
             var baseUrl = BaseUrl(out _);
             var last = localServerTest is { } outcome && outcome.Model == ModelId() && outcome.BaseUrl == baseUrl ? outcome : null;
-            tested.Text = last?.Text ?? (ModelId().Length == 0 || baseUrl is null ? "" : $"{ModelId()} isn't tested yet. Test it before using it.");
+            tested.Text = last?.Text ?? (ModelId().Length == 0 || baseUrl is null ? "" : $"{ModelId()} isn't tested yet, so test it before you use it.");
             tested.SetResourceReference(TextBlock.ForegroundProperty, last is null ? "MutedBrush" : last.Passed && !last.Warning ? "SuccessBrush"
                 : "WarningBrush");
         }
@@ -206,23 +209,25 @@ public partial class MainWindow
                 model.Text = current?.Origin == baseUrl && current is not null ? current.ModelId
                     : list.Contains(keep, StringComparer.Ordinal) ? keep : list.FirstOrDefault() ?? keep;
             }
-            models.Text = ((server?.NeedsKey == true || asked?.Kind == LocalServerAnswerKind.NeedsKey
-                    ? "It asks for an API key before it lists its models. Enter the key you set in the app, then choose Find models or Test model. "
-                    : asked is { Kind: not LocalServerAnswerKind.Models } ? asked.Problem + " "
-                    : list.Count == 0 && (server is not null || asked is not null) ? "It lists no models yet. Load one in the app, or type its name. "
-                    : list.Count > 0 ? $"It lists {list.Count} {(list.Count == 1 ? "model" : "models")}. " : "") +
-                (unusable.Count > 0 ? $"Martlet can't use {string.Join(", ", unusable.Take(3))}: give it a name of letters, digits, dots, " +
-                    "dashes, underscores, slashes or colons in the app. " : "")).Trim();
+            var listed = server?.NeedsKey == true || asked?.Kind == LocalServerAnswerKind.NeedsKey
+                    ? "It asks for an API key before it lists its models: enter the key you set in the app, then choose Find models or Test model"
+                    : asked is { Kind: not LocalServerAnswerKind.Models } ? (asked.Problem ?? "").TrimEnd('.')
+                    : list.Count == 0 && (server is not null || asked is not null) ? "It lists no models yet, so load one in the app or type its name"
+                    : list.Count > 0 ? $"It lists {list.Count} {(list.Count == 1 ? "model" : "models")}" : "";
+            var cannot = unusable.Count > 0 ? $"Martlet can't use {string.Join(", ", unusable.Take(3))}: give it a name of letters, digits, " +
+                "dots, dashes, underscores, slashes or colons in the app" : "";
+            models.Text = listed.Length > 0 && cannot.Length > 0 ? $"{listed}; {Lowered(cannot)}." : listed.Length + cannot.Length > 0 ? listed + cannot + "." : "";
             var saved = HasKey(baseUrl);
-            keyStatus.Text = saved ? "Your key for this app is saved. Leave this empty to keep it, or enter a new key."
-                : "Leave this empty unless the app asks for a key. Martlet keeps a key in Windows Credential Manager.";
+            keyStatus.Text = saved ? "Your key for this app is saved; leave this empty to keep it or enter a new key."
+                : "Leave this empty unless the app asks for a key (Martlet keeps a key in Windows Credential Manager).";
             var name = baseUrl is null ? "the app" : LocalServerName(baseUrl);
             // An app that already answers needs no start steps; one typed by address may not be running yet.
             var start = server is not null ? "" : (baseUrl is null ? null : LocalModelServers.AppAt(baseUrl)?.HowToStart) ??
                 "Start your app's local server (it may be called API server, OpenAI-compatible server or Developer server), then " +
                 "choose Look again or enter its address.";
-            hint.Text = (start + $" Your messages go to {name} on this PC. That app decides what it keeps, and whether anything " +
-                "leaves this PC.").Trim();
+            hint.Text = start;
+            hint.Visibility = start.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+            privacy.Text = $"Your messages go to {name} on this PC, and that app decides what it keeps and whether anything leaves this PC.";
             use.Content = baseUrl is null ? "Use this app" : $"Use {LocalServerName(baseUrl)}";
             AutomationProperties.SetName(use, (string)use.Content);
             ShowTest();
@@ -239,8 +244,9 @@ public partial class MainWindow
         key.PasswordChanged += (_, _) => tabEdited = true;
 
         return Card(Heading("Your model app on this PC"),
-            Note("Martlet thinks with a model your app serves on this PC, with no per-request cost. Start the app's local server, " +
-                "then choose it here.", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("Martlet thinks with a model your app serves on this PC, with no per-request cost. Start the app's local " +
+                "server, then choose it here.", new Thickness(0, 0, 0, 8), "LocalServerAbout", "your model app",
+                wiki: "Thinking#use-a-model-app-you-already-run"),
             status,
             addressPanel,
             new Label { Content = "M_odel", Target = model, Padding = new Thickness(0, 8, 0, 4) },
@@ -250,6 +256,7 @@ public partial class MainWindow
             key,
             keyStatus,
             hint,
+            privacy,
             Row(PageButton("Look again", () => LookForLocalServersAsync().Forget(), id: "LocalServersScan"),
                 find,
                 PageButton("Test model", () => TestLocalServerAsync(BaseUrl(out var problem), problem, ModelId(), key).Forget(), id: "LocalServerTest"),
@@ -353,7 +360,7 @@ public partial class MainWindow
             localServerTest = new(baseUrl, model, result.Summary + context, true, result.Warning);
             var inUse = homeSettings.ThinkingRoute() is { } route &&
                 route.Origin == baseUrl && route.ModelId == model;
-            ActionText.Text = localServerTest.Text + (inUse ? "" : $" Choose Use {name} to use it.");
+            ActionText.Text = inUse ? localServerTest.Text : localServerTest.Text.TrimEnd('.') + $"; choose Use {name} to use it.";
             showContextStatus?.Invoke();
         }
         else if (failure is not null)
@@ -388,12 +395,12 @@ public partial class MainWindow
         if (closing) return;
         if (answer.Kind != LocalServerAnswerKind.Models)
         {
-            ActionText.Text = $"{Capitalized(name)} at {baseUrl}: {answer.Problem} Thinking didn't change.";
+            ActionText.Text = $"{Capitalized(name)} at {baseUrl}: {(answer.Problem ?? "").TrimEnd('.')}, so Thinking didn't change.";
             return;
         }
         if (answer.Models.Count > 0 && !answer.Models.Contains(model, StringComparer.Ordinal) &&
-            !ConfirmationDialog.Confirm(this, $"{Capitalized(name)} doesn't list {model}. It lists {string.Join(", ", answer.Models.Take(6))}" +
-                $"{(answer.Models.Count > 6 ? " and more" : "")}. Some apps load a model only when asked. Switch Thinking to {model} anyway?",
+            !ConfirmationDialog.Confirm(this, $"{Capitalized(name)} doesn't list {model} (it lists {string.Join(", ", answer.Models.Take(6))}" +
+                $"{(answer.Models.Count > 6 ? " and more" : "")}), but some apps load a model only when asked: switch Thinking to {model} anyway?",
                 "Use a model the app doesn't list", "Switch anyway", questionId: "LocalServerModelQuestion"))
         {
             ActionText.Text = "Thinking didn't change.";
@@ -406,7 +413,7 @@ public partial class MainWindow
                 if (typed.Length > 0) lease = TakeKey(keyBox);
             localServerPicked = baseUrl;
             if (!await SaveSectionRouteAsync(HostJob.Thinking, settings => ChatCompletionsSetup.SelectRoute(settings, baseUrl, model), lease,
-                    $"Martlet now thinks with {model} in {name} on this PC.{(lease is null ? "" : " The key is saved in Windows Credential Manager.")}"))
+                    $"Martlet now thinks with {model} in {name} on this PC{(lease is null ? "" : ", and the key is saved in Windows Credential Manager")}."))
                 return;
             localApp = null;
             ForgetRetired(baseUrl, model, "you chose it again");
