@@ -51,7 +51,10 @@ COPY deploy/host /opt/martlet/host
 # gpt-sovits: workers/gpt-sovits/host/Dockerfile; dia: workers/dia/host/Dockerfile; singing: workers/singing/host/Dockerfile;
 # pictures: workers/pictures/host/Dockerfile; ocr: workers/ocr/host/Dockerfile; motion: workers/motion/host/Dockerfile;
 # voice-recognition: workers/voice-recognition/host/Dockerfile; audio2face's local engine: workers/audio2face/Dockerfile;
-# stt's parakeet engine: workers/parakeet/host/Dockerfile).
+# stt's parakeet engine: workers/parakeet/host/Dockerfile). The speech roles build with the context workers/, so the
+# shared host module (workers/common) and the context's .dockerignore come too.
+COPY workers/.dockerignore /opt/martlet/source/workers/.dockerignore
+COPY workers/common /opt/martlet/source/workers/common
 COPY workers/f5 /opt/martlet/source/workers/f5
 COPY workers/xtts /opt/martlet/source/workers/xtts
 COPY workers/chatterbox /opt/martlet/source/workers/chatterbox

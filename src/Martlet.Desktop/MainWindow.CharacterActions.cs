@@ -153,8 +153,8 @@ public partial class MainWindow
         var status = Note(characterActions.Problem is { } problem ? "Martlet couldn't read this model's emotes and motions: " + problem
             : catalog is null ? "Reading the character's emotes and motions..."
             : counts + (catalog.Settings.DetectedBy == CharacterActionSettings.ByThinking && catalog.Settings.DetectedAt is { } at
-                ? $" Named by the Thinking model on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}."
-                : " Named from the model's own files."), new Thickness(0, 0, 0, 4));
+                ? $"; named by the Thinking model on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}."
+                : "; named from the model's own files."), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "CharacterActionsStatus");
         stack.Add(status);
         if (characterActions.Naming is { } naming)
@@ -342,10 +342,10 @@ public partial class MainWindow
         var tags = catalog.Offered(engine).Select(e => "{" + e.Action.Tag + "}").ToArray();
         var linked = catalog.Entries.Where(e => e.Action is { Enabled: true, Cue: not null }).Select(e =>
             $"{(engine?.Tags.FirstOrDefault(t => t.Cue == e.Action.Cue)?.Text ?? e.Action.Cue)} plays {e.Source.Name}").ToArray();
-        return (tags.Length == 0 ? "Replies aren't offered any tags." : $"Replies can use {tags.Length}: {string.Join(" ", tags)}.") +
-            (linked.Length == 0 ? "" : engine?.SupportsTags == true
-                ? $" Following {engine.Name}'s voice: {string.Join("; ", linked)}."
-                : $" Linked to voice cues (with a voice that makes sounds and tones): {string.Join("; ", linked)}.");
+        return (tags.Length == 0 ? "Replies aren't offered any tags" : $"Replies can use {tags.Length}: {string.Join(" ", tags)}") +
+            (linked.Length == 0 ? "." : engine?.SupportsTags == true
+                ? $", following {engine.Name}'s voice: {string.Join("; ", linked)}."
+                : $", linked to voice cues (with a voice that makes sounds and tones): {string.Join("; ", linked)}.");
     }
 
     /// <summary>Try: plays an emote or motion once, or turns a lingering one on (Turn off turns it off again), as a reply's

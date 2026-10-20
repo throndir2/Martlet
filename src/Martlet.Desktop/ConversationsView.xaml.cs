@@ -286,7 +286,7 @@ public partial class ConversationsView : UserControl
             StatusText.Text = "Nothing changed. " + StatusText.Text;
             return;
         }
-        if (string.IsNullOrWhiteSpace(text) && !confirm(Owner, "The new text is empty, so the message will be deleted. Delete it?", "Delete message"))
+        if (string.IsNullOrWhiteSpace(text) && !confirm(Owner, "Delete this message, since its new text is empty?", "Delete message"))
             return;
         var there = There;
         StopEditing();
@@ -302,9 +302,9 @@ public partial class ConversationsView : UserControl
         if (busy || MessagesList.SelectedItem is not MessageItem item) return;
         var there = There && item.Exchange.Source is not null;
         var what = item.Side == HistorySide.User ? (item.Exchange.Speaker is null ? "your message" : "this message") : "Martlet's reply";
-        if (!confirm(Owner, $"Delete {what} of {PastConversations.When(item.Exchange.At, history.Zone)} from the record?" +
-                (there ? $" Martlet also deletes it{Where(item.Exchange)} when the app allows it." : "") +
-                " Martlet won't be able to bring it up again. This can't be undone.", "Delete message"))
+        if (!confirm(Owner, $"Delete {what} of {PastConversations.When(item.Exchange.At, history.Zone)} from the record" +
+                (there ? $", and also{Where(item.Exchange)} where the app allows it" : "") +
+                "? This can't be undone.", "Delete message"))
             return;
         await RunAsync(async token =>
         {
@@ -318,9 +318,9 @@ public partial class ConversationsView : UserControl
         if (busy || ConversationsList.SelectedItem is not ConversationItem item) return;
         var there = There && item.Conversation.Apps?.Any(app => app != HistoryApps.Pc) == true;
         if (!confirm(Owner, $"Delete the conversation of {PastConversations.When(item.Conversation.Started, history.Zone)} " +
-                $"({item.Conversation.Exchanges} exchange{(item.Conversation.Exchanges == 1 ? "" : "s")}) from the record?" +
-                (there ? " Martlet also deletes its messages in Telegram and Discord where the app allows it." : "") +
-                " Martlet won't be able to bring it up again. Facts it remembered from it stay in Memory. This can't be undone.",
+                $"({item.Conversation.Exchanges} exchange{(item.Conversation.Exchanges == 1 ? "" : "s")}) from the record" +
+                (there ? ", and its messages in Telegram and Discord where the app allows it" : "") +
+                "? This can't be undone, but facts Martlet remembered from it stay in Memory.",
                 "Delete conversation"))
             return;
         await RunAsync(async token =>
@@ -334,9 +334,9 @@ public partial class ConversationsView : UserControl
     {
         if (busy) return;
         var there = There && history.Store.Stats.Apps?.Keys.Any(app => app != HistoryApps.Pc) == true;
-        if (!confirm(Owner, "Delete the whole record of conversations on this PC?" +
-                (there ? " Martlet also deletes every recorded message in Telegram and Discord where the app allows it." : "") +
-                " Martlet won't be able to bring any of them up again. Facts it remembered stay in Memory. This can't be undone.",
+        if (!confirm(Owner, "Delete the whole record of conversations on this PC" +
+                (there ? ", and every recorded message in Telegram and Discord where the app allows it" : "") +
+                "? This can't be undone, but facts Martlet remembered stay in Memory.",
                 "Delete conversation history"))
             return;
         query = null;
@@ -352,8 +352,8 @@ public partial class ConversationsView : UserControl
     {
         var waiting = history.Platforms.Status.Pending;
         if (waiting == 0) return;
-        if (!confirm(Owner, $"Stop waiting to make {waiting} change{(waiting == 1 ? "" : "s")} in Telegram and Discord? Those messages stay " +
-                "there as they are; the record here doesn't change.", "Stop waiting changes"))
+        if (!confirm(Owner, $"Stop waiting to make {waiting} change{(waiting == 1 ? "" : "s")} in Telegram and Discord, and leave " +
+                "those messages there as they are?", "Stop waiting changes"))
             return;
         history.Platforms.Clear();
         RenderPlatforms();
@@ -377,7 +377,7 @@ public partial class ConversationsView : UserControl
         catch (OperationCanceledException) { return; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            done = $"Couldn't change it ({error.GetType().Name}). Nothing else changed.";
+            done = $"Couldn't change it ({error.GetType().Name}), and nothing else changed.";
         }
         finally { busy = false; }
         if (lifetime.IsCancellationRequested) return;

@@ -38,7 +38,6 @@ HTTP (127.0.0.1 only):
 from __future__ import annotations
 
 import argparse
-import hashlib
 import http.server
 import importlib.metadata
 import json
@@ -55,6 +54,12 @@ from array import array
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
+
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside this file)
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "common"))
+    import martlet_worker_host as shared
 
 ROOT = Path(os.environ.get("MARTLET_VOICE_RECOGNITION_ROOT", "/opt/martlet-voice-recognition"))
 MODELS = Path(os.environ.get("MARTLET_VOICE_RECOGNITION_MODELS", str(ROOT / "models")))
@@ -79,7 +84,6 @@ MODEL_ID = "wespeaker-en-voxceleb-resnet34-lm"
 SEGMENTATION_ID = "pyannote-segmentation-3-0"
 DOWNLOAD_ATTEMPTS = 3
 DOWNLOAD_TIMEOUT_SECONDS = 60
-CHUNK_BYTES = 1 << 20
 
 
 @dataclass(frozen=True)
@@ -119,44 +123,16 @@ def threads() -> int:
 
 
 def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(CHUNK_BYTES), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    return shared.sha256_file(path)[1]
 
 
 def verified(root: Path, file: ModelFile) -> bool:
-    path = root / file.path
-    try:
-        return path.stat().st_size == file.size and sha256_file(path) == file.sha256
-    except OSError:
-        return False
+    return shared.is_pinned(root / file.path, file.size, file.sha256)
 
 
 def _download(file: ModelFile, target: Path, opener: Callable[..., Any]) -> None:
-    part = target.with_name(target.name + ".part")
-    digest = hashlib.sha256()
-    size = 0
-    try:
-        with opener(urllib.request.Request(file.url, headers={"User-Agent": "Martlet-Voice-Recognition-Host"}),
-                    timeout=DOWNLOAD_TIMEOUT_SECONDS) as response, part.open("wb") as out:
-            while True:
-                block = response.read(CHUNK_BYTES)
-                if not block:
-                    break
-                size += len(block)
-                if size > file.size:
-                    raise ValueError(f"{file.path} is larger than its pinned {file.size} bytes")
-                digest.update(block)
-                out.write(block)
-        if size != file.size:
-            raise ValueError(f"{file.path} has {size} bytes, not its pinned {file.size}")
-        if digest.hexdigest() != file.sha256:
-            raise ValueError(f"{file.path} does not match its pinned SHA-256")
-        os.replace(part, target)
-    finally:
-        part.unlink(missing_ok=True)
+    shared.download(file.url, target, file.size, file.sha256, agent="Martlet-Voice-Recognition-Host", label=file.path,
+                    opener=opener, timeout=DOWNLOAD_TIMEOUT_SECONDS)
 
 
 def fetch_models(root: Path, opener: Callable[..., Any] = urllib.request.urlopen, report: Callable[[str], None] = say,
@@ -535,55 +511,43 @@ class Service:
         return {"voiceprint": json_vector(result), "milliseconds": elapsed}
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "MartletVoiceRecognition/1"
     service: Service
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        pass
-
-    def _send(self, status: int, payload: dict[str, Any]) -> None:
-        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def refusal(self, code: str, summary: str) -> dict[str, Any]:
+        return {"error": code, "message": summary}
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/status":
-            self._send(200, self.service.status())
+            self._json(200, self.service.status())
         else:
-            self._send(404, {"error": "request.not_found"})
+            self._json(404, {"error": "request.not_found"})
 
     def do_POST(self) -> None:  # noqa: N802
         operations = {"/analyze": self.service.analyze, "/voiceprint": self.service.voiceprint}
         operation = operations.get(self.path)
         if operation is None:
-            self._send(404, {"error": "request.not_found"})
+            self._json(404, {"error": "request.not_found"})
             return
         media_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
-        try:
-            length = int(self.headers.get("Content-Length", ""))
-        except ValueError:
-            self.close_connection = True
-            self._send(400, {"error": "request.invalid", "message": "send Content-Length"})
+        # The relay reads 400 as request.invalid, so audio longer than a minute is a 400 here too.
+        length = self.content_length(MAX_PCM_BYTES, too_large=400)
+        if length is None:
             return
-        if media_type != "application/octet-stream" or not 0 < length <= MAX_PCM_BYTES or length % 2:
-            self.close_connection = True
-            self._send(400, {"error": "request.invalid",
-                             "message": f"send application/octet-stream with 2 to {MAX_PCM_BYTES} bytes of 16 kHz mono PCM16"})
+        if media_type != "application/octet-stream" or not 0 < length or length % 2:
+            self.refuse(400, "request.invalid", f"send application/octet-stream with 2 to {MAX_PCM_BYTES} bytes of 16 kHz mono PCM16")
             return
         body = bytearray(self.rfile.read(length))
         try:
-            self._send(200, operation(bytes(body)))
+            self._json(200, operation(bytes(body)))
         except BadRequest as error:
-            self._send(400, {"error": "request.invalid", "message": str(error)})
+            self._json(400, {"error": "request.invalid", "message": str(error)})
         except NotReady:
-            self._send(503, {"error": "worker.loading"})
+            self._json(503, {"error": "worker.loading"})
         except Exception as error:  # noqa: BLE001 - the relay only needs to know it failed
             say(f"Voice recognition failed: {type(error).__name__}")
-            self._send(500, {"error": "worker.failed"})
+            self._json(500, {"error": "worker.failed"})
         finally:
             body[:] = bytes(len(body))
 

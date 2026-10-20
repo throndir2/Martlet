@@ -10,7 +10,7 @@ public sealed class HouseholdSignInStoreTests
 
     private static HostSignInSettings Host(string hostId, params HostSignInProviderSettings[] providers) => new(hostId, null, 0, providers, [], [], null);
 
-    private static HouseholdSignInStore.Document Kept(params KeptHouseholdProvider[] kept) => new() { Kept = [.. kept] };
+    private static HouseholdSignInFile.Document Kept(params KeptHouseholdProvider[] kept) => new() { Kept = [.. kept] };
 
     [Fact]
     public void A_new_host_gets_the_households_providers_with_the_secret_only_from_the_pc_that_kept_it()

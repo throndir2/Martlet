@@ -236,13 +236,13 @@ public static class CharacterCardReader
     public const int MaximumCardBytes = 8 * 1024 * 1024;
 
     internal const string NoCardInImage =
-        "This image has no character card inside it. Character card PNGs from SillyTavern or Chub carry the character's details " +
-        "in the file; a resaved, converted or screenshotted copy loses them. Use the original PNG, or its JSON or CHARX export.";
+        "This image has no character card inside it; use the original PNG (a resaved or converted copy loses the card), or its " +
+        "JSON or CHARX export.";
     internal const string Unsupported =
-        "This isn't a character card. Choose a PNG card image, a JSON card or a CHARX file from SillyTavern, Chub (CharacterHub), " +
+        "This isn't a character card; choose a PNG card image, a JSON card or a CHARX file from SillyTavern, Chub (CharacterHub), " +
         "RisuAI or another Tavern-compatible app.";
     internal const string Damaged =
-        "This character card's data is damaged or unreadable. Download the card again, or use its JSON or CHARX export.";
+        "This character card's data is damaged or unreadable; download the card again, or use its JSON or CHARX export.";
 
     private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
 

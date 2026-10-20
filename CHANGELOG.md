@@ -23,6 +23,9 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
+- The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
+- The speech host roles (XTTS, Dia, GPT-SoVITS, F5, Chatterbox, singing, Parakeet and voice recognition) now share one copy of their download and request code, so a request with a bad length gets a clear error instead of a dropped connection. The next host update rebuilds these roles once. ([#1061](https://github.com/throndir2/Martlet/pull/1061))
 - Home, the welcome tour, the setup advisor and Recommended setup show one short line for each explanation; the rest is behind a **?** with a link to the wiki, which now has those instructions. ([#1051](https://github.com/throndir2/Martlet/pull/1051))
 - New installations start with up-to-date model suggestions: the model list that comes with Martlet is refreshed. ([#1044](https://github.com/throndir2/Martlet/pull/1044))
 - Martlet starts answering sooner: it no longer waits for Home Assistant or for tool servers that are still starting before it answers, and it reads memories and lorebooks at the same time. A tool from a server that is still starting waits for it only when Martlet uses that tool. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
@@ -33,6 +36,13 @@ Each release's section here is also its notes on GitHub.
 
 - The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
 - Listening, Voice, People, Singing, *Microphone and speakers* and *Voice ID* now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki pages for listening, voices and singing have the full instructions. ([#1049](https://github.com/throndir2/Martlet/pull/1049))
+- Companion › Vision, Reading and Picture making, the Creations page and camera messages now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Vision and Pictures and Creations wiki pages have the full instructions, including what to do when a camera doesn't work. ([#1056](https://github.com/throndir2/Martlet/pull/1056))
+
+### Changed
+
+- Your character's touch zones (also the ones you drew or changed), its eye measurement, its VRoid Hub credit and its own changes to how it reacts to touches are now the same on all your computers, so each model is set up once. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Your Discord setup (the bot and its token, the people Martlet knows, the chat modes and channel rules) and your Telegram and WhatsApp connections with their paired chats are now the same on all your computers. Each computer still chooses for itself whether it runs the bot. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Keeping clips of voices you haven't named is now one choice for all your computers, and turning it off on one computer deletes the clips on every computer. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
 
 ### Fixed
 

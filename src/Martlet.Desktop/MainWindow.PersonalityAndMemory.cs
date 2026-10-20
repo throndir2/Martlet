@@ -25,7 +25,8 @@ public partial class MainWindow
             : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}.", null));
 
         page.Children.Add(Card(Heading("Personas"),
-            Note("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.",
+                new Thickness(0, 0, 0, 8), "PersonasAbout", "personas", wiki: "Personality-and-Characters#personas"),
             Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), primary: true, id: "OpenCompanion"))));
 
         page.Children.Add(ProfilesLinkCard());
@@ -35,8 +36,9 @@ public partial class MainWindow
             Row(PageButton("Import a character card", () => OpenCompanionWindowAsync(importCard: true).Forget(), id: "ImportCharacterCard"))));
 
         page.Children.Add(Card(Heading("Prompts"),
-            Note("The persona is wrapped in Martlet's own instructions, along with lore, memory, reply length and more. See and edit every one of them.",
-                new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("See and edit Martlet's own instructions around the persona. The persona is wrapped in them, along with lore, " +
+                "memory, reply length and more.", new Thickness(0, 0, 0, 8), "PromptsAround", "prompts",
+                wiki: "Personality-and-Characters#prompts"),
             Row(PageButton("Edit prompts", () => OpenCompanion(CompanionTab.Prompts), id: "OpenPrompts"))));
     }
 

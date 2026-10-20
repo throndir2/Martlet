@@ -23,7 +23,6 @@ HTTP (127.0.0.1 only):
 from __future__ import annotations
 
 import argparse
-import hashlib
 import http.server
 import importlib.metadata
 import io
@@ -39,6 +38,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside this file)
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "common"))
+    import martlet_worker_host as shared
+
 ROOT = Path(os.environ.get("MARTLET_PARAKEET_ROOT", "/opt/martlet-parakeet"))
 MODELS = ROOT / "models"
 PORT = int(os.environ.get("MARTLET_PARAKEET_PORT", "8178"))
@@ -47,7 +52,6 @@ MAX_SECONDS = 60
 MAX_BODY_BYTES = 8 * 1024 * 1024
 DOWNLOAD_ATTEMPTS = 3
 DOWNLOAD_TIMEOUT_SECONDS = 60
-CHUNK_BYTES = 1 << 20
 CC_BY = "License: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/\n"
 
 
@@ -152,28 +156,8 @@ def _verified(path: Path, file: ModelFile) -> bool:
 
 
 def _download(url: str, target: Path, file: ModelFile, opener: Callable[..., Any]) -> None:
-    part = target.with_name(target.name + ".part")
-    digest = hashlib.sha256()
-    size = 0
-    try:
-        with opener(urllib.request.Request(url, headers={"User-Agent": "Martlet-Parakeet-Host"}),
-                    timeout=DOWNLOAD_TIMEOUT_SECONDS) as response, part.open("wb") as out:
-            while True:
-                block = response.read(CHUNK_BYTES)
-                if not block:
-                    break
-                size += len(block)
-                if size > file.size:
-                    raise ValueError(f"{file.name} is larger than its pinned {file.size} bytes")
-                digest.update(block)
-                out.write(block)
-        if size != file.size:
-            raise ValueError(f"{file.name} has {size} bytes, not its pinned {file.size}")
-        if digest.hexdigest() != file.sha256:
-            raise ValueError(f"{file.name} does not match its pinned SHA-256")
-        os.replace(part, target)
-    finally:
-        part.unlink(missing_ok=True)
+    shared.download(url, target, file.size, file.sha256, agent="Martlet-Parakeet-Host", opener=opener,
+                    timeout=DOWNLOAD_TIMEOUT_SECONDS)
     target.with_name(target.name + ".sha256").write_text(file.sha256 + "\n", encoding="ascii")
 
 
@@ -309,49 +293,38 @@ class Service:
         return {"text": self.transcriber.transcribe(rate, pcm)}
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "MartletParakeet/1"
+    max_body_bytes = MAX_BODY_BYTES
     service: Service
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        pass
+    def encode(self, value: Any) -> bytes:
+        return json.dumps(value).encode("utf-8")
 
-    def _send(self, status: int, payload: dict[str, Any]) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def refusal(self, code: str, summary: str) -> dict[str, Any]:
+        return {"error": summary}
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/status":
-            self._send(200, self.service.status())
+            self._json(200, self.service.status())
         else:
-            self._send(404, {"error": "not found"})
+            self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/inference":
-            self._send(404, {"error": "not found"})
+            self._json(404, {"error": "not found"})
             return
-        try:
-            length = int(self.headers.get("Content-Length", ""))
-        except ValueError:
-            self.close_connection = True
-            self._send(411, {"error": "send Content-Length"})
-            return
-        if not 0 < length <= MAX_BODY_BYTES:
-            self.close_connection = True
-            self._send(413, {"error": f"send at most {MAX_BODY_BYTES} bytes"})
+        length = self.content_length()
+        if length is None:
             return
         body = self.rfile.read(length)
         try:
-            self._send(200, self.service.inference(self.headers.get("Content-Type", ""), body))
+            self._json(200, self.service.inference(self.headers.get("Content-Type", ""), body))
         except BadRequest as error:
-            self._send(400, {"error": str(error)})
+            self._json(400, {"error": str(error)})
         except Exception as error:  # noqa: BLE001 - the relay only needs to know it failed
             say(f"Transcription failed: {type(error).__name__}")
-            self._send(500, {"error": "transcription failed"})
+            self._json(500, {"error": "transcription failed"})
 
 
 def serve(service: Service, port: int = PORT) -> http.server.ThreadingHTTPServer:

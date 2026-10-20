@@ -9,9 +9,9 @@
 services:
   dia:
     build:
-      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/dia
-      dockerfile: host/Dockerfile
-    image: martlet-dia:1
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers
+      dockerfile: dia/host/Dockerfile
+    image: martlet-dia:2
     pull_policy: build
     restart: unless-stopped
     environment:

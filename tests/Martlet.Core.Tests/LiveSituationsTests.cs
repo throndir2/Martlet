@@ -30,7 +30,7 @@ public sealed class LiveSituationsTests
         var host = LiveSituations.Decide(Gaming with { Game = "ELDEN RING" });
         Assert.Equal((Situation.Gaming, LivePlaceKind.Host, "gpu-box", true), (host.Situation, host.Place!.Kind, host.Place.HostId, host.Moves));
         Assert.Equal([LivePlaceKind.Host, LivePlaceKind.Hosted, LivePlaceKind.ThisPc], host.Order.Select(p => p.Kind));
-        Assert.Contains("comes back when the game ends", host.Why);
+        Assert.Contains("until the game ends", host.Why);
 
         var backup = LiveSituations.Decide(Gaming with { Game = "ELDEN RING", Away = ["gpu-box"] });
         Assert.Equal((LivePlaceKind.Hosted, "NVIDIA Build"), (backup.Place!.Kind, backup.Place.Name));

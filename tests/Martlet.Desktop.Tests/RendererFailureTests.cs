@@ -164,7 +164,7 @@ public sealed class RendererFailureTests
 
             await controller.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(controller.IsShowing);
-            Assert.Equal("Character hidden. Voice continues.", controller.Status);
+            Assert.Equal("Character hidden; the voice continues.", controller.Status);
         }
         Unobserved.Collect();
         Assert.Empty(unobserved.Seen);
@@ -191,7 +191,7 @@ public sealed class RendererFailureTests
 
             await controller.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(controller.IsShowing);
-            Assert.Equal("Character hidden. Voice continues.", controller.Status);
+            Assert.Equal("Character hidden; the voice continues.", controller.Status);
 
             // The voice is unaffected.
             device.AutoConsume = true;

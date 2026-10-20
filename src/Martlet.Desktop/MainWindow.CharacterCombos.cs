@@ -70,9 +70,9 @@ public partial class MainWindow
         var combos = catalog.Combos;
         if (combos.Count == 0) return "No combos yet.";
         var offered = catalog.OfferedCombos().Select(c => "{" + c.Tag + "}").ToArray();
-        return $"{combos.Count} combo{(combos.Count == 1 ? "" : "s")}. " + (offered.Length == 0
-            ? "Replies aren't offered any: a combo needs to be on, with a part that is on."
-            : $"Replies can use {offered.Length}: {string.Join(" ", offered)}.");
+        return $"{combos.Count} combo{(combos.Count == 1 ? "" : "s")}, " + (offered.Length == 0
+            ? "but replies aren't offered any: a combo needs to be on, with a part that is on."
+            : $"and replies can use {offered.Length}: {string.Join(" ", offered)}.");
     }
 
     /// <summary>The combos <paramref name="rows"/> show now, for saving (null when there are none), or null with
@@ -111,7 +111,7 @@ public partial class MainWindow
         if (parts.Count == 0)
         {
             if (characterActionsLast is not null)
-                characterActionsLast.Text = $"The combo {{{tag}}} has no part to play. Write the tags of its parts, such as blush hearts nod.";
+                characterActionsLast.Text = $"The combo {{{tag}}} has no part to play; write the tags of its parts, such as blush hearts nod.";
             return;
         }
         try
@@ -172,7 +172,7 @@ public partial class MainWindow
             use = Compact(new TextBox { Text = combo?.Use ?? "", MinWidth = 150, MaxLength = CharacterActionCatalog.MaximumUseLength });
             AutomationProperties.SetName(use, $"When to use combo {n + 1}");
             AutomationProperties.SetAutomationId(use, $"CharacterComboUse-{n}");
-            const string useHelp = "What the Thinking model reads next to this tag, so it knows when to use it. Empty: what it combines.";
+            const string useHelp = "What the Thinking model reads next to this tag, so it knows when to use it (empty: what it combines).";
             AutomationProperties.SetHelpText(use, useHelp);
             use.ToolTip = useHelp;
             var useBox = WithHint(use, "", $"CharacterComboHint-{n}");

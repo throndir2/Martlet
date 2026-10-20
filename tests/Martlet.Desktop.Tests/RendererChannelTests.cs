@@ -304,12 +304,12 @@ public sealed class RendererChannelTests
     [Theory]
     [InlineData(true, false, "disposed", 0, "INFO", "Avatar renderer stopped by Martlet.")]
     [InlineData(false, true, null, 1, "INFO", "Avatar renderer ended by Martlet (code 0x00000001) because it stopped answering properly.")]
-    [InlineData(false, false, "avatar.renderer_unavailable", 0, "WARN", "Avatar renderer closed itself after an error (avatar.renderer_unavailable).")]
-    [InlineData(true, false, "avatar.renderer_unavailable", 0, "WARN", "Avatar renderer closed itself after an error (avatar.renderer_unavailable).")]
+    [InlineData(false, false, "avatar.renderer_unavailable", 0, "WARN", "Avatar renderer closed itself after an error (avatar.renderer_unavailable);")]
+    [InlineData(true, false, "avatar.renderer_unavailable", 0, "WARN", "Avatar renderer closed itself after an error (avatar.renderer_unavailable);")]
     [InlineData(true, false, "pipe", 0, "WARN", "Avatar renderer closed itself (code 0x00000000): its window was closed")]
     [InlineData(false, false, null, 0, "WARN", "Avatar renderer closed itself (code 0x00000000): its window was closed")]
-    [InlineData(false, false, "pipe", -1073741819, "ERROR", "Avatar renderer exited unexpectedly with code 0xC0000005.")]
-    [InlineData(false, false, null, -1, "ERROR", "Avatar renderer exited unexpectedly with code 0xFFFFFFFF.")]
+    [InlineData(false, false, "pipe", -1073741819, "ERROR", "Avatar renderer exited unexpectedly with code 0xC0000005;")]
+    [InlineData(false, false, null, -1, "ERROR", "Avatar renderer exited unexpectedly with code 0xFFFFFFFF;")]
     public void Renderer_exit_is_logged_for_what_ended_it(bool stoppedByMartlet, bool ended, string? broke, int exitCode,
         string level, string message)
     {

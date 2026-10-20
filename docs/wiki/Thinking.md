@@ -33,13 +33,38 @@ Open **Companion › Thinking** and choose under **Where it runs**:
 
 ## When Thinking fails or is slow
 
-- **If Thinking fails** on **Companion › Thinking** is an optional backup model. It answers once when the main model fails before any words arrive. A good pair is NVIDIA Build first and Google Gemini as the backup.
+- **If Thinking fails** on **Companion › Thinking** is an optional backup model. It answers once when the main model fails before any words arrive: an error, a rate limit or no answer in 15 seconds. A good pair is NVIDIA Build first and Google Gemini as the backup.
+  - Screen and camera looks use the backup too, so choose a model that can see images.
+  - When the backup answers, your messages, the recent conversation and any screen or camera picture of that reply go to it. Its requests can cost money. You tick a box to agree before you save it.
+  - A backup that is the same as Thinking adds nothing, so Martlet asks you to choose another model or provider.
+  - Paste the backup's API key in its key box. Martlet keeps it in Windows Credential Manager. Leave the box empty to keep a saved key, or to use Thinking's key for the same provider.
+  - With no backup, Martlet says that Thinking failed, and you try again.
 - **Backup Thinking** asks a second model when the first one is slow to start. It is off by default. On **Companion › Thinking pool › Backup for slow replies**, tick **Ask a machine in the pool too when a reply is slow to start**. Then tick **Backup for slow replies** on the machines it may use, ideally with the same model. The first one to start gives the reply.
-- Do you play games on a PC? Then while a game runs there, Martlet moves her thinking off that PC's graphics card to another computer. When the game ends, she moves it back.
+- Do you play games on a PC? Then while a game runs there, Martlet moves her thinking off that PC's graphics card to another computer. The model stays loaded while the game leaves room. When the game ends, she moves it back. When no other place can do live Thinking, it stays on that PC, and Martlet unloads it only when the game needs the graphics card's memory. Ollama then runs it on the processor.
 
 ## Reply settings
 
-**Companion › Replies** sets **Max reply length** (up to 32,768 tokens), **Context size**, **Thinking steps** (off by default, so replies start sooner) and **Short first sentence**. A larger context can cost more on paid providers.
+**Companion › Replies** changes how the Thinking model writes replies. Leave a box empty to use the model's default. Changes save as you type. An open conversation uses them after you reload it. Each setting has a **?** that says what it does.
+
+| Setting | What it does |
+| --- | --- |
+| **Thinking steps** | Off (the default) lets replies start sooner. On lets a reasoning model think step by step first. That can help with hard questions, but the first word comes seconds later. A model that always thinks refuses Off, and Martlet then uses the model's own default. |
+| **Short first sentence** | On (the default): each spoken reply starts with a few quick words, such as "Oh, nice one!". Her voice says the first sentence as soon as it is written, so a short one starts her talking sooner. The **Short first sentence** prompt on **Prompts** asks for it. |
+| **Adult content** | Off (the default). On lets Martlet flirt, be sexual and react explicitly, true to her personality, when her character is an adult. She never does with a character under 18, and never in a Discord call, where others can hear. Touches on intimate parts then count as sexual, and when you keep touching one, she takes it as deliberate and reacts more and more. Many cloud models refuse such content; models you run yourself usually don't. The words she is given are the **Adult content** prompt on **Prompts**. Choose On only if you are 18 or older. |
+| **Personal content** | What she may do with personal things she sees on your screen or camera. **Keep private** (the default): she never reads out messages, chats, emails or numbers, and says only who a message is from. **Read my messages**: she may read, quote and talk about your messages, chats, chat history, emails and notifications. **Everything**: she also sees password managers, private browsing, authenticator and banking windows, which she otherwise greys out. What she sees goes to your Thinking or image model. The words she is given are the **Personal content** prompts on **Prompts**. |
+| **Max reply length** | Stops unusually long replies, up to 32,768 tokens. A reply that reaches it can end early. |
+| **Temperature** | 0-2. Higher is more varied, lower is more predictable. |
+| **Top P**, **Top K**, **Min P** | How many likely words the model considers. A Top P of 1 turns it off. |
+| **Repeat**, **frequency** and **presence penalty** | Discourage repeated words and push replies toward new topics. |
+| **Context size** | How much the model keeps in mind: the persona, lore, memory, the conversation so far and the reply. Older exchanges are left out when a conversation outgrows it. A larger size sends more with each reply, which costs more on paid providers. See [Context](Talking-to-Martlet#context). |
+
+Under each setting, a line says whether your Thinking model uses it:
+
+- **Used by ...**: the model uses it. With a Martlet host, update the host to your Martlet version if replies fail after a change.
+- **May not work with ...**: it depends on the server. Empty the box if replies fail.
+- **Not used** or **Not supported**: the model ignores it.
+
+**Thinking longer** on the same page opens the **Thinking pool**. There, Martlet can think a hard task through in the background while you keep talking.
 
 To see everything Martlet sent for a reply, click **What was sent** under that reply in the talk window.
 

@@ -321,7 +321,7 @@ public sealed class GpuPriorityTests
         }
 
         // A hold on the live route's card: the live reply still runs, and the think on the other card goes on.
-        using (var hold = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath,
+        using (var hold = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath,
             $"{{\"routes\":[\"{Martlet.Core.Settings.SelfHostSetup.OllamaRouteId}\"],\"ttl_ms\":10000}}"))
             Assert.Equal(HttpStatusCode.OK, hold.StatusCode);
         Assert.Equal("Sure, here you go.", await lab.ReplyAsync());
@@ -342,7 +342,7 @@ public sealed class GpuPriorityTests
         lab.Deep.Release();
         var holdBody = $"{{\"routes\":[\"{Martlet.Core.Settings.SelfHostSetup.OllamaRouteId}\"],\"ttl_ms\":10000}}";
         var now = lab.Host.Clock.GetUtcNow();
-        using (var hold = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath, holdBody))
+        using (var hold = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath, holdBody))
         {
             Assert.Equal(HttpStatusCode.OK, hold.StatusCode);
             using var granted = JsonDocument.Parse(await hold.Content.ReadAsStringAsync());
@@ -357,7 +357,7 @@ public sealed class GpuPriorityTests
 
         // Calling again renews the one hold of this client.
         lab.Host.Clock.Advance(TimeSpan.FromSeconds(8));
-        using (var renew = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath, holdBody))
+        using (var renew = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath, holdBody))
             Assert.Equal(HttpStatusCode.OK, renew.StatusCode);
         lab.Host.Clock.Advance(TimeSpan.FromSeconds(8));
         using (var priority = await lab.GetJsonAsync("/martlet/v1/priority"))
@@ -369,16 +369,16 @@ public sealed class GpuPriorityTests
         }
 
         // Released: pool work runs again.
-        using (var release = await lab.PostAsync(GatewayHttpApplication.PriorityReleasePath, "{}"))
+        using (var release = await lab.PostAsync(GatewayPriorityRoutes.PriorityReleasePath, "{}"))
         using (var released = JsonDocument.Parse(await release.Content.ReadAsStringAsync()))
             Assert.True(released.RootElement.GetProperty("released").GetBoolean());
-        using (var released = await lab.PostAsync(GatewayHttpApplication.PriorityReleasePath, "{}"))
+        using (var released = await lab.PostAsync(GatewayPriorityRoutes.PriorityReleasePath, "{}"))
         using (var nothing = JsonDocument.Parse(await released.Content.ReadAsStringAsync()))
             Assert.False(nothing.RootElement.GetProperty("released").GetBoolean());
         await RunThinkAsync(lab);
 
         // Expired: a short hold ends on its own.
-        using (var hold = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath,
+        using (var hold = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath,
             $"{{\"routes\":[\"{Martlet.Core.Settings.SelfHostSetup.OllamaRouteId}\"],\"ttl_ms\":1000}}"))
             Assert.Equal(HttpStatusCode.OK, hold.StatusCode);
         using (var refused = await lab.ChatAsync(lab.DeepThinking))
@@ -389,7 +389,7 @@ public sealed class GpuPriorityTests
             Assert.Empty(priority.RootElement.GetProperty("holds").EnumerateArray());
 
         // A route this host doesn't have (or with unknown placement) holds the whole host: empty "gpus".
-        using (var whole = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath, "{\"routes\":[\"martlet.gateway.other.v1\"],\"ttl_ms\":5000}"))
+        using (var whole = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath, "{\"routes\":[\"martlet.gateway.other.v1\"],\"ttl_ms\":5000}"))
         using (var granted = JsonDocument.Parse(await whole.Content.ReadAsStringAsync()))
             Assert.Empty(granted.RootElement.GetProperty("gpus").EnumerateArray());
         using (var priority = await lab.GetJsonAsync("/martlet/v1/priority"))
@@ -404,7 +404,7 @@ public sealed class GpuPriorityTests
         using var stream = new StreamReader(await think.Content.ReadAsStreamAsync());
         using (await UntilAsync(stream, "text_delta")) { }
 
-        using (var hold = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath,
+        using (var hold = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath,
             $"{{\"routes\":[\"{Martlet.Core.Settings.SelfHostSetup.OllamaRouteId}\"],\"ttl_ms\":10000}}"))
             Assert.Equal(HttpStatusCode.OK, hold.StatusCode);
         using var failed = await UntilAsync(stream, "failed");
@@ -446,13 +446,13 @@ public sealed class GpuPriorityTests
             "{\"routes\":[\"not valid\"],\"ttl_ms\":1000}", "{\"routes\":[1],\"ttl_ms\":1000}", "[]"
         })
         {
-            using var response = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath, bad);
+            using var response = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath, bad);
             using var failure = await FailureAsync(response, HttpStatusCode.BadRequest);
             Assert.Equal("request.invalid", failure.RootElement.GetProperty("code").GetString());
         }
-        using (var notEmpty = await lab.PostAsync(GatewayHttpApplication.PriorityReleasePath, "{\"all\":true}"))
+        using (var notEmpty = await lab.PostAsync(GatewayPriorityRoutes.PriorityReleasePath, "{\"all\":true}"))
             Assert.Equal(HttpStatusCode.BadRequest, notEmpty.StatusCode);
-        using (var unsigned = new HttpRequestMessage(HttpMethod.Post, lab.Host.Origin.CanonicalOrigin + GatewayHttpApplication.PriorityHoldPath)
+        using (var unsigned = new HttpRequestMessage(HttpMethod.Post, lab.Host.Origin.CanonicalOrigin + GatewayPriorityRoutes.PriorityHoldPath)
         {
             Content = new StringContent($"{{\"routes\":[\"{route}\"],\"ttl_ms\":1000}}", Encoding.UTF8, "application/json")
         })
@@ -461,7 +461,7 @@ public sealed class GpuPriorityTests
 
         // Each client has one hold, and the host keeps at most 32 clients' holds at once.
         for (var i = 0; i < 2; i++)
-            using (var hold = await lab.PostAsync(GatewayHttpApplication.PriorityHoldPath, $"{{\"routes\":[\"{route}\"],\"ttl_ms\":10000}}"))
+            using (var hold = await lab.PostAsync(GatewayPriorityRoutes.PriorityHoldPath, $"{{\"routes\":[\"{route}\"],\"ttl_ms\":10000}}"))
                 Assert.Equal(HttpStatusCode.OK, hold.StatusCode);
         for (var i = 1; i < GatewayInferenceRouteRegistry.MaximumHolds; i++)
             Assert.Equal(HttpStatusCode.OK, await HoldAsAsync(lab, $"desktop-{i}", route));
@@ -474,7 +474,7 @@ public sealed class GpuPriorityTests
     {
         var credential = await lab.Host.PairAsync(GatewayRole.Voice, device);
         var signer = new GatewayRequestSigner(lab.Host.Identity, credential, lab.Host.Clock);
-        using var response = await lab.Host.Client.SendAsync(lab.Host.SignedPost(GatewayHttpApplication.PriorityHoldPath, GatewayRole.Voice,
+        using var response = await lab.Host.Client.SendAsync(lab.Host.SignedPost(GatewayPriorityRoutes.PriorityHoldPath, GatewayRole.Voice,
             signer, Encoding.UTF8.GetBytes($"{{\"routes\":[\"{route}\"],\"ttl_ms\":10000}}")));
         if (response.StatusCode != HttpStatusCode.OK)
         {

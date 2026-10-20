@@ -52,6 +52,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside this file)
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "common"))
+    import martlet_worker_host as shared
+
 ROOT = Path(os.environ.get("MARTLET_XTTS_ROOT", "/opt/martlet-xtts"))
 MODELS = ROOT / "models"
 CONFIG = MODELS / "worker-config.json"
@@ -65,7 +71,6 @@ PROTOCOL_VERSION = {"major": 1, "minor": 0}
 SAMPLE_RATE = 24_000
 MAX_FRAME_SAMPLES = 4_800
 MAX_SAMPLES = SAMPLE_RATE * 90
-MAX_BODY_BYTES = 6 * 1024 * 1024
 MAX_CHUNKS = 16
 MAX_CHUNK_CHARACTERS = 2_048
 WARMUP_SECONDS = 290
@@ -118,16 +123,6 @@ def _log(text: str) -> None:
     print(text, flush=True)
 
 
-def _sha256_file(path: Path) -> tuple[int, str]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        while chunk := stream.read(1_048_576):
-            size += len(chunk)
-            digest.update(chunk)
-    return size, digest.hexdigest()
-
-
 def _utc(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
@@ -143,38 +138,6 @@ def _version(distribution: str) -> str:
 
 
 # ------------------------------------------------------------------ provisioning (post-start role step)
-
-
-def _download(url: str, target: Path, size: int, sha256: str) -> None:
-    if target.is_file():
-        if _sha256_file(target) == (size, sha256):
-            _log(f"{target.name}: already downloaded and verified.")
-            return
-        target.unlink()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    digest = hashlib.sha256()
-    received = 0
-    shown = -1
-    request = urllib.request.Request(url, headers={"User-Agent": "martlet-xtts-host"})
-    with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as output:
-        while chunk := response.read(1_048_576):
-            received += len(chunk)
-            if received > size:
-                raise SystemExit(f"{target.name} is larger than its pinned size; stopped.")
-            digest.update(chunk)
-            output.write(chunk)
-            percent = received * 100 // size
-            if percent != shown:
-                shown = percent
-                sys.stdout.write(f"\r{target.name}: {percent}% of {size // 1_048_576 or 1} MiB")
-                sys.stdout.flush()
-    sys.stdout.write("\n")
-    if received != size or digest.hexdigest() != sha256:
-        partial.unlink(missing_ok=True)
-        raise SystemExit(f"{target.name} does not match its pinned SHA-256; nothing was installed.")
-    partial.replace(target)
-    _log(f"{target.name}: verified (SHA-256 {sha256[:12]}...).")
 
 
 def provision(fixture: bool) -> None:
@@ -201,7 +164,8 @@ def provision(fixture: bool) -> None:
         directory = f"models/{MODEL}"
         _log("XTTS-v2 files from huggingface.co/coqui/XTTS-v2 (Coqui Public Model License 1.0.0: non-commercial use only)")
         for role, (name, revision, size, sha256, license_id) in pinned.items():
-            _download(f"{XTTS_REPOSITORY}/{revision}/{name}", ROOT / directory / name, size, sha256)
+            shared.fetch_pinned(f"{XTTS_REPOSITORY}/{revision}/{name}", ROOT / directory / name, size, sha256,
+                                agent="martlet-xtts-host")
             artifacts.append(
                 {
                     "artifact_id": MODEL if role == "model_weights" else f"{MODEL}-{role.replace('_', '-')}",
@@ -292,7 +256,7 @@ class XttsEngine:
         pinned = PINNED_MODELS[config["model"]]
         for artifact in config["worker"]["artifacts"]:
             name = pinned[artifact["role"]][0]
-            if _sha256_file(directory / name) != (artifact["bytes"], artifact["sha256"]):
+            if shared.sha256_file(directory / name) != (artifact["bytes"], artifact["sha256"]):
                 raise RuntimeError(f"{name} does not match its pinned SHA-256; run the xtts role's provisioning again.")
         device = config["device"]
         if device.startswith("cuda") and not torch.cuda.is_available():
@@ -518,18 +482,16 @@ def worker_main() -> None:
 # ------------------------------------------------------------------ the service (owns and restarts the model process)
 
 
-class Worker:
+class Worker(shared.ModelProcess):
     """Owns one model process. Only one synthesis runs at a time."""
 
+    name = "xtts"
+    settled_states = frozenset({"ready", "failed", "not_provisioned"})
+    unavailable_states = frozenset({"not_provisioned", "failed"})
+    stopped_error = "The XTTS worker process stopped; it restarts for the next reply."
+
     def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.write_lock = threading.Lock()
-        self.changed = threading.Condition(self.lock)
-        self.process: subprocess.Popen[bytes] | None = None
-        self.identity: dict[str, Any] | None = None
-        self.state = "not_provisioned" if not CONFIG.is_file() else "cold"
-        self.error: str | None = None
-        self.pending: dict[str, queue.Queue[dict[str, Any] | None]] = {}
+        super().__init__("not_provisioned" if not CONFIG.is_file() else "cold")
         self.last_reply: dict[str, Any] | None = None
 
     def status(self) -> dict[str, Any]:
@@ -541,9 +503,6 @@ class Worker:
                 "state": self.state,
                 "worker": self.identity,
             }
-
-    def running(self) -> bool:
-        return self.process is not None and self.process.poll() is None
 
     def start(self) -> None:
         with self.lock:
@@ -576,67 +535,8 @@ class Worker:
             self.process = process
             self.identity = config["worker"]
             self.changed.notify_all()
-        threading.Thread(target=self._read, args=(process,), name="xtts-worker-reader", daemon=True).start()
+        self.read_in_background(process)
         self.send({"type": "warmup"})
-
-    def wait_settled(self, seconds: float) -> dict[str, Any]:
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while self.state not in {"ready", "failed", "not_provisioned"}:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
-        return self.status()
-
-    def wait_admissible(self, seconds: float) -> None:
-        """Wait (bounded) until the worker is ready with no reply in flight, or has settled into a non-loading state."""
-        deadline = time.monotonic() + seconds
-        with self.lock:
-            while (self.state != "ready" or self.pending) and self.state not in {"not_provisioned", "failed"}:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self.changed.wait(remaining)
-
-    def send(self, message: dict[str, Any]) -> bool:
-        process = self.process
-        if process is None or process.stdin is None:
-            return False
-        try:
-            with self.write_lock:
-                process.stdin.write(json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n")
-                process.stdin.flush()
-            return True
-        except (BrokenPipeError, OSError):
-            return False
-
-    def _read(self, process: subprocess.Popen[bytes]) -> None:
-        assert process.stdout is not None
-        for line in process.stdout:
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            if message.get("type") == "worker_state":
-                with self.lock:
-                    if self.process is process:
-                        self.state = "ready" if message.get("ready") else str(message.get("state"))
-                        self.error = (message.get("error") or {}).get("summary")
-                        self.changed.notify_all()
-            elif message.get("type") == "event":
-                with self.lock:
-                    target = self.pending.get(str((message.get("ids") or {}).get("request_id")))
-                if target is not None:
-                    target.put(message)
-        with self.lock:
-            if self.process is process:
-                self.state = "failed"
-                self.error = self.error or "The XTTS worker process stopped; it restarts for the next reply."
-                self.changed.notify_all()
-            waiting = list(self.pending.values())
-        for target in waiting:
-            target.put(None)
 
 
 WORKER = Worker()
@@ -716,34 +616,8 @@ def _worker_message(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(shared.JsonHandler):
     server_version = "martlet-xtts-host"
-    sys_version = ""
-
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - no request content in logs
-        return
-
-    def _json(self, status: int, value: dict[str, Any]) -> None:
-        body = json.dumps(value, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _body(self) -> dict[str, Any] | None:
-        length = int(self.headers.get("Content-Length") or "0")
-        if not 0 < length <= MAX_BODY_BYTES:
-            self._json(413, {"error": "request.too_large"})
-            return None
-        try:
-            value = json.loads(self.rfile.read(length))
-        except ValueError:
-            value = None
-        if not isinstance(value, dict):
-            self._json(400, {"error": "request.invalid"})
-            return None
-        return value
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/status":

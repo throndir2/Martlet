@@ -165,7 +165,8 @@ public partial class MainWindow
             Content = $"Keep the last {VoiceClips.MaximumClips} clips of voices you haven't named, so you can hear who they are",
             IsChecked = localVoices.Clips.Enabled, Margin = new Thickness(0, 6, 0, 0)
         };
-        clips.ToolTip = "Clips stay on this PC and are deleted once you name the voice, mark it as yours or forget it.";
+        clips.ToolTip = "Clips stay on the computer that heard them and are deleted once you name the voice, mark it as yours or " +
+            "forget it. This choice is the same on all your computers.";
         AutomationProperties.SetAutomationId(clips, "PeopleKeepClips");
         clips.Checked += (_, _) => SetKeepClips(true);
         clips.Unchecked += (_, _) => SetKeepClips(false);
@@ -194,6 +195,7 @@ public partial class MainWindow
         try
         {
             localVoices.Clips.SetEnabled(on);
+            QueueSettingsSync();
             ActionText.Text = on ? "Martlet keeps a few clips of voices you haven't named." : "Martlet keeps no clips, and deleted the ones it had.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)

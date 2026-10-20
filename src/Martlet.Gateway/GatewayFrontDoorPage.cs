@@ -8,7 +8,7 @@ namespace Martlet.Gateway;
 
 /// <summary>The front door's web page (<see cref="InvokeFrontDoorAsync"/>): server-made HTML with no scripts. Every value is
 /// HTML-encoded, the only style is the fixed sheet below (allowed by its hash), and forms carry a token tied to the browser.</summary>
-internal sealed partial class GatewayHttpApplication
+internal sealed partial class GatewayFrontDoorRoutes
 {
     private const string FrontDoorStyle = """
         :root{color-scheme:light dark;--bg:#f6f4fb;--card:#fff;--ink:#1f1b2e;--muted:#5f5a70;--accent:#7a4fd6;--line:#e3dff0;--good:#1f8a4c}
@@ -97,7 +97,7 @@ internal sealed partial class GatewayHttpApplication
         {
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
             limit.CancelAfter(TimeSpan.FromSeconds(5));
-            foreach (var (_, list) in await PeerModelsAsync("Bearer " + session.Token, session.KeyId, limit.Token).ConfigureAwait(false))
+            foreach (var (_, list) in await openAi.PeerModelsAsync("Bearer " + session.Token, session.KeyId, limit.Token).ConfigureAwait(false))
                 foreach (var model in list) models[model] = models.GetValueOrDefault(model) + 1;
         }
         catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested) { }

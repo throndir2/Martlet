@@ -416,7 +416,7 @@ public sealed class CharacterEyesTests
         Assert.Equal(service.BoxesPicture, Path.Combine(folder, CharacterEyes.BoxesFile));
         Assert.False(service.ClaimAutomatic(), "a measured model isn't measured again on its own");
 
-        Assert.StartsWith("Forgot the measurement.", await service.ForgetAsync(default), StringComparison.Ordinal);
+        Assert.StartsWith("Forgot the measurement,", await service.ForgetAsync(default), StringComparison.Ordinal);
         Assert.Null(service.Current);
         Assert.False(service.ClaimAutomatic(), "nor right after it was forgotten");
         service.Follow("model-2");

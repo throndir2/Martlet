@@ -54,9 +54,9 @@ services:
     profiles: [ parakeet ]
     build:
       # Hosts that installed stt before it had engines may lack MARTLET_SOURCE; they run whisper, which builds nothing.
-      context: ${MARTLET_SOURCE:-.}/workers/parakeet
-      dockerfile: host/Dockerfile
-    image: martlet-parakeet:1
+      context: ${MARTLET_SOURCE:-.}/workers
+      dockerfile: parakeet/host/Dockerfile
+    image: martlet-parakeet:2
     pull_policy: build
     restart: unless-stopped
     init: true

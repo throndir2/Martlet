@@ -76,7 +76,7 @@ public sealed class EndOfTurnJudgeTests
         Assert.Contains("isn't in Martlet's folder", judge.Problem);
         Assert.Null(SmartTurnEngine.Bundled(Path.GetTempPath()));
         Assert.Contains("can't run here", MainWindow.TurnJudgeText(true, (judge.Name, false, judge.Problem, null, [])));
-        Assert.Equal("Off. The pause above alone decides when you finished talking.", MainWindow.TurnJudgeText(false, null));
+        Assert.Equal("Off: the pause above alone decides when you finished talking.", MainWindow.TurnJudgeText(false, null));
     }
 
     [Fact]
@@ -162,8 +162,8 @@ public sealed class EndOfTurnJudgeTests
             new(at, EndOfTurnDecision.Slow, plain, plain, Judge: "Smart Turn v3.2"),
             new(at, EndOfTurnDecision.Complete, TimeSpan.FromMilliseconds(280), plain, TimeSpan.FromMilliseconds(28), 0.95, "Smart Turn v3.2")
         ];
-        Assert.Equal("On. Smart Turn v3.2 on this PC (loaded in 120 ms). Last 4 pauses: 2 finished, 1 unfinished, 1 left to the pause; " +
-            "judge median 30 ms. Last: complete after 280 ms of silence.",
+        Assert.Equal("On: Smart Turn v3.2 on this PC (loaded in 120 ms); last 4 pauses: 2 finished, 1 unfinished, 1 left to the pause, " +
+            "judge median 30 ms; last: complete after 280 ms of silence.",
             MainWindow.TurnJudgeText(true, ("Smart Turn v3.2", true, null, TimeSpan.FromMilliseconds(120), decisions)));
     }
 

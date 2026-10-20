@@ -37,13 +37,13 @@ public sealed class PageNowTests
     [Fact]
     public void EyesNowSaysTheGazeAndWhereTheEyesComeFrom()
     {
-        Assert.Equal("Where it looks: follow your mouse, as the personality decides; replies may change it. Eyes: from the model's own meshes.",
+        Assert.Equal("Where it looks: follow your mouse, as the personality decides; replies may change it; eyes: from the model's own meshes.",
             MainWindow.EyesNow(null, null, free: true, RendererEyesFrom.Mesh, measured: false, showing: true));
-        Assert.Equal("Where it looks: look straight ahead. Eyes: only estimated.",
+        Assert.Equal("Where it looks: look straight ahead; eyes: only estimated.",
             MainWindow.EyesNow(GazeMode.Ahead, GazeMode.Mouse, free: false, RendererEyesFrom.Estimate, measured: false, showing: true));
-        Assert.Equal("Where it looks: watch the window you're using, as the personality decides. Eyes: read when the character shows.",
+        Assert.Equal("Where it looks: watch the window you're using, as the personality decides; eyes: read when the character shows.",
             MainWindow.EyesNow(null, GazeMode.Window, free: false, null, measured: false, showing: false));
-        Assert.EndsWith("Eyes: measured with vision.", MainWindow.EyesNow(null, null, false, null, measured: true, showing: false));
+        Assert.EndsWith("eyes: measured with vision.", MainWindow.EyesNow(null, null, false, null, measured: true, showing: false));
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public sealed class PageNowTests
     [Fact]
     public void SmartHomeNowSaysTheConnectionAndWhatMartletMayDo()
     {
-        var saved = new HomePreferences(Address: "http://homeassistant.local:8123", CredentialId: Guid.NewGuid(), Control: true, LocationName: "Home");
+        var saved = new Martlet.Home.HomePreferences(Address: "http://homeassistant.local:8123", CredentialId: Guid.NewGuid(), Control: true, LocationName: "Home");
         Assert.Equal("Smart home: connected to Home at http://homeassistant.local:8123; Martlet may control lights, switches, climate, media, " +
             "scenes and blinds.", MainWindow.SmartHomeNow(saved, connected: true));
         Assert.Equal("Smart home: connected to Home at http://homeassistant.local:8123; Martlet may control lights, switches, climate, media, " +
@@ -96,7 +96,7 @@ public sealed class PageNowTests
             MainWindow.SmartHomeNow(saved with { AllowSensitive = true, ModelTools = true }, connected: true));
         Assert.Equal("Off: connected to Home at http://homeassistant.local:8123, but Martlet doesn't control your smart home.",
             MainWindow.SmartHomeNow(saved with { Control = false }, connected: true));
-        Assert.Equal("Off: Home Assistant isn't connected.", MainWindow.SmartHomeNow(new HomePreferences(), connected: false));
+        Assert.Equal("Off: Home Assistant isn't connected.", MainWindow.SmartHomeNow(new Martlet.Home.HomePreferences(), connected: false));
     }
 
     [Fact]

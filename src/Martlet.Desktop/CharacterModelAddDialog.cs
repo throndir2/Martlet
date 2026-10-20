@@ -38,14 +38,11 @@ internal sealed class CharacterModelAddDialog : ThemedWindow
         var heading = new TextBlock { Text = "Add a character", TextWrapping = TextWrapping.Wrap };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
-        root.Children.Add(new TextBlock
-        {
-            Text = "Choose a Live2D model's .model3.json (Martlet copies the files it uses: model, textures, motions and sounds, up " +
-                $"to {CharacterModelLibrary.SizeText(CharacterModelLibrary.MaximumModelBytes)}) or a VRM 1.0 .vrm file of up to " +
-                $"{CharacterModelLibrary.SizeText(CharacterModelLibrary.MaximumVrmBytes)}. Martlet keeps a copy and shares it with your paired Martlet computers, so any of " +
-                "them can show this character. Only add models you may use.",
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
-        });
+        root.Children.Add(HelpTip.Explain("Choose a Live2D model's .model3.json or a VRM 1.0 .vrm file that you may use. Martlet copies " +
+            $"the files a Live2D model uses (model, textures, motions and sounds, up to {CharacterModelLibrary.SizeText(CharacterModelLibrary.MaximumModelBytes)}), " +
+            $"and a .vrm file can be up to {CharacterModelLibrary.SizeText(CharacterModelLibrary.MaximumVrmBytes)}. Martlet keeps a copy and shares it with " +
+            "your paired Martlet computers, so any of them can show this character.", new Thickness(0, 4, 0, 6), "CharacterModelAdd",
+            "adding a character", wiki: "The-Character#show-and-add-characters"));
 
         var browse = new Button { Content = "_Browse...", Margin = new Thickness(8, 0, 0, 0), MinWidth = 90 };
         browse.Click += (_, _) =>

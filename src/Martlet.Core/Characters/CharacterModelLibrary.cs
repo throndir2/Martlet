@@ -89,13 +89,13 @@ public sealed record CharacterModelLibrary
     private static readonly string[] Live2DExtensions = [".json", ".moc3", ".png", ".wav"];
     private const string WindowsInvalid = "<>:\"/\\|?*";
     private static readonly string FullMessage =
-        $"Your character list is full ({MaximumModels.ToString("N0", CultureInfo.InvariantCulture)} characters). Remove a character first.";
+        $"Your character list is full ({MaximumModels.ToString("N0", CultureInfo.InvariantCulture)} characters); remove a character first.";
     private static readonly string NoRoomMessage =
-        $"Your characters can use {SizeText(MaximumTotalBytes)} together, and this one doesn't fit. Remove a character first.";
+        $"Your characters can use {SizeText(MaximumTotalBytes)} together, and this one doesn't fit; remove a character first.";
     private static readonly string ModelTooLargeMessage = $"A character is larger than {SizeText(MaximumModelBytes)}.";
     private static readonly string VrmTooLargeMessage = $"A VRM character must be one .vrm file of at most {SizeText(MaximumVrmBytes)}.";
     private static readonly string ListTooLargeMessage =
-        $"The character list is larger than {SizeText(MaximumBytes)}. Remove a character first.";
+        $"The character list is larger than {SizeText(MaximumBytes)}; remove a character first.";
 
     internal static readonly JsonSerializerOptions Json = new()
     {

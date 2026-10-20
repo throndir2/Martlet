@@ -41,7 +41,9 @@ and the same steps, so its voiceprints match the ones made on this PC.
   Martlet the same on all my computers**. See
   [sharing](#sharing-between-your-computers).
 - **Keep the last 20 clips of voices you haven't named.** On unless you turn it
-  off (`voice-clips.txt`, this PC only; turning it off deletes every clip). See
+  off (`voice-clips.txt`). This choice is the same on all your computers (the
+  `voice-clips` shared setting), and turning it off anywhere deletes every
+  clip each computer kept; the clips stay on the computer that heard them. See
   [clips](#clips-of-voices-you-havent-named).
 - **Voices Martlet knows.** Every voice it has heard: yours first, then voices
   linked to other people's accounts, then named ones, then the most recently

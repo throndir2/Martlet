@@ -181,7 +181,7 @@ def chatterbox_image() -> str:
                    i.split(":")[1].isdigit() else 0)
     if not found:
         raise SystemExit("No martlet-chatterbox image here: add the Chatterbox voice role on this PC once (Devices › this PC), "
-                         "or build it: docker build -f workers/chatterbox/host/Dockerfile -t martlet-chatterbox:bench workers/chatterbox")
+                         "or build it: docker build -f workers/chatterbox/host/Dockerfile -t martlet-chatterbox:bench workers")
     return found[-1]
 
 
@@ -191,10 +191,12 @@ def chatterbox_start(port: int = CHATTERBOX_PORT, stream: bool = True, graph: bo
     image = chatterbox_image()
     subprocess.run(["docker", "rm", "-f", CHATTERBOX_CONTAINER], capture_output=True)
     host_py = REPO / "workers" / "chatterbox" / "martlet_chatterbox_host.py"
+    shared_py = REPO / "workers" / "common" / "martlet_worker_host.py"
     forward = BENCH / "voicebench" / "tcp_forward.py"
     command = ["docker", "run", "-d", "--name", CHATTERBOX_CONTAINER, "--gpus", "all", "-p", f"127.0.0.1:{port}:{port}",
                "-v", "martlet-chatterbox-models:/opt/martlet-chatterbox/models",
                "--mount", f"type=bind,source={host_py},target=/opt/martlet-chatterbox/host/martlet_chatterbox_host.py,readonly",
+               "--mount", f"type=bind,source={shared_py},target=/opt/martlet-chatterbox/host/martlet_worker_host.py,readonly",
                "--mount", f"type=bind,source={forward},target=/opt/bench/tcp_forward.py,readonly",
                "-e", f"MARTLET_CHATTERBOX_STREAM={'1' if stream else '0'}", "-e", f"MARTLET_CHATTERBOX_FAST={'1' if graph else '0'}",
                "--entrypoint", "/bin/sh", image, "-c",
