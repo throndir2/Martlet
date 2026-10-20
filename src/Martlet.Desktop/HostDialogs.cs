@@ -310,10 +310,14 @@ internal sealed class HostInputDialog : ThemedWindow
             .OfType<string>().ToHashSet(StringComparer.Ordinal);
         void AddRoleChoice(HostRoleChoice choice)
         {
-            // Installed: what it runs with now, chosen. A variant's own choice has it only when that variant runs now.
-            var now = inputs.Current.GetValueOrDefault(choice.Variable) is { } current && choice.Options.Contains(current) ? current : null;
+            // Installed: what it runs with now, chosen. A variant's own choice has it only when that variant runs now. An open
+            // choice (any model name) also lists a model outside its options that the role runs now.
+            var held = inputs.Current.GetValueOrDefault(choice.Variable);
+            IReadOnlyList<string> listed = choice.Open && held is not null && !choice.Options.Contains(held) &&
+                Martlet.Core.Planning.SetupRoleChoice.OpenValue(held) ? [.. choice.Options, held] : choice.Options;
+            var now = inputs.Current.GetValueOrDefault(choice.Variable) is { } current && listed.Contains(current) ? current : null;
             var automatic = choice.Suggested && now is null;
-            string[] options = automatic ? [Automatic, .. choice.Options] : [.. choice.Options];
+            string[] options = automatic ? [Automatic, .. listed] : [.. listed];
             var pick = Pick(options, choice.Key, "choice." + choice.Variable);
             var label = pick is { } chosen ? $"{choice.Label} (recommended: {OptionText(chosen.Value)}, {chosen.Why})"
                 : automatic ? choice.Label + " (automatic recommended by the host)" : choice.Label;

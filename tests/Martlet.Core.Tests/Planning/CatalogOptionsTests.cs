@@ -85,8 +85,8 @@ public sealed class CatalogOptionsTests
         Assert.True(thinking.SeesImages);
         // Unknown is not Yes: nothing says it hears.
         Assert.False(thinking.HearsAudio);
-        // Martlet's host roles don't offer it, so only this PC's own Ollama runs it.
-        Assert.True(thinking.NativeOnly);
+        // The host roles' model choice is open, so a host installs it too (not only this PC's own Ollama).
+        Assert.False(thinking.NativeOnly);
         Assert.Equal(PlanComponent.DeepThinking, catalog.Find("deep-thinking:" + LocalInstall)!.Component);
         Assert.Equal(PlanComponent.Vision, catalog.Find("vision:" + LocalInstall)!.Component);
         Assert.Null(catalog.Find("hearing:" + LocalInstall));
@@ -157,7 +157,7 @@ public sealed class CatalogOptionsTests
         var facts = OptionFacts.Of(catalog.Find(LocalInstall)!).ToDictionary(f => f.Key, f => f.Value);
         Assert.Equal("text and pictures", facts["inputs"]);
         Assert.StartsWith("Martlet's model catalog", facts["source"], StringComparison.Ordinal);
-        Assert.Contains("this PC's own Ollama", facts["hosts"], StringComparison.Ordinal);
+        Assert.DoesNotContain("hosts", facts.Keys);
         Assert.Contains("words a second", facts["words"], StringComparison.Ordinal);
         Assert.Contains("smartness", facts.Keys);
         var seed = OptionFacts.Of(FootprintCatalog.Default.Find("gemma4:e2b")!).Select(f => f.Key).ToList();
@@ -171,10 +171,12 @@ public sealed class CatalogOptionsTests
     [Fact]
     public void Host_role_models_match_the_host_roles_choices()
     {
-        foreach (var role in new[] { "ollama", "deep-thinking" })
+        foreach (var role in new[] { "ollama", "deep-thinking", "deep-thinking-2", "deep-thinking-3", "deep-thinking-4" })
         {
-            var line = File.ReadAllLines(Path.Combine(RepositoryRoot(), "deploy", "host", "roles", role, "role.conf"))
-                .Single(l => l.StartsWith("choice=OLLAMA_MODEL|", StringComparison.Ordinal));
+            var lines = File.ReadAllLines(Path.Combine(RepositoryRoot(), "deploy", "host", "roles", role, "role.conf"));
+            // The model choice is open: a host role installs any model from the model catalog, not only the listed ones.
+            Assert.Contains("choice_open=OLLAMA_MODEL", lines);
+            var line = lines.Single(l => l.StartsWith("choice=OLLAMA_MODEL|", StringComparison.Ordinal));
             Assert.Equal(line.Split('|')[2].Split(' ', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal),
                 FootprintCatalog.HostRoleModels.Order(StringComparer.Ordinal));
         }
@@ -257,6 +259,50 @@ public sealed class CatalogOptionsTests
         }, FootprintCatalog.FromModels(Models()));
         Assert.Equal(("hosted:nvidia-build-deep", "acme/giant-900b-a90b-it"), (plan.Primary(PlanComponent.DeepThinking)!.Option.Id, plan.Primary(PlanComponent.DeepThinking)!.Option.ModelId));
         Assert.Contains(plan.Suggestions, s => s.Kind == SuggestionKind.SignUp && s.Why.Contains("Thinking pool", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Big_hardware_gets_a_bigger_deep_thinking_model_and_live_thinking_stays_fast()
+    {
+        ComponentOption Deep(string model, double gb, int tier, double words) => new()
+        {
+            Id = "deep-thinking:" + model, Component = PlanComponent.DeepThinking, DisplayName = model + " (deep thinking)", ModelId = model,
+            HostRoleKind = "deep-thinking", Gpu = GpuRequirement.AnyGpu, Steady = new(gb, 2, 1, gb), Peak = new(gb, 3, 2, gb), QualityTier = tier,
+            WordsPerSecond = words, Origin = OptionOrigin.LocalFacts, Source = "test"
+        };
+        // A dense 70B and a mixture-of-experts model as smart that reads only its active parameters (faster), both from the catalog.
+        var catalog = new FootprintCatalog(FootprintCatalog.Default.Options
+            .Append(Deep("hf.co/acme/Dense-70B-GGUF:Q4_K_M", 44, 5, 20))
+            .Append(Deep("hf.co/acme/Moe-80B-A6B-GGUF:Q4_K_M", 50, 5, 90)));
+        MachineSpecs Host(params double[] cards) => new("h1", "h1")
+        {
+            Gpus = [.. cards.Select(gb => new MachineGpu("RTX PRO 6000", GpuVendor.Nvidia, gb))], RamGb = 256, CpuThreads = 64, Platform = "linux"
+        };
+        NetworkSetupRequest Request(MachineSpecs host, params HostedRolePlacement[] roles) => new(
+        [
+            new NetworkMachine(host, NetworkMachineKind.Host) { HasHostService = true, Roles = roles },
+            new NetworkMachine(new MachineSpecs("pc", "pc") { RamGb = 32, CpuThreads = 16, IsPrimary = true }, NetworkMachineKind.Companion)
+        ]) { VoiceEngine = "chatterbox", Quality = ReplyQuality.Balanced };
+
+        var fresh = NetworkRecommender.Recommend(Request(Host(96, 96)), catalog);
+        var roles = fresh.Target.Machine("h1")!.Roles;
+        // The smartest model that fits, the faster of the two (the mixture of experts).
+        Assert.Equal("hf.co/acme/Moe-80B-A6B-GGUF:Q4_K_M", roles.Single(r => r.Kind == "deep-thinking").Model);
+        // Live Thinking stays a fast model that hears, never the big one (no added conversation latency).
+        var thinking = FootprintCatalog.Default.Find(fresh.Target.Job(Martlet.Core.Cluster.ClusterJobs.Thinking)!.OptionId!)!;
+        Assert.True(thinking.HearsAudio);
+        Assert.DoesNotContain(roles, r => r.Kind == "ollama" && r.Model!.StartsWith("hf.co/", StringComparison.Ordinal));
+
+        // A small Deep thinking model on a host with room switches to the bigger one, once.
+        var upgraded = NetworkRecommender.Recommend(Request(Host(96, 96), new HostedRolePlacement("deep-thinking", "gemma4:e4b", 1)), catalog);
+        var change = upgraded.Changes.Single(c => c.Kind == SetupChangeKind.ChangeModel && c.RoleKind == "deep-thinking");
+        Assert.Equal(("gemma4:e4b", "hf.co/acme/Moe-80B-A6B-GGUF:Q4_K_M"), (change.FromModel, change.Model));
+        var after = NetworkRecommender.Recommend(Request(Host(96, 96), new HostedRolePlacement("deep-thinking", "hf.co/acme/Moe-80B-A6B-GGUF:Q4_K_M", 1)), catalog);
+        Assert.DoesNotContain(after.Changes, c => c.RoleKind == "deep-thinking");
+
+        // A 24 GB card has no room for either: Martlet's own models stay.
+        Assert.DoesNotContain("hf.co/", NetworkRecommender.Recommend(Request(Host(24, 24)), catalog).Target.Machine("h1")!.Roles
+            .Single(r => r.Kind == "deep-thinking").Model, StringComparison.Ordinal);
     }
 
     private static string RepositoryRoot()

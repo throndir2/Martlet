@@ -148,10 +148,13 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
 
 /// <summary>A chat model that a model app on a computer already serves: <paramref name="AppName"/> ("LM Studio") at
 /// <paramref name="BaseUrl"/> (its Chat Completions address) on <paramref name="MachineId"/>. <see cref="SizeGb"/> is the
-/// model's download size when the app reports it (Ollama does), else null (sized from its name).</summary>
+/// model's download size when the app reports it (Ollama's and LM Studio's model lists do), else null (sized from the model
+/// catalog's parameters or its name). <see cref="LoadedGb"/>: the app has it loaded now, holding that much graphics memory (0:
+/// loaded, amount not known; null: not loaded). The graphics memory in use already counts a loaded model.</summary>
 public sealed record ServedModel(string MachineId, string AppId, string AppName, string BaseUrl, string ModelId)
 {
     public double? SizeGb { get; init; }
+    public double? LoadedGb { get; init; }
 }
 
 /// <summary>How this PC does one part that its Companion page sets (<see cref="ComponentRanking.SetOnPage"/>). <see cref="On"/>
