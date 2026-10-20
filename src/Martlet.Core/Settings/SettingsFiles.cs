@@ -46,7 +46,8 @@ public sealed record SettingsFile(string FileName, SettingsFileScope Scope, stri
 /// <summary>The settings files and who they belong to: the one list to read before a change adds or moves a setting (AGENTS.md,
 /// "Martlet is one app"). A new settings file gets a row here, a store that owns it, and (when it is not shared) a row in
 /// docs/CLUSTER.md, "What stays with each computer"; <c>SettingsFilesTests</c> checks that they agree. settings.json is not
-/// listed: <see cref="AppSettingsSections"/> splits it into its shared settings.</summary>
+/// listed: <see cref="AppSettingsSections"/> splits it into its shared settings, and on the Linux and macOS companion
+/// <c>CompanionSharedSections</c> (src/Martlet.Companion.Platform) splits that app's own settings.json the same way.</summary>
 public static class SettingsFiles
 {
     public static readonly SettingsFile TalkPreferences = new("talk-preferences.json", SettingsFileScope.Account, SettingScopes.Talk,

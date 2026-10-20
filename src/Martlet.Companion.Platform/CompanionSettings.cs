@@ -6,11 +6,16 @@ using Martlet.Providers;
 namespace Martlet.Companion;
 
 /// <summary>The companion's settings (settings.json in the data folder). Engine fields hold platform catalog ids;
-/// secrets never live here (see <see cref="ICredentialStore"/>).</summary>
+/// secrets never live here (see <see cref="ICredentialStore"/>). Thinking, listening, speaking (with their keys) and the
+/// character's name and persona are the same on all the owner's computers (<see cref="CompanionSharing"/>); the push-to-talk
+/// key, the character file, whether it shows, lip-sync and the cloud consent stay with this computer (docs/CLUSTER.md).</summary>
 public sealed record CompanionSettings
 {
     public const string Silent = "none";
     public const string OpenAiKey = "openai-api-key";
+    /// <summary>The OpenAI key listening and speaking use when another computer shared a key of their own; without one they use
+    /// <see cref="OpenAiKey"/>.</summary>
+    public const string OpenAiListeningKey = "openai-stt-api-key", OpenAiSpeakingKey = "openai-tts-api-key";
     public const string ChatCompletionsKey = "chat-completions-api-key";
 
     public int Version { get; init; } = 1;
@@ -31,7 +36,13 @@ public sealed record CompanionSettings
 
     /// <summary>A speaking engine id, or <see cref="Silent"/>.</summary>
     public string Speaking { get; init; } = "openai-tts";
+    public string SpeakingModel { get; init; } = OpenAiSpeechSynthesisCatalog.DefaultModelId;
     public string Voice { get; init; } = OpenAiSpeechSynthesisCatalog.DefaultVoice;
+
+    /// <summary>The personalities as the owner's computers share them (the desktop's <c>companion</c> setting, its canonical
+    /// JSON): <see cref="CharacterName"/> and <see cref="Persona"/> are its active personality, and the others are kept here so
+    /// a change made on this computer never drops them. Null until this computer shares or takes it.</summary>
+    public string? SharedPersonalities { get; init; }
 
     public string LipSync { get; init; } = "loudness-lipsync";
 
@@ -64,7 +75,7 @@ public sealed record CompanionSettings
     /// Loopback servers on this computer don't need it.</summary>
     public bool CloudConsent { get; init; }
 
-    internal static readonly JsonSerializerOptions Json = new()
+    public static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

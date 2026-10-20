@@ -55,6 +55,14 @@
           "Martlet.Core": "[0.88.2, )"
         }
       },
+      "martlet.companion.platform": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Avatar.Audio2Face": "[0.88.2, )",
+          "Martlet.Core": "[0.88.2, )",
+          "Martlet.Providers": "[0.88.2, )"
+        }
+      },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {

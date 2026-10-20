@@ -71,6 +71,17 @@
           </StackPanel>
           <TextBlock Name="Refusals" AutomationProperties.AutomationId="Refusals" TextWrapping="Wrap" Foreground="IndianRed" />
           <TextBlock Name="NotOffered" AutomationProperties.AutomationId="NotOffered" TextWrapping="Wrap" Opacity="0.7" />
+
+          <TextBlock Text="Your other computers" FontWeight="SemiBold" Margin="0,12,0,0" />
+          <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                     Text="Pair with a host to use the same character, persona, Thinking, Listening and Speaking (with their keys) as on your other computers. The push-to-talk key, the character file and the cloud consent stay with this computer." />
+          <CheckBox Name="KeepSame" AutomationProperties.AutomationId="KeepSameOnAllComputers" Content="Keep Martlet the same on all my computers" />
+          <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
+            <TextBox Name="HostAddress" AutomationProperties.AutomationId="HostAddress" PlaceholderText="The host's address, for example 192.168.1.20" />
+            <TextBox Grid.Column="1" Name="HostCode" AutomationProperties.AutomationId="HostPairingCode" PlaceholderText="The code it shows, like K7QM-4XPA" />
+            <Button Grid.Column="2" Name="PairButton" AutomationProperties.AutomationId="PairHost" Content="Pair" />
+          </Grid>
+          <TextBlock Name="SyncStatus" AutomationProperties.AutomationId="SyncStatus" TextWrapping="Wrap" Opacity="0.8" />
         </StackPanel>
       </ScrollViewer>
     </TabItem>

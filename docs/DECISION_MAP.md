@@ -210,6 +210,7 @@ These parts carry the shared settings and must agree with `SettingsFiles`:
 | --- | --- |
 | Shared sections of `settings.json` and `lorebooks.json` (Thinking, Listening, Speaking, the Thinking pool and others); `settings.json` is not a `SettingsFiles` row | `AppSettingsSections` (`src\Martlet.Core\Sync\AppSettingsSections.cs`) |
 | Shared sections of the desktop's own files (`talk`, `character`, `model-abilities`, `work-sharing` and others) | `DesktopSections()` (`src\Martlet.Desktop\MainWindow.SettingsSync.cs`) |
+| The Linux and macOS companion's `settings.json`: `thinking`, `listening`, `speaking` (with their keys) and `companion`, and what stays on that computer | `CompanionSharedSections` and `CompanionSync` (`src\Martlet.Companion.Platform\CompanionSharing.cs`); guardrails: `CompanionGuardrails.Admit` |
 | The per-model character files (touch zones, eyes, VRoid Hub credits, the character's own reaction changes) | `CharacterSharedSections` (`src\Martlet.Avatar.Hosting\CharacterSharedSections.cs`) |
 | Keeping clips of unnamed voices | `VoiceChoices.ClipsSection` (`src\Martlet.Core\Speakers\VoiceChoices.cs`) |
 | Discord (with its bot token) and Telegram and WhatsApp (with their secrets) | `DiscordSharing` (`src\Martlet.Discord\DiscordSharing.cs`), `MessagingSharing` (`src\Martlet.Messaging\MessagingSharing.cs`) |
