@@ -185,20 +185,20 @@ public static class OllamaRecovery
             ? facts.ModelsFolders.FirstOrDefault(f => f.Linked) : null;
         if (linked is null)
             return new(kind, said, false, false, null, null, null, null, opening,
-                $"Fix what Ollama says, or reinstall Ollama, then start it again. Its logs are in {places.DataDirectory}.", facts)
+                $"Fix what Ollama says, or reinstall Ollama, then start it again (its logs are in {places.DataDirectory}).", facts)
             { Explanation = words };
 
         var cause = $" Its models folder {linked.LinkPath} is a link to {linked.LinkTarget}, and this Ollama version refuses to " +
             "use models through a link.";
         if (!linked.RealPathUsable)
             return new(kind, said, true, false, linked.Path, linked.LinkPath, linked.LinkTarget, linked.RealPath, opening + cause,
-                $"Martlet can't find Ollama's models in {linked.RealPath ?? linked.LinkTarget}. Move the models folder back to " +
+                $"Martlet can't find Ollama's models in {linked.RealPath ?? linked.LinkTarget}: move the models folder back to " +
                 $"{linked.LinkPath}, or set Ollama's model location (in Ollama's settings) to the folder that holds your models.", facts)
             { Explanation = words + cause };
         if (facts.AppInstalled && facts.App is not { KnownShape: true })
             return new(kind, said, true, false, linked.Path, linked.LinkPath, linked.LinkTarget, linked.RealPath, opening + cause,
-                $"Open Ollama's settings, set its model location to {linked.RealPath}, then start Ollama again." +
-                (facts.App?.Problem is { } problem ? $" (Martlet can't change it itself: {problem.TrimEnd('.')}.)" : ""), facts)
+                $"Open Ollama's settings, set its model location to {linked.RealPath}, then start Ollama again" +
+                (facts.App?.Problem is { } problem ? $" (Martlet can't change it itself: {problem.TrimEnd('.')})." : "."), facts)
             { Explanation = words + cause };
         return new(kind, said, true, true, linked.Path, linked.LinkPath, linked.LinkTarget, linked.RealPath,
             opening + cause + $" Martlet can point Ollama at {linked.RealPath} directly.",
@@ -235,8 +235,9 @@ public static class OllamaRecovery
             try { await control.StopAsync(token).ConfigureAwait(false); }
             catch (InvalidOperationException error)
             {
-                return new(false, $"Martlet couldn't stop Ollama ({error.Message.TrimEnd('.')}), so it changed nothing. " +
-                    (diagnosis.Guidance ?? ""), changes, null, null, diagnosis);
+                return new(false, $"Martlet couldn't stop Ollama ({error.Message.TrimEnd('.')}), so it changed nothing" +
+                    (diagnosis.Guidance is { Length: > 0 } guidance ? "; " + char.ToLowerInvariant(guidance[0]) + guidance[1..] : "."),
+                    changes, null, null, diagnosis);
             }
 
             string? backup = null;
@@ -246,8 +247,8 @@ public static class OllamaRecovery
                 if (!settings.KnownShape)
                 {
                     StartAgain(null);
-                    return new(false, $"{settings.Problem} Martlet changed nothing. Open Ollama's settings, set its model location to " +
-                        $"{real}, then start Ollama again.", changes, null, null, diagnosis);
+                    return new(false, $"{settings.Problem?.TrimEnd('.')}, so Martlet changed nothing; open Ollama's settings, set its model " +
+                        $"location to {real}, then start Ollama again.", changes, null, null, diagnosis);
                 }
                 var saved = settings.Models ?? "";
                 if (saved.Length == 0 || PointsAt(saved, models, real))
@@ -263,7 +264,7 @@ public static class OllamaRecovery
                     catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException)
                     {
                         StartAgain(null);
-                        return new(false, $"Martlet couldn't change Ollama's model location ({error.Message.TrimEnd('.')}). Open Ollama's " +
+                        return new(false, $"Martlet couldn't change Ollama's model location ({error.Message.TrimEnd('.')}); open Ollama's " +
                             $"settings, set its model location to {real}, then start Ollama again.", changes, backup, null, diagnosis);
                     }
                 }
@@ -285,7 +286,7 @@ public static class OllamaRecovery
             }
 
             if (!StartAgain(real))
-                return new(false, "Martlet pointed Ollama at its models but couldn't start it again. Start Ollama from the Start menu.",
+                return new(false, "Martlet pointed Ollama at its models but couldn't start it again; start Ollama from the Start menu.",
                     changes, backup, null, diagnosis);
             var limit = startLimit ?? StartLimit;
             var waited = System.Diagnostics.Stopwatch.StartNew();
@@ -295,15 +296,15 @@ public static class OllamaRecovery
             if (!answers)
             {
                 var after = await DiagnoseAsync(control, now(), token).ConfigureAwait(false);
-                return new(false, $"Martlet pointed Ollama at {real}, but Ollama still doesn't answer. " +
-                    (after.OllamaError is { } said ? $"Ollama says: \"{said.TrimEnd('.')}\". " : "") +
-                    (backup is null ? "" : $"Ollama's app database as it was is in {backup}."), changes, backup, null, after);
+                return new(false, $"Martlet pointed Ollama at {real}, but Ollama still doesn't answer" +
+                    (after.OllamaError is { } said ? $" (Ollama says: \"{said.TrimEnd('.')}\")" : "") +
+                    (backup is null ? "." : $"; its old app database is backed up in {backup}."), changes, backup, null, after);
             }
             var listed = await control.ModelsAsync(token).ConfigureAwait(false);
             output.Report($"Ollama answers again and lists {listed?.Count ?? 0} {(listed?.Count == 1 ? "model" : "models")}.");
-            return new(true, $"Ollama couldn't use its models through the link at {link}, so Martlet pointed it at {real}. Ollama answers " +
-                $"again and lists {listed?.Count ?? 0} {(listed?.Count == 1 ? "model" : "models")}." +
-                (backup is null ? "" : $" Ollama's app database as it was is in {backup}."), changes, backup, listed?.Count, null);
+            return new(true, $"Ollama couldn't use its models through the link at {link}, so Martlet pointed it at {real}" +
+                (backup is null ? "" : $" (its old app database is backed up in {backup})") +
+                $"; Ollama answers again and lists {listed?.Count ?? 0} {(listed?.Count == 1 ? "model" : "models")}.", changes, backup, listed?.Count, null);
         }
         finally
         {

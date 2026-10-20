@@ -16,8 +16,7 @@
                            AutomationProperties.AutomationId="JoinRequestNumber"/>
             </StackPanel>
         </Border>
-        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,16"
-                   Text="Allowing gives that computer a one-use code for each host listed; it pairs like a computer you added yourself and can then use those hosts' jobs. Deny if you didn't just ask from there, or if the numbers differ."/>
+        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,16">Allow pairs that computer with each host listed; deny if you didn't just ask from there or the numbers differ.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Allowing gives that computer a one-use code for each host listed. It pairs like a computer you added yourself and can then use those hosts' jobs." Wiki="Multiple-Computers#join-your-martlet-network" AutomationProperties.AutomationId="Help-JoinRequestAllow" AutomationProperties.Name="About allowing a computer"/></InlineUIContainer></TextBlock>
         <DockPanel>
             <TextBlock x:Name="ExpiryText" Style="{DynamicResource Muted}" VerticalAlignment="Center" AutomationProperties.AutomationId="JoinRequestExpiry"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

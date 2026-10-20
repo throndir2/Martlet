@@ -27,19 +27,19 @@ internal static partial class CheckInsCheck
         var fired = new CheckInTrigger(CheckInTriggers.TouchesEnded, now.AddSeconds(-2), "2 touches, an intimate one");
         var waits = new Dictionary<string, string?>
         {
-            ["no touches yet"] = CheckIns.Wait(describe, state, null),
-            ["touches ended, the touch reply talks"] = CheckIns.Wait(describe, state with { Quiet = TimeSpan.Zero }, null, fired: fired),
-            ["touches ended, ran 10 s ago"] = CheckIns.Wait(describe, state, new(now.AddSeconds(-10), 4, "nothing to add to what Martlet knows", false), fired: fired),
-            ["touches ended, character hidden"] = CheckIns.Wait(describe, state with { CharacterShows = false }, null, fired: fired)
+            ["no touches yet"] = CheckInSchedule.Wait(describe, state, null),
+            ["touches ended, the touch reply talks"] = CheckInSchedule.Wait(describe, state with { Quiet = TimeSpan.Zero }, null, fired: fired),
+            ["touches ended, ran 10 s ago"] = CheckInSchedule.Wait(describe, state, new(now.AddSeconds(-10), 4, "nothing to add to what Martlet knows", false), fired: fired),
+            ["touches ended, character hidden"] = CheckInSchedule.Wait(describe, state with { CharacterShows = false }, null, fired: fired)
         };
-        var job = CheckIns.Prepare(describe, CheckIns.Focus(describe, state), null);
-        var adultJob = CheckIns.Prepare(describe, CheckIns.Focus(describe, state with { Adult = true }), null);
+        var job = CheckInPrompts.Prepare(describe, CheckInSchedule.Focus(describe, state), null);
+        var adultJob = CheckInPrompts.Prepare(describe, CheckInSchedule.Focus(describe, state with { Adult = true }), null);
         BackgroundPlace member = new("endpoint:fixture-touches", "FIXTURE member") { Slots = 1, Model = "fixture-model" };
         const string answer = "<think>Two slow strokes, tail to groin.</think>\n" +
             "KNOW: FIXTURE: Their slow strokes keep sliding from your tail over your buttocks down to your groin.";
         var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done(answer)));
         var result = job is null ? null : await board.RunAsync(job, cancellation);
-        var verdict = CheckIns.Read(describe, result?.Text, state);
+        var verdict = CheckInAnswers.Read(describe, result?.Text, state);
         var context = new ContextBoard();
         if (verdict is { Act: true, Text: { } text } && CheckIns.Context(null, text) is { } note)
             context.Post(CheckIns.Source(describe.Id), note, now, CheckIns.ContextAge, consume: true);
@@ -75,8 +75,8 @@ internal static partial class CheckInsCheck
     {
         var checkIn = CheckIns.All(null).Single(c => c.Id == CheckIns.Reactions);
         var state = facts with { Persona = string.IsNullOrWhiteSpace(facts.Persona) ? "FIXTURE: proud and easily flustered." : facts.Persona };
-        var waits = CheckIns.Wait(checkIn, state, null);
-        var fired = CheckIns.Wait(checkIn, state, null, fired: new CheckInTrigger(CheckInTriggers.TouchesEnded, state.Now, "FIXTURE: 3 touches"));
+        var waits = CheckInSchedule.Wait(checkIn, state, null);
+        var fired = CheckInSchedule.Wait(checkIn, state, null, fired: new CheckInTrigger(CheckInTriggers.TouchesEnded, state.Now, "FIXTURE: 3 touches"));
         var persona = Guid.NewGuid();
         var zones = new CharacterTouchZoneSettings
         {
@@ -101,7 +101,7 @@ internal static partial class CheckInsCheck
             }
         };
         var host = new CheckInToolHost(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, persona.ToString(), state.Now), handlers);
-        var job = CheckIns.Prepare(checkIn, CheckIns.Focus(checkIn, state), null, host);
+        var job = CheckInPrompts.Prepare(checkIn, CheckInSchedule.Focus(checkIn, state), null, host);
         var message = job?.Text ?? "";
         BackgroundPlace toolMember = new("endpoint:tools", "FIXTURE member that calls tools")
         {
@@ -139,7 +139,7 @@ internal static partial class CheckInsCheck
             hand.Reaction.Actions is ["gesture:shake", "sound:sigh"],
             new
             {
-                waits, fired, tools = job?.Tools.Select(t => t.Name), member = done?.Member, made = CheckIns.ToolsText(uses),
+                waits, fired, tools = job?.Tools.Select(t => t.Name), member = done?.Member, made = CheckInPrompts.ToolsText(uses),
                 changes = active.Select(c => CharacterReactionChanges.Describe(c, zones, catalog)),
                 hand = hand.Reaction.Actions
             });
@@ -170,15 +170,15 @@ internal static partial class CheckInsCheck
         var taken = ledger.Drain(clock);
         var kept = ledger.History(clock);
         var state = facts with { Touches = history };
-        var placed = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        var placed = CheckInPrompts.Message(CheckIns.Of(new CustomCheckIn
         {
             Id = "c7", Name = "FIXTURE touches", Task = "How the user touched {name} lately:\n{touches}\nDescribe it.", Facts = CheckInFacts.Touches
         }), state, null) ?? "";
-        var ticked = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        var ticked = CheckInPrompts.Message(CheckIns.Of(new CustomCheckIn
         {
             Id = "c7", Name = "FIXTURE touches", Task = "Describe how the user touched the character.", Facts = CheckInFacts.Touches
         }), state, null) ?? "";
-        var none = CheckIns.Touches(facts with { Touches = null });
+        var none = CheckInPrompts.Touches(facts with { Touches = null });
         var refused = false;
         try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = (CheckInFacts)(1 << 20) }).Validate(); }
         catch (Martlet.Core.Contracts.ContractException) { refused = true; }
@@ -188,7 +188,7 @@ internal static partial class CheckInsCheck
         const string header = "What the user did to Mira's character on the desktop in the last 10 minutes, oldest first";
         step("touches fact", history is { Count: 10, Intimate: 6, Entries.Count: 5 } && history.Often is [{ Place: "your groin", Count: 6 }, ..] &&
             waitingBefore is not null && waitingBefore == waitingAfter && taken is { Count: 3 } && kept?.Entries.Count == 5 &&
-            CheckIns.Placed("{touches}") == CheckInFacts.Touches &&
+            CheckInPrompts.Placed("{touches}") == CheckInFacts.Touches &&
             placed.StartsWith("How the user touched Mira lately:\n" + header, StringComparison.Ordinal) &&
             placed.Contains("- 10:09 PM (8 min ago): They patted the top of your head 3 times over 2 seconds.", StringComparison.Ordinal) &&
             placed.Contains("- 10:12 PM (5 min ago, intimate): They slowly stroked down from your tail over your buttocks to your groin twice " +

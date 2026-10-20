@@ -176,13 +176,16 @@ public partial class MainWindow
         OpenAiStatusText.Text = store is null ? "Unavailable without a local data folder."
             : hosts.Count == 0 ? "Pair a host first (Devices › Add a computer): the endpoint runs on your hosts, with the models they run."
             : openAiBusy ? "Reading which language models your hosts offer..."
-            : (models.Count == 0
-                ? openAiCheckedAt is null ? "Not checked yet." : "No host offers a language model yet. Add the Thinking or Thinking pool role to a host (Devices)."
-                : $"{models.Count} language model{(models.Count == 1 ? "" : "s")} on {openAiModels.Count(p => p.Value.Count > 0)} of {hosts.Count} " +
-                  $"host{(hosts.Count == 1 ? "" : "s")}.") +
-              $" {(keys.Length == 1 ? "1 person has" : $"{keys.Length} people have")} a key." +
-              (openAiProblems.Count > 0 ? " " + string.Join(" ", openAiProblems.Select(p => $"{p.Key} {p.Value}.")) : "") +
-              (openAiCheckedAt is { } at ? $" Checked {at:t}." : "");
+            : string.Join("; ", new[]
+                {
+                    models.Count == 0
+                        ? openAiCheckedAt is null ? "Not checked yet" : "No host offers a language model yet (add the Thinking or Thinking pool role to a host in Devices)"
+                        : $"{models.Count} language model{(models.Count == 1 ? "" : "s")} on {openAiModels.Count(p => p.Value.Count > 0)} of {hosts.Count} " +
+                          $"host{(hosts.Count == 1 ? "" : "s")}",
+                    keys.Length == 1 ? "1 person has a key" : $"{keys.Length} people have a key"
+                }
+                .Concat(openAiProblems.Select(p => $"{p.Key} {p.Value}"))
+                .Concat(openAiCheckedAt is { } at ? new[] { $"checked {at:t}" } : [])) + ".";
         OpenAiPanel.Children.Clear();
         if (store is null || hosts.Count == 0) return;
         OpenAiPanel.Children.Add(FrontDoorBlock(settings));
@@ -191,13 +194,11 @@ public partial class MainWindow
         var addressStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
         addressStatus.SetResourceReference(StyleProperty, "Muted");
         addressStatus.Text = settings.PublicAddress is { } address
-            ? $"People put {address} in their app as the base URL, and open {address[..^OpenAiEndpoint.BasePath.Length]} in a browser to sign " +
-              "in with their key. " + (frontDoor is { } door
-                ? $"Your proxy sends it to the front door on {door.Host.HostId} ({FrontDoorOrigin(door.Host, door.Port)}), which runs what it " +
-                  "has and sends other models to the host that has them."
-                : "Open the front door first, then point your proxy at it.")
-            : "No address yet. People outside your home need an https address with a real certificate in front of the front door. " +
-              "The ? tells you the ways to get one; Show setup gives the exact steps.";
+            ? $"People put {address} in their app as the base URL (or open {address[..^OpenAiEndpoint.BasePath.Length]} in a browser to sign " +
+              "in with their key), " + (frontDoor is { } door
+                ? $"and your proxy sends it to the front door on {door.Host.HostId} ({FrontDoorOrigin(door.Host, door.Port)})."
+                : "but first open the front door and point your proxy at it.")
+            : "No address yet: to share outside your home, give the front door an https address with a real certificate (Show setup).";
         AutomationProperties.SetAutomationId(addressStatus, "OpenAiAddressStatus");
         OpenAiPanel.Children.Add(addressStatus);
         if (frontDoorCheck is { } checkedText)
@@ -222,14 +223,15 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(modelLine, "OpenAiModels");
         OpenAiPanel.Children.Add(modelLine);
 
-        var priority = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0), FontSize = 12 };
-        priority.SetResourceReference(StyleProperty, "Muted");
-        priority.Text = "Your Martlet first: any request of yours stops theirs, and they wait while yours run. Same priority as your " +
-            "background work: they run beside your Thinking pool's work, and only your live conversations stop them. Requests use " +
-            "the context size your own requests use, so a shared request never makes a host load its model again.";
+        var priority = HelpTip.Explain(
+            "Each key has a priority, which you can change on its row. Your Martlet first: any request of yours stops theirs, and they " +
+            "wait while yours run. Same priority as your background work: they run beside your Thinking pool's work, and only your live " +
+            "conversations stop them. Their requests use your own context size, so a host never loads its model again for them.",
+            new Thickness(0, 4, 0, 0), "OpenAiPriority", "the priority of a key", wiki: "Sharing-with-Friends#share-your-language-models");
+        priority.FontSize = 12;
         OpenAiPanel.Children.Add(priority);
 
-        var who = new TextBlock { Text = keys.Length == 0 ? "Nobody has a key yet. Give someone access to make one." : "Who has access",
+        var who = new TextBlock { Text = keys.Length == 0 ? "Nobody has a key yet: choose Give someone access to make one." : "Who has access",
             FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 0) };
         OpenAiPanel.Children.Add(who);
         foreach (var key in keys) OpenAiPanel.Children.Add(OpenAiKeyRow(key, now));
@@ -251,7 +253,7 @@ public partial class MainWindow
         var stack = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
         var heading = new StackPanel { Orientation = Orientation.Horizontal };
         heading.Children.Add(new Label { Content = "_Address to give people (https, with a real certificate)", Target = openAiAddressBox, Padding = new Thickness(0, 0, 0, 4) });
-        var help = HelpTip.For("Giving your front door an address", OpenAiEndpoint.ExposeHelp, "OpenAiExpose");
+        var help = HelpTip.For("Giving your front door an address", OpenAiEndpoint.ExposeHelp, "OpenAiExpose", wiki: "Sharing-with-Friends#get-an-https-address");
         help.Margin = new Thickness(8, 0, 0, 4);
         heading.Children.Add(help);
         stack.Children.Add(heading);
@@ -293,11 +295,12 @@ public partial class MainWindow
         var settings = OpenAiEndpointSettings.Load(store.DataDirectory) with { PublicAddress = address };
         if (!settings.Save(store.DataDirectory))
         {
-            ActionText.Text = "Couldn't save the address. Check access to Martlet's data folder.";
+            ActionText.Text = "Couldn't save the address: check that Martlet can write to its data folder.";
             return;
         }
         ErrorLog.Info($"Share: the address to give people is {address ?? "not set"}.");
-        ActionText.Text = address is null ? "Removed the address to give people." : $"Saved: people use {address}. Your other computers get it too. Choose Check address to test it.";
+        ActionText.Text = address is null ? "Removed the address to give people."
+            : $"Saved: people use {address}, and your other computers get it too; choose Check address to test it.";
         frontDoorCheck = null;
         QueueSettingsSync();
         RenderOpenAi();
@@ -361,8 +364,8 @@ public partial class MainWindow
             return;
         }
         ErrorLog.Info($"API key \"{key.Name}\": {(equal ? "same priority as your background work" : "your Martlet first")}.");
-        ActionText.Text = $"{key.Name}'s requests now run {(equal ? "with the same priority as your background work" : "only when your Martlet doesn't need the model")}. " +
-            "Your hosts follow within a minute.";
+        ActionText.Text = $"{key.Name}'s requests now run {(equal ? "with the same priority as your background work" : "only when your Martlet doesn't need the model")}; " +
+            "your hosts follow within a minute.";
         RenderApiKeys();
         RenderOpenAi();
         QueueApiKeySync();

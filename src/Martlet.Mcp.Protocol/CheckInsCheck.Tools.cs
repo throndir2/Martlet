@@ -76,13 +76,13 @@ internal static partial class CheckInsCheck
             [CheckInToolSets.CharacterId] = (_, _, _) => throw new InvalidOperationException("FIXTURE handler failure")
         };
         var host = new CheckInToolHost(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, null, facts.Now), handlers);
-        var job = CheckIns.Prepare(checkIn, CheckIns.Focus(checkIn, facts), null, host);
+        var job = CheckInPrompts.Prepare(checkIn, CheckInSchedule.Focus(checkIn, facts), null, host);
         var message = job?.Text ?? "";
         step("tools: the job offers them", checkIn.Needs.HasFlag(ThinkingCapability.Tools) && CheckIns.Describe(checkIn.Needs).Contains("tool calls", StringComparison.Ordinal) &&
             job is { ToolHost: not null, MaxToolRounds: CheckIns.MaximumToolRounds } && job.Tools.Select(t => t.Name).SequenceEqual(
                 [CheckInToolSets.RemindNextReply, CheckInToolSets.BringUp, CheckInToolSets.TurnOffEmote, CheckInToolSets.LookUsual]) &&
             job.Required.HasFlag(ThinkingCapability.Tools) && message.Contains("Use your tools for what needs doing", StringComparison.Ordinal) &&
-            CheckIns.Wait(CheckIns.Of(custom with { ToolSets = [] }), facts, null) == "it has no tools to use",
+            CheckInSchedule.Wait(CheckIns.Of(custom with { ToolSets = [] }), facts, null) == "it has no tools to use",
             new { needs = checkIn.Needs.ToString(), described = CheckIns.Describe(checkIn.Needs), tools = job?.Tools.Select(t => t.Name), job?.MaxToolRounds });
 
         // Only a member whose model can call tools takes it; the run's calls are kept, an unknown tool and a failing handler are
@@ -110,7 +110,7 @@ internal static partial class CheckInsCheck
         members.Add(toolMember);
         var done = job is null ? null : await board.RunAsync(job, cancellation);
         var uses = host.Uses;
-        var verdict = CheckIns.Read(checkIn, done?.Text, facts);
+        var verdict = CheckInAnswers.Read(checkIn, done?.Text, facts);
         step("tools: only a member that calls tools runs them", none?.Outcome == ThinkingJobOutcome.NoMember && !canNone &&
             board.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs) && done is { Succeeded: true } && done.Member == toolMember.Name &&
             uses.Count == 3 + CheckIns.MaximumToolCalls && uses[0] is { Set: CheckInToolSets.NextReplyId, Tool: CheckInToolSets.RemindNextReply, Failed: false } &&
@@ -122,7 +122,7 @@ internal static partial class CheckInsCheck
             !uses.Any(u => u.Result.Contains("private", StringComparison.Ordinal)) && verdict == CheckInVerdict.Nothing,
             new
             {
-                textOnlyPool = none?.Outcome.ToString(), withOneThatCallsTools = done?.Member, calls = uses.Count, made = CheckIns.ToolsText(uses),
+                textOnlyPool = none?.Outcome.ToString(), withOneThatCallsTools = done?.Member, calls = uses.Count, made = CheckInPrompts.ToolsText(uses),
                 answer = done?.Text
             });
 
@@ -139,7 +139,7 @@ internal static partial class CheckInsCheck
                     return ValueTask.FromResult(new ConversationToolResult($"Memory: {MemoryToolSet.Action(call.Name)}.\nFIXTURE"));
                 }
             });
-        var careJob = care is null ? null : CheckIns.Prepare(care, CheckIns.Focus(care, facts), null, careHost);
+        var careJob = care is null ? null : CheckInPrompts.Prepare(care, CheckInSchedule.Focus(care, facts), null, careHost);
         // More calls than the old limit of 8, in the steps a model would take: look, find, then fix many facts.
         string[] plan = [MemoryToolSet.Overview, MemoryToolSet.Find, MemoryToolSet.Find, MemoryToolSet.History, MemoryToolSet.Note,
             MemoryToolSet.UpdateMany, MemoryToolSet.Merge, MemoryToolSet.Outdated, MemoryToolSet.Update, MemoryToolSet.Forget,
@@ -150,10 +150,10 @@ internal static partial class CheckInsCheck
         step("memory care: a built-in check-in that works on memory in several steps",
             care is { On: true, Outcome: CheckInOutcome.Tools, EveryMinutes: 60, Conditions: CheckInConditions.SomethingNew } &&
             care.ToolSets.SequenceEqual([MemoryToolSet.Id]) && care.Needs.HasFlag(ThinkingCapability.Tools) &&
-            CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInMemory)) == (CheckInFacts.Latest | CheckInFacts.Activity) &&
+            CheckInPrompts.Placed(PromptSettings.Text(null, PromptCatalog.CheckInMemory)) == (CheckInFacts.Latest | CheckInFacts.Activity) &&
             careJob is { MaxToolRounds: CheckIns.MaximumToolRounds, MaxOutputTokens: CheckIns.MaximumToolOutputTokens } &&
             careJob.Timeout == CheckIns.ToolTimeout && careJob.Tools.Select(t => t.Name).SequenceEqual(MemoryToolSet.Set.Tools.Select(t => t.Name)) &&
-            careJob.Text.Contains(CheckIns.Steps, StringComparison.Ordinal) && careJob.Text.Contains("memory_note", StringComparison.Ordinal) &&
+            careJob.Text.Contains(CheckInPrompts.Steps, StringComparison.Ordinal) && careJob.Text.Contains("memory_note", StringComparison.Ordinal) &&
             careJob.Text.Contains("(where)", StringComparison.Ordinal) &&
             new[] { MemoryToolSet.Remember, MemoryToolSet.Update, MemoryToolSet.UpdateMany }.All(name =>
                 careJob.Tools.Single(t => t.Name == name).ParametersJson.Contains("\"where\"", StringComparison.Ordinal)) &&
@@ -163,7 +163,7 @@ internal static partial class CheckInsCheck
             {
                 care?.Name, care?.On, care?.EveryMinutes, tools = careJob?.Tools.Select(t => t.Name), careJob?.MaxToolRounds,
                 maximumToolCalls = CheckIns.MaximumToolCalls, timeoutMinutes = careJob?.Timeout.TotalMinutes, careJob?.MaxOutputTokens,
-                calls = cared.Count, made = careHost is null ? null : CheckIns.ToolsText(careHost.Uses)
+                calls = cared.Count, made = careHost is null ? null : CheckInPrompts.ToolsText(careHost.Uses)
             });
     }
 
@@ -181,11 +181,11 @@ internal static partial class CheckInsCheck
         });
         const string answer = "<think>The user beat a boss, then went back to a bug.</think>\n" +
             "- KNOW: FIXTURE: Still glowing from the boss win, the user is now hunched over a stubborn bug while Mira cheers them on.";
-        var job = CheckIns.Prepare(describes, CheckIns.Focus(describes, facts), null);
+        var job = CheckInPrompts.Prepare(describes, CheckInSchedule.Focus(describes, facts), null);
         BackgroundPlace member = new("endpoint:fixture-context", "FIXTURE member") { Slots = 1, Model = "fixture-model" };
         var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done(answer)));
         var result = job is null ? null : await board.RunAsync(job, cancellation);
-        var verdict = CheckIns.Read(describes, result?.Text, facts);
+        var verdict = CheckInAnswers.Read(describes, result?.Text, facts);
         step("context: asked and read", job is { Kind: ThinkingJobKind.CheckIn } && job.Text.Contains("starts with KNOW:", StringComparison.Ordinal) &&
             job.Text.Contains("write only: OK", StringComparison.Ordinal) && !job.Text.Contains("REMIND:", StringComparison.Ordinal) &&
             result is { Succeeded: true } && verdict is { Act: true, Readable: true, Text: { } text } && text.StartsWith("FIXTURE: Still glowing", StringComparison.Ordinal),
@@ -216,10 +216,10 @@ internal static partial class CheckInsCheck
 
         var nothing = new Dictionary<string, CheckInVerdict>
         {
-            ["KNOW: nothing to add."] = CheckIns.Read(describes, "KNOW: nothing to add.", facts),
-            ["OK"] = CheckIns.Read(describes, "OK", facts),
-            ["REMIND: a reminder instead"] = CheckIns.Read(describes, "REMIND: Be gentle.", facts),
-            ["chatter"] = CheckIns.Read(describes, "Things look calm to me.", facts)
+            ["KNOW: nothing to add."] = CheckInAnswers.Read(describes, "KNOW: nothing to add.", facts),
+            ["OK"] = CheckInAnswers.Read(describes, "OK", facts),
+            ["REMIND: a reminder instead"] = CheckInAnswers.Read(describes, "REMIND: Be gentle.", facts),
+            ["chatter"] = CheckInAnswers.Read(describes, "Things look calm to me.", facts)
         };
         var untouched = new ContextBoard();
         foreach (var read in nothing.Values.Where(v => v.Act))
@@ -298,9 +298,9 @@ internal static partial class CheckInsCheck
             new { keptWhileNotWanted = keptUnwanted.TotalSeconds, heard, recentSeconds = Math.Round(recentSeconds, 2), forgotWhenNotWanted = forgot });
 
         // It waits while Martlet doesn't hear the microphone.
-        var deaf = CheckIns.Wait(checkIn, facts, null);
-        var hearing = CheckIns.Wait(checkIn, facts with { HearsMicrophone = true }, null);
-        var pcDeaf = CheckIns.Wait(CheckIns.Of(custom with { Recording = CheckInRecording.PcSound }), facts with { HearsMicrophone = true }, null);
+        var deaf = CheckInSchedule.Wait(checkIn, facts, null);
+        var hearing = CheckInSchedule.Wait(checkIn, facts with { HearsMicrophone = true }, null);
+        var pcDeaf = CheckInSchedule.Wait(CheckIns.Of(custom with { Recording = CheckInRecording.PcSound }), facts with { HearsMicrophone = true }, null);
         step("own: waits for the sound it records", deaf == "Martlet doesn't hear the microphone now" && hearing is null &&
             pcDeaf == "Martlet doesn't hear what this PC plays now", new { microphoneUnheard = deaf, microphoneHeard = hearing ?? "runs", pcUnheard = pcDeaf });
 
@@ -312,7 +312,7 @@ internal static partial class CheckInsCheck
             var ran = await Martlet.Mcp.Client.TerminalRunner.RunAsync(
                 new Martlet.Mcp.Client.TerminalSettings { Shell = Martlet.Mcp.Client.TerminalShell.WindowsPowerShell }, custom.Script, cancellation,
                 CheckIns.ScriptTimeout);
-            (output, took) = CheckIns.ScriptRan(ran.Problem, ran.TimedOut, ran.ExitCode, ran.Output, ran.Elapsed);
+            (output, took) = CheckInPrompts.ScriptRan(ran.Problem, ran.TimedOut, ran.ExitCode, ran.Output, ran.Elapsed);
         }
         var png = new byte[64];
         new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }.CopyTo(png, 0);
@@ -322,7 +322,7 @@ internal static partial class CheckInsCheck
             Recording = BoundedWaveAudio.FromPcm(new() { SampleRate = Martlet.Audio.PcSoundBuffer.SampleRate, Channels = 1,
                 Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian }, recent)
         };
-        var job = CheckIns.Prepare(checkIn, gathered, null);
+        var job = CheckInPrompts.Prepare(checkIn, gathered, null);
         var message = job?.Text ?? "";
         step("own: the message carries what it took", output is not null && output.Trim() == "FIXTURE 42" && took is not null &&
             took.StartsWith("a script (exit code 0", StringComparison.Ordinal) && job is { Image: not null, Audio: not null } &&
@@ -365,7 +365,7 @@ internal static partial class CheckInsCheck
         var own = custom with { Id = "c2", RunsOn = ThinkingRunsOn.Only([fast.Id]), Screenshot = false, Recording = CheckInRecording.None, Needs = ThinkingCapability.Text };
         var saved = new CheckInSettings().With(own);
         var reread = saved.Custom[0];
-        var ownJob = CheckIns.Prepare(CheckIns.Of(reread), gathered, null);
+        var ownJob = CheckInPrompts.Prepare(CheckIns.Of(reread), gathered, null);
         var byKind = ownJob is null ? null : await runsOnBoard.RunAsync(ownJob with { RunsOn = null }, cancellation);
         var byCard = ownJob is null ? null : await runsOnBoard.RunAsync(ownJob, cancellation);
         step("own: Runs on on its card comes before the check-in kind's",

@@ -29,7 +29,7 @@ public sealed partial class CheckInsTests
         Assert.Equal((true, 1, CheckInOutcome.HoldBack, PromptCatalog.CheckInAside, CheckInTriggers.Spoke, CheckInConditions.SomethingNew),
             (aside.On, aside.EveryMinutes, aside.Outcome, aside.PromptId, aside.Triggers, aside.Conditions));
         Assert.Equal(CheckInFacts.Heard | CheckInFacts.Conversation | CheckInFacts.Activity | CheckInFacts.People, aside.Facts);
-        Assert.Equal(aside.Facts, CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInAside)));
+        Assert.Equal(aside.Facts, CheckInPrompts.Placed(PromptSettings.Text(null, PromptCatalog.CheckInAside)));
         // It may call the People tools to know who the voices are; they are optional, so it still needs only text.
         Assert.Equal([PeopleTools.SetId], aside.ToolSets);
         Assert.Equal(ThinkingCapability.Text, aside.Needs);
@@ -40,11 +40,11 @@ public sealed partial class CheckInsTests
         var state = OnThePhone();
         var spoke = CheckIns.SpokeTrigger(Now.AddSeconds(-1), answered: false);
         Assert.Equal("you said something and Martlet stayed quiet", spoke.What);
-        Assert.Equal("it waits for you to say something", CheckIns.Wait(aside, state, null));
-        Assert.Equal("it waits for you to say something", CheckIns.Wait(aside, state, null, fired: CheckIns.ExchangeTrigger(Now)));
+        Assert.Equal("it waits for you to say something", CheckInSchedule.Wait(aside, state, null));
+        Assert.Equal("it waits for you to say something", CheckInSchedule.Wait(aside, state, null, fired: CheckIns.ExchangeTrigger(Now)));
         // The reply that is still busy never holds it up; its pace is its cooldown, and a trigger waits TriggerAge for it.
-        Assert.Null(CheckIns.Wait(aside, state with { Quiet = TimeSpan.Zero }, null, fired: spoke));
-        Assert.Equal("next in 40 s", CheckIns.Wait(aside, state, new(Now.AddSeconds(-20), 5, "nothing", false), fired: spoke));
+        Assert.Null(CheckInSchedule.Wait(aside, state with { Quiet = TimeSpan.Zero }, null, fired: spoke));
+        Assert.Equal("next in 40 s", CheckInSchedule.Wait(aside, state, new(Now.AddSeconds(-20), 5, "nothing", false), fired: spoke));
         Assert.Equal(CheckIns.TriggerAge, CheckIns.Age(spoke));
         Assert.Equal("you to say something", CheckIns.TriggerWords(CheckInTriggers.Spoke));
     }
@@ -66,7 +66,7 @@ public sealed partial class CheckInsTests
         Assert.Equal([CheckInToolSets.NextReplyId], CheckIns.Offered(mixed, poolCallsTools: false));
 
         var state = OnThePhone();
-        var plain = CheckIns.Prepare(aside, state, null)!;
+        var plain = CheckInPrompts.Prepare(aside, state, null)!;
         Assert.Empty(plain.Tools);
         Assert.Equal(ThinkingCapability.Text, plain.Required);
         Assert.DoesNotContain("You may call your tools", plain.Text);
@@ -75,7 +75,7 @@ public sealed partial class CheckInsTests
             {
                 [PeopleTools.SetId] = (call, context, token) => new(new ConversationToolResult("People: 0 voice(s) saved, 0 listed."))
             });
-        var withTools = CheckIns.Prepare(aside, state, null, host)!;
+        var withTools = CheckInPrompts.Prepare(aside, state, null, host)!;
         Assert.Equal([PeopleTools.List, PeopleTools.Lately], withTools.Tools.Select(t => t.Name));
         Assert.True(withTools.Required.HasFlag(ThinkingCapability.Tools));
         Assert.Contains("You may call your tools first if they help.", withTools.Text);
@@ -94,7 +94,7 @@ public sealed partial class CheckInsTests
             "Mira doesn't hold back now.", heard);
         Assert.StartsWith("Always listening heard nothing from the user in the last 10 minutes.", CheckIns.Heard(State()));
 
-        var message = CheckIns.Message(Built(CheckIns.Aside), state, null)!;
+        var message = CheckInPrompts.Message(Built(CheckIns.Aside), state, null)!;
         Assert.Contains(heard, message);
         Assert.Contains("User: Yeah, uh-huh. No, I already ate.", message);
         Assert.Contains("The user doesn't seem to be doing anything with sound on this PC now.", message);
@@ -120,10 +120,10 @@ public sealed partial class CheckInsTests
     [InlineData("ASIDE: nobody", false, null)]
     public void ItsAnswerStartsOrEndsTheHold(string answer, bool act, string? about)
     {
-        var verdict = CheckIns.Read(Built(CheckIns.Aside), answer, OnThePhone());
+        var verdict = CheckInAnswers.Read(Built(CheckIns.Aside), answer, OnThePhone());
         Assert.True(verdict.Readable);
         Assert.Equal((act, about), (verdict.Act, verdict.Text));
-        Assert.False(CheckIns.Read(Built(CheckIns.Aside), "REMIND: Hush.", OnThePhone()).Readable);
+        Assert.False(CheckInAnswers.Read(Built(CheckIns.Aside), "REMIND: Hush.", OnThePhone()).Readable);
     }
 
     [Fact]

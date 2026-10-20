@@ -29,18 +29,18 @@ public partial class MainWindow
         var active = library.Books.Where(book => book.AppliesTo(persona?.Id)).ToArray();
         var entries = active.SelectMany(book => book.Entries).Where(entry => entry.Enabled).ToArray();
         page.Children.Add(PageNowCard(lore.Error ?? (library.Books.Count == 0
-            ? "No lorebooks yet. Import one from SillyTavern or a character card, or write your own."
+            ? "No lorebooks yet: import one from SillyTavern or a character card, or write your own."
             : active.Length == 0
                 ? $"{library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")}, none enabled for {persona?.Name ?? "this persona"}."
-                : $"{active.Length} of {library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")} enabled for {persona?.Name ?? "this persona"}. " +
+                : $"{active.Length} of {library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")} enabled for {persona?.Name ?? "this persona"}, with " +
                   $"{entries.Length} {(entries.Length == 1 ? "entry" : "entries")}" +
                   (entries.Count(entry => entry.Constant) is var constant and > 0 ? $", {constant} always on" : "") + "."), null));
 
         var books = new List<UIElement>
         {
             Heading("Lorebooks"),
-            Note("Lore entries are added to replies when their keywords come up. Triggered entries are sent to the Thinking model.",
-                new Thickness(0, 0, 0, 8))
+            HelpTip.Explain("Lore entries are added to replies when their keywords come up. Triggered entries are sent to the Thinking model.",
+                new Thickness(0, 0, 0, 8), "LorebookTab", "lorebooks", wiki: "Personality-and-Characters#lorebooks")
         };
         if (lore.Loaded)
             foreach (var book in library.Books)
@@ -51,8 +51,8 @@ public partial class MainWindow
         page.Children.Add(Card(books.ToArray()));
 
         page.Children.Add(Card(Heading("From SillyTavern"),
-            Note("Import SillyTavern World Info or character cards. You can also export any lorebook back to World Info.",
-                new Thickness(0, 0, 0, 4))));
+            HelpTip.Explain("Import SillyTavern World Info or character cards. You can also export any lorebook back to World Info.",
+                new Thickness(0, 0, 0, 4), "LorebookSillyTavern", "SillyTavern lorebooks", wiki: "Personality-and-Characters#lorebooks")));
     }
 
     private UIElement BookRow(Lorebook book, Guid? persona)
@@ -73,7 +73,7 @@ public partial class MainWindow
         row.Children.Add(toggle);
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock { Text = book.Name, FontSize = 15, TextWrapping = TextWrapping.Wrap });
-        text.Children.Add(Note($"{scope}. {book.Entries.Count} {(book.Entries.Count == 1 ? "entry" : "entries")}" +
+        text.Children.Add(Note($"{scope}, {book.Entries.Count} {(book.Entries.Count == 1 ? "entry" : "entries")}" +
             (book.AppliesTo(persona) ? ", used by the current persona." : "."), new Thickness(0, 0, 0, 0)));
         row.Children.Add(text);
         return row;
@@ -92,7 +92,7 @@ public partial class MainWindow
             }).ToArray()
         });
         homeLore = saved.Saved ? new(saved.Library, saved.Revision, null) : null;
-        if (!saved.Saved && !closing) ActionText.Text = "Couldn't update the lorebook. " + saved.Error;
+        if (!saved.Saved && !closing) ActionText.Text = "Couldn't update the lorebook: " + saved.Error;
         if (!closing && openTab == CompanionTab.Lorebook) RenderTab();
     }
 

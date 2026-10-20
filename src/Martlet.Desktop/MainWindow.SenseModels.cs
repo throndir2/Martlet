@@ -61,7 +61,7 @@ public partial class MainWindow
         if (own is not null && route.Described) Line(id + "Sent", SenseSent(kind, own));
         if (setup.State == "unreadable")
             lines.Add(Warning($"Martlet can't read {Martlet.Core.Cluster.PoolSettings.LocalFileName} (a newer Martlet's, or a damaged file), so " +
-                "the text model takes pictures and recordings. Changing the list below replaces the file."));
+                "the text model takes pictures and recordings; changing the list below replaces the file."));
         lines.AddRange(SenseTestControls(kind, own, thinking, route));
         return lines;
     }
@@ -104,9 +104,9 @@ public partial class MainWindow
         string Does(bool yes) => image ? yes ? "sees pictures" : "doesn't see pictures" : yes ? "hears recordings" : "doesn't hear recordings";
         if ((image ? found?.Sees : found?.Hears) is { } known)
             return $"{model} {Does(known)}, as Martlet found out (last check on {found!.CheckedAt.LocalDateTime:d}: {found.Source}).";
-        return byName is { } yes ? $"By its name, {model} {Does(yes)}. {test} makes sure."
-            : $"Martlet doesn't know yet whether {model} {(image ? "sees pictures" : "hears recordings")}. It tries, and remembers a refusal; " +
-                $"{test} finds out.";
+        return byName is { } yes ? $"By its name, {model} {Does(yes)}; {test} makes sure."
+            : $"Martlet doesn't know yet whether {model} {(image ? "sees pictures" : "hears recordings")}; it tries and remembers a refusal, " +
+                $"and {test} finds out.";
     }
 
     /// <summary>What goes to a model of its own, and where ("ImageModelSent").</summary>
@@ -132,11 +132,13 @@ public partial class MainWindow
             { Path: SensePath.Thinking } => "Thinking itself",
             _ => kind == SenseKind.Image ? "no model, so Martlet can't see" : "no model, so Thinking gets the transcript only"
         };
-        string Pool(SenseKind kind) => pool is not null && SensePoolUsers.For(kind, pool, abilities).Where(u => u.Gets).ToArray() is { Length: > 0 } users
-            ? $" Background work also sends {SenseInputs(kind)} to {SensePoolUsers.Names(users)} in the Thinking pool."
-            : "";
-        return $"Thinking is the text model: it writes every reply. Pictures go to {Goes(SenseKind.Image)} (Companion › Vision), and " +
-            $"recordings go to {Goes(SenseKind.Audio)} (Companion › Hearing)." + Pool(SenseKind.Image) + Pool(SenseKind.Audio);
+        string? Pool(SenseKind kind) => pool is not null && SensePoolUsers.For(kind, pool, abilities).Where(u => u.Gets).ToArray() is { Length: > 0 } users
+            ? $"{SenseInputs(kind)} to {SensePoolUsers.Names(users)}"
+            : null;
+        var background = new[] { Pool(SenseKind.Image), Pool(SenseKind.Audio) }.OfType<string>().ToArray();
+        return $"Thinking is the text model and writes every reply; pictures go to {Goes(SenseKind.Image)} (Companion › Vision), and " +
+            $"recordings go to {Goes(SenseKind.Audio)} (Companion › Hearing)" +
+            (background.Length > 0 ? $"; background work also sends {string.Join(" and ", background)} in the Thinking pool." : ".");
     }
 
     /// <summary>Companion › Thinking's Now card: the text model writes every reply, and where pictures and recordings go, with links
@@ -165,8 +167,9 @@ public partial class MainWindow
             {
                 null => [Note("Test hearing under Hear how you say it tests the text model.", new Thickness(0, 0, 0, 0))],
                 { Place: DeepThinkingPlace.Endpoint } => ModelTestControls(kind, OwnProbe(own, thinking), id + "Test", id + "TestStatus", ""),
-                _ => [Note($"Test hearing asks an OpenAI-compatible endpoint. {own.Describe()} is tried as it is, and Martlet remembers a " +
-                    "refused recording.", new Thickness(0, 0, 0, 0))]
+                _ => [HelpTip.Explain($"Test hearing works only with a model on an OpenAI-compatible endpoint. {own.Describe()} is " +
+                    "tried as it is, and Martlet remembers a refused recording.", new Thickness(0, 0, 0, 0), "SenseHearingTest",
+                    "Test hearing", wiki: "Vision#test-vision-and-test-hearing")]
             };
         if (own is { Place: DeepThinkingPlace.Host, HostOrigin: { } origin, ModelId: { } model })
         {
@@ -182,13 +185,13 @@ public partial class MainWindow
             var line = Note(modelTestResults.GetValueOrDefault(test) ?? (conversation is null
                 ? "Test vision can't reach a paired computer's model from this PC now."
                 : $"Sends {own.Describe()} one picture of a single word, drawn on this PC (never your screen), through its paired, pinned " +
-                    $"connection, and asks which word it shows. It waits while a reply needs {own.HostId}."), new Thickness(0, 0, 0, 6));
+                    $"connection, and asks which word it shows (it waits while a reply needs {own.HostId})."), new Thickness(0, 0, 0, 6));
             AutomationProperties.SetAutomationId(line, id + "TestStatus");
             return [button, line];
         }
         return ModelTestControls(kind, own is null ? ThinkingProbe(thinking) : OwnProbe(own, thinking), id + "Test", id + "TestStatus",
             thinking is null ? "Set up Thinking first."
-            : $"Test vision asks an OpenAI-compatible endpoint (Ollama on this PC included) directly. {thinking.ModelId} runs on " +
+            : $"Test vision can't reach {thinking.ModelId} on " +
                 $"{(SelfHostSetup.IsGateway(thinking.RouteType ?? SetupRouteType.OpenAi) ? thinking.Gateway?.HostId ?? "a paired computer" : "OpenAI")}, " +
                 "so Martlet goes by its name and remembers a refused picture.");
     }
@@ -221,7 +224,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(model, id + "LocalModel");
         var listed = Note(ollamaModels is null
                 ? installed ? "Check Ollama to see which models are downloaded."
-                    : "Ollama isn't installed on this PC yet. Set it up on Companion › Thinking › This PC."
+                    : "Ollama isn't installed on this PC yet; set it up on Companion › Thinking › This PC."
                 : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet."
                 : "Downloaded: " + string.Join(", ", ollamaModels.Select(m => $"{m} ({LocalShort(kind, LocalTakes(kind, m, abilities))})")) + ".",
             new Thickness(0, 4, 0, 0));
@@ -241,9 +244,10 @@ public partial class MainWindow
         void Show(string picked)
         {
             var now = SavedModelAbilities();
-            known.Text = picked.Length == 0 ? "Choose a model."
-                : ModelKnown(kind, picked, now.Find(LocalOllamaBaseUrl, picked), LocalTakes(kind, picked, now)) +
-                (ollamaModels is { } downloaded && !LocalOllama.Serves(downloaded, picked) ? " It isn't downloaded yet." : "");
+            var said = picked.Length == 0 ? "Choose a model."
+                : ModelKnown(kind, picked, now.Find(LocalOllamaBaseUrl, picked), LocalTakes(kind, picked, now));
+            known.Text = picked.Length > 0 && ollamaModels is { } downloaded && !LocalOllama.Serves(downloaded, picked)
+                ? said.TrimEnd('.') + "; it isn't downloaded yet." : said;
             if (picked.Length == 0) ShowFit("", false);
             else if (beside is null) ShowFit($"Thinking doesn't use Ollama on this PC, so {picked} has it to itself.", false);
             else if (OllamaSideBySide.Same(picked, beside))
@@ -272,7 +276,8 @@ public partial class MainWindow
         var panel = new StackPanel { Margin = new Thickness(0, 2, 0, 0) };
         panel.Children.Add(HelpTip.Explain($"A second model in Ollama on this PC describes the {SenseInputs(kind)} for Thinking. Ollama runs each model in " +
             $"its own process, so it works while Thinking answers, but only while both fit on the graphics card: Martlet checks before each " +
-            $"job, and a reply never waits for it. {(image ? "Pictures" : "Recordings")} stay on this PC.", new Thickness(0, 0, 0, 8), "SenseModel", "the second model"));
+            $"job, and a reply never waits for it. {(image ? "Pictures" : "Recordings")} stay on this PC.", new Thickness(0, 0, 0, 8), "SenseModel", "the second model",
+            wiki: "Vision#image-models"));
         panel.Children.Add(new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 0, 0, 4) });
         panel.Children.Add(model);
         panel.Children.Add(listed);
@@ -354,9 +359,9 @@ public partial class MainWindow
 
     /// <summary>The consent a cloud provider, a model app on this PC or another server needs: what is sent there.</summary>
     internal static string SenseConsent(SenseKind kind, string provider, bool onThisPc) => kind == SenseKind.Image
-        ? $"I choose {provider} as the image model. Pictures of your screen or camera and a few lines of the conversation are sent there" +
+        ? $"I choose {provider} as the image model, so pictures of your screen or camera and a few lines of the conversation are sent there" +
             (onThisPc ? ", an app that may pass them on." : ", and requests may cost money.")
-        : $"I choose {provider} as the audio model. Recordings of your voice and of what this PC plays, with a few lines of the conversation, " +
+        : $"I choose {provider} as the audio model, so recordings of your voice and of what this PC plays, with a few lines of the conversation, " +
             "are sent there" + (onThisPc ? ", an app that may pass them on." : ", and requests may cost money.");
 
     private async Task LookForSenseServersAsync()

@@ -120,10 +120,10 @@ internal static class LocalOllama
             return;
         }
         if (!SimulatedOllamaCrashLoop.Active && Executable() is null)
-            throw new InvalidOperationException("Ollama isn't installed on this PC. Install it first.");
+            throw new InvalidOperationException("Ollama isn't installed on this PC; install it first.");
         status("Starting Ollama on this PC...");
         output.Report("Starting Ollama...");
-        if (!Start()) throw new InvalidOperationException("Couldn't start Ollama. Start it from the Start menu, then try again.");
+        if (!Start()) throw new InvalidOperationException("Couldn't start Ollama; start it from the Start menu, then try again.");
         for (var attempt = 0; attempt < 30; attempt++)
         {
             await Task.Delay(TimeSpan.FromSeconds(1), token);
@@ -138,7 +138,7 @@ internal static class LocalOllama
         var trouble = await LocalOllamaRecovery.DiagnoseAsync(token);
         if (trouble.Stops) await RecoverAsync(trouble, status, output, token);
         else if (trouble.Kind != OllamaTroubleKind.Answering)
-            throw new InvalidOperationException("Ollama didn't start. Start it from the Start menu, then try again.");
+            throw new InvalidOperationException("Ollama didn't start; start it from the Start menu, then try again.");
     }
 
     /// <summary>Ollama stops when it starts: repairs the known cause (once by itself in a run) and returns when Ollama answers
@@ -204,7 +204,7 @@ internal static class LocalOllama
         }
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Couldn't download {model} (error {(int)response.StatusCode}).");
-        if (last != "success") throw new InvalidOperationException($"Ollama didn't finish downloading {model}. The output has details.");
+        if (last != "success") throw new InvalidOperationException($"Ollama didn't finish downloading {model}; the output has details.");
     }
 
     /// <summary>Puts downloaded GGUF <paramref name="files"/> into this PC's Ollama as <paramref name="model"/>
@@ -241,16 +241,16 @@ internal static class LocalOllama
         using (var show = await SendAsync(client, HttpMethod.Post, "/api/show", new { model }, TimeSpan.FromSeconds(30), token))
         {
             if (show.Status == HttpStatusCode.NotFound)
-                throw new InvalidOperationException($"{model} isn't downloaded in Ollama on this PC. Choose Download model, then test again.");
+                throw new InvalidOperationException($"{model} isn't downloaded in Ollama on this PC; choose Download model, then test again.");
             if (!show.Ok) throw Failure($"Ollama couldn't read {model}", show);
             var root = show.Body!.RootElement;
             capabilities = root.TryGetProperty("capabilities", out var list) && list.ValueKind == JsonValueKind.Array
                 ? list.EnumerateArray().Select(c => c.ValueKind == JsonValueKind.String ? c.GetString() : null).OfType<string>().ToArray()
                 : [];
             var canChat = capabilities.Length == 0 || capabilities.Contains("completion", StringComparer.Ordinal);
-            output.Report($"{model} is downloaded." + (capabilities.Length > 0 && canChat ? $" {Abilities(capabilities)}." : ""));
+            output.Report($"{model} is downloaded{(capabilities.Length > 0 && canChat ? Abilities(capabilities) : "")}.");
             if (!canChat)
-                throw new InvalidOperationException($"{model} can't hold a conversation. Choose a chat model.");
+                throw new InvalidOperationException($"{model} can't hold a conversation; choose a chat model.");
         }
 
         status($"Loading {model}...");
@@ -261,16 +261,16 @@ internal static class LocalOllama
         status($"Asking {model} to say hello...");
         output.Report($"Asking {model} for a test reply...");
         var reply = await AskAsync(client, model, replyTokens, reasoning, output, token);
-        output.Report($"First words after {Seconds(reply.FirstWords)}. Finished after {Seconds(reply.Total)}.");
+        output.Report($"First words after {Seconds(reply.FirstWords)}, finished after {Seconds(reply.Total)}.");
         output.Report($"Reply: {reply.Text}");
 
-        var abilities = capabilities.Length > 0 ? $" {Abilities(capabilities)}." : "";
+        var abilities = capabilities.Length > 0 ? Abilities(capabilities) : "";
         var limit = Seconds(firstWordsLimit);
         if (reply.FirstWords > firstWordsLimit)
-            return new($"{model} works, but starts too slowly for Martlet. First words took {Seconds(reply.FirstWords)}. Martlet waits {limit}. Choose a smaller model.{abilities}", Warning: true);
+            return new($"{model} works, but starts too slowly for Martlet (first words took {Seconds(reply.FirstWords)}, Martlet waits {limit}); choose a smaller model{abilities}.", Warning: true);
         if (loaded > firstWordsLimit)
-            return new($"{model} works once loaded, but loading took {Seconds(loaded)}. If a reply times out, try again after the model finishes loading.{abilities}", Warning: true);
-        return new($"{model} works on this PC. It loaded in {Seconds(loaded)} and answered in {Seconds(reply.Total)}.{abilities}", Warning: false);
+            return new($"{model} works once loaded, but loading took {Seconds(loaded)}; if a reply times out, try again after it loads{abilities}.", Warning: true);
+        return new($"{model} works on this PC: it loaded in {Seconds(loaded)} and answered in {Seconds(reply.Total)}{abilities}.", Warning: false);
     }
 
     /// <summary>Has this PC's Ollama load <paramref name="model"/> into memory now (an /api/generate request with no prompt, so
@@ -421,14 +421,14 @@ internal static class LocalOllama
             if (!done || finish is null) throw new InvalidOperationException($"{model}'s answer was cut off: Ollama ended the reply early.");
             if (finish == "length")
                 throw new InvalidOperationException($"{model} used its whole reply budget{(replyTokens is { } cap ? $" ({cap} tokens)" : "")} before finishing" +
-                    (thinking ? ", thinking before it answered" : "") + ". Raise or clear Max reply length in Companion › Replies, or choose a chat model.");
+                    (thinking ? ", thinking before it answered" : "") + "; raise or clear Max reply length in Companion › Replies, or choose a chat model.");
             if (said.Length == 0) throw new InvalidOperationException($"{model} answered with nothing.");
             return new(said.Length > 300 ? said[..300] + "…" : said, first ?? clock.Elapsed, clock.Elapsed);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
             // A model that overfills the graphics card (beside a game, say) is paged out to system memory and stalls.
-            throw new InvalidOperationException($"{model} didn't answer within {AnswerLimit.TotalMinutes:0} minutes. If a game or other " +
+            throw new InvalidOperationException($"{model} didn't answer within {AnswerLimit.TotalMinutes:0} minutes; if a game or other " +
                 "programs are using the graphics card, choose a smaller model or close them, then test again.");
         }
         catch (JsonException)
@@ -492,7 +492,7 @@ internal static class LocalOllama
         }
         catch (HttpRequestException error)
         {
-            throw new InvalidOperationException($"Ollama stopped answering ({error.Message}). Start it from the Start menu, then test again.");
+            throw new InvalidOperationException($"Ollama stopped answering ({error.Message}); start it from the Start menu, then test again.");
         }
     }
 
@@ -523,11 +523,10 @@ internal static class LocalOllama
 
     /// <summary>What to do when <paramref name="model"/> doesn't fit in the graphics memory free on this PC.</summary>
     internal static string GraphicsMemoryAdvice(string model) =>
-        $"{model} doesn't fit in the graphics memory free on this PC right now, so Ollama couldn't load it. " +
-        "Games and other programs share the graphics card. " +
-        (MainWindow.SmallerLocalModel(model) is { } smaller
-            ? $"Choose a smaller model, such as {smaller.Id} ({smaller.Size}), or close programs that use the graphics card."
-            : "Close programs that use the graphics card, or think with a cloud provider instead.");
+        $"{model} doesn't fit in the graphics memory free on this PC right now,         so Ollama couldn't load it; " +
+                (MainWindow.SmallerLocalModel(model) is { } smaller
+                    ? $"choose a smaller model, such as {smaller.Id} ({smaller.Size}), or close programs that use the graphics card."
+            : "close programs that use the graphics card, or think with a cloud provider instead.");
 
     /// <summary>Ollama's own explanation from an error body (<c>{"error":"..."}</c>, or OpenAI-style
     /// <c>{"error":{"message":"..."}}</c>), on one bounded line.</summary>
@@ -556,7 +555,7 @@ internal static class LocalOllama
         var extras = new List<string>();
         if (capabilities.Contains("vision")) extras.Add("vision");
         if (capabilities.Contains("tools")) extras.Add("tools");
-        return extras.Count == 0 ? "Ready for chat" : "Also supports " + string.Join(" and ", extras);
+        return extras.Count == 0 ? " (ready for chat)" : " (also supports " + string.Join(" and ", extras) + ")";
     }
 
     private static string Seconds(TimeSpan time) => time.TotalSeconds < 10

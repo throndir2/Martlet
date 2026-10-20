@@ -14,7 +14,7 @@ public sealed partial class CheckInsTests
         Assert.Equal(CheckInConditions.SomethingNew, actions.Conditions);
         // Its sets are computed: every set that takes over reply tools.
         Assert.Equal(CheckInToolSets.All.Where(s => s.Replaces.Count > 0).Select(s => s.Id), actions.ToolSets);
-        Assert.Equal(CheckInFacts.Latest | CheckInFacts.Work, CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInActions)));
+        Assert.Equal(CheckInFacts.Latest | CheckInFacts.Work, CheckInPrompts.Placed(PromptSettings.Text(null, PromptCatalog.CheckInActions)));
         Assert.Equal("a reply to end", CheckIns.TriggerWords(CheckInTriggers.ExchangeEnded));
         Assert.Equal(CheckIns.ByTouches | CheckInTriggers.ExchangeEnded | CheckInTriggers.Spoke, CheckIns.AllTriggers);
     }
@@ -41,13 +41,13 @@ public sealed partial class CheckInsTests
     [Fact]
     public void TheLatestFactReadsEveryExchangeSinceTheCheckInLastRan()
     {
-        Assert.Equal("The latest exchange:\nUser: This bug is driving me crazy.\nMira: Ooh, want to talk it through?", CheckIns.Latest(State()));
-        var since = CheckIns.Latest(State() with { Since = 2 });
+        Assert.Equal("The latest exchange:\nUser: This bug is driving me crazy.\nMira: Ooh, want to talk it through?", CheckInPrompts.Latest(State()));
+        var since = CheckInPrompts.Latest(State() with { Since = 2 });
         Assert.StartsWith("The latest 2 exchanges, oldest first:\nUser: Back to work.", since);
         Assert.DoesNotContain("oven", since);
-        Assert.Contains("check the oven", CheckIns.Latest(State() with { Since = 0 }));
-        Assert.Equal("Nothing has been said in this conversation yet.", CheckIns.Latest(State() with { Exchanges = [], Exchanged = 0 }));
-        var message = CheckIns.Message(Built(CheckIns.Actions), State() with { Since = 3 }, null)!;
+        Assert.Contains("check the oven", CheckInPrompts.Latest(State() with { Since = 0 }));
+        Assert.Equal("Nothing has been said in this conversation yet.", CheckInPrompts.Latest(State() with { Exchanges = [], Exchanged = 0 }));
+        var message = CheckInPrompts.Message(Built(CheckIns.Actions), State() with { Since = 3 }, null)!;
         Assert.Contains("User: This bug is driving me crazy.", message);
         Assert.Contains("a trip plan", message);
         Assert.Contains("Use your tools for what needs doing", message);

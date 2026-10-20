@@ -453,6 +453,10 @@ public sealed class HostSetupCommandsTests
             var pinned = HostInputDialog.RoleDialog("gpu-pc", "ollama", spread with { GpuCurrent = "GPU-3090aaaa-0000" });
             Assert.Equal("GPU-3090aaaa-0000", HostInputDialog.Cleaned(pinned.Answers())!["choice.gpu"]);
             pinned.Close();
+            // A model split across both cards (choice.gpu GPU-a,GPU-b) stays split.
+            var split = HostInputDialog.RoleDialog("gpu-pc", "deep-thinking", spread with { GpuCurrent = "GPU-3090aaaa-0000,GPU-3080bbbb-1111" });
+            Assert.Equal("GPU-3090aaaa-0000,GPU-3080bbbb-1111", HostInputDialog.Cleaned(split.Answers())!["choice.gpu"]);
+            split.Close();
         });
     }
 
@@ -692,7 +696,7 @@ public sealed class HostSetupCommandsTests
         Assert.NotNull(warning);
         Assert.Contains("gpu-a already runs a Thinking model (gemma4:e4b) on its only graphics card", warning);
         Assert.Contains("about half speed", warning);
-        Assert.Contains("one graphics card for each Thinking model", warning);
+        Assert.Contains("one graphics card for each Thinking model", DeepThinkingFit.SharedCardMore);
         // No Thinking model there, or a second graphics card for it: no warning.
         Assert.Null(DeepThinkingFit.SharedCard("gpu-a", hardware, new Dictionary<string, string>()));
         Assert.Null(DeepThinkingFit.SharedCard("gpu-a", hardware with { Gpus = [.. hardware.Gpus, hardware.Gpus[0]] }, thinking));

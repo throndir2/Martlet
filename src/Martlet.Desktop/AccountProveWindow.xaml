@@ -9,8 +9,10 @@
     <StackPanel Margin="26,24">
         <TextBlock x:Name="HeadingText" Style="{DynamicResource SectionHeading}" TextWrapping="Wrap" Text="Sign in as someone else"
                    AutomationProperties.AutomationId="ProveTitle"/>
-        <TextBlock x:Name="HintText" TextWrapping="Wrap" Margin="0,6,0,14" Style="{DynamicResource Muted}"
-                   Text="Sign in with your Martlet user name and password. One of your hosts checks them; the password is never kept on this PC, only a check of it so it can unlock you here later."/>
+        <TextBlock x:Name="HintText" TextWrapping="Wrap" Margin="0,6,0,14" Style="{DynamicResource Muted}"><Run x:Name="HintRun" Text="Sign in with your Martlet user name and password."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0"
+                   Text="One of your hosts checks your sign-in. This PC never keeps your password, only a check of it, so it can unlock you here later."
+                   Wiki="Accounts-and-Household#sign-in-with-your-martlet-password" AutomationProperties.AutomationId="Help-AccountProveHow"
+                   AutomationProperties.Name="About signing in through a host"/></InlineUIContainer></TextBlock>
         <TextBlock Text="Host that checks it"/>
         <ComboBox x:Name="HostChoice" Margin="0,4,0,8" DisplayMemberPath="Label" AutomationProperties.AutomationId="ProveHost"/>
         <TextBlock Text="Sign in with"/>

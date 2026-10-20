@@ -249,7 +249,7 @@ public sealed class ConversationHistoryDesktopTests
             Assert.True(wrong.IsError);
             Assert.Equal("invalid arguments", problem);
 
-            Assert.Contains("It holds 2 conversations (2 exchanges) since ", history.Describe(MemorySettingsOn()));
+            Assert.Contains("; it holds 2 conversations (2 exchanges) since ", history.Describe(MemorySettingsOn()));
             Assert.StartsWith("Off while memory is off", history.Describe(null));
         }
         finally

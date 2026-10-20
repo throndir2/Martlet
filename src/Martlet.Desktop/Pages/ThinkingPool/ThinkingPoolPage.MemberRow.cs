@@ -29,16 +29,24 @@ internal sealed partial class ThinkingPoolPage
         var badgeLine = Note(string.Join("  \u00b7  ", line.Badges), new Thickness(0, 2, 0, 0));
         badgeLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         badgeLine.Visibility = line.Badges.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        badgeLine.ToolTip = "Waits while you talk: it shares the conversation's computer, so it starts no new pool work while you talk. " +
-            "Costs money: a paid cloud provider. Offline: its computer doesn't answer now. Limiting requests: its provider asked " +
-            "Martlet to slow down, so it gets fewer jobs for a while and its jobs wait instead of failing.";
+        // What each badge means, in one sentence.
+        var badgeTip = string.Join("; ", line.Badges.Select(badge => badge switch
+        {
+            "Waits while you talk" => "waits while you talk: it shares the conversation's computer, so it starts no new pool work while you talk",
+            "Costs money" => "costs money: a paid cloud provider",
+            "Offline" => "offline: its computer doesn't answer now",
+            "Limiting requests" => "limiting requests: its provider asked Martlet to slow down, so its jobs wait instead of failing",
+            _ => badge
+        }));
+        badgeLine.ToolTip = badgeTip.Length == 0 ? null : char.ToUpperInvariant(badgeTip[0]) + badgeTip[1..] + ".";
         AutomationProperties.SetName(badgeLine, $"{name}: {badgeLine.Text}");
         AutomationProperties.SetAutomationId(badgeLine, $"ThinkingPoolBadges-{i}");
         text.Children.Add(badgeLine);
         // One graphics card for each Thinking model: a pool model on the card of this computer's Thinking shares it.
         if (line.SharedCard is { } shared)
         {
-            var warning = Note(shared, new Thickness(0, 2, 0, 0));
+            var warning = HelpTip.Explain(shared + " " + DeepThinkingFit.SharedCardMore, new Thickness(0, 2, 0, 0),
+                "SharedCard-" + hostId + line.Suffix, "sharing a graphics card", wiki: "Thinking#add-a-machine");
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             AutomationProperties.SetName(warning, $"{hostId}: {shared}");
             AutomationProperties.SetAutomationId(warning, "DeepThinkingShare-" + hostId + line.Suffix);
@@ -57,24 +65,22 @@ internal sealed partial class ThinkingPoolPage
         }
         var rules = new WrapPanel();
         rules.Children.Add(Rule("ThinkingPoolQuick", "Quick jobs", pool.TakesQuickJobs(key),
-            "The judges (are you done talking, did you interrupt) and the screen and sound summaries. They are short and need a fast answer.",
+            "The judges (are you done talking, did you interrupt) and the screen and sound summaries, which need a fast answer.",
             take => model.SavePoolAsync(p => p.WithJobs(key, quick: take), take ? $"{name} takes quick jobs again."
                 : $"{name} no longer takes quick jobs: the judges and the summaries go to other machines.").Forget()));
         rules.Children.Add(Rule("ThinkingPoolLong", "Long jobs", pool.TakesLongJobs(key),
-            "Thinking longer, research, a song's lyrics, touch zones, remembering, naming and check-ins. They can run for minutes.",
+            "Thinking longer, research, a song's lyrics, touch zones, remembering, naming and check-ins, which can run for minutes.",
             take => model.SavePoolAsync(p => p.WithJobs(key, @long: take), take ? $"{name} takes long jobs again."
                 : $"{name} no longer takes long jobs: thinking longer, research and the other long jobs go to other machines.").Forget()));
         rules.Children.Add(Rule("ThinkingPoolAnswers", "Backup for slow replies" + (paid ? " (each request may cost money)" : ""), pool.Answers(key),
-            "With Backup for slow replies on (below), a reply that is slow to start sends the same request here too, and the first " +
-                "to start gives the reply. Choose a machine with the same model as the conversation, or a similar one.",
+            "With Backup for slow replies on (below), a reply that is slow to start also asks this machine, and the first to start gives the reply.",
             allow => model.SavePoolAsync(p => p.WithAnswers(key, allow), allow
                 ? $"{name} may answer for the conversation when a reply is slow to start."
                 : $"{name} no longer answers for the conversation.").Forget()));
         // Only an external member asks first: this PC and paired computers always may receive pictures and recordings.
         if (ThinkingPoolSettings.IsExternal(member))
             rules.Children.Add(Rule("ThinkingPoolMedia", "May receive pictures and recordings", pool.MayReceiveMedia(member),
-                "Check-ins, screen and sound summaries and other pool jobs can include a screenshot or a recording. This machine is " +
-                    "outside this PC and your paired computers, so it gets them only when this is ticked. Text-only jobs go to it either way.",
+                "This machine is outside this PC and your paired computers, so it gets screenshots and recordings only when this is ticked.",
                 allow => model.SavePoolAsync(p => p.WithMedia(key, allow), allow
                     ? $"{name} may now receive pictures and recordings."
                     : $"{name} no longer receives pictures and recordings: jobs with them go to other machines or use their simple rules.").Forget()));
@@ -86,9 +92,7 @@ internal sealed partial class ThinkingPoolPage
             Width = 190, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
             ItemsSource = new[] { $"Guessed: {guess}", "Fast", "Standard", "Smart" },
             SelectedIndex = pool.Smarts.TryGetValue(key, out var chosenSmarts) ? 1 + (int)chosenSmarts : 0,
-            ToolTip = "How smart this machine's model is. Martlet guesses it from the model name: small models (about 4B or less) are " +
-                "Fast, large ones (about 26B or more, and big cloud models) are Smart. Runs on (below) uses it: Prefer smart and " +
-                "Smart only send jobs to the smartest machines."
+            ToolTip = "How smart this machine's model is, for Runs on (below); Martlet guesses it from the model name."
         };
         AutomationProperties.SetAutomationId(smarts, $"ThinkingPoolSmarts-{i}");
         AutomationProperties.SetName(smarts, $"{name}: smarts");
@@ -108,15 +112,14 @@ internal sealed partial class ThinkingPoolPage
         var onBox = new CheckBox
         {
             Content = onLabel, IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0),
-            ToolTip = "Untick to stop using this machine for background work; it keeps its settings. Tick it to use it again. " +
-                "With no machine on, the Thinking pool is off."
+            ToolTip = "Untick to stop using this machine for background work; it keeps its settings."
         };
         AutomationProperties.SetAutomationId(onBox, $"ThinkingPoolOn-{i}");
         AutomationProperties.SetName(onBox, $"{name}: {onLabel}");
         // Checked/Unchecked rather than Click, so UI Automation's toggle (MCP ui_toggle) changes the choice too.
         onBox.Checked += (_, _) => model.SavePoolAsync(p => p.TurnOn(key), $"{name} is on: it takes jobs again.").Forget();
         onBox.Unchecked += (_, _) => model.SavePoolAsync(p => p.TurnOff(key),
-            $"{name} is off: it takes no jobs and keeps its settings. Tick On to use it again.").Forget();
+            $"{name} is off: it takes no jobs and keeps its settings until you tick On again.").Forget();
         buttons.Children.Add(onBox);
         if (member.OnHostRole && hostId is not null)
         {
@@ -128,8 +131,7 @@ internal sealed partial class ThinkingPoolPage
                 Width = 110, ItemsSource = choices.Select(n => $"{n} slot{(n == 1 ? "" : "s")}").ToArray(), SelectedIndex = slots - 1,
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
                 IsEnabled = host is not null && check is { Reachable: true } && check.Offers?.ContainsKey(role) == true && services.ChangesRolesOn(host),
-                ToolTip = $"How many jobs this graphics card runs at once. Choosing another number sets it on {hostId}: a run window " +
-                    "shows the change. Each slot beyond the first needs room on the card for another job's context."
+                ToolTip = $"How many jobs this graphics card runs at once; another number is set on {hostId} in a run window."
             };
             AutomationProperties.SetAutomationId(choice, $"ThinkingPoolSlots-{i}");
             AutomationProperties.SetName(choice, $"Slots on {name}");
@@ -188,8 +190,7 @@ internal sealed partial class ThinkingPoolPage
                 Width = 190, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, ItemsSource = choices,
                 SelectedItem = now,
                 IsEnabled = host is not null && check is { Reachable: true } && check.Offers?.ContainsKey(role) == true && services.ChangesRolesOn(host),
-                ToolTip = $"The model this graphics card runs. Choosing another one sets it up on {hostId}: a run window shows the " +
-                    "download, and the old model keeps working until the new one is ready."
+                ToolTip = $"The model this graphics card runs; another one is set up on {hostId} in a run window, and the old one works until then."
             };
             AutomationProperties.SetAutomationId(box, $"ThinkingPoolModel-{i}");
             AutomationProperties.SetName(box, $"{name}: model");
@@ -210,8 +211,7 @@ internal sealed partial class ThinkingPoolPage
             {
                 Width = 190, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, ItemsSource = choices,
                 SelectedItem = current,
-                ToolTip = "The model in Ollama on this PC that does this machine's jobs. It can't be the conversation's own model, which " +
-                    "can't think something over while it answers you."
+                ToolTip = "The model in Ollama on this PC that does this machine's jobs (not the conversation's own model)."
             };
             AutomationProperties.SetAutomationId(box, $"ThinkingPoolModel-{i}");
             AutomationProperties.SetName(box, $"{name}: model");
@@ -220,17 +220,17 @@ internal sealed partial class ThinkingPoolPage
                 if (box.SelectedItem is not string chosen || chosen == current) return;
                 if (beside is not null && OllamaSideBySide.Same(chosen, beside))
                 {
-                    services.ShowStatus($"{chosen} is Thinking's own model, which can't think something over while it answers you. Choose another model.");
+                    services.ShowStatus($"{chosen} is Thinking's own model, which can't think something over while it answers you; choose another model.");
                     box.SelectedItem = current;
                     return;
                 }
-                model.SavePoolAsync(p => p.WithModel(key, chosen), $"{name} now uses {chosen}." +
-                    (services.OllamaModels is { } known && !LocalOllama.Serves(known, chosen) ? $" Download {chosen} on Thinking to use it." : "")).Forget();
+                model.SavePoolAsync(p => p.WithModel(key, chosen), $"{name} now uses {chosen}" +
+                    (services.OllamaModels is { } known && !LocalOllama.Serves(known, chosen) ? $"; download {chosen} on Thinking to use it." : ".")).Forget();
             };
             return TerminalRow("Model", box);
         }
         var typed = new TextBox { Width = 260, MaxLength = 128, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
-            Text = current, ToolTip = "The model ID at this provider. Press Enter or leave the box to save it." };
+            Text = current, ToolTip = "The model ID at this provider; press Enter or leave the box to save it." };
         AutomationProperties.SetAutomationId(typed, $"ThinkingPoolModel-{i}");
         AutomationProperties.SetName(typed, $"{name}: model");
         InputHint.SetText(typed, current.Length > 0 ? current : ChatCompletionsEndpointCatalog.Named(member.Origin)?.DefaultModelId ?? "gemma4:e4b");

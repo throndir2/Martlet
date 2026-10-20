@@ -89,17 +89,17 @@ internal static partial class CheckInsCheck
         var trigger = fired! with { At = now.AddSeconds(-2) };
         var waits = new Dictionary<string, string?>
         {
-            ["no trigger"] = CheckIns.Wait(checkIn, facts, null),
-            ["only touches ended"] = CheckIns.Wait(checkIn, facts, null, fired: plain! with { At = now }),
-            ["fired, while the conversation is busy"] = CheckIns.Wait(checkIn, busy, null, fired: trigger),
-            ["fired, ran 2 min ago"] = CheckIns.Wait(checkIn, facts, new(now.AddMinutes(-2), 4, "nothing to remind Martlet of", false), fired: trigger),
-            ["fired 3 min ago"] = CheckIns.Wait(checkIn, facts, null, fired: trigger with { At = now.AddMinutes(-3) }),
-            ["fired, nobody here"] = CheckIns.Wait(checkIn, facts with { Away = TimeSpan.FromMinutes(25) }, null, fired: trigger),
-            ["fired, but off"] = CheckIns.Wait(checkIn with { On = false }, facts, null, fired: trigger),
-            ["Check now, no trigger"] = CheckIns.Wait(checkIn, busy, null, now: true),
-            ["paced, while the conversation is busy"] = CheckIns.Wait(paced, busy, null, fired: trigger)
+            ["no trigger"] = CheckInSchedule.Wait(checkIn, facts, null),
+            ["only touches ended"] = CheckInSchedule.Wait(checkIn, facts, null, fired: plain! with { At = now }),
+            ["fired, while the conversation is busy"] = CheckInSchedule.Wait(checkIn, busy, null, fired: trigger),
+            ["fired, ran 2 min ago"] = CheckInSchedule.Wait(checkIn, facts, new(now.AddMinutes(-2), 4, "nothing to remind Martlet of", false), fired: trigger),
+            ["fired 3 min ago"] = CheckInSchedule.Wait(checkIn, facts, null, fired: trigger with { At = now.AddMinutes(-3) }),
+            ["fired, nobody here"] = CheckInSchedule.Wait(checkIn, facts with { Away = TimeSpan.FromMinutes(25) }, null, fired: trigger),
+            ["fired, but off"] = CheckInSchedule.Wait(checkIn with { On = false }, facts, null, fired: trigger),
+            ["Check now, no trigger"] = CheckInSchedule.Wait(checkIn, busy, null, now: true),
+            ["paced, while the conversation is busy"] = CheckInSchedule.Wait(paced, busy, null, fired: trigger)
         };
-        var job = CheckIns.Prepare(checkIn, facts, null);
+        var job = CheckInPrompts.Prepare(checkIn, facts, null);
         step("triggers: when a triggered check-in waits", waits["no trigger"] == "it waits for an intimate touch or a stroke across 3 zones" &&
             waits["only touches ended"] == waits["no trigger"] && waits["fired, while the conversation is busy"] is null &&
             waits["fired, ran 2 min ago"] == "next in 3 min" && waits["fired 3 min ago"] == waits["no trigger"] &&
@@ -128,9 +128,9 @@ internal static partial class CheckInsCheck
             new { sets = actions.ToolSets, first = first.What, second = second.What, ageMinutes = CheckIns.ExchangeAge.TotalMinutes });
 
         // It reads the exchanges since it last ran (2 of the 4 here), or the newest one before its first run.
-        var since = CheckIns.Latest(facts with { Since = 2 });
-        var newest = CheckIns.Latest(facts);
-        var message = CheckIns.Message(actions, facts with { Since = 3 }, null) ?? "";
+        var since = CheckInPrompts.Latest(facts with { Since = 2 });
+        var newest = CheckInPrompts.Latest(facts);
+        var message = CheckInPrompts.Message(actions, facts with { Since = 3 }, null) ?? "";
         step("after each exchange: it reads what was said since it last ran", since.StartsWith("The latest 2 exchanges", StringComparison.Ordinal) &&
             since.Contains("Okay, back to work now.", StringComparison.Ordinal) && !since.Contains("check the oven", StringComparison.Ordinal) &&
             newest.StartsWith("The latest exchange:", StringComparison.Ordinal) && newest.Contains("This bug is driving me crazy", StringComparison.Ordinal) &&
@@ -157,7 +157,7 @@ internal static partial class CheckInsCheck
     private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Others;
 
     /// <summary>9. Signals (FIXTURE facts, canned answers, NOT AI): each signal condition waits and runs on the production
-    /// <see cref="CheckIns.Wait"/>, the new facts are worded as the check reads them, the four signal check-ins ask and read their
+    /// <see cref="CheckInSchedule.Wait"/>, the new facts are worded as the check reads them, the four signal check-ins ask and read their
     /// answers, the hours and the per-hour cap save and read back (a bad one refused), and a script whose output didn't change is
     /// told apart by its hash.</summary>
     private static void Signals(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
@@ -180,24 +180,24 @@ internal static partial class CheckInsCheck
         };
         var waits = new Dictionary<string, string?>
         {
-            ["came back"] = CheckIns.Wait(Built(CheckIns.Welcome), state, null),
-            ["came back: before the last run"] = CheckIns.Wait(Built(CheckIns.Welcome), state with { CameBackAt = now.AddMinutes(-40) }, ran with { At = now.AddMinutes(-35) }),
-            ["on a call"] = CheckIns.Wait(Own(CheckInConditions.NotOnCall), state, null),
-            ["not on a call"] = CheckIns.Wait(Own(CheckInConditions.NotOnCall), state with { OnCall = false }, null),
-            ["activity changed"] = CheckIns.Wait(Own(CheckInConditions.ActivityChanged), state, null),
-            ["activity same since the last run"] = CheckIns.Wait(Own(CheckInConditions.ActivityChanged), state with { ActivityChangedAt = now.AddMinutes(-4) }, ran with { Recent = [] }),
-            ["between 8 AM and 10 PM at 10:17 PM"] = CheckIns.Wait(Own(CheckInConditions.Between), state, null),
-            ["between 10 PM and 6 AM at 10:17 PM"] = CheckIns.Wait(Own(CheckInConditions.Between) with { FromHour = 22, UntilHour = 6 }, state, null),
-            ["unanswered"] = CheckIns.Wait(Built(CheckIns.Unanswered), question, null),
-            ["unanswered: no question"] = CheckIns.Wait(Built(CheckIns.Unanswered), facts, null),
-            ["unanswered: followed up"] = CheckIns.Wait(Built(CheckIns.Unanswered), question, ran with { At = now.AddMinutes(-6) }),
-            ["attention"] = CheckIns.Wait(Own(CheckInConditions.Attention), state, null),
-            ["no attention"] = CheckIns.Wait(Own(CheckInConditions.Attention), facts, null),
-            ["song ended"] = CheckIns.Wait(Own(CheckInConditions.SongEnded), state, null),
-            ["someone else"] = CheckIns.Wait(Built(CheckIns.Others), state, null),
-            ["only the owner"] = CheckIns.Wait(Built(CheckIns.Others), state with { Voices = [state.Voices[0]] }, null),
-            ["script changed: no script"] = CheckIns.Wait(Own(CheckInConditions.ScriptChanged), state, null),
-            ["at most 2 an hour"] = CheckIns.Wait(Own(CheckInConditions.None) with { MostPerHour = 2 }, state, ran)
+            ["came back"] = CheckInSchedule.Wait(Built(CheckIns.Welcome), state, null),
+            ["came back: before the last run"] = CheckInSchedule.Wait(Built(CheckIns.Welcome), state with { CameBackAt = now.AddMinutes(-40) }, ran with { At = now.AddMinutes(-35) }),
+            ["on a call"] = CheckInSchedule.Wait(Own(CheckInConditions.NotOnCall), state, null),
+            ["not on a call"] = CheckInSchedule.Wait(Own(CheckInConditions.NotOnCall), state with { OnCall = false }, null),
+            ["activity changed"] = CheckInSchedule.Wait(Own(CheckInConditions.ActivityChanged), state, null),
+            ["activity same since the last run"] = CheckInSchedule.Wait(Own(CheckInConditions.ActivityChanged), state with { ActivityChangedAt = now.AddMinutes(-4) }, ran with { Recent = [] }),
+            ["between 8 AM and 10 PM at 10:17 PM"] = CheckInSchedule.Wait(Own(CheckInConditions.Between), state, null),
+            ["between 10 PM and 6 AM at 10:17 PM"] = CheckInSchedule.Wait(Own(CheckInConditions.Between) with { FromHour = 22, UntilHour = 6 }, state, null),
+            ["unanswered"] = CheckInSchedule.Wait(Built(CheckIns.Unanswered), question, null),
+            ["unanswered: no question"] = CheckInSchedule.Wait(Built(CheckIns.Unanswered), facts, null),
+            ["unanswered: followed up"] = CheckInSchedule.Wait(Built(CheckIns.Unanswered), question, ran with { At = now.AddMinutes(-6) }),
+            ["attention"] = CheckInSchedule.Wait(Own(CheckInConditions.Attention), state, null),
+            ["no attention"] = CheckInSchedule.Wait(Own(CheckInConditions.Attention), facts, null),
+            ["song ended"] = CheckInSchedule.Wait(Own(CheckInConditions.SongEnded), state, null),
+            ["someone else"] = CheckInSchedule.Wait(Built(CheckIns.Others), state, null),
+            ["only the owner"] = CheckInSchedule.Wait(Built(CheckIns.Others), state with { Voices = [state.Voices[0]] }, null),
+            ["script changed: no script"] = CheckInSchedule.Wait(Own(CheckInConditions.ScriptChanged), state, null),
+            ["at most 2 an hour"] = CheckInSchedule.Wait(Own(CheckInConditions.None) with { MostPerHour = 2 }, state, ran)
         };
         var hash = CheckIns.ScriptHash("FIXTURE 42");
         var scripted = Own(CheckInConditions.ScriptChanged, script: "Write-Output 42");
@@ -219,13 +219,13 @@ internal static partial class CheckInsCheck
 
         var messages = new Dictionary<string, string>
         {
-            [CheckIns.Welcome] = CheckIns.Message(Built(CheckIns.Welcome), state, null) ?? "",
-            [CheckIns.Unanswered] = CheckIns.Message(Built(CheckIns.Unanswered), question with { Activity = "" }, null) ?? "",
-            [CheckIns.Aside] = CheckIns.Message(Built(CheckIns.Aside), state, null) ?? "",
-            [CheckIns.Others] = CheckIns.Message(Built(CheckIns.Others), state, null) ?? ""
+            [CheckIns.Welcome] = CheckInPrompts.Message(Built(CheckIns.Welcome), state, null) ?? "",
+            [CheckIns.Unanswered] = CheckInPrompts.Message(Built(CheckIns.Unanswered), question with { Activity = "" }, null) ?? "",
+            [CheckIns.Aside] = CheckInPrompts.Message(Built(CheckIns.Aside), state, null) ?? "",
+            [CheckIns.Others] = CheckInPrompts.Message(Built(CheckIns.Others), state, null) ?? ""
         };
         var verdicts = new[] { CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others }
-            .ToDictionary(id => id, id => CheckIns.Read(Built(id), id switch
+            .ToDictionary(id => id, id => CheckInAnswers.Read(Built(id), id switch
             {
                 CheckIns.Welcome => "SAY: Welcome back!", CheckIns.Unanswered => "OK", CheckIns.Aside => "ASIDE: FIXTURE in a Discord call.",
                 _ => "REMIND: Someone else is here; keep private things private."
@@ -243,7 +243,7 @@ internal static partial class CheckInsCheck
             messages[CheckIns.Others].Contains("Someone other than the user seems to be here.", StringComparison.Ordinal) &&
             verdicts[CheckIns.Welcome] is { Act: true } && verdicts[CheckIns.Unanswered] is { Act: false, Readable: true } &&
             verdicts[CheckIns.Aside] is { Act: true, Text: "FIXTURE in a Discord call." } && verdicts[CheckIns.Others] is { Act: true } &&
-            CheckIns.Placed("{activity} {people} {away}") == (CheckInFacts.Activity | CheckInFacts.People | CheckInFacts.WhileAway),
+            CheckInPrompts.Placed("{activity} {people} {away}") == (CheckInFacts.Activity | CheckInFacts.People | CheckInFacts.WhileAway),
             new { messages, verdicts = verdicts.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable }) });
 
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns." + Guid.NewGuid().ToString("N"));

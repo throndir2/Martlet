@@ -49,13 +49,10 @@ public partial class MainWindow
         if (store is null || closing) return;
         var hosts = FriendsHosts();
         if (hosts.Count == 0) { ActionText.Text = "Pair a host first: a share link shares your hosts' engines."; return; }
-        if (shareLinks.Made.Count >= ShareLinks.MaximumMade) { ActionText.Text = $"You have {ShareLinks.MaximumMade} share links. Stop one first."; return; }
+        if (shareLinks.Made.Count >= ShareLinks.MaximumMade) { ActionText.Text = $"You have {ShareLinks.MaximumMade} share links: stop one first."; return; }
         var dialog = new HostInputDialog("Share link", "Share your hosts with a friend",
-            "Martlet makes one link for your friend. When they click it (or paste it into their Martlet), their Martlet can use the " +
-            "engines of the hosts you choose: thinking, listening, speaking, lip-sync and reading. They never join your Martlet " +
-            "network and never see your settings, memories, voices, logs or other computers. Your API keys stay yours: their " +
-            "Martlet uses its own for anything online. Your own work always goes first.\n\nAnyone who has the link can use what it " +
-            "shares, so send it only to your friend. You can stop it at any time.", "_Make link");
+            "Anyone who has the link can use your chosen hosts' engines, but never your settings, memories or API keys, so send it only to your friend.",
+            "_Make link");
         dialog.AddText("name", "Your friend's name", "", "Shown here and to your friend, for example Ana.", maxLength: 64);
         dialog.AddText("from", "Your name, as your friend sees it", Environment.UserName, optional: true, maxLength: 64);
         dialog.AddCheck("all", "All my hosts, also the ones I add later", true);
@@ -120,7 +117,7 @@ public partial class MainWindow
         {
             ActionText.Text = $"None of your hosts keeps the share link for {made.Name} yet" +
                 (problems is { Count: > 0 } ? $" ({string.Join("; ", problems.Select(p => $"{p.Key} {p.Value}"))})" : "") +
-                ". Martlet tries again each time the Friends card checks your hosts; copy the link once one has it.";
+                "; Martlet tries again each time the Friends card checks your hosts, so copy the link later.";
             return;
         }
         var link = new ShareLink
@@ -132,14 +129,13 @@ public partial class MainWindow
         var warnings = new List<string>();
         if (unreachable.Count > 0)
             warnings.Add($"{string.Join(", ", unreachable)} {(unreachable.Count == 1 ? "has" : "have")} no outside address, so your friend can " +
-                "reach " + (unreachable.Count == 1 ? "it" : "them") + " only on your home network. To share over the internet, open the Devices " +
-                "map, select the host and choose Outside access: let Martlet open a port on your router, or use Tailscale. Then copy the link again.");
+                "reach " + (unreachable.Count == 1 ? "it" : "them") + " only on your home network; set up Outside access on the Devices map, then copy the link again");
         if (problems is { Count: > 0 })
-            warnings.Add("Not in the link yet: " + string.Join("; ", problems.Select(p => $"{p.Key} {p.Value}")) + ".");
+            warnings.Add((warnings.Count > 0 ? "not" : "Not") + " in the link yet: " + string.Join(", ", problems.Select(p => $"{p.Key} {p.Value}")));
         new ShareLinkWindow($"Share link for {made.Name}",
-            $"It shares {(made.AllHosts ? "all of your hosts, also the ones you add later" : string.Join(", ", made.Hosts!))}. Send it to " +
-            $"{made.Name} in a private message. They click it, or paste it into their Martlet (Share › Hosts shared with this PC › Accept a " +
-            "share link). Their Martlet finds hosts you add later by itself.", link.Url(), warnings.Count > 0 ? string.Join(" ", warnings) : null)
+            $"It shares {(made.AllHosts ? "all of your hosts, also the ones you add later" : string.Join(", ", made.Hosts!))}; send it to " +
+            $"{made.Name} in a private message, and they click it or paste it into their Martlet.", link.Url(),
+            warnings.Count > 0 ? string.Join("; ", warnings) + "." : null)
         { Owner = this }.ShowDialog();
     }
 
@@ -147,7 +143,7 @@ public partial class MainWindow
     {
         if (shareLinks.Made.FirstOrDefault(l => l.Id == friend.Subject) is not { } made || ShareLinks.Secret(made.Id) is not { } secret)
         {
-            ActionText.Text = $"This PC doesn't have the link for {friend.Name} (it was made on another computer). Copy it there, or stop it and make a new one.";
+            ActionText.Text = $"This PC doesn't have the link for {friend.Name} because another computer made it: copy it there, or stop it and make a new one.";
             return;
         }
         ShowShareLink(made, secret);
@@ -159,8 +155,8 @@ public partial class MainWindow
     private async Task StopShareLinkAsync(FriendView friend)
     {
         if (store is null || closing) return;
-        if (!ConfirmationDialog.Confirm(this, $"Stop the share link for {friend.Name}? Every host removes it and revokes their computers at " +
-                "once; a request of theirs that is running stops. The link then works nowhere, also not on hosts you add later.", "Stop share link"))
+        if (!ConfirmationDialog.Confirm(this, $"Stop the share link for {friend.Name}? Their computers lose access to all your hosts at once, " +
+                "and the link stops working everywhere.", "Stop share link"))
             return;
         SaveShareLinks(shareLinks with
         {
@@ -188,8 +184,8 @@ public partial class MainWindow
         if (closing) return;
         ActionText.Text = problems.Count == 0
             ? $"Stopped the share link for {friend.Name}; their computers lost access to your hosts."
-            : $"Stopped the share link for {friend.Name} where your hosts answered. Not yet on: {string.Join("; ", problems)}. Martlet removes it " +
-              "there as soon as they answer.";
+            : $"Stopped the share link for {friend.Name} where your hosts answered; Martlet removes it from the others when they answer " +
+              $"({string.Join("; ", problems)}).";
         ErrorLog.Info($"Share links: stopped the link for {friend.Name}" + (problems.Count > 0 ? $"; not yet on {string.Join("; ", problems)}." : "."));
         SaveFriendsSummary();
         RenderFriends();
@@ -200,8 +196,8 @@ public partial class MainWindow
     {
         if (shareLinks.Made.FirstOrDefault(l => l.Id == friend.Subject) is not { Hosts: { } listed } made) return;
         var question = share
-            ? $"Share {hostId} with {friend.Name} too? Their Martlet finds it by itself on its next check."
-            : $"Stop sharing {hostId} with {friend.Name}? {hostId} revokes their computers at once.";
+            ? $"Share {hostId} with {friend.Name} too?"
+            : $"Stop sharing {hostId} with {friend.Name}? Their computers lose access to it at once.";
         if (!ConfirmationDialog.Confirm(this, question, share ? $"Share {hostId}" : "Stop sharing")) return;
         var hosts = share ? listed.Append(hostId).Distinct(StringComparer.Ordinal).ToList() : listed.Where(h => h != hostId).ToList();
         if (hosts.Count == 0)
@@ -302,18 +298,18 @@ public partial class MainWindow
         Add("ShareLinkStop-" + friend.Key, "Stop link", $"Stop the share link for {friend.Name}", () => StopShareLinkAsync(friend).Forget());
     }
 
-    /// <summary>What a link friend's row says: which hosts the link covers and where it isn't yet.</summary>
+    /// <summary>What a link friend's row says: which hosts the link covers and where it isn't yet (no period at the end).</summary>
     private string ShareLinkDetail(FriendView friend)
     {
         var made = shareLinks.Made.FirstOrDefault(l => l.Id == friend.Subject);
         var all = made?.AllHosts ?? friendsRead.Values.SelectMany(s => s.Links ?? []).FirstOrDefault(l => l.Id == friend.Subject)?.AllHosts ?? false;
-        var text = all ? "Share link for all of your hosts, also the ones you add later." : "Share link for " +
-            (made?.Hosts is { } hosts ? string.Join(", ", hosts) : string.Join(", ", friend.SharedOn)) + ".";
+        var parts = new List<string> { all ? "Share link for all of your hosts, also the ones you add later" : "Share link for " +
+            (made?.Hosts is { } hosts ? string.Join(", ", hosts) : string.Join(", ", friend.SharedOn)) };
         var missing = friend.Hosts.Where(h => h.State != FriendHostState.Shared && (made?.Covers(h.HostId) ?? all)).ToArray();
-        if (missing.Any(h => h.ProviderReady)) text += $" Not on {string.Join(", ", missing.Where(h => h.ProviderReady).Select(h => h.HostId))} yet; Martlet adds it there.";
-        if (missing.Any(h => !h.ProviderReady)) text += $" Update {string.Join(", ", missing.Where(h => !h.ProviderReady).Select(h => h.HostId))} to share {(missing.Count(h => !h.ProviderReady) == 1 ? "it" : "them")} too.";
-        if (made is null) text += " Made on another of your computers: copy it there.";
-        return text;
+        if (missing.Any(h => h.ProviderReady)) parts.Add($"not on {string.Join(", ", missing.Where(h => h.ProviderReady).Select(h => h.HostId))} yet, Martlet adds it there");
+        if (missing.Any(h => !h.ProviderReady)) parts.Add($"update {string.Join(", ", missing.Where(h => !h.ProviderReady).Select(h => h.HostId))} to share {(missing.Count(h => !h.ProviderReady) == 1 ? "it" : "them")} too");
+        if (made is null) parts.Add("made on another of your computers: copy it there");
+        return string.Join(" · ", parts);
     }
 
     // ---------- a friend's side: accept a link, and find hosts it covers later ----------
@@ -321,9 +317,8 @@ public partial class MainWindow
     private void AcceptShareLink_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new HostInputDialog("Accept a share link", "Use a friend's hosts",
-            "Paste the share link your friend sent (it starts with martlet://share/). Martlet signs in to their hosts as a friend: this PC " +
-            "may then use their engines. Nothing of yours goes to them except the requests this PC sends there, and your API keys stay " +
-            "on your computers.", "_Continue");
+            "Paste the share link your friend sent (it starts with martlet://share/): this PC can then use their hosts, which see only the " +
+            "requests it sends there.", "_Continue");
         dialog.AddText("link", "Share link", "", maxLength: 12_288);
         if (dialog.Ask(this) is not { } values) return;
         AcceptShareLinkAsync(values["link"]).Forget();
@@ -340,10 +335,9 @@ public partial class MainWindow
         Navigate(NavShare);
         var names = string.Join(", ", link.Hosts.Select(h => h.Label is { } label ? $"{label} ({h.HostId})" : h.HostId));
         if (!ConfirmationDialog.Confirm(this,
-                $"{link.From ?? "A friend"} shares {(link.Hosts.Count == 1 ? "a host" : $"{link.Hosts.Count} hosts")} with you{(link.Label is { } name ? $" (as {name})" : "")}: " +
-                $"{names}.\n\nMartlet on this PC may then use their engines (thinking, listening, speaking, lip-sync and reading) for this PC " +
-                "only, when you choose them for a job. Their owner sees the requests this PC sends there, never your settings, memories or " +
-                "API keys, and their own work always comes first. Hosts they add to this link later are added here by themselves.",
+                $"Use {(link.Hosts.Count == 1 ? "a host" : $"{link.Hosts.Count} hosts")} that {link.From ?? "a friend"} shares with you" +
+                $"{(link.Label is { } name ? $" as {name}" : "")}: {names}? Their owner sees the requests this PC sends there, but never your " +
+                "settings, memories or API keys.",
                 "Accept"))
             return;
         await SignInWithShareLinkAsync(link, link.Hosts);
@@ -398,9 +392,9 @@ public partial class MainWindow
             if (!quiet || kept.Count > 0)
                 ActionText.Text = kept.Count == 0
                     ? $"Couldn't sign in with the share link: {string.Join("; ", problems)}."
-                    : $"{string.Join(", ", kept)} {(kept.Count == 1 ? "is" : "are")} shared with this PC by {link.From ?? "a friend"}. Choose " +
-                      (kept.Count == 1 ? "it" : "them") + " for a job under Share › Hosts shared with this PC." +
-                      (problems.Count > 0 ? $" Not yet: {string.Join("; ", problems)}." : "");
+                    : $"{string.Join(", ", kept)} {(kept.Count == 1 ? "is" : "are")} shared with this PC by {link.From ?? "a friend"}: choose " +
+                      (kept.Count == 1 ? "it" : "them") + " for a job under Share › Hosts shared with this PC" +
+                      (problems.Count > 0 ? $"; not yet: {string.Join("; ", problems)}." : ".");
         }
         catch (OperationCanceledException) { }
         catch (InvalidOperationException error) { ActionText.Text = error.Message; }

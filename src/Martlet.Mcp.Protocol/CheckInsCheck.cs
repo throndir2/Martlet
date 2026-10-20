@@ -167,25 +167,25 @@ internal static partial class CheckInsCheck
         var emotesPace = Built(CheckIns.Emotes).Every;
         var waits = new Dictionary<string, string?>
         {
-            ["emotes: due"] = CheckIns.Wait(Built(CheckIns.Emotes), facts, null),
-            ["emotes: only young ones"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { Emotes = [facts.Emotes[2]] }, null),
-            ["emotes: character hidden"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { CharacterShows = false }, null),
-            ["emotes: ran half its pace ago"] = CheckIns.Wait(Built(CheckIns.Emotes), facts,
+            ["emotes: due"] = CheckInSchedule.Wait(Built(CheckIns.Emotes), facts, null),
+            ["emotes: only young ones"] = CheckInSchedule.Wait(Built(CheckIns.Emotes), facts with { Emotes = [facts.Emotes[2]] }, null),
+            ["emotes: character hidden"] = CheckInSchedule.Wait(Built(CheckIns.Emotes), facts with { CharacterShows = false }, null),
+            ["emotes: ran half its pace ago"] = CheckInSchedule.Wait(Built(CheckIns.Emotes), facts,
                 new(now - emotesPace / 2, 4, "every emote still fits", false)),
-            ["emotes: kept twice its pace ago, nothing new"] = CheckIns.Wait(Built(CheckIns.Emotes), facts,
+            ["emotes: kept twice its pace ago, nothing new"] = CheckInSchedule.Wait(Built(CheckIns.Emotes), facts,
                 new(now - emotesPace * 2, 4, "every emote still fits", false) { Kept = true }),
-            ["emotes: you talk"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { Quiet = TimeSpan.Zero }, null),
-            ["emotes: nobody here"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { Away = TimeSpan.FromMinutes(25) }, null),
-            ["gaze: due"] = CheckIns.Wait(Built(CheckIns.Gaze), facts, null),
-            ["gaze: chosen 1 min ago"] = CheckIns.Wait(Built(CheckIns.Gaze), facts with { Gaze = facts.Gaze! with { Since = TimeSpan.FromMinutes(1) } }, null),
-            ["promises: new exchanges"] = CheckIns.Wait(Built(CheckIns.Promises), facts, new(now.AddMinutes(-6), 3, "nothing to remind Martlet of", false)),
-            ["promises: nothing new"] = CheckIns.Wait(Built(CheckIns.Promises), facts, new(now.AddMinutes(-6), 4, "nothing to remind Martlet of", false)),
-            ["character: 4 new replies"] = CheckIns.Wait(Built(CheckIns.Character), facts, null),
-            ["character: no personality"] = CheckIns.Wait(Built(CheckIns.Character), facts with { Persona = null }, null),
-            ["repeats: said enough"] = CheckIns.Wait(Built(CheckIns.Repeats), facts, new(now.AddMinutes(-11), 3, "nothing to remind Martlet of", false)),
-            ["repeats: said too little"] = CheckIns.Wait(Built(CheckIns.Repeats), facts with { Said = [.. facts.Said.Take(2)] }, null),
-            ["repeats: nothing new"] = CheckIns.Wait(Built(CheckIns.Repeats), facts, new(now.AddMinutes(-11), 4, "nothing to remind Martlet of", false)),
-            ["own: off, but Check now"] = CheckIns.Wait(CheckIns.Of(new() { Id = "c2", Name = "FIXTURE", Task = "Check something." }), facts,
+            ["emotes: you talk"] = CheckInSchedule.Wait(Built(CheckIns.Emotes), facts with { Quiet = TimeSpan.Zero }, null),
+            ["emotes: nobody here"] = CheckInSchedule.Wait(Built(CheckIns.Emotes), facts with { Away = TimeSpan.FromMinutes(25) }, null),
+            ["gaze: due"] = CheckInSchedule.Wait(Built(CheckIns.Gaze), facts, null),
+            ["gaze: chosen 1 min ago"] = CheckInSchedule.Wait(Built(CheckIns.Gaze), facts with { Gaze = facts.Gaze! with { Since = TimeSpan.FromMinutes(1) } }, null),
+            ["promises: new exchanges"] = CheckInSchedule.Wait(Built(CheckIns.Promises), facts, new(now.AddMinutes(-6), 3, "nothing to remind Martlet of", false)),
+            ["promises: nothing new"] = CheckInSchedule.Wait(Built(CheckIns.Promises), facts, new(now.AddMinutes(-6), 4, "nothing to remind Martlet of", false)),
+            ["character: 4 new replies"] = CheckInSchedule.Wait(Built(CheckIns.Character), facts, null),
+            ["character: no personality"] = CheckInSchedule.Wait(Built(CheckIns.Character), facts with { Persona = null }, null),
+            ["repeats: said enough"] = CheckInSchedule.Wait(Built(CheckIns.Repeats), facts, new(now.AddMinutes(-11), 3, "nothing to remind Martlet of", false)),
+            ["repeats: said too little"] = CheckInSchedule.Wait(Built(CheckIns.Repeats), facts with { Said = [.. facts.Said.Take(2)] }, null),
+            ["repeats: nothing new"] = CheckInSchedule.Wait(Built(CheckIns.Repeats), facts, new(now.AddMinutes(-11), 4, "nothing to remind Martlet of", false)),
+            ["own: off, but Check now"] = CheckInSchedule.Wait(CheckIns.Of(new() { Id = "c2", Name = "FIXTURE", Task = "Check something." }), facts,
                 new(now.AddMinutes(-1), 4, "nothing to remind Martlet of", false), now: true)
         };
         Step("when check-ins wait", waits["emotes: due"] is null && waits["emotes: only young ones"]?.Contains("3 min") == true &&
@@ -241,8 +241,8 @@ internal static partial class CheckInsCheck
         foreach (var checkIn in new[] { Built(CheckIns.Emotes), Built(CheckIns.Gaze), Built(CheckIns.Promises), Built(CheckIns.Character),
             Built(CheckIns.Repeats), own })
         {
-            var focused = CheckIns.Focus(checkIn, facts);
-            var job = CheckIns.Prepare(checkIn, focused, null);
+            var focused = CheckInSchedule.Focus(checkIn, facts);
+            var job = CheckInPrompts.Prepare(checkIn, focused, null);
             if (job is null)
             {
                 Step("message: " + checkIn.Id, false, "no job");
@@ -251,7 +251,7 @@ internal static partial class CheckInsCheck
             // The fixture member finds which check-in asks by a marker the check adds to the message only here.
             var marked = job with { Text = job.Text + "\n" + Marker(checkIn.Id) };
             var result = await board.RunAsync(marked, cancellation);
-            verdicts[checkIn.Id] = CheckIns.Read(checkIn, result.Text, focused);
+            verdicts[checkIn.Id] = CheckInAnswers.Read(checkIn, result.Text, focused);
             messages[checkIn.Id] = new { member = result.Member, outcome = result.Outcome.ToString(), message = job.Text };
         }
         var emotesMessage = asked.FirstOrDefault(a => a.Text.Contains(Marker(CheckIns.Emotes), StringComparison.Ordinal)).Text ?? "";
@@ -276,11 +276,11 @@ internal static partial class CheckInsCheck
             verdicts.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable, v.Value.Tags, v.Value.Text }));
         var odd = new Dictionary<string, CheckInVerdict>
         {
-            ["emotes: KEEP"] = CheckIns.Read(Built(CheckIns.Emotes), "KEEP", CheckIns.Focus(Built(CheckIns.Emotes), facts)),
-            ["emotes: a tag that isn't asked about"] = CheckIns.Read(Built(CheckIns.Emotes), "OFF {smile}", CheckIns.Focus(Built(CheckIns.Emotes), facts)),
-            ["emotes: chatter"] = CheckIns.Read(Built(CheckIns.Emotes), "Sure! Here is what I think about the emotes.", CheckIns.Focus(Built(CheckIns.Emotes), facts)),
-            ["promises: REMIND: nothing"] = CheckIns.Read(Built(CheckIns.Promises), "REMIND: nothing.", facts),
-            ["gaze: KEEP after thinking"] = CheckIns.Read(Built(CheckIns.Gaze), "Usually it follows the mouse.\nKEEP", facts)
+            ["emotes: KEEP"] = CheckInAnswers.Read(Built(CheckIns.Emotes), "KEEP", CheckInSchedule.Focus(Built(CheckIns.Emotes), facts)),
+            ["emotes: a tag that isn't asked about"] = CheckInAnswers.Read(Built(CheckIns.Emotes), "OFF {smile}", CheckInSchedule.Focus(Built(CheckIns.Emotes), facts)),
+            ["emotes: chatter"] = CheckInAnswers.Read(Built(CheckIns.Emotes), "Sure! Here is what I think about the emotes.", CheckInSchedule.Focus(Built(CheckIns.Emotes), facts)),
+            ["promises: REMIND: nothing"] = CheckInAnswers.Read(Built(CheckIns.Promises), "REMIND: nothing.", facts),
+            ["gaze: KEEP after thinking"] = CheckInAnswers.Read(Built(CheckIns.Gaze), "Usually it follows the mouse.\nKEEP", facts)
         };
         Step("odd answers change nothing", odd["emotes: KEEP"] is { Act: false, Readable: true } && odd["emotes: a tag that isn't asked about"] is { Act: false } &&
             odd["emotes: chatter"] is { Readable: false } && odd["promises: REMIND: nothing"] is { Act: false, Readable: true } &&
@@ -301,19 +301,19 @@ internal static partial class CheckInsCheck
             var copy = CheckIns.Of(new CustomCheckIn
             {
                 Id = "c9", Name = builtIn.Name + " (copy)", On = true, EveryMinutes = builtIn.EveryMinutes,
-                Task = CheckIns.Template(builtIn, null) ?? "", Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome,
+                Task = CheckInPrompts.Template(builtIn, null) ?? "", Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome,
                 Triggers = builtIn.Triggers, ToolSets = builtIn.ToolSets
             });
-            var sameMessage = CheckIns.Message(builtIn, CheckIns.Focus(builtIn, facts), null) == CheckIns.Message(copy, CheckIns.Focus(copy, facts), null);
-            var sameWaits = states.All(s => CheckIns.Wait(builtIn, s, null) == CheckIns.Wait(copy, s, null) &&
-                CheckIns.Wait(builtIn, s, lastRun) == CheckIns.Wait(copy, s, lastRun));
-            var builtInVerdict = CheckIns.Read(builtIn, answers[builtIn.Id], CheckIns.Focus(builtIn, facts));
-            var copyVerdict = CheckIns.Read(copy, answers[builtIn.Id], CheckIns.Focus(copy, facts));
+            var sameMessage = CheckInPrompts.Message(builtIn, CheckInSchedule.Focus(builtIn, facts), null) == CheckInPrompts.Message(copy, CheckInSchedule.Focus(copy, facts), null);
+            var sameWaits = states.All(s => CheckInSchedule.Wait(builtIn, s, null) == CheckInSchedule.Wait(copy, s, null) &&
+                CheckInSchedule.Wait(builtIn, s, lastRun) == CheckInSchedule.Wait(copy, s, lastRun));
+            var builtInVerdict = CheckInAnswers.Read(builtIn, answers[builtIn.Id], CheckInSchedule.Focus(builtIn, facts));
+            var copyVerdict = CheckInAnswers.Read(copy, answers[builtIn.Id], CheckInSchedule.Focus(copy, facts));
             var sameRead = builtInVerdict.Act == copyVerdict.Act && builtInVerdict.Tags.SequenceEqual(copyVerdict.Tags) && builtInVerdict.Text == copyVerdict.Text;
             same &= sameMessage && sameWaits && sameRead;
             recreated[builtIn.Id] = new { message = sameMessage, waits = sameWaits, read = sameRead };
         }
-        var saidOwn = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        var saidOwn = CheckInPrompts.Message(CheckIns.Of(new CustomCheckIn
         {
             Id = "c8", Name = "FIXTURE", Task = "Check whether Martlet repeats itself.", Facts = CheckInFacts.Said | CheckInFacts.Replies
         }), facts, null) ?? "";
@@ -324,12 +324,12 @@ internal static partial class CheckInsCheck
 
         // {adult} says whether Companion › Replies › Adult content is on: the explicit line only while it is.
         var adultCheck = CheckIns.Of(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Task = "Describe it. {adult}" });
-        var adultOff = CheckIns.Message(adultCheck, facts, null) ?? "";
-        var adultOn = CheckIns.Message(adultCheck, facts with { Adult = true }, null) ?? "";
+        var adultOff = CheckInPrompts.Message(adultCheck, facts, null) ?? "";
+        var adultOn = CheckInPrompts.Message(adultCheck, facts with { Adult = true }, null) ?? "";
         Step("adult content line", adultOff.Contains(PromptCatalog.DefaultCheckInAdultOffInstructions, StringComparison.Ordinal) &&
             !adultOff.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, StringComparison.Ordinal) &&
             adultOn.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, StringComparison.Ordinal) && !adultOn.Contains("{adult}", StringComparison.Ordinal),
-            new { off = CheckIns.Adult(facts, null), on = CheckIns.Adult(facts with { Adult = true }, null) });
+            new { off = CheckInPrompts.Adult(facts, null), on = CheckInPrompts.Adult(facts with { Adult = true }, null) });
 
         // 5. What Martlet does: emotes a reply turned on go off (never the owner's try), a reminder goes with exactly one request,
         //    and what to bring up is worded as the check-in's own, beside a due reminder.

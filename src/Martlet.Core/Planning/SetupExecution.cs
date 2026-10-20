@@ -430,7 +430,22 @@ public static class SetupExecutor
         if (change.OnProcessor && change.Kind is SetupChangeKind.AddRole or SetupChangeKind.ChangeModel && needs.GpuOrCpu &&
             Holds(needs.GpuWhen, arguments))
             arguments["choice.accelerator"] = "cpu";
-        if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndex is { } index)
+        if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndexes is { Count: > 1 } split)
+        {
+            // One model split across several cards (tensor split): choice.gpu lists every card's UUID, in order.
+            var ids = new List<string>();
+            foreach (var index in split)
+            {
+                var (card, problem) = Card(specs, index, needs.Gpus);
+                if (problem is not null) return (arguments, $"{change.MachineId}: {problem}");
+                if (card is null) return (arguments, $"{change.MachineId}'s host service doesn't list its graphics cards, so it can't split a model across them.");
+                if (!ids.Contains(card.Id, StringComparer.Ordinal)) ids.Add(card.Id);
+            }
+            if (ids.Count < 2) return (arguments, $"{change.MachineId}: the cards to split the model across are the same card.");
+            arguments["choice.gpu"] = string.Join(',', ids);
+            if (needs.GpuOrCpu && Holds(needs.GpuWhen, arguments)) arguments["choice.accelerator"] = "gpu";
+        }
+        else if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndex is { } index)
         {
             var (card, problem) = Card(specs, index, needs.Gpus);
             if (problem is not null) return (arguments, $"{change.MachineId}: {problem}");

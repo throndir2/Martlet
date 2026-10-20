@@ -28,7 +28,9 @@ public sealed class CompanionPagesTests
         // then motion, which the list doesn't rank.
         Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Thinking pool", "Smart home", "Singing", "Picture making", "Motion" },
             groups[CompanionGroup.Extras].Select(CompanionPages.TabTitle));
-        Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional.", CompanionPages.TabIntro(tab)));
+        Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional: ", CompanionPages.TabIntro(tab)));
+        // The page shows one sentence: the intro without what Off means (issue #995).
+        Assert.All(groups[CompanionGroup.Extras], tab => Assert.Equal(2, Martlet.Core.Text.Sentences.Count(CompanionPages.TabIntro(tab))));
         Assert.All(groups[CompanionGroup.Extras], tab => Assert.EndsWith($" Off: {OptionalExtras.OffMeans(tab)}.", CompanionPages.TabIntro(tab)));
         Assert.All(groups[CompanionGroup.HowItWorks], tab => Assert.DoesNotContain("Optional", CompanionPages.TabIntro(tab)));
         // The side list holds every page once, each group together.

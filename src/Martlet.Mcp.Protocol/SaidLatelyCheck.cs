@@ -91,10 +91,10 @@ internal static class SaidLatelyCheck
         // 6. The Saying the same things check-in reads the same lines and waits until there are enough.
         var repeats = CheckIns.All(null).Single(c => c.Id == CheckIns.Repeats);
         var state = new CheckInState { Now = now, Name = "Mira", Conversation = true, Exchanged = 6, Away = TimeSpan.FromSeconds(20), Said = recent };
-        var message = CheckIns.Message(repeats, state, null);
-        var tooFew = CheckIns.Wait(repeats, state with { Said = [.. recent.Take(CheckIns.RepeatsSayings - 1)] }, null);
+        var message = CheckInPrompts.Message(repeats, state, null);
+        var tooFew = CheckInSchedule.Wait(repeats, state with { Said = [.. recent.Take(CheckIns.RepeatsSayings - 1)] }, null);
         Step("the check-in reads the same lines", message is not null && message.Contains(lines, StringComparison.Ordinal) &&
-            message.Contains("REMIND:", StringComparison.Ordinal) && CheckIns.Wait(repeats, state, null) is null && tooFew is not null,
+            message.Contains("REMIND:", StringComparison.Ordinal) && CheckInSchedule.Wait(repeats, state, null) is null && tooFew is not null,
             new { message, waitsWithTwo = tooFew });
 
         return Task.FromResult<object>(new

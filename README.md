@@ -156,10 +156,13 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.88.2
+## 🆕 What's new in 0.89.0
 
-- 🎭 **Plays your character, not only its tone**: the headings and rules in your personality, such as Core identity or Constraints, now count as the character's own, so it stays in character instead of sounding like an assistant.
-- 💡 **Personality and system prompt explained**: a note under the personality box says it is the character's part of the system prompt, and where Martlet's own part is (Companion › Prompts › Persona).
+- 🎮 **Remembers each game for itself**: what you say while you play a game stays with that game, a *While you play* note names the game, and a lorebook entry with the game's name joins in for it.
+- 🧹 **Memory care**: a new hourly check-in keeps facts for the right game and person, merges duplicates and fixes facts that turned out wrong, and keeps the earlier version of each.
+- 📚 **Read more**: add new pages to a game's guide from the same wiki whenever you want, also after Martlet restarts.
+- 🧠 **Bigger thinking models**: Recommended setup can give Deep thinking a bigger model on big graphics cards, and you can think with a GGUF model file you downloaded.
+- ⚡ **Answers sooner and the same everywhere**: Martlet no longer waits for Home Assistant or starting tool servers, and touch zones, Discord, Telegram and WhatsApp setups are the same on all your computers.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
