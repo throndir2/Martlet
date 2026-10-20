@@ -2393,7 +2393,12 @@ of Sam's in Alex's copy; Alex's personality goes only to Alex's copy while the
 household copy and B keep Sam's; back to Sam, Sam's personality returns and the
 hosts keep both people's copies apart; a copy with an API key is refused before
 sending and an unsigned request for a person's settings is refused. Loopback
-only; the folder is deleted and the real vault is never touched.
+only; the folder is deleted and the real vault is never touched. Two more simulated desktops (`lab-desktop-e`, `lab-desktop-f`) also carry
+the files that travel as their own shared settings (`voice-clips`,
+`character-touch-zones`, `character-eyes`, `vroid-hub-looks`, `discord` with
+its bot token and `messaging` with its secrets, through the real sections and a
+stand-in credential store): E's choices, zones, credit, bot and chats reach F,
+F connects no bot, and no token is in F's files or the shared value.
 
 `account_security_status` reads [account security](ACCOUNTS.md#account-security)
 from a data directory (optional absolute `dataDirectory`), read-only and
@@ -4953,7 +4958,8 @@ with 4014: turn on Message Content Intent), `tokenRejected` (4004),
 `milliseconds` and `next`. It sends no messages; a desktop already connected
 with the same bot stays connected.
 `messaging_status` reads Companion › Messaging from a data directory's
-`messaging.json` (this PC only, never synced): `state` (`none`, `loaded` or
+`messaging.json` through its store (`Martlet.Messaging.MessagingPreferences`; the account, chats and
+speaking replies travel as the `messaging` shared setting, answering stays on each PC): `state` (`none`, `loaded` or
 `unreadable` with `problem`) and `telegram` with `connected` (a bot is set
 up), `enabled` (Martlet answers it on this PC), `bot` (its username),
 `botName`, `tokenSaved` (never the token), `chats` (how many chats are paired;
@@ -8432,7 +8438,7 @@ and `PeopleForget-3`; names save at once, then sync. `PeopleClips-3` reads
 *Hear them (N):* while voice 3 has clips (a passive value). Like
 the main choice's radio buttons `PeopleRecognize` (*Recognize voices in conversations*, the default; a shared setting)
 and `PeopleRecognizeOff` (*Off*; saved voices are kept), `PeopleKeepClips`
-(ticked by default; this PC only; unticking deletes every clip),
+(ticked by default; the shared `voice-clips` setting, the same on every computer; unticking deletes every clip),
 `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet-<model ID>` (*Download
 and use* asks one confirmation, `ConfirmationYes`, then downloads that model
 and switches Listening to it; *Use it* switches to a downloaded model at once),

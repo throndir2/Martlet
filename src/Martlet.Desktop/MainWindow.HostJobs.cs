@@ -50,19 +50,18 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
 }
 
 /// <summary>Which self-hosted voice engine (<see cref="SpeechEngines"/>) does the Speaking job, kept in speaking-engine.txt
-/// next to the other local preferences. A speaking route already saved on a host's engine wins over the file, so the choice
+/// (<see cref="SpeakingEngineFile"/>). A speaking route already saved on a host's engine wins over the file, so the choice
 /// always matches what speaks.</summary>
 internal static class SpeakingEngineChoice
 {
-    internal const string FileName = "speaking-engine.txt";
+    internal const string FileName = SpeakingEngineFile.FileName;
 
     internal static SpeechEngine Current { get; private set; } = SpeechEngines.Default;
 
     /// <summary>Reads the saved choice, then follows the engine the TTS route uses when Speaking is on a host.</summary>
     internal static void Sync(string directory, AppSettings? settings)
     {
-        try { Current = SpeechEngines.ForKey(File.ReadAllText(Path.Combine(directory, FileName)).Trim()) ?? SpeechEngines.Default; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Current = SpeechEngines.Default; }
+        Current = SpeakingEngineFile.Read(directory) ?? SpeechEngines.Default;
         var route = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
         if (route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: { } snapshot } &&
             SpeechEngines.ForRoute(snapshot.RouteId) is { } used && used != Current)
@@ -71,8 +70,7 @@ internal static class SpeakingEngineChoice
 
     internal static void Save(string directory, SpeechEngine engine)
     {
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, FileName), engine.Key);
+        SpeakingEngineFile.Save(directory, engine);
         Current = engine;
     }
 }

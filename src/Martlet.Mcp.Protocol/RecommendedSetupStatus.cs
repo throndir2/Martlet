@@ -454,10 +454,7 @@ internal static class RecommendedSetupStatus
             : thinking.RouteType == SetupRouteType.OpenAi ? ["openai"]
             : ChatCompletionsEndpointCatalog.Named(thinking.Origin)?.Id is { } id ? new[] { id } : [];
         var speaking = routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
-        string? chosen = null;
-        try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        var voice = SpeechEngines.ForRoute(speaking?.GatewaySnapshot?.RouteId) ?? SpeechEngines.ForKey(chosen) ?? SpeechEngines.Default;
+        var voice = SpeechEngines.ForRoute(speaking?.GatewaySnapshot?.RouteId) ?? SpeakingEngineFile.Read(directory) ?? SpeechEngines.Default;
         var poolSettings = ThinkingPoolSettings.Read(directory, save: false).Settings;
         var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return new SetupSources(computers)
@@ -477,24 +474,11 @@ internal static class RecommendedSetupStatus
     private static IReadOnlyList<PartChoice> Choices(string directory, string? own)
     {
         var talk = TalkPreferences.Load(directory);
-        var home = Json(directory, "smart-home.json")?["Address"] is JsonValue a && a.TryGetValue<string>(out var address) ? address : null;
+        var home = Martlet.Home.HomePreferences.Load(directory).Address is { Length: > 0 } address ? address : null;
         var reading = PoolSettings.LoadFor(directory, PoolAreas.Reading) is { } list
             ? Martlet.Core.Reading.ReadingPool.Choice(list, own) : Martlet.Core.Reading.ReadingSettings.Load(directory);
-        string? recognition;
-        try { recognition = File.ReadAllText(Path.Combine(directory, "voice-recognition.txt")).Trim(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { recognition = null; }
         return RecommendedSetupInputs.Choices(talk.Watch, talk.HearVoice, SenseSetup.Read(directory).Senses, reading, home,
-            recognizeVoices: recognition != "off", voiceRecognition: PoolSettings.LoadFor(directory, PoolAreas.VoiceRecognition));
-    }
-
-    private static JsonObject? Json(string directory, string file)
-    {
-        try
-        {
-            var path = Path.Combine(directory, file);
-            return File.Exists(path) && new FileInfo(path).Length <= 262_144 ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
+            recognizeVoices: Martlet.Core.Speakers.VoiceChoices.Recognition(directory), voiceRecognition: PoolSettings.LoadFor(directory, PoolAreas.VoiceRecognition));
     }
 
     private static ClusterPlan? Plan(string directory)

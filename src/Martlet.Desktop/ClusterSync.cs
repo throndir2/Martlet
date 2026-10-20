@@ -34,7 +34,7 @@ internal sealed record ClusterProbe(string HostId, bool Reachable, string Text, 
 internal static class ClusterSync
 {
     internal const string PlanFile = "cluster.json";
-    internal const string PreferenceFile = "cluster-sync.txt";
+    internal const string PreferenceFile = ClusterSyncChoice.FileName;
     internal static readonly TimeSpan Interval = TimeSpan.FromSeconds(15);
     /// <summary>Consecutive checks a host must miss before its jobs fail over (about 30 seconds).</summary>
     internal const int FailAfter = 2;
@@ -151,14 +151,12 @@ internal static class ClusterSync
     /// <summary>Whether sync is on: on by default, off only after the owner turned it off on this PC.</summary>
     internal static bool LoadEnabled(string directory)
     {
-        try { return File.ReadAllText(Path.Combine(directory, PreferenceFile)).Trim() != "off"; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
+        return ClusterSyncChoice.Enabled(directory);
     }
 
     internal static void SaveEnabled(string directory, bool enabled)
     {
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, PreferenceFile), enabled ? "on" : "off");
+        ClusterSyncChoice.Save(directory, enabled);
     }
 
     /// <summary>This PC's copy of the plan; an unreadable copy starts empty (the hosts' copies restore it).</summary>
