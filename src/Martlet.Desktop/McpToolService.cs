@@ -60,6 +60,7 @@ internal sealed class McpToolService : IAsyncDisposable
     internal const int LogLength = 40;
     internal static TimeSpan ApprovalTimeout => TimeSpan.FromSeconds(60);
     internal static TimeSpan CallTimeout => TimeSpan.FromSeconds(60);
+    /// <summary>How long a tool call waits for its server when the server is still starting (a reply itself never waits).</summary>
     internal static TimeSpan StartupWait => TimeSpan.FromSeconds(10);
     private readonly object gate = new();
     private readonly LinkedList<ToolActivity> log = new();
@@ -84,7 +85,11 @@ internal sealed class McpToolService : IAsyncDisposable
         foreach (var (key, at) in LoadUnsupported(dataDirectory))
             if (now - at < UnsupportedMemory) unsupportedModels[key] = at;
         Hub = new("martlet", AppVersions.Current, this.clock);
-        Hub.Changed += () => Changed?.Invoke();
+        Hub.Changed += () =>
+        {
+            RememberTools();
+            Changed?.Invoke();
+        };
     }
 
     /// <summary>The Thinking models on this PC that rejected tools (<see cref="MarkUnsupported"/>) and when, kept for
@@ -366,20 +371,57 @@ internal sealed class McpToolService : IAsyncDisposable
         Changed?.Invoke();
     }
 
-    /// <summary>The tools of every running server, the terminal when it is on and Martlet's own <paramref name="builtIns"/>, for
-    /// one reply. Waits briefly for servers that are still starting; the terminal and built-in tools alone need no wait.</summary>
-    internal async Task<DesktopToolset?> PrepareAsync(CancellationToken token, BuiltInTools? builtIns = null)
+    /// <summary>The tools of every enabled server, the terminal when it is on and Martlet's own <paramref name="builtIns"/>, for
+    /// one reply. It never waits: a server that is still starting (or stopped) offers the tools it listed last in this session,
+    /// so the list, and the start of every request, stays the same while servers come and go (a call to it waits for it to start,
+    /// or says it isn't running). A server whose tools were never listed yet offers none until they are.</summary>
+    internal DesktopToolset? Prepare(BuiltInTools? builtIns = null)
     {
         var shell = Terminal is { Enabled: true } on ? on : null;
-        IReadOnlyList<McpServerStatus> ready = [];
+        IReadOnlyList<McpServerStatus> offered = [];
         if (HasEnabledServers)
         {
             EnsureStarted();
-            var statuses = await Hub.WaitForStartupAsync(StartupWait, token).ConfigureAwait(false);
-            ready = [.. statuses.Where(s => s.State == McpServerState.Ready && !s.Definition.Disabled)];
+            offered = Offered();
         }
         else if (shell is null && builtIns is null) return null;
-        return DesktopToolset.Build(this, ready, shell, builtIns);
+        return DesktopToolset.Build(this, offered, shell, builtIns);
+    }
+
+    // The enabled servers in mcp.json's order (then managed ones), each with its tools now when it is ready, else the tools it
+    // listed last (with the same launch settings) in this session.
+    private McpServerStatus[] Offered()
+    {
+        var statuses = Hub.Status.ToDictionary(s => s.Name, StringComparer.Ordinal);
+        var servers = Servers.Where(s => !s.Disabled).ToArray();
+        var offered = new List<McpServerStatus>();
+        lock (gate)
+        {
+            foreach (var server in servers)
+            {
+                if (!statuses.TryGetValue(server.Name, out var status)) continue;
+                if (status.State == McpServerState.Ready)
+                {
+                    known[server.Name] = (server.LaunchFingerprint, status.Tools);
+                    offered.Add(status);
+                }
+                else if (known.TryGetValue(server.Name, out var last) && last.Fingerprint == server.LaunchFingerprint && last.Tools.Count > 0)
+                    offered.Add(status with { Tools = last.Tools });
+            }
+        }
+        return [.. offered];
+    }
+
+    // What each server listed last while it was ready (with its launch settings then): offered while it starts again.
+    private readonly Dictionary<string, (string Fingerprint, IReadOnlyList<McpTool> Tools)> known = new(StringComparer.Ordinal);
+
+    // Notes each ready server's tools as soon as they change, so a reply that comes while it restarts still offers them.
+    private void RememberTools()
+    {
+        var statuses = Hub.Status;
+        lock (gate)
+            foreach (var status in statuses.Where(s => s.State == McpServerState.Ready && s.Tools.Count > 0))
+                known[status.Name] = (status.Definition.LaunchFingerprint, status.Tools);
     }
 
     internal bool AutoApproves(McpServerDefinition server, string tool)
@@ -486,9 +528,9 @@ internal sealed class WindowsMcpSecrets(string filePath) : IMcpSecretStore
     public void Delete(string name) => vault.DeleteMcpSecret(scope, name);
 }
 
-/// <summary>The tools offered to one reply and how to run them. Tool names are made safe for function calling and unique
-/// across servers (prefixed with the server's name when two servers share one). Martlet's own tools come first, then the
-/// terminal when it is on; both keep their names (<see cref="ThinkLonger.Name"/>, <see cref="TerminalTool.Name"/>).</summary>
+/// <summary>The tools offered to one reply and how to run them. Tool names are made safe for function calling and always start
+/// with the server's name (server_tool), so a name never depends on which other servers run. Martlet's own tools come first,
+/// then the terminal when it is on; both keep their names (<see cref="ThinkLonger.Name"/>, <see cref="TerminalTool.Name"/>).</summary>
 internal sealed class DesktopToolset : IConversationToolHost
 {
     private readonly McpToolService service;
@@ -523,8 +565,6 @@ internal sealed class DesktopToolset : IConversationToolHost
         BuiltInTools? builtIns = null)
     {
         var servers = ready.ToArray();
-        var counts = servers.SelectMany(s => s.Tools.Select(t => SafeName(t.Name)))
-            .GroupBy(n => n, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         var definitions = new List<TextToolDefinition>();
         var map = new Dictionary<string, (McpServerDefinition, McpTool)>(StringComparer.Ordinal);
         var own = new Dictionary<string, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>>(StringComparer.Ordinal);
@@ -542,11 +582,12 @@ internal sealed class DesktopToolset : IConversationToolHost
             definitions.Add(shell);
         }
         bool Taken(string name) => map.ContainsKey(name) || own.ContainsKey(name) || terminal is not null && name == TerminalTool.Name;
+        // One rule for every server's tools, whatever else runs: the server's name, then the tool's. A name never changes when
+        // another server starts or stops, so the start of every request stays the same.
         foreach (var status in servers)
             foreach (var tool in status.Tools)
             {
-                var name = SafeName(tool.Name);
-                if (counts[name] > 1 || Taken(name)) name = SafeName(status.Name + "_" + tool.Name);
+                var name = McpToolNames.Offered(status.Name, tool.Name);
                 if (Taken(name)) name = SafeName(name + "_" + Hash(status.Name + "/" + tool.Name));
                 TextToolDefinition definition;
                 try { definition = new(name, Describe(tool), Schema(tool.InputSchema)); }
@@ -610,6 +651,8 @@ internal sealed class DesktopToolset : IConversationToolHost
         }
         try
         {
+            // A server offered while it was still starting (its tools from last time): this call waits for it, the reply didn't.
+            await service.Hub.WaitForServerAsync(server.Name, McpToolService.StartupWait, token).ConfigureAwait(false);
             var result = await service.Hub.CallAsync(server.Name, tool.Name, arguments, McpToolService.CallTimeout, token).ConfigureAwait(false);
             service.Record(server.Name, tool.Name, result.IsError ? "returned an error" : "ran", Preview(shown), result.IsError);
             return new(result.Text, result.IsError);
@@ -682,15 +725,9 @@ internal sealed class DesktopToolset : IConversationToolHost
         return new(TerminalRunner.Report(run, settings), !run.Succeeded);
     }
 
-    internal static string SafeName(string name)
-    {
-        var safe = new string(name.Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_').ToArray()).Trim('_');
-        if (safe.Length == 0) safe = "tool";
-        return safe.Length <= TextToolDefinition.MaxNameLength ? safe : safe[..(TextToolDefinition.MaxNameLength - 9)] + "_" + Hash(name);
-    }
+    internal static string SafeName(string name) => McpToolNames.Safe(name);
 
-    private static string Hash(string value) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..8].ToLowerInvariant();
+    private static string Hash(string value) => McpToolNames.Hash(value);
 
     private static string Describe(McpTool tool)
     {

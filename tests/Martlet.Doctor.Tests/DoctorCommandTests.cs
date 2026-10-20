@@ -53,7 +53,7 @@ public sealed class DoctorCommandTests : IDisposable
         foreach (var probe in shared.Probes)
             Assert.Contains(probe.Summary, human.ToString());
         Assert.Contains(shared.ProfileId!.ToString()!, human.ToString());
-        Assert.Contains("not ready", human.ToString());
+        Assert.Contains(shared.Ready ? "requested checks passed" : "not ready", human.ToString());
     }
 
     [Theory]
@@ -133,7 +133,7 @@ public sealed class DoctorCommandTests : IDisposable
 
     [Theory]
     [InlineData("--help", "Usage:")]
-    [InlineData("--version", "foundation")]
+    [InlineData("--version", "Martlet ")]
     public async Task InformationalCommandsSucceedWithoutLoadingSettings(string option, string expected)
     {
         using var output = new StringWriter();
@@ -211,6 +211,36 @@ public sealed class DoctorCommandTests : IDisposable
         Assert.Equal("settings.create", probe.GetProperty("action_id").GetString());
         Assert.Equal(DiagnosticCatalog.Remedy("settings.create").Guidance, probe.GetProperty("remedy").GetString());
         Assert.Equal("completed", probe.GetProperty("execution").GetString());
+    }
+
+    [Fact]
+    public async Task StatusIsReadyWhenRequiredChecksPassAndChecksItCannotRunDoNotCount()
+    {
+        var registry = new ProbeRegistry(
+        [
+            new("application.version", Stage.Application, true, [ProbeEffect.LocalReadOnly],
+                _ => Task.FromResult(new ProbeObservation("application.available", EvidenceProvenance.Live))),
+            new("provider.connection", Stage.Provider, false, [ProbeEffect.Network, ProbeEffect.Permissioned, ProbeEffect.ProviderCost],
+                unavailableFindingId: "provider.unavailable")
+        ]);
+        using var output = new StringWriter();
+        Assert.Equal(0, await DoctorCommand.RunAsync(["--data-directory", path], output, executor: new(registry)));
+        Assert.Contains("requested checks passed (exit 0)", output.ToString());
+        Assert.Contains("Not checked here (they do not change the status): provider.connection", output.ToString());
+
+        // In Martlet's own registry, every check without a callback here is optional, so it can't hold the status back.
+        var local = await new FoundationStatusService(new SettingsStore(path)).GetReportAsync();
+        Assert.Equal(14, local.Probes.Count);
+        Assert.All(local.Probes.Where(DoctorExitCodes.NotChecked), probe => Assert.False(probe.Required, probe.Id));
+        Assert.Contains(local.Probes, probe => probe.Id == "pipeline.llm" && !probe.Required);
+    }
+
+    [Fact]
+    public async Task VersionSaysTheMartletVersionWithoutAPlanStage()
+    {
+        using var output = new StringWriter();
+        Assert.Equal(0, await DoctorCommand.RunAsync(["--version"], output));
+        Assert.Equal($"Martlet {FoundationStatusService.ApplicationVersion}", output.ToString().Trim());
     }
 
     [Fact]

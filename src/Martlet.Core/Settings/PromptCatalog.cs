@@ -39,6 +39,7 @@ public static partial class PromptCatalog
     public const string PastConversations = "past_conversations";
     public const string MemoryPeople = "memory_people";
     public const string MemoryBrief = "memory_brief";
+    public const string WhilePlaying = "while_playing";
     public const string MemoryBriefWriting = "memory_brief_writing";
     public const string Notes = "notes";
     public const string GlanceScreen = "glance_screen";

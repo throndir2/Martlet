@@ -358,7 +358,7 @@ public sealed class BackgroundTasksTests
         Assert.NotNull(started.Outcome);
 
         // It couldn't start: the review stays open and says why.
-        problem = "Martlet is already reconfiguring your computers. Background tasks shows its progress.";
+        problem = "Martlet is already reconfiguring your computers; Background tasks shows its progress.";
         var refused = Open();
         try
         {

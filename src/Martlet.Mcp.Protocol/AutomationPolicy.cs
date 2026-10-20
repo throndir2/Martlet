@@ -2,13 +2,17 @@ namespace Martlet.Mcp;
 
 /// <summary>What the ui_* tools may do in the Martlet desktop without --allow-ui-effects. This is a safety boundary.
 /// <see cref="SafeClicks"/> and <see cref="SafeClickPrefixes"/> are the controls ui_click may press: they only navigate, open,
-/// close, expand, refresh or read, and start no work. <see cref="SafeValues"/> and <see cref="SafeValuePrefixes"/> are the
-/// controls whose text ui_snapshot returns: read-only status that is never a secret, never personal text and never a file path.
-/// A prefix entry covers every automation ID that starts with it. Anything that sends, records, plays, spends, writes files or
-/// handles credentials stays out of the click lists and needs --allow-ui-effects. Editable fields, credentials and personal data
-/// stay out of the value lists. Each line is one automation ID (or prefix) with its page and its effect; the comment lines name
-/// the controls next to them that are deliberately left out.</summary>
-internal static class AutomationPolicy
+/// close, expand, refresh or read this PC, and start no work. They may also ask the local network a discovery question that
+/// carries none of your data (Martlet's own discovery query, one multicast DNS question), and stop what Martlet does at this
+/// moment (a reply, a song, finding zones). <see cref="SafeValues"/> and <see cref="SafeValuePrefixes"/> are the controls whose
+/// text ui_snapshot returns: read-only status that is never a secret, never personal text and never a file path; ui_snapshot
+/// also replaces any e-mail address with [email] and any file path with [path] in that text (<see cref="Redact"/>).
+/// A prefix entry covers every automation ID that starts with it. Anything that sends, records, plays, spends, writes files,
+/// handles credentials, contacts another computer by its address (a host, a ComfyUI server, a cloud provider), cancels a
+/// background job or pauses, stops listening or stops watching stays out of the click lists and needs --allow-ui-effects.
+/// Editable fields, credentials and personal data stay out of the value lists. Each line is one automation ID (or prefix) with
+/// its page and its effect; the comment lines name the controls next to them that are deliberately left out.</summary>
+internal static partial class AutomationPolicy
 {
     /// <summary>One automation ID (or the start of a family of generated IDs), the page it is on, and what pressing it does (click
     /// lists) or what its text shows (value lists).</summary>
@@ -107,7 +111,7 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: CheckInRun-<id> (Check now sends the check to a Thinking pool member, which may be a paid provider).
         new("Pool-vision-AlsoOpen", "Companion › Vision", "Open Thinking pool under 'Also gets your pictures': only opens that page."),
         new("Pool-hearing-AlsoOpen", "Companion › Hearing", "Open Thinking pool under 'Also gets your recordings': only opens that page."),
-        new("PicturesCheck", "Companion › Picture making", "Check: only asks each place in the Picture making list whether it can draw now (a cloud provider: only whether a key is there); saves and draws nothing."),
+        // Needs --allow-ui-effects: PicturesCheck (Check asks each place in the list, a ComfyUI server or a cloud provider, whether it can draw now).
         // Needs --allow-ui-effects: Draw a test picture, Set up, Save, Load workflow file, Save key and Add.
         new("LiveToolDeny", "Talk window", "A tool call's Deny: only declines the waiting call (an MCP tool or a terminal command); runs nothing."),
         // Needs --allow-ui-effects: Allow once and Always allow (they run the tool call).
@@ -151,9 +155,7 @@ internal static class AutomationPolicy
         new("SituationSimulateAway", "Companion › Thinking (fixture)", "FIXTURE (MARTLET_SIMULATE_SITUATION): only makes the Thinking host simulated away or back; changes nothing saved and looks at no real game or host."),
         new("TrayOpen", "Tray menu", "Open Martlet: only shows the window."),
         new("TrayTalk", "Tray menu", "Talk to Martlet: only opens the talk window, like OpenLiveConversation."),
-        new("TrayPause", "Tray menu", "Pause Martlet: only stops work."),
-        new("TrayStopListening", "Tray menu", "Stop listening: only stops listening."),
-        new("TrayStopWatching", "Tray menu", "Stop watching: only stops watching."),
+        // Needs --allow-ui-effects: TrayPause, TrayStopListening and TrayStopWatching (they pause Martlet until you turn it on again).
         new("TrayEndTalk", "Tray menu", "End the conversation: only closes the talk window, like CloseLive."),
         // Needs --allow-ui-effects: Start listening, Start watching, Resume Martlet, the character, the startup and closing choices and Exit.
         new("MoveAvatar", "Character overlay", "Only opens or closes the character's right-click menu."),
@@ -162,11 +164,11 @@ internal static class AutomationPolicy
         new("CharacterSettings", "Character overlay", "Character settings: only shows that page."),
         new("CharacterEyes", "Character overlay", "Eyes: only opens its submenu."),
         // Needs --allow-ui-effects: Eyes' choices CharacterEyes-<choice> (save talk-preferences.json), the zoom, position, Let clicks pass through (CharacterClickThrough), Keep on top and Hide character.
-        new("NearbyFind", "Martlet on your network", "Find again: only sends Martlet's own discovery query (port 9444) on the local network and lists who answers."),
+        new("NearbyFind", "Martlet on your network", "Find again: only asks the local network Martlet's own discovery question (port 9444) and lists who answers."),
         new("NearbyCancel", "Martlet on your network", "Stop asking: only withdraws this PC's own request."),
         // Needs --allow-ui-effects: Connect, Allow and Deny (they do the work).
         new("CheckHostService", "Host dashboard", "Check again: only reads this PC's host service and, while the engine is unavailable, Windows' WSL status, virtualization services and pending restart. Starts, sets up and pairs nothing."),
-        new("SmartHomeFind", "Companion › Smart home", "Find on my network: only sends one multicast DNS question for Home Assistant's service type and lists who answers."),
+        new("SmartHomeFind", "Companion › Smart home", "Find on my network: only asks the local network one multicast DNS question for Home Assistant's service type and lists who answers."),
         new("SmartHomeSetupCancel", "Companion › Smart home", "Not now: only hides the setup form."),
         // Needs --allow-ui-effects: Sign in, Set up, Connect, Disconnect, Add, Install and Restart.
         new("DiscordSetupSteps", "Companion › Discord", "Step by step: only expands the setup steps."),
@@ -242,7 +244,7 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: Approve, Decline, Call, Remove, Add, the may-call boxes and Update picture now.
         new("HostsJoinWithInvite", "Add a computer", "Join with an invite: only opens its window."),
         new("SignInJoinClose", "Sign-in from outside › Join window", "Close: only closes the window."),
-        new("HostSignInSettings", "Add a computer", "A paired host's Sign-in from outside: only opens the settings window, which reads sign-in settings (never a secret) and keeps the non-secret household-signin.json."),
+        // Needs --allow-ui-effects: HostSignInSettings (opening the settings window reads the host's sign-in settings over the network and writes household-signin.json).
         new("SignInSettingsClose", "Sign-in from outside › Settings window", "Close: only closes the window."),
         // Needs --allow-ui-effects: Connect (contacts the invite's host), Sign in (pairs), and the settings window's authenticator secret, Save, recovery codes, Remove and Make invite.
         // Needs --allow-ui-effects: SignInAllow, SignInRefusedAllow, SignInRefusedAllowFriend, SignInAccess-<key>, SignInRemove-<key>, SignInProviderSave, SignInProviderRemove and SignInProvidersPush.
@@ -251,11 +253,10 @@ internal static class AutomationPolicy
         new("UnlockOther", "Unlock window", "Choose another account: only closes the Unlock window for the account picker."),
         new("ProveClose", "Prove window", "Close: only closes the Prove window."),
         // Needs --allow-ui-effects: everything else on the Account page, Unlock and Prove windows (password, Windows login link, PIN, Windows Hello, Encrypt, Remember, Lock now, Sign out, Merge, Unlock, Sign in).
-        new("FriendsCheck", "Share › Friends", "Check now: only reads each of your hosts' sign-in settings (never a secret) and keeps the non-secret summary in friends.json."),
-        new("OpenAiCheck", "Share › Share your language models", "Check now: only reads the language models each host offers (GET /v1/models, signed; never a key) and keeps the non-secret summary in openai-models.json."),
+        // Needs --allow-ui-effects: FriendsCheck and OpenAiCheck (Check now sends signed requests to each host and writes friends.json or openai-models.json).
         new("OpenAiShowProxy", "Share › Share your language models", "Show setup: only opens a window with the steps and the Tailscale Funnel, Nginx Proxy Manager, Nginx, Caddy and Cloudflare Tunnel text to copy; changes nothing."),
         new("OpenAiProxyClose", "Share › Show setup", "Close: only closes the setup window."),
-        new("OpenAiCheckAddress", "Share › Share your language models", "Check address: only sends GET <saved address>/models without a key and shows what answered (OpenAiCheckResult); changes nothing. Disabled until an address is saved."),
+        // Needs --allow-ui-effects: OpenAiCheckAddress (Check address contacts the saved address).
         new("OpenAiGiveAccess", "Share › Share your language models", "Give someone access: only opens the form; no key is made until Make key (OpenAiAccessConfirm)."),
         new("OpenAiAccessCancel", "Share › Give someone access", "Cancel: only closes the form without making a key."),
         new("OpenAiInviteDone", "Share › Ready to send", "Done: only closes the window that showed a new key once."),
@@ -296,7 +297,7 @@ internal static class AutomationPolicy
         new("PickerMore-", "Any option picker", "The Show N more button of an option picker, such as PickerMore-VoiceEngine; only shows or hides the rows after the first four."),
         // Needs --allow-ui-effects: the button in an option's details (it commits that option).
         new("DeviceFilter-", "Devices", "A list filter, such as DeviceFilter-attention; only filters the device cards shown."),
-        new("LiveJobCancel-", "Talk window", "The Cancel button of a background job, such as LiveJobCancel-think-1; only stops that job. It sends, saves and starts nothing."),
+        // Needs --allow-ui-effects: LiveJobCancel-<job> (it ends a background job, and Martlet hears that you stopped it next time you talk).
         new("CharacterProfileEdit-", "Companion › Profiles", "The Edit button of a profile, such as CharacterProfileEdit-3f2a9c1b; only opens the form. The form's Save writes."),
         new("LiveJobResultToggle-", "Talk window", "The Show result button of a finished task in the task list, such as LiveJobResultToggle-think-1; only shows or hides what the task found."),
         new("LiveMessageContext-", "Talk window", "What was sent, on one of Martlet's messages, such as LiveMessageContext-2 (the second message that kept it): only opens the What was sent window (MessageContextWindow) for that message. MCP never reads its text."),
@@ -335,7 +336,7 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: Singing's Set up Singing here, every Add <model> here (Pool-singing-AddXl/AddHeartMuLa/AddDiffRhythm/AddYuE-<key>, Pool-voice-match-AddVevo/AddVevo2/AddSeedVc-<key>), quality (Pool-singing-Quality-<key>), music model (Pool-singing-MusicModel-<key>) and model (Pool-voice-match-Model-<key>) (they save or install).
         // Needs --allow-ui-effects: the Singing cloud form's provider choice and Add button (SingingCloudProvider-<area>, SingingCloudAdd-<area>), a cloud member's Save key (Pool-<area>-CloudSaveKey-<key>) and Mureka's own voice box (Pool-singing-OwnVoice-<key>) (they save keys or pools.json).
         new("Pool-pictures-Settings-", "Companion › Picture making", "The Settings button of a place, such as Pool-pictures-Settings-0; only shows or hides its settings."),
-        new("PicturesComfyConnect-", "Companion › Picture making", "The Connect button of a place, such as PicturesComfyConnect-0; only reads the version, checkpoints and models of that ComfyUI server."),
+        // Needs --allow-ui-effects: PicturesComfyConnect-<n> (Connect contacts that ComfyUI server).
         new("Pool-motion-Settings-", "Companion › Motion", "The Settings button of a list member, such as Pool-motion-Settings-0; only shows or hides where Motion stands there and its Set up Motion here button."),
         // Needs --allow-ui-effects: Set up Motion here (it installs the role).
         new("Pool-vision-Settings-", "Companion › Vision", "The Settings button of a list member, such as Pool-vision-Settings-0; only shows or hides its model and settings."),
@@ -375,7 +376,7 @@ internal static class AutomationPolicy
         new("SignInHost", "Sign-in from outside › Join window", "Shows the host that the join window checked, such as 'home-host at name:port, key checked'. Never a password, secret or recovery code."),
         new("SignInSettingsStatus", "Sign-in from outside › Settings window", "Shows the status of the settings window. Never a password, secret or recovery code."),
         new("SignInOwnerState", "Sign-in from outside › Settings window", "Shows the state of the owner account: its name and how many recovery codes are left. Never a password, secret or recovery code."),
-        new("SignInAllowedList", "Sign-in from outside › Settings window", "Shows the allowed identities, each one of your computers or a friend's. Never a password, secret or recovery code."),
+        new("SignInAllowedList", "Sign-in from outside › Settings window", "Shows the allowed identities, each one of your computers or a friend's (e-mail addresses show as [email]). Never a password, secret or recovery code."),
         new("SignInProvidersList", "Sign-in from outside › Settings window", "Shows the sign-in providers. Never a password, secret or recovery code."),
         new("SignInEnrolledList", "Sign-in from outside › Settings window", "Shows the computers that signed in: device IDs, provider, subject and whether a friend's. Never a password, secret or recovery code."),
         new("SignInRefusedList", "Sign-in from outside › Settings window", "Shows the refused sign-ins: device IDs, provider, subject and whether a friend's. Never a password, secret or recovery code."),
@@ -642,7 +643,7 @@ internal static class AutomationPolicy
         new("F5AddVoiceAbout", "Companion › Voice › Voices", "Shows Add a voice's intro, which names the speech-to-text that fills in the words, or how to get one."),
         // F5AddVoiceRecording-2 and the next recordings, and each recording's F5AddVoiceHeard line, read through SafeValuePrefixes.
         new("OwnVoiceAbout", "Companion › Voice › Record your own voice", "Shows the intro of Record your own voice. Never the recordings or the typed name."),
-        new("OwnVoiceRecorder", "Companion › Voice › Record your own voice", "Shows what the microphone does or why the last line was not kept, such as 'Line 2 recorded. Next, record line 3.' Never the recordings."),
+        new("OwnVoiceRecorder", "Companion › Voice › Record your own voice", "Shows what the microphone does or why the last line was not kept, such as 'Line 2 recorded; next, record line 3.' Never the recordings."),
         new("OwnVoiceSummary", "Companion › Voice › Record your own voice", "Shows how many lines are recorded and how long they are together, such as '2 of 4 lines recorded, 11.6 seconds together with the pauses.'"),
         new("OwnVoiceProblem", "Companion › Voice › Record your own voice", "Shows why Add voice could not add the voice. Never the recordings or the typed name."),
         new("OwnVoiceConsent", "Companion › Voice › Record your own voice", "Shows whether the own-voice box is ticked, as its checked state."),
@@ -1160,7 +1161,7 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: clicking a HealthFix-host-service-<fix> button (it starts or sets up software).
         new("HealthIssue-", "Home", "An item on Home, such as HealthIssue-ollama: Problem: Ollama isn't running on this PC. ..., or HealthIssue-ollama-fixed: Good to know: Martlet fixed Ollama on this PC."),
         new("HealthCheck-", "Home", "A Health tile, such as HealthCheck-microphone: Microphone: OK. Windows default."),
-        new("LogEntry-", "Diagnostics", "A shown log line, newest first, such as LogEntry-0: 21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ..."),
+        new("LogEntry-", "Diagnostics", "A shown log line, newest first, such as LogEntry-0: 21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ... File paths show as [path] and e-mail addresses as [email]."),
         new("LogSource-", "Diagnostics", "A computer filter, such as LogSource-desktop-diva: From: This PC (desktop-diva, diva-host)."),
         new("NearbyItem-", "Add a computer", "A Martlet desktop found on the network, such as NearbyItem-0: GAMING-PC (192.168.1.31): gaming-pc-host · Martlet 0.17.0."),
         new("NetworkMember-", "Your Martlet network", "A computer in the Martlet network, such as NetworkMember-host-gpu-pc: gpu-pc. Host, paired with this PC; added on desktop-a."),
@@ -1174,10 +1175,10 @@ internal static class AutomationPolicy
         new("SmartHomeHost-", "Companion › Smart home", "A paired host's Home Assistant line, such as SmartHomeHost-gpu-pc: gpu-pc: can run Home Assistant."),
         // MainWindow.Friends.cs
         new("NetworkFriend-", "Your Martlet network", "A friend's computer, such as NetworkFriend-friend-pc: FRIEND-PC (friend-pc). A friend's computer. Names, providers, subjects, device and host IDs only."),
-        new("Friend-", "Share › Friends", "A person, such as Friend-authentik-lab-friend-7: ana@example.net (authentik). Shares gpu-box: their engines only. Names, providers, subjects, device and host IDs only."),
+        new("Friend-", "Share › Friends", "A person, such as Friend-authentik-lab-friend-7: [email] (authentik). Shares gpu-box: their engines only. Providers, subjects, device and host IDs only; e-mail addresses show as [email]."),
         new("FriendsHost-", "Share › Friends", "A host that Martlet could not read, such as FriendsHost-gpu-box. Names, providers, subjects, device and host IDs only."),
         new("SharedHost-", "Share › Friends", "A host a friend shares with this PC, such as SharedHost-gpu-box: gpu-box. Shared by a friend; ... Names, providers, subjects, device and host IDs only."),
-        new("SignInAllowed-", "Sign-in from outside", "An allowed identity, such as SignInAllowed-authentik-lab-user-42: me@example.net (authentik: lab-user-42): a friend. Names, providers, subjects, device and host IDs only."),
+        new("SignInAllowed-", "Sign-in from outside", "An allowed identity, such as SignInAllowed-authentik-lab-user-42: [email] (authentik: lab-user-42): a friend. Providers, subjects, device and host IDs only; e-mail addresses show as [email]."),
         new("SmartHomeDevice-", "Companion › Smart home", "A device that Home Assistant discovered, such as SmartHomeDevice-0: Philips Hue: Hue Bridge."),
         new("SmartHomeUpdate-", "Companion › Smart home", "A waiting Home Assistant update, such as SmartHomeUpdate-0: Update: Home Assistant Core 2026.9.3 → 2026.9.4."),
         new("DiscordRule-", "Companion › Discord", "A channel rule's line, such as DiscordRule-<channel>: the rule's name and its chat mode."),

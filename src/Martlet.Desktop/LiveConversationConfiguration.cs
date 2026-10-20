@@ -499,9 +499,12 @@ internal sealed class LiveConversationConfiguration
         string? voices = null, string? messageNotes = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
         CharacterActionPrompt? gaze = null, string? chattiness = null, IReadOnlyList<string>? controlTags = null,
-        Func<CancellationToken, Task<string?>>? spokenWords = null, string? board = null, IThinkingBackup? backup = null)
+        Func<CancellationToken, Task<string?>>? spokenWords = null, string? board = null, IThinkingBackup? backup = null,
+        string? activity = null)
     {
         ArgumentNullException.ThrowIfNull(history);
+        // While a game is played: the While you play prompt, in the notes while the conversation sent doesn't carry it yet.
+        var playing = WhilePlaying(activity);
         var persona = Persona is null ? null
             : PromptSettings.Fill(Prompts, PromptCatalog.Persona, ("name", Persona.Name), ("persona", Persona.Text));
         // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off. The lingering
@@ -524,14 +527,14 @@ internal sealed class LiveConversationConfiguration
         for (var loreCount = hits.Count; loreCount >= 0; loreCount--)
         {
             var entries = hits.Take(loreCount).ToArray();
-            var allNotes = Notes([], entries, [], voices, messageNotes, chattiness: chattiness);
+            var allNotes = Notes([], entries, [], voices, messageNotes, chattiness: chattiness, playing: playing);
             if (!Fits(input, instructions, allNotes, [], image, tools, audio, ContextNotes([], allNotes, board)))
                 continue;
             for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
             {
                 var recalled = facts.Take(memoryCount).ToArray();
                 // The window is found with every note (none yet in the conversation); dropping repeats only makes it smaller.
-                var bareNotes = Notes([], entries, recalled, voices, messageNotes, people, chattiness);
+                var bareNotes = Notes([], entries, recalled, voices, messageNotes, people, chattiness, playing);
                 if (Prompt(input, instructions, bareNotes, [], image, tools, audio, ContextNotes([], bareNotes, board)) is not { } bare ||
                     BoundedTextInput.HistoryStart(bare, history, TextLimits.MaxInputBytes, TextInputTokens, TextLimits.MaxInputTokens,
                         TextLimits.MaxHistoryMessages) is not { } first)
@@ -540,7 +543,7 @@ internal sealed class LiveConversationConfiguration
                 for (var start = BoundedTextInput.CacheFriendlyStart(first, history.Count); start <= history.Count; start += 2)
                 {
                     var sent = history.Skip(start).ToArray();
-                    var noteParts = NoteParts(sent, entries, recalled, voices, messageNotes, people, chattiness);
+                    var noteParts = NoteParts(sent, entries, recalled, voices, messageNotes, people, chattiness, playing);
                     var notes = WrapNotes(noteParts);
                     var contextParts = ContextParts(sent, notes, board);
                     if (Prompt(input, instructions, notes, sent, image, tools, audio, WrapNotes(contextParts)) is not { } prompted)
@@ -594,13 +597,21 @@ internal sealed class LiveConversationConfiguration
     /// out, and so are the voices and the chattiness level when the latest ones there are the same: notes on earlier
     /// messages still hold. <paramref name="message"/> (such as a smart home result) is about this message only, so it is always noted.</summary>
     private string? Notes(IReadOnlyList<TextHistoryMessage> sent, IReadOnlyList<LorebookHit> lore, IReadOnlyList<Martlet.Memory.MemoryFact> facts,
-        string? voices, string? message, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null) =>
-        WrapNotes(NoteParts(sent, lore, facts, voices, message, people, chattiness));
+        string? voices, string? message, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null,
+        string? playing = null) =>
+        WrapNotes(NoteParts(sent, lore, facts, voices, message, people, chattiness, playing));
+
+    /// <summary>The While you play prompt for <paramref name="activity"/> (Companion › Prompts), or null when no game is played or
+    /// the owner emptied it.</summary>
+    internal string? WhilePlaying(string? activity) =>
+        Martlet.Memory.MemoryActivity.Kind(activity) == Martlet.Memory.MemoryActivity.Gaming && Martlet.Memory.MemoryActivity.Name(activity) is { } game
+            ? PromptSettings.Fill(Prompts, PromptCatalog.WhilePlaying, ("game", game)) : null;
 
     /// <summary>The named parts of <see cref="Notes"/>, in order, without the labels around them (<see cref="WrapNotes"/>); empty
     /// when nothing is new.</summary>
     private List<RequestPart> NoteParts(IReadOnlyList<TextHistoryMessage> sent, IReadOnlyList<LorebookHit> lore, IReadOnlyList<Martlet.Memory.MemoryFact> facts,
-        string? voices, string? message, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null)
+        string? voices, string? message, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null,
+        string? playing = null)
     {
         var earlier = string.Join("\n", sent.Where(m => m.Role == TextHistoryRole.User && m.Text.Contains(NotesLabel, StringComparison.Ordinal))
             .Select(m => m.Text));
@@ -610,7 +621,8 @@ internal sealed class LiveConversationConfiguration
         // What the names on facts mean is said once while the conversation sent still carries it.
         var whoseSaid = PromptSettings.Fill(Prompts, PromptCatalog.MemoryPeople) is { } whose && Noted(whose);
         var (before, after) = newLore.Length == 0 ? (null, null) : LorebookPromptContext.Blocks(newLore, Prompts);
-        var body = Parts(("Lorebook entries (before the persona)", before), ("Lorebook entries (after the persona)", after),
+        var body = Parts(("While you play", playing is null || Noted(playing) ? null : playing),
+            ("Lorebook entries (before the persona)", before), ("Lorebook entries (after the persona)", after),
             ("Remembered facts", newFacts.Length == 0 ? null : MemoryPromptContext.Instructions(newFacts, Prompts, people, !whoseSaid)),
             ("Who is talking", voices is not null && Latest(earlier, VoicePromptContext.Label) == Clean(voices) ? null : voices),
             ("About this message", message),

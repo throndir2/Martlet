@@ -114,19 +114,23 @@ public sealed partial class ConversationTurn
             backupStop = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
             var ids = NewIds();
             var held = Held;
-            var opened = await OpenBackupAsync(backup, input, ids, held, backupStop.Token).ConfigureAwait(false);
-            if (opened is null && held && hold is { } taken)
+            var (opened, failure) = await OpenBackupAsync(backup, input, ids, held, backupStop.Token).ConfigureAwait(false);
+            if (opened is null && failure is null && held && hold is { } taken)
             {
                 // Started early: a paid member may answer only once the reply is taken.
                 await Task.WhenAny(primaryWords, taken.Task).WaitAsync(stop.Token).ConfigureAwait(false);
-                if (!primaryWords.IsCompleted) opened = await OpenBackupAsync(backup, input, ids = NewIds(), false, backupStop.Token).ConfigureAwait(false);
+                if (!primaryWords.IsCompleted)
+                    (opened, failure) = await OpenBackupAsync(backup, input, ids = NewIds(), false, backupStop.Token).ConfigureAwait(false);
             }
             var askedAfter = Clock.GetElapsedTime(startedAt);
             if (opened is null)
             {
                 backupStop.Dispose();
                 backupStop = null;
-                Decided(backup, new(ThinkingBackupOutcome.NoMember, delay));
+                // A member was chosen but its stream couldn't be opened: that is a failure to see, not "no member".
+                Decided(backup, failure is null ? new(ThinkingBackupOutcome.NoMember, delay)
+                    : new(ThinkingBackupOutcome.Failed, delay, (failure as ThinkingBackupOpenException)?.Member, askedAfter,
+                        Why: $"its stream couldn't be opened: {ThinkingBackupOpenException.Reason(failure)}"));
                 primary.Step = await primaryWords.ConfigureAwait(false);
                 return primary;
             }
@@ -234,12 +238,12 @@ public sealed partial class ConversationTurn
         }
     }
 
-    // The backup's stream, or null when no member may take the request or it couldn't be opened.
-    private async Task<ThinkingBackupStream?> OpenBackupAsync(IThinkingBackup backup, BoundedTextInput input, CorrelationIds ids,
-        bool held, CancellationToken token)
+    // The backup's stream, or null when no member may take the request; a member whose stream couldn't be opened gives its error.
+    private async Task<(ThinkingBackupStream? Stream, Exception? Failure)> OpenBackupAsync(IThinkingBackup backup, BoundedTextInput input,
+        CorrelationIds ids, bool held, CancellationToken token)
     {
-        try { return await backup.OpenAsync(request, input, ids, Epoch, held, token).ConfigureAwait(false); }
-        catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested) { return null; }
+        try { return (await backup.OpenAsync(request, input, ids, Epoch, held, token).ConfigureAwait(false), null); }
+        catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested) { return (null, error); }
     }
 
     // The stream that lost the race (or failed in it) is stopped at once and let go once its read ended, off the reply's path.

@@ -90,6 +90,9 @@ Most characters need none of this: **Automatic** lip-sync finds the mouth contro
 
 These settings save on their own. A mapping applies the next time the character shows. Martlet sends its generated speech to the endpoint shown, and only while the session is active. **Export avatar settings** saves the settings without the model files and without the activation. **Restore avatar settings** keeps a backup of the current settings; inspect and activate lip-sync again after a restore. Closing the window keeps the character open: use **Hide character** to close it.
 
+- Until Audio2Face is ready, the mouth follows the loudness of the voice. Martlet shows the install progress.
+- A friend can share lip-sync with you. Only this PC uses it, and your other computers keep theirs. The generated voice audio goes to the friend's computer and isn't kept there. The friend's own work comes first, so lip-sync can pause while their computer is busy; the voice goes on.
+
 ## Emotes, gestures and combos
 
 A reply can write a tag such as `{blush}` or `{nod}`. Martlet removes the tag from the text, and the character does it at that point in the sentence.

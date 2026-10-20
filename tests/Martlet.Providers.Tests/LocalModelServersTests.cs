@@ -122,6 +122,42 @@ public sealed class LocalModelServersTests
     }
 
     [Fact]
+    public async Task Reads_what_each_app_has_loaded_and_lm_studios_real_sizes()
+    {
+        static Stub Apps(bool v1) => new(request => request.RequestUri!.AbsoluteUri switch
+        {
+            "http://127.0.0.1:11434/api/tags" => Json("""{"models":[{"name":"llama3.3:70b","size":42520413916},{"name":"gemma4:e2b","size":7200000000}]}"""),
+            "http://127.0.0.1:11434/api/ps" => Json("""{"models":[{"name":"llama3.3:70b","size":48000000000,"size_vram":45500000000}]}"""),
+            "http://127.0.0.1:1234/v1/models" => Json("""{"data":[{"id":"google/gemma-4-26b-a4b"},{"id":"qwen3-32b"}]}"""),
+            "http://127.0.0.1:1234/api/v1/models" when v1 => Json("""
+                {"models":[{"type":"llm","key":"google/gemma-4-26b-a4b","size_bytes":17990911801,"params_string":"26B-A4B",
+                  "loaded_instances":[{"id":"google/gemma-4-26b-a4b","config":{"context_length":4096}}]},
+                 {"type":"llm","key":"qwen3-32b","size_bytes":19800000000,"loaded_instances":[]},
+                 {"type":"embedding","key":"text-embedding-nomic","size_bytes":84000000,"loaded_instances":[]}]}
+                """),
+            "http://127.0.0.1:1234/api/v0/models" when !v1 => Json("""
+                {"data":[{"id":"google/gemma-4-26b-a4b","quantization":"Q4_K_M","state":"loaded"},{"id":"qwen3-32b","quantization":"Q8_0","state":"not-loaded"}]}
+                """),
+            _ => throw new HttpRequestException("connection refused")
+        });
+
+        var servers = await LocalModelServers.DetectAsync(Apps(v1: true), cancellationToken: CancellationToken.None);
+        var ollama = servers.Single(s => s.Id == "ollama");
+        // /api/ps: only llama3.3:70b is loaded, holding 45.5 GB of graphics memory.
+        Assert.Equal(45.5, Assert.Single(ollama.LoadedGb).Value);
+        var studio = servers.Single(s => s.Id == "lm-studio");
+        // /api/v1/models: the real download sizes and the loaded model (graphics memory not said: 0).
+        Assert.Equal((17.99, 19.8), (studio.SizesGb["google/gemma-4-26b-a4b"], studio.SizesGb["qwen3-32b"]));
+        Assert.Equal(0, Assert.Single(studio.LoadedGb, l => l.Key == "google/gemma-4-26b-a4b").Value);
+        Assert.False(studio.SizesGb.ContainsKey("text-embedding-nomic"));
+
+        // An older LM Studio (/api/v0/models): sizes from the parameters in the name at the quantization's bits.
+        var older = (await LocalModelServers.DetectAsync(Apps(v1: false), cancellationToken: CancellationToken.None)).Single(s => s.Id == "lm-studio");
+        Assert.Equal((13.0, 32.0), (older.SizesGb["google/gemma-4-26b-a4b"], older.SizesGb["qwen3-32b"]));
+        Assert.Equal(["google/gemma-4-26b-a4b"], older.LoadedGb.Keys);
+    }
+
+    [Fact]
     public async Task An_unknown_app_on_a_shared_port_is_named_by_its_port()
     {
         var handler = new Stub(request => request.RequestUri!.Port == 8080

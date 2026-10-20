@@ -65,9 +65,9 @@ internal static class LogTimeline
     {
         if (!Path.IsPathFullyQualified(outputPath) || !outputPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("outputPath must be an absolute path ending in .zip.");
+        McpServer.RequireLocalNewFile(outputPath, "outputPath");
         var folder = Path.GetDirectoryName(Path.GetFullPath(outputPath));
         if (folder is null || !Directory.Exists(folder)) throw new ArgumentException("outputPath's folder must exist.");
-        if (File.Exists(outputPath)) throw new ArgumentException("outputPath already exists; choose a new file name.");
         var root = Root(dataDirectory);
         var device = LocalLogs.ThisDeviceId(root);
         var directory = LocalLogs.Directory(root);

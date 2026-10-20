@@ -25,8 +25,12 @@ data folder of the current Windows user (`%LOCALAPPDATA%\Martlet`).
    (`%APPDATA%\Claude\claude_desktop_config.json`) and VS Code
    (`%APPDATA%\Code\User\mcp.json`), for each one installed. `-Client copilot`
    chooses one, `-ReadOnly` leaves changes off, `-AllowUiEffects` adds
-   `--allow-ui-effects`, and `-Unregister` removes the entry. Each file is
-   backed up to `<file>.martlet-backup` first.
+   `--allow-ui-effects`, and `-Unregister` removes the entry. Each run first
+   copies the file to a new `<file>.martlet-backup-<date>-<time>` and prints
+   its path; the first backup and the four newest are kept. A file with
+   comments (VS Code's `mcp.json` may have them) is left as it is unless you
+   add `-Force`, because the rewrite removes the comments; the backup keeps
+   them.
 2. Restart the assistant.
 3. Ask it, for example: "Make a Martlet character called Ava, a cheerful
    astronomer who speaks briefly, with the built-in look." The assistant starts
@@ -46,9 +50,9 @@ To configure a client by hand, give it the full path of `Martlet.Mcp.exe`:
 
 | Flag | What it does |
 | --- | --- |
-| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save. Without it they refuse and say how to turn it on. |
+| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save, and `memory_forget` delete (its `preview: true` runs without the flag). It also lets the tools that write save or write: `logs_export`, `character_picture` with `outputPath`, `kept_motions_check` with a `dataDirectory`, `character_eyes` with `save` or `forget`, `character_touch_zones` and `character_reaction_changes` with `save`, and `discord_companion_check` with `requestFrom`. Without it they refuse and say how to turn it on. The FIXTURE saves also refuse Martlet's own data folder (`%LOCALAPPDATA%\Martlet`), and an output file is never on a network path or over an existing file. |
 | `--allow-ui-effects` | Lets `ui_*` tools press buttons, type and toggle (see [Local MCP control](#local-mcp-control-windows)). Without it they only navigate and read. |
-| `--all-tools` | Lists every tool (about 180). Without it, `tools/list` has the 22 tools an assistant needs most (about 16 KB instead of about 230 KB, under the 128-tool limit of some clients); every tool still runs by name. |
+| `--all-tools` | Lists every tool. Without it, `tools/list` has only the short list of the tools an assistant needs most (much smaller, and under the 128-tool limit of some clients); every tool still runs by name. `martlet_guide` says how many tools there are and how many are listed. |
 
 ### What an assistant sees
 
@@ -257,10 +261,19 @@ would run it:
   which deletes its entry and the secrets only it used.
 
 **When servers run.** Nothing starts when Martlet starts. Enabled servers start in
-the background when you open a talk window (or press *Start servers now*), and a
-reply waits at most 10 seconds for servers still starting. Servers that stopped are
+the background when you open a talk window (or press *Start servers now*). A reply
+never waits for them: a server that is still starting (or stopped) offers the tools
+it listed last in this session, so the tool list stays the same while servers come
+and go, and a call to it waits at most 10 seconds for it to start or tells the
+model that it isn't running. A server whose tools were never listed yet offers
+none until it is ready. Servers that stopped are
 retried when a talk window opens again or from the Tools page. Each server's state,
 tools and recent error output are on the Tools page.
+
+**Tool names.** Each server tool is offered as `<server>_<tool>` (made safe for
+function calling), for example `home-assistant_HassTurnOn`. The name never
+depends on which other servers run, so the start of every request stays the same
+for prompt caches.
 
 **Which replies get tools.** Only replies to what you say or type (and Martlet's
 own reply bringing up finished background work), and only when
@@ -683,7 +696,9 @@ one of 500-3000, 900 by default) rehearses the production race in
 (`ThinkingBackupMembers`) with two fixture Chat Completions endpoints on
 127.0.0.1 (canned words, NOT AI), which note when the client stopped their
 stream. Scenarios: `backup-wins`, `conversation-wins`, `late-conversation`
-(the member asked, then stopped), `conversation-fails`, `no-member`, `held`
+(the member asked, then stopped), `conversation-fails`, `no-member`,
+`open-fails` (a member is chosen but its stream can't be opened: `Failed` with
+the reason in `why`, not "no member"), `held`
 (only a paid cloud member: asked once the reply is taken), `let-go` (a reply
 started early and let go stops its member's stream too) and `members` (the
 rules). Each turn reports its outcome, the member, when it was asked, the
@@ -1229,7 +1244,7 @@ its kind and its state: whether the Picture making role is ready there, its work
 or a cloud provider's key status), `Pool-pictures-On-<i>`, `-Up-`, `-Down-`,
 `-Remove-`, `-OnlyFor-<i>`, `-AddThisPc`, `-AddHost-<host>`, `-Address` and
 `-AddAddress`. `Pool-pictures-Settings-<i>` (show or hide a place's settings),
-`PicturesCheck` and a place's `PicturesComfyConnect-<i>` are passive clicks.
+`PicturesCheck` and a place's `PicturesComfyConnect-<i>` contact the places, so they need `--allow-ui-effects`.
 `PicturesNow` (where it draws and the places that draw when the first is busy),
 `PicturesTestState` (each place ready or why not, or the test picture's size,
 place and seconds), and in a place's settings `PicturesMemberState-<i>`,
@@ -1484,7 +1499,14 @@ built from `src\Martlet.Mcp` (`scripts\Register-MartletMcp.ps1` does it for
 assistants, see [Use Martlet from an AI assistant](#use-martlet-from-an-ai-assistant);
 for development: `src\Martlet.Mcp\bin\Release\net10.0-windows\Martlet.Mcp.exe`).
 The server speaks newline-delimited JSON-RPC 2.0 on standard input/output;
-stderr is for diagnostics. It takes the flags `--allow-changes`,
+stderr is for diagnostics. Tool calls run one at a time, in the order they
+come, but the server keeps reading while one runs: `ping`, `tools/list` and
+`initialize` answer at once, and `notifications/cancelled` with a call's
+`requestId` stops that call (running or waiting); a cancelled call gets no
+response. A tool that fails returns a result with `isError: true` and a short
+message, and the server keeps running. Only a request line that is not JSON
+gets `-32700` (parse error); an invalid request gets `-32600` and any other
+server problem `-32603`. It takes the flags `--allow-changes`,
 `--allow-ui-effects` and `--all-tools` in any order. The installer does not
 include it yet. Build locally with:
 
@@ -1530,7 +1552,11 @@ Recommended setup's options come from, by reading files only:
 plus Martlet's own list), `planning.catalog_snapshot` (the snapshot shipped
 with Martlet, because no newer daily copy is on this PC) or
 `planning.seed_only` (a Warning: the catalog can't be read, so only Martlet's
-own list). `recommended_setup_status` gives the details for each option.
+own list). It says `planning.catalog_refresh_failing` (a Warning) when the
+daily refresh tried in the last week, a source failed, and no refresh read
+every source for more than seven days (`model-catalog-status.json`): Martlet
+plans with the last good copy. `recommended_setup_status` gives the details
+for each option, and `model_catalog_status` the refresh's details.
 
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
@@ -1804,8 +1830,8 @@ Companion › Voice shows) and `abilities`, the rundown Companion › Voice show
 `cloning` and `sounds` (true or false), `emotions` (`None`, `WhisperOnly`,
 `Intensity` or `Tags`), `items` (`Voice cloning`, `Laughs & sighs` and
 `Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
-`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
-Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
+`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes;
+Laughs & sighs: yes; Emotions: whispering only." for Chatterbox Turbo, whose
 tones other than `[whispering]` don't change the voice and whose `[whispering]`
 the model itself whispers only now and then). `otherVoices` gives the
 same `abilities` and `runsOn` for the `openai` (online) voice, which doesn't
@@ -2065,7 +2091,10 @@ and not outside games; a search without the filter (the Memory window,
 as the store; a game's fact travels with `activity` while a fact for
 everywhere is written exactly as before; a correction keeps where a fact
 matters and choosing it moves the fact; an activity of the wrong form is
-refused; and game names compare without regard to case or spacing. With
+refused; a lorebook entry keyed by the game played now joins in though the
+words don't name it (`LorebookScanner` in `src\Martlet.Core`); the *While you
+play* prompt names the game; and game names compare without regard to case or
+spacing. With
 `query`, `asked.recalled` lists the sample facts (by key) those words recall
 while `activity` is played (none: no game). It never opens the owner's memory
 and contacts nothing.
@@ -2658,8 +2687,12 @@ answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
 throttled entries with their source, plus `StoresHealthy`, `FailingStores` and
 the authority save counts `AuthorityCommits`, `AuthorityCommitAverageMs` and
-`AuthorityCommitLongestMs`; the first step fails when a store is not healthy)
-and the host log lines naming each source.
+`AuthorityCommitLongestMs` and the nonce save counts `NonceSaves`,
+`NonceSaveAverageMs` and `NonceSaveLongestMs`; the first step fails when a store is not healthy)
+and the host log lines naming each source. A host on its real pairing store
+(a temporary directory) then pairs a desktop that makes 20 signed audit reads:
+the step passes when they took 20 nonce saves (journal appends) and at most
+one full save, and reports their times.
 Then outside addresses, played by other loopback ports: with the home address
 closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
@@ -3022,7 +3055,7 @@ else contacts a host or changes it and needs `--allow-ui-effects`.
 Sharing hosts with friends on the Share page (`MainWindow.Friends.cs`):
 **Friends** (`FriendsCard`, shown with paired hosts; status
 `FriendsStatus`, `FriendsCheck` reads each of your hosts' sign-in settings and
-is a safe click; reading them also adds the share links this PC made to hosts
+needs `--allow-ui-effects`, because it contacts the hosts and writes `friends.json`; reading them also adds the share links this PC made to hosts
 that miss them) lists each person as `Friend-<provider>-<subject>` (*name
 (provider). Shares gpu-box: their engines only. Their computers: ...*, or that
 they signed in to a host and wait) with `FriendShare-<host>-<provider>-<subject>`
@@ -4845,11 +4878,15 @@ include local paths and provider error text (never keys or conversation content)
 `mcp_servers_status` reads `mcp.json` from a data directory (optional absolute
 `dataDirectory`, default the current user's) as the desktop parses it: `state`
 (`none`, `loaded`, `invalid` or `unreadable` with `problem`) and per server its
-`name`, `transport`, `command`, raw `args` (with `${env:...}` and
-`${secret:...}` references, never their values), `host` for HTTP servers, `env`
+`name`, `transport`, `command`, raw `args` (`${env:...}` and `${secret:...}`
+references stay, never their values; a literal value that looks secret shows
+as `[hidden]`: the value after a flag such as `--token`, `--api-key` or
+`--password`, a `key=value` with a secret name, the user and password in a web
+address, and tokens such as `sk-...`, `ghp_...` or a long random string), `host` for HTTP servers, `env`
 and `headers` names, `disabled`, `autoApproveAll`, `autoApprove`, the MCP
 directory `registry` and `registryVersion` it was installed from, the `secrets`
-names it uses and its `problem`. It starts no server and reads no credentials.
+names it uses, `toolNames` (how a reply names its tools: always
+`<server>_<tool>`, whatever else runs) and its `problem`. It starts no server and reads no credentials.
 
 `terminal_status` reads Companion › Tools › Terminal from a data directory's
 `terminal.json` (optional absolute `dataDirectory`, default the current user's):
@@ -6041,12 +6078,14 @@ On Companion › Voice › *A cloud provider*, *Cloud voice* is an option picker
 `Picker-CloudVoice-openai` (OpenAI's voices) and `Picker-CloudVoice-elevenlabs`.
 ElevenLabs' details are readable: its facts (`PickerFact-CloudVoice-<fact>`:
 voice cloning, laughs and sighs, emotions, streaming, languages, cost),
-`ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
-your cloned voice. Key saved.*, and whether ElevenLabs asked to verify the
+`ElevenLabsStatus` (*Not in use yet: ...* or *In use: Eleven v4 Turbo with
+your cloned voice; key saved.*, and whether ElevenLabs asked to verify the
 voice; never the voice's name), `ElevenLabsKeyStatus` (what the key field will
 do; never the key) and `ElevenLabsModel` (the chosen model). Its abilities read
 through `VoiceEngineAbilities-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
-so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs.
+so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs. The *?* marks `Help-ElevenLabsAbout`,
+`Help-ElevenLabsModel`, `Help-ElevenLabsCosts` and `Help-ElevenLabsConsent` (the rights statement of the box) link to the
+wiki's *ElevenLabs* and *What you agree to*.
 `ElevenLabsSave` uploads a recording and saves the route, so it needs
 `--allow-ui-effects`. Never press it in a check: it would contact ElevenLabs.
 
@@ -6528,6 +6567,13 @@ E2B and `suggestions` has *Gemma 4 12B on gpu-box: smarter, ...*; with
 `preferences.locks` `[{ "job": "thinking", "locked": false }]` the change
 `ChangeModel` to `gemma4:12b` is in the recommendation and the suggestion is
 `applied`.
+Give `fixture: "bighost"` to plan the built-in big-hardware network (**NOT real
+computers**) with the model catalog: this PC, a companion PC with no graphics
+card, and `big-box`, a Linux host with five RTX 5090s (32 GB each) that thinks
+with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B. Its recommendation
+keeps live Thinking on the fast Gemma 4 E2B and has a `ChangeModel` that
+switches Deep thinking to a smarter model a free card has room for (Gemma 4 26B
+with the 2026-10-10 snapshot), because Deep thinking runs in the background.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.
@@ -6590,9 +6636,16 @@ alone, as before the catalog, to compare. The result has:
   (models were looked for: the fixture's, or `lookOnThisPc`), `found` (each
   model's `model`, `app`, `address`, `computer`, `chat` (false for an
   embedding, speech or picture model, which Thinking can't use), `downloadGb`
-  (the app's own size; only Ollama says it), `estimatedGb` (the graphics
-  memory the planner counts) and `option` (`served:<model>`, the job option
-  the recommendation uses)), `choices` (the review's explicit Thinking choices,
+  (the app's own size: Ollama's `/api/tags`, LM Studio's `/api/v1/models`
+  `size_bytes`, or its older `/api/v0/models` quantization at the parameters
+  in the name), `estimatedGb` (the graphics memory the planner counts),
+  `loaded` and `loadedGb` (the app has the model loaded now: Ollama's
+  `/api/ps` `size_vram`, or LM Studio's loaded state, where `loadedGb` is 0
+  because it doesn't say the memory), `newGb` (what the first-run plan adds to
+  the graphics memory in use, which counts a loaded model already), `sizeFrom`
+  (where the size comes from: the app's size, the model catalog's parameters
+  or the name) and `option` (`served:<model>`, the job option the
+  recommendation uses)), `choices` (the review's explicit Thinking choices,
   in its order: each `button` `RecommendedSetupUseServed-<n>`, its `line`,
   `model` and `address`; empty when the choice is off) and `note`.
 - `hostModels`: `prefer` (*Prefer models your hosts already have* is on: the
@@ -6700,8 +6753,8 @@ breakdown, as for `DeviceResource-<key>` on Devices), `RecommendedSetupJob-<n>`,
 `RecommendedSetupSituation-<i>` (the title of one of the three plans:
 *Normal*, *While gaming* or *Host away*) and `RecommendedSetupSituation-<i>-<j>`
 (where each live job goes in that plan, such as *On DESK: Thinking moves to
-gpu-box (qwen3:8b), then NVIDIA Build, then DESK's own model ... It comes back
-when the game ends.*; `recommended_setup_status` returns the same plans in
+gpu-box (qwen3:8b), then NVIDIA Build, then DESK's own model ... until the
+game ends.*; `recommended_setup_status` returns the same plans in
 `situations`),
 `RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
 `RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
@@ -7389,7 +7442,8 @@ is refused). `memory care: a built-in check-in that works on memory in several
 steps` checks the built-in Memory care check-in: on, every hour, *Its tools
 act* with the Memory set, its job offering all ten Memory tools for 16 rounds
 with 8 minutes and 2,048 tokens a request, its message saying it works in
-steps, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
+steps and keeps facts for the right game, the three tools that save or correct
+facts taking `where`, and 12 FIXTURE calls (more than the old bound of 8) that all run. The
 rules list `maximumToolRounds`, `maximumToolCalls`, `maximumToolOutputTokens`,
 `toolTimeoutSeconds` and `hardMaxToolRounds`. `tools: background work takes over the reply's think_longer and
 research` checks the `background-work` set: its two tools take the reply's
@@ -7447,7 +7501,13 @@ past the fixture's time limit, `requestTimeHours` 24); and `fullLine`: on three
 one-slot places, Deep thinking's own kind lets six thinks run or wait
 (`runningOrWaiting`, `maxActive`) and runs two at once (`atOnce`), and a seventh
 is refused as `busy` with those real numbers (`message`: *Martlet already has 6
-thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`). `plans`: the production `DeepThinkingPlan`
+thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`);
+`startFailure`: a job waiting in line whose seating throws (a clock that fails,
+as at shutdown) ends `Failed` (*it couldn't start on this PC*) and is
+`reported` through `BackgroundJobs.Faulted` (the desktop log's warning), so
+its kind is never blocked; and `waitingTrimmed`: finished jobs that wait to be
+brought up stay at most `limit` (`BackgroundJobs.KeptWaiting`), the oldest
+dropped. `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
@@ -8093,8 +8153,9 @@ desktop that passed a line on). Optional filters: `level` (`all`, `warnings`,
 it contacts no host.
 
 `logs_export` is Diagnostics' **Save logs to share** without the window:
-`outputPath` (required; absolute, ending `.zip`, in an existing folder; an
-existing file is never replaced) and optional `dataDirectory`. It writes the
+`outputPath` (required; absolute, ending `.zip`, in an existing folder on this
+PC, never a network path; an existing file is never replaced) and optional
+`dataDirectory`. It writes a file, so it needs `--allow-changes`. It writes the
 same ZIP with the production writer (`LogBundle`): `about.txt` and
 `martlet-logs.txt` with every line once, oldest first, from this PC's logs and
 `network-logs.json` (with its journal). It returns `path`, `bytes`, `files` (name and size),
@@ -8243,7 +8304,10 @@ its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavShare`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavThinkingRequests`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). Many pages keep their longer
-explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
+explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`; Listening, Voice, People,
+Singing, *Microphone and speakers* and *Voice ID* have, for example, `Help-ListeningRecognizer`,
+`Help-VoicesAbout`, `Help-ElevenLabsConsent`, `Help-PeopleRecognize`, `Help-SingingAbout`,
+`Help-AudioSetupIntro` and `Help-VoiceIdAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
 explanation as `help`, and `ui_click` on it only opens a small card with that
 text (passive, no `--allow-ui-effects`). While the card is open, `ui_snapshot`
@@ -8638,10 +8702,10 @@ Devices page.
 The **Share your language models** card ([OpenAI-compatible
 endpoint](OPENAI_ENDPOINT.md)) holds `OpenAiStatus` (status text: how many
 models on how many hosts, how many people have a key, hosts that need an
-update, when it was checked), `OpenAiCheck` (passive: reads each host's
+update, when it was checked), `OpenAiCheck` (needs `--allow-ui-effects`: it reads each host's
 `GET /v1/models` with the signed pairing and keeps `openai-models.json`),
 `OpenAiPublicAddress` (the address to give people; an editable field, never
-returned), `OpenAiSaveAddress`, `OpenAiCheckAddress` (passive: sends `GET
+returned), `OpenAiSaveAddress`, `OpenAiCheckAddress` (needs `--allow-ui-effects`: sends `GET
 <address>/models` without a key and shows the answer in `OpenAiCheckResult`),
 `Help-OpenAiExpose` (the *?* with the ways to give the front door an address),
 `OpenAiAddressProblem`, `OpenAiAddressStatus`, `OpenAiHomeAddresses` and
@@ -8992,6 +9056,7 @@ shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
 whose value reads *<time> <level> <computer> · <part>: <first line>*, where
 *<computer>* is *This PC* for this PC's desktop app and for its own host
 service's gateway (its host ID, paired here or read from Docker on a host PC);
+file paths in it read as `[path]` and e-mail addresses as `[email]`;
 clicking one only selects it, and `LogDetail` then returns the whole line
 (time, level, computer with its ID, such as *This PC (diva-host) · Host
 gateway*, part, who passed it on and every following line).
@@ -9931,7 +9996,7 @@ voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
 voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
 use (a starter voice's name, "one of your recordings", or "a voice no longer in
-the list"), for example "6 voices. None chosen yet; Martlet starts with Jenny
+the list"), for example "6 voices; none chosen yet, so Martlet starts with Jenny
 (Dioco)." `F5VoicesShared` reads whether the list is shared with the
 paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
 voices still copying to this PC, hosts to update, or "No other Martlet computers
@@ -9985,7 +10050,7 @@ speech-to-text (and may send the recording to the Listening host), so it needs
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
 `F5RecordVoice` (passive: it only opens the dialog) opens *Record your own
 voice* (`OwnVoiceDialog`); `OwnVoiceCancel` (passive) closes it. `OwnVoiceAbout`
-returns its intro. `OwnVoiceConsent` is the box that says it is the owner's own
+returns its intro (one sentence; `Help-OwnVoiceAbout` has the rest and links to the wiki's *Record your own voice*). `OwnVoiceConsent` is the box that says it is the owner's own
 voice; its checked state is readable, and `ui_toggle` on it needs
 `--allow-ui-effects`. Each line has its fixed words (`OwnVoiceLine-<n>`, for
 example "“Would you enjoy a quiet cup of cocoa while we measure the
@@ -9994,10 +10059,10 @@ treasure?”"), its state (`OwnVoiceLineState-<n>`: "Not recorded yet.",
 (`OwnVoiceRecord-<n>`, readable as "Record line 2", "Stop recording line 2" or
 "Record line 2 again"; off until the box is ticked). `OwnVoiceRecorder` returns
 what the microphone is doing or why a line wasn't kept ("Press Record beside a
-line, then read it out loud.", "Line 2 recorded. Next, record line 3.", "Only
-0.8 seconds of speech was heard on line 1. ..."), `OwnVoiceSummary` how many
-lines are recorded and how long they are together ("No lines recorded yet.
-Record all 4 lines to make your voice.", "2 of 4 lines recorded, 11.6 seconds
+line, then read it out loud.", "Line 2 recorded; next, record line 3.", "Only
+0.8 seconds of speech was heard on line 1, so ..."), `OwnVoiceSummary` how many
+lines are recorded and how long they are together ("No lines recorded yet;
+record all 4 lines to make your voice.", "2 of 4 lines recorded, 11.6 seconds
 together with the pauses.") and `OwnVoiceProblem` why `OwnVoiceOk` (Add voice)
 couldn't add the voice ("Record line 1 first.", or that together the lines are
 longer than 30 seconds and which line to read again). Record uses the
@@ -10023,7 +10088,7 @@ sighs, emotions, streaming, languages, your recordings, license and whether it
 allows commercial use, numbers), `PickerState-VoiceEngine` where it stands
 ("Speaking on this PC.", "Ready on gpu-pc.", "Setting up on gpu-pc...", or why
 it can't run there), `VoiceEngineAbilities-<key>` the rundown of what it can do
-("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only."; shown
+("Voice cloning: yes; Laughs & sighs: yes; Emotions: whispering only."; shown
 as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in `f5_voices`),
 `VoiceEngineFeatures-<key>` its other needs as chips ("Docker, 5 s+ samples,
 English" for Chatterbox Turbo; the same list as `features` in `f5_voices`), and
@@ -10058,17 +10123,20 @@ voice engine there, or says one would share the card before one is set up.
 
 Companion › Singing (`CompanionTab-Singing`, under *Optional extras*;
 [Singing](SINGING.md)) has the standard order. `SingingNow` says whether and
-where Martlet sings ("Off. Martlet doesn't sing: no computer in the music list
-is on. Singing stays set up on your computers.", "Not set up yet. ...",
+where Martlet sings, in one sentence ("Off: Martlet doesn't sing, because no computer in the music list
+is on; Singing stays set up on your computers.", "Not set up yet: add one of your computers ...",
 "Martlet writes the music on gpu-pc (or the first free one of 2 computers) in
-high quality, and matches the voice on gpu-pc with SoulX-Singer.", or "... Voice
-match is off: songs keep the music model's own singer."). A song has two
+high quality, and matches the voice on gpu-pc with SoulX-Singer.", or "..., but voice
+match is off, so songs keep the music model's own singer."). `Help-SingingAbout` (*?*) explains what asking
+for a song does and links to the wiki's *How a song is made*. A song has two
 parts, each with its own shared pool list
 ([the two singing pools](SINGING.md#the-two-singing-pools)): *Music: where
 Martlet writes songs* (`Pool-singing-...`; with none on, Martlet doesn't sing)
 and *Voice match: where Martlet matches the singing to its voice*
 (`Pool-voice-match-...`; with none on, songs keep the music model's own
-singer). Each list has the shared IDs (summary, each member's line with its
+singer). Each list's intro shows one sentence with `Help-Pool-singing-Intro` and
+`Help-Pool-voice-match-Intro` (the whole intro, with a link to the wiki's *The music and voice match lists*).
+Each list has the shared IDs (summary, each member's line with its
 state, such as "1. gpu-pc. A paired computer; runs Singing with SoulX-Singer and
 VevoSing; high quality." or "...; SoulX-Singer.", On, Up, Down, Remove,
 Settings, kept-for and the Add buttons; only computers that aren't shared by
@@ -10094,7 +10162,8 @@ model not set up there: `Pool-singing-AddXl-`, `Pool-singing-AddHeartMuLa-`, `Po
 `SingingCloudKeyStatus-<area>`, `SingingCloudConsent-<area>` (what goes to the provider and that it may cost money),
 `SingingCloudAdd-<area>` (needs `--allow-ui-effects`) and `SingingCloudState-<area>`. A cloud member's settings show
 `Pool-<area>-CloudKeyStatus-<member key>`, a key box with `Pool-<area>-CloudSaveKey-<member key>` and, for Mureka,
-`Pool-singing-OwnVoice-<member key>` (*Sing in Martlet's voice*). A voice
+`Pool-singing-OwnVoice-<member key>` (*Sing in Martlet's voice*) and `Help-Pool-<area>-CloudModel-<member key>`
+(how to use another model of the provider; wiki *Cloud providers*). A voice
 match member adds `Pool-voice-match-AddVevo-<member key>` (*Add VevoSing here*
 where it runs without VevoSing) and `Pool-voice-match-Model-<member key>`
 (*SoulX-Singer*, the default, or *VevoSing*: that computer's own model, saved in
@@ -10106,13 +10175,14 @@ voice match list, it makes the voice match list from the music list. *What
 Singing is* shows the role's details only (`Picker-Singing-Role`): its facts
 (`PickerFact-Singing-<fact>`: `vram`, `download`, `song`, `license`, `cost`,
 `data`) and `SingingGpu` (fixed text: its first sentence, with all of it in
-`help`), which answers whether Singing needs a graphics card of its own. *Voice
-match models* compares the two models: `Picker-SingingVoiceMatch-SoulX` and
+`help` and in `Help-SingingGpu`, which links to the wiki's *Hardware*), which answers whether Singing needs a graphics card of its own. *Voice
+match models* has `Help-SingingVoiceMatchModels` (wiki *More choices*) and compares the two models: `Picker-SingingVoiceMatch-SoulX` and
 `Picker-SingingVoiceMatch-VevoSing` (passive; *in use* is the first voice match
 computer's model) compare their footprint and license
 (`PickerFact-SingingVoiceMatch-license`: VevoSing is "CC-BY-NC-ND-4.0:
 personal, non-commercial use only ..."). *Set up Singing here* asks one
-confirmation naming the downloads, licences and terms and sets the role up
+confirmation: the question and one sentence with the graphics card, the download size, the licences and the
+voice rule (the wiki's *What each part downloads* lists every model) and sets the role up
 through `martlet-host add singing` (a run window on this PC whose
 `HostRunStatus` follows the image build, the service starting and each model
 file's download, for example "Singing: downloading model-svc.pt, 45% of 2730
@@ -10475,8 +10545,8 @@ don't return it), `LiveJobState-<id>` (*Checking it fits beside Thinking.*,
 *Done after 1:02. Martlet brought it up.*, *You stopped it.*, *Couldn't finish:
 it failed on this PC.*), `LiveJobResultToggle-<id>` (*Show result*, a passive
 click that shows `LiveJobResult-<id>`, which isn't a readable value) and
-`LiveJobCancel-<id>` (a passive click: it only stops that task, and the next
-thing you say tells Martlet). Setting `MARTLET_BACKGROUND_FIXTURE=1` before
+`LiveJobCancel-<id>` (needs `--allow-ui-effects`: it stops that task, and the
+next thing you say tells Martlet). Setting `MARTLET_BACKGROUND_FIXTURE=1` before
 Martlet starts makes opening the talk window start one *FIXTURE - NOT AI* task
 (`fixture-1`) that works until canceled, so these can be checked without a
 model. Then the song panel
@@ -10920,9 +10990,9 @@ has `TrayStartListening` (*Start listening*) or, once started, `TrayStopListenin
 (*Stop listening*); with vision on in Companion it also has `TrayStartWatching`
 (*Start watching*) or, once started, `TrayStopWatching` (*Stop watching*), each
 working without the other. `TrayOpen`, `TrayTalk` (like
-`OpenLiveConversation`), `TrayPause` (it only stops work), `TrayStopListening`,
-`TrayStopWatching` (they only stop listening or watching) and `TrayEndTalk`
-(like `CloseLive`) are passive clicks; `TrayStartListening`, `TrayStartWatching`,
+`OpenLiveConversation`) and `TrayEndTalk` (like `CloseLive`) are passive
+clicks; `TrayPause`, `TrayStopListening` and `TrayStopWatching` (they pause
+Martlet until you turn it on again), `TrayStartListening`, `TrayStartWatching`,
 `TrayResume`, `TrayCharacter`, `TrayCharacterClickThrough`, the two
 choices and `TrayExit` need `--allow-ui-effects`. The menu's status line reads
 *Martlet is listening and watching* when both run. While another Martlet dialog
@@ -11138,10 +11208,13 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `long_talk_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
-  use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `voices_people`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `external_endpoints_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `memory_brief_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
-  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
+- Calls whose tool takes a `martletDirectory` (the voice and listening checks)
+  and give none use this checkout's Desktop build when it is built.
+- Calls whose tool takes a `dataDirectory` (its input schema in `tools/list`,
+  which the script reads from the server with `--all-tools`) and give none get
+  the script's disposable data directory, so no tool reaches the real profile
+  by default and a new tool is covered without a list in the script. `-Desktop`
+  also uses that directory, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
@@ -11151,9 +11224,11 @@ call fails or an `until` is not met.
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).
 - `-AllowChanges` passes `--allow-changes`, so `character_*` and `settings_set`
-  save; without an explicit `dataDirectory` they, `characters_list` and
-  `settings_get` use the disposable data directory, and `martlet_call` passes it
-  to the tool it runs.
+  save, `memory_forget` deletes and the tools that write (a `save`, `forget`,
+  `requestFrom`, `outputPath` or `logs_export`; `kept_motions_check` with the
+  disposable `dataDirectory`) write; without an explicit `dataDirectory` they
+  use the disposable data directory, and `martlet_call` passes it to the tool
+  it runs.
 - `-Build` builds `Martlet.Mcp` (and `Martlet.Desktop` with `-Desktop`) in
   `-Configuration` (default Release) with the `dotnet` that has the SDK pinned in
   `global.json` (found the same way as `scripts\Test-Martlet.ps1`, including the
@@ -11175,13 +11250,20 @@ observe them:
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
   `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
-  family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
-  records, plays, spends, writes files or handles credentials stays behind
-  `--allow-ui-effects`.
+  family of generated IDs such as `CompanionTab-` and `Node-`). A passive click
+  may read this PC, ask the local network a discovery question that carries
+  none of your data, and stop what Martlet does at this moment (a reply, a
+  song). Anything that sends, records, plays, spends, writes files, handles
+  credentials, contacts another computer by its address (a host, a ComfyUI
+  server, a cloud provider), cancels a background job or pauses Martlet stays
+  behind `--allow-ui-effects`. `AutomationPolicyTests` checks the effect texts
+  for these words.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
   `SafeValuePrefixes`) in the same file so snapshots return their text (a value
   pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
+  `ui_snapshot` also replaces every e-mail address with `[email]` and every
+  file path with `[path]` in the text it returns (`AutomationPolicy.Redact`).
 - **One line for each ID:** write each entry as
   `new("<ID>", "<page>", "<what it does or shows>")`, for example
   `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Thinking pool.")`.

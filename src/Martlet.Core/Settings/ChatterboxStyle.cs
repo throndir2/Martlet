@@ -30,10 +30,10 @@ public sealed record ChatterboxStyle(
 
     private static bool Cfg(double value) => double.IsFinite(value) && value is >= MinimumCfgWeight and <= MaximumCfgWeight;
 
-    /// <summary>"General: exaggeration 0.5, CFG weight 0.5. Expressive: exaggeration 0.7, CFG weight 0.3."</summary>
+    /// <summary>"General: exaggeration 0.5, CFG weight 0.5; expressive: exaggeration 0.7, CFG weight 0.3." (one sentence).</summary>
     public string Describe() =>
-        $"General: exaggeration {Number(GeneralExaggeration)}, CFG weight {Number(GeneralCfgWeight)}. " +
-        $"Expressive: exaggeration {Number(ExpressiveExaggeration)}, CFG weight {Number(ExpressiveCfgWeight)}.";
+        $"General: exaggeration {Number(GeneralExaggeration)}, CFG weight {Number(GeneralCfgWeight)}; " +
+        $"expressive: exaggeration {Number(ExpressiveExaggeration)}, CFG weight {Number(ExpressiveCfgWeight)}.";
 
     public static string Number(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 

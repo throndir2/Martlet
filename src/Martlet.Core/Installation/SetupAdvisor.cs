@@ -144,7 +144,7 @@ public static class SetupAdvisor
                 {
                     llmMachine = pc;
                     llmVram = Vram(answers.ThisPcGpu);
-                    notes.Add("The local model may slow games on this PC. Another computer with a GPU avoids that.");
+                    notes.Add("The local model may slow games on this PC; another computer with a GPU avoids that.");
                 }
                 else llmOnCpu = true;
             }
@@ -189,7 +189,7 @@ public static class SetupAdvisor
                 Local,
                 onPc ? LocalLlmHow : "Run a compatible local model server on that computer, then choose its address in Companion > Thinking."));
             if (llmMachine.Gpu == AdvisorGpu.OtherVendor)
-                notes.Add($"AMD and Intel GPUs can run local thinking models. Check the memory on {Lower(llmMachine.Name)} for a better fit.");
+                notes.Add($"AMD and Intel GPUs can run local thinking models; check the memory on {Lower(llmMachine.Name)} for a better fit.");
         }
         else if (llmOnCpu)
         {
@@ -203,7 +203,7 @@ public static class SetupAdvisor
                 null, Local, LocalLlmHow));
             notes.Add(goal == AdvisorGoal.Balanced
                 ? "For quicker replies, run Thinking on a GPU (on this PC or another computer), or choose Smartest answers to use an online model."
-                : "Without a GPU, a fully private setup is slow. A GPU on this PC or another computer makes local replies practical.");
+                : "Without a GPU, a fully private setup is slow; a GPU on this PC or another computer makes local replies practical.");
         }
         else
         {
@@ -220,7 +220,7 @@ public static class SetupAdvisor
                     "Online models are more capable than what usually fits on a home GPU.")
             };
             roles.Add(new("Thinking model", choice, "Online", LlmWhat, why, AdvisorAvailability.Available, null,
-                "Your messages and recent conversation go to the provider. Each request may cost money.", HostedLlmHow));
+                "Your messages and recent conversation go to the provider, and each request may cost money.", HostedLlmHow));
         }
 
         // Speech-to-text role.
@@ -239,7 +239,7 @@ public static class SetupAdvisor
                 online.Add("OpenAI");
                 roles.Add(new("Speech-to-text", "OpenAI transcription", "Online", SttWhat,
                     "The most accurate option Martlet supports.", AdvisorAvailability.Available, null,
-                    "Your recorded push-to-talk audio goes to OpenAI. Each request may cost money.", OpenAiHow));
+                    "Your recorded push-to-talk audio goes to OpenAI, and each request may cost money.", OpenAiHow));
             }
             else
             {
@@ -250,7 +250,7 @@ public static class SetupAdvisor
                           "thinking model and the voice."
                         : "Accurate, runs on the processor, and keeps your microphone audio on this PC.",
                     AdvisorAvailability.Available, null, "Stays on this PC.",
-                    "In Companion > Listening, choose Parakeet in Martlet. It downloads once."));
+                    "In Companion > Listening, choose Parakeet in Martlet (it downloads once)."));
             }
         }
 
@@ -270,9 +270,9 @@ public static class SetupAdvisor
                         : "Natural speech without sending reply text anywhere.",
                     AdvisorAvailability.Available, null, Local,
                     (voiceMachine == pc
-                        ? $"In Companion > Voice > Voice engine, choose {Settings.SpeechEngines.Default.Name} on this PC. It sets up in Docker Desktop."
-                        : $"Add {voiceMachine.Name} in Devices, then choose {Settings.SpeechEngines.Default.Name} for it in Companion > Voice > Voice engine.") +
-                    (answers.CustomVoice ? " Add voice recordings and transcripts in Companion > Voice > Voices." : "")));
+                        ? $"In Companion > Voice > Voice engine, choose {Settings.SpeechEngines.Default.Name} on this PC (it sets up in Docker Desktop)"
+                        : $"Add {voiceMachine.Name} in Devices, then choose {Settings.SpeechEngines.Default.Name} for it in Companion > Voice > Voice engine") +
+                    (answers.CustomVoice ? "; add voice recordings and transcripts in Companion > Voice > Voices." : ".")));
             }
             else if (localLlm)
             {
@@ -284,19 +284,19 @@ public static class SetupAdvisor
                         ? "Its first word comes about 1.5 s after a reply starts. An NVIDIA GPU with 4 GB free would make it about 1 s faster."
                         : "Free and offline, and it can copy your voice. It needs about 8 free processor threads.",
                     AdvisorAvailability.Available, null, "Stays on this PC.",
-                    $"In Companion > Voice > Voice engine, choose {Settings.SpeechEngines.ChatterboxNano.Name} on this PC. It sets up in Docker Desktop."));
+                    $"In Companion > Voice > Voice engine, choose {Settings.SpeechEngines.ChatterboxNano.Name} on this PC (it sets up in Docker Desktop)."));
             }
             else
             {
                 online.Add("OpenAI");
                 roles.Add(new("Voice (text-to-speech)", "OpenAI voice", "Online", TtsWhat,
                     "A natural voice with no local GPU needed.", AdvisorAvailability.Available, null,
-                    "Reply text goes to OpenAI. Each request may cost money.", OpenAiHow));
+                    "Reply text goes to OpenAI, and each request may cost money.", OpenAiHow));
             }
             if (answers.CustomVoice && voiceMachine is null)
                 notes.Add(voiceOnCpu
-                    ? "Chatterbox Nano copies your voice on the processor too. A free NVIDIA GPU makes it about 1 s quicker to start."
-                    : "A custom voice needs a free NVIDIA GPU during conversations. Until then, use a built-in voice.");
+                    ? "Chatterbox Nano copies your voice on the processor too; a free NVIDIA GPU makes it about 1 s quicker to start."
+                    : "A custom voice needs a free NVIDIA GPU during conversations; until then, use a built-in voice.");
         }
 
         // Character and lip-sync.
@@ -351,24 +351,24 @@ public static class SetupAdvisor
             machines.Add(new(host.Name, host.Hardware, host.Runs.ToArray()));
         }
         if (hosts.Count > 0 && gpuHosts.Count == 0)
-            notes.Add("Your other computers have no GPU, so they add little. Martlet keeps its work on this PC or online.");
+            notes.Add("Your other computers have no GPU, so they add little; Martlet keeps its work on this PC or online.");
         if (gpuHosts.Any(h => h.Gpu == AdvisorGpu.OtherVendor))
-            notes.Add("AMD and Intel GPUs can run local thinking models. Voice engines and advanced lip-sync need NVIDIA.");
+            notes.Add("AMD and Intel GPUs can run local thinking models, but voice engines and advanced lip-sync need NVIDIA.");
         var unsure = hosts.Prepend(pc).Where(m => m.Gpu == AdvisorGpu.Unknown).Select(m => Lower(m.Name)).ToList();
         if (unsure.Count > 0)
-            notes.Add($"You were not sure which GPU is in {JoinAnd(unsure)}, so Martlet planned for an 8 GB NVIDIA card. " +
-                "Check the exact GPU later for a better fit.");
+            notes.Add($"You were not sure which GPU is in {JoinAnd(unsure)}, so Martlet planned for an 8 GB NVIDIA card; " +
+                "check the exact GPU later for a better fit.");
         if (answers.GamesOnThisPc)
             notes.Add(pc.HasLlm ? "Only the local model shares this PC's GPU with your games."
-                : llmOnCpu ? "Your games keep this PC's GPU. Martlet uses only the processor here."
-                : "Your games keep this PC's GPU. Martlet only runs the app, audio and character here.");
+                : llmOnCpu ? "Your games keep this PC's GPU, so Martlet uses only the processor here."
+                : "Your games keep this PC's GPU, so Martlet only runs the app, audio and character here.");
         var interim = roles.Any(r => r.Availability != AdvisorAvailability.Available);
         notes.Add(online.Count == 0
-            ? interim ? "Once every part above is available, nothing leaves your computers. Until then, the options listed above use OpenAI."
+            ? interim ? "Nothing leaves your computers once every part above is available; until then, the options listed above use OpenAI."
                 : "Nothing leaves your computers."
-            : $"Online services: {string.Join(", ", online)}. The data listed for each role goes to them, and requests may cost money.");
+            : $"Online services: {string.Join(", ", online)}; the data listed for each role goes to them, and requests may cost money.");
         if (interim)
-            notes.Add("\"Being built\" and \"Planned\" parts are not ready yet. Each role shows what to use for now.");
+            notes.Add("\"Being built\" and \"Planned\" parts are not ready yet; each role shows what to use for now.");
         notes.Add("Model sizes and GPU memory are rough estimates.");
 
         var installs = new List<AdvisorInstall>();

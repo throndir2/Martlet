@@ -32,7 +32,9 @@ Every window and the character change as you edit. Windows high contrast overrid
 - **Keep Martlet running in the notification area when I close its window** (on by default). The character, sync, updates and your other computers keep working.
 - **Start Martlet when I sign in to Windows** (off by default), and **Start in the notification area, without opening the window**.
 - **When Martlet starts, show the character and start listening (and watching, while vision is on)** (off by default).
-- **Greet me once Martlet has warmed up after it starts** (on by default). Once you start talking or listening and Martlet has warmed up, it says hello in character. It can mention the time of day, your last conversation, reminders coming up and the apps you have open. These go to your Thinking model with the greeting. The line under the choice says whether Martlet greeted you.
+- **Greet me once Martlet has warmed up after it starts** (on by default). Once you start talking or listening and Martlet has warmed up, it says hello in character, once each time it starts. It can mention the time of day, your last conversation, reminders coming up and the apps you have open. These go to your Thinking model with the greeting. The line under the choice says whether Martlet greeted you.
+
+The first time you close the window, Martlet tells you that it keeps running in the notification area by the clock. Right-click its icon to talk, pause or exit. If Martlet can't save one of these choices, the choice applies until Martlet closes.
 
 ## The notification area
 
@@ -71,7 +73,7 @@ Your hosts follow Martlet's version.
 - The **Devices** map shows **Update available** on an older host. **Update host** keeps its identity, pairings, roles and data.
 - **Update hosts** in **Settings › App updates** updates all of them. **Update paired hosts automatically** keeps them on this PC's version.
 - This PC's own host service always follows this PC's version.
-- **Settings › Your other computers › Let my other paired computers update Martlet here and manage this PC's host service** lets your other computers update this PC.
+- **Settings › Your other computers › Let my other paired computers update Martlet here and manage this PC's host service** lets your other computers update this PC. Their commands go over the pinned, signed connection that you paired. Martlet runs only these: update Martlet and the host service (from official GitHub releases only), install or remove a role, and show status.
 
 ## Other settings
 

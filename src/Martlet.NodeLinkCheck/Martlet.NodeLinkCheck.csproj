@@ -5,6 +5,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Gateway\Martlet.Gateway.csproj" />
+    <!-- exposure (exposure_selftest) also runs a host on its real pairing store. -->
+    <ProjectReference Include="..\Martlet.Gateway.Persistence\Martlet.Gateway.Persistence.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Ollama\Martlet.Gateway.Ollama.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.F5\Martlet.Gateway.F5.csproj" />
     <!-- voice-engine (voice_engine_check) uses every voice role's production relay. -->

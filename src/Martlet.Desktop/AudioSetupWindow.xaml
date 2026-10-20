@@ -26,8 +26,10 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="22,18,22,18">
                 <TextBlock Text="Microphone and speakers" Style="{DynamicResource PageTitle}" />
-                <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16"
-                           Text="Choose what Martlet listens to and plays through. Windows defaults work unless you pick something else." />
+                <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16" TextWrapping="Wrap"><Run Text="Choose what Martlet listens to and plays through." /><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                           Text="Windows defaults work unless you pick something else. Choices save as you go, and you can test each device."
+                           Wiki="Listening-and-Voice-ID#test-your-microphone-and-speakers" Margin="6,0,0,0"
+                           AutomationProperties.AutomationId="Help-AudioSetupIntro" AutomationProperties.Name="About microphone and speakers" /></InlineUIContainer></TextBlock>
 
                 <TextBlock x:Name="DevicesText" Style="{DynamicResource Muted}" Margin="0,0,0,14" TextWrapping="Wrap" AutomationProperties.AutomationId="AudioDevices"
                            AutomationProperties.LiveSetting="Polite" Text="Looking for microphones and speakers..." />
@@ -81,8 +83,10 @@
 
                 <Expander Header="Details" Margin="0,4,0,0" AutomationProperties.AutomationId="AudioDetails">
                     <StackPanel Margin="0,8,0,0">
-                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,8"
-                                   Text="Martlet lists device names without opening them. Tests run only after you approve them. No recording is saved or sent, and Martlet won't change your volume or Windows defaults." />
+                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,8" TextWrapping="Wrap"><Run Text="Martlet lists device names without opening them." /><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                   Text="Tests run only after you approve them. No recording is saved or sent, and Martlet won't change your volume or Windows defaults."
+                                   Wiki="Listening-and-Voice-ID#test-your-microphone-and-speakers" Margin="6,0,0,0"
+                                   AutomationProperties.AutomationId="Help-AudioSetupPrivacy" AutomationProperties.Name="About audio tests and privacy" /></InlineUIContainer></TextBlock>
                         <Button Style="{DynamicResource LinkButton}" HorizontalAlignment="Left" Content="Troubleshooting" Click="Troubleshooting_Click"
                                 AutomationProperties.AutomationId="AudioTroubleshooting" />
                         <TextBlock x:Name="ActivityText" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"

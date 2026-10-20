@@ -54,7 +54,8 @@ public sealed class ThinkingBackupTests
     }
 
     // The desktop's stand-in: the member's own runtime opens the same request on its host (ConversationRuntime.OpenTextAsync).
-    private sealed class FixtureBackup(ConversationRuntime members, FixturePermissions permissions, bool none = false, bool paid = false)
+    private sealed class FixtureBackup(ConversationRuntime members, FixturePermissions permissions, bool none = false, bool paid = false,
+        Exception? throws = null)
         : IThinkingBackup
     {
         private readonly List<bool> asked = [];
@@ -68,6 +69,7 @@ public sealed class ThinkingBackupTests
             bool held, CancellationToken token)
         {
             lock (asked) asked.Add(held);
+            if (throws is not null) throw throws;
             // A paid member is never asked for a reply started early that isn't taken yet.
             if (none || paid && held) return null;
             var request = new ConversationRequest(input, Model, reply.TextLimits, reply.Limits, host: Member);
@@ -187,6 +189,53 @@ public sealed class ThinkingBackupTests
         Assert.Equal("Slow, but alone.", turn.Content.Text);
         Assert.Equal(ThinkingBackupOutcome.NoMember, Assert.Single(backup.Results).Outcome);
         Assert.Equal(ThinkingBackupOutcome.NoMember, snapshot.Backup!.Outcome);
+    }
+
+    [Fact]
+    public async Task A_member_whose_stream_cannot_be_opened_is_recorded_as_failed_with_its_reason_not_as_no_member()
+    {
+        var clock = new RuntimeClock();
+        var late = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var conversation = new GatedHost("Slow, but alone.", late.Task);
+        await using var runtime = Runtime(clock, conversation);
+        await using var members = Runtime(clock, new GatedHost("Never asked."));
+        var backup = new FixtureBackup(members, Permissions(clock, Member), throws: new ThinkingBackupOpenException("member-host (qwen3-8b)",
+            ThinkingBackupOpenException.Reason(new HostTextException(ProviderFailureCode.Authentication))));
+
+        var turn = runtime.Start(Request(backup), Permissions(clock, Conversation));
+        await Harness.Until(() => backup.Asked.Count == 1, clock);
+        late.SetResult();
+        var snapshot = await Harness.Finish(turn, clock);
+
+        Assert.Equal("Slow, but alone.", turn.Content.Text);
+        var result = Assert.Single(backup.Results);
+        Assert.Equal(ThinkingBackupOutcome.Failed, result.Outcome);
+        Assert.Equal("member-host (qwen3-8b)", result.Member);
+        Assert.NotNull(result.AskedAfter);
+        Assert.Contains("Authentication", result.Why);
+        Assert.Contains("couldn't be opened", result.Describe());
+        Assert.Equal(result, snapshot.Backup);
+    }
+
+    [Fact]
+    public async Task Any_error_opening_the_backup_is_a_failure_with_its_type()
+    {
+        var clock = new RuntimeClock();
+        var late = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var conversation = new GatedHost("Slow, but alone.", late.Task);
+        await using var runtime = Runtime(clock, conversation);
+        await using var members = Runtime(clock, new GatedHost("Never asked."));
+        var backup = new FixtureBackup(members, Permissions(clock, Member), throws: new HttpRequestException("no route"));
+
+        var turn = runtime.Start(Request(backup), Permissions(clock, Conversation));
+        await Harness.Until(() => backup.Asked.Count == 1, clock);
+        late.SetResult();
+        await Harness.Finish(turn, clock);
+
+        var result = Assert.Single(backup.Results);
+        Assert.Equal(ThinkingBackupOutcome.Failed, result.Outcome);
+        Assert.Contains(nameof(HttpRequestException), result.Why);
+        Assert.DoesNotContain("no route", result.Why);
     }
 
     [Fact]

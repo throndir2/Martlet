@@ -96,6 +96,17 @@ public sealed class SetupExecutionTests
         Assert.Contains("doesn't offer whisper-xxl", problem);
         (_, problem) = SetupExecutor.Arguments(parakeet with { Model = null }, stt, null);
         Assert.Contains("names no model", problem);
+
+        // An open model choice (role.choice_open) takes a model from the model catalog that its list doesn't name.
+        var ollama = new SetupRoleNeeds("ollama", "") { Choices = [new("OLLAMA_MODEL", ["gemma4:e2b", "gemma4:e4b"], "gemma4:e2b") { Open = true }] };
+        var big = new SetupChange(SetupChangeKind.AddRole, "gpu-box", "s", "w") { RoleKind = "deep-thinking", Model = "hf.co/unsloth/Llama-3.3-70B-Instruct-GGUF:Q4_K_M" };
+        (arguments, problem) = SetupExecutor.Arguments(big, ollama, null);
+        Assert.Null(problem);
+        Assert.Equal("hf.co/unsloth/Llama-3.3-70B-Instruct-GGUF:Q4_K_M", arguments["choice.OLLAMA_MODEL"]);
+        Assert.Equal("gemma4:e4b", SetupExecutor.Arguments(big with { Model = "GEMMA4:E4B" }, ollama, null).Arguments["choice.OLLAMA_MODEL"]);
+        // A name the host can't take, or a host without the open choice (an older Martlet there), is refused.
+        Assert.Contains("doesn't offer", SetupExecutor.Arguments(big with { Model = "bad name; rm" }, ollama, null).Problem);
+        Assert.Contains("doesn't offer", SetupExecutor.Arguments(big, ollama with { Choices = [ollama.Choices[0] with { Open = false }] }, null).Problem);
     }
 
     [Fact]

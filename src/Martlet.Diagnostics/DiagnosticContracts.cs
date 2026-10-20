@@ -145,6 +145,10 @@ public sealed record DoctorReport : IContract
 
 public static class DoctorExitCodes
 {
+    /// <summary>0 when every required probe passed with current evidence and every other probe that ran passed too; 1 when a
+    /// probe failed; 2 when no required probe was asked for, or a required probe or a probe that ran did not pass; 3 for an
+    /// invalid invocation or unreadable settings. An optional probe that this report did not run ("not checked here", such as
+    /// the provider, microphone and pipeline checks that need the desktop) does not change the code.</summary>
     public static int Evaluate(DoctorReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -153,10 +157,16 @@ public static class DoctorExitCodes
             return 3;
         if (report.Probes.Any(probe => probe.Outcome == ProbeOutcome.Failed))
             return 1;
-        if (!report.Probes.Any(probe => probe.Required) || report.Probes.Any(probe =>
+        var counted = report.Probes.Where(probe => probe.Required || !NotChecked(probe)).ToArray();
+        if (!report.Probes.Any(probe => probe.Required) || counted.Any(probe =>
             probe.Outcome != ProbeOutcome.Passed || probe.Freshness != EvidenceFreshness.Current ||
             probe.Provenance is not (EvidenceProvenance.Live or EvidenceProvenance.Fixture)))
             return 2;
         return 0;
     }
+
+    /// <summary>Whether a probe was not run by this report (no callback here, or effects beyond local read-only).</summary>
+    public static bool NotChecked(ProbeResult probe) =>
+        probe.Execution is null or ProbeExecution.NotRun && probe.Provenance == EvidenceProvenance.NotRun &&
+        probe.Outcome is ProbeOutcome.Skipped or ProbeOutcome.NotConfigured or ProbeOutcome.Unknown;
 }

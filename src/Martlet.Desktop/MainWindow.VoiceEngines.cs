@@ -40,7 +40,7 @@ public partial class MainWindow
             var hosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
             if (hosts.Length == 0)
             {
-                var none = Note("No other computers are paired yet. Add one to speak there.", new Thickness(0, 0, 0, 4));
+                var none = Note("No other computers are paired yet.", new Thickness(0, 0, 0, 4));
                 AutomationProperties.SetAutomationId(none, "HostChoices-speaking");
                 stack.Add(none);
                 stack.Add(Row(PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: true, id: "SetupAddComputer-speaking")));
@@ -48,11 +48,12 @@ public partial class MainWindow
             }
             target = hosts.FirstOrDefault(h => h.HostId == voiceEngineHost) ?? hosts.FirstOrDefault(h => h.HostId == speakingHost)
                 ?? hosts.FirstOrDefault(h => hostChecks.GetValueOrDefault(h.HostId)?.Offers?.Keys.Any(HostRoles.Speaks) == true) ?? hosts[0];
-            stack.Add(Note("Pick a computer, then an engine. Martlet sets it up there and switches to it.", new Thickness(0, 0, 0, 6)));
+            stack.Add(HelpTip.Explain("Pick a computer, then an engine. Martlet sets the engine up there and switches to it.",
+                new Thickness(0, 0, 0, 6), "SpeakingHostPick", "voice engines on your computers", wiki: "Voices#set-up-an-engine"));
             stack.Add(SpeakingHostPills(hosts, target.HostId, speakingHost));
             if (hostChecks.GetValueOrDefault(target.HostId) is { Reachable: false })
             {
-                var unreachable = Note($"{target.HostId} isn't reachable right now. Martlet checks it again when you pick an engine.",
+                var unreachable = Note($"{target.HostId} isn't reachable right now; Martlet checks it again when you pick an engine.",
                     new Thickness(0, 4, 0, 0));
                 unreachable.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
                 AutomationProperties.SetAutomationId(unreachable, "SpeakingHostStatus");
@@ -61,8 +62,8 @@ public partial class MainWindow
         }
         else
         {
-            stack.Add(Note("Choose one to see what it needs and can do. Its button sets it up and switches to it; the engine it " +
-                "replaces stops.", new Thickness(0, 0, 0, 6)));
+            stack.Add(HelpTip.Explain("Choose one to see what it needs and can do. Its button sets it up and switches to it; the " +
+                "engine it replaces stops.", new Thickness(0, 0, 0, 6), "VoiceEngines", "voice engines", wiki: "Voices#set-up-an-engine"));
             if (thisPc is null && !machine.DockerRunning)
                 stack.Add(Note(machine.DockerInstalled ? "Engines run in Docker Desktop; Martlet starts it when needed."
                     : "Engines run in Docker Desktop; Martlet installs it on the first setup.", new Thickness(0, 0, 0, 2)));
@@ -77,8 +78,8 @@ public partial class MainWindow
 
         if (!anyInUse && spots.All(s => s.Spot.Cannot is not null))
         {
-            var none = Note($"No voice engine can run on {where}, so Martlet can't speak there. Pick another of your computers, " +
-                "or use a cloud voice under A cloud provider.", new Thickness(0, 4, 0, 6));
+            var none = Note($"No voice engine can run on {where}, so pick another of your computers " +
+                "or a cloud voice under A cloud provider.", new Thickness(0, 4, 0, 6));
             none.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             AutomationProperties.SetAutomationId(none, "VoiceEngineNone");
             stack.Add(none);
@@ -419,8 +420,7 @@ public partial class MainWindow
         if (others.Count == 0) return;
         var names = HostRoles.Names(others.Select(o => o.Kind));
         if (!ConfirmationDialog.Confirm(this,
-                $"Stop {names} on {hostId}? That frees graphics card memory there for {speaking.Name}, which keeps speaking. Downloads are kept, so " +
-                "switching back is quick. Any other computer that still speaks with them there stops speaking until it chooses another engine.",
+                $"Stop {names} on {hostId} to free memory for {speaking.Name}, also for any other computer that still speaks with them there?",
                 "Stop them"))
             return;
         try { ActionText.Text = (await ReleaseVoiceEnginesAsync(host, others)).TrimStart(); }

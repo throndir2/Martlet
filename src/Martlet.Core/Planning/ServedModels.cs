@@ -42,7 +42,7 @@ public static partial class ServedModels
     public static ComponentOption Option(ServedModel served, ModelCatalog? models)
     {
         ArgumentNullException.ThrowIfNull(served);
-        var gb = Gb(served);
+        var gb = Gb(served, models);
         var known = models?.Find(served.ModelId)?.Model;
         var smartness = known is null ? null : models!.Smartness(known);
         return new()
@@ -57,6 +57,7 @@ public static partial class ServedModels
             CallsTools = known?.CallsTools, TakesVideo = known?.TakesVideo == true,
             Source = gb is null ? "Served by your own model app; its size isn't known"
                 : served.SizeGb is not null ? "Estimate: the app's download size plus the context and buffers"
+                : Billions(served.ModelId) is null ? "Estimate from the model catalog's parameter count"
                 : "Estimate from the model's size in its name"
         };
     }
@@ -70,11 +71,26 @@ public static partial class ServedModels
     /// <summary>About how much graphics memory the model takes at Martlet's context: the app's download size plus 5% and
     /// 1 GB for the context and buffers, else about 0.65 GB per billion parameters in its name ("70b") plus 0.8 GB; null
     /// when neither is known.</summary>
-    public static double? Gb(ServedModel served)
+    public static double? Gb(ServedModel served) => Gb(served, null);
+
+    /// <summary>As <see cref="Gb(ServedModel)"/>; a model whose name says no size is sized from <paramref name="models"/>' total
+    /// parameters (4-bit weights, as for a size in the name) when the model catalog knows it.</summary>
+    public static double? Gb(ServedModel served, ModelCatalog? models)
     {
         ArgumentNullException.ThrowIfNull(served);
         if (served.SizeGb is { } size && size > 0) return Math.Round(size * 1.05 + 1, 1);
-        return Billions(served.ModelId) is { } billions ? Math.Round(billions * 0.65 + 0.8, 1) : null;
+        var billions = Billions(served.ModelId) ?? models?.Find(served.ModelId)?.Model.Fact(CatalogFacts.ParametersTotal).Number;
+        return billions is { } b and > 0 ? Math.Round(b * 0.65 + 0.8, 1) : null;
+    }
+
+    /// <summary>How much more graphics memory <paramref name="served"/> needs than the card's memory in use already counts:
+    /// <paramref name="gb"/> (its planned size) less what it holds now when the app has it loaded
+    /// (<see cref="ServedModel.LoadedGb"/>; a loaded model of unknown use counts as its download size). Never below 0.</summary>
+    public static double Extra(ServedModel served, double gb)
+    {
+        ArgumentNullException.ThrowIfNull(served);
+        var held = served.LoadedGb is { } loaded ? loaded > 0 ? loaded : served.SizeGb ?? 0 : 0;
+        return Math.Max(0, Math.Round(gb - held, 1));
     }
 
     /// <summary>The parameter count in billions from the model's name ("qwen3:32b", "Llama-3.3-70B-Instruct"), or null.</summary>

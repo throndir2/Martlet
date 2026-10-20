@@ -141,15 +141,15 @@ public partial class MainWindow
     /// null when it can. Asked without the key: an app that wants one is fine when the route has one saved.</summary>
     internal static string? LocalServerHealth(SetupRoute route, LocalServerAnswer answer, string name) => answer.Kind switch
     {
-        LocalServerAnswerKind.NoAnswer => $"Thinking uses {route.ModelId} in {name} on this PC, but nothing answers at {route.Origin}. " +
-            $"Start {(LocalModelServers.AppAt(route.Origin) is { } app ? app.Name + "'s" : "the app's")} server, or choose another way to think.",
-        LocalServerAnswerKind.NotAModelServer => $"Thinking uses {route.ModelId} in {name} on this PC, but {route.Origin} doesn't answer like a model app. " +
-            "Another program may be using its port.",
+        LocalServerAnswerKind.NoAnswer => $"Thinking uses {route.ModelId} in {name} on this PC, but nothing answers at {route.Origin}: " +
+            $"start {(LocalModelServers.AppAt(route.Origin) is { } app ? app.Name + "'s" : "the app's")} server, or choose another way to think.",
+        LocalServerAnswerKind.NotAModelServer => $"Thinking uses {route.ModelId} in {name} on this PC, but {route.Origin} doesn't answer like a model app; " +
+            "another program may be using its port.",
         LocalServerAnswerKind.NeedsKey when route.CredentialId is null =>
-            $"{char.ToUpperInvariant(name[0])}{name[1..]} asks for an API key. Enter the key you set in the app in Companion › Thinking › This PC.",
+            $"{char.ToUpperInvariant(name[0])}{name[1..]} asks for an API key: enter the key you set in the app in Companion › Thinking › This PC.",
         LocalServerAnswerKind.Models when answer.Models.Count > 0 && !answer.Models.Contains(route.ModelId, StringComparer.Ordinal) =>
-            $"Thinking uses {route.ModelId}, but {name} on this PC doesn't list it now (it lists {string.Join(", ", answer.Models.Take(4))}). " +
-            "Load it in the app, or choose another model.",
+            $"Thinking uses {route.ModelId}, but {name} on this PC doesn't list it now (it lists {string.Join(", ", answer.Models.Take(4))}): " +
+            "load it in the app, or choose another model.",
         _ => null
     };
 
@@ -220,7 +220,7 @@ public partial class MainWindow
                 }
                 return;
             }
-            ActionText.Text = "Ollama keeps stopping because of its linked models folder. Martlet is pointing it at the real folder...";
+            ActionText.Text = "Ollama keeps stopping because of its linked models folder, so Martlet is pointing it at the real folder...";
             var running = LocalOllamaRecovery.RepairAsync(trouble, automatic, lifetime.Token);
             RenderHealth();
             var result = await running;
@@ -236,7 +236,7 @@ public partial class MainWindow
     /// again"). Repaired is true when Ollama answers after the repair.</summary>
     private async Task<(string Text, bool Repaired)> OllamaNotAnsweringAsync(string then)
     {
-        var general = $"Ollama didn't answer on this PC. Start Ollama from the Start menu, then {then}.";
+        var general = $"Ollama didn't answer on this PC: start Ollama from the Start menu, then {then}.";
         OllamaDiagnosis trouble;
         try
         {
@@ -253,7 +253,7 @@ public partial class MainWindow
         if (!trouble.Stops) return (general, false);
         if (LocalOllamaRecovery.RepairsAutomatically(trouble))
         {
-            ActionText.Text = "Ollama keeps stopping because of its linked models folder. Martlet is pointing it at the real folder...";
+            ActionText.Text = "Ollama keeps stopping because of its linked models folder, so Martlet is pointing it at the real folder...";
             OllamaRepairResult? result;
             try { result = await LocalOllamaRecovery.RepairAsync(trouble, automatic: true, lifetime.Token); }
             catch (OperationCanceledException) { return (general, false); }
@@ -287,7 +287,7 @@ public partial class MainWindow
     {
         if (!LocalOllama.Start())
         {
-            ActionText.Text = "Ollama couldn't start. Start it from the Start menu, or install it again.";
+            ActionText.Text = "Ollama couldn't start: start it from the Start menu, or install it again.";
             return;
         }
         ActionText.Text = "Starting Ollama on this PC...";
@@ -307,7 +307,7 @@ public partial class MainWindow
         if (!closing && ollamaState == LocalOllamaState.NotRunning && !LocalOllamaRecovery.Repairing)
             ActionText.Text = LocalOllamaRecovery.Last is { Stops: true } trouble
                 ? $"{trouble.Message} {(trouble.CanRepair ? "" : trouble.Guidance)}".TrimEnd()
-                : "Ollama didn't start. Start it from the Start menu, then press Check again.";
+                : "Ollama didn't start: start it from the Start menu, then press Check again.";
     }
 
     private async Task PullThinkingModelAsync(string model)
@@ -330,7 +330,7 @@ public partial class MainWindow
 
     private void OpenLogsFolder()
     {
-        if (!ErrorLog.OpenFolder()) ActionText.Text = "The logs folder isn't available. Check access to Martlet's data folder.";
+        if (!ErrorLog.OpenFolder()) ActionText.Text = "The logs folder isn't available: check access to Martlet's data folder.";
     }
 
     private void OpenOllamaLogs()
@@ -343,7 +343,7 @@ public partial class MainWindow
         try { Process.Start(new ProcessStartInfo("ms-settings:privacy-microphone") { UseShellExecute = true })?.Dispose(); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            ActionText.Text = "Couldn't open Windows Settings. Open Microphone privacy settings and allow desktop apps.";
+            ActionText.Text = "Couldn't open Windows Settings: open Microphone privacy settings yourself and allow desktop apps.";
         }
     }
 
@@ -405,10 +405,9 @@ public partial class MainWindow
             // Not in a Martlet network: one click sets up Thinking, Listening and Voice to fit this PC.
             var alone = hosts.All(h => h.HostId == localHost?.HostId);
             Add("thinking-setup", HealthLevel.Problem, "Set up thinking",
-                "Martlet needs a conversation model before it can reply. Everything else is optional." +
-                (alone ? " Set it all up for me picks Thinking, Listening and a voice that fit this PC." : "") +
-                (joinFirst ? " Already use Martlet on another computer? Connect to it first: this PC then uses your hosts and the same setup." : "") +
-                (offerKey ? " " + FreeKeyPrompt.HealthHint : ""),
+                "Martlet needs a conversation model before it can reply" +
+                (joinFirst ? "; if you already use Martlet on another computer, connect to it first to use the same setup."
+                    : alone ? "; Set it all up for me picks a setup that fits this PC." : "; everything else is optional."),
                 [.. alone ? [DefaultsFix()] : Array.Empty<HealthFix>(),
                  Open(CompanionTab.Thinking, "Set up thinking"),
                  .. joinFirst ? [ConnectComputersFix()] : Array.Empty<HealthFix>(),
@@ -429,7 +428,7 @@ public partial class MainWindow
             {
                 case LocalOllamaState.NotInstalled:
                     Add("ollama", HealthLevel.Problem, "Ollama isn't installed on this PC",
-                        $"Thinking uses {model} on this PC. Install Ollama with that model.",
+                        $"Thinking uses {model} on this PC: install Ollama with that model.",
                         [new("install", $"Install Ollama and {model}", () => InstallThinkingOllamaAsync(model).Forget()),
                          Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
                     break;
@@ -478,7 +477,7 @@ public partial class MainWindow
             if (thinking && offerKey) fixes.Add(FreeKeyFix(FreeKeyUse.Fallback));
             Add("job-" + job.Job.Replace(' ', '-'), thinking ? HealthLevel.Problem : HealthLevel.Warning,
                 job.State == CoverageState.Unavailable ? $"{job.Title} isn't working" : $"{job.Title} is working in a reduced way",
-                (job.Problem + " " + job.Effect + (thinking && offerKey ? " " + FreeKeyPrompt.HealthHint : "")).Trim(), fixes,
+                (job.Problem + " " + job.Effect).Trim(), fixes,
                 thinking ? JobCoverageRules.Headline(coverage) : null);
         }
 
@@ -516,7 +515,7 @@ public partial class MainWindow
                 _ => (CompanionTab.Thinking, "thinking")
             };
             Add("failed-" + label, HealthLevel.Warning, $"The last {failure.What.ToLowerInvariant()} failed",
-                $"Last attempt: {failure.Outcome}. Details are in the local log. This clears when the next one works.",
+                $"Last attempt: {failure.Outcome}; details are in the local log.",
                 [Open(tab, $"Check {label}"), Logs()]);
         }
 
@@ -524,7 +523,7 @@ public partial class MainWindow
         var standalone = hosts.All(h => h.HostId == localHost?.HostId);
         if (stt is null && store is not null && !settingsBroken)
             Add("listening-setup", HealthLevel.Notice, "Listening isn't set up",
-                "Martlet hears you talk on your default microphone once listening is set up. You can always type instead.",
+                "Martlet hears you talk on your default microphone once listening is set up; you can always type instead.",
                 [.. standalone ? [new HealthFix("defaults", "Set it up for this PC", () => SetUpDefaultsAsync(thinking: false, voice: false).Forget())]
                     : Array.Empty<HealthFix>(),
                  Open(CompanionTab.Listening, "Set up listening")]);
@@ -532,7 +531,7 @@ public partial class MainWindow
         if (stt is not null && micMissing)
             Add("microphone", HealthLevel.Warning,
                 homeSettings?.Audio?.Input.EndpointId is null ? "No microphone found" : "Your chosen microphone isn't connected",
-                "Martlet can't hear you until a microphone is connected or another is chosen. You can still type.",
+                "Martlet can't hear you until a microphone is connected or another is chosen; you can still type.",
                 [Open(CompanionTab.Listening, "Choose a microphone")]);
         if (stt is not null && microphoneBlocked)
             Add("microphone-blocked", HealthLevel.Warning, "Windows blocks the microphone",
@@ -542,14 +541,14 @@ public partial class MainWindow
         // Voice and its speakers.
         if (tts is null && store is not null && !settingsBroken)
             Add("voice-setup", HealthLevel.Notice, "Voice isn't set up",
-                "Martlet speaks its replies once a voice is set up. Until then it replies in text.",
+                "Martlet speaks its replies once a voice is set up; until then it replies in text.",
                 [.. standalone ? [new HealthFix("defaults", "Set it up for this PC", () => SetUpDefaultsAsync(thinking: false, listening: false).Forget())]
                     : Array.Empty<HealthFix>(),
                  Open(CompanionTab.Voice, "Set up a voice")]);
         var speakersMissing = AudioMissing(output: true);
         if (tts is not null && speakersMissing)
             Add("speakers", HealthLevel.Warning, "Your chosen speakers aren't connected",
-                "Martlet can't speak until they're back or others are chosen. Replies still show as text.",
+                "Martlet can't speak until they're back or others are chosen; replies still show as text.",
                 [Open(CompanionTab.Voice, "Choose speakers")]);
 
         // Lip-sync and the character.
@@ -599,11 +598,11 @@ public partial class MainWindow
             // A host device sync checks waits for the presence notice below (one missed check says nothing).
             if (reachable == false && !PresenceCovers(id))
                 Add("host-" + id, HealthLevel.Warning, $"{name} isn't answering",
-                    "It is not handling any task right now. Check that it is on and on your network.",
+                    "It isn't handling any task right now: check that it is on and on your network.",
                     [new("check", $"Check {name} now", () => CheckHostsAsync([host]).Forget()), Show()]);
             else if (outdated)
                 Add("host-update-" + id, HealthLevel.Warning, $"{name} runs an older Martlet",
-                    $"It runs {reported ?? "an older version"}. Update it to Martlet {Version}.",
+                    $"It runs {reported ?? "an older version"}: update it to Martlet {Version}.",
                     [new("update", $"Update {name}", () => RunNodeAction(NodeAction.UpdateHost, id)), Show()]);
         }
         // Your other computers going away and coming back (MainWindow.NodePresence.cs).
@@ -638,7 +637,7 @@ public partial class MainWindow
                 [new("settings", "Open app updates", () => Navigate(NavSettings), Passive: true)]);
         if (availableUpdate is { } update)
             Add("update", HealthLevel.Notice, $"Martlet {update.Version.ToString(3)} is available",
-                $"You run {Version}. Install the update when you're ready.",
+                $"You run {Version}; install the update when you're ready.",
                 [new("install", $"Install {update.Version.ToString(3)}", () => ConfirmAndInstallAsync(update, prompted: false).Forget()),
                  new("details", "Release notes", () => ReviewUpdate_Click(this, new RoutedEventArgs()))]);
 
@@ -656,7 +655,7 @@ public partial class MainWindow
         if ((Application.Current as App)?.CrashedLastTime == true)
             Add("crash", HealthLevel.Notice, "Martlet closed unexpectedly last time",
                 ErrorLog.PreviousCrash is { } crash
-                    ? $"Windows recorded {crash}. Details are in the local log."
+                    ? $"Windows recorded {crash}; details are in the local log."
                     : "Details are in the local log if Martlet or Windows captured them.",
                 [DiagnosticsPage(), Logs(), Dismiss("crash")]);
 
@@ -673,7 +672,7 @@ public partial class MainWindow
             !(microphoneBlocked || micMissing) ? NodeHealth.Ready : stt is null ? NodeHealth.Unknown : NodeHealth.Attention,
             microphoneBlocked ? "Blocked by Windows"
                 : micMissing ? (homeSettings?.Audio?.Input.EndpointId is null ? "None found" : "Chosen one isn't connected") +
-                    (stt is null ? ". Listening is optional" : "")
+                    (stt is null ? " (listening is optional)" : "")
                 : homeSettings?.Audio?.Input.EndpointId is null ? "Windows default" : "Connected",
             () => OpenCompanion(CompanionTab.Listening)));
         tiles.Add(new("speakers", "Speakers", "\uE7F5", !speakersMissing ? NodeHealth.Ready : tts is null ? NodeHealth.Unknown : NodeHealth.Attention,
@@ -715,8 +714,8 @@ public partial class MainWindow
         tiles.Add(new("updates", "Updates", "\uE895",
             failedInstallMessage is not null ? NodeHealth.Attention : availableUpdate is not null || !updateChecksEnabled ? NodeHealth.Unknown : NodeHealth.Ready,
             failedInstallMessage is not null ? "Last install failed"
-                : availableUpdate is { } next ? $"Martlet {next.Version.ToString(3)} available. You run {Version}"
-                : !updateChecksEnabled ? $"Martlet {Version}. Automatic checks off"
+                : availableUpdate is { } next ? $"Martlet {next.Version.ToString(3)} available (you run {Version})"
+                : !updateChecksEnabled ? $"Martlet {Version}, automatic checks off"
                 : $"Martlet {Version}",
             () => Navigate(NavSettings)));
         var appBroken = store is null || settingsBroken;
@@ -733,7 +732,7 @@ public partial class MainWindow
     {
         var title = TabTitle(tab);
         var (health, status) = down is not null ? (NodeHealth.Attention, "Not working: " + down.Problem)
-            : route is null ? (required ? NodeHealth.Attention : NodeHealth.Unknown, required ? "Not set up. Martlet needs it" : "Not set up (optional)")
+            : route is null ? (required ? NodeHealth.Attention : NodeHealth.Unknown, required ? "Not set up (Martlet needs it)" : "Not set up (optional)")
             : broken ? (NodeHealth.Attention, $"{PlaceName(route)}: {route.ModelId}, not working")
             : (NodeHealth.Ready, tab == CompanionTab.Voice ? PlaceName(route) + VoiceSuffix(route) : $"{PlaceName(route)}: {route.ModelId}");
         if (note is not null && route is not null) status += ". " + note;
@@ -799,8 +798,8 @@ public partial class MainWindow
         RenderListening();
         StageTitle.Text = warnings == 0 ? "Ready when you are" : $"Ready, with {warnings} thing{(warnings == 1 ? "" : "s")} to look at";
         StageText.Text = warnings == 0
-            ? "Martlet is ready. Start listening to talk by voice, or start talking to chat by voice or text."
-            : "Martlet can reply. Review the items below when you have time.";
+            ? "Martlet is ready: start listening to talk by voice, or start talking to chat by voice or text."
+            : "Martlet can reply; review the items below when you have time.";
     }
 
     private void RenderIssues(IReadOnlyList<HealthIssue> issues, bool first)

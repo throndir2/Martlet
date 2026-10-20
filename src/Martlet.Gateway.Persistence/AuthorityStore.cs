@@ -3,7 +3,8 @@ using static Martlet.Gateway.Persistence.PersistenceFailure;
 
 namespace Martlet.Gateway.Persistence;
 
-internal enum StoreStep { FenceFlushed, PendingFlushed, Replaced, CheckpointCommitted, BeforeCleanFenceRemoval, CleanFenceRemoved, StagingFlushed }
+internal enum StoreStep { FenceFlushed, PendingFlushed, Replaced, CheckpointCommitted, BeforeCleanFenceRemoval, CleanFenceRemoved, StagingFlushed,
+    NonceAppending, NonceWritten, NonceAppended }
 
 // Native mechanics adapted from PR #37, 18daa4acfa90d7c7dff52861c93800a2f63b0823.
 // The v2 predecessor-bound redo protocol is deliberately not that PR's reset-on-crash policy.
@@ -18,6 +19,8 @@ internal sealed class AuthorityStore : IGatewayPersistence, IDisposable
     private byte[] certificate;
     private byte[]? committedHash;
     private bool poisoned;
+    // The nonce journal's length, or -1 when it cannot take appends until the next full save starts a new one.
+    private long journalLength = -1;
     internal string HostId { get; }
     internal GatewayCheckpoint Initial { get; }
     internal bool InitialSameBoot { get; }
@@ -109,8 +112,13 @@ internal sealed class AuthorityStore : IGatewayPersistence, IDisposable
             if (document is null || committed is null)
                 throw Error(GatewayPersistenceFailure.StoreMissing);
             using var validated = HostCertificate.Load(document.Certificate);
+            var journal = ReadJournal(directory, document, now);
+            if (journal.Merged is { } merged)
+                document = document with { State = merged };
             // Reopen within the same small step back the running store holds through; it resumes from the saved mark.
-            if (document.State.ObservedAt - now > GatewayCredentialStore.MaximumClockStepBack)
+            var highWater = document.State.JournalObservedAt is { } seen && seen > document.State.ObservedAt
+                ? seen : document.State.ObservedAt;
+            if (highWater - now > GatewayCredentialStore.MaximumClockStepBack)
                 throw Error(GatewayPersistenceFailure.ClockUnavailable);
             // Staging has never crossed the prepared-transaction boundary; it cannot have authorized a result.
             if (directory.Exists("staging.bin"))
@@ -138,6 +146,7 @@ internal sealed class AuthorityStore : IGatewayPersistence, IDisposable
                 directory.RemoveUnpreparedStage();
             }
             store = new(directory, envelope, document, SHA256.HashData(committed), bootIdentity, fault);
+            store.journalLength = journal.Appendable;
             CryptographicOperations.ZeroMemory(document.Certificate);
             document = null;
             store.Fence();
@@ -159,6 +168,28 @@ internal sealed class AuthorityStore : IGatewayPersistence, IDisposable
     }
 
     internal byte[] CopyCertificate() => certificate.ToArray();
+
+    /// <summary>Reads the nonce journal and adds its nonces to the saved state. An appendable journal keeps taking appends;
+    /// any other journal waits for the next full save to replace it. A damaged journal may hide nonces of admitted requests,
+    /// so the state then refuses every request signed up to the latest time such a request could carry.</summary>
+    private static (GatewayCheckpoint? Merged, long Appendable) ReadJournal(IOwnedAuthorityDirectory directory,
+        StoreDocument document, DateTimeOffset now)
+    {
+        if (!directory.Exists(NonceJournal.Name))
+            return (null, -1);
+        var contents = NonceJournal.Read(directory.Read(NonceJournal.Name, NonceJournal.MaximumBytes), document.Generation);
+        var damaged = contents.Damaged;
+        var merged = NonceJournal.Merge(document.State, contents.Records, now, ref damaged);
+        if (damaged)
+        {
+            var floor = now + GatewayCredentialStore.RequestClockSkew + GatewayCredentialStore.MaximumClockStepBack;
+            if (merged.ReplayFloor is { } saved && saved > floor)
+                floor = saved;
+            merged = merged with { ReplayFloor = floor };
+        }
+        return (ReferenceEquals(merged, document.State) ? null : merged,
+            contents.Appendable && !damaged ? contents.Length : -1);
+    }
 
     internal void ReplaceCertificate(byte[] replacement, GatewayCheckpoint checkpoint)
     {
@@ -209,32 +240,57 @@ internal sealed class AuthorityStore : IGatewayPersistence, IDisposable
             directory.Promote(committedHash is not null, () => fault?.Invoke(StoreStep.Replaced));
             committedHash = SHA256.HashData(wrapped);
             revision = next;
+            // The saved state holds every live nonce, so a new, empty journal replaces the old one.
+            journalLength = -1;
+            if (directory.Exists(NonceJournal.Name))
+                directory.RemoveJournal();
+            directory.WriteNew(NonceJournal.Name, NonceJournal.Header(generation));
+            journalLength = NonceJournal.HeaderBytes;
             fault?.Invoke(StoreStep.CheckpointCommitted);
         }
-        catch (IOException)
+        catch (Exception error)
         {
-            poisoned = true;
-            throw Error(GatewayPersistenceFailure.StorageFailed);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            poisoned = true;
-            throw Error(GatewayPersistenceFailure.InsecureStorage);
-        }
-        catch (OverflowException)
-        {
-            poisoned = true;
-            throw Error(GatewayPersistenceFailure.InvalidState);
-        }
-        catch
-        {
-            poisoned = true;
-            throw;
+            throw Poison(error);
         }
         finally
         {
             if (wrapped is not null) CryptographicOperations.ZeroMemory(wrapped);
         }
+    }
+
+    public bool AppendNonces(IReadOnlyList<StoredGatewayNonceRecord> nonces)
+    {
+        if (poisoned)
+            throw Error(GatewayPersistenceFailure.RecoveryRequired);
+        if (nonces.Count == 0)
+            return true;
+        if (journalLength < 0 || journalLength + (long)nonces.Count * NonceJournal.RecordBytes > NonceJournal.MaximumBytes)
+            return false;
+        try
+        {
+            var bytes = NonceJournal.Records(generation, nonces);
+            fault?.Invoke(StoreStep.NonceAppending);
+            directory.Append(NonceJournal.Name, journalLength, bytes, () => fault?.Invoke(StoreStep.NonceWritten));
+            journalLength += bytes.Length;
+            fault?.Invoke(StoreStep.NonceAppended);
+            return true;
+        }
+        catch (Exception error)
+        {
+            throw Poison(error);
+        }
+    }
+
+    private Exception Poison(Exception error)
+    {
+        poisoned = true;
+        return error switch
+        {
+            IOException => Error(GatewayPersistenceFailure.StorageFailed),
+            UnauthorizedAccessException => Error(GatewayPersistenceFailure.InsecureStorage),
+            OverflowException => Error(GatewayPersistenceFailure.InvalidState),
+            _ => error
+        };
     }
 
     public void Complete(GatewayCheckpoint checkpoint, Action validateBeforeClean)

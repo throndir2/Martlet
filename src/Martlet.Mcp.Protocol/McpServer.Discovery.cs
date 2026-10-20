@@ -8,7 +8,7 @@ namespace Martlet.Mcp;
 
 /// <summary>What makes the server easy for an AI assistant to find its way in: the instructions sent at initialize, a short
 /// tool list of the tools an assistant needs most (with titles and hints), martlet_guide (start here: tasks step by step and
-/// every tool, searchable) and martlet_call (any tool by name, including the 150+ diagnostic tools that are not listed unless the
+/// every tool, searchable) and martlet_call (any tool by name, including the many diagnostic tools that are not listed unless the
 /// server starts with --all-tools).</summary>
 internal sealed partial class McpServer
 {
@@ -110,8 +110,10 @@ internal sealed partial class McpServer
             : $"- {Catalog.Length - Listed.Length} more tools (status, checks and self-tests) are not listed; find them with " +
               "martlet_guide (search) and run them with martlet_call.\n") +
         "Tools use the current Windows user's Martlet data folder (%LOCALAPPDATA%\\Martlet) unless you pass dataDirectory.\n" +
-        (allowChanges ? "Changes are on (--allow-changes): character_* and settings_set save to Martlet's settings, and a running Martlet follows them.\n"
-            : "Changes are off: character_create/update/use/delete and settings_set need the server started with --allow-changes.\n") +
+        (allowChanges ? "Changes are on (--allow-changes): character_* and settings_set save to Martlet's settings, and a running Martlet follows them; " +
+              "memory_forget deletes facts; the diagnostic tools may save or forget FIXTURE data in a disposable dataDirectory and write output files.\n"
+            : "Changes are off: character_create/update/use/delete, settings_set, memory_forget (except preview: true), logs_export and the " +
+              "diagnostic tools' save, forget and output files need the server started with --allow-changes.\n") +
         (desktop.AllowsEffects ? "UI effects are on (--allow-ui-effects): ui_* tools may press buttons that change things.\n"
             : "UI effects are off: ui_* tools only navigate and read; buttons that change things need --allow-ui-effects.\n") +
         "Where Martlet thinks, listens and speaks, and its API keys, change only in the app with the owner, because they need the " +
@@ -281,7 +283,7 @@ internal sealed partial class McpServer
     private async Task<object> ChangingAsync(string tool, Func<Task<object>> change)
     {
         if (!allowChanges)
-            throw new InvalidOperationException($"{tool} changes Martlet, so this server must start with --allow-changes. Add " +
+            throw new InvalidOperationException($"{tool} changes Martlet or writes a file, so this server must start with --allow-changes. Add " +
                 "\"--allow-changes\" to the martlet server's args in your MCP client's configuration and restart it " +
                 "(scripts\\Register-MartletMcp.ps1 adds it).");
         return await change();

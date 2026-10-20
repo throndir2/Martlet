@@ -72,7 +72,7 @@ public partial class MainWindow
         }
         ActionText.Text = found.Recommendation.AlreadyOptimal
             ? found.Recommendation.BetterSetupAvailable ? BetterSetupTitle : RecommendedSetupReview.OptimalTitle
-            : $"Martlet recommends {found.Recommendation.Changes.Count} change{(found.Recommendation.Changes.Count == 1 ? "" : "s")}. Review them before anything changes.";
+            : $"Martlet recommends {found.Recommendation.Changes.Count} change{(found.Recommendation.Changes.Count == 1 ? "" : "s")}; review them before anything changes.";
     }
 
     /// <summary>The catalog the last recommendation planned with: Martlet's options with the numbers measured on your computers
@@ -208,9 +208,9 @@ public partial class MainWindow
                 ErrorLog.Warn("Recommended setup: couldn't check what the change needs.", error);
                 return new RecommendedSetupPreflightView([], false, "Martlet couldn't check what the change needs: " + error.Message);
             }
-            var problem = setupApplying ? "Martlet is already reconfiguring your computers. Background tasks shows its progress; check again when it's done."
+            var problem = setupApplying ? "Martlet is already reconfiguring your computers; see Background tasks, and check again when it's done."
                 : preflight.CanApply ? null
-                : "Martlet can't make any of these changes from here. Make them at each computer, or connect it on the Devices page.";
+                : "Martlet can't make any of these changes from here: make them at each computer, or connect it on the Devices page.";
             return new RecommendedSetupPreflightView([.. preflight.Items.Select(i => i.Text).Where(t => t.Length > 0)], problem is null, problem,
                 preflight)
             {
@@ -229,7 +229,7 @@ public partial class MainWindow
         {
             if (view.Run is not SetupRunPreflight preflight) return "Martlet couldn't start the reconfiguration.";
             if (setupApplying || HostRunWindow.IsRunningTitled(SetupRunTitle))
-                return "Martlet is already reconfiguring your computers. Background tasks shows its progress.";
+                return "Martlet is already reconfiguring your computers; Background tasks shows its progress.";
             try
             {
                 foreach (var need in preflight.Unanswered)
@@ -354,7 +354,7 @@ public partial class MainWindow
             ErrorLog.Warn("Recommended setup: couldn't save that you declined it; Martlet may ask again.");
         ErrorLog.Info($"Recommended setup: declined setup {fingerprint} on this PC.");
         ClearRecommendedNotice();
-        ActionText.Text = "Nothing changed. Choose Recommended setup on Home whenever you like.";
+        ActionText.Text = "Nothing changed; choose Recommended setup on Home whenever you like.";
     }
 
     private void ClearRecommendedNotice()
