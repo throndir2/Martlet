@@ -138,7 +138,10 @@ internal static class StoreFormat
                 state.ObservedAt > DateTimeOffset.MinValue &&
                 state.ObservedAt <= DateTimeOffset.MaxValue - TimeSpan.FromDays(90) &&
                 state.Timestamp >= 0 && state.Frequency > 0 &&
-                state.Credentials is { Length: <= GatewayCredentialStore.MaximumRegistrations });
+                (state.ReplayFloor is null || state.ReplayFloor.Value.Offset == TimeSpan.Zero &&
+                    state.ReplayFloor.Value <= state.ObservedAt + GatewayCredentialStore.RequestClockSkew +
+                        GatewayCredentialStore.RequestClockSkew + GatewayCredentialStore.MaximumClockStepBack));
+            Require(state.Credentials is { Length: <= GatewayCredentialStore.MaximumRegistrations });
             var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var credential in state.Credentials)
             {
