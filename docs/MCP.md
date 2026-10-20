@@ -11234,8 +11234,21 @@ observe them:
   lists them). A registration is the tool's name, description, input schema
   (strict, bounded arguments, ID-based results), handler and, when it needs
   one, its `ToolPermission` (`Changes` makes the server refuse it without
-  `--allow-changes`). Put code that only that tool uses in the same file. Or
-  add a Doctor probe that `doctor_run` reaches.
+  `--allow-changes`). Put code that only that tool uses in the same file, or
+  in a part next to it (`<Area>Tools.<Feature>.cs`, such as
+  `NetworkTools.Labs.cs`) when the file grows past about 800 lines. Or add a
+  Doctor probe that `doctor_run` reaches.
+- **Fixtures:** a check that stands in for a model, a web site or a service on
+  127.0.0.1 uses `LoopbackHttpServer` in `src\Martlet.Mcp.Protocol\Fixtures`
+  (it reads Content-Length and chunked requests and answers whole,
+  server-sent events or chunked), with `FixtureChat` for Chat Completions
+  answers. Do not write another socket server.
+- **Errors:** throw `ArgumentException` for wrong arguments,
+  `InvalidOperationException` when Martlet is not in a state for it, or
+  `McpToolException` for any other expected failure; the assistant gets the
+  message as the tool's error. An area whose code throws exceptions of its own
+  projects names them in `McpServer.ToolGroups` (`Expecting`). Any other
+  exception comes back with its type name, and the server keeps running.
   Keep tools local, read-only by default and free of network, audio and
   credential effects unless gated like `--allow-ui-effects` (or, for tools that
   save the owner's settings, `--allow-changes`). Begin each description with one
