@@ -77,9 +77,9 @@ public sealed class ProxyManagerTests
         Assert.True(plan.Changes);
         Assert.Equal(11, plan.Site);
         Assert.Equal(3, plan.Certificate);
-        Assert.StartsWith("martlet.throndir.com goes to https://192.168.50.200:9445 now (proxy host 11 in Nginx Proxy Manager). " +
+        Assert.StartsWith("martlet.throndir.com goes to https://192.168.50.200:9445 now (proxy host 11 in Nginx Proxy Manager): " +
             "Martlet changes it to https://192.168.50.9:9445, the front door on nahida-host", plan.Text);
-        Assert.EndsWith("It keeps its certificate (*.throndir.com, throndir.com).", plan.Text);
+        Assert.EndsWith("keeps its certificate (*.throndir.com, throndir.com).", plan.Text);
 
         var done = await manager.ApplyAsync(plan, "192.168.50.9", 9445, "me@example.com", CancellationToken.None);
         Assert.Equal("Changed martlet.throndir.com (proxy host 11) in Nginx Proxy Manager: it goes to https://192.168.50.9:9445 now instead of " +
@@ -94,7 +94,7 @@ public sealed class ProxyManagerTests
 
         var again = await manager.PlanAsync("martlet.throndir.com", "192.168.50.9", 9445, "nahida-host", CancellationToken.None);
         Assert.False(again.Changes);
-        Assert.EndsWith("Nothing to change.", again.Text);
+        Assert.EndsWith("; nothing to change.", again.Text);
         Assert.Equal(again.Text, await manager.ApplyAsync(again, "192.168.50.9", 9445, "me@example.com", CancellationToken.None));
         Assert.Single(fake.Changes);
     }
@@ -118,7 +118,7 @@ public sealed class ProxyManagerTests
 
         var expired = await manager.PlanAsync("martlet.old.example", "192.168.1.20", 9445, "pi-host", CancellationToken.None);
         Assert.Null(expired.Certificate);
-        Assert.EndsWith("asks Let's Encrypt for a certificate for martlet.old.example. martlet.old.example must reach this proxy on port 80 for that.", expired.Text);
+        Assert.EndsWith("asks Let's Encrypt for a certificate, so martlet.old.example must reach this proxy on port 80.", expired.Text);
         await manager.ApplyAsync(expired, "192.168.1.20", 9445, "me@example.com", CancellationToken.None);
         var asked = fake.Changes[^1].Body!;
         Assert.Equal("new", asked["certificate_id"]!.GetValue<string>());

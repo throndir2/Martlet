@@ -76,19 +76,19 @@ public sealed class ProxyManager(HttpClient http, Uri manager)
                 (Text(site["advanced_config"]) ?? "").Contains("proxy_buffering off;", StringComparison.Ordinal) &&
                 Flag(site["enabled"]) != false;
             return new(name, id, now, certificate, certificateName, !right, right
-                ? $"{name} already goes to {target}, the front door on {frontDoor}, with its certificate ({certificateName}). Nothing to change."
-                : $"{name} goes to {now} now (proxy host {id} in Nginx Proxy Manager). Martlet changes it to {target}, the front door on " +
-                  $"{frontDoor}, and turns on what streamed and long replies need. " +
-                  (used is not null ? $"It keeps its certificate ({certificateName})."
-                      : certificate is not null ? $"It gets your certificate {certificateName}."
-                      : $"It asks Let's Encrypt for a certificate for {name}."));
+                ? $"{name} already goes to {target}, the front door on {frontDoor}, with its certificate ({certificateName}); nothing to change."
+                : $"{name} goes to {now} now (proxy host {id} in Nginx Proxy Manager): Martlet changes it to {target}, the front door on " +
+                  $"{frontDoor}, turns on streaming and " +
+                  (used is not null ? $"keeps its certificate ({certificateName})."
+                      : certificate is not null ? $"gives it your certificate {certificateName}."
+                      : $"asks Let's Encrypt for a certificate, so {name} must reach this proxy on port 80."));
         }
         var cover = Covering(certificates, name);
         var coverName = Describe(certificates, cover);
         return new(name, null, null, cover, coverName, true,
-            $"Nginx Proxy Manager has no site for {name}. Martlet adds one that goes to {target}, the front door on {frontDoor}, " +
+            $"Nginx Proxy Manager has no site for {name}: Martlet adds one that goes to {target}, the front door on {frontDoor}, " +
             (cover is not null ? $"with your certificate {coverName}."
-                : $"and asks Let's Encrypt for a certificate for {name}. {name} must reach this proxy on port 80 for that."));
+                : $"and asks Let's Encrypt for a certificate, so {name} must reach this proxy on port 80."));
     }
 
     /// <summary>Carries out <paramref name="plan"/>; <paramref name="email"/> is the Let's Encrypt account when a certificate is

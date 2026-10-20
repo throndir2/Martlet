@@ -34,12 +34,12 @@ public partial class AccountUnlockWindow : ThemedWindow
         UnlockButton.Visibility = current.HasPin || current.HasPassword ? Visibility.Visible : Visibility.Collapsed;
         OtherButton.Visibility = SignInButton.Visibility = othersAllowed ? Visibility.Visible : Visibility.Collapsed;
         HintText.Text = current.Damaged
-            ? $"Martlet can't read how {accountName} unlocks on this PC, so it asks for a sign-in. Sign in with the Martlet password through one of your hosts."
+            ? $"Martlet can't read how {accountName} unlocks on this PC: sign in with the Martlet password through one of your hosts."
             : current.Methods.Count == 0
-            ? $"Nothing is set up to unlock {accountName} on this PC. Sign in with the Martlet password through one of your hosts."
+            ? $"Nothing unlocks {accountName} on this PC yet: sign in with the Martlet password through one of your hosts."
             : current.Encrypt
                 ? $"{accountName}'s files on this PC are encrypted until you unlock."
-                : $"{accountName} is signed in on this PC. Unlock to switch to this account.";
+                : $"Unlock to switch to {accountName}, who is signed in on this PC.";
         if (current.Methods.Count == 0) SignInButton.Content = $"_Sign in as {accountName}";
         Loaded += (_, _) =>
         {
@@ -108,7 +108,7 @@ public partial class AccountUnlockWindow : ThemedWindow
     private void ShowLockFileError(Exception error)
     {
         ErrorLog.Warn($"Account {accountId:N}: the unlock file on this PC could not be read or saved", error);
-        StatusText.Text = $"Martlet could not read or save how {accountName} unlocks on this PC. Another program can have the file open. Try again in a moment.";
+        StatusText.Text = $"Martlet couldn't read or save how {accountName} unlocks on this PC, maybe because another program has the file open: try again in a moment.";
     }
 
     private void Show(AccountUnlockResult result, string what)
@@ -139,7 +139,7 @@ public partial class AccountUnlockWindow : ThemedWindow
     }
 
     private static string WaitText(DateTimeOffset until) =>
-        $"Too many wrong tries. Try again after {until.ToLocalTime():t}.";
+        $"Too many wrong tries: try again after {until.ToLocalTime():t}.";
 
     private void Other_Click(object sender, RoutedEventArgs e)
     {

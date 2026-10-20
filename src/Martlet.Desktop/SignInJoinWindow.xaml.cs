@@ -115,16 +115,14 @@ public partial class SignInJoinWindow : ThemedWindow
             await keep(result.Pairing, result.Secret, invite.Addresses, result.Identity);
             if (result.Identity.Friend)
             {
-                StatusText.Text = $"Signed in as {result.Identity}. {result.Pairing.HostId} is shared with this PC by a friend: Martlet here can use " +
-                    "its engines (thinking, listening, speaking, lip-sync and reading) for this PC only. It doesn't join your Martlet network, " +
-                    "it never sees your settings or memories, and its owner's own work comes first. Choose it for a job under Devices › " +
-                    "Hosts shared with this PC.";
+                StatusText.Text = $"Signed in as {result.Identity}: a friend shares {result.Pairing.HostId} with this PC, so choose it for a job " +
+                    "under Devices › Hosts shared with this PC.";
                 ErrorLog.Info($"Sign-in: {result.Pairing.HostId} is shared with this PC by a friend (signed in as {result.Identity.Provider}); " +
                     "kept for its engines only, not in this PC's network.");
                 return;
             }
-            StatusText.Text = $"Signed in as {result.Identity}. This PC is paired with {result.Pairing.HostId} and joins your Martlet network by " +
-                "itself as soon as one of your computers at home syncs (no check number needed).";
+            StatusText.Text = $"Signed in as {result.Identity}: this PC is paired with {result.Pairing.HostId} and joins your Martlet network " +
+                "when one of your computers at home syncs.";
             if (result.Identity.AccountId is { } account && result.Identity.Attestation is { } attestation)
             {
                 // The host vouched for the household account this sign-in proves: this PC becomes one of that person's computers.
@@ -133,8 +131,8 @@ public partial class SignInJoinWindow : ThemedWindow
                 {
                     ErrorLog.Warn("Sign-in: couldn't keep the account this PC signed in to: " + error.Message);
                 }
-                StatusText.Text += $" You signed in to your household account ({result.Identity.Label ?? result.Identity.Subject}): this PC joins as one " +
-                    "of your computers, and Martlet signs that account in here once it has joined.";
+                StatusText.Text = $"Signed in to your household account ({result.Identity.Label ?? result.Identity.Subject}): this PC is paired " +
+                    $"with {result.Pairing.HostId}, joins as one of your computers when one at home syncs, then signs in that account here.";
                 ErrorLog.Info($"Sign-in: paired with {result.Pairing.HostId} as {result.Identity.Provider}, proving household account {account:N}.");
                 return;
             }

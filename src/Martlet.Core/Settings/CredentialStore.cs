@@ -207,10 +207,10 @@ public static class CredentialMessages
     public static string Describe(CredentialError error) => error switch
     {
         CredentialError.None => "Credential saved.",
-        CredentialError.Missing => "The credential is missing. Enter the key again or pair the host again.",
-        CredentialError.AccessDenied => "Windows denied access to this credential. Check the signed-in Windows account.",
-        CredentialError.UnsupportedPlatform => "Windows Credential Manager is unavailable on this platform. No-key setup remains usable.",
-        CredentialError.InvalidInput => "This credential no longer matches the selected route. Enter it again.",
-        _ => "Windows Credential Manager is unavailable. Try again in the intended Windows account."
+        CredentialError.Missing => "The credential is missing: enter the key again or pair the host again.",
+        CredentialError.AccessDenied => "Windows denied access to this credential: check which Windows account is signed in.",
+        CredentialError.UnsupportedPlatform => "Windows Credential Manager isn't available on this platform, but setups with no key still work.",
+        CredentialError.InvalidInput => "This credential no longer matches the selected route: enter it again.",
+        _ => "Windows Credential Manager isn't available: try again signed in to the right Windows account."
     };
 }

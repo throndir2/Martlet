@@ -47,7 +47,7 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
         CleanupButton.IsEnabled = !active && !observing && controller.NeedsCleanup;
         ResultText.Text = observationMessage ?? controller.Message;
         ActivityText.Text = active
-            ? "Backup or restore is still working. You can cancel or close this window."
+            ? "Backup or restore is still working; you can cancel or close this window."
             : controller.NeedsCleanup ? "Cleanup is needed before another backup or restore."
             : "Ready.";
         var plan = controller.Preview;
@@ -61,7 +61,7 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
     {
         if (closed) return false;
         if (!observing && !controller.IsBusy) return true;
-        observationMessage = "Another action is still finishing. Wait, then try again.";
+        observationMessage = "Another action is still finishing: wait, then try again.";
         Render();
         return false;
     }
@@ -85,7 +85,7 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
             if (stop.IsCancellationRequested || finished != operation.Completion)
             {
                 controller.StopObserving();
-                observationMessage = "Recovery timed out. Wait for it to finish, then reopen this window.";
+                observationMessage = "Recovery timed out: wait for it to finish, then reopen this window.";
             }
             else
             {
@@ -93,7 +93,7 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
                 if (completed.Outcome == SetupWorkOutcome.Failed && controller.Preview is not null)
                 {
                     controller.ClearPreview();
-                    observationMessage = "Recovery failed. Read a fresh preview before trying again.";
+                    observationMessage = "Recovery failed: read a fresh preview before you try again.";
                 }
             }
         }
@@ -124,10 +124,10 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
     {
         if (!MayStart() || controller.Preview is not { } plan) return;
         var source = SourcePath.Text;
-        if (!Confirm("Restore the settings shown in the preview?\n\nCurrent settings will be replaced. API keys, permissions and audio tests will not be restored.")) return;
+        if (!Confirm("Restore the settings shown in the preview? They replace your current settings, and API keys, permissions and audio tests aren't restored.")) return;
         if (closed || source != SourcePath.Text || !ReferenceEquals(plan, controller.Preview) || !MayStart())
         {
-            observationMessage = "The source changed. Read a fresh preview before restoring.";
+            observationMessage = "The source changed: read a fresh preview before you restore.";
             Render();
             return;
         }

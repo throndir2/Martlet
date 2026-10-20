@@ -2464,7 +2464,10 @@ provider logins, *Linked: Authentik (lab) as me@example.net.*, and the result
 of the last Link or Unlink), `UnlockAccountName`, `UnlockStatus`,
 `ProveTitle` and `ProveStatus`; never the user name, the authenticator key
 (`AccountAuthenticatorSecret`) or the recovery codes (`AccountRecoveryCodes`).
-
+The help marks (passive clicks) are `Help-AccountProveHow` (Prove),
+`Help-AccountProviderSignIns`, `Help-AccountVRoidHub`, `Help-AccountHello`,
+`Help-AccountEncrypt` and `Help-AccountMerge` (the Account page) and
+`Help-AddPersonHow` (*Add a person*).
 `network_status` reads the [Martlet network](NETWORK.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `state`
 (`none`, `member`, `waiting` or `unreadable`), `key` (whether
@@ -2546,7 +2549,7 @@ and needs `--allow-ui-effects`, `AddPersonCancel`, a safe click, and
 `AddPersonProblem`, such as *Sam already uses this PC. Choose another name.*).
 **Devices › Settings for all devices** shows the directory sync as
 `AccountsSyncStatus` (*Accounts: 3 people in your household, the same on 2 of
-2 hosts; checked 2:14 PM.*, or *Accounts: 2 people on this PC. They reach your
+2 hosts; checked 2:14 PM.*, or *Accounts: 2 people on this PC, shared with your
 other computers once this PC is in a Martlet network.*). Launch the desktop with
 `MARTLET_SIMULATE_WINDOWS_LOGIN` set to a display name so a disposable data
 directory gets a fixture SID and that name instead of the real Windows login.
@@ -3078,7 +3081,7 @@ Sharing hosts with friends on the Share page (`MainWindow.Friends.cs`):
 `FriendsStatus`, `FriendsCheck` reads each of your hosts' sign-in settings and
 needs `--allow-ui-effects`, because it contacts the hosts and writes `friends.json`; reading them also adds the share links this PC made to hosts
 that miss them) lists each person as `Friend-<provider>-<subject>` (*name
-(provider). Shares gpu-box: their engines only. Their computers: ...*, or that
+(provider). Shares gpu-box: their engines only · their computers: ...*, or that
 they signed in to a host and wait) with `FriendShare-<host>-<provider>-<subject>`
 and `FriendStop-<host>-<provider>-<subject>` (both ask first and change the
 host, so they need `--allow-ui-effects`), and `FriendsHost-<host>` for a host
@@ -3108,7 +3111,7 @@ adds the link to your hosts and needs `--allow-ui-effects`. The link window
 values; the link itself (`ShareLinkText`) is a secret and is never read.
 `ShareLinkCopy` copies it and `ShareLinkClose` (a safe click) closes the
 window. A friend you share with a link is `Friend-link-<link ID>` (*Ana (share
-link). Share link for all of your hosts, also the ones you add later. Their
+link). Share link for all of your hosts, also the ones you add later · their
 computers: ...*) with `ShareLinkCopy-<key>`, `ShareLinkStop-<key>` and, for a
 link that names its hosts, `FriendShare-<host>-<key>` and
 `FriendStop-<host>-<key>`; all need `--allow-ui-effects`. **Hosts shared with
@@ -8653,7 +8656,7 @@ its `DeviceComponentDetail-member` ends with *Asked by this PC at ... to become 
 Martlet there syncs its settings ...*; once it has switched, the desktop log and status line say *IMOUTO is a host PC now,
 as you asked.*, and a host PC with no host service yet reads *Its host service isn't set up yet, so it does no work for your
 other computers until someone at it chooses Set up host service on its Home ...* there instead of the host service it runs;
-Settings › What this PC is for lists the same computers of your network: `OtherRolesStatus` (what the list offers, or why it
+Settings › What this PC is for lists the same computers of your network: `Help-OtherRoles` (the "?" beside *Your other computers*), `OtherRolesStatus` (what the list offers, or why it
 is empty or can't switch them), `OtherRole-<device ID>` (*IMOUTO (desktop-imouto). Companion PC that also runs a host service
 (imouto-host). Active now on diva-host.*, with the waiting ask) and `OtherRoleSwitch-<device ID>`, the same button, which
 needs `--allow-ui-effects`), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
@@ -8740,6 +8743,7 @@ update, when it was checked), `OpenAiCheck` (needs `--allow-ui-effects`: it read
 returned), `OpenAiSaveAddress`, `OpenAiCheckAddress` (needs `--allow-ui-effects`: sends `GET
 <address>/models` without a key and shows the answer in `OpenAiCheckResult`),
 `Help-OpenAiExpose` (the *?* with the ways to give the front door an address),
+`Help-OpenAiPriority` (the *?* about a key's priority),
 `OpenAiAddressProblem`, `OpenAiAddressStatus`, `OpenAiHomeAddresses` and
 `OpenAiModels` (status text: each model with its hosts), and each key's row
 `OpenAiKey-<key ID>` (status text: name, priority, who made it, last use,
@@ -8751,14 +8755,15 @@ can run commands on your hosts, `OpenAiFrontDoorHost` (the host),
 `OpenAiFrontDoorPort` (the port, 9445 by default), `OpenAiFrontDoorOpen` and
 `OpenAiFrontDoorClose` (these two run `martlet-host exposure --front-door` on
 the host and need `--allow-ui-effects`). `OpenAiShowProxy` (*Show setup*,
-passive) opens `OpenAiProxyDialog` with `OpenAiProxySteps`,
+passive) opens `OpenAiProxyDialog` with `OpenAiProxySteps` (with
+`Help-OpenAiProxyWays`),
 `OpenAiProxyTailscale`, `OpenAiProxyManager`, `OpenAiProxyNginx`,
 `OpenAiProxyCaddy` and `OpenAiProxyCloudflare` (text) and `OpenAiProxyClose`.
 `OpenAiGiveAccess` (passive) opens `OpenAiAccessDialog` with
-`OpenAiAccessName`, `OpenAiAccessPriorityFirst`, `OpenAiAccessPriorityEqual`,
+`Help-OpenAiAccessKey`, `OpenAiAccessName`, `OpenAiAccessPriorityFirst`, `OpenAiAccessPriorityEqual`,
 `OpenAiAccessExpiry`, `OpenAiAccessConfirm` and `OpenAiAccessCancel`
 (passive). Making a key shows `OpenAiInviteDialog`: `OpenAiInviteTitle` and
-`OpenAiInviteNote` are returned as text; `OpenAiInviteText` holds the key and
+`OpenAiInviteNote` (with `Help-OpenAiInviteKey`) are returned as text; `OpenAiInviteText` holds the key and
 is never returned; `OpenAiInviteCopy` writes the clipboard; `OpenAiInviteDone`
 (passive) closes it. Save, Make key, the priority choice, Copy and Revoke
 change data and need `--allow-ui-effects`.
@@ -9898,10 +9903,11 @@ reads "Private: only you see and use it.", "Shared as a copy: ..." or "Shared
 together: ...". A character someone else shares with you together reads
 "Shared with you together: ...". Its `CharacterProfileEdit-<key>` is disabled,
 and `CharacterProfileLeave-<key>` replaces Remove and asks first. The
-**Household characters** card lists the characters other people share.
+**Household characters** card lists the characters other people share (its
+*?* is `Help-HouseholdCharacters`).
 `HouseholdCharactersStatus` reads "2 characters shared by 1 person in your
 household." or "Nobody in your household shares a character yet.". Each row has
-`HouseholdCharacterState-<key>` ("Shared as a copy.", "Shared together. Talk to it
+`HouseholdCharacterState-<key>` ("Shared as a copy.", "Shared together: talk to it
 to add it to your profiles.", and why a part can't switch here). Each row also
 has a button: `HouseholdCharacterCopy-<key>` (*Use a copy*: a copy with new IDs
 and its own memories, then switched to) or `HouseholdCharacterJoin-<key>` (*Talk to

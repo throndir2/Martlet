@@ -29,12 +29,10 @@ internal sealed class AddPersonDialog : ThemedWindow
         var heading = new TextBlock { Text = "Add a person" };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
-        root.Children.Add(new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12),
-            Text = "Someone else who uses this Windows sign-in gets their own account: their own characters, personalities and " +
-                   "memories. They switch to it from the account button. No password is needed."
-        });
+        root.Children.Add(HelpTip.Explain(
+            "Someone else who uses this Windows sign-in gets their own account, with their own characters and memories and no password. " +
+            "They switch to it from the account button, and can add a PIN or a password later on the Account page.",
+            new Thickness(0, 0, 0, 12), "AddPersonHow", "adding a person", wiki: "Accounts-and-Household#switch-person-or-add-a-person"));
         var label = new Label { Content = "_Name", Target = name, Padding = new Thickness(0, 0, 0, 4) };
         root.Children.Add(label);
         AutomationProperties.SetName(name, "Name");
