@@ -399,11 +399,11 @@ public sealed class MessagingTests
     public void StatusLineSaysWhetherMartletAnswersAndWhyNot()
     {
         var saved = new TelegramPreferences { Enabled = true, BotUsername = "my_martlet_bot", Chats = [new("1", "Me")] };
-        Assert.StartsWith("Not connected", MainWindow.MessagingStatusText(new TelegramPreferences(), new(MessagingState.Off), running: false));
+        Assert.StartsWith("Not connected", MessagingPageModel.StatusText(new TelegramPreferences(), new(MessagingState.Off), running: false));
         Assert.Equal("Answering @my_martlet_bot on this PC (1 paired chat).",
-            MainWindow.MessagingStatusText(saved, new(MessagingState.Running), running: true));
-        Assert.Contains("turned off", MainWindow.MessagingStatusText(saved with { Enabled = false }, new(MessagingState.Off), false));
-        Assert.Contains("keeps trying", MainWindow.MessagingStatusText(saved, new(MessagingState.Retrying, Problem: "Couldn't reach Telegram."), true));
+            MessagingPageModel.StatusText(saved, new(MessagingState.Running), running: true));
+        Assert.Contains("turned off", MessagingPageModel.StatusText(saved with { Enabled = false }, new(MessagingState.Off), false));
+        Assert.Contains("keeps trying", MessagingPageModel.StatusText(saved, new(MessagingState.Retrying, Problem: "Couldn't reach Telegram."), true));
     }
 
     private const string AccessToken = "EAAGm0PX4ZCpsBAKZBcanaryTokenValue0123456789abcdefghijk";
@@ -550,7 +550,7 @@ public sealed class MessagingTests
             await Until(() => service.Preferences.WhatsApp.Chats.Count == 1);
             Assert.Equal(new MessagingChat("15550199", "Sam"), MessagingPreferences.Load(directory).WhatsApp.Chats.Single());
             Assert.Empty(MessagingPreferences.Load(directory).Telegram.Chats);
-            Assert.Contains("Answering +1 555-0100", MainWindow.MessagingStatusText(service.Preferences.WhatsApp, service.Status(MessagingApp.WhatsApp), true));
+            Assert.Contains("Answering +1 555-0100", MessagingPageModel.StatusText(service.Preferences.WhatsApp, service.Status(MessagingApp.WhatsApp), true));
 
             service.Disconnect(MessagingApp.WhatsApp);
             Assert.Empty(native.Secrets);

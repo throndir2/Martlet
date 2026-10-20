@@ -99,61 +99,6 @@ public partial class MainWindow
         return serversOn == 0 && !terminal ? $"Off: {mcp}, and the terminal is off." : $"Tools: {mcp}, the terminal {(terminal ? "on" : "off")}.";
     }
 
-    /// <summary>Companion › Smart home: which Home Assistant Martlet is connected to and what it may do with it.</summary>
-    internal static string SmartHomeNow(Martlet.Home.HomePreferences saved, bool connected)
-    {
-        if (!connected) return "Off: Home Assistant isn't connected.";
-        var where = (saved.LocationName.Length > 0 ? saved.LocationName : "Home Assistant") + (saved.Address.Length > 0 ? $" at {saved.Address}" : "");
-        if (!saved.Control) return $"Off: connected to {where}, but Martlet doesn't control your smart home.";
-        return $"Smart home: connected to {where}; Martlet may control lights, switches, climate, media, scenes and blinds" +
-            (saved.AllowSensitive ? ", and locks, doors and alarms after a Yes each time" : "") +
-            (saved.ModelTools ? ". Flexible requests are on." : ".");
-    }
-
-    /// <summary>Companion › Discord: whether Martlet's bot is on Discord, and in how many servers.</summary>
-    internal static string DiscordNow(DiscordPreferences saved, DiscordBotStatus status) =>
-        !saved.Configured ? "Off: Martlet's Discord bot isn't set up yet."
-        : !saved.Enabled ? "Off: Martlet doesn't connect to Discord."
-        : status.State switch
-        {
-            DiscordBotState.Online => $"Discord: the bot{(status.BotName is { Length: > 0 } name ? $" {name}" : "")} is connected to " +
-                $"{DiscordSetup.Servers(status.Servers)}.",
-            DiscordBotState.Connecting => "Discord: connecting...",
-            DiscordBotState.Failed => "Discord: on, but not connected.",
-            _ => "Discord: on, but not connected yet."
-        };
-
-    /// <summary>Why the Discord bot isn't connected while it is on, or null.</summary>
-    internal static string? DiscordProblem(DiscordPreferences saved, DiscordBotStatus status) =>
-        saved.Configured && saved.Enabled && status.State == DiscordBotState.Failed ? status.Problem ?? "Discord closed the connection." : null;
-
-    /// <summary>Companion › Messaging: what Martlet does with each messaging app on this PC.</summary>
-    internal static string MessagingNow(IReadOnlyList<(string Name, ChannelPreferences Saved, MessagingStatus Status, bool Running)> apps)
-    {
-        if (!apps.Any(a => a.Saved is { Connected: true, Enabled: true })) return "Off: Martlet answers no messaging app.";
-        static string State(ChannelPreferences saved, MessagingStatus status, bool running)
-        {
-            if (!saved.Connected) return "not set up";
-            if (!saved.Enabled) return "off";
-            var chats = saved.Chats.Count == 0 ? "no chats paired yet" : Plural(saved.Chats.Count, "paired chat");
-            return status.State switch
-            {
-                MessagingState.Running => $"answering {saved.Handle} ({chats})",
-                MessagingState.Connecting => $"connecting {saved.Handle}",
-                MessagingState.Retrying => $"can't reach {saved.Handle} right now",
-                MessagingState.Failed => $"{saved.Handle} stopped",
-                _ when !running => "not running on this PC",
-                _ => $"starting {saved.Handle}"
-            };
-        }
-        return string.Join("; ", apps.Select(a => $"{a.Name}: {State(a.Saved, a.Status, a.Running)}")) + ".";
-    }
-
-    /// <summary>The first messaging app that is on but can't answer, and why, or null.</summary>
-    internal static string? MessagingProblem(IReadOnlyList<(string Name, ChannelPreferences Saved, MessagingStatus Status, bool Running)> apps) =>
-        apps.FirstOrDefault(a => a.Saved is { Connected: true, Enabled: true } && a.Status.State is MessagingState.Retrying or MessagingState.Failed) is
-            { Name: not null } failing ? $"{failing.Name}: {failing.Status.Problem ?? "it stopped."}" : null;
-
     // ---------- the cards ----------
 
     /// <summary>A Now card whose line and problem change while the page shows (<see cref="ShowNow"/>): the problem's text block
@@ -312,54 +257,6 @@ public partial class MainWindow
                  { RouteType: not (Martlet.Core.Settings.SetupRouteType.OpenAi or Martlet.Core.Settings.SetupRouteType.ChatCompletions) })
             problem = "Your Thinking model can't use tools: choose OpenAI or a Chat Completions endpoint (such as Ollama on this PC) in Companion › Thinking.";
         return PageNowCard(ToolsNow(service.Servers.Count(s => !s.Disabled), service.Servers.Count, terminal.Enabled), null, "ToolsNow", problem);
-    }
-
-    private Border DiscordNowCard(DiscordPreferences saved, DiscordBotStatus status) =>
-        PageNowCard(DiscordNow(saved, status), null, "DiscordNow", DiscordProblem(saved, status));
-
-    private IReadOnlyList<(string Name, ChannelPreferences Saved, MessagingStatus Status, bool Running)> MessagingApps(MessagingPreferences saved) =>
-        [.. new[] { MessagingApp.Telegram, MessagingApp.WhatsApp }.Select(app =>
-            (MessagingService.Name(app), saved[app], messaging.Status(app), messaging.Running(app)))];
-
-    private Border MessagingNowCard(MessagingPreferences saved)
-    {
-        var apps = MessagingApps(saved);
-        return PageNowCard(MessagingNow(apps), null, "MessagingNow", MessagingProblem(apps));
-    }
-
-    /// <summary>Companion › Messaging's main choice: for each app, whether Martlet answers it on this PC (On) or not (Off). An
-    /// app that isn't set up yet can only be Off.</summary>
-    private Border MessagingChoiceCard(MessagingPreferences saved)
-    {
-        var stack = new List<UIElement>
-        {
-            Heading("Answer messages"),
-            Note("Choose which apps Martlet answers on this PC; set an app up below before you turn it on.", new Thickness(0, 0, 0, 4))
-        };
-        foreach (var app in new[] { MessagingApp.Telegram, MessagingApp.WhatsApp })
-        {
-            var name = MessagingService.Name(app);
-            var prefs = saved[app];
-            var prefix = app == MessagingApp.WhatsApp ? "MessagingWhatsApp" : "MessagingTelegram";
-            var on = prefs.Enabled && prefs.Connected;
-            var title = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, Width = 110, VerticalAlignment = VerticalAlignment.Center };
-            var yes = new RadioButton { Content = "On", GroupName = prefix + "Answer", IsChecked = on, IsEnabled = prefs.Connected,
-                Margin = new Thickness(0, 0, 18, 0), VerticalAlignment = VerticalAlignment.Center };
-            AutomationProperties.SetName(yes, $"{name}: On, Martlet answers {(prefs.Connected ? prefs.Handle : name)} on this PC");
-            AutomationProperties.SetAutomationId(yes, prefix + "On");
-            var no = new RadioButton { Content = "Off", GroupName = prefix + "Answer", IsChecked = !on, VerticalAlignment = VerticalAlignment.Center };
-            AutomationProperties.SetName(no, $"{name}: Off, Martlet doesn't answer {name} on this PC");
-            AutomationProperties.SetAutomationId(no, prefix + "Off");
-            yes.Checked += (_, _) => SetMessagingAnswers(app, prefs, true);
-            no.Checked += (_, _) => SetMessagingAnswers(app, prefs, false);
-            var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-            row.Children.Add(title);
-            row.Children.Add(yes);
-            row.Children.Add(no);
-            stack.Add(row);
-            stack.Add(Note(prefs.Connected ? $"{prefs.Handle}." : $"Not set up yet: set it up under {name} below.", new Thickness(110, 2, 0, 0)));
-        }
-        return Card([.. stack]);
     }
 
     private void SetMessagingAnswers(MessagingApp app, ChannelPreferences saved, bool on)

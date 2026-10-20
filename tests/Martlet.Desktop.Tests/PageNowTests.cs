@@ -90,30 +90,30 @@ public sealed class PageNowTests
     {
         var saved = new Martlet.Home.HomePreferences(Address: "http://homeassistant.local:8123", CredentialId: Guid.NewGuid(), Control: true, LocationName: "Home");
         Assert.Equal("Smart home: connected to Home at http://homeassistant.local:8123; Martlet may control lights, switches, climate, media, " +
-            "scenes and blinds.", MainWindow.SmartHomeNow(saved, connected: true));
+            "scenes and blinds.", SmartHomePageModel.Now(saved, connected: true));
         Assert.Equal("Smart home: connected to Home at http://homeassistant.local:8123; Martlet may control lights, switches, climate, media, " +
             "scenes and blinds, and locks, doors and alarms after a Yes each time. Flexible requests are on.",
-            MainWindow.SmartHomeNow(saved with { AllowSensitive = true, ModelTools = true }, connected: true));
+            SmartHomePageModel.Now(saved with { AllowSensitive = true, ModelTools = true }, connected: true));
         Assert.Equal("Off: connected to Home at http://homeassistant.local:8123, but Martlet doesn't control your smart home.",
-            MainWindow.SmartHomeNow(saved with { Control = false }, connected: true));
-        Assert.Equal("Off: Home Assistant isn't connected.", MainWindow.SmartHomeNow(new Martlet.Home.HomePreferences(), connected: false));
+            SmartHomePageModel.Now(saved with { Control = false }, connected: true));
+        Assert.Equal("Off: Home Assistant isn't connected.", SmartHomePageModel.Now(new Martlet.Home.HomePreferences(), connected: false));
     }
 
     [Fact]
     public void DiscordNowSaysWhetherTheBotIsOnAndWhy()
     {
         var saved = new DiscordPreferences { ApplicationId = 42, CredentialId = Guid.NewGuid(), Enabled = true };
-        Assert.Equal("Off: Martlet's Discord bot isn't set up yet.", MainWindow.DiscordNow(new DiscordPreferences(), new(DiscordBotState.Off)));
-        Assert.Equal("Off: Martlet doesn't connect to Discord.", MainWindow.DiscordNow(saved with { Enabled = false }, new(DiscordBotState.Off)));
+        Assert.Equal("Off: Martlet's Discord bot isn't set up yet.", DiscordPageModel.Now(new DiscordPreferences(), new(DiscordBotState.Off)));
+        Assert.Equal("Off: Martlet doesn't connect to Discord.", DiscordPageModel.Now(saved with { Enabled = false }, new(DiscordBotState.Off)));
         Assert.Equal("Discord: the bot Martlet is connected to 2 servers.",
-            MainWindow.DiscordNow(saved, new(DiscordBotState.Online, BotName: "Martlet", Servers: 2)));
-        Assert.Equal("Discord: connecting...", MainWindow.DiscordNow(saved, new(DiscordBotState.Connecting)));
+            DiscordPageModel.Now(saved, new(DiscordBotState.Online, BotName: "Martlet", Servers: 2)));
+        Assert.Equal("Discord: connecting...", DiscordPageModel.Now(saved, new(DiscordBotState.Connecting)));
 
         var failed = new DiscordBotStatus(DiscordBotState.Failed, Problem: "Discord rejected the bot token.");
-        Assert.Equal("Discord: on, but not connected.", MainWindow.DiscordNow(saved, failed));
-        Assert.Equal("Discord rejected the bot token.", MainWindow.DiscordProblem(saved, failed));
-        Assert.Null(MainWindow.DiscordProblem(saved with { Enabled = false }, failed));
-        Assert.Null(MainWindow.DiscordProblem(saved, new(DiscordBotState.Online, Servers: 1)));
+        Assert.Equal("Discord: on, but not connected.", DiscordPageModel.Now(saved, failed));
+        Assert.Equal("Discord rejected the bot token.", DiscordPageModel.Problem(saved, failed));
+        Assert.Null(DiscordPageModel.Problem(saved with { Enabled = false }, failed));
+        Assert.Null(DiscordPageModel.Problem(saved, new(DiscordBotState.Online, Servers: 1)));
     }
 
     [Fact]
@@ -126,22 +126,22 @@ public sealed class PageNowTests
             ("Telegram", telegram, new MessagingStatus(MessagingState.Running), true),
             ("WhatsApp", whatsApp, new MessagingStatus(MessagingState.Off), false)
         ];
-        Assert.Equal("Telegram: answering @martlet_bot (1 paired chat); WhatsApp: off.", MainWindow.MessagingNow(apps));
-        Assert.Null(MainWindow.MessagingProblem(apps));
+        Assert.Equal("Telegram: answering @martlet_bot (1 paired chat); WhatsApp: off.", MessagingPageModel.Now(apps));
+        Assert.Null(MessagingPageModel.Problem(apps));
 
         (string, ChannelPreferences, MessagingStatus, bool)[] none =
         [
             ("Telegram", new TelegramPreferences(), new MessagingStatus(MessagingState.Off), false),
             ("WhatsApp", whatsApp, new MessagingStatus(MessagingState.Off), false)
         ];
-        Assert.Equal("Off: Martlet answers no messaging app.", MainWindow.MessagingNow(none));
+        Assert.Equal("Off: Martlet answers no messaging app.", MessagingPageModel.Now(none));
 
         (string, ChannelPreferences, MessagingStatus, bool)[] retrying =
         [
             ("Telegram", telegram, new MessagingStatus(MessagingState.Retrying, Problem: "Couldn't reach Telegram."), true),
             ("WhatsApp", new WhatsAppPreferences(), new MessagingStatus(MessagingState.Off), false)
         ];
-        Assert.Equal("Telegram: can't reach @martlet_bot right now; WhatsApp: not set up.", MainWindow.MessagingNow(retrying));
-        Assert.Equal("Telegram: Couldn't reach Telegram.", MainWindow.MessagingProblem(retrying));
+        Assert.Equal("Telegram: can't reach @martlet_bot right now; WhatsApp: not set up.", MessagingPageModel.Now(retrying));
+        Assert.Equal("Telegram: Couldn't reach Telegram.", MessagingPageModel.Problem(retrying));
     }
 }

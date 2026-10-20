@@ -88,7 +88,9 @@ address; plain `http` is accepted only for local-network addresses). With
 Code: `src/Martlet.Home` (endpoint rules, REST client, guard, persona
 context), `src/Martlet.Desktop/SmartHome.cs` (connection, preferences in
 `smart-home.json`, turn step, managed MCP server and its approval policy),
-`MainWindow.SmartHome.cs` (page). Not yet done: events, live camera requests
+`Pages\SmartHome` (the page, its model `SmartHomePageModel` and
+`ISmartHomePageServices`) and `MainWindow.SmartHome.cs` (what the page's
+buttons run). Not yet done: events, live camera requests
 ("look at the front door") and native Matter (slices below). Device aliases
 defined only in Home Assistant's voice settings are not in the sensitive-name
 list; leave locks and garage doors unexposed to be safe.
@@ -167,7 +169,7 @@ Assistant without leaving Martlet:
 Code: `src/Martlet.Home` (`HomeAssistantClient.Setup.cs`,
 `HomeAssistantClient.Admin.cs`, `HomeAssistantSocket.cs`,
 `HomeAssistantSignIn.cs`, `HomeAssistantDiscovery.cs`),
-`src/Martlet.Desktop/SmartHome.cs`, `MainWindow.SmartHome.cs`,
+`src/Martlet.Desktop/SmartHome.cs`, `Pages/SmartHome`, `MainWindow.SmartHome.cs`,
 `MainWindow.HomeShare.cs`, `HomeAssistantHosts.cs`, the gateway's
 `GatewayHomeAssistant.cs` and `deploy/host/roles/home-assistant`. MCP:
 `home_assistant_probe`, `home_assistant_find`, `smart_home_status` and the

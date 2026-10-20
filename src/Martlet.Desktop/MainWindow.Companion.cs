@@ -285,9 +285,9 @@ public partial class MainWindow
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: PicturesPage.Render(body); break;
             case CompanionTab.Motion: RenderMotionTab(body); break;
-            case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
-            case CompanionTab.Discord: RenderDiscordTab(body); break;
-            case CompanionTab.Messaging: RenderMessagingTab(body); break;
+            case CompanionTab.SmartHome: SmartHomePage.Render(body); break;
+            case CompanionTab.Discord: DiscordPage.Render(body); break;
+            case CompanionTab.Messaging: MessagingPage.Render(body); break;
             default: throw new UnreachableException($"The Companion page {section} has no content.");
         }
         // The desktop log's "Companion › Touch showed all 49 rows in 8 batches, 260 ms after it opened." lines.

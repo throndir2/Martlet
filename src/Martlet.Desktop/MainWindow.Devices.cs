@@ -417,7 +417,7 @@ public partial class MainWindow
         return text;
     }
 
-    private static Expander DetailExpander(string header, string automationId, UIElement content, bool expanded)
+    internal static Expander DetailExpander(string header, string automationId, UIElement content, bool expanded)
     {
         var expander = new Expander { Header = header, Content = content, IsExpanded = expanded, Margin = new Thickness(-6, 16, 0, 0) };
         AutomationProperties.SetAutomationId(expander, automationId);
