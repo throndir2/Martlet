@@ -67,7 +67,7 @@ internal sealed class VoiceSampleRecording
             }
             catch (InvalidOperationException)
             {
-                recording.Error = "The microphone is muted or busy. Try again in a moment.";
+                recording.Error = "The microphone is muted or busy; try again in a moment.";
                 return new SetupWorkResult(SetupWorkOutcome.Failed);
             }
         });
@@ -190,7 +190,7 @@ public partial class VoiceIdWindow : ThemedWindow
         recording = VoiceSampleRecording.Start(operations, devices, input, clock);
         if (recording is null)
         {
-            StatusText.Text = "Another Martlet action is using the microphone. Stop it and try again.";
+            StatusText.Text = "Another Martlet action is using the microphone; stop it and try again.";
             return;
         }
         testing = test;
@@ -210,7 +210,7 @@ public partial class VoiceIdWindow : ThemedWindow
         LevelMeter.Value = 0;
         if (active.Pcm is not { } pcm)
         {
-            StatusText.Text = active.Error ?? "Recording failed. Try again.";
+            StatusText.Text = active.Error ?? "Recording failed; try again.";
             Render();
             return;
         }
@@ -220,8 +220,8 @@ public partial class VoiceIdWindow : ThemedWindow
             else AddSample(pcm);
         }
         catch (VoiceIdentityException error) { StatusText.Text = error.Message; }
-        catch (IOException) { StatusText.Text = "Couldn't save your voiceprint. Check folder access and try again."; }
-        catch (UnauthorizedAccessException) { StatusText.Text = "Couldn't save your voiceprint. Check folder access and try again."; }
+        catch (IOException) { StatusText.Text = "Couldn't save your voiceprint; check folder access and try again."; }
+        catch (UnauthorizedAccessException) { StatusText.Text = "Couldn't save your voiceprint; check folder access and try again."; }
         finally { if (testing) active.Clear(); }
         Render();
     }
@@ -234,13 +234,13 @@ public partial class VoiceIdWindow : ThemedWindow
         if (seconds < 1.5)
         {
             CryptographicOperations.ZeroMemory(pcm);
-            StatusText.Text = $"Only {seconds:F1} s of speech was heard. Move closer or speak up, then try again.";
+            StatusText.Text = $"Only {seconds:F1} s of speech was heard; move closer or speak up, then try again.";
             return;
         }
         samples.Add(pcm);
         if (samples.Count < Phrases.Length)
         {
-            StatusText.Text = $"Phrase {samples.Count} recorded. Next phrase.";
+            StatusText.Text = $"Phrase {samples.Count} recorded; now read phrase {samples.Count + 1}.";
             return;
         }
         var enrollment = SpeakerVerifier.Enroll(VoiceIdentity.Encoder, samples);
@@ -251,8 +251,8 @@ public partial class VoiceIdWindow : ThemedWindow
         ThresholdSlider.Value = enrollment.SuggestedThreshold;
         initializing = false;
         StatusText.Text = enrollment.Consistency < 0.75f
-            ? "Voiceprint saved, but the phrases sounded different. If tests miss you, start over somewhere quieter."
-            : "Voiceprint saved. Try the test below.";
+            ? "Voiceprint saved, but the phrases sounded different, so start over somewhere quieter if tests miss you."
+            : "Voiceprint saved; try the test below.";
     }
 
     private void ShowTest(byte[] pcm)
@@ -262,10 +262,10 @@ public partial class VoiceIdWindow : ThemedWindow
         TestResultText.Text = check.Verdict switch
         {
             SpeakerVerdict.User when check.OtherVoiceDetected =>
-                $"Recognized you, but another voice may be present. Score {check.Similarity:F2}.",
-            SpeakerVerdict.User => $"Recognized you. Score {check.Similarity:F2} (threshold {print.Threshold:F2}).",
-            SpeakerVerdict.OtherSpeaker => $"Not recognized. Score {check.Similarity:F2} is below threshold {print.Threshold:F2}.",
-            _ => $"Too little speech to decide ({check.SpeechAnalyzed.TotalSeconds:F1} s). Speak for at least a second."
+                $"Recognized you with score {check.Similarity:F2}, but another voice may be present.",
+            SpeakerVerdict.User => $"Recognized you with score {check.Similarity:F2} (threshold {print.Threshold:F2}).",
+            SpeakerVerdict.OtherSpeaker => $"Not recognized: score {check.Similarity:F2} is below threshold {print.Threshold:F2}.",
+            _ => $"Too little speech to decide ({check.SpeechAnalyzed.TotalSeconds:F1} s); speak for at least a second."
         };
         StatusText.Text = "Test recording discarded.";
     }
@@ -273,7 +273,7 @@ public partial class VoiceIdWindow : ThemedWindow
     private void Restart_Click(object sender, RoutedEventArgs e)
     {
         ClearSamples();
-        StatusText.Text = "Enrollment restarted. Your saved voiceprint won't change until you finish all three phrases.";
+        StatusText.Text = "Enrollment restarted; your saved voiceprint won't change until you finish all three phrases.";
         Render();
     }
 
@@ -286,7 +286,7 @@ public partial class VoiceIdWindow : ThemedWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            StatusText.Text = "Couldn't delete your voiceprint. Check folder access.";
+            StatusText.Text = "Couldn't delete your voiceprint; check folder access.";
         }
         Render();
     }
@@ -299,7 +299,7 @@ public partial class VoiceIdWindow : ThemedWindow
         try { identity.SetThreshold((float)ThresholdSlider.Value); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            StatusText.Text = "Couldn't save the threshold. Check folder access.";
+            StatusText.Text = "Couldn't save the threshold; check folder access.";
         }
         Render();
     }
@@ -325,8 +325,8 @@ public partial class VoiceIdWindow : ThemedWindow
         DeleteButton.IsEnabled = !busy && identity.Current is not null;
         ThresholdSlider.IsEnabled = identity.Current is not null;
         VoiceprintText.Text = identity.LoadError ?? (identity.Current is { } print
-            ? $"Voiceprint saved {print.CreatedAt.LocalDateTime:g}. Speech used: {print.SpeechSeconds:F0} s. Consistency: {print.Consistency:F2}."
-            : "No voiceprint yet. Finish step 1 to create one.");
+            ? $"Voiceprint saved {print.CreatedAt.LocalDateTime:g}, from {print.SpeechSeconds:F0} s of speech, with consistency {print.Consistency:F2}."
+            : "No voiceprint yet: finish step 1 to create one.");
     }
 
     private void ClearSamples()

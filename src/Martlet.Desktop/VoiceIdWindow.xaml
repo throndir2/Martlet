@@ -17,8 +17,10 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="22,18">
                 <TextBlock Text="Voice ID" FontSize="24" FontWeight="SemiBold" />
-                <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
-                           Text="Voice ID helps Martlet recognize you and ignore other speakers before anything is sent to your model. Recordings are never saved." />
+                <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"><Run Text="Voice ID helps Martlet recognize you and ignore other speakers before anything is sent to your model." /><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                           Text="Recordings are never saved. Martlet checks each recording on this PC and drops other voices before speech-to-text."
+                           Wiki="Listening-and-Voice-ID#voice-id" Margin="6,0,0,0"
+                           AutomationProperties.AutomationId="Help-VoiceIdAbout" AutomationProperties.Name="About Voice ID" /></InlineUIContainer></TextBlock>
                 <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Style="{DynamicResource Muted}" FontSize="12"
                            Text="Your voiceprint stays on this PC, and you can delete it anytime." />
 
@@ -26,13 +28,13 @@
                           Content="Allow microphone recording"
                           AutomationProperties.AutomationId="VoiceIdAcceptRecording" />
                 <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Style="{DynamicResource Muted}" FontSize="12"
-                          Text="Martlet records up to 10 seconds per phrase for Voice ID. Nothing is uploaded." />
+                          Text="Martlet records up to 10 seconds per phrase for Voice ID, and nothing is uploaded." />
 
                 <Border Style="{DynamicResource Chip}" HorizontalAlignment="Stretch" Padding="14,12" Margin="0,14,0,0">
                     <StackPanel>
-                        <TextBlock Text="1. Record three phrases" FontWeight="SemiBold" />
+                        <TextBlock Text="Step 1: Record three phrases" FontWeight="SemiBold" />
                         <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,8"
-                                   Text="Use your usual microphone and speaking voice. Recording stops when you pause." />
+                                   Text="Use your usual microphone and speaking voice; recording stops when you pause." />
                         <TextBlock x:Name="PhraseText" FontSize="17" TextWrapping="Wrap" Margin="0,0,0,10" AutomationProperties.AutomationId="VoiceIdPhrase" />
                         <WrapPanel>
                             <Button x:Name="RecordButton" Content="_Record phrase 1 of 3" Click="Record_Click" Padding="14,8" Margin="0,0,10,0"
@@ -49,7 +51,7 @@
 
                 <Border Style="{DynamicResource Chip}" HorizontalAlignment="Stretch" Padding="14,12" Margin="0,12,0,0">
                     <StackPanel>
-                        <TextBlock Text="2. Test and tune" FontWeight="SemiBold" />
+                        <TextBlock Text="Step 2: Test and tune" FontWeight="SemiBold" />
                         <TextBlock x:Name="VoiceprintText" TextWrapping="Wrap" Margin="0,4,0,8" AutomationProperties.AutomationId="VoiceIdVoiceprint" />
                         <DockPanel Margin="0,0,0,8">
                             <TextBlock Text="Match threshold" VerticalAlignment="Center" Width="120" />
@@ -58,8 +60,10 @@
                                     ValueChanged="Threshold_Changed" AutomationProperties.Name="Voice ID match threshold"
                                     AutomationProperties.AutomationId="VoiceIdThreshold" />
                         </DockPanel>
-                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
-                                   Text="Higher is stricter. Lower it only if Martlet often misses you." />
+                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"><Run Text="Higher is stricter, so lower it only if Martlet often misses you." /><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                                   Text="Martlet suggests a threshold when you record. If the test score is often just below it, lower it a little."
+                                   Wiki="Listening-and-Voice-ID#voice-id" Margin="6,0,0,0"
+                                   AutomationProperties.AutomationId="Help-VoiceIdThreshold" AutomationProperties.Name="About the match threshold" /></InlineUIContainer></TextBlock>
                         <WrapPanel>
                             <Button x:Name="TestButton" Content="_Test voice" Click="Test_Click" Padding="14,8" Margin="0,0,10,0"
                                     AutomationProperties.AutomationId="VoiceIdTest" />

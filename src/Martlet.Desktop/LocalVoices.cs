@@ -83,7 +83,7 @@ internal sealed class LocalVoices : IDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
         {
-            LoadError = "Couldn't read your saved voices. Martlet will start a new list.";
+            LoadError = "Couldn't read your saved voices, so Martlet starts a new list.";
         }
         Clips.Prune(roster);
     }
@@ -276,11 +276,11 @@ internal sealed class LocalVoices : IDisposable
         roster = next;
         if (forgotten is not null)
             notes.Add($"Martlet forgot {forgotten.DisplayName} (not heard since {forgotten.LastHeardAt.ToLocalTime():yyyy-MM-dd}) " +
-                $"to make room for a new voice: the voice list keeps at most {VoiceRoster.MaximumVoices:N0} voices. " +
-                "Name a voice in Companion › People to keep it.");
+                $"to make room in the voice list ({VoiceRoster.MaximumVoices:N0} voices at most); name a voice in Companion › People " +
+                "to keep it.");
         if (added is null && !listFullNoted)
             notes.Add($"A new voice wasn't added: the voice list is full ({VoiceRoster.MaximumVoices:N0} voices) and every " +
-                "voice has a name or belongs to someone. Forget or merge a voice in Companion › People to make room.");
+                "voice has a name or belongs to someone, so forget or merge a voice in Companion › People to make room.");
         listFullNoted = added is null;
         if (added is not null) unplaced.Forget(voiceprint);
         return added;
@@ -495,7 +495,7 @@ internal sealed class LocalVoices : IDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
         {
-            LoadError = "Couldn't save your voices. Changes last until Martlet closes.";
+            LoadError = "Couldn't save your voices, so changes last only until Martlet closes.";
             ErrorLog.Warn("Saving the voice list failed.", error);
         }
     }

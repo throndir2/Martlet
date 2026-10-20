@@ -18,12 +18,12 @@ public sealed class VoiceAbilitiesTests
     [Fact]
     public void Chatterbox_turbo_laughs_and_sighs_but_only_whispers_for_emotions()
     {
-        Assert.Equal("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.", Rundown(SpeechEngines.Chatterbox));
+        Assert.Equal("Voice cloning: yes; Laughs & sighs: yes; Emotions: whispering only.", Rundown(SpeechEngines.Chatterbox));
         var abilities = SpeechEngines.Chatterbox.Abilities;
         var emotions = abilities.Items[2];
         Assert.Equal(AbilityLevel.Partly, emotions.Level);
         // The whisper is the voice model's own, which it makes only now and then; Martlet adds none.
-        Assert.StartsWith("The voice model itself whispers where the reply asks, but only now and then.", emotions.Help);
+        Assert.StartsWith("The voice model itself whispers where the reply asks, but only now and then;", emotions.Help);
         // The tones it reads but doesn't perform ([angry], [happy]...) are not offered as emotions.
         Assert.Equal(["[whispering]"], abilities.TagsFor(emotions, SpeechEngines.Chatterbox.Tags).Select(tag => tag.Text));
         Assert.Equal(9, abilities.TagsFor(abilities.Items[1], SpeechEngines.Chatterbox.Tags).Count);
@@ -32,9 +32,9 @@ public sealed class VoiceAbilitiesTests
     [Fact]
     public void Other_engines_clone_and_dia_laughs_but_none_has_emotions()
     {
-        Assert.Equal("Voice cloning: yes. Laughs & sighs: yes. Emotions: no.", Rundown(SpeechEngines.Dia));
+        Assert.Equal("Voice cloning: yes; Laughs & sighs: yes; Emotions: no.", Rundown(SpeechEngines.Dia));
         foreach (var engine in new[] { SpeechEngines.F5, SpeechEngines.Xtts, SpeechEngines.GptSovits })
-            Assert.Equal("Voice cloning: yes. Laughs & sighs: no. Emotions: no.", Rundown(engine));
+            Assert.Equal("Voice cloning: yes; Laughs & sighs: no; Emotions: no.", Rundown(engine));
         Assert.Contains("tone of your recording", SpeechEngines.F5.Abilities.Items[2].Help);
     }
 
@@ -42,7 +42,7 @@ public sealed class VoiceAbilitiesTests
     public void The_openai_voice_has_none()
     {
         var abilities = VoiceAbilities.OpenAiVoice;
-        Assert.Equal("Voice cloning: no. Laughs & sighs: no. Emotions: no.", abilities.Describe());
+        Assert.Equal("Voice cloning: no; Laughs & sighs: no; Emotions: no.", abilities.Describe());
         Assert.All(abilities.Items, item => Assert.Empty(abilities.TagsFor(item, SpeechEngines.Chatterbox.Tags)));
     }
 
@@ -76,8 +76,8 @@ public sealed class VoiceAbilitiesTests
     [Fact]
     public void The_chatterbox_family_says_what_each_model_can_do()
     {
-        Assert.Equal("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.", Rundown(SpeechEngines.ChatterboxNano));
-        Assert.Equal("Voice cloning: yes. Laughs & sighs: no. Emotions: calm or expressive.", Rundown(SpeechEngines.ChatterboxOriginal));
+        Assert.Equal("Voice cloning: yes; Laughs & sighs: yes; Emotions: whispering only.", Rundown(SpeechEngines.ChatterboxNano));
+        Assert.Equal("Voice cloning: yes; Laughs & sighs: no; Emotions: calm or expressive.", Rundown(SpeechEngines.ChatterboxOriginal));
         var original = SpeechEngines.ChatterboxOriginal.Abilities;
         Assert.Equal(["[expressive]"], original.TagsFor(original.Items[2], SpeechEngines.ChatterboxOriginal.Tags).Select(t => t.Text));
         Assert.Equal(["chatterbox", "chatterbox-original", "chatterbox-nano"], SpeechEngines.All.Take(3).Select(e => e.Key));
@@ -89,7 +89,7 @@ public sealed class VoiceAbilitiesTests
     public void Chatterbox_style_starts_with_resembles_tips_saves_and_refuses_values_out_of_range()
     {
         Assert.Equal(new ChatterboxStyle(0.5, 0.5, 0.7, 0.3), ChatterboxStyle.Default);
-        Assert.Equal("General: exaggeration 0.5, CFG weight 0.5. Expressive: exaggeration 0.7, CFG weight 0.3.", ChatterboxStyle.Default.Describe());
+        Assert.Equal("General: exaggeration 0.5, CFG weight 0.5; expressive: exaggeration 0.7, CFG weight 0.3.", ChatterboxStyle.Default.Describe());
         var directory = Path.Combine(Path.GetTempPath(), "martlet-style-" + Guid.NewGuid().ToString("N"));
         try
         {
