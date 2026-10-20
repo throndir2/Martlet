@@ -34,22 +34,13 @@ public partial class MainWindow
 {
     internal const string ReadingThisPc = "this-pc";
 
-    private const string RapidOcrTerms =
-        "It builds a container from python:3.12 with hash-pinned RapidOCR 1.4.4 (Apache-2.0) and its PaddleOCR PP-OCRv4 models " +
-        "(Apache-2.0, about 15 MB, inside the package), ONNX Runtime (MIT) and OpenCV (Apache-2.0).";
-
-    private const string PpOcrV5Terms =
-        "It builds a container from python:3.12 with hash-pinned RapidOCR 3.10.0 (Apache-2.0), ONNX Runtime 1.31.0 (MIT) and OpenCV " +
-        "(Apache-2.0), and PaddleOCR's PP-OCRv5 mobile and server models (Apache-2.0, about 190 MB) from RapidOCR's ModelScope " +
-        "release (or an identical Hugging Face copy), each SHA-256 checked.";
-
-    private const string CudaTerms =
-        " For the graphics card it also installs NVIDIA's CUDA 13 and cuDNN libraries from PyPI (NVIDIA's license), and it needs " +
-        "an NVIDIA driver 580 or newer.";
-
-    private const string ReadingDataTerms =
-        " While Martlet watches your screen and that computer is in your Reading list, this PC sends it screenshots. They are " +
-        "read in memory there and are not kept.";
+    /// <summary>What setting the Reading role up with <paramref name="model"/> downloads and sends, in one sentence for its
+    /// confirmation; the wiki's Vision#set-up-the-reading-role has every package, model and licence. Another computer
+    /// (<paramref name="elsewhere"/>) gets screenshots while Martlet watches.</summary>
+    internal static string ReadingTerms(OptionalExtras.ReadingRoleModel model, bool elsewhere) =>
+        $"It runs on {(model.NeedsNvidia ? "an NVIDIA graphics card (driver 580 or newer)" : "the processor")} and downloads " +
+        $"{model.Download} of open packages and models (Apache-2.0 and MIT{(model.NeedsNvidia ? ", with NVIDIA's CUDA libraries" : "")})" +
+        (elsewhere ? ", and while Martlet watches, this PC sends it screenshots that are read in memory and not kept." : ".");
 
     /// <summary>The model each place's pills show (place: <see cref="ReadingThisPc"/> or a host ID), until it is set up there.</summary>
     private readonly Dictionary<string, string> readingModels = new(StringComparer.Ordinal);
@@ -71,7 +62,7 @@ public partial class MainWindow
         var now = new TextBlock { Text = ReadingNow(list), FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(now, "ReadingNow");
         var last = Note(ScreenReader.LastReport is { } report ? "While watching: " + report
-            : "Nothing read yet. Martlet reads while you watch your screen with it (Start watching).", new Thickness(0, 4, 0, 0));
+            : "Nothing read yet: Martlet reads while you watch your screen with it (Start watching).", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(last, "ReadingLast");
         var test = Note(readingTesting ? "Reading your screen…" : readingTestState ?? "", new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(test, "ReadingTestState");
@@ -102,19 +93,19 @@ public partial class MainWindow
         var everyNote = Note(ReadingEveryText(Talk.ReadEveryMs), new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(everyNote, "ReadingEveryStatus");
         page.Children.Add(Card(Heading("Now"), now,
-            HelpTip.Explain("While Martlet watches your screen, it takes a full-size picture for reading as often as you choose and " +
-                "reads it when it changed, off to the side, so replies never wait for it. New text (a score, \"Victory\", a new " +
-                "message) makes a look more likely, and each look gets the text it read. What you type or say never waits for it. " +
-                "The text is never kept in the conversation.",
-                new Thickness(0, 4, 0, 0), "Reading", "reading"), everyRow, everyNote, last, test, text, Row(readNow)));
+            HelpTip.Explain("While Martlet watches your screen, it reads the text on it off to the side, so replies never wait for it. " +
+                "New text (a score, \"Victory\", a new message) makes a look more likely, and the text is never kept in the conversation.",
+                new Thickness(0, 4, 0, 0), "Reading", "reading", wiki: "Vision#reading-the-text-on-your-screen"),
+            everyRow, everyNote, last, test, text, Row(readNow)));
 
         page.Children.Add(PoolListCard(new PoolListOptions
         {
             Area = PoolAreas.Reading,
             Heading = "Where it reads",
-            Intro = "The places that read your screen, in order. The first free one reads; when it is busy or doesn't answer, the " +
-                "next one does. This PC reads with Windows OCR or Martlet's Reading role, and your other computers with the Reading " +
-                "role. Press Settings to choose how one reads. With nothing on, Martlet doesn't read your screen. This list stays on this PC.",
+            Intro = "The places that read your screen, in order. The first free one reads, and the next one when it is busy or doesn't " +
+                "answer; with nothing on, Martlet doesn't read your screen. Press Settings to choose how a place reads; this list " +
+                "stays on this PC.",
+            Wiki = "Vision#reading-the-text-on-your-screen",
             Status = ReadingMemberStatus,
             Settings = ReadingMemberSettings,
             NewMember = ReadingNewMember
@@ -137,7 +128,7 @@ public partial class MainWindow
     private static string ReadingNow(PoolList list)
     {
         var on = list.Members.Where(m => !m.Off).ToList();
-        if (on.Count == 0) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Reading)}.";
+        if (on.Count == 0) return $"Off: {OptionalExtras.OffMeans(CompanionTab.Reading)}.";
         return $"Martlet reads the text on your screen with {ReadingPool.Describe(on[0])} while it watches" +
             (on.Count > 1 ? $"; when that one is busy, the next of the {on.Count} in the list reads." : ".");
     }
@@ -150,12 +141,11 @@ public partial class MainWindow
     internal static string ReadingEveryText(int milliseconds)
     {
         var ms = ScreenReadPace.Normalize(milliseconds);
-        var pace = $"{ScreenReadPace.Describe(ms)}, Martlet takes a full-size picture of your screen and reads it when it changed " +
-            $"(a screen that stays the same is read again after {ScreenReadPace.Refresh.TotalSeconds:0} seconds). A read that takes " +
-            "longer sets the pace: one read at a time.";
+        var pace = $"{ScreenReadPace.Describe(ms)}, Martlet reads your screen if it changed (and again after " +
+            $"{ScreenReadPace.Refresh.TotalSeconds:0} seconds if it didn't)";
         return ms < ScreenReadPace.DefaultMs
-            ? pace + " Reading this often uses more of the processor or graphics card that reads; a graphics card in your Reading list keeps up best."
-            : pace;
+            ? pace + "; reading this often uses more of the processor or graphics card that reads."
+            : pace + ".";
     }
 
     private async Task CheckWindowsReadingAsync()
@@ -230,7 +220,7 @@ public partial class MainWindow
             {
                 var state = Note(readingWindows switch
                 {
-                    true => "Windows can read text on this PC. It reads a screenshot in a fraction of a second, and nothing leaves this PC.",
+                    true => "Windows can read text on this PC in a fraction of a second, and nothing leaves this PC.",
                     false => WindowsScreenTextReader.NoLanguage,
                     _ => "Checking Windows text recognition…"
                 }, new Thickness(0, 4, 0, 0));
@@ -292,17 +282,16 @@ public partial class MainWindow
             models.Children.Add(pill);
         }
         stack.Add(models);
-        var modelNote = Note(chosen.Key switch
+        var modelNote = HelpTip.Explain(chosen.Key switch
         {
-            "ppocrv5-mobile" => "PP-OCRv5 mobile runs on the processor, so it never takes the graphics card from the voice or thinking. " +
-                $"It reads a 1920 x 1080 screenshot in about 2 s and a 4K one in about 4 s, and it read every small line on a 4K screen. Download: {chosen.Download}.",
-            "ppocrv5-mobile-gpu" => "PP-OCRv5 mobile on an NVIDIA graphics card (driver 580 or newer): as accurate as on the processor, " +
-                "in much less time, so Martlet can read your screen more often. It shares the card with the voice and thinking " +
-                $"there. Download: {chosen.Download}.",
-            "ppocrv5-server" => "PP-OCRv5 server is the most accurate model. It runs on an NVIDIA graphics card (driver 580 or newer) " +
-                $"beside the voice and thinking; on a processor it takes about a minute a screenshot. Download: {chosen.Download}.",
-            _ => $"RapidOCR (PP-OCRv4) runs on the processor and is the smallest, but it misses more small text than PP-OCRv5. Download: {chosen.Download}."
-        }, new Thickness(0, 0, 0, 0));
+            "ppocrv5-mobile" => $"PP-OCRv5 mobile runs on the processor, so it never takes the graphics card from the voice or thinking (download: {chosen.Download}). " +
+                "It reads a 1920 x 1080 screenshot in about 2 s and a 4K one in about 4 s, and it read every small line on a 4K screen.",
+            "ppocrv5-mobile-gpu" => $"PP-OCRv5 mobile on an NVIDIA graphics card (driver 580 or newer) is as accurate and much faster (download: {chosen.Download}). " +
+                "Martlet can read your screen more often with it, and it shares the card with the voice and thinking there.",
+            "ppocrv5-server" => $"PP-OCRv5 server is the most accurate model, on an NVIDIA graphics card (driver 580 or newer; download: {chosen.Download}). " +
+                "It runs beside the voice and thinking; on a processor it takes about a minute a screenshot.",
+            _ => $"RapidOCR (PP-OCRv4) runs on the processor and is the smallest, but it misses more small text than PP-OCRv5 (download: {chosen.Download})."
+        }, new Thickness(0, 0, 0, 0), "ReadingModels-" + place, "reading models", wiki: "Vision#set-up-the-reading-role");
         AutomationProperties.SetAutomationId(modelNote, "ReadingModelNote-" + place);
         stack.Add(modelNote);
 
@@ -316,7 +305,7 @@ public partial class MainWindow
             : CannotHand(where, HostRoles.Ocr, "reading");
         var failure = readingFailures.GetValueOrDefault(place);
         var state = pending && other ? $"Switching {where} to {chosen.Name}..."
-            : ready ? $"Ready on {where} with {runs}." + (other && target is { Shared: true } ? " Only its owner can change the model." : "")
+            : ready ? $"Ready on {where} with {runs}" + (other && target is { Shared: true } ? ", and only its owner can change the model." : ".")
             : pending ? $"Setting up {chosen.Name} on {where}..."
             : cannot ?? (failure is not null ? $"Setup failed on {where}: {failure}" : $"Not set up on {where} yet.");
         var stateLine = Note(state, new Thickness(0, 4, 0, 0));
@@ -438,14 +427,12 @@ public partial class MainWindow
         var thisPc = ThisPcHost();
         var verb = changing ? "Switch" : "Set up";
         if (!ConfirmationDialog.Confirm(this,
-                (changing ? $"Switch Reading on {where} to {model.Name}?\n\n" : $"Set up Reading with {model.Name} on {where}?\n\n") +
-                (host is null && thisPc is null
-                    ? machine.DockerInstalled ? "Martlet first sets up its host service in Docker Desktop. "
-                        : "Martlet first installs Docker Desktop (it asks for its own terms) and sets up its host service. "
-                    : "") +
-                $"It runs on {(model.NeedsNvidia ? "the NVIDIA graphics card" : "the processor")} and downloads {model.Download} of " +
-                "packages and models; Martlet shows the progress.\n\n" +
-                (model.Engine == "rapidocr" ? RapidOcrTerms : PpOcrV5Terms + (model.NeedsNvidia ? CudaTerms : "")) + ReadingDataTerms,
+                (changing ? $"Switch Reading on {where} to {model.Name}?"
+                    : host is null && thisPc is null
+                        ? machine.DockerInstalled ? $"Set up Reading with {model.Name} on {where} in Docker Desktop?"
+                            : $"Install Docker Desktop, then set up Reading with {model.Name} on {where}?"
+                        : $"Set up Reading with {model.Name} on {where}?") +
+                "\n\n" + ReadingTerms(model, elsewhere: host is not null),
                 $"{verb} Reading"))
             return;
         var answers = model.Answers();
@@ -458,9 +445,9 @@ public partial class MainWindow
             {
                 var done = await RunHostActionAsync(host, changing ? HostAction.Change(HostRoles.Ocr) : HostRoles.Get(HostRoles.Ocr).Add, answers);
                 if (closing) return;
-                if (done is null) readingFailures[host.HostId] = $"{(changing ? "Switching" : "Setting")} it {(changing ? "" : "up ")}on {host.HostId} stopped. Its run window has details.";
+                if (done is null) readingFailures[host.HostId] = $"{(changing ? "Switching" : "Setting")} it {(changing ? "" : "up ")}on {host.HostId} stopped; its run window has details.";
                 else if (await WaitForReadingAsync(host, model.Model, lifetime.Token) is { } why)
-                    readingFailures[host.HostId] = $"{(changing ? "The switch" : "Setup")} finished, but Martlet can't see {model.Name} on {host.HostId} yet ({why}). Check it in a minute.";
+                    readingFailures[host.HostId] = $"{(changing ? "The switch" : "Setup")} finished, but Martlet can't see {model.Name} on {host.HostId} yet ({why}), so check it in a minute.";
                 else ReadingSetUpDone(host.HostId, model, host.HostId);
                 return;
             }
@@ -482,17 +469,17 @@ public partial class MainWindow
                 var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Ocr], SetupProgress(run, "Reading", why => stopped ??= why),
                     run.Token, answers: chosen);
                 if (exit != 0)
-                    throw new InvalidOperationException($"Installing Reading stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
+                    throw new InvalidOperationException($"Installing Reading stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped.TrimEnd('.'))}; the output has details.");
                 run.Status("Checking Reading on this PC...");
                 if (await WaitForReadingAsync(pc, model.Model, run.Token) is { } why)
-                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see {model.Name} yet ({why}). Check this PC in a minute.");
+                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see {model.Name} yet ({why}), so check this PC in a minute.");
                 Dispatcher.Invoke(() => ReadingSetUpDone(null, model, "this PC"));
                 return $"Reading is ready on this PC with {model.Name}.";
             }
             string? status;
             if (thisPc is not null)
                 status = await HostRunWindow.RunAsync(this, $"{verb} Reading on this PC", run => Continue(run, thisPc)) ??
-                    (stopped is null ? "Reading wasn't set up. The run window has details." : $"Reading wasn't set up: {stopped}");
+                    (stopped is null ? "Reading wasn't set up; the run window has details." : $"Reading wasn't set up: {stopped}");
             else
             {
                 (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,
@@ -575,7 +562,7 @@ public partial class MainWindow
             {
                 readingTestState = result.Skip switch
                 {
-                    GlanceSkip.MartletInFront => "Martlet's own windows are never read, and they cover most of the screen. Make this " +
+                    GlanceSkip.MartletInFront => "Martlet's own windows cover most of the screen and are never read, so make this " +
                         "window smaller or move it aside, then try again.",
                     GlanceSkip.Private => "A private window is in front, so Martlet won't read the screen.",
                     GlanceSkip.Blank => "The screen is black to Martlet (a locked screen, or protected video).",
