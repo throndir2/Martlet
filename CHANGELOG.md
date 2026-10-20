@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Use models your apps already run now also works on host PCs: when LM Studio, llama.cpp, vLLM or another model app on a host serves a smarter model, Recommended setup adds the new **Thinking pool (your own app)** role, and that host's Thinking pool uses the model in your app. Nothing downloads, and replies stay as fast as before. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - On a host PC with several graphics cards, Deep thinking can run a model that no single card has room for: Recommended setup splits it across cards that the conversation doesn't use. ([#1064](https://github.com/throndir2/Martlet/pull/1064))
 - On computers with big graphics cards, Recommended setup gives Deep thinking a bigger, smarter model from Martlet's model catalog when a card has room, and your host PCs can now install any model from the catalog, not only Martlet's short list. Replies stay as fast as before: the conversation keeps its fast model. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Doctor now warns when Martlet's model catalog hasn't refreshed fully for over a week. ([#1052](https://github.com/throndir2/Martlet/pull/1052))

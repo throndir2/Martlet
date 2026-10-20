@@ -27,7 +27,7 @@ internal static class HostEngineCheck
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(150);
     /// <summary>Real roles (deploy/host/roles) the scenario reads as they are: voice-recognition's GPU or CPU choice and its
     /// ARM64 build.</summary>
-    private static readonly string[] RealRoles = ["voice-recognition"];
+    private static readonly string[] RealRoles = ["voice-recognition", "deep-thinking-app"];
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
     {
@@ -100,7 +100,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 44;
+        const int expected = 48;
         if (steps.Count < expected)
         {
             passed = false;
@@ -657,5 +657,34 @@ internal static class HostEngineCheck
         calls="$(tr '\n' ';' < /tmp/warm/calls)"
         [[ $rc == 1 && "$calls" == "fixture-cold|up -d --no-build;" ]] && has /tmp/warm/out "Another change is working on fixture-warm now" && ok=1 || ok=0
         step warm-leaves-held-role "$ok" "warm while another change holds fixture-warm's lock: exit $rc; $calls $(grep -m1 -oE 'Another change is working on [^(]*' /tmp/warm/out || echo 'not skipped')"
+
+        # The deep-thinking-app role (the real role.conf): the Thinking pool relayed to a model the owner's own app serves (FIXTURE app:
+        # a fake curl answers for LM Studio on 127.0.0.1:1234). Nothing runs for it: no docker call, a record with the app's API, and
+        # the gateway configuration names it.
+        mkdir -p /tmp/app/bin /tmp/h/.dotnet
+        printf '%s\n' '#!/bin/bash' 'echo "$*" >> /tmp/app/curl' 'for a in "$@"; do [[ "$a" == http://127.0.0.1:1234/v1/models ]] && { echo "{\"data\":[{\"id\":\"qwen3-32b\"},{\"id\":\"text-embedding-nomic\"}]}"; exit 0; }; done' 'exit 7' > /tmp/app/bin/curl
+        printf '%s\n' '#!/bin/bash' 'echo "$*" >> /tmp/app/docker' 'exit 0' > /tmp/app/bin/docker
+        printf '#!/bin/sh\nexit 0\n' > /tmp/app/bin/systemctl; printf '#!/bin/sh\nexit 0\n' > /tmp/h/.dotnet/dotnet
+        chmod 755 /tmp/app/bin/curl /tmp/app/bin/docker /tmp/app/bin/systemctl /tmp/h/.dotnet/dotnet
+        A() { printf '%s\n' "$@" end | PATH="/tmp/app/bin:$PATH" timeout 40 "$E" --yes add deep-thinking-app >/tmp/app/out 2>&1; }
+        PATH="/tmp/app/bin:$PATH" timeout 15 "$E" describe deep-thinking-app </dev/null >/tmp/app/describe 2>&1
+        has /tmp/app/describe 'role.choice_open=APP_MODEL' && has /tmp/app/describe 'role.choice=APP_PORT|' && has /tmp/app/describe 'role.choice=APP_PATH|' &&
+          ! grep -q '^role.accelerator' /tmp/app/describe && ok=1 || ok=0
+        step app-role-describe "$ok" "describe: $(grep -oE '^role\.choice(_open)?=[A-Z_]+' /tmp/app/describe | tr '\n' ' ')"
+
+        rm -f /tmp/app/docker; A choice.APP_PORT=1234 choice.APP_PATH=/v1 choice.APP_MODEL=qwen3-32b; rc=$?
+        rec=/tmp/c/roles/deep-thinking-app.role
+        has "$rec" 'kind=deep-thinking-app' && has "$rec" 'endpoint=http://127.0.0.1:1234/' && has "$rec" 'model=qwen3-32b' && has "$rec" 'api=openai' &&
+          has "$rec" 'path=/v1' && ! grep -qE 'compose .*(up|down|run|pull)' /tmp/app/docker 2>/dev/null && has /tmp/app/out 'Your model app lists qwen3-32b.' &&
+          grep -q '"kind":"deep-thinking-app","endpoint":"http://127.0.0.1:1234/","model":"qwen3-32b","api":"openai","path":"/v1"' /tmp/c/gateway/host.json && ok=1 || ok=0
+        step app-role-relays-to-the-app "$ok" "add (exit $rc): record $(tr '\n' ' ' < "$rec" 2>/dev/null); docker compose calls: $(grep -cE 'compose .*(up|down|run|pull)' /tmp/app/docker 2>/dev/null || echo 0); host.json: $(grep -o '{"kind":"deep-thinking-app[^}]*}' /tmp/c/gateway/host.json 2>/dev/null)"
+
+        A choice.APP_PORT=1234 choice.APP_PATH=/v1 choice.APP_MODEL=llama3.3:70b; rc=$?
+        [[ $rc != 0 ]] && has /tmp/app/out "doesn't list llama3.3:70b" && has "$rec" 'model=qwen3-32b' && ok=1 || ok=0
+        step app-role-checks-the-app "$ok" "a model the app doesn't list: exit $rc ($(grep -m1 -oE "doesn't list [^ ]*" /tmp/app/out)); the record still names $(grep '^model=' "$rec")"
+
+        rm -f /tmp/app/docker; PATH="/tmp/app/bin:$PATH" timeout 30 "$E" --yes remove deep-thinking-app </dev/null >/tmp/app/remove 2>&1; rc=$?
+        [[ ! -e "$rec" ]] && has /tmp/app/remove 'Your model app keeps running as it is.' && ! grep -qE 'compose .*(up|down|run|pull)' /tmp/app/docker 2>/dev/null && ok=1 || ok=0
+        step app-role-remove "$ok" "remove: exit $rc, record $([[ -e "$rec" ]] && echo kept || echo gone), docker compose calls: $(grep -cE 'compose .*(up|down|run|pull)' /tmp/app/docker 2>/dev/null || echo 0)"
         """;
 }

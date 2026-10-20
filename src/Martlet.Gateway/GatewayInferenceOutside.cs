@@ -7,6 +7,9 @@ public interface IGatewayOpenAiRelay
     /// <summary>The model name the endpoint lists and takes: the Ollama tag the role runs, for example <c>qwen3:8b</c>.</summary>
     string OpenAiModel { get; }
 
+    /// <summary>Whether this route answers the OpenAI-compatible endpoint (false: a relay to the owner's own model app).</summary>
+    bool OffersOpenAi => true;
+
     GatewayInferenceRoute Route { get; }
 
     /// <summary>Runs one OpenAI-compatible request on <paramref name="path"/> (one of
@@ -77,7 +80,7 @@ public sealed partial class GatewayInferenceRouteRegistry
     /// <summary>The routes whose worker answers the OpenAI-compatible API, with their model; pool routes first, since the owner's
     /// live turns use the live routes.</summary>
     internal IReadOnlyList<(string RouteId, IGatewayOpenAiRelay Relay)> OpenAiRelays() => byId.Values
-        .Where(r => r.Worker is IGatewayOpenAiRelay)
+        .Where(r => r.Worker is IGatewayOpenAiRelay { OffersOpenAi: true })
         .OrderBy(r => r.Route.Lane == GatewayLane.Pool ? 0 : 1).ThenBy(r => r.Route.RouteId, StringComparer.Ordinal)
         .Select(r => (r.Route.RouteId, (IGatewayOpenAiRelay)r.Worker)).ToArray();
 

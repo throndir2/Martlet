@@ -206,6 +206,9 @@ public sealed record SetupChange(SetupChangeKind Kind, string MachineId, string 
     /// <summary>AddRole, ChangeModel: the model to run; ChangeModel: <see cref="FromModel"/> is the one it runs now.</summary>
     public string? Model { get; init; }
     public string? FromModel { get; init; }
+    /// <summary>AddRole: more choices to install the role with (choice variable to value), such as the deep-thinking-app role's
+    /// APP_PORT and APP_PATH; null for none.</summary>
+    public IReadOnlyDictionary<string, string>? Choices { get; init; }
     /// <summary>AddRole, MoveToGpu: the card to pin the role to (an index into that computer's MachineSpecs.Gpus).</summary>
     public int? GpuIndex { get; init; }
     /// <summary>AddRole, ChangeModel, MoveToGpu: the cards one model is split across (tensor split), when no single card has room

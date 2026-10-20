@@ -4282,7 +4282,15 @@ runs `compose up -d --no-build` for every installed role, then the warm step of
 step is not run again), reports `fixture-cold`, whose port never answers, as
 *Not ready* and exits 1 (`warm-starts-and-warms-roles`); with `fixture-warm`'s
 role lock held by another change it leaves that role alone (*Another change is
-working on fixture-warm now*; `warm-leaves-held-role`). Without Docker or the
+working on fixture-warm now*; `warm-leaves-held-role`). The real
+`deep-thinking-app` role's files (copied into the container) are read with a
+fake `curl` that answers as LM Studio on 127.0.0.1:1234: `describe` offers
+`APP_PORT`, `APP_PATH` and the open `APP_MODEL` choice and no GPU option
+(`app-role-describe`); an add for `qwen3-32b` runs no `docker compose` step,
+writes the role record with `api=openai` and `path=/v1`, and the gateway
+configuration names it (`app-role-relays-to-the-app`); an add for a model the
+app doesn't list stops and keeps the record (`app-role-checks-the-app`); and
+remove takes only the record away (`app-role-remove`). Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 
@@ -6602,7 +6610,16 @@ recommendation keeps it, split across two cards no live job uses (a
 `MoveToGpu` change with `gpuIndexes`, the machine's `cards` entry with
 `split: true`). Each change also has `gpuIndex` and `gpuIndexes` (0-based), and
 each machine `cards` (each role's cards, 1-based, as the review says them) and
-`gpus` (each card's `usedGb` and `capacityGb`).
+`gpus` (each card's `usedGb` and `capacityGb`). Give `fixture: "hostserved"` for
+a host (`lab-box`, an RTX 4060 with 8 GB and 128 GB of memory, installed
+natively) whose machine report lists the chat models LM Studio serves there
+(`openai/gpt-oss-120b`, loaded, and an embedding model): `servedModels.found`
+lists it with `computer: "lab-box"` and the host's own address, and the
+recommendation has an `AddRole` of the `deep-thinking-app` role with
+`model: "openai/gpt-oss-120b"` and `choices` (`APP_PORT` and `APP_PATH`), so
+the host's Thinking pool place relays to it instead of Gemma 4 E4B. Live
+Thinking stays a fast model. Each change has `choices` (more choices the role
+is installed with) when it names any.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.

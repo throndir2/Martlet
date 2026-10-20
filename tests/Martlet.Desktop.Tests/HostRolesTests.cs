@@ -361,7 +361,10 @@ public sealed class HostRolesTests
         // The one route-less role, Home Assistant, is set up from Smart home on a Linux host (Docker Desktop can't run it).
         Assert.Equal([HomeAssistantHosts.Role], roles.Except(routed).Select(r => r.Kind));
         Assert.All(HostRoles.All, r => Assert.NotNull(Martlet.Core.Platforms.PlatformCatalog.EngineForHostRole(r.Kind)));
-        Assert.Equal(HostRoles.All.Count, HostRoles.All.Select(r => r.RouteId).Distinct(StringComparer.Ordinal).Count());
+        // Each role has a route of its own, except the Thinking pool with your own app, which the gateway relays on the Thinking
+        // pool's route (one Thinking pool model on card 1; adding one stops the other).
+        Assert.Equal(HostRoles.All.Count - 1, HostRoles.All.Select(r => r.RouteId).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(HostRoles.DeepThinking, HostRoles.ForRoute(HostRoles.All.Single(r => r.Kind == HostRoles.AppDeepThinking).RouteId)?.Kind);
         Assert.Equal(HostRoles.DeepThinking, HostRoles.ForRoute(Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId)?.Kind);
     }
 

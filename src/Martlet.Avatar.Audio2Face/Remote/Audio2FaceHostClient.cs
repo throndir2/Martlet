@@ -718,6 +718,17 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
                             ? new HostLoadedModel(role, model, all, card, Integer(l, "context_tokens") is > 0 and var tokens ? tokens : null, Text(l, "digest"))
                             : null)
                         .OfType<HostLoadedModel>().ToArray()
+                    : null,
+                // Newer hosts installed natively: the chat models the model apps there serve (LM Studio, llama.cpp, vLLM...).
+                Served = root.TryGetProperty("served_models", out var served) && served.ValueKind == JsonValueKind.Array
+                    ? served.EnumerateArray().Take(32).Where(s => s.ValueKind == JsonValueKind.Object)
+                        .Select(s => Text(s, "app") is { } app && Text(s, "model") is { } model && Integer(s, "port") is > 0 and <= 65535 and var port &&
+                            Text(s, "path") is "/v1" or "/api/v1" or "/engines/v1"
+                            ? new HostServedModel(app, Text(s, "app_name") ?? app, port, Text(s, "path")!, model,
+                                s.TryGetProperty("bytes", out var size) && size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out var all) && all > 0 ? all : null,
+                                s.TryGetProperty("loaded_bytes", out var held) && held.ValueKind == JsonValueKind.Number && held.TryGetInt64(out var vram) && vram >= 0 ? vram : null)
+                            : null)
+                        .OfType<HostServedModel>().ToArray()
                     : null
             }, version);
         }

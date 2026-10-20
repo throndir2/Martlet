@@ -147,6 +147,22 @@ public sealed class ConfigurationTests
         Assert.Equal([Martlet.Core.Settings.SelfHostSetup.OllamaRouteId, Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId],
             routes.Select(r => r.RouteId));
         Assert.Equal(["gemma4-e4b", "qwen3-8b"], routes.Select(r => r.ModelId));
+        // The deep-thinking-app role: the Thinking pool's route relayed to the owner's own model app (its OpenAI-compatible API).
+        var app = Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"deep-thinking-app\",\"endpoint\":\"http://127.0.0.1:1234/\",\"model\":\"qwen/qwen3-32b\",\"api\":\"openai\",\"path\":\"/v1\"}]")).Roles);
+        Assert.Equal("/v1", app.AppPath);
+        var relay = Assert.IsType<Martlet.Gateway.Ollama.OllamaRelayWorker>(NativeHostPlatform.RoleWorker(app));
+        Assert.Equal((Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, (int?)null, false), (relay.Route.RouteId, relay.OwnPort, relay.OffersOpenAi));
+        foreach (var bad in new[]
+        {
+            "[{\"kind\":\"deep-thinking-app\",\"endpoint\":\"http://127.0.0.1:1234/\",\"model\":\"m\",\"api\":\"anthropic\",\"path\":\"/v1\"}]",
+            "[{\"kind\":\"deep-thinking-app\",\"endpoint\":\"http://127.0.0.1:1234/\",\"model\":\"m\",\"api\":\"openai\",\"path\":\"/admin\"}]",
+            "[{\"kind\":\"deep-thinking-app\",\"endpoint\":\"http://127.0.0.1:1234/\",\"model\":\"m\",\"api\":\"openai\"}]",
+            "[{\"kind\":\"deep-thinking-app\",\"endpoint\":\"http://127.0.0.1:1234/\",\"model\":\"m\"}]",
+            "[{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:1234/\",\"model\":\"m\",\"api\":\"openai\",\"path\":\"/v1\"}]",
+            "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:1234/\",\"model\":\"m\",\"api\":\"openai\",\"path\":\"/v1\"}]"
+        })
+            Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RoleConfig(bad)));
         var stt = Assert.Single(HostConfiguration.Parse(RoleConfig(
             "[{\"kind\":\"stt\",\"endpoint\":\"http://127.0.0.1:8178/\",\"model\":\"large-v3-turbo\"}]")).Roles);
         Assert.IsType<Martlet.Gateway.Stt.SttRelayWorker>(NativeHostPlatform.RoleWorker(stt));

@@ -64,6 +64,10 @@ public static partial class NetworkRecommender
     /// <summary>The host role kinds the recommender places, besides the voice engines.</summary>
     public const string ThinkingRole = "ollama", DeepThinkingRole = "deep-thinking", ListeningRole = "stt", LipSyncRole = "audio2face";
 
+    /// <summary>The host role that relays a host's Thinking pool (card 1, the deep-thinking route) to a chat model the owner's own
+    /// model app there serves (LM Studio, llama.cpp, vLLM...): Martlet runs nothing for it, and the app keeps the model's memory.</summary>
+    public const string AppDeepThinkingRole = "deep-thinking-app";
+
     /// <summary>The host role kinds of the optional extras, which get only the room the needed jobs leave: singing, pictures,
     /// motion and Reading (RapidOCR or PP-OCRv5, on a processor unless the owner chose PP-OCRv5 server on a graphics card).</summary>
     private const string SingingRole = "singing", PicturesRole = "pictures", MotionRole = "motion", ReadingRole = "ocr";
@@ -146,6 +150,10 @@ public static partial class NetworkRecommender
         /// <summary>Why it goes if nothing else keeps it: its job moved to a host, but a pool may still keep it.</summary>
         public (SetupChangeBenefit Benefit, string Why)? Moved { get; set; }
         public bool IsModel => Kind is ThinkingRole or DeepThinkingRole;
+        /// <summary>A Thinking pool place relayed to the owner's own model app on its computer (<see cref="AppDeepThinkingRole"/>):
+        /// it runs on the deep-thinking route, takes none of Martlet's room, and <see cref="Choices"/> say where the app answers.</summary>
+        public bool App { get; set; }
+        public IReadOnlyDictionary<string, string>? Choices { get; set; }
         /// <summary>A model split across several cards (tensor split): every card it runs on, <see cref="Card"/> first. Null:
         /// one card (or none).</summary>
         public int[]? Span { get; set; }

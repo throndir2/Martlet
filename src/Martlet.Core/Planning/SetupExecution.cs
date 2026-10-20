@@ -406,9 +406,17 @@ public static class SetupExecutor
             foreach (var (variable, value) in needs.Current) arguments["choice." + variable] = value;
         if (change.Kind == SetupChangeKind.ChangeModel && string.IsNullOrEmpty(change.Model))
             return (arguments, $"The change names no model for {role} on {change.MachineId}.");
+        // More choices the change names (the deep-thinking-app role's port and path): each must be one of the role's options.
+        foreach (var (variable, value) in change.Kind == SetupChangeKind.AddRole && change.Choices is { } extra ? extra : new Dictionary<string, string>())
+        {
+            if (needs.Choices.FirstOrDefault(c => c.Variable == variable) is not { } named ||
+                !named.Options.Contains(value, StringComparer.Ordinal) && !(named.Open && SetupRoleChoice.OpenValue(value)))
+                return (arguments, $"{change.MachineId}'s {role} role doesn't offer {value} for {variable}: update Martlet there, then check again.");
+            arguments["choice." + variable] = value;
+        }
         if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.ChangeModel && change.Model is { Length: > 0 } model)
         {
-            var choice = ModelChoice(needs, model, arguments);
+            var choice = ModelChoice(needs, model, arguments, change.Choices?.Keys);
             if (choice is null && needs.Choices.Count > 0)
                 return (arguments, $"{change.MachineId}'s {role} role doesn't offer {model}: update Martlet there, then check again.");
             if (choice is not null)
@@ -456,11 +464,13 @@ public static class SetupExecutor
     }
 
     /// <summary>The choice whose options hold <paramref name="model"/>: one of the variant already chosen first, then any; else
-    /// an open choice (<see cref="SetupRoleChoice.Open"/>) that takes it.</summary>
-    private static SetupRoleChoice? ModelChoice(SetupRoleNeeds needs, string model, IReadOnlyDictionary<string, string> arguments)
+    /// an open choice (<see cref="SetupRoleChoice.Open"/>) that takes it, other than the choices the change <paramref name="named"/> itself.</summary>
+    private static SetupRoleChoice? ModelChoice(SetupRoleNeeds needs, string model, IReadOnlyDictionary<string, string> arguments,
+        IEnumerable<string>? named = null)
     {
         var offering = needs.Choices.Where(c => c.Options.Contains(model, StringComparer.OrdinalIgnoreCase)).ToArray();
-        if (offering.Length == 0 && SetupRoleChoice.OpenValue(model)) offering = [.. needs.Choices.Where(c => c.Open)];
+        if (offering.Length == 0 && SetupRoleChoice.OpenValue(model))
+            offering = [.. needs.Choices.Where(c => c.Open && !(named ?? []).Contains(c.Variable, StringComparer.Ordinal))];
         return offering.FirstOrDefault(c => c.When is not null && Holds(c.When, arguments)) ?? offering.FirstOrDefault(c => c.When is null) ??
             offering.FirstOrDefault();
     }

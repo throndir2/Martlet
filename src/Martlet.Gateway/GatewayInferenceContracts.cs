@@ -1513,6 +1513,10 @@ public interface IOllamaGatewayInferenceWorker : IGatewayInferenceWorker
     /// for the host's machine report; null when it doesn't say. It only reads, so it never loads or unloads a model.</summary>
     ValueTask<IReadOnlyList<GatewayLoadedModel>?> ReadLoadedAsync(CancellationToken cancellationToken) =>
         ValueTask.FromResult<IReadOnlyList<GatewayLoadedModel>?>(null);
+
+    /// <summary>The loopback port of the Ollama server Martlet's own role runs, so the host's report of models its apps serve
+    /// (<see cref="GatewayServedModel"/>) leaves it out; null for a worker that relays to the owner's own app.</summary>
+    int? OwnPort => null;
 }
 
 public interface IF5GatewayInferenceWorker : IGatewayInferenceWorker

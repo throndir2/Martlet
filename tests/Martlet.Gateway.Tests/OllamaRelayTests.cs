@@ -92,6 +92,119 @@ public sealed class OllamaRelayTests
         Assert.Empty(ollama.Requests);
     }
 
+    // NOT AI: a controlled HTTP fixture stands in for the owner's own model app (LM Studio) on the host's loopback.
+    private static async Task<(WebApplication App, Uri Endpoint, List<JsonDocument> Requests)> StartAppAsync(params string[] lines)
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        var app = builder.Build();
+        var requests = new List<JsonDocument>();
+        app.MapPost("/v1/chat/completions", async context =>
+        {
+            var request = await JsonDocument.ParseAsync(context.Request.Body);
+            lock (requests) requests.Add(request);
+            context.Response.ContentType = "text/event-stream";
+            foreach (var line in lines)
+            {
+                await context.Response.WriteAsync(line + "\n\n");
+                await context.Response.Body.FlushAsync();
+            }
+        });
+        await app.StartAsync();
+        return (app, new Uri(app.Urls.First() + "/"), requests);
+    }
+
+    [Fact]
+    public async Task Paired_desktop_streams_a_thinking_pool_job_from_the_owners_own_model_app()
+    {
+        var (app, endpoint, requests) = await StartAppAsync(
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}]}",
+            ": keep-alive",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Thought\"}}]}",
+            "data: {\"choices\":[{\"delta\":{\"content\":\" it over\"},\"finish_reason\":null}]}",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}",
+            "data: [DONE]");
+        await using var owned = app;
+        await using var worker = OllamaRelayWorker.App(endpoint, "/v1", "qwen3-32b");
+        // It relays to the owner's app: Martlet reads no Ollama there, and the OpenAI-compatible endpoint doesn't offer it.
+        Assert.Null(await worker.ReadLoadedAsync(CancellationToken.None));
+        Assert.Null(worker.OwnPort);
+        Assert.False(worker.OffersOpenAi);
+        Assert.Equal(Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, worker.Route.RouteId);
+        Assert.Equal(GatewayLane.Pool, worker.Route.Lane);
+
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
+        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+            card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
+        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId);
+        var text = new List<string>();
+        await foreach (var delta in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
+            "You are Martlet.", [new(false, "Hi")], "Think it over.", 0.6, 300, 16_384))
+            text.Add(delta);
+
+        Assert.Equal("Thought it over", string.Concat(text));
+        var sent = Assert.Single(requests).RootElement;
+        Assert.Equal(("qwen3-32b", true, 300), (sent.GetProperty("model").GetString(), sent.GetProperty("stream").GetBoolean(),
+            sent.GetProperty("max_tokens").GetInt32()));
+        var messages = sent.GetProperty("messages").EnumerateArray()
+            .Select(m => (m.GetProperty("role").GetString(), m.GetProperty("content").GetString())).ToArray();
+        Assert.Equal([("system", "You are Martlet."), ("user", "Hi"), ("user", "Think it over.")], messages);
+        Assert.False(sent.TryGetProperty("options", out _));
+        foreach (var request in requests) request.Dispose();
+    }
+
+    [Fact]
+    public void An_apps_stream_lines_and_a_picture_become_the_openai_request_and_text()
+    {
+        Assert.Equal(("Hi", false, (string?)null), OllamaRelayWorker.AppLine("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"u8, false));
+        Assert.Equal(((string?)null, true, (string?)null), OllamaRelayWorker.AppLine("data: [DONE]"u8, false));
+        Assert.Equal(((string?)null, false, (string?)null), OllamaRelayWorker.AppLine(": ping"u8, false));
+        Assert.Equal("worker.failed", OllamaRelayWorker.AppLine("data: {\"error\":{\"message\":\"boom\"}}"u8, false).Error);
+        Assert.Equal("request.invalid", OllamaRelayWorker.AppLine("data: {\"error\":\"model does not support audio\"}"u8, true).Error);
+        Assert.Throws<ArgumentException>(() => OllamaRelayWorker.App(new Uri("http://127.0.0.1:1234/"), "/v2", "x"));
+        Assert.Throws<ArgumentException>(() => OllamaRelayWorker.App(new Uri("http://192.168.1.5:1234/"), "/v1", "x"));
+    }
+
+    [Fact]
+    public async Task The_machine_report_lists_the_chat_models_the_hosts_apps_serve()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200, "{\"done\":true}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var looks = 0;
+        host.Server.Inference.LookForServers = _ =>
+        {
+            Interlocked.Increment(ref looks);
+            return Task.FromResult<IReadOnlyList<Martlet.Providers.LocalModelServer>>(
+            [
+                // Martlet's own Ollama role (its port): left out.
+                new("ollama", "Ollama", $"http://127.0.0.1:{ollama.Endpoint.Port}/v1", ["llama3.2:3b"]),
+                new("lm-studio", "LM Studio", "http://127.0.0.1:1234/v1", ["qwen3-32b", "text-embedding-nomic-embed-text-v1.5"])
+                {
+                    SizesGb = new Dictionary<string, double> { ["qwen3-32b"] = 19.8 }, LoadedGb = new Dictionary<string, double> { ["qwen3-32b"] = 0 }
+                },
+                new("vllm", "vLLM", "http://127.0.0.1:8000/v1", []) { NeedsKey = true }
+            ]);
+        };
+        host.Server.Machine = GatewayMachineReport.Parse(System.Text.Encoding.UTF8.GetBytes(
+            "{\"collected_at\":\"2026-10-10T18:00:00Z\",\"method\":\"native\",\"operating_system\":\"Ubuntu 24.04\",\"gpus\":[]}"));
+        var (connection, _) = await ConnectAsync(host);
+        using var owned = connection;
+        // The first report doesn't wait for the look; it starts it in the background.
+        var (first, _) = await connection.ReadMachineReportAsync();
+        Assert.Null(first!.Served);
+        await host.Server.Inference.ServedLookDone();
+        var (hardware, _) = await connection.ReadMachineReportAsync();
+        var served = Assert.Single(hardware!.Served!);
+        Assert.Equal(("lm-studio", "LM Studio", 1234, "/v1", "qwen3-32b", (long?)19_800_000_000, (long?)0),
+            (served.App, served.AppName, served.Port, served.Path, served.Model, served.Bytes, served.LoadedBytes));
+        // Kept for a while: the next report doesn't look again.
+        await connection.ReadMachineReportAsync();
+        Assert.Equal(1, looks);
+    }
     [Fact]
     public async Task Paired_desktop_streams_a_conversation_reply_from_the_hosts_ollama_through_the_gateway()
     {

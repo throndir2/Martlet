@@ -90,6 +90,8 @@ internal static class HostRoles
     internal const string Ocr = "ocr";
     internal const string Motion = "motion";
     internal const string VoiceRecognition = "voice-recognition";
+    /// <summary>The Thinking pool relayed to a model the owner's own app serves on the host (role.conf external=openai).</summary>
+    internal const string AppDeepThinking = Martlet.Core.Planning.NetworkRecommender.AppDeepThinkingRole;
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -122,6 +124,12 @@ internal static class HostRoles
             HostRoute.DeepThinkingRouteId, "deep thinking",
             "Joins the Thinking pool: background jobs (thinking longer, research, summaries) run on that host with a model of its own, beside Thinking's, while the " +
             "conversation carries on. A job's text (for a think, the task and the conversation so far) goes there."),
+        new(AppDeepThinking, "Thinking pool", "Thinking pool (your own app)",
+            "a model app on that host (LM Studio, llama.cpp, vLLM and others) that serves a chat model, and Martlet's host service installed natively (not in Docker)",
+            HostRoute.DeepThinkingRouteId, "deep thinking",
+            "Joins the Thinking pool with a model your own app already serves on that host, instead of a model of Martlet's own: Martlet " +
+            "installs and downloads nothing, and your app keeps the model loaded. A job's text (for a think, the task and the conversation so " +
+            "far) goes to your app there."),
         .. Enumerable.Range(2, SelfHostSetup.DeepThinkingMaximumCards - 1).Select(card => new HostRoleInfo(SelfHostSetup.DeepThinkingRoleKind(card),
             "Thinking pool", $"Thinking pool (card {card})", $"a host with at least {card} NVIDIA graphics cards",
             SelfHostSetup.DeepThinkingRouteIdFor(card), "deep thinking",
@@ -189,8 +197,11 @@ internal static class HostRoles
     /// <summary>Whether <paramref name="role"/> is offered on a host with <paramref name="nvidiaCards"/> NVIDIA graphics cards
     /// (null: not reported): every role is, except a Thinking pool model for an extra card (deep-thinking-2...), which needs
     /// that many cards. A role the host runs already is always listed, so it can be changed or removed.</summary>
-    internal static bool OfferedOn(HostRoleInfo role, int? nvidiaCards, bool installed = false) =>
-        installed || SelfHostSetup.DeepThinkingCardOfRole(role.Kind) is not { } card || card <= 1 || nvidiaCards >= card;
+    internal static bool OfferedOn(HostRoleInfo role, int? nvidiaCards, bool installed = false, bool servesModels = false) =>
+        installed || (role.Kind == AppDeepThinking
+            // The Thinking pool with your own app: only on a host whose report lists chat models its apps serve.
+            ? servesModels
+            : SelfHostSetup.DeepThinkingCardOfRole(role.Kind) is not { } card || card <= 1 || nvidiaCards >= card);
 
     /// <summary>How many NVIDIA graphics cards <paramref name="hardware"/> reports, or null when it doesn't report any hardware.</summary>
     internal static int? NvidiaCards(HostHardware? hardware) => hardware?.Gpus.Count(g => g.IsNvidia);
