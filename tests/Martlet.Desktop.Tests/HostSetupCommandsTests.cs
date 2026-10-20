@@ -171,6 +171,11 @@ public sealed class HostSetupCommandsTests
         Assert.False(choice.Suggested || role.GpuOrCpu);
         var ollama = HostRemote.ParseRole(["role.choice=OLLAMA_MODEL|Model|llama3.2:3b qwen2.5:7b|llama3.2:3b", "role.suggested=OLLAMA_MODEL", "role.accelerator=gpu cpu"]);
         Assert.True(Assert.Single(ollama.Choices).Suggested && ollama.GpuOrCpu);
+        Assert.False(Assert.Single(ollama.Choices).Open);
+        // An open model choice (role.choice_open) also takes any model from the model catalog; the executor sends it as is.
+        var open = HostRemote.ParseRole(["role.choice=OLLAMA_MODEL|Model|llama3.2:3b qwen2.5:7b|llama3.2:3b", "role.choice_open=OLLAMA_MODEL"]);
+        Assert.True(Assert.Single(open.Choices).Open);
+        Assert.True(Assert.Single(SetupRoleReading.Needs(open).Choices).Open);
         var probe = new HostProbe(false, false, "password", "Ubuntu 25.10", "x86_64", "192.168.1.20", "gpu", Systemd: true);
         Assert.Contains("Docker is not installed", HostRemote.Blocker(HostSetupMethod.SshDocker, probe, "me@gpu"));
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe, "me@gpu"));

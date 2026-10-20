@@ -24,15 +24,6 @@ internal static class PerceptionTestData
     internal const string CapturePermissionRevision =
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-    internal static PerceptionGatewayBinding Binding() => new()
-    {
-        DestinationId = Destination,
-        HostId = Host,
-        Role = PerceptionGatewayRole.Perception,
-        Authentication = PerceptionGatewayAuthentication.ScopedDeviceCredential,
-        AutomaticRedirectsAllowed = false
-    };
-
     internal static PerceptionJobIds Ids() => new()
     {
         SessionId = Guid.NewGuid(),
@@ -86,21 +77,6 @@ internal static class PerceptionTestData
             PerceptionVisionAuthorizationDecision.Allow,
             Guid.NewGuid(),
             expiry ?? request.DeadlineUtc);
-
-    internal static (
-        PerceptionGatewayClientAdapter Adapter,
-        DeterministicPerceptionWorkerTransport Transport)
-        Adapter(
-            PerceptionWorkerIdentity worker,
-            DeterministicPerceptionWorkerOptions? options = null,
-            TimeProvider? clock = null)
-    {
-        var transport = new DeterministicPerceptionWorkerTransport(
-            Binding(), worker, options, clock ?? Clock);
-        var adapter = new PerceptionGatewayClientAdapter(
-            transport, Destination, Host, worker, clock ?? Clock);
-        return (adapter, transport);
-    }
 
     internal static byte[] Png(
         int width = 2,
@@ -188,32 +164,6 @@ internal static class PerceptionTestData
                     : (crc >> 1) ^ 0xedb88320U;
         }
         return crc;
-    }
-
-    internal static async Task WaitForRequestsAsync(
-        DeterministicPerceptionWorkerTransport transport,
-        int count)
-    {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
-        while (transport.Requests.Count < count)
-        {
-            if (DateTimeOffset.UtcNow >= deadline)
-                throw new TimeoutException("The deterministic transport did not receive the expected request.");
-            await Task.Delay(10);
-        }
-    }
-
-    internal static async Task WaitForRequestAsync(
-        DeterministicPerceptionWorkerTransport transport,
-        Guid actionId)
-    {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
-        while (!transport.Requests.Any(request => request.ActionId == actionId))
-        {
-            if (DateTimeOffset.UtcNow >= deadline)
-                throw new TimeoutException("The deterministic transport did not receive the expected action.");
-            await Task.Delay(10);
-        }
     }
 
     internal static PerceptionWorkerException Failure(

@@ -4,7 +4,7 @@
 over the canonical protocol-2 `DurableGatewayHost`, not a new server or a
 completed Ubuntu/Docker installation. Permanent pairings, durable replay
 admission, same-key TLS renewal and the existing Kestrel/pinned-client stack
-are reused. The Windows `Martlet.Gateway.Host` CLI is unchanged.
+are reused. (An earlier Windows `Martlet.Gateway.Host` tool was removed because no app used it.)
 
 **No workers are registered** unless `host.json` lists host **roles**. Every
 role is declared the same way and maps to one gateway relay worker for a service

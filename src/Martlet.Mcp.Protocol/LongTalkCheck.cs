@@ -37,8 +37,10 @@ internal static class LongTalkCheck
     internal static async Task<object> RunAsync(JsonElement arguments, string martletDirectory, string speechDirectory,
         CancellationToken cancellation)
     {
-        var seconds = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("seconds", out var value) &&
-            value.ValueKind == JsonValueKind.Number ? value.GetInt32() : DefaultSeconds;
+        var seconds = DefaultSeconds;
+        if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("seconds", out var value) && value.ValueKind != JsonValueKind.Null &&
+            (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out seconds)))
+            throw new ArgumentException($"'seconds' must be a whole number, 30 to {MaximumSeconds}.");
         if (seconds is < 30 or > MaximumSeconds) throw new ArgumentException($"'seconds' must be 30 to {MaximumSeconds}.");
         var phrases = ParakeetCheck.Strings(arguments, "phrases", ParakeetCheck.MaximumPhrases, 200) ?? ParakeetCheck.Phrases;
         var clips = await Task.Run(() => phrases.Select(text => (Text: text, Pcm: UtteranceFilterCheck.Synthesize("speech:" + text))).ToArray(),

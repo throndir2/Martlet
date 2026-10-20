@@ -247,7 +247,7 @@ public sealed class RecommendedSetupTests
         var review = RecommendedSetupReview.From(Recommendation(build), build);
         Assert.False(review.AlreadyOptimal);
         Assert.Equal("A better setup is ready for your computers", review.Title);
-        Assert.StartsWith("4 changes on 3 computers.", review.Summary);
+        Assert.StartsWith("4 changes on 3 computers;", review.Summary);
         // In the order Reconfigure makes them (the recommender's setup order), each with how much it matters.
         Assert.Equal(["Improvement", "Tidier", "Needed", "Improvement"], review.Changes.Select(c => c.Benefit));
         Assert.Equal("gpu-box does Speaking.", review.Changes[0].Summary);
@@ -401,7 +401,7 @@ public sealed class RecommendedSetupTests
         ]) { Fingerprint = "e2b" };
 
         var review = RecommendedSetupReview.From(recommendation, build, catalog);
-        Assert.StartsWith("1 change. ", review.Summary);
+        Assert.StartsWith("1 change; ", review.Summary);
         Assert.Equal("your companion PCs", review.Changes.Single().Computer);
         Assert.Equal("Downloads about 7.2 GB: your companion PCs 7.2 GB.", review.Downloads);
         Assert.Contains("Thinking: each companion PC itself (Gemma 4 E2B) (today: OpenAI GPT-5 mini).", review.Jobs);
@@ -414,7 +414,7 @@ public sealed class RecommendedSetupTests
         var review = RecommendedSetupReview.From(NetworkRecommender.Recommend(build.Request) with { Changes = [] }, build);
         Assert.True(review.AlreadyOptimal);
         Assert.Equal("Your computers already use the recommended setup.", review.Title);
-        Assert.Equal("Martlet checked 3 computers against the recommended setup. Nothing needs to change.", review.Summary);
+        Assert.Equal("Martlet checked 3 computers against the recommended setup, and nothing needs to change.", review.Summary);
         Assert.Empty(review.Changes);
         Assert.Null(review.Downloads);
     }

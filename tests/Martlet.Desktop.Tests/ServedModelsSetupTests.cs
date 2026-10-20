@@ -82,7 +82,7 @@ public sealed class ServedModelsSetupTests
 
         var review = RecommendedSetupReview.From(recommendation, build);
         Assert.True(review.UseServed);
-        Assert.Equal(["llama3.3:70b in Ollama (about 46 GB)", "qwen3-32b in LM Studio (about 22 GB)"], review.Served);
+        Assert.Equal(["llama3.3:70b in Ollama (about 46 GB)", "qwen3-32b in LM Studio (about 22 GB, loaded now)"], review.Served);
         // Each found model is an explicit choice (Think with it), in the order the review lists them, with its app's address.
         Assert.Equal(["llama3.3:70b", "qwen3-32b"], review.ServedChoices.Select(m => m.ModelId));
         Assert.Equal(review.Served, review.ServedChoices.Select(RecommendedSetupInputs.ServedLine));
@@ -138,5 +138,22 @@ public sealed class ServedModelsSetupTests
         Assert.Null(DefaultSetup.WithServed(smallPlan, served, smallGpus, smallWindows, 16, English, 64).Served);
         Assert.Null(DefaultSetup.WithServed(plan, [served[2]], gpus, windows, 16, English, 64).Served);
         Assert.Same(plan, DefaultSetup.WithServed(plan, [], gpus, windows, 16, English, 64));
+    }
+
+    [Fact]
+    public void A_model_the_app_has_loaded_is_not_counted_twice()
+    {
+        // A 32 GB card with 21 GB in use: LM Studio holds qwen3-32b (about 20 GB) loaded there already.
+        IReadOnlyList<GpuNow> gpus = [new("NVIDIA GeForce RTX 5090", 32, 21, "581.42")];
+        var windows = new GpuInfo("NVIDIA GeForce RTX 5090", 32);
+        var plan = DefaultSetup.Plan(gpus, windows, 16, English, ramGb: 64);
+        // Not loaded, the 22 GB it needs would come on top of the 21 GB in use: no room.
+        Assert.Null(DefaultSetup.WithServed(plan, [Lm("qwen3-32b", 19.8)], gpus, windows, 16, English, 64).Served);
+        // Loaded, the memory in use already holds it (Ollama's /api/ps size_vram, or LM Studio's loaded state at its size).
+        var loaded = Lm("qwen3-32b", 19.8) with { LoadedGb = 0 };
+        Assert.Equal("qwen3-32b", DefaultSetup.WithServed(plan, [loaded], gpus, windows, 16, English, 64).Served?.ModelId);
+        Assert.Equal(2.0, ServedModels.Extra(loaded, ServedModels.Gb(loaded)!.Value));
+        Assert.Equal(0, ServedModels.Extra(loaded with { LoadedGb = 23 }, ServedModels.Gb(loaded)!.Value));
+        Assert.Contains("loaded there now", DefaultSetup.WithServed(plan, [loaded], gpus, windows, 16, English, 64).Describe(), StringComparison.Ordinal);
     }
 }

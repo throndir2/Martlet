@@ -4,6 +4,5 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Martlet.Perception.Tests" />
-    <InternalsVisibleTo Include="Martlet.Perception.Qualification" />
   </ItemGroup>
 </Project>

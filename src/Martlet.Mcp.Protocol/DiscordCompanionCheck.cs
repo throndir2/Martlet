@@ -23,7 +23,7 @@ internal static class DiscordCompanionCheck
         object? filed = null;
         if (requestFrom is { } from)
         {
-            if (!explicitDirectory) throw new ArgumentException("requestFrom writes a friend request; pass an explicit (disposable) dataDirectory.");
+            if (!explicitDirectory) throw new ArgumentException("requestFrom writes a friend request; pass an explicit, disposable dataDirectory (not Martlet's own data folder).");
             if (from == 0) throw new ArgumentException("requestFrom must be a Discord user ID.");
             var saved = DiscordPreferences.Load(directory);
             var (next, outcome) = DiscordFriends.Ask(DiscordCompanionState.Load(directory), saved, from, requestName ?? "Rehearsal friend",

@@ -2,7 +2,7 @@
 // and extracts it into the ignored vendor directory. Nothing from the SDK is committed to git.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -13,6 +13,29 @@ export const vendorRoot = fileURLToPath(new URL("../vendor/", import.meta.url));
 export const sdkRoot = path.join(vendorRoot, `CubismSdkForWeb-${SDK_VERSION}`);
 
 const exists = file => access(file).then(() => true, () => false);
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Runs fn while this process holds the lock file, so parallel builds (MSBuild -m) take turns.
+ *  A lock older than staleMs is left by a killed process and is taken over. */
+export async function withFileLock(lockFile, fn, { staleMs = 15 * 60_000, timeoutMs = 30 * 60_000 } = {}) {
+  await mkdir(path.dirname(lockFile), { recursive: true });
+  const started = Date.now();
+  let handle;
+  while (!handle) {
+    try {
+      handle = await open(lockFile, "wx");
+      await handle.writeFile(`${process.pid}\n`);
+    } catch (error) {
+      if (error.code !== "EEXIST" && error.code !== "EPERM" && error.code !== "EBUSY") throw error;
+      const age = await stat(lockFile).then(info => Date.now() - info.mtimeMs, () => 0);
+      if (age > staleMs) { await rm(lockFile, { force: true }); continue; }
+      if (Date.now() - started > timeoutMs) throw new Error(`Timed out waiting for ${lockFile}; delete it if no build is running.`);
+      await delay(250);
+    }
+  }
+  try { return await fn(); }
+  finally { await handle.close(); await rm(lockFile, { force: true }); }
+}
 
 function extract(zip, destination) {
   // Windows ships bsdtar (zip-capable) in System32; Git's GNU tar earlier on PATH cannot read zip files.
@@ -32,7 +55,13 @@ function extract(zip, destination) {
 /** Returns the extracted SDK root, or null when unavailable and not required. */
 export async function ensureSdk({ required = false } = {}) {
   const marker = path.join(sdkRoot, ".martlet-verified");
-  if (await exists(marker) && (await readFile(marker, "utf8")).trim() === SDK_SHA256) return sdkRoot;
+  const verified = async () => await exists(marker) && (await readFile(marker, "utf8")).trim() === SDK_SHA256;
+  if (await verified()) return sdkRoot;
+  // Only one process downloads and extracts; the others wait and then use its verified result.
+  return withFileLock(path.join(vendorRoot, ".sdk.lock"), async () => verified().then(done => done ? sdkRoot : downloadSdk(marker, required)));
+}
+
+async function downloadSdk(marker, required) {
   try {
     if (process.env.MARTLET_LIVE2D_OFFLINE === "1") throw new Error("MARTLET_LIVE2D_OFFLINE=1 disables the SDK download.");
     await mkdir(vendorRoot, { recursive: true });

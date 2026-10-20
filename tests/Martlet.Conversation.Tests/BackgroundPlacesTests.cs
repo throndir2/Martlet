@@ -47,9 +47,26 @@ public sealed class BackgroundPlacesTests
         var next = jobs.Start(Think, "next", Until(release.Task), Pool);
         Assert.Equal("ripley", next.Job!.Place!.Name);
         release.SetResult();
-        await WaitAsync(() => jobs.Active.Count == 0);
-        Assert.Empty(jobs.Places.Leases);
+        // A job is finished a moment before its place is let go.
+        await WaitAsync(() => jobs.Active.Count == 0 && jobs.Places.Leases.Count == 0);
         Assert.Equal("done on ripley", next.Job.Result);
+    }
+
+    [Fact]
+    public async Task Jobs_started_one_after_another_wait_in_line_in_the_order_they_were_started()
+    {
+        // Each round starts a job that takes the only place, then four that wait: the line is always the start order.
+        for (var round = 0; round < 30; round++)
+        {
+            using var jobs = new BackgroundJobs();
+            var release = new TaskCompletionSource();
+            IReadOnlyList<BackgroundPlace> one = [Diva];
+            var kind = new BackgroundJobKind("test", 5, null, null);
+            var started = Enumerable.Range(0, 5).Select(i => jobs.Start(kind, $"task {i}", Until(release.Task), one, wait: true)).ToArray();
+            Assert.Equal(started.Skip(1).Select(start => start.Job!.Id), jobs.Places.Line);
+            jobs.CancelAll();
+            await WaitAsync(() => jobs.Active.Count == 0);
+        }
     }
 
     [Fact]

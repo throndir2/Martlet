@@ -126,6 +126,15 @@ public sealed class McpHub(string clientName, string clientVersion, TimeProvider
         return Status;
     }
 
+    /// <summary>Waits until server <paramref name="name"/> is no longer starting, or until <paramref name="maximum"/> passes.</summary>
+    public async Task WaitForServerAsync(string name, TimeSpan maximum, CancellationToken token)
+    {
+        Task? starting;
+        lock (gate) starting = entries.GetValueOrDefault(name) is { State: McpServerState.Starting } entry ? entry.Starting : null;
+        if (starting is not null) await Task.WhenAny(starting, Task.Delay(maximum, clock, token)).ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+    }
+
     public async Task<McpToolResult> CallAsync(string server, string tool, JsonObject? arguments, TimeSpan timeout, CancellationToken token)
     {
         Entry? entry;

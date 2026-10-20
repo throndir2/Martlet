@@ -57,6 +57,9 @@ internal sealed record HostRoleSecret(string Name, string Prompt, bool Stored);
 internal sealed record HostRoleChoice(string Variable, string Label, IReadOnlyList<string> Options, string Default, bool Suggested = false,
     (string Variable, string Value)? When = null)
 {
+    /// <summary>It also takes any model name, not only <see cref="Options"/> (role.choice_open: an Ollama tag or hf.co/... GGUF).</summary>
+    internal bool Open { get; init; }
+
     /// <summary>The dialog field's key: <c>choice.VAR</c>, or <c>choice.VAR@WHEN=VALUE</c> for one variant's (the answer is
     /// still <c>choice.VAR</c>; see <see cref="HostInputDialog.Cleaned"/>).</summary>
     internal string Key => "choice." + Variable + (When is { } when ? $"@{when.Variable}={when.Value}" : "");
@@ -340,6 +343,7 @@ internal sealed partial class HostRemote(HostShell shell)
         string? gpuCurrent = null;
         string? acceleratorCurrent = null;
         var current = new Dictionary<string, string>(StringComparer.Ordinal);
+        var open = new HashSet<string>(StringComparer.Ordinal);
         static (string Variable, string Value)? Condition(string text) =>
             text.Split('=') is [var variable, var value] && variable.Length > 0 && value.Length > 0 ? (variable, value) : null;
         foreach (var line in lines)
@@ -381,6 +385,7 @@ internal sealed partial class HostRemote(HostShell shell)
                                              Condition(when) is { } condition:
                     choices.Add(new(variable, label, options.Split(' ', StringSplitOptions.RemoveEmptyEntries), fallback, When: condition));
                     break;
+                case "role.choice_open" when value.Length > 0: open.Add(value); break;
                 case "role.suggested_when" when value.Split('|') is [var when, var variable] && Condition(when) is { } condition:
                     suggestedWhen.Add((condition.Variable, condition.Value, variable));
                     break;
@@ -392,7 +397,8 @@ internal sealed partial class HostRemote(HostShell shell)
         return new(title, requires, terms, installed, secrets,
             choices.Select(c => c with
             {
-                Suggested = c.When is { } when ? suggestedWhen.Contains((when.Variable, when.Value, c.Variable)) : suggested.Contains(c.Variable)
+                Suggested = c.When is { } when ? suggestedWhen.Contains((when.Variable, when.Value, c.Variable)) : suggested.Contains(c.Variable),
+                Open = open.Contains(c.Variable)
             }).ToList(), gpuOrCpu)
         {
             SecretWhen = secretWhen, TermsWhen = termsWhen, Stops = stops, Gpus = gpus, GpuCurrent = gpuCurrent, GpuWhen = gpuWhen,

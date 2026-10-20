@@ -33,9 +33,10 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             AbilitiesLine("elevenlabs", engine.Abilities, engine.Tags),
-            Note("ElevenLabs copies one of your voices and speaks replies with it in real time, with tones such as [whispers], " +
-                "[happy] or [sad] and sounds such as [laughs]. Martlet follows ElevenLabs' documentation; it hasn't been tried with " +
-                "a live ElevenLabs account yet.", new Thickness(0, 6, 0, 0))
+            HelpTip.Explain("ElevenLabs copies one of your voices and speaks replies with it in real time. It adds tones such as " +
+                "[whispers], [happy] or [sad] and sounds such as [laughs]. Martlet follows ElevenLabs' documentation, but nobody has " +
+                "tried it with a live ElevenLabs account yet.", new Thickness(0, 6, 0, 0), "ElevenLabsAbout", "ElevenLabs",
+                wiki: "Voices#elevenlabs")
         };
 
         var status = Note(ElevenLabsStatus(saved), new Thickness(0, 8, 0, 0));
@@ -61,20 +62,29 @@ public partial class MainWindow
         AutomationProperties.SetName(key, "ElevenLabs API key");
         AutomationProperties.SetAutomationId(key, "ElevenLabsKey");
         InputHint.SetText(key, "Paste your ElevenLabs API key");
-        var keyStatus = Note(saved?.CredentialId is not null ? "Your ElevenLabs key is saved. Leave this empty to keep it, or paste a new key."
+        var keyStatus = Note(saved?.CredentialId is not null ? "Your ElevenLabs key is saved; leave this empty to keep it or paste a new one."
             : SetupSettings.SetAsideElevenLabsCredentials(homeSettings).Count > 0
-                ? "Your ElevenLabs key from before is still saved. Leave this empty to use it again, or paste a new key."
-            : "Paste your ElevenLabs API key (elevenlabs.io › Developers › API keys). Martlet saves it in Windows Credential Manager.",
+                ? "Your ElevenLabs key from before is still saved; leave this empty to use it again or paste a new one."
+            : "Paste your ElevenLabs API key (elevenlabs.io › Developers › API keys); Martlet keeps it in Windows Credential Manager.",
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "ElevenLabsKeyStatus");
 
         // The box comes ticked only for the exact choice the owner confirmed: never over a voice they didn't pick.
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8), IsChecked = saved?.Consent is not null && Cloned(),
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text =
-                "I choose ElevenLabs for Voice. Martlet uploads the chosen recording to my ElevenLabs account once to clone it, and " +
-                "sends reply text there while it speaks. The recording is my own voice, a voice I have its speaker's permission for, " +
-                "or a published sample anyone may use. Requests cost money." } };
+                "I choose ElevenLabs for Voice: Martlet uploads the chosen recording to my ElevenLabs account once to clone it and " +
+                "sends reply text there while it speaks, and requests cost money." } };
         AutomationProperties.SetAutomationId(consent, "ElevenLabsConsent");
+        // The box's text wraps, so its "?" sits at the right of the row instead of in a StackPanel that would not wrap it.
+        var consentHelp = HelpTip.For("what you agree to",
+            "By ticking the box, you also confirm that the recording is your own voice, a voice you have its speaker's permission " +
+            "for, or a published sample anyone may use.", "ElevenLabsConsent", wiki: "Voices#what-you-agree-to");
+        consentHelp.Margin = new Thickness(6, 0, 0, 0);
+        consentHelp.VerticalAlignment = VerticalAlignment.Top;
+        DockPanel.SetDock(consentHelp, Dock.Right);
+        var consentRow = new DockPanel { Margin = consent.Margin, Children = { consentHelp } };
+        consent.Margin = new Thickness(0);
+        consentRow.Children.Add(consent);
 
         Button? save = null;
         string Label() => Cloned() ? "Use these settings" : "Clone and use ElevenLabs";
@@ -99,16 +109,17 @@ public partial class MainWindow
         [
             new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 10, 0, 4) },
             model,
-            Note($"{ElevenLabsSetup.ModelName(ElevenLabsSetup.V4Turbo)} is the fastest (about 100 ms, as ElevenLabs documents). If ElevenLabs " +
-                $"refuses it, Martlet says so; then choose {ElevenLabsSetup.ModelName(ElevenLabsSetup.V3Conversational)}.", new Thickness(0, 4, 0, 0)),
+            HelpTip.Explain($"{ElevenLabsSetup.ModelName(ElevenLabsSetup.V4Turbo)} is the fastest (about 100 ms, as ElevenLabs documents). " +
+                $"If ElevenLabs refuses it, Martlet says so; then choose {ElevenLabsSetup.ModelName(ElevenLabsSetup.V3Conversational)}.",
+                new Thickness(0, 4, 0, 0), "ElevenLabsModel", "the ElevenLabs model", wiki: "Voices#elevenlabs"),
             new Label { Content = "_Voice to clone", Target = voice, Padding = new Thickness(0, 10, 0, 4) },
             voices.Count == 0 ? Note("Add a voice first: choose This PC above, then Add a voice under Voices.", new Thickness(0, 0, 0, 0)) : voice,
             new Label { Content = "ElevenLabs API _key", Target = key, Padding = new Thickness(0, 10, 0, 4) },
             key,
             keyStatus,
-            Note(ElevenLabsSetup.Disclosure + " The cloned voice stays in your ElevenLabs account (My Voices) until you delete it there.",
-                new Thickness(0, 10, 0, 0)),
-            consent,
+            HelpTip.Explain(ElevenLabsSetup.Disclosure + " The cloned voice stays in your ElevenLabs account (My Voices) until you delete it there.",
+                new Thickness(0, 10, 0, 0), "ElevenLabsCosts", "what ElevenLabs costs and receives", wiki: "Voices#what-you-agree-to"),
+            consentRow,
             Row(save)
         ]);
         return stack;
@@ -120,12 +131,12 @@ public partial class MainWindow
     /// <summary>Where ElevenLabs stands, without the owner's voice names (ElevenLabsStatus is MCP-readable).</summary>
     private string ElevenLabsStatus(SetupRoute? saved) =>
         saved is null
-            ? "Not in use. Choose a voice, paste your ElevenLabs API key, tick the box, then press Clone and use ElevenLabs."
-            : $"In use: {ElevenLabsSetup.ModelName(saved.ModelId)} with your cloned voice." +
-              (saved.Enabled == false ? " Turned off." : saved.Consent is null ? " Not confirmed yet." : "") +
-              (saved.CredentialId is null ? " Add your ElevenLabs key." : " Key saved.") +
+            ? "Not in use yet: choose a voice, paste your ElevenLabs API key, tick the box, then press Clone and use ElevenLabs."
+            : $"In use: {ElevenLabsSetup.ModelName(saved.ModelId)} with your cloned voice" +
+              (saved.Enabled == false ? "; turned off" : saved.Consent is null ? "; not confirmed yet" : "") +
+              (saved.CredentialId is null ? "; add your ElevenLabs key" : "; key saved") +
               (saved.ClonedVoice?.RequiresVerification == true
-                  ? " ElevenLabs asked to verify this voice; verify it on elevenlabs.io before it speaks." : "");
+                  ? "; ElevenLabs asked to verify this voice, so verify it on elevenlabs.io before it speaks." : ".");
 
     /// <summary>The owner's saved voices whose recording this PC has or Martlet carries (the starter voices).</summary>
     private List<ElevenLabsVoiceChoice> ElevenLabsVoiceChoices()
@@ -147,7 +158,7 @@ public partial class MainWindow
     {
         if (usingElevenLabs)
         {
-            ActionText.Text = "Martlet is still setting up ElevenLabs. Wait for it to finish.";
+            ActionText.Text = "Martlet is still setting up ElevenLabs; wait for it to finish.";
             done();
             return;
         }
@@ -261,11 +272,11 @@ public partial class MainWindow
     internal static string ElevenLabsProblem(ElevenLabsException error) => error.Code switch
     {
         ProviderFailureCode.Authentication or ProviderFailureCode.CredentialUnavailable =>
-            "ElevenLabs didn't accept the API key. Check it on elevenlabs.io and paste it again.",
-        ProviderFailureCode.PermissionDenied => "That ElevenLabs key may not clone voices or speak. Allow Voices and Text to Speech for it on elevenlabs.io.",
-        ProviderFailureCode.QuotaExceeded => "Your ElevenLabs account is out of credits or its plan doesn't allow this. Check it on elevenlabs.io.",
-        ProviderFailureCode.RateLimited => "ElevenLabs is busy for your account. Try again in a moment.",
-        ProviderFailureCode.Network or ProviderFailureCode.DeadlineExceeded => "Martlet couldn't reach ElevenLabs. Check the connection and try again.",
+            "ElevenLabs didn't accept the API key, so check it on elevenlabs.io and paste it again.",
+        ProviderFailureCode.PermissionDenied => "That ElevenLabs key may not clone voices or speak, so allow Voices and Text to Speech for it on elevenlabs.io.",
+        ProviderFailureCode.QuotaExceeded => "Your ElevenLabs account is out of credits or its plan doesn't allow this, so check it on elevenlabs.io.",
+        ProviderFailureCode.RateLimited => "ElevenLabs is busy for your account; try again in a moment.",
+        ProviderFailureCode.Network or ProviderFailureCode.DeadlineExceeded => "Martlet couldn't reach ElevenLabs; check the connection and try again.",
         _ => "ElevenLabs refused it" + (error.Detail is { Length: > 0 } detail ? $": {detail}" : ".")
     };
 }

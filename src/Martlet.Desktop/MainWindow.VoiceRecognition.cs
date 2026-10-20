@@ -35,10 +35,9 @@ public partial class MainWindow
     {
         Area = PoolAreas.VoiceRecognition,
         Heading = "Where it runs",
-        Intro = "The places that recognize who is talking, in order. This PC recognizes on its processor. Your other computers run " +
-            "Martlet's Voice recognition role, on a graphics card when they have an NVIDIA one. A computer that answers before this " +
-            "PC would have finished recognizes; when none does, this PC's processor recognizes, so recognition keeps working. " +
-            "This list is the same on all your computers.",
+        Intro = "The places that recognize who is talking, in order. When no computer answers in time, this PC's processor " +
+            "recognizes, so recognition keeps working.",
+        Wiki = "Listening-and-Voice-ID#people",
         Status = VoiceRecognitionMemberStatus
     });
 
@@ -104,7 +103,7 @@ public partial class MainWindow
         var check = PageButton(recognitionChecking ? "Checking…" : "Check it now", () => CheckVoiceRecognitionAsync().Forget(), link: true,
             id: "PeopleRecognitionCheck");
         check.IsEnabled = !recognitionChecking;
-        check.ToolTip = "Recognizes three seconds of a test tone the way your voice goes: through the list below, in order. Nothing is learned or kept.";
+        check.ToolTip = "Sends three seconds of a test tone through the list below, in order, the way your voice goes, and learns or keeps nothing.";
         stack.Children.Add(Row(check));
         if (recognitionCheckResult is { } result)
         {
@@ -128,7 +127,7 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is VoiceEngineException or InvalidOperationException)
         {
-            recognitionCheckResult = $"Checked at {DateTime.Now:t}: nothing could recognize the test tone. {error.Message}";
+            recognitionCheckResult = $"Checked at {DateTime.Now:t}: nothing could recognize the test tone ({error.Message.TrimEnd('.')}).";
         }
         finally { recognitionChecking = false; }
         if (closing) return;

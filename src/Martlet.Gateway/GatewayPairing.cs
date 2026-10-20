@@ -109,6 +109,10 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     private long changeSequence;
     private long committedSequence;
     private GatewayAuthorityCommitStats commitStats = new(0, 0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
+    private GatewayAuthorityCommitStats nonceStats = new(0, 0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
+    // Nonces checked since the last save, for the next nonce append. A full save holds them all and clears this.
+    private readonly List<StoredGatewayNonceRecord> unsavedNonces = [];
+    private DateTimeOffset? replayFloor;
     private readonly GatewayHostIdentity identity;
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
@@ -140,11 +144,15 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         try
         {
             var now = ObserveTimeLocked(clock);
-            GatewayRules.Require(checkpoint.ObservedAt - now <= MaximumClockStepBack &&
+            // The nonce journal may have seen later times than the saved checkpoint; the newest is the high-water mark.
+            var highWater = checkpoint.JournalObservedAt is { } journal && journal > checkpoint.ObservedAt
+                ? journal : checkpoint.ObservedAt;
+            GatewayRules.Require(highWater - now <= MaximumClockStepBack &&
                 (!sameBoot || checkpoint.Frequency == frequency && checkpoint.Timestamp <= lastTimestamp!.Value),
                 "auth.clock_invalid");
-            if (now < checkpoint.ObservedAt)
-                lastObservedTime = now = checkpoint.ObservedAt;
+            if (now < highWater)
+                lastObservedTime = now = highWater;
+            replayFloor = checkpoint.ReplayFloor;
             var offlineTicks = (decimal)(now - checkpoint.ObservedAt).Ticks;
             if (sameBoot)
                 offlineTicks = Math.Max(offlineTicks, decimal.Ceiling(((decimal)lastTimestamp!.Value -
@@ -368,9 +376,9 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     GatewayPrincipal IGatewayRequestCredentials.Authenticate(GatewaySignedRequest request) =>
         Authenticate(request);
 
-    /// <summary>Checks a signed request and records its nonce. With durable storage the nonce is saved before the request
-    /// is admitted, but outside the main lock: requests that arrive while one commit writes share the next one. A
-    /// cancellation never closes the authority; only a storage failure does.</summary>
+    /// <summary>Checks a signed request and records its nonce. With durable storage the nonce is saved (one append to the
+    /// nonce journal) before the request is admitted, but outside the main lock: requests that arrive while one save writes
+    /// share the next one. A cancellation never closes the authority; only a storage failure does.</summary>
     internal GatewayPrincipal Authenticate(GatewaySignedRequest request)
     {
         CredentialRecord credential;
@@ -430,6 +438,8 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             throw new GatewayProtocolException("auth.clock");
         if (!credential.Roles.Contains(request.Role))
             throw new GatewayProtocolException("auth.role");
+        if (replayFloor is { } floor && request.Timestamp <= floor)
+            throw new GatewayProtocolException("auth.replay");
 
         foreach (var stale in credential.Nonces
             .Where(item => item.Value <= now).Select(item => item.Key).ToArray())
@@ -439,7 +449,10 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         if (credential.Nonces.Count >= MaximumNoncesPerCredential)
             throw new GatewayProtocolException("auth.rate");
         // A nonce must outlive only the time its signed timestamp still passes the clock check.
-        credential.Nonces.Add(request.Nonce, request.Timestamp + RequestClockSkew + TimeSpan.FromTicks(1));
+        var expires = request.Timestamp + RequestClockSkew + TimeSpan.FromTicks(1);
+        credential.Nonces.Add(request.Nonce, expires);
+        if (persistence is not null)
+            unsavedNonces.Add(new(credential.CredentialId, request.Nonce, expires, now));
         return credential;
     }
 
@@ -597,6 +610,10 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     private GatewayCheckpoint CheckpointLocked(DateTimeOffset now)
     {
         SweepInactiveLocked(now);
+        // The checkpoint holds every live nonce, so the nonces waiting for an append are saved with it.
+        unsavedNonces.Clear();
+        if (replayFloor is { } floor && floor < now - RequestClockSkew)
+            replayFloor = null;
         return new(now, credentials.Values.Select(record => new StoredGatewayCredential(
             record.CredentialId, record.DeviceId, record.DisplayName, record.Roles.ToArray(),
             record.Verifier.ToArray(), record.IssuedAt, record.Lifetime,
@@ -604,7 +621,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             record.Nonces.Where(item => item.Value > now)
                 .Select(item => new StoredGatewayNonce(item.Key, item.Value)).ToArray(),
             record.Access == GatewayAccess.Friend ? GatewayAccess.Friend : null)).ToArray(),
-            lastTimestamp!.Value, frequency);
+            lastTimestamp!.Value, frequency, replayFloor);
     }
 
     /// <summary>Saves the authority with the caller's change in it. The caller holds <c>commitGate</c> and <c>gate</c>.
@@ -633,17 +650,40 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     }
 
     /// <summary>Makes every change up to <paramref name="ticket"/> durable. Holds <c>commitGate</c> while it writes, and
-    /// <c>gate</c> only to copy the state, so one write can save the nonces of many requests.</summary>
+    /// <c>gate</c> only to copy the state, so one write can save the nonces of many requests. Nonces go to the store's
+    /// nonce journal (one append and one flush); when the store cannot append, the whole authority is saved.</summary>
     private void PersistThrough(long ticket)
     {
         lock (commitGate)
         {
-            GatewayCheckpoint checkpoint;
+            StoredGatewayNonceRecord[] nonces;
             long sequence;
             lock (gate)
             {
                 if (committedSequence >= ticket)
                     return;
+                nonces = unsavedNonces.ToArray();
+                unsavedNonces.Clear();
+                sequence = changeSequence;
+            }
+            try
+            {
+                if (TimedAppend(nonces))
+                {
+                    committedSequence = sequence;
+                    return;
+                }
+            }
+            catch (Exception error)
+            {
+                lock (gate)
+                    CloseLocked();
+                if (error is GatewayProtocolException) throw;
+                throw new GatewayProtocolException("auth.storage");
+            }
+            GatewayCheckpoint checkpoint;
+            lock (gate)
+            {
                 checkpoint = CheckpointLocked(ObserveTimeLocked(clock));
                 sequence = changeSequence;
             }
@@ -662,31 +702,57 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         }
     }
 
+    private bool TimedAppend(StoredGatewayNonceRecord[] nonces)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (!persistence!.AppendNonces(nonces))
+            return false;
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+        lock (statsGate)
+            nonceStats = Add(nonceStats, elapsed);
+        if (elapsed >= SlowCommit)
+            SlowCommitObserved?.Invoke(elapsed);
+        return true;
+    }
+
     private void TimedCommit(GatewayCheckpoint checkpoint)
     {
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         persistence!.Commit(checkpoint);
         var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
         lock (statsGate)
-            commitStats = commitStats with
-            {
-                Commits = commitStats.Commits + 1,
-                SlowCommits = commitStats.SlowCommits + (elapsed >= SlowCommit ? 1 : 0),
-                Last = elapsed,
-                Total = commitStats.Total + elapsed,
-                Longest = elapsed > commitStats.Longest ? elapsed : commitStats.Longest
-            };
+            commitStats = Add(commitStats, elapsed);
         if (elapsed >= SlowCommit)
             SlowCommitObserved?.Invoke(elapsed);
     }
 
-    /// <summary>How long saving the authority takes (each signed request saves its nonce before it is admitted).</summary>
+    private static GatewayAuthorityCommitStats Add(GatewayAuthorityCommitStats stats, TimeSpan elapsed) => stats with
+    {
+        Commits = stats.Commits + 1,
+        SlowCommits = stats.SlowCommits + (elapsed >= SlowCommit ? 1 : 0),
+        Last = elapsed,
+        Total = stats.Total + elapsed,
+        Longest = elapsed > stats.Longest ? elapsed : stats.Longest
+    };
+
+    /// <summary>How long full saves of the authority take (pairing changes, the first request after a restart, and a
+    /// request whose nonce cannot be appended to the nonce journal).</summary>
     internal GatewayAuthorityCommitStats CommitStats
     {
         get
         {
             lock (statsGate)
                 return commitStats;
+        }
+    }
+
+    /// <summary>How long nonce appends take; each signed request waits for one (requests that arrive together share it).</summary>
+    internal GatewayAuthorityCommitStats NonceStats
+    {
+        get
+        {
+            lock (statsGate)
+                return nonceStats;
         }
     }
 

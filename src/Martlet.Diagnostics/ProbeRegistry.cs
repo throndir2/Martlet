@@ -76,9 +76,9 @@ public sealed class ProbeRegistry
             var settings = await store.LoadAsync(token).ConfigureAwait(false);
             return new(DiagnosticCatalog.SettingsFinding(settings), EvidenceProvenance.Live, Settings: settings);
         }),
-        new("provider.connection", Stage.Provider, true, [ProbeEffect.Network, ProbeEffect.Permissioned, ProbeEffect.ProviderCost],
+        new("provider.connection", Stage.Provider, false, [ProbeEffect.Network, ProbeEffect.Permissioned, ProbeEffect.ProviderCost],
             unavailableFindingId: "provider.unavailable"),
-        new("audio.playback", Stage.Playback, true, [ProbeEffect.Device, ProbeEffect.Permissioned],
+        new("audio.playback", Stage.Playback, false, [ProbeEffect.Device, ProbeEffect.Permissioned],
             unavailableFindingId: "audio.output_unavailable"),
         new("application.version", Stage.Application, true, [ProbeEffect.LocalReadOnly],
             _ => Task.FromResult(new ProbeObservation("application.available", EvidenceProvenance.Live))),
@@ -86,13 +86,13 @@ public sealed class ProbeRegistry
             _ => Task.FromResult(new ProbeObservation(Environment.Version.Major == 10 ? "runtime.available" : "runtime.unsupported", EvidenceProvenance.Live))),
         new("platform.architecture", Stage.Application, true, [ProbeEffect.LocalReadOnly],
             _ => Task.FromResult(new ProbeObservation(ArchitectureFinding(MachineArchitecture.Current), EvidenceProvenance.Live))),
-        new("audio.input", Stage.Application, true, [ProbeEffect.Device, ProbeEffect.Permissioned],
+        new("audio.input", Stage.Application, false, [ProbeEffect.Device, ProbeEffect.Permissioned],
             unavailableFindingId: "audio.input_unavailable"),
-        new("pipeline.vad", Stage.Application, true, [ProbeEffect.LocalReadOnly], unavailableFindingId: "pipeline.unavailable"),
-        new("pipeline.stt", Stage.Transcription, true, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
-        new("pipeline.policy", Stage.TurnPolicy, true, [ProbeEffect.LocalReadOnly], unavailableFindingId: "pipeline.unavailable"),
-        new("pipeline.llm", Stage.Generation, true, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
-        new("pipeline.tts", Stage.Synthesis, true, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
+        new("pipeline.vad", Stage.Application, false, [ProbeEffect.LocalReadOnly], unavailableFindingId: "pipeline.unavailable"),
+        new("pipeline.stt", Stage.Transcription, false, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
+        new("pipeline.policy", Stage.TurnPolicy, false, [ProbeEffect.LocalReadOnly], unavailableFindingId: "pipeline.unavailable"),
+        new("pipeline.llm", Stage.Generation, false, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
+        new("pipeline.tts", Stage.Synthesis, false, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
         new("host.connection", Stage.Provider, false, [ProbeEffect.Network, ProbeEffect.Permissioned], unavailableFindingId: "host.unavailable"),
         new("planning.catalog", Stage.Application, false, [ProbeEffect.LocalReadOnly],
             token => Task.Run(() => new ProbeObservation(PlanningFinding(store.DataDirectory), EvidenceProvenance.Live), token),
@@ -100,13 +100,26 @@ public sealed class ProbeRegistry
     ]);
 
     /// <summary>The planning.catalog finding: where Recommended setup's options come from (docs/RECOMMENDATION_DESIGN.md, "Planner
-    /// on the catalog"): the model catalog's daily copy, its shipped snapshot, or Martlet's own list alone. Reads files only.</summary>
-    public static string PlanningFinding(string dataDirectory)
+    /// on the catalog"): the model catalog's daily copy, its shipped snapshot, or Martlet's own list alone; or a Warning when the
+    /// daily refresh has failed for a source since more than <see cref="RefreshStale"/> (it keeps the last good copy). Reads files
+    /// only.</summary>
+    public static string PlanningFinding(string dataDirectory) => PlanningFinding(dataDirectory, DateTimeOffset.UtcNow);
+
+    /// <summary>A refresh that hasn't read every source for this long is reported.</summary>
+    public static TimeSpan RefreshStale { get; } = TimeSpan.FromDays(7);
+
+    public static string PlanningFinding(string dataDirectory, DateTimeOffset now)
     {
         try
         {
-            var models = Martlet.Core.Planning.ModelCatalogStore.For(dataDirectory).Load();
+            var store = Martlet.Core.Planning.ModelCatalogStore.For(dataDirectory);
+            var models = store.Load();
             if (models.Models.Count == 0) return "planning.seed_only";
+            var status = store.Status();
+            // Tried and failing (a problem at the last finish), with no full read for a week: the last good copy is getting old.
+            if (status is { Problem: not null, LastFinished: not null } && (status.LastSuccess is not { } success || now - success > RefreshStale) &&
+                status.LastAttempt is { } attempt && now - attempt <= RefreshStale)
+                return "planning.catalog_refresh_failing";
             return Martlet.Core.Planning.PlanningCatalog.Copy(models).StartsWith("the daily copy", StringComparison.Ordinal)
                 ? "planning.catalog_daily" : "planning.catalog_snapshot";
         }

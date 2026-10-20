@@ -566,7 +566,8 @@ internal sealed partial class McpServer
             "asked at the delay and answers, the conversation's stream is stopped, the latency line says Backup Thinking won), " +
             "conversation-wins (fast: no member asked), late-conversation (the conversation's model starts after the member was " +
             "asked: the member is stopped), conversation-fails (it fails after the member was asked: the member answers), " +
-            "no-member (none may answer), held (a reply started early with only a paid cloud member: asked only once the reply is " +
+            "no-member (none may answer), open-fails (a member is chosen but its stream can't be opened: Failed with the reason " +
+            "in why, not no member), held (a reply started early with only a paid cloud member: asked only once the reply is " +
             "taken), let-go (a reply started early and let go: its member's stream stops with it) and members (the rules: off, no " +
             "member ticked, a cloud member never unless ticked, a member on the conversation's computer passed over, tools only on " +
             "an endpoint). scenario runs one; delayMs is one of 500, 700, 900, 1200, 1500, 2000, 3000 (900 by default). Loopback " +

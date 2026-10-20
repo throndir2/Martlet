@@ -28,6 +28,7 @@ internal static class TouchZonesCheck
         bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null, string? probePath = null,
         string? add = null, bool estimate = false, int? special = null)
     {
+        if (save && !explicitDirectory) throw new ArgumentException("save needs an explicit, disposable dataDirectory (not Martlet's own data folder).");
         CharacterActionCatalog? catalog = null;
         string? problem = null;
         var renderer = AvatarRenderer.Live2D;
@@ -140,7 +141,7 @@ internal static class TouchZonesCheck
         string? wrote = null;
         if (save)
         {
-            if (!explicitDirectory) throw new ArgumentException("save needs an explicit (disposable) dataDirectory.");
+            if (!explicitDirectory) throw new ArgumentException("save needs an explicit, disposable dataDirectory (not Martlet's own data folder).");
             if ((detected ?? adds) is not { } writing) throw new ArgumentException(detect || estimate ? "save found no zones to save." : "save needs an answer the parser can read, or add.");
             // As the desktop saves them: each zone with no reaction list yet gets the one a new zone gets, from the model's emotes.
             if (catalog is not null) writing = CharacterTouchZones.Filled(writing, catalog, temperament);

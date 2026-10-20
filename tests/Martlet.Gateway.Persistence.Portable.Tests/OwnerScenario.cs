@@ -26,7 +26,7 @@ internal static class OwnerScenario
         HttpRequestMessage signed;
         await using (var owner = Open(HostOpenMode.Create, step =>
         {
-            if (armed && step == StoreStep.PendingFlushed) throw new IOException("Synthetic commit interruption.");
+            if (armed && step == StoreStep.NonceWritten) throw new IOException("Synthetic nonce save interruption.");
         }))
         {
             identity = owner.Identity!;

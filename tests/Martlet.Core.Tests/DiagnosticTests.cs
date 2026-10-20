@@ -38,6 +38,29 @@ public sealed class DiagnosticTests
         Assert.Equal(report.ExitCode, ContractJson.Read<DoctorReport>(ContractJson.Write(report)).ExitCode);
     }
 
+    [Fact]
+    public void ThePlanningProbeWarnsWhenTheCatalogRefreshKeepsFailing()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "Martlet.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var now = DateTimeOffset.Parse("2026-10-19T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+            var store = Martlet.Core.Planning.ModelCatalogStore.For(path);
+            Assert.Equal("planning.catalog_snapshot", ProbeRegistry.PlanningFinding(path, now));
+            // Tried yesterday, a source failed, and the last full read was ten days ago: the last good copy is getting old.
+            Assert.Null(store.SaveStatus(new() { LastAttempt = now.AddDays(-1), LastFinished = now.AddDays(-1), LastSuccess = now.AddDays(-10), Problem = "models.dev: timeout" }));
+            Assert.Equal("planning.catalog_refresh_failing", ProbeRegistry.PlanningFinding(path, now));
+            Assert.Equal(ProbeOutcome.Warning, DiagnosticCatalog.Finding("planning.catalog_refresh_failing").Outcome);
+            // A failure two days after a full read is no news yet.
+            Assert.Null(store.SaveStatus(new() { LastAttempt = now.AddDays(-1), LastFinished = now.AddDays(-1), LastSuccess = now.AddDays(-2), Problem = "models.dev: timeout" }));
+            Assert.Equal("planning.catalog_snapshot", ProbeRegistry.PlanningFinding(path, now));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(ProbeOutcome.Warning)]
     [InlineData(ProbeOutcome.Unknown)]

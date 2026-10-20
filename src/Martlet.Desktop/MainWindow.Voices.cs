@@ -68,9 +68,9 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Voices"),
-            Note($"{engine.Name} copies these voices from short recordings" + (engine.SampleLimits is { } limits ? $" ({limits})" : "") +
+            HelpTip.Explain($"{engine.Name} copies these voices from short recordings" + (engine.SampleLimits is { } limits ? $" ({limits})" : "") +
                 ". A voice can have several recordings" + (engine.MultipleReferences ? $"; {engine.Name} learns from each." : ", heard one after another.") +
-                " They're shared with your paired computers.", new Thickness(0, 0, 0, 10))
+                " They're shared with your paired computers.", new Thickness(0, 0, 0, 10), "VoicesAbout", "your voices", wiki: "Voices#your-voices")
         };
         var library = SpeakingVoiceLibrary.Empty;
         IReadOnlyDictionary<string, F5ReferenceSnapshot> local = new Dictionary<string, F5ReferenceSnapshot>();
@@ -93,11 +93,11 @@ public partial class MainWindow
         var inUseId = f5?.Reference?.ReferenceRevision ?? applied?.ReferenceRevision;
         var mark = f5 is null ? "chosen" : "in use";
         var inUse = items.FirstOrDefault(i => i.Id == inUseId);
-        var status = Note($"{items.Count} voice{(items.Count == 1 ? "" : "s")}. " + (inUse is not null
-                ? $"{Capitalized(mark)}: {(inUse.Starter ? inUse.Name : "one of your recordings")}."
-                : inUseId is not null ? $"{Capitalized(mark)}: a voice no longer in the list. Use another voice."
-                : items.FirstOrDefault(i => i.Available) is { } first ? $"None {mark} yet; Martlet starts with {(first.Starter ? first.Name : "your first voice")}."
-                : "Add a voice to speak with."),
+        var status = Note($"{items.Count} voice{(items.Count == 1 ? "" : "s")}; " + (inUse is not null
+                ? $"{mark}: {(inUse.Starter ? inUse.Name : "one of your recordings")}."
+                : inUseId is not null ? $"{mark}: a voice no longer in the list."
+                : items.FirstOrDefault(i => i.Available) is { } first ? $"none {mark} yet, so Martlet starts with {(first.Starter ? first.Name : "your first voice")}."
+                : "add a voice to speak with."),
             new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "F5VoicesStatus");
         stack.Add(status);
@@ -108,7 +108,7 @@ public partial class MainWindow
         var chosenId = library.ChosenVoice?.Id;
         // A voice made from several recordings says how many and whether the engine learns from each or hears them joined.
         string Recorded(VoiceItem item) => item.Clips is { Count: > 1 } clips
-            ? $"{clips.Count} recordings, {item.DurationMilliseconds / 1000d:0.#} seconds joined, added {item.AddedAt.ToLocalTime():d}. " +
+            ? $"{clips.Count} recordings, {item.DurationMilliseconds / 1000d:0.#} seconds joined, added {item.AddedAt.ToLocalTime():d}; " +
               (SpeechEngines.UsesClips(engine, clips) ? $"{engine.Name} learns from each recording."
                   : $"{engine.Name} hears them one after another with a short pause.")
             : $"{item.DurationMilliseconds / 1000d:0.#} second recording, added {item.AddedAt.ToLocalTime():d}.";
@@ -126,7 +126,7 @@ public partial class MainWindow
         if (inUseId is not null && inUse is null)
         {
             var name = f5?.Reference?.PresetName ?? applied?.PresetName ?? "Previous voice";
-            stack.Add(VoiceRow(name, "No longer in your voice list. Use another voice; it is removed from this PC then.", true, mark,
+            stack.Add(VoiceRow(name, "No longer in your voice list.", true, mark,
                 inUseId[..16], status: false, () => PlayAppliedAsync(applied, name), () => Task.CompletedTask, null));
         }
         stack.Add(Row(PageButton("Add a voice...", () => AddVoiceAsync(destination).Forget(), id: "F5AddVoice"),
@@ -332,8 +332,7 @@ public partial class MainWindow
             try { await F5Voices.ReconcileAsync(store.DataDirectory, destination, ClusterDevice, null, null, token); }
             catch (Exception error) when (F5SharedVoices.IsFailure(error)) { }
             QueueSpeakingVoiceSync();
-            ActionText.Text = $"Martlet no longer includes the voice it spoke with. It now speaks with '{voice.PresetName}'. " +
-                "Pick another under Companion › Voice › Voices.";
+            ActionText.Text = $"Martlet no longer includes the voice it spoke with, so it now speaks with '{voice.PresetName}'.";
             if (next is not null) openConversation?.ReloadWhenIdle("Martlet's voice changed.");
             return next;
         }
@@ -373,7 +372,7 @@ public partial class MainWindow
         if (store is null || closing) return;
         if (setupOperations.IsRunning)
         {
-            ActionText.Text = "Martlet is busy with another task. Try again when it finishes.";
+            ActionText.Text = "Martlet is busy with another task; try again when it finishes.";
             return;
         }
         var added = OwnVoiceDialog.Record(this, store.DataDirectory, destination, setupOperations, audioSessionEvents, homeSettings?.Audio?.Input);
@@ -385,8 +384,7 @@ public partial class MainWindow
     private async Task RemoveVoiceAsync(VoiceItem voice, string destination)
     {
         if (store is null || closing) return;
-        if (!ConfirmationDialog.Confirm(this, $"Remove '{voice.Name}'?\n\nMartlet deletes it on this PC and your other Martlet computers. " +
-                "Any original file of yours isn't touched.", "Remove voice"))
+        if (!ConfirmationDialog.Confirm(this, $"Remove '{voice.Name}' from this PC and your other Martlet computers?", "Remove voice"))
             return;
         try
         {

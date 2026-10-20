@@ -121,6 +121,16 @@ public sealed class MemoryCheckInToolTests
         Assert.Equal("The user is building a castle in survival mode (in Minecraft).", Json(history).GetProperty("fact").GetString());
         Assert.Equal("The user is building a castle in survival mode.", Json(history).GetProperty("earlier")[0].GetProperty("said").GetString());
 
+        // Keep them for that game, so they come up only while the user plays it.
+        var kept = await Run(MemoryToolSet.UpdateMany, $$"""{"edits":[{"id":"{{game[0]}}","where":"Minecraft"},{"id":"{{game[1]}}","where":"Minecraft"}]}""");
+        Assert.Equal("Memory: updated 2 of 2.", First(kept));
+        var stored = (await fixture.Memory.InspectAsync((await fixture.Store.LoadAsync()).Settings!.Memory!.ConfigurationRevision)).Facts;
+        Assert.All(stored.Where(f => !f.IsHistory && f.Content.Contains("(in Minecraft)", StringComparison.Ordinal)),
+            f => Assert.Equal(Martlet.Memory.MemoryActivity.Game("Minecraft"), f.Activity));
+        Assert.Contains(Json(await Run(MemoryToolSet.Overview, "{}")).GetProperty("where").EnumerateArray(),
+            w => w.GetProperty("where").GetString() == Martlet.Memory.MemoryActivity.Describe(Martlet.Memory.MemoryActivity.Game("Minecraft")) &&
+                w.GetProperty("facts").GetInt32() == 2);
+
         // 3. Correct many at once: each edit is done or refused on its own.
         var dogs = await Ids("Biscuit");
         var many = await Run(MemoryToolSet.UpdateMany,

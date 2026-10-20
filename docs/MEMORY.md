@@ -502,14 +502,17 @@ the Thinking pool, so the reply doesn't wait for it. Its tools each run one
 action, and a check-in calls them in [several steps](CONVERSATION.md#check-in-tool-sets)
 until its work is done:
 
-- `memory_overview`: how many facts there are, whose, how many earlier
-  versions are kept and the oldest and newest dates. It shows no fact.
+- `memory_overview`: how many facts there are, whose, where they matter (for
+  which game), how many earlier versions are kept and the oldest and newest
+  dates. It shows no fact.
 - `memory_find` (`query` and/or `person`, `skip`, `limit` up to 50): finds
   facts as `find` does, and pages through all of them (`count`, `more`).
-- `memory_history` (`id`): the earlier versions of one fact, newest first.
-- `memory_remember` (`fact`, optional `person`) and `memory_update` (`id`, a
-  new `fact` and/or `person`), as `remember` and `update` do.
-- `memory_update_many` (`edits`: up to 25 of `id`, `fact`, `person`): corrects
+- `memory_history` (`id`): the earlier versions of one fact, newest first, and
+  where it matters now.
+- `memory_remember` (`fact`, optional `person` and `where`) and `memory_update`
+  (`id`, a new `fact`, `person` and/or `where`), as `remember` and `update` do.
+  `where` keeps a fact for one game (its name, `here` or `games`) or everywhere.
+- `memory_update_many` (`edits`: up to 25 of `id`, `fact`, `person`, `where`): corrects
   many facts in one call; each edit is done or refused on its own.
 - `memory_note` (`ids` up to 50, `note` up to 80 characters): adds the same note
   to many facts, such as *(in Minecraft)*. A note in brackets goes before
@@ -543,8 +546,9 @@ wrong person, repeat each other or are no longer true. The built-in check-in
 them: every hour while something new was said, a Thinking pool member that
 calls tools reads what was said since it last ran and what you do on this PC,
 then works through the facts with the Memory tools in as many steps as it
-takes. It looks over memory, pages through the facts, adds which game, app or
-thing a fact is about (`memory_note` for many facts at once), gives facts to
+takes. It looks over memory, pages through the facts, keeps a fact that
+matters in one game for that game (`where`), adds which game, app or thing a
+fact is about to its words (`memory_note` for many facts at once), gives facts to
 the right person, merges duplicates, keeps facts a newer one replaced as
 history and corrects facts the conversation showed are wrong. It never makes
 up a fact and leaves a fact as it is when it can't tell. Its prompt is
@@ -553,8 +557,8 @@ Memory tools on this PC it doesn't ask the pool.
 
 When you correct Martlet in a conversation (*that's for Minecraft, not
 Terraria!*), **Act on what was said** does the same right after the reply: it
-finds every fact with those words and corrects each one, in as many steps as
-it takes.
+finds every fact with those words and corrects each one or keeps it for the
+right game, in as many steps as it takes.
 
 ### Search words, history and tidying
 
@@ -741,9 +745,25 @@ companion PC only, and nothing it sees is recorded or sent. The game is kept in
   matters when it isn't everywhere, the details say *Matters: ...*, and the
   status line counts the facts kept for games.
 
+**Prompts for gaming and for one game.** Companion › Prompts has three levels:
+
+- The prompts for every reply (the global set) stay as they are.
+- *While you play* (the set for gaming) goes in the notes of a message while a
+  game is played, once while the conversation sent carries it and again when
+  the game changes. It says which game it is, to keep replies short and to keep
+  what Martlet remembers from that game to that game. Empty it to send nothing.
+- A lorebook entry with the game's name as a keyword (the set for one game)
+  joins in on every reply while that game is played
+  ([Lorebooks](LOREBOOKS.md#what-happens-on-a-reply)), like an entry the
+  words named. Lorebooks are shared like the other settings.
+
+Screen and camera glances get the same *While you play* note and lorebook
+entries while a game is played.
+
 The start of every reply's request doesn't change: the activity only changes
-which facts go in the message's notes, and the remembering request is a
-background request after the reply. Nothing new runs on the reply's path but a
+what goes in the message's notes (which facts, the *While you play* note and
+the game's lorebook entries), and the remembering request is a background
+request after the reply. Nothing new runs on the reply's path but a
 field read and the same search with one more filter.
 
 **Sync and compatibility.** `activity` travels inside the fact like

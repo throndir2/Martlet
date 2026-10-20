@@ -1219,6 +1219,9 @@ internal static class CheckInsCheck
             careJob is { MaxToolRounds: CheckIns.MaximumToolRounds, MaxOutputTokens: CheckIns.MaximumToolOutputTokens } &&
             careJob.Timeout == CheckIns.ToolTimeout && careJob.Tools.Select(t => t.Name).SequenceEqual(MemoryToolSet.Set.Tools.Select(t => t.Name)) &&
             careJob.Text.Contains(CheckIns.Steps, StringComparison.Ordinal) && careJob.Text.Contains("memory_note", StringComparison.Ordinal) &&
+            careJob.Text.Contains("(where)", StringComparison.Ordinal) &&
+            new[] { MemoryToolSet.Remember, MemoryToolSet.Update, MemoryToolSet.UpdateMany }.All(name =>
+                careJob.Tools.Single(t => t.Name == name).ParametersJson.Contains("\"where\"", StringComparison.Ordinal)) &&
             CheckIns.MaximumToolRounds <= BoundedTextInput.HardMaxToolRounds && plan.Length > 8 &&
             careAnswers.All(a => !a.IsError) && cared.SequenceEqual(plan),
             new

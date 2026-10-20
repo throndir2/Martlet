@@ -11,8 +11,18 @@ namespace Martlet.Core.Planning;
 /// <summary>A choice that applies only to one variant of a role: choice <see cref="Variable"/> is <see cref="Value"/>.</summary>
 public sealed record SetupRoleCondition(string Variable, string Value);
 
-/// <summary>A role's choice (role.choice / role.choice_when): its variable, options and default.</summary>
-public sealed record SetupRoleChoice(string Variable, IReadOnlyList<string> Options, string Default, SetupRoleCondition? When = null);
+/// <summary>A role's choice (role.choice / role.choice_when): its variable, options and default. <see cref="Open"/>: it also
+/// takes any model name (role.choice_open; <see cref="OpenValue"/>), so a host installs a model from the model catalog.</summary>
+public sealed record SetupRoleChoice(string Variable, IReadOnlyList<string> Options, string Default, SetupRoleCondition? When = null)
+{
+    public bool Open { get; init; }
+
+    /// <summary>Whether an open choice takes <paramref name="model"/>: the host engine's model pattern (letters, digits and
+    /// . _ : / -, 128 characters at most, the first a letter or digit, no ".."), as martlet-host's open_value.</summary>
+    public static bool OpenValue(string? model) =>
+        model is { Length: > 0 and <= 128 } && char.IsAsciiLetterOrDigit(model[0]) && !model.Contains("..", StringComparison.Ordinal) &&
+        model.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or ':' or '/' or '-');
+}
 
 /// <summary>A secret a role asks for (role.secret), whether the host already stores it, and the variant it belongs to.</summary>
 public sealed record SetupRoleSecret(string Name, string Prompt, bool Stored, SetupRoleCondition? When = null);
@@ -400,10 +410,10 @@ public static class SetupExecutor
         {
             var choice = ModelChoice(needs, model, arguments);
             if (choice is null && needs.Choices.Count > 0)
-                return (arguments, $"{change.MachineId}'s {role} role doesn't offer {model}. Update Martlet there, then check again.");
+                return (arguments, $"{change.MachineId}'s {role} role doesn't offer {model}: update Martlet there, then check again.");
             if (choice is not null)
             {
-                arguments["choice." + choice.Variable] = choice.Options.First(o => string.Equals(o, model, StringComparison.OrdinalIgnoreCase));
+                arguments["choice." + choice.Variable] = choice.Options.FirstOrDefault(o => string.Equals(o, model, StringComparison.OrdinalIgnoreCase)) ?? model;
                 if (choice.When is { } when) arguments["choice." + when.Variable] = when.Value;
             }
         }
@@ -430,10 +440,12 @@ public static class SetupExecutor
         return (arguments, null);
     }
 
-    /// <summary>The choice whose options hold <paramref name="model"/>: one of the variant already chosen first, then any.</summary>
+    /// <summary>The choice whose options hold <paramref name="model"/>: one of the variant already chosen first, then any; else
+    /// an open choice (<see cref="SetupRoleChoice.Open"/>) that takes it.</summary>
     private static SetupRoleChoice? ModelChoice(SetupRoleNeeds needs, string model, IReadOnlyDictionary<string, string> arguments)
     {
         var offering = needs.Choices.Where(c => c.Options.Contains(model, StringComparer.OrdinalIgnoreCase)).ToArray();
+        if (offering.Length == 0 && SetupRoleChoice.OpenValue(model)) offering = [.. needs.Choices.Where(c => c.Open)];
         return offering.FirstOrDefault(c => c.When is not null && Holds(c.When, arguments)) ?? offering.FirstOrDefault(c => c.When is null) ??
             offering.FirstOrDefault();
     }
@@ -603,7 +615,7 @@ public static class SetupExecutor
     {
         var item = preflight.Items.FirstOrDefault(i => i.Index == index);
         if (item is null || item.Change != change)
-            return SetupStepResult.Attention("This change wasn't in the review, so Martlet didn't make it. Check the recommended setup again.");
+            return SetupStepResult.Attention("This change wasn't in the review, so Martlet didn't make it: check the recommended setup again.");
         switch (item.Verdict)
         {
             case SetupStepVerdict.Automatic: return SetupStepResult.Done(item.Text);
@@ -611,8 +623,8 @@ public static class SetupExecutor
             // The owner makes it elsewhere (a provider chosen in Companion): never reported as done here.
             case SetupStepVerdict.NeedsOwner when item.Secrets.Count == 0: return SetupStepResult.Attention(item.Text);
             case SetupStepVerdict.NeedsOwner when item.Secrets.Any(s => !preflight.Answered(s)):
-                return SetupStepResult.Attention($"It needs {string.Join(" and ", item.Secrets.Where(s => !preflight.Answered(s)).Select(s => s.Prompt))}. " +
-                    $"Enter it in the review and Reconfigure again, or install {targets.RoleName(change.RoleKind!)} on {change.MachineId} from the Devices map.");
+                return SetupStepResult.Attention($"It needs {string.Join(" and ", item.Secrets.Where(s => !preflight.Answered(s)).                Select(s => s.Prompt))}: " +
+                                    $"enter it in the review and Reconfigure again, or install {targets.RoleName(change.RoleKind!)} on {change.MachineId} from the Devices map.");
         }
         try
         {

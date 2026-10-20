@@ -7,7 +7,7 @@ public sealed record SetupSaveResult(SettingsSaveResult Save, AppSettings Settin
 {
     public string Summary => (Save.Saved
         ? Save.MigratedFromSchemaVersion is { } previous
-            ? $"Setup saved. A backup of settings version {previous} was kept."
+            ? $"Setup saved, with a backup of settings version {previous}."
             : "Setup saved."
         : Save.Error?.Summary ?? "Setup was not saved.") +
         (CredentialError != CredentialError.None ? " " + CredentialMessages.Describe(CredentialError) : "");

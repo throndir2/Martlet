@@ -117,9 +117,8 @@ public sealed class AuthorityTests : NativeTest
     [InlineData((int)StoreStep.PendingFlushed, "revoke")]
     [InlineData((int)StoreStep.Replaced, "revoke")]
     [InlineData((int)StoreStep.CheckpointCommitted, "revoke")]
-    [InlineData((int)StoreStep.PendingFlushed, "nonce")]
-    [InlineData((int)StoreStep.Replaced, "nonce")]
-    [InlineData((int)StoreStep.CheckpointCommitted, "nonce")]
+    [InlineData((int)StoreStep.NonceWritten, "nonce")]
+    [InlineData((int)StoreStep.NonceAppended, "nonce")]
     public void Failed_mutation_recovers_successor_without_resurrecting_authority(int stage, string operation)
     {
         var clock = new Clock();
@@ -161,7 +160,7 @@ public sealed class AuthorityTests : NativeTest
         var armed = false;
         using var host = new NativeAuthority(Store, clock, create: true, fault: step =>
         {
-            if (!armed || step != StoreStep.CheckpointCommitted) return;
+            if (!armed || step != StoreStep.NonceAppended) return;
             if (kind == "clock") clock.Advance(TimeSpan.FromMinutes(3));
             else cancellation.Cancel();
         });
@@ -217,6 +216,71 @@ public sealed class AuthorityTests : NativeTest
     }
 
     [Fact]
+    public void Nonce_saves_append_to_the_journal_without_a_full_save_and_survive_a_dirty_restart()
+    {
+        var clock = new Clock();
+        IssuedDeviceCredential credential;
+        GatewaySignedRequest first;
+        byte[] authority;
+        using (var host = new NativeAuthority(Store, clock, create: true))
+        {
+            credential = host.Issue();
+            authority = File.ReadAllBytes(Path.Combine(Store, "authority.bin"));
+            var fullSaves = host.Credentials.CommitStats.Commits;
+            first = host.Signed(credential);
+            host.Credentials.Authenticate(first);
+            for (var i = 0; i < 9; i++)
+                host.Credentials.Authenticate(host.Signed(credential));
+            Assert.Equal(fullSaves, host.Credentials.CommitStats.Commits);
+            Assert.Equal(10, host.Credentials.NonceStats.Commits);
+            Assert.Equal(authority, File.ReadAllBytes(Path.Combine(Store, "authority.bin")));
+            Assert.Equal(NonceJournal.HeaderBytes + 10 * NonceJournal.RecordBytes,
+                new FileInfo(Path.Combine(Store, NonceJournal.Name)).Length);
+        }
+        using (var next = new NativeAuthority(Store, clock))
+        {
+            Code("auth.replay", () => next.Credentials.Authenticate(first));
+            Assert.Equal(10, Assert.Single(next.Storage.Initial.Credentials).Nonces.Length);
+            // The journal keeps taking appends after a restart; the clean close folds it into authority.bin.
+            next.Credentials.Authenticate(next.Signed(credential));
+            Assert.Equal(0, next.Credentials.CommitStats.Commits);
+            next.Clean();
+        }
+        Assert.Equal(NonceJournal.HeaderBytes, new FileInfo(Path.Combine(Store, NonceJournal.Name)).Length);
+        using var folded = new NativeAuthority(Store, clock);
+        Code("auth.replay", () => folded.Credentials.Authenticate(first));
+        Assert.Equal(11, Assert.Single(folded.Storage.Initial.Credentials).Nonces.Length);
+        folded.Clean();
+    }
+
+    [Fact]
+    public void Torn_journal_tail_refuses_requests_signed_before_the_restart()
+    {
+        var clock = new Clock();
+        IssuedDeviceCredential credential;
+        GatewaySignedRequest lost;
+        using (var host = new NativeAuthority(Store, clock, create: true))
+        {
+            credential = host.Issue();
+            host.Credentials.Authenticate(host.Signed(credential));
+            lost = host.Signed(credential);
+            host.Credentials.Authenticate(lost);
+        }
+        var journal = Path.Combine(Store, NonceJournal.Name);
+        var bytes = File.ReadAllBytes(journal);
+        using (var file = new FileStream(journal, FileMode.Open, FileAccess.Write)) file.SetLength(bytes.Length - 7);
+        using var next = new NativeAuthority(Store, clock);
+        Code("auth.replay", () => next.Credentials.Authenticate(lost));
+        Code("auth.replay", () => next.Credentials.Authenticate(next.Signed(credential)));
+        clock.Advance(GatewayCredentialStore.RequestClockSkew + GatewayCredentialStore.MaximumClockStepBack + TimeSpan.FromSeconds(2));
+        next.Credentials.Authenticate(next.Signed(credential));
+        // The first admitted request saved everything in full (with the refusal time) and started a new journal.
+        Assert.Equal(1, next.Credentials.CommitStats.Commits);
+        Assert.Equal(NonceJournal.HeaderBytes, new FileInfo(journal).Length);
+        next.Clean();
+    }
+
+    [Fact]
     public void Cancellation_before_the_nonce_commit_keeps_the_authority_open()
     {
         var clock = new Clock();
@@ -224,7 +288,7 @@ public sealed class AuthorityTests : NativeTest
         var armed = false;
         using var host = new NativeAuthority(Store, clock, create: true, fault: step =>
         {
-            if (armed && step == StoreStep.StagingFlushed) cancellation.Cancel();
+            if (armed && step == StoreStep.NonceAppending) cancellation.Cancel();
         });
         var credential = host.Issue();
         var request = host.Signed(credential, cancellation.Token);
@@ -244,17 +308,19 @@ public sealed class AuthorityTests : NativeTest
         var first = true;
         using var host = new NativeAuthority(Store, new Clock(), create: true, fault: step =>
         {
-            if (step != StoreStep.StagingFlushed || !entered.IsSet || !first) return;
+            if (step != StoreStep.NonceAppending || !entered.IsSet || !first) return;
             first = false;
-            Thread.Sleep(300); // Holds the first nonce commit so the other requests queue behind it.
+            Thread.Sleep(300); // Holds the first nonce save so the other requests queue behind it.
         });
         var credential = host.Issue();
-        var before = host.Credentials.CommitStats.Commits;
+        var before = host.Credentials.NonceStats.Commits;
+        var fullSaves = host.Credentials.CommitStats.Commits;
         entered.Set();
         var principals = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
             Task.Run(() => host.Credentials.Authenticate(host.Signed(credential)))));
         Assert.Equal(8, principals.Length);
-        Assert.True(host.Credentials.CommitStats.Commits - before <= 3, $"{host.Credentials.CommitStats.Commits - before} commits");
+        Assert.True(host.Credentials.NonceStats.Commits - before <= 3, $"{host.Credentials.NonceStats.Commits - before} nonce saves");
+        Assert.Equal(fullSaves, host.Credentials.CommitStats.Commits);
         host.Clean();
     }
 

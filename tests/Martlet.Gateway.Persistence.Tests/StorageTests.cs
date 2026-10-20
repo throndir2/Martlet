@@ -69,7 +69,7 @@ public sealed class StorageTests : NativeTest
         {
             credential = host.Issue();
             armed = true;
-            Code("auth.storage", () => host.Credentials.Authenticate(host.Signed(credential)));
+            Code("auth.storage", () => host.Issue("other-device"));
             stale = File.ReadAllBytes(Path.Combine(Store, "pending.bin"));
         }
         using (var recovered = new NativeAuthority(Store, clock))
@@ -92,6 +92,8 @@ public sealed class StorageTests : NativeTest
         using var host = new NativeAuthority(Store, clock, create: true);
         var credential = host.Issue();
         host.Credentials.Authenticate(host.Signed(credential));
+        // A full save folds the nonce journal into authority.bin.
+        host.Credentials.CommitMaintenance(host.Storage.Commit);
         var cipher = StoreFormat.Unwrap(File.ReadAllBytes(Path.Combine(Store, "authority.bin")));
         var clear = WindowsProtection.Unprotect(cipher);
         try
@@ -304,9 +306,8 @@ public sealed class StorageTests : NativeTest
     [InlineData((int)StoreStep.PendingFlushed, "revoke")]
     [InlineData((int)StoreStep.Replaced, "revoke")]
     [InlineData((int)StoreStep.CheckpointCommitted, "revoke")]
-    [InlineData((int)StoreStep.PendingFlushed, "nonce")]
-    [InlineData((int)StoreStep.Replaced, "nonce")]
-    [InlineData((int)StoreStep.CheckpointCommitted, "nonce")]
+    [InlineData((int)StoreStep.NonceWritten, "nonce")]
+    [InlineData((int)StoreStep.NonceAppended, "nonce")]
     [InlineData((int)StoreStep.PendingFlushed, "rotate")]
     [InlineData((int)StoreStep.Replaced, "rotate")]
     [InlineData((int)StoreStep.CheckpointCommitted, "rotate")]
