@@ -38,14 +38,32 @@ To add a server from a directory:
 
 What you type in the search box goes to the directory you chose.
 
+- A server that runs on this PC needs its runtime, such as Node.js or Python's
+  `uvx`. When the runtime isn't on this PC, install it and restart Martlet
+  first. The first start downloads the server, which can take a minute.
+- A server at an online address gets what your tool calls send. Martlet can't
+  yet sign in to a server through a browser (OAuth); it needs a key.
+- In any field you can type `${env:NAME}` to use an environment variable.
+- Installing a server again under the same name replaces it. When `mcp.json`
+  has another server with that name, Martlet asks first.
+- When Martlet can't install a server by itself, it says why. The server's page
+  may describe other ways to run it, which you can add in `mcp.json`.
+
 To add a server by hand, press **Edit servers** and paste its configuration
 into `mcp.json`. The file uses the same format as Claude Desktop, Cursor and
 VS Code. Martlet runs servers that are programs on this PC (stdio) and servers
 at a Streamable HTTP address. It does not support the older SSE transport.
+Martlet saves `mcp.json` as plain text, so keep secrets in environment
+variables. **Insert example** adds a file server for your Documents folder,
+which needs Node.js.
 
 Each server has **On**, **Run without asking**, **Restart** and **Remove**.
+**Remove** also forgets the secrets that Martlet kept for it.
 Servers don't start when Martlet starts. They start when you open a talk window
-or press **Start servers now**.
+or press **Start servers now**. A server that another feature adds (such as
+Smart home) says *Managed by* that feature; change its permissions there. When
+a feature wants a server name that `mcp.json` already uses, rename or remove
+that entry in `mcp.json`.
 
 A server is a program that runs with your permissions, or an online service
 that gets what you send it. Install only servers you trust. Your servers stay
@@ -76,6 +94,7 @@ try to steer it. What a tool gets and returns goes to your Thinking model.
 ask, for example "How much space is left on my D: drive?"
 
 1. Turn on **Let Martlet run terminal commands**. It is off until you turn it on.
+   It needs a Thinking model that can call tools (see [What you need](#what-you-need)).
 2. Choose the **Shell**: Windows PowerShell, PowerShell 7 or Command Prompt.
 3. Choose where it **Starts in**: your home folder or a folder you choose.
 4. Choose the **Time limit** for one command: 15 seconds, 30 seconds or 1 minute.

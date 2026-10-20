@@ -52,7 +52,7 @@ public sealed class HomeAssistantSocket : IAsyncDisposable
             var type = Type(answer.RootElement);
             if (type == "auth_invalid")
                 throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                    "Home Assistant rejected the access token. Sign in again or paste a new long-lived access token.");
+                    "Home Assistant rejected the access token: sign in again or paste a new long-lived access token.");
             if (type != "auth_ok") throw NotHomeAssistant();
             var version = answer.RootElement.TryGetProperty("ha_version", out var reported) && reported.ValueKind == JsonValueKind.String
                 ? HomeAssistantClient.Clean(reported.GetString(), 32) : "";
@@ -62,13 +62,13 @@ public sealed class HomeAssistantSocket : IAsyncDisposable
         {
             socket.Dispose();
             throw new HomeAssistantException(HomeAssistantFailure.Timeout,
-                "Home Assistant didn't answer in time. Check that it is running and that this PC is on the same network.");
+                "Home Assistant didn't answer in time: check that it is running and that this PC is on the same network.");
         }
         catch (WebSocketException)
         {
             socket.Dispose();
             throw new HomeAssistantException(HomeAssistantFailure.Unreachable,
-                "Couldn't open Home Assistant's live connection. Check the address and that this PC is on the same network.");
+                "Couldn't open Home Assistant's live connection: check the address and that this PC is on the same network.");
         }
         catch
         {
@@ -107,9 +107,9 @@ public sealed class HomeAssistantSocket : IAsyncDisposable
                 throw code switch
                 {
                     "unauthorized" => new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                        "Home Assistant says this account isn't an administrator. Managing Home Assistant needs an administrator's sign-in."),
+                        "Home Assistant says this account isn't an administrator, and managing Home Assistant needs an administrator's sign-in."),
                     "unknown_command" => new HomeAssistantException(HomeAssistantFailure.BadResponse,
-                        "This Home Assistant doesn't support that yet. Update Home Assistant, then try again."),
+                        "This Home Assistant doesn't support that yet: update Home Assistant, then try again."),
                     _ => new HomeAssistantException(HomeAssistantFailure.BadResponse,
                         text.Length > 0 ? $"Home Assistant refused: {text}" : "Home Assistant refused the request.")
                 };
@@ -117,11 +117,11 @@ public sealed class HomeAssistantSocket : IAsyncDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new HomeAssistantException(HomeAssistantFailure.Timeout, "Home Assistant didn't answer in time. Try again.");
+            throw new HomeAssistantException(HomeAssistantFailure.Timeout, "Home Assistant didn't answer in time: try again.");
         }
         catch (WebSocketException)
         {
-            throw new HomeAssistantException(HomeAssistantFailure.Unreachable, "The connection to Home Assistant broke off. Try again.");
+            throw new HomeAssistantException(HomeAssistantFailure.Unreachable, "The connection to Home Assistant broke off: try again.");
         }
         finally { gate.Release(); }
     }
@@ -138,7 +138,7 @@ public sealed class HomeAssistantSocket : IAsyncDisposable
         {
             var received = await socket.ReceiveAsync(chunk, cancellationToken).ConfigureAwait(false);
             if (received.MessageType == WebSocketMessageType.Close)
-                throw new HomeAssistantException(HomeAssistantFailure.Unreachable, "Home Assistant closed the connection. Try again.");
+                throw new HomeAssistantException(HomeAssistantFailure.Unreachable, "Home Assistant closed the connection: try again.");
             if (buffer.Length + received.Count > MaximumMessageBytes)
                 throw new HomeAssistantException(HomeAssistantFailure.BadResponse, "Home Assistant's answer was too large.");
             buffer.Write(chunk, 0, received.Count);
@@ -153,7 +153,7 @@ public sealed class HomeAssistantSocket : IAsyncDisposable
             ? type.GetString() : null;
 
     private static HomeAssistantException NotHomeAssistant() => new(HomeAssistantFailure.NotHomeAssistant,
-        "That address answered, but not like Home Assistant. Check the address.");
+        "That address answered, but not like Home Assistant: check the address.");
 
     public async ValueTask DisposeAsync()
     {

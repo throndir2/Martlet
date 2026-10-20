@@ -58,8 +58,8 @@ public partial class MainWindow
         var recent = smartHome.RecentActions;
         var log = new List<UIElement> { Heading("Recent actions") };
         if (recent.Count == 0)
-            log.Add(Note("No smart-home actions yet. This list clears when you close Martlet.",
-                new Thickness(0, 0, 0, 4)));
+            log.Add(HelpTip.Explain("No smart-home actions yet. This list clears when you close Martlet.",
+                new Thickness(0, 0, 0, 4), "SmartHomeRecent", "recent actions", wiki: "Smart-Home#recent-actions"));
         else
             foreach (var action in recent)
                 log.Add(Note($"{action.At:t}  {action.Summary}", new Thickness(0, 0, 0, 4)));
@@ -89,8 +89,8 @@ public partial class MainWindow
                     "areas and states to your Thinking model"),
                 new("cost", "Cost", "Free", "Free")
             ],
-            State = connected ? $"Connected to {where}." + (inUse ? " Martlet uses it when you ask." : "")
-                : "Not connected yet. Connect it under Home Assistant below, then choose it here.",
+            State = connected ? $"Connected to {where}" + (inUse ? "; Martlet uses it when you ask." : ".")
+                : "Not connected yet: connect it under Home Assistant below, then choose it here.",
             Warn = !connected,
             Action = () => !inUse && connected
                 ? PageButton("Use Home Assistant when I ask", () => SaveSmartHomeControl(true, false, saved.ModelTools), primary: true, id: "SmartHomeControl")
@@ -98,8 +98,8 @@ public partial class MainWindow
         };
         var off = PickerOption.Off("Martlet doesn't control your smart home", !inUse,
             () => inUse ? PageButton("Turn smart home off", () => SaveSmartHomeControl(false, false, false), id: "SmartHomeControlOff") : null);
-        return OptionPicker("SmartHome", "Smart home", "Choose what Martlet controls your home with. Status questions and actions work only " +
-            "with a smart-home system chosen here.", [homeAssistant, off]);
+        return OptionPicker("SmartHome", "Smart home", "Choose what Martlet controls your home with: status questions and actions work only " +
+            "with the system chosen here.", [homeAssistant, off]);
     }
 
     // ---------- connecting ----------
@@ -148,15 +148,15 @@ public partial class MainWindow
             Heading("Home Assistant"),
             HelpTip.Explain("Connect Home Assistant so Martlet can answer questions and control devices when you ask. Martlet only uses the address below." +
                 (hasHosts && clusterEnabled ? " It is one connection for all your computers: connecting here connects them too." : ""),
-                new Thickness(0, 0, 0, 8), "SmartHome", "Home Assistant"),
+                new Thickness(0, 0, 0, 8), "SmartHome", "Home Assistant", wiki: "Smart-Home#connect-home-assistant"),
             Status(connected
-                ? $"Connected to {saved.LocationName} at {saved.Address}" + (saved.Version.Length > 0 ? $" (Home Assistant {saved.Version})." : ".") +
-                    (saved.FollowShare ? saved.SharedBy.Length > 0 ? $" Connected on your other computers (through {saved.SharedBy})." : " Your other computers use it too." : "")
+                ? $"Connected to {saved.LocationName} at {saved.Address}" + (saved.Version.Length > 0 ? $" (Home Assistant {saved.Version})" : "") +
+                    (saved.FollowShare ? saved.SharedBy.Length > 0 ? $"; your other computers use it too (through {saved.SharedBy})" : "; your other computers use it too" : "") + "."
                 : "Not connected.", "SmartHomeStatus", 15),
             new Label { Content = "Home Assistant _address", Target = address, Padding = new Thickness(0, 10, 0, 4) },
             address,
-            Note("Use the address you open Home Assistant with, like http://homeassistant.local:8123, or let Martlet find it. Use https outside your home network.",
-                new Thickness(0, 4, 0, 0)),
+            HelpTip.Explain("Use the address you open Home Assistant with, like http://homeassistant.local:8123 (https outside your home network), or let Martlet find it.",
+                new Thickness(0, 4, 0, 0), "SmartHomeAddress", "the Home Assistant address", wiki: "Smart-Home#find-or-type-the-address"),
             Row(find)
         };
         if (homeFindStatus is { } findStatus) children.Add(Status(findStatus, "SmartHomeFindStatus"));
@@ -172,12 +172,13 @@ public partial class MainWindow
             children.Add(use);
         }
         children.Add(Row(signIn, check, disconnect));
-        children.Add(Note("Sign in opens Home Assistant's own sign-in page in your browser; Martlet then keeps its own access token. " +
-            "Set up a new one creates the owner account of a Home Assistant nobody has set up yet.", new Thickness(0, 2, 0, 0)));
+        children.Add(HelpTip.Explain("Sign in opens Home Assistant's own sign-in page in your browser; Martlet then keeps its own access token. " +
+            "Set up a new one creates the owner account of a Home Assistant nobody has set up yet.", new Thickness(0, 2, 0, 0), "SmartHomeSignIn",
+            "signing in", wiki: "Smart-Home#sign-in-or-set-up"));
         children.Add(new Label { Content = "Or paste a long-lived access _token", Target = token, Padding = new Thickness(0, 12, 0, 4) });
         children.Add(tokenField);
-        children.Add(Note("Create one in your Home Assistant profile under Security. Martlet stores it in Windows Credential Manager and sends it only to this address.",
-            new Thickness(0, 4, 0, 0)));
+        children.Add(HelpTip.Explain("Create one in your Home Assistant profile under Security; Martlet keeps it in Windows Credential Manager and sends it only to this address.",
+            new Thickness(0, 4, 0, 0), "SmartHomeToken", "the access token", wiki: "Smart-Home#access-token"));
         children.Add(Row(connect));
         return Card([.. children]);
     }
@@ -193,7 +194,7 @@ public partial class MainWindow
             homeFound = await SmartHome.FindAsync(lifetime.Token);
             homeFindStatus = homeFound.Count switch
             {
-                0 => "No Home Assistant answered on this network. Type its address instead, or install one on a Linux Martlet host below.",
+                0 => "No Home Assistant answered on this network: type its address instead, or install one on a Linux Martlet host below.",
                 1 => "Found 1 Home Assistant.",
                 var count => $"Found {count} Home Assistants."
             };
@@ -227,13 +228,13 @@ public partial class MainWindow
             {
                 homeSetupTarget = HomeAssistantEndpoint.Normalize(address);
                 homeSetupStatus = null;
-                ActionText.Text = "Nobody has set up this Home Assistant yet. Choose its owner account below.";
+                ActionText.Text = "Nobody has set up this Home Assistant yet: choose its owner account below.";
             }
             else
             {
                 homeSetupTarget = null;
                 if (signInIfReady) { RenderTab(); await SignInHomeAssistantAsync(address); return; }
-                ActionText.Text = "This Home Assistant is already set up. Use Sign in with Home Assistant to connect.";
+                ActionText.Text = "This Home Assistant is already set up: use Sign in with Home Assistant to connect.";
             }
         }
         catch (HomeAssistantException error) { ActionText.Text = error.Message; }
@@ -246,7 +247,7 @@ public partial class MainWindow
         if (closing) return;
         try
         {
-            ActionText.Text = "Sign in to Home Assistant in your browser. Martlet waits up to 5 minutes...";
+            ActionText.Text = "Sign in to Home Assistant in your browser (Martlet waits up to 5 minutes)...";
             var info = await smartHome.SignInAsync(address, uri => Dispatcher.Invoke(() => OpenInBrowser(uri)), lifetime.Token);
             homeAddressDraft = null;
             homeManageLoadedFor = null;
@@ -290,7 +291,7 @@ public partial class MainWindow
     {
         var text = smartHome.ControlEnabled
             ? $"Connected to {info.LocationName}."
-            : $"Connected to {info.LocationName}. Choose Home Assistant at the top of this page and press \"Use Home Assistant when I ask\" to use it.";
+            : $"Connected to {info.LocationName}: choose Home Assistant at the top of this page and press \"Use Home Assistant when I ask\" to use it.";
         if (clusterEnabled && NetworkMap.Hosts(Inputs()).Count > 0 && await ShareHomeAssistantAsync())
             text += " " + ActionText.Text;
         ActionText.Text = text;
@@ -299,11 +300,9 @@ public partial class MainWindow
     private async Task DisconnectSmartHomeAsync()
     {
         var everywhere = clusterEnabled && NetworkMap.Hosts(Inputs()).Count > 0;
-        if (!ConfirmationDialog.Confirm(this, (everywhere
-                ? "Disconnect Home Assistant on all your computers?\n\nMartlet removes its saved token here and on your other computers, and " +
-                  "your Martlet hosts forget it. "
-                : "Disconnect Home Assistant?\n\nMartlet will remove the saved token on this PC and stop using your smart home here. ") +
-            "Revoke the token in Home Assistant if you no longer need it.", "Martlet - smart home"))
+        if (!ConfirmationDialog.Confirm(this, everywhere
+                ? "Disconnect Home Assistant and remove its saved token from all your computers and Martlet hosts?"
+                : "Disconnect Home Assistant and remove its saved token from this PC?", "Martlet - smart home"))
             return;
         var reached = everywhere && await DisconnectEverywhereAsync();
         if (!reached) smartHome.Disconnect();
@@ -313,7 +312,7 @@ public partial class MainWindow
         homeUpdates = null;
         homeBackups = null;
         ActionText.Text = reached ? "Home Assistant is disconnected on all your computers."
-            : everywhere ? "Home Assistant disconnected here. No Martlet host answered, so your other computers disconnect when one does."
+            : everywhere ? "Home Assistant disconnected here; no Martlet host answered, so your other computers disconnect when one does."
             : "Home Assistant disconnected.";
         RenderTab();
     }
@@ -357,16 +356,16 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading("Set up this Home Assistant"),
-            Status($"Nobody has set up the Home Assistant at {HomeAssistantEndpoint.Display(target)} yet. Martlet can do it now.", "SmartHomeSetupTarget"),
+            Status($"Nobody has set up the Home Assistant at {HomeAssistantEndpoint.Display(target)} yet: Martlet can do it now.", "SmartHomeSetupTarget"),
             new Label { Content = "Your _name", Target = name, Padding = new Thickness(0, 10, 0, 4) }, name,
             new Label { Content = "_Username", Target = username, Padding = new Thickness(0, 8, 0, 4) }, username,
             new Label { Content = "_Password", Target = password, Padding = new Thickness(0, 8, 0, 4) }, password,
             new Label { Content = "_Repeat password", Target = confirm, Padding = new Thickness(0, 8, 0, 4) }, confirm,
             control, Row(setUp, cancel),
-            Note("Martlet creates the owner account (an administrator) with this name and password, gives Home Assistant this PC's time zone, " +
-                "country, currency, units and language, leaves usage analytics off, and connects with its own access token. You sign in to " +
-                "Home Assistant with this username and password; Martlet doesn't keep the password. Set your home's location in Home Assistant " +
-                "afterwards (Settings > System > General).", new Thickness(0, 6, 0, 0))
+            HelpTip.Explain("Martlet creates the owner account (an administrator) with this name and password, connects with its own access token " +
+                "and doesn't keep the password. It gives Home Assistant this PC's time zone, country, currency, units and language and leaves " +
+                "usage analytics off. Set your home's location in Home Assistant afterwards (Settings > System > General).",
+                new Thickness(0, 6, 0, 0), "SmartHomeSetup", "setting up Home Assistant", wiki: "Smart-Home#set-up-a-new-home-assistant")
         };
         if (homeSetupStatus is { } status) children.Insert(2, Status(status, "SmartHomeSetupStatus"));
         return Card([.. children]);
@@ -402,7 +401,7 @@ public partial class MainWindow
             homeSetupStatus = null;
             homeAddressDraft = null;
             homeManageLoadedFor = null;
-            var text = $"Home Assistant is set up and connected ({info.LocationName}, version {info.Version}). Sign in to it as {username.Trim()}.";
+            var text = $"Home Assistant is set up and connected ({info.LocationName}, version {info.Version}): sign in to it as {username.Trim()}.";
             if (clusterEnabled && NetworkMap.Hosts(Inputs()).Count > 0 && await ShareHomeAssistantAsync()) text += " " + ActionText.Text;
             ActionText.Text = text;
         }
@@ -421,8 +420,8 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading("Home Assistant on your Martlet hosts"),
-            Note("Martlet can install Home Assistant on a Linux computer that is one of your Martlet hosts (with Docker Engine), set it up and keep it shared with your other computers.",
-                new Thickness(0, 0, 0, 6))
+            HelpTip.Explain("Martlet can install Home Assistant on a Linux computer that is one of your Martlet hosts (with Docker Engine), set it up and keep it shared with your other computers.",
+                new Thickness(0, 0, 0, 6), "SmartHomeHosts", "Home Assistant on your hosts", wiki: "Smart-Home#install-home-assistant-on-one-of-your-computers")
         };
         foreach (var host in hosts)
         {
@@ -450,7 +449,7 @@ public partial class MainWindow
             if (HomeAssistantHosts.Extras(report) is { } extras) children.Add(Note(extras, new Thickness(12, 2, 0, 0)));
             if (action is not null) children.Add(action);
         }
-        children.Add(Note("A host's facts come from its last check. Use Check connection on the Devices map after changing it.", new Thickness(0, 8, 0, 0)));
+        children.Add(Note("A host's facts come from its last check, so use Check connection on the Devices map after you change it.", new Thickness(0, 8, 0, 0)));
         return Card([.. children]);
     }
 
@@ -484,7 +483,7 @@ public partial class MainWindow
             : connected
                 ? "Martlet gives this connection to your other computers on the next check."
             : homeShared is { Address: not null } offered
-                ? $"Your other computers use Home Assistant at {offered.Address}. This PC connects to it by itself within a minute."
+                ? $"Your other computers use Home Assistant at {offered.Address}, and this PC connects to it by itself within a minute."
                 : "None of your computers is connected to Home Assistant.";
         children.Add(Status(state, "SmartHomeShareState"));
         children.Add(Status(homeShareStatus, "SmartHomeShareStatus"));
@@ -493,7 +492,8 @@ public partial class MainWindow
         children.Add(Row(check));
         children.Add(HelpTip.Explain("Home Assistant is one connection for all your computers: your paired Martlet hosts keep its address and Martlet's " +
             "access token privately and hand them only to your paired computers, which connect by themselves. Disconnecting disconnects " +
-            "every computer. What Martlet may do with it (below) is the same everywhere too.", new Thickness(0, 6, 0, 0), "HomeAssistantShared", "sharing Home Assistant"));
+            "every computer. What Martlet may do with it (below) is the same everywhere too.", new Thickness(0, 6, 0, 0), "HomeAssistantShared", "sharing Home Assistant",
+            wiki: "Smart-Home#on-all-your-computers"));
         return Card([.. children]);
     }
 
@@ -527,19 +527,19 @@ public partial class MainWindow
                 "• Lights, switches, climate, media, scenes and blinds run right away.\n" +
                 "• Locks, doors, garage doors, gates, alarms and valves need the setting above and a Yes each time.",
                 new Thickness(0, 6, 0, 0)),
-            Note("Martlet can reach only devices exposed to voice assistants in Home Assistant. Keep sensitive devices hidden unless you need them.",
-                new Thickness(0, 8, 0, 0)),
-            Note("Screen and camera looks never control your home. Use Voice ID if you want Martlet to answer only you.",
-                new Thickness(0, 8, 0, 0))));
+            HelpTip.Explain("Martlet can reach only devices exposed to voice assistants in Home Assistant. Keep sensitive devices hidden unless you need them.",
+                new Thickness(0, 8, 0, 0), "SmartHomeExposed", "exposed devices", wiki: "Smart-Home#what-martlet-may-do"),
+            HelpTip.Explain("Screen and camera looks never control your home. Use Voice ID if you want Martlet to answer only you.",
+                new Thickness(0, 8, 0, 0), "SmartHomeWhoAsks", "who can control your home", wiki: "Smart-Home#what-martlet-may-do")));
         var tools = Status(SmartHomeToolsStatus(saved), "SmartHomeToolsStatus");
         tools.Margin = new Thickness(0, 4, 0, 0);
         panel.Children.Add(Card(Heading("Flexible requests"),
             modelTools,
             tools,
-            Note("With this on, Martlet sends exposed device names, areas and states to the Thinking model when needed. Risky actions still ask first.",
-                new Thickness(0, 8, 0, 0)),
-            Note("Requires Home Assistant's Model Context Protocol Server integration and a Thinking model that can use tools. If unavailable, Martlet uses standard commands.",
-                new Thickness(0, 8, 0, 0))));
+            HelpTip.Explain("With this on, Martlet sends exposed device names, areas and states to the Thinking model when needed. Risky actions still ask first.",
+                new Thickness(0, 8, 0, 0), "SmartHomeFlexibleData", "what flexible requests send", wiki: "Smart-Home#flexible-requests"),
+            HelpTip.Explain("Requires Home Assistant's Model Context Protocol Server integration and a Thinking model that can use tools. If unavailable, Martlet uses standard commands.",
+                new Thickness(0, 8, 0, 0), "SmartHomeFlexibleNeeds", "what flexible requests need", wiki: "Smart-Home#flexible-requests")));
         return panel;
     }
 
@@ -551,11 +551,11 @@ public partial class MainWindow
         var saved = smartHome.SetControl(control, allowSensitive, modelTools);
         if (saved) QueueSettingsSync();
         if (saved && modelTools && control) mcpTools.EnsureStarted(retry: true);
-        ActionText.Text = !saved ? "Couldn't save the smart home setting. Check access to your data directory."
+        ActionText.Text = !saved ? "Couldn't save the smart home setting: check access to your data directory."
             : !control ? "Home Assistant is off."
             : modelTools != current.ModelTools
                 ? modelTools
-                    ? "Flexible smart-home requests are on. Reload an open talk window to use them."
+                    ? "Flexible smart-home requests are on: reload an open talk window to use them."
                     : "Flexible smart-home requests are off."
             : allowSensitive ? "Locks, doors and alarms are allowed after you click Yes each time."
             : "Martlet will use Home Assistant when you ask.";
@@ -565,16 +565,16 @@ public partial class MainWindow
     /// <summary>Whether Home Assistant's MCP server is running among the conversation's tools, in words.</summary>
     private string SmartHomeToolsStatus(HomePreferences saved)
     {
-        if (!smartHome.ModelToolsEnabled) return saved.Control ? "Off. Martlet uses standard commands." : "Off.";
+        if (!smartHome.ModelToolsEnabled) return saved.Control ? "Off: Martlet uses standard commands." : "Off.";
         var status = mcpTools.Hub.Status.FirstOrDefault(s => s.Name == SmartHome.ServerName);
         if (mcpTools.ManagedConflicts.Any(s => s.Name == SmartHome.ServerName))
             return "Using your existing Home Assistant tools setup.";
         return status?.State switch
         {
-            McpServerState.Ready => $"Ready. {status.Tools.Count} tools available.",
+            McpServerState.Ready => $"Ready: {status.Tools.Count} tools available.",
             McpServerState.Starting => "Connecting to Home Assistant's tools...",
-            McpServerState.Failed => $"Couldn't connect to Home Assistant's tools ({status.Error}). Martlet will use standard commands.",
-            _ => "On. Connects when you open a talk window."
+            McpServerState.Failed => $"Couldn't connect to Home Assistant's tools ({status.Error}), so Martlet uses standard commands.",
+            _ => "On: it connects when you open a talk window."
         };
     }
 
@@ -585,9 +585,9 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading("Devices Home Assistant found"),
-            Note("Home Assistant looks for devices on its own network (Hue, Sonos, Chromecast, Shelly, ESPHome, HomeKit, Matter and more). " +
+            HelpTip.Explain("Home Assistant looks for devices on its own network (Hue, Sonos, Chromecast, Shelly, ESPHome, HomeKit, Matter and more). " +
                 "Add the ones you want here. New lights, switches, climate, media and blinds become available to Martlet by themselves; locks stay hidden.",
-                new Thickness(0, 0, 0, 6)),
+                new Thickness(0, 0, 0, 6), "SmartHomeDevices", "devices Home Assistant found", wiki: "Smart-Home#add-devices"),
             Status(homeDevicesStatus ?? (homeManageBusy ? "Checking..." : "Not checked yet."), "SmartHomeDevicesStatus")
         };
         var index = 0;
@@ -634,7 +634,7 @@ public partial class MainWindow
         try
         {
             await smartHome.IgnoreDiscoveredAsync(found, lifetime.Token);
-            ActionText.Text = $"Home Assistant won't offer {found.Name} again. You can still add it from its Integrations page.";
+            ActionText.Text = $"Home Assistant won't offer {found.Name} again (you can still add it from its Integrations page).";
         }
         catch (HomeAssistantException error) { ActionText.Text = error.Message; }
         catch (OperationCanceledException) { }
@@ -660,9 +660,9 @@ public partial class MainWindow
         HomeStepKind.Done => $"Added {name} to Home Assistant.",
         HomeStepKind.Aborted => step.Reason is "already_configured" or "already_in_progress"
             ? $"{name} is already set up in Home Assistant." : $"Home Assistant couldn't add {name} ({step.Reason ?? "stopped"}).",
-        HomeStepKind.Progress => $"Home Assistant is still adding {name}. Check again in a moment.",
-        _ when step.Errors.Count > 0 => $"Home Assistant couldn't add {name} ({string.Join(", ", step.Errors)}). Finish it on its Integrations page, which is opening.",
-        _ => $"{name} needs a few more details (such as a code, key or choice). Finish it on Home Assistant's Integrations page, which is opening."
+        HomeStepKind.Progress => $"Home Assistant is still adding {name}, so check again in a moment.",
+        _ when step.Errors.Count > 0 => $"Home Assistant couldn't add {name} ({string.Join(", ", step.Errors)}): finish it on its Integrations page, which is opening.",
+        _ => $"{name} needs a few more details (such as a code, key or choice): finish it on Home Assistant's Integrations page, which is opening."
     };
 
     // ---------- managing Home Assistant ----------
@@ -674,10 +674,10 @@ public partial class MainWindow
         var system = homeSystem;
         var summary = system is null
             ? homeManageStatus ?? (homeManageBusy ? "Reading Home Assistant..." : "Not read yet.")
-            : $"{system.LocationName}: Home Assistant {system.Version} ({system.Installation}" + (onHost is null ? "" : $" on {onHost.HostId}") + "). " +
-                (system.Integrations.Count == 0 ? "No integrations yet. " : $"{system.Integrations.Count} integrations: {string.Join(", ", system.Integrations.Take(8))}" +
-                    (system.Integrations.Count > 8 ? ", ..." : "") + ". ") +
-                (homeBackups is { } backups ? backups.Latest is { } latest ? $"Last backup {latest.ToLocalTime():g} ({backups.Count} kept)." : "No backups yet." : "");
+            : $"{system.LocationName}: Home Assistant {system.Version} ({system.Installation}" + (onHost is null ? "" : $" on {onHost.HostId}") + "); " +
+                (system.Integrations.Count == 0 ? "no integrations yet" : $"{system.Integrations.Count} integrations: {string.Join(", ", system.Integrations.Take(8))}" +
+                    (system.Integrations.Count > 8 ? ", ..." : "")) +
+                (homeBackups is { } backups ? backups.Latest is { } latest ? $"; last backup {latest.ToLocalTime():g} ({backups.Count} kept)" : "; no backups yet" : "") + ".";
         var children = new List<UIElement> { Heading("Manage Home Assistant"), Status(summary, "SmartHomeManageStatus") };
         if (system is not null && homeManageStatus is { } problem) children.Add(Status(problem, "SmartHomeManageProblem"));
         if (homeUpdates is { Count: > 0 } updates)
@@ -705,8 +705,9 @@ public partial class MainWindow
             PageButton("Restart", () => RestartHomeAssistantAsync().Forget(), id: "SmartHomeRestart"),
             PageButton("Open Home Assistant", () => OpenHomePage(""), id: "SmartHomeOpen"),
             PageButton(homeManageBusy ? "Reading..." : "Refresh", () => RefreshHomeManagementAsync().Forget(), link: true, id: "SmartHomeManageRefresh")));
-        children.Add(Note("These need an administrator's sign-in (Martlet's own setup and Sign in with Home Assistant as the owner give one). " +
-            "Only your clicks here run them; the Thinking model never gets them.", new Thickness(0, 6, 0, 0)));
+        children.Add(HelpTip.Explain("Only your clicks here run these, and the Thinking model never gets them. They need an administrator's sign-in " +
+            "(Martlet's own setup, or Sign in with Home Assistant as the owner, gives one).", new Thickness(0, 6, 0, 0), "SmartHomeManage",
+            "managing Home Assistant", wiki: "Smart-Home#manage-home-assistant"));
         return Card([.. children]);
     }
 
@@ -752,12 +753,12 @@ public partial class MainWindow
 
     private async Task InstallHomeUpdateAsync(HomeUpdate update)
     {
-        if (!ConfirmationDialog.Confirm(this, $"Install {update.Title} {update.Latest}? Home Assistant may restart to finish it.", "Martlet - smart home"))
+        if (!ConfirmationDialog.Confirm(this, $"Install {update.Title} {update.Latest} (Home Assistant may restart to finish it)?", "Martlet - smart home"))
             return;
         try
         {
             await smartHome.InstallUpdateAsync(update, lifetime.Token);
-            ActionText.Text = $"Home Assistant is installing {update.Title}. Refresh in a few minutes.";
+            ActionText.Text = $"Home Assistant is installing {update.Title}, so refresh in a few minutes.";
         }
         catch (HomeAssistantException error) { ActionText.Text = error.Message; }
         catch (OperationCanceledException) { }
@@ -766,12 +767,12 @@ public partial class MainWindow
 
     private async Task RestartHomeAssistantAsync()
     {
-        if (!ConfirmationDialog.Confirm(this, "Restart Home Assistant? Your smart home doesn't respond for a minute or so.", "Martlet - smart home"))
+        if (!ConfirmationDialog.Confirm(this, "Restart Home Assistant (your smart home doesn't respond for a minute or so)?", "Martlet - smart home"))
             return;
         try
         {
             await smartHome.RestartAsync(lifetime.Token);
-            ActionText.Text = "Home Assistant is restarting. It's back in a minute or so.";
+            ActionText.Text = "Home Assistant is restarting and is back in a minute or so.";
         }
         catch (HomeAssistantException error) { ActionText.Text = error.Message; }
         catch (OperationCanceledException) { }
@@ -783,7 +784,7 @@ public partial class MainWindow
         try
         {
             await smartHome.BackupAsync(lifetime.Token);
-            ActionText.Text = "Home Assistant started a backup on its own disk. Refresh in a minute to see it.";
+            ActionText.Text = "Home Assistant started a backup on its own disk: refresh in a minute to see it.";
         }
         catch (HomeAssistantException error) { ActionText.Text = error.Message; }
         catch (OperationCanceledException) { }
@@ -803,7 +804,7 @@ public partial class MainWindow
         try { Process.Start(new ProcessStartInfo(address.AbsoluteUri) { UseShellExecute = true })?.Dispose(); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            ActionText.Text = $"Couldn't open the browser: {error.Message}. Open {address.AbsoluteUri} yourself.";
+            ActionText.Text = $"Couldn't open the browser ({error.Message}): open {address.AbsoluteUri} yourself.";
         }
     }
 

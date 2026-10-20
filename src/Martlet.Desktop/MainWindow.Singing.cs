@@ -550,25 +550,16 @@ public partial class MainWindow
             }
             return;
         }
-        var dataDirectory = store.DataDirectory;
-        var setup = setupService;
         try
         {
             // Why martlet-host stopped ("Stopped: ..."), for the card when the run fails.
             string? stopped = null;
             async Task<string> Continue(HostRunWindow run, PairedHost pc)
             {
-                var target = pc.Target(Version);
-                await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                target = await HostLocal.EngineForChangeAsync(target, HostRoles.Singing, run);
-                var inputs = await HostLocal.DescribeAsync(target, HostRoles.Singing, run.Output, run.Token);
-                var chosen = HostInputDialog.WithGpu(run, "this PC", what, inputs, answers) ?? throw new OperationCanceledException();
-                run.Status(addOn is not null ? $"Adding {addOn.Name} on this PC ({addOn.Download})..."
-                    : "Installing Singing on this PC (a large download)...");
-                var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Singing], SetupProgress(run, what, why => stopped ??= why),
-                    run.Token, answers: chosen);
-                if (exit != 0)
-                    throw new InvalidOperationException($"Installing {what} stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
+                await InstallRoleHereAsync(run, pc, new(HostRoles.Singing, what, answers,
+                    addOn is not null ? $"Adding {addOn.Name} on this PC ({addOn.Download})..." : "Installing Singing on this PC (a large download)...",
+                    exit => $"Installing {what} stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.")
+                    { Stopped = why => stopped ??= why });
                 run.Status($"Checking {what} on this PC...");
                 singingServices.Remove(pc.HostId);
                 if (await WaitForSingingAsync(pc, addOn, run.Token) is { } why)
@@ -580,17 +571,9 @@ public partial class MainWindow
                 return addOn is null ? "Singing is ready on this PC: ask Martlet to sing you a song." : $"{what} is ready on this PC.";
             }
 
-            string? status;
-            if (thisPc is not null)
-                status = await HostRunWindow.RunAsync(this, addOn is null ? "Set up Singing on this PC" : $"Add {what} on this PC",
-                    run => Continue(run, thisPc)) ??
-                    (stopped is null ? $"{what} wasn't set up; the run window has details." : $"{what} wasn't set up: {stopped}");
-            else
-            {
-                (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(dataDirectory), setup,
-                    text => ActionText.Text = text, lifetime.Token, Continue, "Set up Singing on this PC");
-                await ReadMachineAsync();
-            }
+            var status = await RunRoleSetupHereAsync(thisPc, addOn is null ? "Set up Singing on this PC" : $"Add {what} on this PC",
+                "Set up Singing on this PC", Continue,
+                () => stopped is null ? $"{what} wasn't set up; the run window has details." : $"{what} wasn't set up: {stopped}");
             if (!closing && status is not null)
             {
                 ActionText.Text = status;
@@ -640,30 +623,21 @@ public partial class MainWindow
     /// <summary>After martlet-host added the role, checks <paramref name="host"/> (about a minute) until its gateway offers the
     /// singing route and its singing service answers set up (with the model <paramref name="addOn"/> adds, if any).
     /// Returns null once it does, else what it saw last.</summary>
-    private async Task<string?> WaitForSingingAsync(PairedHost host, SingingAddOn? addOn, CancellationToken token)
+    private Task<string?> WaitForSingingAsync(PairedHost host, SingingAddOn? addOn, CancellationToken token) => WaitForRoleAsync(host, async check =>
     {
-        for (var attempt = 0; ; attempt++)
+        NoteSingingHost();
+        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) != true) return new(check.Text);
+        try
         {
-            var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, token);
-            hostChecks[host.HostId] = check;
-            NoteSingingHost();
-            var why = check.Text;
-            if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) == true)
-            {
-                try
-                {
-                    var service = await SongClient.ReadServiceAsync(host.Pairing, token);
-                    singingServices[host.HostId] = service;
-                    var added = addOn is null || (addOn.Music is { } music ? service?.Has(music) == true : service?.Has(addOn.Match!.Value) == true);
-                    if (service is { State: not "not_provisioned" } && added) return null;
-                    why = service is null ? "it offers no singing route" : !added
-                        ? $"its singing service doesn't list {addOn!.Name}"
-                        : $"its singing service is {service.State}";
-                }
-                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-                catch (Exception error) when (ClusterSync.IsHostFailure(error) || error is JsonException) { why = error.Message; }
-            }            if (attempt >= 12) return why;
-            await Task.Delay(TimeSpan.FromSeconds(5), token);
+            var service = await SongClient.ReadServiceAsync(host.Pairing, token);
+            singingServices[host.HostId] = service;
+            var added = addOn is null || (addOn.Music is { } music ? service?.Has(music) == true : service?.Has(addOn.Match!.Value) == true);
+            if (service is { State: not "not_provisioned" } && added) return null;
+            return new(service is null ? "it offers no singing route" : !added
+                ? $"its singing service doesn't list {addOn!.Name}"
+                : $"its singing service is {service.State}");
         }
-    }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error) when (ClusterSync.IsHostFailure(error) || error is JsonException) { return new(error.Message); }
+    }, token);
 }
