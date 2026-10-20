@@ -56,7 +56,7 @@ public sealed class HostRoleSetupTests
     [Theory]
     [InlineData("MainWindow.Pictures.cs")]
     [InlineData("MainWindow.Reading.cs")]
-    [InlineData("MainWindow.Singing.cs")]
+    [InlineData("MainWindow.SingingSetup.cs")]
     [InlineData("MainWindow.Motion.cs")]
     [InlineData("MainWindow.Listening.cs")]
     public void RolePagesUseTheSharedSetupAndWait(string file)
