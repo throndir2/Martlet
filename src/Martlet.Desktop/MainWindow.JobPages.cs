@@ -399,7 +399,7 @@ public partial class MainWindow
         return OptionPicker(id, "Cloud provider", null, options, rows: 3);
     }
 
-    private static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
+    internal static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
 
     /// <summary>The fields of cloud provider <paramref name="p"/> for a job: its address (a custom server), model (and voice),
     /// key, the consent box and its Use button. The automation IDs are the page's (<c>SetupCloudModel-&lt;page&gt;</c>,

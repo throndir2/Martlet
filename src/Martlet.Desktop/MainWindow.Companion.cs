@@ -281,7 +281,7 @@ public partial class MainWindow
             case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.CheckIns: CheckInsPage.Render(body); break;
             case CompanionTab.DeepThinking: ThinkingPoolPage.Render(body); break;
-            case CompanionTab.Singing: RenderSingingTab(body); break;
+            case CompanionTab.Singing: SingingPage.Render(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: PicturesPage.Render(body); break;
             case CompanionTab.Motion: RenderMotionTab(body); break;

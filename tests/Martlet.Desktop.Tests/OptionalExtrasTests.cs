@@ -173,16 +173,16 @@ public sealed class OptionalExtrasTests
             Assert.True(saved.Off);
             Assert.Equal("singer", saved.Host);
             Assert.False(SongClient.IsSetUp(directory));
-            Assert.Equal("Off: Martlet doesn't sing; Singing stays set up on your computers.", MainWindow.SingingNow(saved, active: false, [], listed: false, readySomewhere: true));
-            Assert.StartsWith("Not set up yet: add one of your computers", MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: false, readySomewhere: false));
+            Assert.Equal("Off: Martlet doesn't sing; Singing stays set up on your computers.", SingingPageModel.Now(saved, active: false, [], listed: false, readySomewhere: true));
+            Assert.StartsWith("Not set up yet: add one of your computers", SingingPageModel.Now(new SingingPreferences(), active: false, [], listed: false, readySomewhere: false));
             // With the singing pool list, Off is a list with no computer on; the music and the voice match each name their computers.
             Assert.Equal("Off: Martlet doesn't sing, because no computer in the music list is on.",
-                MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: true, readySomewhere: false));
+                SingingPageModel.Now(new SingingPreferences(), active: false, [], listed: true, readySomewhere: false));
             Assert.Equal("Martlet writes the music on m3-host (or the first free one of 2 computers) in high quality, and matches the " +
                 "voice on m4-host with SoulX-Singer.",
-                MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host", "m4-host"], listed: true, readySomewhere: true, ["m4-host"]));
+                SingingPageModel.Now(new SingingPreferences(), active: true, ["m3-host", "m4-host"], listed: true, readySomewhere: true, ["m4-host"]));
             Assert.Equal("Martlet writes the music on m3-host in fast quality, but voice match is off, so songs keep the music model's own singer.",
-                MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host"], listed: true, readySomewhere: true, [], matchOff: true,
+                SingingPageModel.Now(new SingingPreferences(), active: true, ["m3-host"], listed: true, readySomewhere: true, [], matchOff: true,
                     quality: SongQuality.Fast));
         }
         finally
