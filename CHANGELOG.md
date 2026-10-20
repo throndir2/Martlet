@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
-- The last long texts are one short line too: the Replies summary, the Thinking situation line, the Memory note, Home's items for screen readers and the setup advisor's steps. ([#1090](https://github.com/throndir2/Martlet/pull/1090))
+- The last long texts are one short line too: the Replies summary, the Thinking situation line, the Memory note, Home's items for screen readers and the setup advisor's steps. ([#1087](https://github.com/throndir2/Martlet/pull/1087))
 - The Devices map, the job pages, the Add a computer and Prepare a Linux PC windows, the run window and the host settings show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Multiple Computers and Setting Up a Host wiki pages have the full instructions. ([#1079](https://github.com/throndir2/Martlet/pull/1079))
 - Companion › Tools, Smart home, Discord, Messaging, App guides and Check-ins, the MCP windows and Outside access now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki has the full setup steps for Discord, Telegram, WhatsApp and Home Assistant. ([#1072](https://github.com/throndir2/Martlet/pull/1072))
 
