@@ -65,7 +65,7 @@ internal static class OutsidePathCheck
         var name = "martlet-outside-check-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(4));
         var data = name + "-data";
         var gateway = name + "-gw";
-        var port = FreePort();
+        var port = LoopbackHttpServer.FreePort();
         var outside = $"127.0.0.1:{port}";
         var containers = new List<string>();
         try
@@ -366,14 +366,6 @@ internal static class OutsidePathCheck
             _ => []
         };
         return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(info));
-    }
-
-    private static int FreePort()
-    {
-        var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        try { return ((IPEndPoint)probe.LocalEndpoint).Port; }
-        finally { probe.Stop(); }
     }
 
     private static string LastLine(string text) => text.Replace("\r", "").Split('\n').LastOrDefault(l => l.Trim().Length > 0)?.Trim() ?? "(no output)";
