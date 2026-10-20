@@ -76,7 +76,7 @@ internal sealed record CapacityBar(CapacityResource Resource, double? Total, dou
     /// <summary>The jobs usually fit, but at their busiest they can need more than the device can give, and slow down or fail.</summary>
     internal bool Tight => !Over && Limit is { } limit && Planned > limit + 0.05;
 
-    /// <summary>"Graphics memory: 12-14 of 24 GB planned (50-58%), 10 GB free. In use now: 9.5 GB (40%)."</summary>
+    /// <summary>"Graphics memory: 12-14 of 24 GB planned (50-58%), 10 GB free; in use now: 9.5 GB (40%)."</summary>
     internal string Text => DeviceCapacity.BarText(this);
 
     /// <summary>The hover breakdown: a row per job (in segment order), then what is free, kept for the system and in use now.</summary>
@@ -200,7 +200,7 @@ internal static class DeviceCapacity
                     : bar.Planned > room
                         ? $"{planned}: shared, as jobs rarely work at the same moment."
                         : $"{planned}, {Amount(bar.Resource, bar.Headroom!.Value)} free{(bar.Usable is null ? "" : " for Martlet")}.";
-        if (bar.Live is { } used) text += $" In use now: {Amount(bar.Resource, used)} ({Pct(bar.LivePercent!.Value)}).";
+        if (bar.Live is { } used) text = text.TrimEnd('.') + $"; in use now: {Amount(bar.Resource, used)} ({Pct(bar.LivePercent!.Value)}).";
         return text;
     }
 
@@ -263,10 +263,11 @@ internal static class DeviceCapacity
             ? $"{Number(b.Headroom!.Value)} processor thread{(Math.Abs(b.Headroom.Value - 1) < 0.05 ? "" : "s")}"
             : $"{Number(b.Headroom!.Value)} GB {Word(b.Resource)}{(b.Resource == CapacityResource.Disk ? " space" : "")}"));
         var text = free.Length > 0 ? $"Left free: {free}." : "";
-        if (tight.Count > 0)
-            text += (text.Length > 0 ? " " : "") + $"Tight on {string.Join(" and ", tight)}: at their busiest the jobs can need more than it has.";
-        if (over.Count > 0) text += (text.Length > 0 ? " " : "") + $"Planned to use more {string.Join(" and ", over)} than it has.";
-        return text;
+        var parts = new List<string>();
+        if (free.Length > 0) parts.Add($"Left free: {free}");
+        if (tight.Count > 0) parts.Add($"tight on {string.Join(" and ", tight)}, as at their busiest the jobs can need more than it has");
+        if (over.Count > 0) parts.Add($"planned to use more {string.Join(" and ", over)} than it has");
+        return parts.Count == 0 ? text : Capital(string.Join("; ", parts)) + ".";
     }
 
     /// <summary>"Room for 2 more Deep Thinking models here." lines, best first; at most <paramref name="limit"/>.</summary>
@@ -284,6 +285,8 @@ internal static class DeviceCapacity
     /// <summary>"Deep Thinking model" → "Deep Thinking models"; a name that already ends in s stays as it is.</summary>
     internal static string Plural(string name) => name.EndsWith('s') ? name : name + "s";
 
+    private static string Capital(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
     /// <summary>"Totals across 3 computers: 56 GB graphics memory, 192 GB memory, 64 processor threads."</summary>
     internal static string Totals(IReadOnlyList<CapacitySpecs> devices)
     {
@@ -300,14 +303,14 @@ internal static class DeviceCapacity
         return parts.Count == 0 ? $"Totals across {count}: no hardware reported yet." : $"Totals across {count}: {string.Join(", ", parts)}.";
     }
 
-    /// <summary>"On your computers: Thinking, Listening. Online: Speaking (ElevenLabs). Not set up: Lip-sync." Empty groups are left out.</summary>
+    /// <summary>"On your computers: Thinking, Listening; online: Speaking (ElevenLabs); not set up: Lip-sync." Empty groups are left out.</summary>
     internal static string Coverage(IReadOnlyList<string> local, IReadOnlyList<string> hosted, IReadOnlyList<string> missing)
     {
         var parts = new List<string>();
-        if (local.Count > 0) parts.Add($"On your computers: {string.Join(", ", local)}.");
-        if (hosted.Count > 0) parts.Add($"Online: {string.Join(", ", hosted)}.");
-        parts.Add(missing.Count > 0 ? $"Not set up: {string.Join(", ", missing)}." : "Every part of Martlet is covered.");
-        return string.Join(" ", parts);
+        if (local.Count > 0) parts.Add($"on your computers: {string.Join(", ", local)}");
+        if (hosted.Count > 0) parts.Add($"online: {string.Join(", ", hosted)}");
+        parts.Add(missing.Count > 0 ? $"not set up: {string.Join(", ", missing)}" : "every part of Martlet is covered");
+        return Capital(string.Join("; ", parts)) + ".";
     }
 
     /// <summary>"Your computers could also run 2 more Deep Thinking models and another Voice." or that nothing more fits.</summary>

@@ -108,7 +108,7 @@ public static class ExternalEndpoints
     public static string Summary(IReadOnlyList<ExternalEndpoint> endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
-        if (endpoints.Count == 0) return "None. Martlet sends work only to this PC and your own computers.";
+        if (endpoints.Count == 0) return "None: Martlet sends work only to this PC and your own computers.";
         var cloud = endpoints.Count(e => e.Cloud);
         var servers = endpoints.Count - cloud;
         var parts = new List<string>();

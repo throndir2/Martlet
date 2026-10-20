@@ -168,7 +168,7 @@ public partial class MainWindow
         var address = machine.LanAddress ?? HostSetupCommands.ThisPcAddress();
         if (!HostSetupCommands.IsPrivate(address))
         {
-            ActionText.Text = "This PC has no private network address (10.x, 172.16-31.x or 192.168.x). Connect it to your home network first.";
+            ActionText.Text = "This PC has no private network address (10.x, 172.16-31.x or 192.168.x), so connect it to your home network first.";
             return;
         }
         NearbyFirewallButton.IsEnabled = false;
@@ -179,9 +179,8 @@ public partial class MainWindow
             if (state.Category == "Public")
             {
                 if (!ConfirmationDialog.Confirm(this,
-                        "Windows treats this PC's network as Public, which stops your other computers from finding it. Mark it as a " +
-                        $"Private (home or work) network and let Martlet on your local network reach port {Nearby.Port}? Windows asks " +
-                        "for administrator approval once.", "Let your other computers find this PC"))
+                        "Windows treats this PC's network as Public, so mark it as Private (home or work) and let Martlet on your local " +
+                        $"network reach port {Nearby.Port}, with one administrator approval?", "Let your other computers find this PC"))
                     return;
                 makePrivate = state.InterfaceIndex;
             }
@@ -214,14 +213,14 @@ public partial class MainWindow
         if (store is null) text = "Unavailable without a local data folder.";
         else if (!nearbyEnabled) text = "Off: Martlet on your other computers can't find this PC or ask to use its hosts.";
         else if (nearbyHosts.Count == 0)
-            text = "On. Nothing to share yet: other computers find this PC once it runs a host or reaches one over SSH.";
+            text = "On, but there is nothing to share yet: other computers find this PC once it runs a host or reaches one over SSH.";
         else if (nearbyProblem is not null) text = $"On, but {nearbyProblem}, so other computers can't find this PC.";
-        else if (nearbyFirewall is null) text = "On. Checking Windows Firewall...";
+        else if (nearbyFirewall is null) text = "On: checking Windows Firewall...";
         else if (nearbyFirewall == false)
             text = $"On, but Windows Firewall doesn't let your other computers reach port {Nearby.Port} yet, so only Martlet on this PC can find it.";
         else if (nearbyCategory == "Public") text = "On, but Windows treats this network as Public, so your other computers can't find this PC.";
         else
-            text = $"On. Martlet on your other computers can find this PC and ask to use {string.Join(", ", nearbyHosts.Select(h => h.HostId))}; " +
+            text = $"On: Martlet on your other computers can find this PC and ask to use {string.Join(", ", nearbyHosts.Select(h => h.HostId))}; " +
                 "you allow each one here after comparing a check number.";
         NearbyShareStatusText.Text = nearbyLast is null ? text : text + " Last request: " + nearbyLast;
         NearbyFirewallButton.Visibility = NearbyBlocked ? Visibility.Visible : Visibility.Collapsed;
@@ -240,7 +239,7 @@ public partial class MainWindow
         }
         if (joinPrompt is not null || joinRunning)
         {
-            await TryAsync(() => session.FailAsync("It is already answering another computer. Try again in a minute.", lifetime.Token));
+            await TryAsync(() => session.FailAsync("It is already answering another computer, so try again in a minute.", lifetime.Token));
             return;
         }
         ErrorLog.Info($"Nearby: {name} ({session.From}, {session.Device}) asks to use {string.Join(", ", hosts.Select(h => h.HostId))}.");
@@ -264,7 +263,7 @@ public partial class MainWindow
             await session.ApproveAsync(lifetime.Token);
             var summary = await HostRunWindow.RunAsync(this, $"Let {name} use your hosts", run => ShareHostsAsync(run, session, hosts));
             nearbyLast = summary is null ? $"sharing with {name} stopped at {DateTime.Now:t}; the run window shows why." : $"{summary} ({DateTime.Now:t})";
-            if (!closing) ActionText.Text = summary ?? $"Sharing hosts with {name} stopped. The run window shows why.";
+            if (!closing) ActionText.Text = summary ?? $"Sharing hosts with {name} stopped; the run window shows why.";
             // The owner already allowed this computer (same check number), so its request to join the network needs no second Allow.
             if (summary is not null) PreapproveNetworkJoin(session.Device, name);
         }
@@ -348,7 +347,7 @@ public partial class MainWindow
                 await WithdrawAsync(withdraw.Keys);
                 throw;
             }
-            run.Status($"Sent {name} a one-use code for {string.Join(", ", codes.Select(c => c.HostId))}. Waiting for it to pair...");
+            run.Status($"Sent {name} a one-use code for {string.Join(", ", codes.Select(c => c.HostId))}; waiting for it to pair...");
             var paired = await session.ReadDoneAsync(Nearby.CodeLifetime, run.Token) ?? [];
             // A redeemed code ends its host's pairing run by itself (the gateway comes back); withdraw the others.
             var unused = codes.Select(c => c.HostId).Where(id => !paired.Contains(id)).ToArray();

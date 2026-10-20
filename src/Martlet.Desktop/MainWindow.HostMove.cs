@@ -43,7 +43,7 @@ public partial class MainWindow
             if (exit != 0)
                 throw new InvalidOperationException($"The host service couldn't move to {moved} (exit {exit}). The output says why; Set up again " +
                     "on the host dashboard also moves it (pairings and roles stay).");
-            return $"This host is published on {moved} now. Your other computers find it there by themselves; pairings and roles stay.";
+            return $"This host is published on {moved} now, and your other computers find it there by themselves (pairings and roles stay).";
         }, hidden: true);
         if (closing) return;
         if (done is not null)

@@ -238,7 +238,7 @@ internal static class DeviceCapacityInputs
     /// <summary>"NVIDIA GeForce RTX 4090 (24 GB) · 64 GB memory · 32 processor threads · 812 GB free disk".</summary>
     internal static string SpecsText(MachineSpecs? spec)
     {
-        if (spec is null) return "This device hasn't reported its hardware yet. Use Check connection.";
+        if (spec is null) return "This device hasn't reported its hardware yet; use Check connection.";
         var parts = new List<string>();
         parts.AddRange(spec.Gpus.Count == 0 ? ["No graphics card for Martlet"]
             : spec.Gpus.Select(g => g.UnifiedMemory ? $"{g.Name} (shares memory, up to {g.VramGb:0.#} GB)" : $"{g.Name} ({g.VramGb:0.#} GB)"));

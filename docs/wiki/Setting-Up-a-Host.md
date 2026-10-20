@@ -14,6 +14,39 @@ A host lends a computer's graphics card and processor to Martlet. It does jobs (
 
 You pair a host once. Every other computer in your [Martlet network](Multiple-Computers#join-your-martlet-network) then pairs with it by itself within a minute.
 
+### The Add a computer window
+
+Open **Devices › Add a computer**. The window has two steps: **Connect** and **Roles**.
+
+1. Under **Martlet on your network**, pick a computer that runs a host and choose **Connect**. Choose **Allow** on that computer when both screens show the same check number. You type nothing. See [Pairing](#pairing).
+2. If the computer isn't listed, choose **Enter a pairing code**, or set up a new host under **Or set up a new host**.
+3. After you connect, **Choose jobs for this host** lists the jobs (roles). See [Choose the host's jobs](#choose-the-hosts-jobs).
+
+Other things in the window:
+
+- **Join with an invite** is for a PC away from home. Paste the invite that you made at home and sign in. This PC then joins your Martlet network by itself. A friend's host joins as a host shared with this PC: choose it for a job under **Share › Hosts shared with this PC**.
+- **Its private network address** (under **A Linux computer over SSH**) is filled in from the computer. Change it only if your other computers reach that computer at a different address.
+- For another Windows PC, install Martlet there and choose **Use as a Martlet host** on its Home page. It then shows under **Martlet on your network**.
+- **This PC's device ID** is how this PC shows on the host. Martlet sends it by itself when it connects.
+- **Update host** updates the host. Its pairings and jobs stay.
+- **Forget host** removes the host from this PC only. To remove this PC from the host too, revoke this PC's device ID in the host console.
+- **Reset SSH trust** forgets the SSH key that Martlet trusts for a Linux computer and its saved sudo password. Use it only after you reinstall that computer. The next connection asks you to trust the computer again.
+
+### Prepare a Linux computer
+
+**Prepare a Linux computer** (on the map's **Add a computer** card) and **Prepare this computer** (on a Linux host) get an Ubuntu computer ready for host jobs over SSH.
+
+1. Type `user@computer` in **SSH target** and choose **Read status**. Martlet reads the computer first and changes nothing.
+2. Tick what you want, or choose **Select missing** to tick everything that isn't in place yet.
+3. Choose **Run selected**. Martlet changes only what you ticked. Most changes need administrator rights (sudo), and some installs take several minutes.
+4. When the banner says that a restart is needed, choose **Restart it**. Martlet waits for the computer and reads its status again.
+
+- **Virtual display** is for a desktop with no monitor attached. It isn't used while the computer starts in text mode.
+- **GPU power settings**: persistence mode keeps GPU jobs ready, and lower power limits can make the card cooler and quieter.
+- **Wake-on-LAN** needs a wired network connection. After **Shut it down**, Martlet can start the computer again only with Wake-on-LAN (**Wake it up**).
+- **Restart it** stops the work on the computer, Martlet jobs too, until it comes back. If it doesn't come back within 10 minutes, check its power and network, then choose **Read status**.
+- If you stop or close the window during setup, some work can stay half done. Run the same item again; that usually finishes it.
+
 ## Windows with Docker Desktop
 
 1. Install WSL 2 and Docker Desktop. **Settings › Tools › Prerequisites** can install them for you.
@@ -32,6 +65,38 @@ On a host PC, Home lists the steps that are left. Each step ticks by itself when
 
 For another Windows PC, choose **Use as a Martlet host** there. It then shows under **Martlet on your network** on your other PCs: pick it, and choose **Allow** when both screens show the same check number. Or use **Pair your main PC › Show a pairing code** on that PC's Home.
 
+### Windows virtualization
+
+Docker Desktop runs its engine in WSL 2, so Windows needs hardware virtualization, Virtual Machine Platform, Windows Subsystem for Linux (WSL) and their services. Martlet checks them before it starts Docker Desktop.
+
+1. When something is off, Martlet turns on the Windows features and WSL. Windows asks for administrator approval once, and this can take a few minutes.
+2. When Windows must restart to finish, Martlet asks first. Save your work, then let Windows restart. Restarting only Docker Desktop can't finish this change.
+3. After you sign in again, Martlet opens and continues the setup by itself.
+
+When hardware virtualization is off in the PC's firmware (UEFI/BIOS), Docker Desktop says *Virtualization support not detected*. Martlet can't change the firmware from Windows. On a new PC, Martlet turns on the Windows features first, so that one restart finishes both. Then:
+
+1. Let Martlet restart the PC into its firmware settings. Save your work first.
+2. Turn on Intel VT-x or AMD SVM, then save and exit.
+3. Sign in again. Martlet continues the setup.
+
+On a virtual machine, ask the administrator of its host to turn on nested virtualization. If WSL 2 or its services still don't start after a restart, repair Virtual Machine Platform and WSL through Windows setup. Don't reset Docker's data.
+
+### When setting up a host fails
+
+The run window shows each step and what Docker Desktop, Windows or the host said. Use it to see why a step stopped.
+
+- **Docker Desktop is installing or starting**: the first start can take a few minutes. Accept Docker's terms if Docker Desktop asks. Installing Docker Desktop means that you accept Docker's Subscription Service Agreement (free for personal use).
+- **Docker Desktop gave up starting**: Docker Desktop sometimes checks Windows before Windows is ready. Martlet then restarts Docker Desktop once. If it still can't start, restart Windows and try again. Check that **Task Manager › Performance › CPU** shows *Virtualization: Enabled*.
+- **Docker Desktop can't show status here**: older Docker Desktops don't report their status to Martlet. Open Docker Desktop to see it.
+- **Administrator approval was declined**: Windows was not changed. Run the step again and approve the prompt.
+- **Firewall unchanged**: your other PCs may not reach this host. When Windows treats your network as Public, Martlet asks to mark it as Private and to let your other computers connect to and find this PC. If Windows Firewall also blocks Docker Desktop, allow Docker Desktop in **Windows Security**.
+- **This PC is not on a private network**: connect it to your home network first.
+- **Hardware details aren't available yet**: update the host from the Devices map, or check the host and try again.
+- **Could not find Martlet's prerequisites installer**: reinstall Martlet, then try again.
+- **The host engine isn't prepared on this PC yet**: right after Martlet updates itself, a change to this PC's host service runs with the engine that the host service runs now. The host service moves to the new version after that.
+
+See also [Docker Desktop or WSL won't start](Troubleshooting#docker-desktop-or-wsl-wont-start).
+
 ## Linux over SSH
 
 1. Make sure the Linux computer has an SSH server. It can be x86_64 or ARM64, with systemd (Ubuntu, Debian, Fedora, openSUSE, Arch, Raspberry Pi OS and others), or a NAS with Docker (TerraMaster, Synology, QNAP).
@@ -47,6 +112,26 @@ Martlet runs the host in Docker when the computer has it, and otherwise installs
 - A computer without internet gets the files it needs from your PC. Martlet cannot send Docker images or models yet.
 - **Prepare a Linux computer** (on the map's **Add a computer** card) and **Prepare this computer** (on a host) get an Ubuntu computer ready: updates, Docker, the NVIDIA driver and container toolkit, no sleep, a virtual display, graphics card power limits, tools and Wake-on-LAN. Tick what you want and choose **Run selected**.
 - A Linux host on the map can also have **Wake it up**, **Restart it** and **Shut it down**.
+
+### Signing in over SSH
+
+- The first time, Martlet shows the computer's SSH key fingerprint and asks you to trust it. Martlet remembers that key for every later connection and refuses to connect if it changes. After you reinstall the computer, choose **Reset SSH trust**.
+- Martlet uses the account password once, to add its own SSH key. It doesn't save the password.
+- When your own SSH key signs in, Martlet uses it once to add its key. It doesn't copy or keep your key.
+- The sudo password goes only over the SSH connection and never shows in a log. Without it, the steps that need administrator rights stop.
+
+### When setup over SSH stops
+
+Martlet checks the computer first and tells you what is missing:
+
+- **A NAS without Docker**: install Docker with the NAS's own app (see above), then try again.
+- **No Docker and no systemd**: Martlet needs systemd to set up the host without Docker. Install Docker Engine, then try again.
+- **The account can't use Docker**: use an account with Docker access or sudo, such as the NAS's administrator account.
+- **No systemd for the native method**: choose the Docker method.
+- **No internet**: Martlet sends a computer without internet what its gateway needs, but only to a Linux host that it runs without Docker. It can't send the Docker images and models of a role yet. Connect the computer to the internet to add a role, or set it up without Docker.
+- **Paired, but the host reported an exit code while restarting**: the pairing is done. Check the host's status.
+- **Stopped: git is not installed here**: install git with the system's package manager. A computer without internet gets what it needs when you set it up from Martlet.
+- **Stopped: there is no Martlet engine in ~/Martlet**: set the computer up again from Martlet.
 
 ## Macs
 
@@ -73,6 +158,8 @@ Cloned voices, singing, picture making, motion and lip-sync need an x86_64 PC wi
 - **Set up this PC** and **Set up over SSH** pair by themselves.
 - To pair by code, the host shows its address and a short code such as `K7QM-4XPA`. In Martlet, open **Devices › Add a computer › Enter a pairing code**. Type the **Host address** and the **Code**, then choose **Pair with host**.
 - A code works once. It stays valid until a computer uses it or you cancel it. The host's jobs pause until then. Five wrong tries close the code.
+- With **Martlet on your network**, you type nothing. Both computers show the same check number, so you know that they talk to each other.
+- If a computer isn't listed, guest Wi-Fi, a VPN, another subnet or a firewall can hide it. Open Martlet on that computer and turn on **Let my other computers find this PC**, then choose **Find again**. Or enter the address and pairing code that it shows.
 
 To pair a host PC with your main PC from the host PC's Home:
 
@@ -90,7 +177,7 @@ Or choose **Show a pairing code** on the host PC, and type it in **Enter a pairi
 
 After pairing, **Choose jobs for this host** lists the roles. Later, select the host on the Devices map and choose **Install** *role*, **Change** *role* **settings** or **Remove** *role*.
 
-The roles are Thinking, Thinking pool, Listening, Speaking (one voice engine for each host), Lip-sync, Reading, Singing, Picture making, Motion, Voice recognition and Home Assistant. Before Martlet installs a role, it shows what the role needs, its terms and its choices. Your **Install** click is your confirmation. **Remove** keeps the downloads, so adding a role again is fast.
+The roles are Thinking, Thinking pool, Listening, Speaking (one voice engine for each host), Lip-sync, Reading, Singing, Picture making, Motion, Voice recognition and Home Assistant. Before Martlet installs a role, it shows what the role needs, its terms and its choices. Your **Install** click is your confirmation. **Remove** keeps the downloads, so adding a role again is fast. While a role installs, the run window shows the progress.
 
 **Recommended setup** on Home can also install the roles for you. On a host PC, the **Add roles** step on Home adds or removes roles at any time.
 
@@ -118,11 +205,86 @@ MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host setup
 
 For the Docker commands, see the [host guide](https://github.com/throndir2/Martlet/blob/main/deploy/host/README.md#docker-any-docker-host-including-windows).
 
+### Host run window
+
+Each change on a host (install, change or remove a role, update, set up) runs in a window that shows its progress.
+
+1. To keep working, choose **Hide** (or press Esc). The task keeps running.
+2. To see the task again, open **Background tasks** in Martlet's main window.
+3. To stop the task, choose **Cancel task**. Martlet asks first, because the work that isn't finished stops, and you may need to start it again.
+
+When the task is finished, **Hide** becomes **Close**. A new model or a large download can take a while. This PC starts to use the role when it is ready.
+
+### Commands between computers
+
+- On a computer with Martlet, the command goes to the host's gateway, and Martlet there runs it. When Martlet there hasn't checked in, the command waits until Martlet runs there. Open Martlet on that computer, or let it start with Windows. **Cancel task** takes back a command that waits.
+- A Linux computer without Martlet is reached over SSH instead.
+- A host's service restarts while it updates. Martlet keeps trying while it doesn't answer.
+- **Secrets** (keys and tokens that a role asks for): on this PC's host they stay on this PC. Over the paired connection they are kept only in memory until Martlet there takes them, and are then saved there. Over SSH they are sent and saved there. **Already saved** means you can leave the box empty to keep the saved one.
+- **Change** *role* **settings** shows what the role runs with now. What you don't change stays as it is. A host with an older Martlet applies all the choices shown; update it to see what it runs with now.
+- **Remove** keeps the role's data, so adding it again is quick.
+- A computer runs only one voice engine. Installing another one stops the old one first and frees its graphics memory. The downloads stay.
+- On a host with several NVIDIA graphics cards, Martlet asks which card a role uses, so each part of Martlet (thinking, listening, its voice) can have a card of its own.
+
+### Roles and what they send
+
+| Role | What goes to the host | Good to know |
+|---|---|---|
+| Lip-sync | The generated voice audio | |
+| Thinking | Your messages and the recent conversation | |
+| Thinking pool | A job's text (for a think, the task and the conversation so far) | Background jobs run beside Thinking while the conversation goes on. On a host with several cards, each extra card runs one more model, pinned to a card that no other role uses, so the host works on several jobs at full speed at the same time. |
+| Listening | Your recorded speech | It is not stored. |
+| Speaking (Chatterbox Turbo, Original, Nano) | The reply text and the voice sample (longer than 5 seconds) | MIT-licensed models. Replies carry an inaudible watermark. Nano runs on the processor when there is no graphics card. |
+| Speaking (F5-TTS) | The reply text and the voice sample | |
+| Speaking (XTTS-v2) | The reply text and the voice sample | Starts to speak before a sentence is finished. Noncommercial use only. |
+| Speaking (GPT-SoVITS) | The reply text and the voice sample (3-10 seconds) | Good for anime-style voices. Starts each sentence as soon as it is made. |
+| Speaking (Dia) | The reply text and the voice sample | English only. Apache-2.0. |
+| Singing | The lyrics, the style and the voice's recording | A song takes a few minutes. It frees the graphics card when it is idle. |
+| Picture making | The picture descriptions | It frees the graphics card when it is idle. |
+| Reading | Screenshots | Read in memory and not kept. Reads run beside the conversation, so replies never wait for them. |
+| Motion | The English motion descriptions | Downloads about 20 GB. It frees the graphics card when it is idle. |
+| Voice recognition | The speech Martlet hears, one utterance at a time | Analyzed in memory and not kept. It uses the same voice models as this PC, so its voiceprints match your voice list. |
+
 ## Updates
 
 **Update host** keeps the host's identity, pairings, roles and data. **Settings › App updates › Update hosts** updates all your hosts, and **Update paired hosts automatically** keeps them on your PC's version. After the computer restarts, the host service starts again by itself.
 
 A PC's own host service follows that PC's Martlet version. Martlet updates it by itself in the background, or when the service runs again. **Update host service** on Home does it now. Pairings and roles stay.
+
+### This PC's host service
+
+- Martlet installs its own update first. The host service follows that version right after.
+- Martlet waits while it replies to you or hears you. During the update Martlet stays usable, but the host service stops answering for a moment when it restarts at the end.
+- When the host service is busy with another change, nothing changes. Martlet tries again at the time it shows.
+- When the update stops, the host-runs log shows why. **Settings › App updates › Update hosts** or **Update host service** on Home tries again.
+- When you cancel the update, Martlet doesn't start it again by itself for that version.
+
+Another host that is busy shows **Waiting to update**. Nothing changes there, and Martlet tries again every few minutes. When another computer already updates that host, Martlet checks again in a few minutes and shows when the host runs the new version.
+
+### Start with Windows
+
+On a host PC, Martlet starts Docker Desktop and the host's roles by itself, and loads their models. Then the first request from your other computers doesn't wait. Martlet only does what needs no install and no approval. It doesn't start them when:
+
+- Docker Desktop isn't installed. The **Docker Desktop** step on Home installs it.
+- The host service isn't set up on this PC. Choose **Set up host service**.
+- The host service runs no roles. Add roles on Home.
+- Windows isn't ready for Docker Desktop. The **Docker Desktop** step shows what to do.
+
+When the start fails, **Background tasks** shows why, in the task **Start this host's roles**.
+
+### Keep the host awake
+
+A host PC stays awake while Martlet runs, so your other computers can reach its host service at any time. A PC whose own host service serves your other computers stays awake while it serves them.
+
+- The screen can still turn off.
+- **Sleep** and shutting down still work.
+- When Windows doesn't let Martlet keep the PC awake, the PC can sleep when it is idle. Your other computers then lose its jobs until it wakes.
+
+### When a host can't be used
+
+- **This PC's pairing key can't be read** from Windows Credential Manager: jobs can't run on that host. Pair it again in **Devices › Add a computer**.
+- **This PC isn't paired with it now** (it was forgotten here or removed from your Martlet network): add it again in **Devices › Add a computer**, or choose another computer for its jobs.
+- **Older than recordings**: the host can't take the hearing test. Update Martlet on that host, then test again.
 
 ## A new address after a restart
 

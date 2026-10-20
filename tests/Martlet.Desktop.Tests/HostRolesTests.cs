@@ -126,12 +126,12 @@ public sealed class HostRolesTests
         var a = nodes.Single(n => n.Id == "host:gpu-a");
         var b = nodes.Single(n => n.Id == "host:gpu-b");
         var pc = nodes.Single(n => n.Id == "this-pc");
-        Assert.Contains(a.Roles, r => r.Chip == "Lip-sync" && r.Detail.Contains("Assign lip-sync", StringComparison.Ordinal));
+        Assert.Contains(a.Roles, r => r.Chip == "Lip-sync" && r.Detail.Contains("assign lip-sync", StringComparison.Ordinal));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.UseForLipSync && c.Argument == "gpu-a" && c.Primary);
         Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/audio2face");
-        Assert.Contains(a.Roles, r => r.Chip == "Thinks" && r.Detail.Contains("Assign thinking", StringComparison.Ordinal));
+        Assert.Contains(a.Roles, r => r.Chip == "Thinks" && r.Detail.Contains("assign thinking", StringComparison.Ordinal));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.UseForThinking && c.Argument == "gpu-a" && c.Primary);
-        Assert.Contains(a.Roles, r => r.Chip == "Listens" && r.Detail.Contains("Assign listening", StringComparison.Ordinal));
+        Assert.Contains(a.Roles, r => r.Chip == "Listens" && r.Detail.Contains("assign listening", StringComparison.Ordinal));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.UseForListening && c.Argument == "gpu-a" && c.Primary);
         Assert.Contains(b.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/stt");
         Assert.Contains(b.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/ollama");
@@ -341,7 +341,7 @@ public sealed class HostRolesTests
             HostHardware: [Report("one-card", 1), Report("two-cards", 2)])).Single(n => n.Id == "host:" + id);
         Assert.DoesNotContain(Node("one-card").Commands, c => c.Argument == "one-card/deep-thinking-2");
         var two = Node("two-cards");
-        Assert.Contains(two.Roles, r => r.Name == "Thinking pool (card 2)" && r.Detail.StartsWith("Ready on graphics card 2 (gemma4-e4b).", StringComparison.Ordinal));
+        Assert.Contains(two.Roles, r => r.Name == "Thinking pool (card 2)" && r.Detail.StartsWith("Ready on graphics card 2 (gemma4-e4b),", StringComparison.Ordinal));
         Assert.Contains(two.Commands, c => c.Action == NodeAction.ChangeRole && c.Argument == "two-cards/deep-thinking-2");
         Assert.DoesNotContain(two.Commands, c => c.Argument == "two-cards/deep-thinking-3");
     }
@@ -384,14 +384,14 @@ public sealed class HostRolesTests
 
         var a = Host("gpu-a", null);
         Assert.Contains(a.Roles, r => r.Chip == "Thinking pool" &&
-            r.Detail == "Ready (qwen3-8b). It joins the Thinking pool by itself unless you keep it out in Companion > Thinking pool.");
+            r.Detail == "Ready (qwen3-8b); it joins the Thinking pool by itself unless you keep it out in Companion > Thinking pool.");
         Assert.Contains(a.Commands, c => c.Action == NodeAction.Companion && c.Argument == nameof(CompanionTab.DeepThinking) &&
             c.Label == "Show the Thinking pool" && c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
         // A computer the owner keeps out says so, and its command opens the page where it is ticked again.
         var kept = NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, checks, Hosts: hosts,
             ThinkingPoolLeft: ["gpu-a"])).Single(n => n.Id == "host:gpu-a");
         Assert.Contains(kept.Roles, r => r.Chip == "Thinking pool" &&
-            r.Detail == "Ready (qwen3-8b). You keep it out of the Thinking pool: tick it in Companion > Thinking pool to add it again.");
+            r.Detail == "Ready (qwen3-8b), but you keep it out of the Thinking pool; tick it in Companion > Thinking pool to add it again.");
         Assert.Contains(kept.Commands, c => c.Action == NodeAction.Companion && c.Label == "Add it to the Thinking pool");
         Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/deep-thinking");
         Assert.DoesNotContain(a.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-a/deep-thinking");
@@ -476,7 +476,7 @@ public sealed class HostRolesTests
 
         // A host PC with no host service yet does no work for the others: its row says so instead of naming a host service.
         Assert.Contains(NetworkMap.NoHostServiceYet, Member(Device(hostPc)), StringComparison.Ordinal);
-        Assert.Equal("Host PC. " + NetworkMap.NoHostServiceYet + " Active now on gpu-a.", NetworkMap.RoleLine(hostPc, null));
+        Assert.Equal("Host PC; " + NetworkMap.NoHostServiceYetJoined + " Active now on gpu-a.", NetworkMap.RoleLine(hostPc, null));
         // One that said it runs a host service, or whose host service (named after it) this PC is paired with, runs it.
         Assert.Contains("Runs Martlet's host service (desk-b-host)", Member(Device(hostPc with { HostId = "desk-b-host" })), StringComparison.Ordinal);
         var paired = Device(hostPc, [new PairedHost { Pairing = Remote("desk-b-host", "192.168.1.52") }]);

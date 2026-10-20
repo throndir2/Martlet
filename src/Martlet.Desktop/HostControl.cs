@@ -114,71 +114,68 @@ internal static class HostRoles
     [
         new(Audio2Face, "Lip-sync", "Lip-sync", "an NVIDIA GPU (RTX 20 series or newer) with at least 4 GB (no NVIDIA account or key)",
             Audio2FaceHostClient.RouteId, "lip-sync",
-            "Moves the character's face with Martlet's voice. Generated voice audio goes to that host."),
+            "Moves the character's face with Martlet's voice, so generated voice audio goes to that host."),
         new(Ollama, "Thinks", "Thinking", "Docker; an NVIDIA GPU is recommended",
             HostRoute.OllamaChatRouteId, "thinking",
-            "Runs the conversation model on that host. Your messages and recent conversation go there."),
+            "Runs the conversation model on that host, so your messages and recent conversation go there."),
         new(DeepThinking, "Thinking pool", "Thinking pool", "Docker; an NVIDIA GPU is recommended",
             HostRoute.DeepThinkingRouteId, "deep thinking",
-            "Joins the Thinking pool: background jobs (thinking longer, research, summaries) run on that host with a model of its own, beside Thinking's, while the " +
-            "conversation carries on. A job's text (for a think, the task and the conversation so far) goes there."),
+            "Joins the Thinking pool: background jobs (thinking longer, research, summaries) run on that host with a model of its own, and " +
+            "a job's text (for a think, the task and the conversation so far) goes there."),
         .. Enumerable.Range(2, SelfHostSetup.DeepThinkingMaximumCards - 1).Select(card => new HostRoleInfo(SelfHostSetup.DeepThinkingRoleKind(card),
             "Thinking pool", $"Thinking pool (card {card})", $"a host with at least {card} NVIDIA graphics cards",
             SelfHostSetup.DeepThinkingRouteIdFor(card), "deep thinking",
-            $"Runs one more Thinking pool model on that host's graphics card {card}, as a Thinking pool member of its own: one model on " +
-            "each graphics card, so the host thinks over several jobs at full speed at once. Pinned to a card no other role uses. " +
-            "A job's text (for a think, the task and the conversation so far) goes there.")),
+            $"Runs one more Thinking pool model on that host's graphics card {card}, as a Thinking pool member of its own, and a " +
+            "job's text (for a think, the task and the conversation so far) goes there.")),
         new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
-            "Turns speech into text on that host. Your recorded speech goes there and is not stored."),
+            "Turns speech into text on that host, so your recorded speech goes there (it is not stored)."),
         new(Chatterbox, "Speaks", "Speaking (Chatterbox Turbo)", "an NVIDIA GPU with at least 6 GB",
             SpeechEngines.Chatterbox.RouteId, "speaking",
-            "Speaks replies on that host with Chatterbox Turbo, which can laugh, sigh and whisper. Reply text and the " +
-            "selected voice sample (longer than 5 seconds) go there. MIT-licensed model; replies carry an inaudible watermark."),
+            "Speaks replies on that host with Chatterbox Turbo, which can laugh, sigh and whisper; reply text and the " +
+            "selected voice sample (longer than 5 seconds) go there."),
         new(ChatterboxOriginal, "Speaks", "Speaking (Chatterbox Original)", "an NVIDIA GPU with at least 6 GB",
             SpeechEngines.ChatterboxOriginal.RouteId, "speaking",
             "Speaks replies on that host with the original Chatterbox, which says each sentence calmly or expressively as the reply " +
-            "asks. Reply text and the selected voice sample (longer than 5 seconds) go there. MIT-licensed model; replies carry an " +
-            "inaudible watermark."),
+            "asks; reply text and the selected voice sample (longer than 5 seconds) go there."),
         new(ChatterboxNano, "Speaks", "Speaking (Chatterbox Nano)", "Docker; it uses an NVIDIA GPU when there is one, otherwise the processor",
             SpeechEngines.ChatterboxNano.RouteId, "speaking",
             "Speaks replies on that host with Chatterbox Nano, a small Chatterbox that can laugh, sigh and whisper and runs on the " +
-            "processor when there is no graphics card. Reply text and the selected voice sample (longer than 5 seconds) go there. " +
-            "MIT-licensed model; replies carry an inaudible watermark."),
+            "processor when there is no graphics card; reply text and the selected voice sample (longer than 5 seconds) go there."),
         new(F5, "Speaks", "Speaking (F5-TTS)", "an NVIDIA GPU with at least 6 GB",
             HostRoute.F5RouteId, "speaking",
-            "Speaks replies on that host with F5-TTS. Reply text and the selected voice sample go there."),
+            "Speaks replies on that host with F5-TTS, so reply text and the selected voice sample go there."),
         new(Xtts, "Speaks", "Speaking (XTTS-v2)", "an NVIDIA GPU with at least 4 GB",
             HostRoute.XttsRouteId, "speaking",
-            "Speaks replies on that host with XTTS-v2, which starts speaking before a sentence is finished. Reply text and the " +
-            "selected voice sample go there. Its model allows noncommercial use only."),
+            "Speaks replies on that host with XTTS-v2, which starts speaking before a sentence is finished; reply text and the " +
+            "selected voice sample go there, and its model allows noncommercial use only."),
         new(GptSovits, "Speaks", "Speaking (GPT-SoVITS)", "an NVIDIA GPU with at least 4 GB",
             HostRoute.GptSovitsRouteId, "speaking",
-            "Speaks replies on that host with GPT-SoVITS, good for anime-style voices; it starts each sentence as soon as it is " +
-            "generated and needs a 3-10 second             voice sample. Reply text and the selected voice sample go there."),
+            "Speaks replies on that host with GPT-SoVITS, good for anime-style voices, from a 3-10 second voice sample; reply text " +
+            "and the selected voice sample go there."),
         new(Dia, "Speaks", "Speaking (Dia)", "an NVIDIA GPU with at least 8 GB",
             HostRoute.DiaRouteId, "speaking",
-            "Speaks replies on that host with Dia, which can laugh, sigh, cough and gasp when a reply asks for it (English only). " +
-            "Reply text and the selected voice sample go there. Its model is Apache-2.0."),
+            "Speaks replies on that host with Dia, which can laugh, sigh, cough and gasp when a reply asks for it (English only); " +
+            "reply text and the selected voice sample go there."),
         new(Singing, "Sings", "Singing", "an NVIDIA GPU with at least 6 GB",
             Audio2FaceHostConnection.SongRouteId, "singing",
-            "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer). " +
-            "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle."),
+            "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer); " +
+            "the lyrics, style and the voice's recording go there."),
         new(Pictures, "Draws", "Picture making", "an NVIDIA GPU with at least 8 GB",
             Audio2FaceHostConnection.PictureRouteId, "pictures",
             "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle."),
         new(Ocr, "Reads", "Reading", "Docker; RapidOCR runs on the processor, PP-OCRv5 on the processor or an NVIDIA GPU",
             Audio2FaceHostConnection.OcrRouteId, "reading",
-            "Reads the text on your screen on that host while Martlet watches it, with RapidOCR or the more accurate PP-OCRv5. " +
-            "Screenshots go there, are read in memory and are not kept."),
+            "Reads the text on your screen on that host while Martlet watches it, with RapidOCR or the more accurate PP-OCRv5; " +
+            "screenshots go there, are read in memory and are not kept."),
         new(Motion, "Moves", "Motion", "an NVIDIA GPU with at least 24 GB (optional; not for use in the EU, the UK or South Korea)",
             Audio2FaceHostConnection.MotionRouteId, "motion",
             "Makes body motions for VRM characters on that host with Tencent's HY-Motion 1.0, from the English descriptions Martlet " +
-            "writes. The description goes there. It downloads about 20 GB and frees the graphics card when idle."),
+            "writes and sends there; it downloads about 20 GB."),
         new(VoiceRecognition, "Recognizes voices", "Voice recognition", "Docker; it uses an NVIDIA GPU when there is one, otherwise the processor",
             Audio2FaceHostConnection.VoiceRecognitionRouteId, "voice recognition",
-            "Recognizes who is speaking on that host, with the same voice models as this PC, so its voiceprints match your voice " +
-            "list. The speech Martlet hears goes there one utterance at a time, is analyzed in memory and is not kept.")
+            "Recognizes who is speaking on that host, with the same voice models as this PC; the speech Martlet hears goes there " +
+            "one utterance at a time, is analyzed in memory and is not kept.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??
@@ -523,8 +520,8 @@ internal static class HostControl
     /// <summary>Which Martlet roles (and models) a reachable host runs, in words; a Deep thinking role that runs several thinks
     /// at once (<paramref name="routes"/>) says how many.</summary>
     internal static string Describe(IReadOnlyDictionary<string, string> offers, IReadOnlyList<HostRoute>? routes = null) => offers.Count == 0
-        ? "Connected. No host roles installed."
-        : "Connected. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
+        ? "Connected, with no host roles installed."
+        : "Connected and runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
             .Select(r => r.Kind == HostRoles.DeepThinking && new HostCheck(true, "", offers, Routes: routes).DeepThinkingSlots is > 1 and var slots
                 ? $"{r.Name} ({slots} thinks at once)" : r.Name)) + ".";
 

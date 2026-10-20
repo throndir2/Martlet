@@ -20,7 +20,7 @@ public sealed class DeviceCapacityTests
         Assert.Equal(58, vram.PlannedPercent);
         Assert.Equal(10, vram.Headroom);
         Assert.Equal([33d, 25d], vram.Shares.Select(s => s.Percent));
-        Assert.Equal("Graphics memory: 14 of 24 GB planned (58%), 10 GB free. In use now: 9.5 GB (40%).", vram.Text);
+        Assert.Equal("Graphics memory: 14 of 24 GB planned (58%), 10 GB free; in use now: 9.5 GB (40%).", vram.Text);
         Assert.Equal("Processor: 6 of 16 threads planned (38%), 10 threads free.", bars.Single(b => b.Resource == CapacityResource.Processor).Text);
         Assert.Equal("Thinking: 33% graphics memory, 6% memory, 25% processor, 2% disk.", DeviceCapacity.ShareText(Thinking, bars));
     }
@@ -60,8 +60,8 @@ public sealed class DeviceCapacityTests
         Assert.False(card.Over);
         Assert.Equal("Graphics memory: 12-14 of 13 GB planned (92-108%), tight: at their busiest the jobs can need 2 GB more than it can give, " +
             "and slow down or fail.", card.Text);
-        Assert.Equal("Left free: 52 GB memory, 9 processor threads, 465 GB disk space. " +
-            "Tight on graphics memory: at their busiest the jobs can need more than it has.", DeviceCapacity.HeadroomText(tight));
+        Assert.Equal("Left free: 52 GB memory, 9 processor threads, 465 GB disk space; " +
+            "tight on graphics memory, as at their busiest the jobs can need more than it has.", DeviceCapacity.HeadroomText(tight));
 
         // On an 11 GB card even what they usually hold is too much.
         var over = DeviceCapacity.Bars(new CapacitySpecs(11, 64, 16, 500), [Thinking, voice]).Single(b => b.Resource == CapacityResource.GraphicsMemory);
@@ -109,8 +109,8 @@ public sealed class DeviceCapacityTests
         Assert.Equal("Your computers have no room for more right now; add a computer to run more.", DeviceCapacity.NetworkFits([]));
         Assert.Equal("Totals across 2 computers: 32 GB graphics memory, 96 GB memory, 24 processor threads, 500 GB free disk.",
             DeviceCapacity.Totals([Gpu24, new(8, 32, 8, null)]));
-        Assert.Equal("On your computers: Thinking, Listening. Online: Speaking (ElevenLabs). Not set up: Lip-sync.",
+        Assert.Equal("On your computers: Thinking, Listening; online: Speaking (ElevenLabs); not set up: Lip-sync.",
             DeviceCapacity.Coverage(["Thinking", "Listening"], ["Speaking (ElevenLabs)"], ["Lip-sync"]));
-        Assert.Equal("On your computers: Thinking. Every part of Martlet is covered.", DeviceCapacity.Coverage(["Thinking"], [], []));
+        Assert.Equal("On your computers: Thinking; every part of Martlet is covered.", DeviceCapacity.Coverage(["Thinking"], [], []));
     }
 }

@@ -85,10 +85,10 @@ public sealed class HostUpdateTracker
     /// description. Another update of the same host (from another computer or a console there) is said as such.</summary>
     public static string BusyNote(string version, string what, DateTime at) =>
         what.StartsWith("updating this host", StringComparison.Ordinal)
-            ? $"Another update of that host was already running ({what}), so this one changed nothing. Martlet checks again in a few " +
-              $"minutes and says so here once it runs Martlet {version} (last try {at:t})."
-            : $"Waiting to update to Martlet {version}: that host is busy ({what}). Nothing was changed; Martlet tries again every few " +
-              $"minutes until it is free (last try {at:t}).";
+            ? $"Another update of that host was already running ({what}), so this one changed nothing, and Martlet checks again for " +
+              $"Martlet {version} in a few minutes (last try {at:t})."
+            : $"Waiting to update to Martlet {version}: that host is busy ({what}), so nothing was changed and Martlet tries again " +
+              $"every few minutes (last try {at:t}).";
 
     private sealed class Scope(HostUpdateTracker tracker, string key) : IDisposable
     {

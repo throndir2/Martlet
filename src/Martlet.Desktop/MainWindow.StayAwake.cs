@@ -54,18 +54,13 @@ public partial class MainWindow
             return;
         }
         StayAwakeText.Text = awakeProblem is { } problem
-            ? $"Windows didn't let Martlet keep this PC awake for its host service ({problem}). It can sleep when it is left idle, and " +
-              "your other computers then lose its jobs until it wakes."
+            ? $"Windows didn't let Martlet keep this PC awake for its host service ({problem}), so when it sleeps, your other " +
+              "computers lose its jobs until it wakes."
             : hostingWake.Reason is null
-                ? "This PC can sleep when it is left idle: its host service serves none of your other computers right now. While it " +
-                  "does, Martlet keeps this PC awake."
+                ? "This PC can sleep when it is left idle, because its host service serves none of your other computers right now."
                 : hostingWake.HostPcOnly
-                    ? "This PC stays awake because it is a Martlet host: Windows doesn't put it to sleep when it is left idle, so your " +
-                      "other computers can reach its host service any time. The screen can still turn off, and Sleep and shutting down " +
-                      "still work. Martlet keeps it awake only while Martlet runs."
-                    : $"This PC stays awake while its host service ({hostingWake.HostId}) serves {HostingWake.Names(hostingWake.Served)}: " +
-                      "Windows doesn't put it to sleep when it is left idle. The screen can still turn off, and Sleep and shutting down " +
-                      "still work. Martlet keeps it awake only while Martlet runs.";
+                    ? "This PC stays awake because it is a Martlet host, so your other computers can reach its host service any time."
+                    : $"This PC stays awake while its host service ({hostingWake.HostId}) serves {HostingWake.Names(hostingWake.Served)}.";
         StayAwakeText.Visibility = Visibility.Visible;
     }
 }

@@ -54,13 +54,13 @@ public partial class MainWindow
                 Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
                 NotConnected = store is not null && Martlet.Sherpa.ParakeetEngine.Installed(LocalVoices.SpeechRoot(store.DataDirectory), route.ModelId)
                     ? null
-                    : $"{ParakeetName(route.ModelId)} isn't downloaded. Choose it again in Listening to download it"
+                    : $"{ParakeetName(route.ModelId)} isn't downloaded, so choose it again in Listening to download it"
             };
         if (route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper)
             return new()
             {
                 Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
-                NotConnected = "this option can be saved, but conversations don't use it yet. Choose OpenAI or one of your hosts"
+                NotConnected = "this option can be saved, but conversations don't use it yet, so choose OpenAI or one of your hosts"
             };
         var keyMissing = route.CredentialId is null && (route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ElevenLabs ||
             route.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.Named(route.Origin) is not null);
@@ -119,8 +119,8 @@ public partial class MainWindow
     private string OwnLipSyncState() => ownLipSyncAnswers switch
     {
         true => "Lifelike lip-sync is running on this PC.",
-        false => "Lifelike lip-sync is not running on this PC. Set it up in Companion › Lip-sync.",
-        _ => "Lifelike lip-sync when available. Otherwise, basic mouth movement."
+        false => "Lifelike lip-sync is not running on this PC; set it up in Companion › Lip-sync.",
+        _ => "Lifelike lip-sync when available, otherwise basic mouth movement."
     };
 
     /// <summary>The freshest thing this PC knows about a host: the background sync check when sync is on, otherwise the
@@ -258,8 +258,9 @@ public partial class MainWindow
 
         var row = new StackPanel { Margin = new Thickness(0, 4, 0, 6) };
         row.Children.Add(new TextBlock { Text = $"{job.Title}: {state}", FontWeight = FontWeights.SemiBold });
-        var detail = new TextBlock { Text = (job.Problem + " " + job.Effect).Trim(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
-        detail.SetResourceReference(StyleProperty, "Muted");
+        // The problem shows; the "?" also has what it means for you and any failover.
+        var detail = HelpTip.Explain((job.Problem + " " + job.Effect).Trim(), new Thickness(0, 2, 0, 0), "Coverage-" + job.Job, job.Title,
+            wiki: "Multiple-Computers#when-no-machine-can-do-a-job");
         row.Children.Add(detail);
         if (actions.Children.Count > 0) row.Children.Add(actions);
         return row;
@@ -297,17 +298,13 @@ public partial class MainWindow
     {
         var device = PlatformDevice.FromHost(hostId, HardwareStore?.Find(hostId));
         if (!PlatformCatalog.ManagesRolesRemotely(device))
-            return $"turn on {job} in Martlet on {hostId} first. This PC can't set it up there.";
+            return $"turn on {job} in Martlet on {hostId} first, because this PC can't set it up there.";
         return HostCan(hostId, roleKind) is { Allowed: false } cannot ? cannot.Reason : null;
     }
 
     /// <summary>"Ollama qwen2.5:7b" on a Linux host; just the model on a Mac, phone or tablet, whose engine the model names.</summary>
     private string EngineLabel(string hostId, string engine, string model) =>
         PlatformDevice.FromHost(hostId, HardwareStore?.Find(hostId)).Platform == DevicePlatform.Linux ? $"{engine} {model}" : model;
-
-    /// <summary>Notes to add when handing a job to a host, such as an iPhone that hosts only while Martlet is open on it.</summary>
-    private string HostCaveats(string hostId) =>
-        string.Concat(PlatformCatalog.HostNotes(PlatformDevice.FromHost(hostId, HardwareStore?.Find(hostId))).Select(note => " " + note));
 
     /// <summary>The shared job a host role does for this PC; null for a role that does none (Singing, Deep thinking).</summary>
     private static string? JobForRole(string roleKind) => roleKind switch
@@ -330,9 +327,8 @@ public partial class MainWindow
             if (SelfHostSetup.DeepThinkingCardOfRole(role.Kind) is { } card &&
                 members.Any(m => m is { OnHostRole: true } && m.HostId == host.HostId && m.Card == card))
             {
-                if (!ConfirmationDialog.Confirm(this, $"Remove {role.Name} from {host.HostId}? It is in this PC's Thinking pool, so " +
-                        "pool jobs stop running there. Add another member in Companion > Thinking pool if the pool becomes empty.",
-                        "Remove role"))
+                if (!ConfirmationDialog.Confirm(this, $"Remove {role.Name} from {host.HostId}, so this PC's Thinking pool stops running " +
+                        "jobs there?", "Remove role"))
                     return;
                 RunHostActionAsync(host, role.Remove, confirmed: true).Forget();
             }
@@ -362,7 +358,7 @@ public partial class MainWindow
             catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException or
                 Martlet.Core.Contracts.ContractException or ArgumentException)
             {
-                ActionText.Text = $"{role.Name} stayed on {host.HostId}. {hostJob.Job} couldn't move back first ({error.Message}).";
+                ActionText.Text = $"{role.Name} stayed on {host.HostId} because {hostJob.Job} couldn't move back first ({error.Message}).";
                 return;
             }
             finally { turn?.Dispose(); }

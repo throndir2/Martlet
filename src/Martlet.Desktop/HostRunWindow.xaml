@@ -13,17 +13,23 @@
             <!-- Hide (Esc, or the window's close button) only hides a running task: it keeps going in Background tasks.
                  Cancel task asks first. Once it has finished, Hide becomes Close. -->
             <Button x:Name="HideButton" DockPanel.Dock="Right" Content="_Hide" Click="Hide_Click" MinWidth="100" IsCancel="True"
-                    ToolTip="Hides this window. The task keeps running in Background tasks."
+                    ToolTip="Hides this window; the task keeps running in Background tasks."
                     AutomationProperties.AutomationId="HostRunHide"/>
             <Button x:Name="CancelButton" DockPanel.Dock="Left" Content="Cancel _task..." Click="Cancel_Click" VerticalAlignment="Center"
-                    Margin="0,0,16,0" ToolTip="Stops this task. Martlet asks first."
+                    Margin="0,0,16,0" ToolTip="Stops this task after Martlet asks you."
                     AutomationProperties.AutomationId="HostRunCancel"/>
             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                 <TextBlock x:Name="StatusText" TextWrapping="Wrap"
                            AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostRunStatus"/>
-                <TextBlock x:Name="HideHint" Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"
-                           Text="Hide keeps it running. Find it again in Background tasks in Martlet's main window."
-                           AutomationProperties.AutomationId="HostRunHideHint"/>
+                <DockPanel x:Name="HideHint" Margin="0,2,0,0">
+                    <local:HelpTip DockPanel.Dock="Right" VerticalAlignment="Center" Margin="6,0,0,0"
+                                   Text="Hide keeps the task running, and Background tasks in Martlet's main window shows it again. Cancel task stops it after Martlet asks you."
+                                   Wiki="Setting-Up-a-Host#host-run-window" AutomationProperties.Name="About hiding a task"
+                                   AutomationProperties.AutomationId="Help-HostRunHideHint"/>
+                    <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="Hide keeps it running in Background tasks in Martlet's main window."
+                               AutomationProperties.AutomationId="HostRunHideHint"/>
+                </DockPanel>
             </StackPanel>
         </DockPanel>
         <Border x:Name="PairingPanel" DockPanel.Dock="Top" Visibility="Collapsed" Style="{DynamicResource CardStyle}" Margin="0,12,0,0"
@@ -51,9 +57,15 @@
                                 AutomationProperties.Name="Copy the pairing code" AutomationProperties.AutomationId="HostRunPairCopy"/>
                     </StackPanel>
                 </Grid>
-                <TextBlock x:Name="PairingNoteText" Style="{DynamicResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
-                           AutomationProperties.AutomationId="HostRunPairNote"
-                           Text="The code works once and doesn't expire: it stays valid until your main PC uses it or you cancel here. This PC's host jobs pause until then."/>
+                <DockPanel Margin="0,10,0,0">
+                    <local:HelpTip DockPanel.Dock="Right" VerticalAlignment="Center" Margin="6,0,0,0"
+                                   Text="The code doesn't expire. This PC's host jobs pause until your main PC uses the code or you cancel here."
+                                   Wiki="Setting-Up-a-Host#pairing" AutomationProperties.Name="About the pairing code"
+                                   AutomationProperties.AutomationId="Help-HostRunPairNote"/>
+                    <TextBlock x:Name="PairingNoteText" Style="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"
+                               AutomationProperties.AutomationId="HostRunPairNote"
+                               Text="The code works once and stays valid until your main PC uses it or you cancel here."/>
+                </DockPanel>
             </StackPanel>
         </Border>
         <TextBox x:Name="OutputText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"

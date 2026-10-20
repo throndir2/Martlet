@@ -32,7 +32,7 @@ public sealed class HostRunPairingTests
             Assert.Equal("Copy code", copy.Content);
             Assert.True(copy.IsEnabled);
             var note = Find<TextBlock>(window, "HostRunPairNote").Text;
-            Assert.Contains("doesn't expire", note);
+            Assert.Contains("stays valid until your main PC uses it", note);
             Assert.DoesNotContain("five minutes", note);
 
             window.ShowPairingCode(null, null);
