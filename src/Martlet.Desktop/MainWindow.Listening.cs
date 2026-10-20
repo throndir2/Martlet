@@ -381,7 +381,6 @@ public partial class MainWindow
             return false;
         }
         var dataDirectory = store.DataDirectory;
-        var service = setupService;
         // Every other route change for this job clears it (pendingJobHosts), so the switch at the end knows it still stands.
         var mark = $"this-pc-setup-{Guid.NewGuid():N}";
         pendingJobHosts[job.Role] = mark;
@@ -391,16 +390,12 @@ public partial class MainWindow
         {
             async Task<string> Continue(HostRunWindow run, PairedHost host)
             {
-                var target = host.Target(Version);
-                await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                target = await HostLocal.EngineForChangeAsync(target, job.HostRoleKind, run);
-                // Several graphics cards: the owner picks the one this engine runs on.
-                run.Status($"Checking this PC's graphics cards for {job.Engine}...");
-                var inputs = await HostLocal.DescribeAsync(target, job.HostRoleKind, run.Output, run.Token);
-                var chosen = HostInputDialog.WithGpu(run, "this PC", job.Engine, inputs, answers) ?? throw new OperationCanceledException();
-                run.Status($"Installing {job.Engine} on this PC...");
-                var exit = await HostLocal.EngineAsync(target, ["add", job.HostRoleKind], run.Output, run.Token, answers: chosen);
-                if (exit != 0) throw new InvalidOperationException($"Installing {job.Engine} stopped (exit {exit}). {job.Title} didn't change. The output has details.");
+                await InstallRoleHereAsync(run, host, new(job.HostRoleKind, job.Engine, answers, $"Installing {job.Engine} on this PC...",
+                    exit => $"Installing {job.Engine} stopped (exit {exit}). {job.Title} didn't change. The output has details.")
+                    {
+                        // Several graphics cards: the owner picks the one this engine runs on.
+                        QuestionsStatus = $"Checking this PC's graphics cards for {job.Engine}...",
+                    });
                 run.Status($"Switching {job.Job} to {job.Engine} on this PC...");
                 var route = await WaitForRouteAsync(host, job, run);
                 var voice = job.RouteType == SetupRouteType.GatewayF5
@@ -419,18 +414,7 @@ public partial class MainWindow
                     (voice is null ? "." : $", with the voice \"{voice.PresetName}\".") + OpenConversationFollows;
             }
 
-            string? status;
-            if (ThisPcHost() is { } thisPc)
-            {
-                var done = await HostRunWindow.RunAsync(this, title, run => Continue(run, thisPc));
-                status = done ?? $"{job.Title} didn't change; the run window has details.";
-            }
-            else
-            {
-                (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(dataDirectory), service,
-                    text => ActionText.Text = text, lifetime.Token, Continue, title);
-                await ReadMachineAsync();
-            }
+            var status = await RunRoleSetupHereAsync(ThisPcHost(), title, title, Continue, () => $"{job.Title} didn't change; the run window has details.");
             if (!closing && status is not null) ActionText.Text = status;
         }
         catch (OperationCanceledException) { }
@@ -454,14 +438,10 @@ public partial class MainWindow
     /// <summary>Waits (about a minute) for this PC's host service to advertise the job's route after installing it.</summary>
     private async Task<HostRoute> WaitForRouteAsync(PairedHost host, HostJob job, HostRunWindow run)
     {
-        for (var attempt = 0; ; attempt++)
-        {
-            var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, run.Token);
-            hostChecks[host.HostId] = check;
-            if (check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId) is { } route) return route;
-            if (attempt >= 12)
-                throw new InvalidOperationException($"Setup finished, but Martlet can't see {job.Engine} yet ({check.Text}). Press Check it in a minute.");
-            await Task.Delay(TimeSpan.FromSeconds(5), run.Token);
-        }
+        HostRoute? route = null;
+        var why = await WaitForRoleAsync(host, check =>
+            Task.FromResult((route = check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId)) is null ? new RoleNotReady(check.Text) : null),
+            run.Token);
+        return why is null ? route! : throw new InvalidOperationException($"Setup finished, but Martlet can't see {job.Engine} yet ({why}). Press Check it in a minute.");
     }
 }
