@@ -1851,6 +1851,10 @@ public sealed class LiveConversationTests
         var pc = new PcSourceFixture();
         await using var fixture = await LiveFixture.Create(pcAudio: pc,
             pcActivity: clock => new PcActivityMonitor(() => new AppsFixture(), clock, manual: true));
+        // Each line's start is the clock when its speech was found, less the audio before it, and a start at or before 0 counts
+        // as unknown (PcEcho.Speakers), so the two lines would never match. The fixture clock starts at 0; a minute on, as on a
+        // real PC, a busy PC that reads the audio before the clock has moved far still gives both lines a real start.
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
         fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json($$"""{"text":"{{Weather}}"}"""));
         fixture.Answer("Ha.");
         var window = fixture.Open(new TalkPreferences(SpeakReplies: false, HearPc: true));
