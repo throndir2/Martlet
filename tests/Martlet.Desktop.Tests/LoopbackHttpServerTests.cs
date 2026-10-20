@@ -96,8 +96,14 @@ public sealed class LoopbackHttpServerTests
         var calls = 0;
         await using var server = new LoopbackHttpServer(exchange =>
             Interlocked.Increment(ref calls) == 1 ? throw new InvalidOperationException("boom") : exchange.RespondAsync(200, "ok", "text/plain"));
+        using (var tcp = new TcpClient())
+        {
+            await tcp.ConnectAsync("127.0.0.1", server.Port);
+            var stream = tcp.GetStream();
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
+            Assert.Equal(0, await stream.ReadAsync(new byte[64]).AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        }
         using var client = new HttpClient();
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetStringAsync(server.Origin + "/"));
         Assert.Equal("ok", await client.GetStringAsync(server.Origin + "/"));
     }
 }
