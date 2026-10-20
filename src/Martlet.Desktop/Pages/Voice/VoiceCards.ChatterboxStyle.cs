@@ -12,12 +12,11 @@ namespace Martlet.Desktop;
 /// sentence uses it. Reads as <c>ChatterboxStyle-&lt;name&gt;</c> (the sliders: GeneralExaggeration, GeneralCfgWeight,
 /// ExpressiveExaggeration, ExpressiveCfgWeight), <c>ChatterboxStyleValue-&lt;name&gt;</c> (each value, "0.5"),
 /// <c>ChatterboxStyleState</c> (what is saved) and <c>ChatterboxStyleReset</c>.</summary>
-public partial class MainWindow
+internal sealed partial class VoiceCards
 {
-    private Border ChatterboxStyleCard()
+    internal Border ChatterboxStyleCard()
     {
-        var directory = store?.DataDirectory;
-        var style = directory is null ? ChatterboxStyle.Default : ChatterboxStyle.Load(directory);
+        var style = services.LoadChatterboxStyle();
         var state = Note(StyleState(style), new Thickness(0, 10, 0, 0));
         AutomationProperties.SetAutomationId(state, "ChatterboxStyleState");
         var sliders = new Dictionary<string, Slider>();
@@ -25,10 +24,10 @@ public partial class MainWindow
 
         void Save(ChatterboxStyle next)
         {
-            if (next == style || directory is null) return;
+            if (next == style) return;
             try
             {
-                next.Save(directory);
+                if (!services.SaveChatterboxStyle(next)) return;
                 style = next;
                 state.Text = StyleState(next);
                 state.ClearValue(TextBlock.ForegroundProperty);
@@ -64,7 +63,7 @@ public partial class MainWindow
             var scale = new StackPanel { Orientation = Orientation.Horizontal };
             scale.Children.Add(slider);
             scale.Children.Add(shown);
-            return Labeled(exaggeration ? "Exaggeration" : "CFG weight", scale);
+            return MainWindow.Labeled(exaggeration ? "Exaggeration" : "CFG weight", scale);
         }
 
         var reset = PageButton("Use Resemble's suggestions", () =>
@@ -108,4 +107,6 @@ public partial class MainWindow
     /// <summary>What the style card says is saved, in one sentence: "Saved on this PC (general: exaggeration 0.5, ...)."</summary>
     internal static string StyleState(ChatterboxStyle style) =>
         (style == ChatterboxStyle.Default ? "Resemble's suggestions (" : "Saved on this PC (") + Lowered(style.Describe()).TrimEnd('.') + ").";
+
+    private static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
 }
