@@ -647,7 +647,8 @@ misses the cache (the first one after a start) reads them again.
 | Library service, tools, job kinds and texts | `src\Martlet.Conversation\Guides\AppGuideService.cs`, `AppGuideTools.cs` |
 | Detection | `src\Martlet.Desktop\AppGuideWatch.cs` |
 | Tools, job, offer and notes in the conversation | `src\Martlet.Desktop\LiveConversationController.Guides.cs`, `LiveConversationWindow.AppGuides.cs` |
-| The App guides page | `src\Martlet.Desktop\MainWindow.AppGuides.cs` |
+| The App guides page | `src\Martlet.Desktop\Pages\AppGuides\` (the page, its model and its services) |
+| Library, watch, reading up and Read more in the window | `src\Martlet.Desktop\MainWindow.AppGuides.cs`, `MainWindow.AppGuidesPage.cs` |
 | MCP | `src\Martlet.Mcp.Protocol\AppGuidesCheck.cs` |
 
 ## Privacy

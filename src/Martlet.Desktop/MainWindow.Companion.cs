@@ -275,7 +275,7 @@ public partial class MainWindow
             case CompanionTab.Personality: PersonalityPage.Render(body); break;
             case CompanionTab.Prompts: PromptsPage.Render(body); break;
             case CompanionTab.Lorebook: LorebookPage.Render(body); break;
-            case CompanionTab.AppGuides: RenderAppGuidesTab(body); break;
+            case CompanionTab.AppGuides: AppGuidesPage.Render(body); break;
             case CompanionTab.Memory: MemoryPage.Render(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: new RepliesPage(this).Render(body); break;
