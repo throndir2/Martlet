@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Companion › Tools, Smart home, Discord, Messaging, App guides and Check-ins, the MCP windows and Outside access now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki has the full setup steps for Discord, Telegram, WhatsApp and Home Assistant. ([#1072](https://github.com/throndir2/Martlet/pull/1072))
+
 ## [0.89.0] - 2026-10-19
 
 ### Added
