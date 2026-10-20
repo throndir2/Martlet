@@ -45,7 +45,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- Test vision no longer sends a blank picture when Windows fails to draw the test word, so it can't wrongly mark a model as unable to see; it says to try again instead. ([#1064](https://github.com/throndir2/Martlet/pull/1064))
+- Test vision no longer sends a blank picture when Windows fails to draw the test word, so it can't wrongly mark a model as unable to see; it says to try again instead. ([#1068](https://github.com/throndir2/Martlet/pull/1068))
 - Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Background tasks that wait for a free computer now start in the order you asked for them. Before, two that were asked at the same moment could swap places. ([#1047](https://github.com/throndir2/Martlet/pull/1047))
 - Each request to a host answers faster: the host saves the request's one-use number with one small write instead of saving all its pairings (about 3 ms instead of 27 ms on a fast disk, and more on slow disks). ([#1046](https://github.com/throndir2/Martlet/pull/1046))
