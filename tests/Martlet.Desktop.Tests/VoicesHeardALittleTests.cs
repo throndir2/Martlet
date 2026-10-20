@@ -15,7 +15,7 @@ public sealed class VoicesHeardALittleTests : IDisposable
     public VoicesHeardALittleTests()
     {
         // No clips are written in the background, so the folder can be deleted at once.
-        File.WriteAllText(Path.Combine(directory, VoiceClips.ChoiceFile), "off");
+        File.WriteAllText(Path.Combine(directory, Martlet.Core.Speakers.VoiceChoices.ClipsFile), "off");
     }
 
     public void Dispose() => Directory.Delete(directory, true);

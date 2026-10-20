@@ -41,6 +41,14 @@ internal sealed class CharacterEyeService(string? dataDirectory)
     /// <summary>The eye hint for the model <paramref name="id"/> when it is the loaded one (no file is read), or null.</summary>
     internal RendererEyes? HintFor(string? id) => id is not null && id == ModelId ? Current?.Hint : null;
 
+    /// <summary>Reads the loaded model's measurement again (after another computer's measurements were taken).</summary>
+    internal void Reload()
+    {
+        var id = ModelId;
+        Volatile.Write(ref current, id is null || dataDirectory is null ? null : CharacterEyes.Load(dataDirectory, id));
+        Changed?.Invoke();
+    }
+
     /// <summary>Loads the measurement of the model with <paramref name="id"/> unless it is already loaded.</summary>
     internal void Follow(string? id)
     {

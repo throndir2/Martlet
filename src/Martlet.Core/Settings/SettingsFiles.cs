@@ -66,7 +66,20 @@ public static class SettingsFiles
         new(PoolSettings.FileName, SettingsFileScope.Shared, PoolSettings.SharedKey, "Martlet.Core.Cluster.PoolSettings"),
         new(MeaningSearchFile.FileName, SettingsFileScope.Shared, MeaningSearchFile.SharedKey, "Martlet.Core.Settings.MeaningSearchFile"),
         new("character-actions.json", SettingsFileScope.Shared, "character-actions", "Martlet.Avatar.Hosting.CharacterActions"),
+        new("character-touch-zones.json", SettingsFileScope.Shared, "character-touch-zones", "Martlet.Avatar.Hosting.CharacterTouchZones"),
+        new("character-eyes.json", SettingsFileScope.Shared, "character-eyes", "Martlet.Avatar.Hosting.CharacterEyes"),
+        new("vroid-hub-looks.json", SettingsFileScope.Shared, "vroid-hub-looks", "Martlet.Avatar.Hosting.VRoidHubLooks"),
         new("updates.json", SettingsFileScope.Shared, "updates", "Martlet.Desktop.UpdatePreferences"),
+        new("update-checks.txt", SettingsFileScope.Shared, "updates", "Martlet.Desktop.UpdateCheckPreferences"),
+        new("smart-home.json", SettingsFileScope.Shared, "smart-home", "Martlet.Home.HomePreferences"),
+        new(Speakers.VoiceChoices.RecognitionFile, SettingsFileScope.Shared, Speakers.VoiceChoices.RecognitionKey, "Martlet.Core.Speakers.VoiceChoices"),
+        new(Speakers.VoiceChoices.ClipsFile, SettingsFileScope.Shared, Speakers.VoiceChoices.ClipsKey, "Martlet.Core.Speakers.VoiceChoices"),
+        new(Speakers.VoiceChoices.RosterFile, SettingsFileScope.Shared, VoicesDocument, "Martlet.Desktop.LocalVoices"),
+        new("speaking-voices.json", SettingsFileScope.Shared, SpeakingVoicesDocument, "Martlet.Desktop.F5Voices"),
+        new("discord.json", SettingsFileScope.Shared, "discord", "Martlet.Discord.DiscordPreferences", "Only one computer runs the bot"),
+        new("discord-calls.json", SettingsFileScope.Shared, "discord", "Martlet.Discord.Calls.DiscordCallPreferences", "This PC's devices"),
+        new("messaging.json", SettingsFileScope.Shared, "messaging", "Martlet.Messaging.MessagingPreferences",
+            "Only one program may read a bot's or a number's messages"),
         // Each person's.
         TalkPreferences,
         new("speech-display.json", SettingsFileScope.Account, SettingScopes.SpeechDisplay, "Martlet.Desktop.SpeechDisplayPreferences",
@@ -79,6 +92,10 @@ public static class SettingsFiles
             "Martlet.Desktop.ConversationHistoryPreferences"),
         new(MemoryBriefFile.FileName, SettingsFileScope.Account, MemoryBriefFile.SharedKey, "Martlet.Core.Settings.MemoryBriefFile"),
         new("voice-id.json", SettingsFileScope.Account, SettingScopes.VoiceId, "Martlet.Desktop.VoiceIdentity"),
+        new("avatar.json", SettingsFileScope.Account, SettingScopes.Character, "Martlet.Avatar.Hosting.AvatarProfileStore"),
+        new("character-reaction-changes.json", SettingsFileScope.Account, SettingScopes.CharacterReactionChanges,
+            "Martlet.Avatar.Hosting.CharacterReactionChanges"),
+        new(Lorebooks.LorebookStore.FileName, SettingsFileScope.Account, AppSettingsSections.Lorebooks, "Martlet.Core.Lorebooks.LorebookStore"),
         // This computer's.
         new(PoolSettings.LocalFileName, SettingsFileScope.Local, null, "Martlet.Core.Cluster.PoolSettings", "Each computer chooses them itself"),
         new(PoolKeys.FileName, SettingsFileScope.Local, null, "Martlet.Core.Cluster.PoolKeys",
@@ -94,8 +111,71 @@ public static class SettingsFiles
         new("conversations/platform-changes.json", SettingsFileScope.Local, null, "Martlet.Conversation.PlatformChanges",
             "Only the computer where you made the change asks the app; the record itself travels"),
         new("character-placement.json", SettingsFileScope.Local, null, "Martlet.Desktop.CharacterPlacementStore", "This PC's screens"),
-        new("hosts.json", SettingsFileScope.Local, null, "Martlet.Desktop.HostRegistry", "How this computer reaches others, and who may reach it")
+        new("character-click-through.json", SettingsFileScope.Local, null, "Martlet.Desktop.CharacterClickThroughStore", "This PC's screens"),
+        new("character-profiles-local.json", SettingsFileScope.Local, null, "Martlet.Desktop.CharacterProfileLocalStore", "This PC's screens"),
+        new("character-themes.json", SettingsFileScope.Local, null, "Martlet.Avatar.Hosting.CharacterThemes", DerivedHere),
+        new("hosts.json", SettingsFileScope.Local, null, "Martlet.Desktop.HostRegistry", "How this computer reaches others, and who may reach it"),
+        new("cluster-sync.txt", SettingsFileScope.Local, null, "Martlet.Desktop.ClusterSync", "How this computer reaches others, and who may reach it"),
+        new("router-port.json", SettingsFileScope.Local, null, "Martlet.Desktop.RouterPort", "How this computer reaches others, and who may reach it"),
+        new("nearby.txt", SettingsFileScope.Local, null, "Martlet.Desktop.Nearby", "How this computer reaches others, and who may reach it"),
+        new("device-role.txt", SettingsFileScope.Local, null, "Martlet.Desktop.DeviceRolePreference", "What this computer is for"),
+        new("background.json", SettingsFileScope.Local, null, "Martlet.Desktop.BackgroundPreferences", "How Martlet starts for this Windows user"),
+        new(SenseModels.FileName, SettingsFileScope.Local, null, "Martlet.Core.Settings.SenseModels",
+            "Which models a computer can run beside Thinking depends on its hardware"),
+        new("speaking-engine.txt", SettingsFileScope.Local, null, "Martlet.Core.Settings.SpeakingEngineFile",
+            "It follows the voice engine the speaking host runs now"),
+        new("singing.json", SettingsFileScope.Local, null, "Martlet.Core.Singing.SingingPreferences",
+            "An older choice, read once into the shared Singing lists, and the computer this PC last saw singing"),
+        new("household-signin.json", SettingsFileScope.Local, null, "Martlet.Desktop.HouseholdSignInStore",
+            "The client secrets are in this PC's Windows Credential Manager; the providers themselves are on the hosts"),
+        new("discord-companion.json", SettingsFileScope.Local, null, "Martlet.Discord.DiscordCompanionState",
+            "What the bot saw and made on the computer that runs it")
     ];
+
+    /// <summary>The shared documents that carry a file in place of a shared setting (docs/CLUSTER.md): the voice list and the
+    /// voices Martlet speaks with. Both are the household's.</summary>
+    public const string VoicesDocument = "/martlet/v1/voices", SpeakingVoicesDocument = "/martlet/v1/speaking-voices";
+
+    /// <summary>The reason for data each computer makes again from what is shared.</summary>
+    public const string DerivedHere = "Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report";
+
+    /// <summary>Files in Martlet's data folder (and on its hosts) that hold no choice of the owner's, so they need no row in
+    /// <see cref="All"/>: what each one is. A file that holds a choice is never listed here; <c>SettingsFilesTests</c> finds every
+    /// file name a store declares and checks that it is in one of the two lists.</summary>
+    public static IReadOnlyDictionary<string, string> NotSettings { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // Status written for the pages and for MCP.
+        ["about.txt"] = "status", ["martlet-logs.txt"] = "status", [".martlet-support.v1.json"] = "status", ["check-ins-status.json"] = "status",
+        ["image-model-status.json"] = "status", ["sense-models-status.json"] = "status", ["songs-status.json"] = "status",
+        ["thinking-pool-status.json"] = "status", ["thinking-requests.json"] = "status", ["tools-unsupported.json"] = "status",
+        ["voice-recognition-state.json"] = "status", ["memory-upkeep.json"] = "status", ["model-catalog-status.json"] = "status",
+        ["node-presence.txt"] = "status", ["node-command.txt"] = "status", ["node-commands.txt"] = "status", ["network-logs.json"] = "status",
+        ["friends.json"] = "status", ["openai-models.json"] = "status", ["host-hardware.json"] = "status", ["status.json"] = "status",
+        ["sound-digest.json"] = "status", ["live-floor.json"] = "status",
+        // Data made again from what is shared, or measured, or downloaded.
+        ["appearance-colors.json"] = "cache", ["clips.json"] = "cache", ["model-catalog.json"] = "cache",
+        ["Martlet.Core.model-catalog.json"] = "cache", ["model-speed.json"] = "cache", ["config.json"] = "cache",
+        // Records: identities, sync bookkeeping, copies of shared documents, queues and what Martlet did.
+        ["device.json"] = "record", ["accounts.json"] = "record", ["session.json"] = "record", ["working-copy.json"] = "record",
+        ["joined-account.json"] = "record", ["shared-settings.json"] = "record", ["cluster.json"] = "record", ["network.json"] = "record",
+        ["memories.json"] = "record", ["memory-sync.json"] = "record", [".martlet-memory.v1.json"] = "record", ["creations.json"] = "record",
+        ["creations-sync.json"] = "record", ["creations-moved.json"] = "record", ["character-models.json"] = "record",
+        ["node-presence.json"] = "record", ["network-logs-positions.json"] = "record", ["background-jobs.json"] = "record",
+        ["helper-jobs.json"] = "record", ["situation.json"] = "record", ["discord-replies.json"] = "record", ["greeting.json"] = "record",
+        ["pending-share-link.txt"] = "record", ["share-links.json"] = "record", ["api-keys.json"] = "record", ["continue-setup.json"] = "record",
+        ["this-pc-host-roles.txt"] = "record", ["motion-starters.json"] = "record", [".guide.json"] = "record", ["library.json"] = "record",
+        ["probe.json"] = "record", ["sent.json"] = "record", [".martlet-f5-references.v1.json"] = "record",
+        // Files of the Linux host service, not of a desktop's data folder.
+        ["host.json"] = "host", ["gpus.json"] = "host", ["commands.json"] = "host", ["exposure.json"] = "host", ["home-assistant.json"] = "host",
+        ["logs.json"] = "host", ["logs-recent.json"] = "host", ["signin.json"] = "host",
+        // Installation, update and package files.
+        ["last-install.txt"] = "package", ["resume.txt"] = "package", ["journal-v1.json"] = "package", ["journal-v2.json"] = "package",
+        ["journal-v3.json"] = "package", ["journal-v4.json"] = "package", ["import-evidence.v1.json"] = "package",
+        ["package-owner.v1.json"] = "package", ["package-receipt.v1.json"] = "package", ["whisper-package.v1.json"] = "package",
+        ["sbom.cdx.json"] = "package", ["cloudflared.json"] = "package", ["Martlet.VoiceActivity.model-manifest.json"] = "package",
+        // Checks' own lab files.
+        ["role-lab.json"] = "test", ["signin-lab.json"] = "test"
+    };
 
     /// <summary>The registered file with this name (its path in the data folder), or null.</summary>
     public static SettingsFile? Find(string fileName) =>

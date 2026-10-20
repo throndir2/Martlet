@@ -100,7 +100,7 @@ public partial class MainWindow
     }
 
     /// <summary>Companion › Smart home: which Home Assistant Martlet is connected to and what it may do with it.</summary>
-    internal static string SmartHomeNow(HomePreferences saved, bool connected)
+    internal static string SmartHomeNow(Martlet.Home.HomePreferences saved, bool connected)
     {
         if (!connected) return "Off: Home Assistant isn't connected.";
         var where = (saved.LocationName.Length > 0 ? saved.LocationName : "Home Assistant") + (saved.Address.Length > 0 ? $" at {saved.Address}" : "");

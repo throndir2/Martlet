@@ -2667,7 +2667,8 @@ The built-in **How I react** check-in (`reactions`, on) does this with the
   **Undo all**, and the newest that ended. Touch zones' **Start over** undoes
   them too. The check-in's card shows the first line of each tool's answer,
   which never holds the character's reason. The changes are kept in
-  `character-reaction-changes.json` on this PC only.
+  `character-reaction-changes.json`, the same on every computer where you are signed in
+  (the `character-reaction-changes` shared setting).
 
 The tools run in `Martlet.Avatar.Hosting.CharacterReactionTools` (with no
 provider types, so the desktop's handler, `MainWindow.TouchReactionTools.cs`,

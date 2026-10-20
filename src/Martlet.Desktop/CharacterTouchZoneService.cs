@@ -73,6 +73,15 @@ internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
     /// are known; unchanged settings otherwise. Set by the main window; applied to the zones loaded and to every save.</summary>
     internal Func<CharacterTouchZoneSettings, CharacterTouchZoneSettings>? Fill { get; set; }
 
+    /// <summary>Reads the loaded model's zones again (after another computer's touch zones were taken).</summary>
+    internal void Reload()
+    {
+        var id = ModelId;
+        Volatile.Write(ref current, id is null || dataDirectory is null ? null : CharacterTouchZones.Load(dataDirectory, id));
+        FillLists();
+        Changed?.Invoke();
+    }
+
     /// <summary>Loads the zones of the model with <paramref name="id"/> unless they are already loaded.</summary>
     internal void Follow(string? id)
     {
