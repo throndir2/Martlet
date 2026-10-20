@@ -14,7 +14,7 @@ public sealed class VisionReadingTextTests
         foreach (var (_, title, detail) in VisionPageModel.Sources) Assert.True(Sentences.Count(detail) == 1, $"{title}: {detail}");
         foreach (var ms in ScreenReadPace.ChoicesMs)
         {
-            var pace = MainWindow.ReadingEveryText(ms);
+            var pace = ReadingPageModel.EveryText(ms);
             Assert.True(Sentences.Count(pace) == 1, pace);
         }
         foreach (var code in new[] { unchecked((int)0x80070005), unchecked((int)0xC00D3704), unchecked((int)0xC00D36C3), unchecked((int)0xC00D36B4),

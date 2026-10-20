@@ -261,7 +261,7 @@ public partial class MainWindow
     }
 
     /// <summary>The Compare table: one row per option, one column per fact that differs between them.</summary>
-    private static ScrollViewer PickerTable(string id, IReadOnlyList<PickerOption> options)
+    internal static ScrollViewer PickerTable(string id, IReadOnlyList<PickerOption> options)
     {
         var keys = options.SelectMany(o => o.Facts.Select(f => f.Key)).Distinct(StringComparer.Ordinal)
             .Where(key => options.Select(o => o.Facts.FirstOrDefault(f => f.Key == key)?.Value ?? "").Distinct(StringComparer.Ordinal).Count() > 1)
