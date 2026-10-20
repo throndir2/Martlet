@@ -16,7 +16,7 @@ A moved page has these parts:
 | Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Status` (a status line with an automation ID), `Warning`, `Row`, `PageButton`, `Choice` (a large radio choice), `TerminalRow`, `TakeKey`, the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`), the option rows (`Option`, `OptionTitle`), `PageNowCard` and `WithHint`. |
 
 Moved pages: Thinking pool (`ThinkingPool\`), Check-ins (`CheckIns\`), Vision
-(`Vision\`), Picture making (`Pictures\`), App guides (`AppGuides\`), Reading (`Reading\`), Singing (`Singing\`), Replies (`Replies\`), People (`People\`), Personality (`Personality\`), Memory (`Memory\`), Prompts (`Prompts\`), Lorebook (`Lorebook\`), Motion (`Motion\`), Tools (`Tools\`), Character (`Character\`), Eyes (`Eyes\`), Lip sync (`LipSync\`), Hearing (`Hearing\`), Smart home (`SmartHome\`), Discord (`Discord\`), Messaging (`Messaging\`), the job pages Thinking, Listening and Voice (`Jobs\`) and Touch (`Touch\`, with its Touch zones card in `TouchZones\`).
+(`Vision\`), Picture making (`Pictures\`), App guides (`AppGuides\`), Reading (`Reading\`), Singing (`Singing\`), Replies (`Replies\`), People (`People\`), Personality (`Personality\`), Memory (`Memory\`), Prompts (`Prompts\`), Lorebook (`Lorebook\`), Motion (`Motion\`), Tools (`Tools\`), Character (`Character\`), Eyes (`Eyes\`), Lip sync (`LipSync\`), Hearing (`Hearing\`), Speech bubbles (`SpeechBubbles\`), Emotes (`Emotes\`), Smart home (`SmartHome\`), Discord (`Discord\`), Messaging (`Messaging\`), the job pages Thinking, Listening and Voice (`Jobs\`) and Touch (`Touch\`, with its Touch zones card in `TouchZones\`).
 The Discord page reads the app's `DiscordService` and `DiscordCallService`
 through its services interface; they hold no WPF.
 The job pages' cards are in `Thinking\` (Model app, your model app, Ollama on
@@ -33,8 +33,7 @@ The host dashboard's steps are `HostDashboard\HostDashboardModel` (no WPF), with
 `IHostDashboardServices`; MainWindow draws them and runs what their buttons start. `Companion\CompanionPages.cs` is the catalog of all Companion pages
 (titles, groups, icons, intros and job roles), without WPF.
 `MainWindow.Companion.cs` is only the frame (the side list and `RenderTab`). The
-pages that are not moved yet have one file each: Character and Eyes in
-`MainWindow.CharacterPages.cs`. `Shared\` has the parts that more than one page uses, such as
+pages that are not moved yet are `Render...Tab` methods in their own `MainWindow` files. `Shared\` has the parts that more than one page uses, such as
 `ChattinessPicker` (Vision and Listening) and `PictureFiles` (the decoded
 pictures that Touch zones and Eyes show). Vision's image-model list and its Now
 lines are shared with Hearing, so `MainWindow` still makes them and gives them

@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Settings;
@@ -101,31 +100,6 @@ public partial class MainWindow
 
     // ---------- the cards ----------
 
-    /// <summary>A Now card whose line and problem change while the page shows (<see cref="ShowNow"/>): the problem's text block
-    /// is always there, collapsed while there is no problem.</summary>
-    private (Border Card, TextBlock Text, TextBlock Problem) LiveNowCard(string id, string text, string? problem)
-    {
-        var now = new StackPanel();
-        now.Children.Add(Heading("Now"));
-        var status = new TextBlock { FontSize = 15, TextWrapping = TextWrapping.Wrap };
-        AutomationProperties.SetAutomationId(status, id);
-        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        now.Children.Add(status);
-        var problemText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
-        problemText.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        AutomationProperties.SetAutomationId(problemText, id + "Problem");
-        now.Children.Add(problemText);
-        ShowNow(status, problemText, text, problem);
-        return (Card(now), status, problemText);
-    }
-
-    private static void ShowNow(TextBlock status, TextBlock problemText, string text, string? problem)
-    {
-        status.Text = text;
-        problemText.Text = problem ?? "";
-        problemText.Visibility = problem is null ? Visibility.Collapsed : Visibility.Visible;
-    }
-
     /// <summary>The main choice of a page whose feature can be off: the feature (<paramref name="id"/>) and an explicit Off
     /// (<paramref name="offId"/>), each saying what it means. <paramref name="blocked"/> says why the feature can't be chosen yet
     /// (its choice is then disabled); <paramref name="set"/> saves a choice.</summary>
@@ -140,82 +114,7 @@ public partial class MainWindow
         return [yes, no];
     }
 
-    // ---------- Speech bubbles ----------
-
-    private (TextBlock Text, TextBlock Problem)? speechBubblesNow;
-    private readonly Dictionary<(bool Bubbles, bool Subtitles), RadioButton> speechDisplayChoices = [];
-
-    /// <summary>Companion › Speech bubbles: Now, where Martlet's words show (with Off), then where the bubble goes.</summary>
-    private void RenderSpeechBubblesTab(Panel page)
-    {
-        var prefs = captions.Preferences;
-        var (card, text, problem) = LiveNowCard("SpeechBubblesNow", SpeechBubblesNow(prefs), SpeechBubblesProblem(prefs, avatar.IsShowing));
-        speechBubblesNow = (text, problem);
-        page.Children.Add(card);
-        page.Children.Add(SpeechDisplayChoiceCard(prefs));
-        page.Children.Add(SpeechDisplayCard());
-    }
-
-    /// <summary>Where Martlet's spoken words show: speech bubbles, subtitles, both or Off. The same saved choices as the
-    /// character window's, applied from Martlet's next sentence.</summary>
-    private Border SpeechDisplayChoiceCard(SpeechDisplayPreferences prefs)
-    {
-        speechDisplayChoices.Clear();
-        var stack = new List<UIElement> { Heading("Where Martlet's words show") };
-        foreach (var (bubbles, subtitles, title, detail, id) in new[]
-        {
-            (true, false, "Speech bubbles", "Beside the character, while it shows.", "SetupCharacterSpeechBubbles"),
-            (false, true, "Subtitles", "At the bottom of the active screen, hidden from screen capture.", "SetupCharacterSubtitles"),
-            (true, true, "Speech bubbles and subtitles", "Both: a bubble beside the character and subtitles at the bottom of the screen.",
-                "SetupCharacterSpeechBoth"),
-            (false, false, "Off", "No speech bubbles or subtitles; the talk window still shows what Martlet says.", "SetupCharacterSpeechOff")
-        })
-        {
-            var option = Choice("SpeechDisplay", title, detail, prefs.SpeechBubbles == bubbles && prefs.Subtitles == subtitles, id);
-            option.Checked += (_, _) => ChooseSpeechDisplay(bubbles, subtitles);
-            speechDisplayChoices[(bubbles, subtitles)] = option;
-            stack.Add(option);
-        }
-        return Card([.. stack]);
-    }
-
-    private void ChooseSpeechDisplay(bool bubbles, bool subtitles)
-    {
-        if (showingSpeechDisplay) return;
-        var prefs = captions.Preferences;
-        if (prefs.SpeechBubbles == bubbles && prefs.Subtitles == subtitles) return;
-        if (!captions.Update(prefs with { SpeechBubbles = bubbles, Subtitles = subtitles }))
-            ShowSpeechDisplay("Applied for now, but couldn't save your speech display settings.");
-    }
-
-    /// <summary>Follows the saved choices on the page's main choice and Now line, whichever window changed them.</summary>
-    private void ShowSpeechDisplayChoice(SpeechDisplayPreferences prefs)
-    {
-        if (speechDisplayChoices.TryGetValue((prefs.SpeechBubbles, prefs.Subtitles), out var chosen)) chosen.IsChecked = true;
-        if (speechBubblesNow is var (text, problem)) ShowNow(text, problem, SpeechBubblesNow(prefs), SpeechBubblesProblem(prefs, avatar.IsShowing));
-    }
-
-    // ---------- Emotes and motions, Eyes and Touch ----------
-
-    /// <summary>Companion › Emotes and motions: Now, then the emotes, motions and combos.</summary>
-    private void RenderEmotesTab(Panel page)
-    {
-        var actions = CharacterActionsCard();
-        page.Children.Add(EmotesNowCard());
-        page.Children.Add(actions);
-    }
-
-    private Border EmotesNowCard()
-    {
-        if (characterActions.Problem is { } problem)
-            return PageNowCard("Martlet couldn't read this character's emotes and motions.", null, "EmotesNow", problem);
-        if (characterActions.Current is not { } catalog) return PageNowCard("Reading the character's emotes and motions...", null, "EmotesNow");
-        int Count(CharacterActionKind kind, bool on) => catalog.Entries.Count(e => e.Source.Kind == kind && (!on || e.Action.Enabled));
-        return PageNowCard(EmotesNow(Count(CharacterActionKind.Expression, true), Count(CharacterActionKind.Expression, false),
-                Count(CharacterActionKind.Motion, true), Count(CharacterActionKind.Motion, false), catalog.Combos.Count(c => c.Enabled),
-                Count(CharacterActionKind.Gesture, true), Count(CharacterActionKind.Gesture, false)),
-            null, "EmotesNow", avatar.IsShowing ? null : "The character is hidden, so replies don't play them until it shows.");
-    }
+    // ---------- Eyes ----------
 
     // ---------- People, Tools, Discord and Messaging ----------
 
