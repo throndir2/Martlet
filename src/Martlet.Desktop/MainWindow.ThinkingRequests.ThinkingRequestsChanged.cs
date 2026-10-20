@@ -1,0 +1,302 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
+using System.Text;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Threading;
+using Martlet.Conversation;
+
+namespace Martlet.Desktop;
+
+/// <summary>More of MainWindow.ThinkingRequests.cs, in a file of its own so that each file stays under 20 KB.</summary>
+public partial class MainWindow
+{
+    // Any thread, often on the reply's path: it only queues one render on the window's thread.
+    private void ThinkingRequestsChanged()
+    {
+        if (Interlocked.Exchange(ref requestsQueued, 1) != 0) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            Interlocked.Exchange(ref requestsQueued, 0);
+            if (closing) return;
+            RenderThinkingRequestsCount();
+            if (ThinkingRequestsPage.Visibility == Visibility.Visible) RenderThinkingRequests();
+        });
+    }
+
+    private void EnterThinkingRequests()
+    {
+        poolLineAt = default;
+        RenderThinkingRequests();
+        requestsTimer.Start();
+    }
+
+    private void LeaveThinkingRequests() => requestsTimer.Stop();
+
+    private void RenderThinkingRequestsCount()
+    {
+        var active = Requests?.ActiveCount ?? 0;
+        NavThinkingRequestsCount.Text = active > 0 ? active.ToString(CultureInfo.CurrentCulture) : "";
+        NavThinkingRequestsBadge.Visibility = active > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(NavThinkingRequests, active == 0 ? "Thinking requests" : $"Thinking requests, {active} waiting or running");
+    }
+
+    private void RenderThinkingRequests()
+    {
+        if (Requests is not { } requests)
+        {
+            ThinkingRequestsSummary.Text = "Thinking requests show on a companion PC.";
+            ThinkingRequestsEmptyCard.Visibility = Visibility.Visible;
+            return;
+        }
+        var all = requests.List(conversation!.ThinkingPool.Board.Places);
+        var running = all.Count(r => r.State == ThinkingRequestState.Running);
+        var waiting = all.Count(r => r.State is ThinkingRequestState.Waiting or ThinkingRequestState.Paused);
+        var totals = requests.Totals.Values.ToArray();
+        var ended = totals.Sum(t => t.Count);
+        var problems = totals.Sum(t => t.Problems);
+        var averageWait = ended == 0 ? TimeSpan.Zero : TimeSpan.FromTicks(totals.Sum(t => t.Waited.Ticks) / ended);
+        var averageRun = ended == 0 ? TimeSpan.Zero : TimeSpan.FromTicks(totals.Sum(t => t.Ran.Ticks) / ended);
+        ThinkingRequestsSummary.Text = (running == 0 && waiting == 0 ? "Nothing is waiting or running now" : $"{running} running, {waiting} waiting") +
+            (ended == 0 ? "; no request ended since Martlet started."
+                : $"; {ended} ended since Martlet started ({problems} with a problem): they waited {ThinkingRequestWords.Time(averageWait)} " +
+                  $"and ran {ThinkingRequestWords.Time(averageRun)} on average.");
+        RenderPoolLine();
+        RenderTiming(requests.Totals);
+        ThinkingRequestsClearButton.IsEnabled = all.Any(r => r.Done);
+
+        var kind = (ThinkingRequestsKind.SelectedItem as ComboBoxItem)?.Tag as ThinkingJobKind?;
+        var shown = all.Where(r => kind is null || r.Kind == kind)
+            .Where(r => ThinkingRequestsShowActive.IsChecked == true ? r.Active
+                : ThinkingRequestsShowProblems.IsChecked != true || r.Retries > 0 || r.Preemptions > 0 ||
+                  r.State is not (ThinkingRequestState.Succeeded or ThinkingRequestState.Running or ThinkingRequestState.Waiting))
+            .ToArray();
+        ThinkingRequestsEmptyCard.Visibility = shown.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ThinkingRequestsEmpty.Text = all.Count == 0 ? "Requests show here as soon as a companion asks the Thinking pool for something."
+            : "No request matches what is chosen to show.";
+        // Rows stay while their requests stay listed, so the regular refresh keeps the selection and the keyboard focus.
+        var selected = (ThinkingRequestsList.SelectedItem as ThinkingRequestRow)?.Id;
+        if (!shown.Select(r => r.Id).SequenceEqual(requestRows.Select(r => r.Id)))
+        {
+            requestRows.Clear();
+            foreach (var request in shown) requestRows.Add(new ThinkingRequestRow(request));
+            if (selected is not null) ThinkingRequestsList.SelectedItem = requestRows.FirstOrDefault(r => r.Id == selected);
+        }
+        else
+            for (var i = 0; i < shown.Length; i++) requestRows[i].Show(shown[i]);
+        RenderRequestDetail();
+    }
+
+    // The pool line reads the pool's members, so it is refreshed at most every few seconds.
+    private void RenderPoolLine()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - poolLineAt < TimeSpan.FromSeconds(5) || conversation is null) return;
+        poolLineAt = now;
+        var status = conversation.ThinkingPool.Status();
+        var offline = status.Members.Count(m => !m.Online);
+        ThinkingRequestsPool.Text = status.Members.Count == 0
+            ? "The Thinking pool has no member, so requests use their own fallbacks; add members in Companion › Thinking pool."
+            : $"Thinking pool: {status.Free} of {status.Slots} slot{(status.Slots == 1 ? "" : "s")} free on " +
+              $"{status.Members.Count - offline} member{(status.Members.Count - offline == 1 ? "" : "s")}" +
+              (offline > 0 ? $" ({offline} offline)" : "") + (status.KeepsFastSlot ? "; one stays free for quick jobs" : "") +
+              (status.Floor is { } floor && floor != "Idle" ? $"; the conversation is {floor.ToLowerInvariant()} now." : ".");
+    }
+
+    private void RenderTiming(IReadOnlyDictionary<ThinkingJobKind, ThinkingRequestTotals> totals)
+    {
+        var text = TimingTable(totals);
+        if (ThinkingRequestsTiming.Text != text) ThinkingRequestsTiming.Text = text;
+    }
+
+    /// <summary>Timing by type as a fixed-width table, one line for each type, the most requested first.</summary>
+    internal static string TimingTable(IReadOnlyDictionary<ThinkingJobKind, ThinkingRequestTotals> totals)
+    {
+        if (totals.Count == 0) return "No request ended yet.";
+        string[] heads = ["Type", "Ended", "Done", "Problems", "Retries", "Avg wait", "Max wait", "Avg run", "Max run"];
+        List<string[]> rows = [heads];
+        foreach (var (kind, total) in totals.OrderByDescending(t => t.Value.Count))
+            rows.Add([ThinkingRequestWords.Kind(kind), total.Count.ToString(CultureInfo.CurrentCulture),
+                total.Succeeded.ToString(CultureInfo.CurrentCulture), total.Problems.ToString(CultureInfo.CurrentCulture),
+                total.Retries.ToString(CultureInfo.CurrentCulture), ThinkingRequestWords.Time(total.AverageWait),
+                ThinkingRequestWords.Time(total.MaxWaited), ThinkingRequestWords.Time(total.AverageRun), ThinkingRequestWords.Time(total.MaxRan)]);
+        var widths = heads.Select((_, c) => rows.Max(r => r[c].Length) + 2).ToArray();
+        return string.Join(Environment.NewLine, rows.Select(r => string.Concat(r.Select((cell, c) => cell.PadRight(widths[c])))).Select(l => l.TrimEnd()));
+    }
+
+    private void RenderRequestDetail()
+    {
+        if (ThinkingRequestsList.SelectedItem is not ThinkingRequestRow { Request: var request })
+        {
+            ThinkingRequestDetailPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+        ThinkingRequestDetailPanel.Visibility = Visibility.Visible;
+        var title = $"{request.Id}  {ThinkingRequestWords.Kind(request.Kind)}: {ThinkingRequestWords.Task(request)}";
+        if (ThinkingRequestDetailTitle.Text != title) ThinkingRequestDetailTitle.Text = title;
+        // What the conversation asked for (a think's or a search's label): shown on this PC only, never in a status file.
+        ThinkingRequestTopic.Text = request.Start.Topic is { } topic ? $"About: {topic}" : "";
+        ThinkingRequestTopic.Visibility = request.Start.Topic is null ? Visibility.Collapsed : Visibility.Visible;
+        var text = Describe(request);
+        if (ThinkingRequestDetail.Text != text) ThinkingRequestDetail.Text = text;
+        // What it sent and what it answered (private, as the topic). Set only when they change, so the regular refresh keeps the
+        // scroll and selection.
+        var input = request.Input?.Text ?? "";
+        if (ThinkingRequestInputBox.Text != input) ThinkingRequestInputBox.Text = input;
+        var inputState = InputLine(request);
+        if (ThinkingRequestInputState.Text != inputState) ThinkingRequestInputState.Text = inputState;
+        var output = request.Output ?? "";
+        if (ThinkingRequestOutput.Text != output) ThinkingRequestOutput.Text = output;
+        var state = OutputLine(request);
+        if (ThinkingRequestOutputState.Text != state) ThinkingRequestOutputState.Text = state;
+    }
+
+    /// <summary>The line over the selected request's input: how long it is, whether it was sent, or why there is none (never the
+    /// input itself).</summary>
+    internal static string InputLine(ThinkingRequestInfo request)
+    {
+        if (request.Input is not { } input)
+            return request.Active ? "Input: none yet; it shows here when the request is sent." : "Input: none; it wasn't sent.";
+        var line = new StringBuilder(string.Create(CultureInfo.CurrentCulture, $"Input: {input.Length:N0} character{(input.Length == 1 ? "" : "s")}"));
+        if (input.LeftOut > 0) line.Append(CultureInfo.CurrentCulture, $", {input.LeftOut:N0} in the middle left out here");
+        if (request.Attempts.Count == 0) line.Append(request.Active ? ", not sent yet" : ", never sent");
+        if (request.Asks > 1) line.Append(CultureInfo.CurrentCulture, $", the newest of {request.Asks} requests it sent");
+        return line.Append('.').ToString();
+    }
+
+    /// <summary>The line over the selected request's output: how long it is, or why there is none (never the output itself).</summary>
+    internal static string OutputLine(ThinkingRequestInfo request)
+    {
+        if (request.Active) return "Output: none yet; it shows here when the request ends.";
+        if (request.Output is not { } output)
+            return request.State == ThinkingRequestState.Succeeded ? "Output: none; the answer was empty."
+                : $"Output: none; it ended: {ThinkingRequestWords.State(request).ToLowerInvariant()}.";
+        var length = request.AnswerLength is { } all && all > output.Length
+            ? string.Create(CultureInfo.CurrentCulture, $"the first {output.Length:N0} of {all:N0} characters")
+            : string.Create(CultureInfo.CurrentCulture, $"{output.Length:N0} character{(output.Length == 1 ? "" : "s")}");
+        return $"Output: {length}{(request.Cut ? ", cut at the token limit" : "")}.";
+    }
+
+    /// <summary>Everything known about <paramref name="request"/> in plain lines (never its text, answer or topic).</summary>
+    internal static string Describe(ThinkingRequestInfo request)
+    {
+        static string At(DateTimeOffset? at) => at?.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.CurrentCulture) ?? "-";
+        var start = request.Start;
+        var lines = new StringBuilder();
+        lines.AppendLine($"{request.Id}  {ThinkingRequestWords.Task(request)}");
+        lines.AppendLine($"State:       {ThinkingRequestWords.State(request)}{(request.Note is { } note ? $": {note}" : "")}");
+        lines.AppendLine($"Type:        {ThinkingRequestWords.Kind(request.Kind)} ({request.KindName}), {(request.Fast ? "quick" : "long")} job, priority {request.Priority}");
+        lines.AppendLine($"For:         {ThinkingRequestWords.Origin(request)} ({ThinkingRequestWords.Source(start.Source)}{(start.JobId is { } job ? $" {job}" : "")})");
+        lines.AppendLine($"Needs:       {ThinkingRequestWords.Needs(start.Needs)}");
+        lines.AppendLine($"Times:       posted {At(request.Posted)}, first try {At(request.Started)}, ended {At(request.Finished)}");
+        lines.AppendLine($"Timing:      waited {ThinkingRequestWords.Time(request.Waited)} (first wait {ThinkingRequestWords.Time(request.FirstWait)}), " +
+            $"ran {ThinkingRequestWords.Time(request.Ran)}, {(request.Done ? "total" : "so far")} {ThinkingRequestWords.Time(request.Total)}");
+        lines.AppendLine($"Tries:       {request.Attempts.Count} ({request.Retries} retr{(request.Retries == 1 ? "y" : "ies")}), " +
+            $"stopped for the conversation {request.Preemptions} time{(request.Preemptions == 1 ? "" : "s")}");
+        List<string> limits = [];
+        if (start.Timeout is { } timeout) limits.Add($"{(start.DropWhenStale ? "dropped after" : "time limit")} {ThinkingRequestWords.Time(timeout)}");
+        if (start.MaxOutputTokens is { } tokens) limits.Add($"up to {tokens} tokens");
+        if (start.Reasoning is { } reasoning) limits.Add($"step-by-step thinking {(reasoning ? "on" : "off")}");
+        if (start.Tools > 0) limits.Add($"{start.Tools} tool{(start.Tools == 1 ? "" : "s")}");
+        if (limits.Count > 0) lines.AppendLine($"Limits:      {string.Join(", ", limits)}");
+        if (request.AnswerLength is { } length) lines.AppendLine($"Answer:      {length} characters{(request.Cut ? " (cut at the token limit)" : "")}");
+        for (var i = 0; i < request.Attempts.Count; i++)
+        {
+            var attempt = request.Attempts[i];
+            if (i == 0) lines.AppendLine("Each try:");
+            lines.AppendLine($"  {i + 1}. {attempt.Member}{(attempt.Model is { } model ? $" ({model})" : "")} at {At(attempt.Started)}, " +
+                $"{ThinkingRequestWords.Time(attempt.Duration(request.Finished ?? request.Now))}: {attempt.Ending ?? "running"}");
+        }
+        return lines.ToString().TrimEnd();
+    }
+
+    private void ThinkingRequestsList_SelectionChanged(object sender, SelectionChangedEventArgs e) => RenderRequestDetail();
+
+    // Close (or Esc): no request is selected, so the details go and the list gets the room back.
+    private void ThinkingRequestDetailClose_Click(object sender, RoutedEventArgs e) => CloseRequestDetail();
+
+    private void ThinkingRequestsPage_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Escape || ThinkingRequestDetailPanel.Visibility != Visibility.Visible) return;
+        CloseRequestDetail();
+        e.Handled = true;
+    }
+
+    private void CloseRequestDetail()
+    {
+        ThinkingRequestsList.SelectedItem = null;
+        RenderRequestDetail();
+        ThinkingRequestsList.Focus();
+    }
+
+    private void ThinkingRequestsFilter_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || ThinkingRequestsPage.Visibility != Visibility.Visible) return;
+        RenderThinkingRequests();
+    }
+
+    private void ThinkingRequestsClear_Click(object sender, RoutedEventArgs e) => Requests?.ClearFinished();
+
+    private void ThinkingRequestsCopy_Click(object sender, RoutedEventArgs e)
+    {
+        var text = string.Join(Environment.NewLine + Environment.NewLine, requestRows.Select(row => Describe(row.Request)));
+        if (text.Length == 0) return;
+        try { Clipboard.SetText(text); }
+        catch (System.Runtime.InteropServices.COMException) { ActionText.Text = "Couldn't copy: another app is using the clipboard; try again."; }
+    }
+
+    /// <summary>Posts the simulated requests <see cref="SimulatedRequestsVariable"/> asks for, if any: they wait, run on made-up
+    /// members, retry and end in each way, over about half a minute. No model is asked and nothing is sent.</summary>
+    private void StartSimulatedRequests()
+    {
+        if (!int.TryParse(Environment.GetEnvironmentVariable(SimulatedRequestsVariable), NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out var count) || count is < 1 or > 50 || Requests is not { } requests) return;
+        ErrorLog.Info($"Posting {count} simulated Thinking requests ({SimulatedRequestsVariable}); they ask no model and send nothing.");
+        BackgroundPlace gpu = new("sim:gpu-box", "gpu-box (simulated)") { Model = "qwen3:8b" },
+            laptop = new("sim:laptop", "laptop (simulated)") { Model = "gemma3:4b" };
+        for (var i = 0; i < count; i++)
+        {
+            var kind = ThinkingJobKinds.All[i % ThinkingJobKinds.All.Count];
+            var number = i;
+            Task.Run(async () =>
+            {
+                var request = requests.Post(new(kind, ThinkingRequestSource.Simulated, $"simulated-{number + 1}")
+                {
+                    Task = $"Simulated {ThinkingRequestWords.Kind(kind).ToLowerInvariant()}", Timeout = TimeSpan.FromSeconds(30),
+                    MaxOutputTokens = 256, Reasoning = false,
+                    Input = ThinkingRequestInput.Of("Simulated instructions; no model is asked and nothing is sent.",
+                        $"Simulated request {number + 1} ({ThinkingRequestWords.Kind(kind).ToLowerInvariant()}): answer in one sentence.")
+                });
+                await Task.Delay(TimeSpan.FromMilliseconds(400 + number * 700));
+                request.Begin(number % 2 == 0 ? gpu : laptop);
+                await Task.Delay(TimeSpan.FromMilliseconds(900 + number % 4 * 600));
+                var answer = $"Simulated answer {number + 1} ({ThinkingRequestWords.Kind(kind).ToLowerInvariant()}); " +
+                    "no model was asked and nothing was sent.";
+                switch (number % 5)
+                {
+                    case 1:
+                        request.End($"{laptop.Name} failed (simulated)");
+                        await Task.Delay(TimeSpan.FromMilliseconds(500));
+                        request.Begin(gpu);
+                        await Task.Delay(TimeSpan.FromMilliseconds(1200));
+                        request.Finish(ThinkingRequestState.Succeeded, text: answer);
+                        break;
+                    case 3:
+                        request.Finish(ThinkingRequestState.Failed, $"{laptop.Name} came back empty (simulated)");
+                        break;
+                    case 4:
+                        // Stays running a while, so the page shows a request in progress.
+                        await Task.Delay(TimeSpan.FromSeconds(20));
+                        request.Finish(ThinkingRequestState.Succeeded, wasCut: true,
+                            text: string.Join(Environment.NewLine + Environment.NewLine, Enumerable.Repeat(answer, 8)));
+                        break;
+                    default:
+                        request.Finish(ThinkingRequestState.Succeeded, text: answer);
+                        break;
+                }
+            }).Forget();
+        }
+    }
+}
