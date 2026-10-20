@@ -449,7 +449,7 @@ same utterance on the processor, so the turn goes on. Examples: the host is off
 or asleep, its service is down, the OpenAI key was removed, or the route took
 too long. The audio is still in memory. Nothing is sent anywhere and nothing
 costs money. A route that answers is never held up: the stand-in runs only
-after the route failed (`LiveConversationController.TranscribeAsync`, with a
+after the route failed (`LiveConversationController.TurnCapture.TranscribeAsync`, with a
 second, local-only permission from `ConversationAuthorization.AuthorizeStandIn`).
 
 - **Which model** (`LocalSpeechSetup.ListeningStandIn`): a Parakeet model that

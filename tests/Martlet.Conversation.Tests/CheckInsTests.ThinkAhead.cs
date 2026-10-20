@@ -12,16 +12,16 @@ public sealed partial class CheckInsTests
             (ahead.On, ahead.EveryMinutes, ahead.Outcome, ahead.PromptId, ahead.Triggers));
         Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Callbacks, ahead.Facts);
         Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Callbacks,
-            CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInAhead)));
+            CheckInPrompts.Placed(PromptSettings.Text(null, PromptCatalog.CheckInAhead)));
         Assert.Equal(CheckInConditions.Talked | CheckInConditions.SomethingNew, ahead.Conditions);
 
-        Assert.Equal("it waits for a reply to end", CheckIns.Wait(ahead, State(), null));
+        Assert.Equal("it waits for a reply to end", CheckInSchedule.Wait(ahead, State(), null));
         var fired = CheckIns.ExchangeTrigger(Now);
         // The user may already talk again: no reply waits for it, and it never waits for the conversation to settle.
-        Assert.Null(CheckIns.Wait(ahead, State() with { Quiet = TimeSpan.Zero }, null, fired: fired));
-        Assert.Equal("next in 50 s", CheckIns.Wait(ahead, State(), new(Now.AddSeconds(-10), 3, "x", false), fired: fired));
+        Assert.Null(CheckInSchedule.Wait(ahead, State() with { Quiet = TimeSpan.Zero }, null, fired: fired));
+        Assert.Equal("next in 50 s", CheckInSchedule.Wait(ahead, State(), new(Now.AddSeconds(-10), 3, "x", false), fired: fired));
 
-        var message = CheckIns.Message(ahead, State(), null)!;
+        var message = CheckInPrompts.Message(ahead, State(), null)!;
         Assert.Contains("Think ahead as Mira", message);
         Assert.Contains("Mira is playful and teasing.", message);
         Assert.Contains("User: This bug is driving me crazy.", message);
@@ -35,11 +35,11 @@ public sealed partial class CheckInsTests
     public void ThoughtsAheadAreReadAndGoWithOneRequestUntilAnotherExchangeEnds()
     {
         var ahead = Built(CheckIns.Ahead);
-        var read = CheckIns.Read(ahead, "<think>They'll vent.</think>\n- **PLAN:** They'll say it's fixed; I'll cheer and tease them.", State());
+        var read = CheckInAnswers.Read(ahead, "<think>They'll vent.</think>\n- **PLAN:** They'll say it's fixed; I'll cheer and tease them.", State());
         Assert.Equal((true, true, "They'll say it's fixed; I'll cheer and tease them."), (read.Act, read.Readable, read.Text));
-        Assert.Equal((false, true), (CheckIns.Read(ahead, "OK", State()).Act, CheckIns.Read(ahead, "OK", State()).Readable));
-        Assert.False(CheckIns.Read(ahead, "PLAN: nothing to plan.", State()).Act);
-        Assert.False(CheckIns.Read(ahead, "KNOW: They code.", State()).Readable);
+        Assert.Equal((false, true), (CheckInAnswers.Read(ahead, "OK", State()).Act, CheckInAnswers.Read(ahead, "OK", State()).Readable));
+        Assert.False(CheckInAnswers.Read(ahead, "PLAN: nothing to plan.", State()).Act);
+        Assert.False(CheckInAnswers.Read(ahead, "KNOW: They code.", State()).Readable);
 
         var note = CheckIns.Plan(null, read.Text!)!;
         Assert.StartsWith("Your own thoughts from just before this message (private; the user may have said something else): They'll say it's fixed;", note);
@@ -77,7 +77,7 @@ public sealed partial class CheckInsTests
         new CheckInSettings().With(own).Validate();
         var checkIn = CheckIns.Of(own);
         Assert.Equal("Your own check-in: what it thinks ahead goes with Martlet's next reply.", checkIn.Does);
-        Assert.Contains("starts with PLAN:", CheckIns.Message(checkIn, State(), null));
+        Assert.Contains("starts with PLAN:", CheckInPrompts.Message(checkIn, State(), null));
         var board = new ContextBoard();
         board.Post(CheckIns.Source("c1"), "x", Now, CheckIns.PlanAge, consume: true);
         Assert.Equal(1, CheckIns.DropPlans(board, [checkIn, Built(CheckIns.Ahead)]));
