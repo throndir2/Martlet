@@ -443,7 +443,54 @@ internal static class SettingsRehearsal
                 return (refused && response.StatusCode != HttpStatusCode.OK && !body.Contains("bees", StringComparison.Ordinal) && !leaks,
                     $"a copy with a key refused before sending: {refused}; unsigned: HTTP {(int)response.StatusCode}; keys in D's files: {leaks}");
             });
-        }
+
+            // The files #946, #951, #958 and #979 made shared travel through the real hosts like every other setting, keys included.
+            var e = new LabDesktop("lab-desktop-e", Path.Combine(root, "e"), files: true);
+            var f = new LabDesktop("lab-desktop-f", Path.Combine(root, "f"), files: true);
+            await Run("E and F share keeping voice clips, touch zones, eyes, VRoid Hub credits, Discord with its bot token and messaging with its secrets; who runs each bot stays on E", async () =>
+            {
+                foreach (var desktop in new[] { e, f })
+                foreach (var host in hosts)
+                    await desktop.PairAsync(host);
+                await f.SyncAsync(hosts, token);
+                var at = DateTimeOffset.UtcNow;
+                Martlet.Core.Speakers.VoiceChoices.Write(e.Data, Martlet.Core.Speakers.VoiceChoices.ClipsFile, false);
+                await Martlet.Avatar.Hosting.CharacterTouchZones.SaveAsync(e.Data, new Martlet.Avatar.Hosting.CharacterTouchZoneSettings
+                {
+                    ModelId = "lab-model", Crop = new(0, 0, 1, 1), DetectedBy = Martlet.Avatar.Hosting.CharacterTouchZoneSettings.ByOwner,
+                    Zones = [new() { Id = "top_of_head", Box = new(0.3, 0, 0.4, 0.2) }]
+                }, at, token);
+                Martlet.Avatar.Hosting.VRoidHubLooks.Remember(e.Data, new("1234567890", "Lab look", "Lab maker", "https://hub.vroid.com/", ["Credit"], true, null, at));
+                const string botToken = "lab-discord-bot-token-for-the-settings-rehearsal";
+                const string telegramToken = "123456789:AAHlabTelegramTokenForTheRehearsal";
+                var discordId = Guid.NewGuid();
+                var telegramId = Guid.NewGuid();
+                e.Tokens.Write(discordId, botToken);
+                e.Tokens.Write(Martlet.Messaging.MessagingApp.Telegram, telegramId, telegramToken);
+                new Martlet.Discord.DiscordPreferences { ApplicationId = 123456789012345678, CredentialId = discordId, Enabled = true, OwnerUserId = 42,
+                    People = [new(77, "Alex")] }.Save(e.Data);
+                new Martlet.Messaging.MessagingPreferences { Telegram = new() { Enabled = true, CredentialId = telegramId, BotName = "Lab", BotUsername = "lab_bot",
+                    Chats = [new("1001", "Sam")] } }.Save(e.Data);
+                var recorded = await e.SyncAsync(hosts, token);
+                var onHost = await e.ReadAsync(h2, token);
+                await f.SyncAsync(hosts, token);
+                var discord = Martlet.Discord.DiscordPreferences.Load(f.Data);
+                var messaging = Martlet.Messaging.MessagingPreferences.Load(f.Data);
+                var keys = new[] { Martlet.Core.Speakers.VoiceChoices.ClipsKey, Martlet.Avatar.Hosting.CharacterTouchZones.SharedKey,
+                    Martlet.Avatar.Hosting.VRoidHubLooks.SharedKey, Martlet.Discord.DiscordSharing.SharedKey, Martlet.Messaging.MessagingSharing.SharedKey };
+                var travelled = keys.All(k => onHost.Find(k) is not null);
+                var clips = !Martlet.Core.Speakers.VoiceChoices.KeepClips(f.Data);
+                var zones = Martlet.Avatar.Hosting.CharacterTouchZones.Load(f.Data, "lab-model")?.Zones.Count == 1;
+                var credit = Martlet.Avatar.Hosting.VRoidHubLooks.Load(f.Data).Count == 1;
+                var bot = discord is { ApplicationId: 123456789012345678, OwnerUserId: 42, Enabled: false } && f.Tokens.Read(discord.CredentialId) == botToken;
+                var telegram = messaging.Telegram is { BotUsername: "lab_bot", Enabled: false, Chats.Count: 1 } &&
+                    f.Tokens.Read(Martlet.Messaging.MessagingApp.Telegram, messaging.Telegram.CredentialId) == telegramToken;
+                var noKeyInFiles = !f.FileContains(botToken) && !f.FileContains(telegramToken) && !onHost.Find(Martlet.Discord.DiscordSharing.SharedKey)!.Value.Contains(botToken, StringComparison.Ordinal);
+                return (travelled && clips && zones && credit && bot && telegram && noKeyInFiles && recorded.Recorded.Count >= keys.Length,
+                    $"on lab-settings-2: {travelled}; F keeps no clips: {clips}; F has E's touch zones: {zones} and VRoid Hub credit: {credit}; " +
+                    $"Discord bot, owner and token on F (not connecting there): {bot}; Telegram bot, chat and token on F (not answering there): {telegram}; " +
+                    $"no token in F's files or the shared value: {noKeyInFiles}");
+            });        }
         finally
         {
             try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
@@ -462,7 +509,8 @@ internal static class SettingsRehearsal
                 "settings.json, lorebooks.json and shared-settings.json files in a temporary folder, with an in-memory stand-in for Windows " +
                 "Credential Manager; a fourth simulated desktop on this Martlet keeps each person's settings apart (the household's node, " +
                 "the signed-in account's node in accounts\\<id>, the owner's bridge to older desktops, switching account) against the " +
-                "hosts' /settings/accounts routes. Not covered: the desktop window and its 15-second sync, its own preference files " +
+                "hosts' /settings/accounts routes; two more simulated desktops share keeping voice clips, touch zones, VRoid Hub credits, Discord " +
+                "with its bot token and messaging with its secrets through the same hosts (stand-in credential stores). Not covered: the desktop window and its 15-second sync, its own preference files " +
                 "(character, how you talk, speech bubbles, theme), the account picker, the Linux host's files, a real Credential Manager " +
                 "and two real computers on a LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
@@ -499,6 +547,19 @@ internal static class SettingsRehearsal
         internal bool Has(string value) => items.Values.Any(i => i.Value == value);
     }
 
+    /// <summary>Stands in for Windows Credential Manager's Discord bot token and messaging secrets.</summary>
+    private sealed class LabTokens : Martlet.Discord.IDiscordTokenVault, Martlet.Messaging.IMessagingSecretVault
+    {
+        private readonly Dictionary<string, string> items = new(StringComparer.Ordinal);
+        public string? Read(Guid credentialId) => items.GetValueOrDefault("discord/" + credentialId.ToString("N"));
+        public bool Write(Guid credentialId, string token) { items["discord/" + credentialId.ToString("N")] = token; return true; }
+        public void Delete(Guid credentialId) => items.Remove("discord/" + credentialId.ToString("N"));
+        public string? Read(Martlet.Messaging.MessagingApp app, Guid credentialId) => items.GetValueOrDefault($"{app}/{credentialId:N}");
+        public bool Write(Martlet.Messaging.MessagingApp app, Guid credentialId, string secret) { items[$"{app}/{credentialId:N}"] = secret; return true; }
+        public void Delete(Martlet.Messaging.MessagingApp app, Guid credentialId) => items.Remove($"{app}/{credentialId:N}");
+        internal bool Has(string value) => items.ContainsValue(value);
+    }
+
     /// <summary>A simulated desktop: real settings files in its folder, its pairings (secrets in memory), the real sync engine and
     /// sections, and the steps the owner takes on Martlet's pages.</summary>
     private sealed class LabDesktop
@@ -513,7 +574,12 @@ internal static class SettingsRehearsal
         internal SharedSettingsNode Node { get; }
         internal Func<SetupRole, SharedRoute, CancellationToken, Task<string?>> Available { get; set; } = (_, _, _) => Task.FromResult<string?>(null);
 
-        internal LabDesktop(string deviceId, string directory)
+        /// <summary>The bot token and messaging secrets this desktop keeps (its stand-in for Windows Credential Manager).</summary>
+        internal LabTokens Tokens { get; } = new();
+
+        /// <summary>With <paramref name="files"/>, the desktop also shares the files #946, #951, #958 and #979 made shared: keeping
+        /// voice clips, the character models' touch zones, eyes and VRoid Hub credits, Discord and messaging (with the real sections).</summary>
+        internal LabDesktop(string deviceId, string directory, bool files = false)
         {
             DeviceId = deviceId;
             this.directory = directory;
@@ -521,7 +587,12 @@ internal static class SettingsRehearsal
             Setup = new SetupService(new SettingsStore(directory), Vault);
             Lore = new LorebookStore(directory);
             var sections = new AppSettingsSections(Setup, Vault, directory, Lore, available: (role, route, token) => Available(role, route, token));
-            Node = new SharedSettingsNode(directory, deviceId, sections.Sections, sections.Invalidate);
+            IEnumerable<ISharedSection> shared = sections.Sections;
+            if (files)
+                shared = [.. shared, Martlet.Core.Speakers.VoiceChoices.ClipsSection(directory), Martlet.Avatar.Hosting.CharacterSharedSections.TouchZones(directory),
+                    Martlet.Avatar.Hosting.CharacterSharedSections.Eyes(directory), Martlet.Avatar.Hosting.CharacterSharedSections.VRoidHub(directory),
+                    Martlet.Discord.DiscordSharing.Section(directory, Tokens), Martlet.Messaging.MessagingSharing.Section(directory, Tokens)];
+            Node = new SharedSettingsNode(directory, deviceId, [.. shared], sections.Invalidate);
         }
 
         internal async Task PairAsync(LabHost host)

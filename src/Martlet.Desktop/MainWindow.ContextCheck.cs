@@ -133,7 +133,7 @@ public partial class MainWindow
         }
         checkingContext = true;
         ActionText.Text = IsLocalOllama(route)
-            ? $"Asking Ollama on this PC about {route.ModelId}. It loads the model first if it isn't loaded..."
+            ? $"Asking Ollama on this PC about {route.ModelId} (it loads the model first if needed)..."
             : $"Asking {ContextServerName(route)} about {route.ModelId}...";
         try
         {
@@ -187,19 +187,19 @@ public partial class MainWindow
         var model = route.ModelId;
         var uses = $"Martlet uses {budget.Describe()}";
         if (route.RouteType == SetupRouteType.GatewayOllama)
-            return $"{uses}. {place} loads it, up to {GenerationSettings.MaximumHostContextTokens:N0}.";
+            return $"{uses}; {place} loads it, up to {GenerationSettings.MaximumHostContextTokens:N0}.";
         var most = found?.ModelMaximum is { } maximum ? $"; the model holds up to {maximum:N0}" : "";
         if (IsLocalOllama(route))
             return found?.ContextTokens is { } given
-                ? $"{uses}. Ollama on this PC gives {model} {given:N0} tokens{most}. To give it more, raise Ollama's context length setting, then check again."
-                : $"{uses}. Check model limit loads {model} and asks Ollama how much it gives it{most}.";
+                ? $"{uses}; Ollama on this PC gives {model} {given:N0} tokens{most} (raise Ollama's context length to give it more)."
+                : $"{uses}; Check model limit loads {model} and asks Ollama how much it gives it{most}.";
         var known = found?.ContextTokens ?? ModelContextCatalog.Catalog(route.RouteType, model);
         if (known is { } limit)
-            return $"{uses}. {model} takes up to {limit:N0} tokens " +
+            return $"{uses}; {model} takes up to {limit:N0} tokens " +
                 (found?.ContextTokens is not null ? $"({found.Source}, checked {found.CheckedAt.LocalDateTime:d})." : "(OpenAI's model page).");
         return found is not null
-            ? $"{uses}. {Capitalized(found.Source)} doesn't say how much {model} takes (checked {found.CheckedAt.LocalDateTime:d}). If replies fail on long conversations, lower the context size."
-            : CanCheckContext(route) ? $"{uses}. Martlet doesn't know {model}'s own limit yet. Check model limit asks {place}."
+            ? $"{uses}; {found.Source} doesn't say how much {model} takes (checked {found.CheckedAt.LocalDateTime:d}), so lower the context size if long conversations fail."
+            : CanCheckContext(route) ? $"{uses}; Martlet doesn't know {model}'s own limit yet (Check model limit asks {place})."
             : $"{uses}.";
     }
 }

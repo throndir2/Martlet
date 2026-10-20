@@ -229,15 +229,27 @@ public sealed class HostRolesTests
     [Fact]
     public void Every_worker_a_role_builds_from_is_in_the_host_image()
     {
-        // A role that builds its image from ${MARTLET_SOURCE}/workers/<name> needs that folder in the martlet-host image.
+        // A role that builds its image from ${MARTLET_SOURCE}/workers/<name> needs that folder in the martlet-host image. A
+        // role that builds from ${MARTLET_SOURCE}/workers (dockerfile <name>/host/Dockerfile, for the shared host module in
+        // workers/common) needs its folder, workers/common and the context's .dockerignore.
         var repository = Directory.GetParent(RolesDirectory())!.Parent!.Parent!.FullName;
         var image = File.ReadAllText(Path.Combine(repository, "deploy", "host", "Dockerfile"));
-        var built = Directory.GetFiles(RolesDirectory(), "compose*.yaml", SearchOption.AllDirectories)
-            .SelectMany(file => System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(file), @"\$\{MARTLET_SOURCE[^}]*\}/workers/([a-z0-9-]+)")
+        var composes = Directory.GetFiles(RolesDirectory(), "compose*.yaml", SearchOption.AllDirectories).Select(File.ReadAllText).ToArray();
+        var own = composes
+            .SelectMany(text => System.Text.RegularExpressions.Regex.Matches(text, @"\$\{MARTLET_SOURCE[^}]*\}/workers/([a-z0-9-]+)")
+                .Select(match => match.Groups[1].Value));
+        var shared = composes
+            .SelectMany(text => System.Text.RegularExpressions.Regex.Matches(text, @"\$\{MARTLET_SOURCE[^}]*\}/workers\s*\n\s*dockerfile: ([a-z0-9-]+)/")
                 .Select(match => match.Groups[1].Value))
             .Distinct().ToArray();
-        Assert.Contains("parakeet", built);
+        var built = own.Concat(shared).Distinct().ToArray();
+        Assert.Contains("parakeet", shared);
         Assert.All(built, worker => Assert.Contains($"COPY workers/{worker} /opt/martlet/source/workers/{worker}", image));
+        Assert.Contains("COPY workers/common /opt/martlet/source/workers/common", image);
+        Assert.Contains("COPY workers/.dockerignore /opt/martlet/source/workers/.dockerignore", image);
+        // Each of those images copies the shared module beside its host.
+        Assert.All(shared, worker => Assert.Contains("common/martlet_worker_host.py",
+            File.ReadAllText(Path.Combine(repository, "workers", worker, "host", "Dockerfile"))));
     }
 
     [Fact]

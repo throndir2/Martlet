@@ -27,8 +27,10 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock Text="Character" FontSize="24" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" Margin="0,8"
-                Text="Choose a desktop character. It idles, follows your cursor and moves while Martlet speaks. Your choices save on their own, and a showing character switches right away."/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8"><Run Text="Choose a desktop character."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                Margin="6,0,0,0" AutomationProperties.AutomationId="Help-AvatarWindowAbout" AutomationProperties.Name="About the character"
+                Wiki="The-Character#show-and-add-characters"
+                Text="The character idles, follows your cursor and moves while Martlet speaks. Your choices save on their own, and a showing character switches right away."/></InlineUIContainer></TextBlock>
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.AutomationId="AvatarStatus" Margin="0,8"/>
             <Label Target="{Binding ElementName=CharacterChoice}" Content="_Character"/>
@@ -65,8 +67,10 @@
             <Expander Header="Audio2Face host" Margin="0,4,0,10"
                       AutomationProperties.AutomationId="RemoteHostSection">
                 <StackPanel Margin="0,8,0,0">
-                    <TextBlock TextWrapping="Wrap"
-                        Text="Use a paired PC with an NVIDIA GPU for Audio2Face lip-sync. Martlet sends only its generated voice to that host."/>
+                    <TextBlock TextWrapping="Wrap"><Run Text="Use a paired PC with an NVIDIA GPU for Audio2Face lip-sync."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                        Margin="6,0,0,0" AutomationProperties.AutomationId="Help-AvatarWindowHost" AutomationProperties.Name="About the Audio2Face host"
+                        Wiki="The-Character#lip-sync"
+                        Text="Martlet sends only its generated voice to that host, never your microphone."/></InlineUIContainer></TextBlock>
                     <Button Content="_Pair or set up a host..." Click="Hosts_Click" Padding="10,6" Margin="0,8,0,0" HorizontalAlignment="Left"
                             AutomationProperties.AutomationId="OpenHosts"/>
                     <TextBlock x:Name="HostStatusText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"
@@ -82,8 +86,10 @@
 
             <Expander Header="Advanced lip-sync setup" Margin="0,16,0,0" AutomationProperties.AutomationId="AvatarAdvanced">
                 <StackPanel Margin="0,8,0,0">
-                    <TextBlock TextWrapping="Wrap" Margin="0,8"
-                        Text="Review the model controls, map them to Audio2Face, then activate for this session. Only Martlet's generated speech is sent to the displayed service."/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,8"><Run Text="Review the model controls, map them to Audio2Face, then activate for this session."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                        Margin="6,0,0,0" AutomationProperties.AutomationId="Help-AvatarWindowAdvanced" AutomationProperties.Name="About advanced lip-sync setup"
+                        Wiki="The-Character#advanced-lip-sync-setup"
+                        Text="Only Martlet's generated speech is sent to the service shown in the endpoint. Most characters need none of this: Automatic lip-sync finds the mouth controls itself."/></InlineUIContainer></TextBlock>
                     <Label Target="{Binding ElementName=RendererChoice}" Content="_Renderer"/>
                     <ComboBox x:Name="RendererChoice" MinHeight="28" SelectionChanged="Selection_Changed"
                               AutomationProperties.AutomationId="AvatarRenderer"/>
@@ -102,8 +108,10 @@
                     </WrapPanel>
                     <Label Target="{Binding ElementName=CapabilityText}" Content="Inspected controls"/>
                     <TextBox x:Name="CapabilityText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"/>
-                    <TextBlock TextWrapping="Wrap" Margin="0,8"
-                        Text="Choose a source channel and the matching model control. Acknowledge reduced fidelity if needed."/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,8"><Run Text="Choose a source channel and the matching model control."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                        Margin="6,0,0,0" AutomationProperties.AutomationId="Help-AvatarWindowMapping" AutomationProperties.Name="About mappings"
+                        Wiki="The-Character#advanced-lip-sync-setup"
+                        Text="When the model has no exact match for a channel, tick Allow reduced lip-sync quality to use the nearest control."/></InlineUIContainer></TextBlock>
                     <Label Target="{Binding ElementName=SourceChoice}" Content="Source channel"/>
                     <ComboBox x:Name="SourceChoice" MinHeight="28"/>
                     <Label Target="{Binding ElementName=TargetChoice}" Content="Model co_ntrol"/>
@@ -129,8 +137,10 @@
                         <Button x:Name="ActivateButton" Content="_Activate lip-sync" Click="Activate_Click" Padding="10,6" Margin="0,0,8,0"
                                 AutomationProperties.AutomationId="ActivateAvatar"/>
                     </WrapPanel>
-                    <TextBlock Margin="0,12" TextWrapping="Wrap"
-                        Text="These settings save on their own like the choices above; a mapping applies the next time the character shows. Closing this window keeps the character open; use Hide character to close it."/>
+                    <TextBlock Margin="0,12" TextWrapping="Wrap"><Run Text="These settings save on their own; a mapping applies the next time the character shows."/><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                        Margin="6,0,0,0" AutomationProperties.AutomationId="Help-AvatarWindowSaving" AutomationProperties.Name="About saving these settings"
+                        Wiki="The-Character#advanced-lip-sync-setup"
+                        Text="Closing this window keeps the character open. Use Hide character to close it."/></InlineUIContainer></TextBlock>
                 </StackPanel>
             </Expander>
         </StackPanel>

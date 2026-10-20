@@ -8,8 +8,13 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-10-19
+
 ### Added
 
+- On a host PC with several graphics cards, Deep thinking can run a model that no single card has room for: Recommended setup splits it across cards that the conversation doesn't use. ([#1064](https://github.com/throndir2/Martlet/pull/1064))
+- On computers with big graphics cards, Recommended setup gives Deep thinking a bigger, smarter model from Martlet's model catalog when a card has room, and your host PCs can now install any model from the catalog, not only Martlet's short list. Replies stay as fast as before: the conversation keeps its fast model. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
+- Doctor now warns when Martlet's model catalog hasn't refreshed fully for over a week. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - While you play a game, Martlet gets a short *While you play* note (Companion › Prompts) that names the game and keeps what it remembers from that game to that game, and a lorebook entry with the game's name as a keyword joins in on every reply, so you can give Martlet its own instructions for one game. ([#1043](https://github.com/throndir2/Martlet/pull/1043))
 - Read more adds new pages to a game's guide from the same wiki, each time you use it, even without a Thinking pool helper and after Martlet restarts. It is next to Read again on Companion › App guides, in the talk window's header, and as a button in the character's speech bubble for a little while after Martlet answers from a guide. ([#1026](https://github.com/throndir2/Martlet/pull/1026))
 - Martlet keeps what you say in a game for that game: tell it Chillet is your favorite while playing Palworld, and it brings that up in Palworld (or when you ask about Palworld), not in other games. Facts about you still come up everywhere. In Companion › Memory, *Where it matters* shows and changes this for each memory. ([#1030](https://github.com/throndir2/Martlet/pull/1030))
@@ -20,17 +25,24 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
+- The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
+- The speech host roles (XTTS, Dia, GPT-SoVITS, F5, Chatterbox, singing, Parakeet and voice recognition) now share one copy of their download and request code, so a request with a bad length gets a clear error instead of a dropped connection. The next host update rebuilds these roles once. ([#1061](https://github.com/throndir2/Martlet/pull/1061))
+- Home, the welcome tour, the setup advisor and Recommended setup show one short line for each explanation; the rest is behind a **?** with a link to the wiki, which now has those instructions. ([#1051](https://github.com/throndir2/Martlet/pull/1051))
 - New installations start with up-to-date model suggestions: the model list that comes with Martlet is refreshed. ([#1044](https://github.com/throndir2/Martlet/pull/1044))
 - Martlet starts answering sooner: it no longer waits for Home Assistant or for tool servers that are still starting before it answers, and it reads memories and lorebooks at the same time. A tool from a server that is still starting waits for it only when Martlet uses that tool. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Tools from your MCP servers keep the same names (the server's name, then the tool's) while servers start, stop or restart, so replies on a local model stay quick after a server restarts. ([#1037](https://github.com/throndir2/Martlet/pull/1037))
 - Check-ins that use tools now work in several steps until they are done, like a coding agent: they look things up, read the result and keep going. When you say "that's for Minecraft, not Terraria!", Act on what was said finds every fact it touches and corrects each one. Learning names can also look up voices in more steps. ([#1033](https://github.com/throndir2/Martlet/pull/1033))
-
-### Changed
-
 - The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
+- Listening, Voice, People, Singing, *Microphone and speakers* and *Voice ID* now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki pages for listening, voices and singing have the full instructions. ([#1049](https://github.com/throndir2/Martlet/pull/1049))
+- Companion › Vision, Reading and Picture making, the Creations page and camera messages now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Vision and Pictures and Creations wiki pages have the full instructions, including what to do when a camera doesn't work. ([#1056](https://github.com/throndir2/Martlet/pull/1056))
+- Your character's touch zones (also the ones you drew or changed), its eye measurement, its VRoid Hub credit and its own changes to how it reacts to touches are now the same on all your computers, so each model is set up once. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Your Discord setup (the bot and its token, the people Martlet knows, the chat modes and channel rules) and your Telegram and WhatsApp connections with their paired chats are now the same on all your computers. Each computer still chooses for itself whether it runs the bot. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
+- Keeping clips of voices you haven't named is now one choice for all your computers, and turning it off on one computer deletes the clips on every computer. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
 
 ### Fixed
 
+- Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Background tasks that wait for a free computer now start in the order you asked for them. Before, two that were asked at the same moment could swap places. ([#1047](https://github.com/throndir2/Martlet/pull/1047))
 - Each request to a host answers faster: the host saves the request's one-use number with one small write instead of saving all its pairings (about 3 ms instead of 27 ms on a fast disk, and more on slow disks). ([#1046](https://github.com/throndir2/Martlet/pull/1046))
 - A background task (such as a think or a song) that couldn't start no longer stays "running" forever and blocks new ones until a restart; it ends as failed and the log says why. ([#1037](https://github.com/throndir2/Martlet/pull/1037))

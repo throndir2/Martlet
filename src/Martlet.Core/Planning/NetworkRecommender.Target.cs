@@ -56,7 +56,10 @@ public static partial class NetworkRecommender
         private static IReadOnlyList<HostedRolePlacement> Placements(Node node) => node.Roles.Where(r => !r.Native)
             .OrderBy(r => r.Kind, StringComparer.Ordinal)
             .Select(r => r.Fixed && r.Was is not null ? r.Was
-                : new HostedRolePlacement(r.Kind, r.Model, node.Pinnable && r.Option is { UsesGpu: true } ? r.Card : null))
+                : new HostedRolePlacement(r.Kind, r.Model, node.Pinnable && r.Option is { UsesGpu: true } ? r.Card : null)
+                {
+                    GpuIndexes = node.Pinnable && r.Option is { UsesGpu: true } && r.Span is { Length: > 1 } span ? span : null
+                })
             .ToArray();
 
         /// <summary>What runs inside Martlet on a companion PC: the character and the jobs no host does there.</summary>
@@ -77,6 +80,18 @@ public static partial class NetworkRecommender
             {
                 var option = role.Option!;
                 var onCard = role.Card is not null || !option.UsesGpu;
+                if (role.Span is { Length: > 1 } span && role.Card is not null && option.UsesGpu)
+                {
+                    // A split model: its share on each card; its memory, processor and disk once.
+                    var share = role.Gb;
+                    foreach (var (card, i) in span.Select((c, i) => (c, i)))
+                        items.Add(new(option.Component, option.Id, card, i == 0 ? option.Reserve with { VramGb = share }
+                            : option.Reserve with { VramGb = share, RamGb = 0, CpuThreads = 0, DiskGb = 0 })
+                        {
+                            Usual = i == 0 ? option.Usual with { VramGb = share } : option.Usual with { VramGb = share, RamGb = 0, CpuThreads = 0, DiskGb = 0 }
+                        });
+                    continue;
+                }
                 items.Add(new(option.Component, option.Id, role.Card, onCard ? option.Reserve : option.Reserve with { VramGb = 0 })
                 {
                     Usual = onCard ? option.Usual : option.Usual with { VramGb = 0 }

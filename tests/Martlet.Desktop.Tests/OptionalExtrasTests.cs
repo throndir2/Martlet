@@ -153,11 +153,11 @@ public sealed class OptionalExtrasTests
     {
         Assert.Equal("Martlet gets only the words you say, not how you say them", OptionalExtras.OffMeans(CompanionTab.Hearing));
         var none = new Martlet.Conversation.SenseRoute(SenseKind.Audio, Martlet.Conversation.SensePath.None, null, "");
-        Assert.Equal("Off. Martlet gets only the words you say, not how you say them. Set up Thinking first.",
+        Assert.Equal("Off: Martlet gets only the words you say, not how you say them; set up Thinking first.",
             MainWindow.HearingNow(false, null, null, none));
         Assert.EndsWith("so it waits for your tick below.", MainWindow.HearingNow(false, null, Thinking("gemma4:e2b"), none));
-        Assert.Equal("Off. Martlet gets only the words you say, not how you say them.", MainWindow.HearingNow(false, false, Thinking("gemma4:e2b"), none));
-        Assert.Equal("On. Thinking (gemma4:e2b) hears your recording itself.", MainWindow.HearingNow(true, null, Thinking("gemma4:e2b"), none));
+        Assert.Equal("Off: Martlet gets only the words you say, not how you say them.", MainWindow.HearingNow(false, false, Thinking("gemma4:e2b"), none));
+        Assert.Equal("On: Thinking (gemma4:e2b) hears your recording itself.", MainWindow.HearingNow(true, null, Thinking("gemma4:e2b"), none));
     }
 
     [Fact]
@@ -173,15 +173,15 @@ public sealed class OptionalExtrasTests
             Assert.True(saved.Off);
             Assert.Equal("singer", saved.Host);
             Assert.False(SongClient.IsSetUp(directory));
-            Assert.StartsWith("Off. Martlet doesn't sing.", MainWindow.SingingNow(saved, active: false, [], listed: false, readySomewhere: true));
-            Assert.StartsWith("Not set up yet.", MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: false, readySomewhere: false));
+            Assert.Equal("Off: Martlet doesn't sing; Singing stays set up on your computers.", MainWindow.SingingNow(saved, active: false, [], listed: false, readySomewhere: true));
+            Assert.StartsWith("Not set up yet: add one of your computers", MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: false, readySomewhere: false));
             // With the singing pool list, Off is a list with no computer on; the music and the voice match each name their computers.
-            Assert.Equal("Off. Martlet doesn't sing: no computer in the music list is on.",
+            Assert.Equal("Off: Martlet doesn't sing, because no computer in the music list is on.",
                 MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: true, readySomewhere: false));
             Assert.Equal("Martlet writes the music on m3-host (or the first free one of 2 computers) in high quality, and matches the " +
                 "voice on m4-host with SoulX-Singer.",
                 MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host", "m4-host"], listed: true, readySomewhere: true, ["m4-host"]));
-            Assert.Equal("Martlet writes the music on m3-host in fast quality. Voice match is off: songs keep the music model's own singer.",
+            Assert.Equal("Martlet writes the music on m3-host in fast quality, but voice match is off, so songs keep the music model's own singer.",
                 MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host"], listed: true, readySomewhere: true, [], matchOff: true,
                     quality: SongQuality.Fast));
         }
@@ -202,7 +202,7 @@ public sealed class OptionalExtrasTests
             MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: false));
         Assert.StartsWith("Off. ", MainWindow.MotionNow(listed: false, noneOn: false,
             new Martlet.Core.Motion.MotionSettings { Place = Martlet.Core.Motion.MotionPlace.Off }, [], fixture: false));
-        Assert.StartsWith("Not set up yet.", MainWindow.MotionNow(listed: false, noneOn: false, older, [], fixture: false));
+        Assert.StartsWith("Not set up yet:", MainWindow.MotionNow(listed: false, noneOn: false, older, [], fixture: false));
         Assert.StartsWith("No computer in the list can make motions", MainWindow.MotionNow(listed: true, noneOn: false, older, [], fixture: false));
         Assert.Contains("FIXTURE - NOT AI", MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: true));
         Assert.Contains("Live2D", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Live2D));

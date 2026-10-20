@@ -4,21 +4,21 @@ using Microsoft.AspNetCore.Http;
 
 namespace Martlet.Gateway;
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayPriorityRoutes(GatewayHttpServices services) : GatewayRouteHandler(services)
 {
     internal const string PriorityPath = "/martlet/v1/priority";
     internal const string PriorityHoldPath = PriorityPath + "/hold";
     internal const string PriorityReleasePath = PriorityPath + "/release";
     private const int MaximumPriorityRequestBytes = 4_096;
 
-    private static bool IsPriorityTarget(string rawTarget) => rawTarget is PriorityPath or PriorityHoldPath or PriorityReleasePath;
+    internal static bool IsPriorityTarget(string rawTarget) => rawTarget is PriorityPath or PriorityHoldPath or PriorityReleasePath;
 
     /// <summary>GPU priority (live turn first). GET /martlet/v1/priority (read access) returns the GPU map and what holds each
     /// card now, the holds, and the last preemptions and refusals. POST /martlet/v1/priority/hold with
     /// {"routes":[route IDs],"ttl_ms":1..15000} holds the graphics cards behind those routes for this client and renews its
     /// hold; POST /martlet/v1/priority/release with {} ends it. Holds and releases are signed voice requests, like inference;
     /// a hold expires on its own.</summary>
-    private async ValueTask InvokePriorityAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokePriorityAsync(HttpContext context, string rawTarget)
     {
         if (rawTarget == PriorityPath)
         {

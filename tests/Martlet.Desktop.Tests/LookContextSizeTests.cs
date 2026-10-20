@@ -73,7 +73,7 @@ public sealed class LookContextSizeTests
         Assert.Equal("conversation.input_limit", look.Status.Code);
         fixture.NoEffects();
         Assert.Single(fixture.Controller.Board.Snapshot(fixture.Clock.GetLocalNow()).Notes);
-        Assert.StartsWith("Martlet stopped vision. The picture and the persona together are too long", LiveConversationWindow.LookTooLong,
+        Assert.StartsWith("Martlet stopped vision: the picture and the persona together are too long", LiveConversationWindow.LookTooLong,
             StringComparison.Ordinal);
     }
 }

@@ -48,7 +48,7 @@ of a computer without an NVIDIA GPU. Its role (`deploy/host/roles/chatterbox-nan
 is `gpu=optional`: `martlet-host` adds the GPU overlay when the host can run GPU
 containers and asks GPU or CPU, and the service (`MARTLET_CHATTERBOX_DEVICE=auto`)
 uses the card it was given, or the CPU. It uses the same image as Turbo
-(`martlet-chatterbox:12`, whose CUDA PyTorch also runs on the CPU) and its own
+(`martlet-chatterbox:13`, whose CUDA PyTorch also runs on the CPU) and its own
 volume, `martlet-chatterbox-nano-models`.
 
 - On a GPU it decodes like Turbo (the CUDA graph and streaming below).

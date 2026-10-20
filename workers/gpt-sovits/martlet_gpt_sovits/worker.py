@@ -23,6 +23,12 @@ from typing import Any, Callable, Iterator
 
 from . import pins, wire
 
+try:
+    import martlet_worker_host as shared
+except ModuleNotFoundError:  # a checkout: the shared module is in workers/common (the image copies it beside this package)
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "common"))
+    import martlet_worker_host as shared
+
 ROOT = Path(os.environ.get("MARTLET_GPT_SOVITS_ROOT", "/opt/gpt-sovits"))
 SOURCE = ROOT / "GPT-SoVITS"
 MODELS = SOURCE / "GPT_SoVITS" / "pretrained_models"
@@ -33,13 +39,7 @@ WORKER_ID = "martlet-gpt-sovits-host"
 FIXTURE_WORKER_ID = "martlet-gpt-sovits-fixture"
 
 
-def sha256_file(path: Path) -> tuple[int, str]:
-    digest, size = hashlib.sha256(), 0
-    with path.open("rb") as stream:
-        while block := stream.read(1_048_576):
-            size += len(block)
-            digest.update(block)
-    return size, digest.hexdigest()
+sha256_file = shared.sha256_file
 
 
 def _stage(path: Path, audio_base64: str) -> Path:

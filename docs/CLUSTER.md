@@ -578,11 +578,18 @@ NVIDIA Build and its old key.
 | `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |
+| `character-touch-zones` | Every model's touch zones (`character-touch-zones.json`): the zones vision found or Martlet guessed, and the zones, reactions and words you drew or changed, so the character reacts the same on every computer and each model is found once (up to 8 MiB, the newest models first) | The snapshot and the pictures vision saw |
+| `character-eyes` | Every model's eye measurement (`character-eyes.json`), so a model is measured once with vision for all computers | The close-up pictures of the measurement |
+| `vroid-hub-looks` | The VRoid Hub characters used, with their creator, credit and conditions of use (`vroid-hub-looks.json`) | |
+| `character-reaction-changes` | The character's own changes to how it reacts to touches (`character-reaction-changes.json`; made per personality, so each person's) | |
+| `discord` | Martlet's Discord setup (`discord.json`, `discord-calls.json`): the bot and **its token**, your own account, the home server, the chat modes, the channel rules, the people Martlet knows, and in your own calls your display name, seeing who speaks, also playing on your usual output, stopping when talked over and the camera framing | Whether the bot connects on this PC; in calls, whether Martlet joins them here, what it hears, its output and the camera background |
+| `messaging` | Companion › Messaging (`messaging.json`): the Telegram bot and the WhatsApp number with **their secrets**, the paired chats and saying replies aloud | Whether Martlet answers each app on this PC; WhatsApp's webhook port and own public address |
 | `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, how chatty Martlet is about what it sees and what the PC plays (Martlet decides included; a computer on an older Martlet reads it as Chatty), how often Martlet reads the text on the screen (Companion › Reading › Read the screen; a computer on an older Martlet leaves each computer's own) | Microphone sensitivity, cameras and video addresses, Watch on or off and what it looks at (consent at that screen), echo reduction, hearing what the PC plays |
 | `speech-display` | Whether speech bubbles and subtitles show | Where the bubble sits (beside the character or in one place, and its offsets): it depends on this PC's screens |
 | `appearance` | The theme | |
 | `appearance-custom` | The colors of the owner's custom palette (Settings › Appearance › Custom; `appearance-custom.json`). It travels before `appearance`, so a computer that switches to Custom has them; a computer on an older Martlet keeps its own theme | |
 | `voice-recognition` | Whether Martlet recognizes the people it hears (Companion › People) | |
+| `voice-clips` | Whether Martlet keeps the last few clips of voices you haven't named (Companion › People; `voice-clips.txt`). Turning it off anywhere deletes the clips every computer kept | The clips themselves (each computer keeps what it heard) |
 | `voice-id` | Voice ID on or off and the owner's voiceprint (numbers only, never audio; Companion › Listening) | |
 | `smart-home` | What Martlet may do with Home Assistant: use it when asked, locks, doors and alarms, flexible requests | |
 | `updates` | Looking for updates, how often, installing them as soon as they're downloaded, keeping hosts on the newest version | |
@@ -604,12 +611,13 @@ is the same on every computer where they are signed in, and what Martlet makes f
 With [accounts](ACCOUNTS.md#account-settings), the settings above are split
 into the household's and each person's. The household keeps `thinking`,
 `listening`, `speaking` with their API keys, `thinking-fallback`, `thinking-pool`,
-`thinking-pool-choices`, `character-actions`, `voice-recognition`, `smart-home`, `updates`,
+`thinking-pool-choices`, `character-actions`, `character-touch-zones`, `character-eyes`, `vroid-hub-looks`,
+`voice-recognition`, `voice-clips`, `smart-home`, `discord`, `messaging`, `updates`,
 `model-abilities`, `work-sharing`, `motion`, `meaning-search`, `pools` and the `pc.*`, `role.*` and
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
-`touch-temperament`, `memory-brief`, `conversation-history` and their own `reminders.<device ID>` entries. A person's
+`touch-temperament`, `character-reaction-changes`, `memory-brief`, `conversation-history` and their own `reminders.<device ID>` entries. A person's
 settings go only to the computers where that person is signed in, and switching
 person on a computer gives Martlet that person's settings. A computer on an
 older Martlet keeps the owner's settings in step through this document, as
@@ -625,10 +633,10 @@ with the reason from its row here; `SettingsFilesTests` checks that they agree.
 | --- | --- |
 | Microphone, speakers, cameras, video addresses, microphone sensitivity, echo reduction, hearing what the PC plays (`talk-preferences.json` keeps this PC's choices beside the ones that travel as `talk`) | This PC's devices |
 | Watch my screen or a camera (on or off, what it looks at) | It captures this PC's screen or camera, so it is chosen at that screen |
-| Where the character and its speech bubble sit, and the character's zoom (`character-placement.json`, and the bubble's place in `speech-display.json`) | This PC's screens |
+| Where the character and its speech bubble sit, and the character's zoom (`character-placement.json`, and the bubble's place in `speech-display.json`); whether clicks pass through the character (`character-click-through.json`); and the place, eyes and touch choice each character profile keeps here (`character-profiles-local.json`) | This PC's screens |
 | Companion PC or host PC, and the host service on it | What this computer is for. Every Windows user of this PC shares it ([PC scope](ACCOUNTS.md#pc-scope), `%ProgramData%\Martlet`); another of your computers can still [switch it](#switching-another-computer-between-companion-and-host) |
-| *When Martlet starts* and closing choices, Start with Windows | How Martlet starts for this Windows user |
-| Paired hosts (`hosts.json`), SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
+| *When Martlet starts* and closing choices (`background.json`), Start with Windows | How Martlet starts for this Windows user |
+| Paired hosts (`hosts.json`), SSH keys, *Let my other computers find this PC* (`nearby.txt`), *Let my other paired computers update Martlet here*, *Keep Martlet the same on all my computers* (`cluster-sync.txt`) and the port opened on the router (`router-port.json`) | How this computer reaches others, and who may reach it |
 | Where memory is stored | A folder on this PC (the memories travel) |
 | The queue of deletions and edits waiting for Telegram and Discord (`conversations\platform-changes.json`) | Only the computer where you made the change asks the app; the record itself travels |
 | Installed engines and models: Ollama models, Parakeet, a whisper package, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
@@ -640,6 +648,17 @@ with the reason from its row here; `SettingsFilesTests` checks that they agree.
 | Which saved key each Singing cloud provider uses (`singing-keys.json`; the keys themselves travel as the `singing-keys` setting) | The keys are in this PC's Windows Credential Manager |
 | Embedding vectors for finding by meaning (memory's and reports' in memory only; guides' in `meaning\guides`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
 | That this computer made or saw Martlet's [starter motions](AVATARS.md#starter-motions) made (`motion-starters.json` in the account's creations folder) | What this computer saw, so it never makes them again after you delete them; the motions themselves are shared creations |
+| The welcome tour's choice of companion or host PC, each Windows user's copy (`device-role.txt`) | What this computer is for |
+| The image and audio models (`sense-models.json`) | Which models a computer can run beside Thinking depends on its hardware |
+| The voice engine Speaking uses here (`speaking-engine.txt`) | It follows the voice engine the speaking host runs now |
+| Singing's older *Off* choice and the computer this PC last saw singing (`singing.json`) | An older choice, read once into the shared Singing lists, and the computer this PC last saw singing |
+| The household sign-in providers this PC set up, and what it last read of the hosts' providers (`household-signin.json`) | The client secrets are in this PC's Windows Credential Manager; the providers themselves are on the hosts |
+| Whether Martlet's Discord bot connects on this PC, and where this PC keeps its token (`discord.json`; the rest of the setup travels as `discord`) | Only one computer runs the bot |
+| What Martlet's Discord bot saw and made: friend requests, declines, its call channels and its picture (`discord-companion.json`) | What the bot saw and made on the computer that runs it |
+| In your own Discord calls: whether Martlet joins them through this PC, what it hears, the output it speaks into and the camera background (`discord-calls.json`; the rest travels as `discord`) | This PC's devices |
+| Whether Martlet answers Telegram and WhatsApp on this PC, where this PC keeps their secrets, and WhatsApp's webhook port and own public address (`messaging.json`; the rest travels as `messaging`) | Only one program may read a bot's or a number's messages |
+| The colors made from each character model's textures (`character-themes.json`), and the pictures beside its touch zones and eye measurement (`character-touch-zones\`, `character-eyes\`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
+| The last clips of voices you haven't named (the `voice-clips\` folder; whether they are kept is the shared `voice-clips` setting) | Recordings of what this PC heard; never sent |
 
 ### Conflicts and offline changes
 

@@ -403,7 +403,7 @@ internal static class RecommendedSetupInputs
         Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind,
         ServedModels =
         [
-            new("", "lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "qwen3-32b") { SizeGb = 19.8 },
+            new("", "lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "qwen3-32b") { SizeGb = 19.8, LoadedGb = 0 },
             new("", "lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "text-embedding-nomic-embed-text-v1.5") { SizeGb = 0.1 },
             new("", "ollama", "Ollama", "http://127.0.0.1:11434/v1", "llama3.3:70b") { SizeGb = 42.5 }
         ]
@@ -453,13 +453,39 @@ internal static class RecommendedSetupInputs
         };
     }
 
+    /// <summary>FIXTURE bighost (NOT real computers): this PC (no graphics card) and big-box, a Linux host with six RTX 5090s
+    /// (32 GB each) that thinks with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B (<paramref name="deepModel"/>). Its
+    /// cards have room for much bigger models, so Deep thinking gets a bigger model from the model catalog while live Thinking
+    /// stays fast (#663). With "llama3.3:70b" (fixture bigsplit) no single card has room for it, so it runs split across two
+    /// cards no live job uses.</summary>
+    internal static SetupSources BigHostFixture(DateTimeOffset now, string deepModel = "gemma4:e4b")
+    {
+        var report = new HostHardware("big-box", "https://big-box.lan:8443", now, now, "docker", "Ubuntu 24.04", "6.8.0", "Fixture processor",
+            64, 256, "docker", "yes", [.. Enumerable.Range(0, 6).Select(_ => new HostGpu("NVIDIA GeForce RTX 5090", "nvidia", 32 * 1024, "580"))])
+        { Platform = "linux" };
+        var plan = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "big-box", false, true, null, "fixture-desk", now);
+        return new SetupSources(
+        [
+            new("desk", "This PC", NetworkMachineKind.Companion) { Specs = MachineSpecs.ThisPc([], 16, 8, diskFreeGb: 200), ThisPc = true, Device = "fixture-desk" },
+            new("big-box", "big-box", NetworkMachineKind.Host)
+            {
+                Hardware = report, HasHostService = true, Reachable = true,
+                Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:e2b", ["deep-thinking"] = deepModel }
+            }
+        ])
+        {
+            Plan = plan, Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind
+        };
+    }
+
     /// <summary>The chat models the model apps found on this PC serve (<see cref="Martlet.Providers.LocalModelServers.DetectAsync"/>),
     /// as the recommender takes them; an app that asks for a key first lists none. The request puts them on this PC.</summary>
     internal static IReadOnlyList<ServedModel> Served(IEnumerable<Martlet.Providers.LocalModelServer>? servers) =>
         [.. (servers ?? []).Where(s => !s.NeedsKey).SelectMany(s => s.Models.Select(model =>
             new ServedModel("", s.Id, s.Name, s.ChatCompletionsBaseUrl, model)
             {
-                SizeGb = s.SizesGb.TryGetValue(model, out var gb) && gb > 0 ? gb : null
+                SizeGb = s.SizesGb.TryGetValue(model, out var gb) && gb > 0 ? gb : null,
+                LoadedGb = s.LoadedGb.TryGetValue(model, out var loaded) ? loaded : null
             }))];
 
     /// <summary>The chat models the owner's model apps serve, once each, biggest first: the order the Recommended setup review
@@ -468,10 +494,12 @@ internal static class RecommendedSetupInputs
         [.. served.Where(m => ServedModels.Chats(m.ModelId)).DistinctBy(m => (m.ModelId, m.AppId))
             .OrderByDescending(m => ServedModels.Gb(m) ?? 0).ThenBy(m => m.ModelId, StringComparer.OrdinalIgnoreCase)];
 
-    /// <summary>"qwen3:32b in LM Studio (about 21 GB)".</summary>
+    /// <summary>"qwen3:32b in LM Studio (about 21 GB, loaded now)".</summary>
     internal static string ServedLine(ServedModel m) =>
         $"{m.ModelId} in {(m.AppName.Length > 0 ? m.AppName : "your model app")}" +
-        (ServedModels.Gb(m) is { } gb ? $" (about {gb.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} GB)" : "");
+        (ServedModels.Gb(m, PlanningCatalog.Models) is { } gb
+            ? $" (about {gb.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} GB{(m.LoadedGb is null ? "" : ", loaded now")})"
+            : m.LoadedGb is null ? "" : " (loaded now)");
 
     /// <summary>The Thinking pool's online members that are on (an HTTPS endpoint, not a model app on this PC), in words:
     /// "moonshotai/kimi-k3 on NVIDIA Build".</summary>

@@ -12,9 +12,9 @@ public static class AudioSetupDiagnostics
         ErrorCode.AudioFormatUnsupported => "Choose another device or change its Windows audio format.",
         ErrorCode.AudioDeviceUnavailable or ErrorCode.AudioDeviceLost or ErrorCode.AudioDeviceChanged =>
             "Reconnect or enable the device, then choose it again.",
-        ErrorCode.DeadlineExceeded => "The test took too long. Check the device, then run it again.",
+        ErrorCode.DeadlineExceeded => "The test took too long, so check the device and run it again.",
         ErrorCode.AudioCaptureFailed or ErrorCode.AudioPlaybackFailed =>
-            "The audio test failed. Close apps using the device, then try again.",
+            "The audio test failed: close apps using the device, then try again.",
         _ => "Check the selected microphone or speakers, then run the test again."
     };
 

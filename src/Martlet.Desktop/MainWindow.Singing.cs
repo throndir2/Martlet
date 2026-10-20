@@ -38,9 +38,7 @@ public partial class MainWindow
     /// <summary>Whether Singing needs a graphics card of its own, in words (the GPU chip's tip and the card's note).</summary>
     internal const string SingingGpuNote =
         "It doesn't need a graphics card of its own. It shares one with the voice and listening, using 5-7 GB of it only while a " +
-        "song is being made (one stage at a time) and freeing it when idle. While a song is made it competes with them and with " +
-        "a local Thinking model (replies stay prompt, a song gets a little slower), so a second computer's card is best when " +
-        "this one is busy.";
+        "song is being made.";
 
     private string? singingPendingHost;
     /// <summary>The model being added on <see cref="singingPendingHost"/> (null: the Singing role itself).</summary>
@@ -91,28 +89,27 @@ public partial class MainWindow
             FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
         AutomationProperties.SetAutomationId(nowText, "SingingNow");
         var now = new List<UIElement> { Heading("Now"), nowText,
-            Note("Ask Martlet to sing you a song. It writes the song in the background while you keep talking, then sings it with " +
-                "the voice it speaks with.", new Thickness(0, 0, 0, 0)) };
+            HelpTip.Explain("Ask Martlet to sing you a song. It writes the song in the background while you keep talking, then sings " +
+                "it with the voice it speaks with.", new Thickness(0, 0, 0, 0), "SingingAbout", "singing", wiki: "Singing#how-a-song-is-made") };
         if (active && store is not null && SongClient.SpeakingVoiceId(store.DataDirectory) is null && !DesktopSongSource.Fixture)
-            now.Add(Warning("There's no voice to sing with yet. Choose a voice on Companion › Voice."));
+            now.Add(Warning("There's no voice to sing with yet: choose one on Companion › Voice."));
         page.Children.Add(Card([.. now]));
 
         // ---------- the two pools: the music, then the voice match ----------
         page.Children.Add(PoolListCard(SingingListOptions(PoolAreas.Singing, "Music: where Martlet writes songs",
-            "The computers that write a song's music with ACE-Step 1.5 and its own singer, in order. A song goes to the first one " +
-            "that isn't making another song; when all are busy it waits on the one with the shortest line. With none on, Martlet " +
-            "doesn't sing. Open a computer's Settings to set Singing up there or choose its quality (High quality by default).")));
+            "The computers that write a song's music with ACE-Step 1.5 and its own singer, in order. A song goes to the first free " +
+            "one; with none on, Martlet doesn't sing.") with { Wiki = "Singing#the-music-and-voice-match-lists" }));
         page.Children.Add(PoolListCard(SingingListOptions(PoolAreas.VoiceMatch, "Voice match: where Martlet matches the singing to its voice",
-            "The computers that match a song's singing to the voice Martlet speaks with, in order. They can be other computers " +
-            "than the ones that write the music. With none on, songs keep the music model's own singer. Open a computer's " +
-            "Settings to set Singing up there, choose its model (SoulX-Singer by default) or add VevoSing.")));
+            "The computers that match a song's singing to the voice Martlet speaks with, in order. With none on, songs keep the " +
+            "music model's own singer.") with { Wiki = "Singing#the-music-and-voice-match-lists" }));
 
         // ---------- what Singing is: the role's facts ----------
         var role = OptionalExtras.SingingChoices(active, readySomewhere).First(o => !o.IsOff) with
         {
             Details = () =>
             {
-                var gpu = HelpTip.Explain(SingingGpuNote, new Thickness(0, 6, 0, 0), "SingingGpu", "singing on the graphics card");
+                var gpu = HelpTip.Explain(SingingGpuNote, new Thickness(0, 6, 0, 0), "SingingGpu", "singing on the graphics card",
+                    wiki: "Singing#hardware");
                 AutomationProperties.SetAutomationId(gpu, "SingingGpu");
                 return [gpu];
             }
@@ -121,8 +118,9 @@ public partial class MainWindow
 
         // ---------- the voice match models compared; each computer in the voice match list chooses its own ----------
         page.Children.Add(Card(Heading("Voice match models"),
-            Note("Each computer in the voice match list uses SoulX-Singer unless its Settings choose VevoSing. \"In use\" is the " +
-                "first computer's model.", new Thickness(0, 0, 0, 4)),
+            HelpTip.Explain("Each computer in the voice match list uses SoulX-Singer unless its Settings choose another model. \"In use\" " +
+                "is the first computer's model.", new Thickness(0, 0, 0, 4), "SingingVoiceMatchModels", "voice match models",
+                wiki: "Singing#more-choices"),
             OptionPickerBody("SingingVoiceMatch", OptionalExtras.VoiceMatches(model))));
     }
 
@@ -226,13 +224,13 @@ public partial class MainWindow
             : ready ? (service is null ? "Singing is ready here." : $"Singing is ready here with {string.Join(", ", models)}.")
             : cannot ?? (singingFailures.GetValueOrDefault(key) is { } why ? $"Setting Singing up failed: {why}" : "Singing isn't set up here yet.");
         if (ready && !pending && service is not null && !service.Singer.Splits)
-            state += " Its Martlet is too old to make the music and the voice match apart: it makes whole songs until Martlet is updated there.";
+            state = state.TrimEnd('.') + "; its Martlet is too old to make the music and the voice match apart, so it makes whole songs until Martlet is updated there.";
         var addFailed = false;
         if (ready && !pending)
             foreach (var addOn in addOns)
                 if (singingAddOnFailures.GetValueOrDefault((key, addOn.Id)) is { } failed)
                 {
-                    state += $" Adding {addOn.Name} failed: {failed}";
+                    state = state.TrimEnd('.') + $"; adding {addOn.Name} failed: {failed}";
                     addFailed = true;
                 }
         var panel = new StackPanel();
@@ -278,9 +276,9 @@ public partial class MainWindow
             choice.SelectionChanged += (_, _) =>
             {
                 if ((choice.SelectedItem as ComboBoxItem)?.Tag is not SongVoiceMatch chosen || chosen == SingingPool.VoiceMatch(member)) return;
-                SaveSingingMember(area, SingingPool.WithVoiceMatch(member, chosen), $"{member.Name} matches voices with {SingingPool.Name(chosen)}." +
+                SaveSingingMember(area, SingingPool.WithVoiceMatch(member, chosen), $"{member.Name} matches voices with {SingingPool.Name(chosen)}" +
                     (SingingModels.AddOn(chosen) is { } needed && known && !Has(needed)
-                        ? $" Add {needed.Name} there first; until then it uses SoulX-Singer." : ""));
+                        ? $" once you add {needed.Name} there (SoulX-Singer until then)." : "."));
             };
             panel.Children.Add(Labeled("Model here", choice));
         }
@@ -307,9 +305,9 @@ public partial class MainWindow
             music.SelectionChanged += (_, _) =>
             {
                 if ((music.SelectedItem as ComboBoxItem)?.Tag is not SongMusicModel chosen || chosen == SingingPool.MusicModel(member)) return;
-                SaveSingingMember(area, SingingPool.WithMusicModel(member, chosen), $"{member.Name} writes music with {SingingPool.Name(chosen)}." +
+                SaveSingingMember(area, SingingPool.WithMusicModel(member, chosen), $"{member.Name} writes music with {SingingPool.Name(chosen)}" +
                     (SingingModels.AddOn(chosen) is { } needed && known && !Has(needed)
-                        ? $" Add {needed.Name} there first; until then it uses ACE-Step 1.5." : ""));
+                        ? $" once you add {needed.Name} there (ACE-Step 1.5 until then)." : "."));
             };
             panel.Children.Add(Labeled("Music model here", music));
             if (SingingPool.MusicModel(member) != SongMusicModel.AceStep15)
@@ -331,7 +329,7 @@ public partial class MainWindow
         }
         QueueSettingsSync();
         ErrorLog.Info("Pools: " + done);
-        ActionText.Text = done + " Your other computers follow it.";
+        ActionText.Text = done.TrimEnd('.') + "; your other computers follow it.";
         Dispatcher.InvokeAsync(() => { if (!closing && openTab == CompanionTab.Singing) RenderTab(); });
     }
 
@@ -379,11 +377,11 @@ public partial class MainWindow
         IReadOnlyList<string>? matchWhere = null, bool matchOff = false, SongQuality quality = SongQuality.HighQuality,
         SongVoiceMatch model = SongVoiceMatch.SoulX)
     {
-        var stays = readySomewhere ? " Singing stays set up on your computers." : "";
+        var stays = readySomewhere ? "; Singing stays set up on your computers." : ".";
         if (listed && where.Count == 0 && !DesktopSongSource.Fixture)
-            return $"Off. {OptionalExtras.OffMeans(CompanionTab.Singing)}: no computer in the music list is on." + stays;
-        if (!listed && preferences.Off) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Singing)}." + stays;
-        if (!active) return "Not set up yet. Add one of your computers to the music list below and set Singing up there, or add a cloud provider.";
+            return $"Off: {OptionalExtras.OffMeans(CompanionTab.Singing)}, because no computer in the music list is on" + stays;
+        if (!listed && preferences.Off) return $"Off: {OptionalExtras.OffMeans(CompanionTab.Singing)}" + stays;
+        if (!active) return "Not set up yet: add one of your computers to the music list below and set Singing up there, or add a cloud provider.";
         static string Place(IReadOnlyList<string> computers) => computers.Count switch
         {
             0 => "this PC",
@@ -392,7 +390,7 @@ public partial class MainWindow
         };
         var music = DesktopSongSource.Fixture ? "this PC (FIXTURE - NOT AI)" : Place(where);
         var written = $"Martlet writes the music on {music} in {(quality == SongQuality.Fast ? "fast" : "high")} quality";
-        if (matchOff) return written + ". Voice match is off: songs keep the music model's own singer.";
+        if (matchOff) return written + ", but voice match is off, so songs keep the music model's own singer.";
         var matched = DesktopSongSource.Fixture ? music : Place(matchWhere is { Count: > 0 } ? matchWhere : where);
         return $"{written}, and matches the voice on {matched} with {SingingPool.Name(model)}.";
     }
@@ -471,15 +469,11 @@ public partial class MainWindow
     }
 
 
-    /// <summary>What setting Singing up downloads and agrees to, for its confirmation (role.conf's terms in short).</summary>
-    internal static string SingingTerms(bool vevosing) =>
-        "It builds a container with the pinned ACE-Step 1.5 (MIT), SoulX-Singer (Apache-2.0), Demucs (MIT) and PyTorch, then downloads " +
-        "about 16 GB of pinned models: ACE-Step 1.5 turbo and SFT with its planner and text encoder (MIT), SoulX-Singer-SVC and RMVPE " +
-        "(Apache-2.0), OpenAI Whisper base (Apache-2.0) and the Demucs vocals model (MIT)." +
-        (vevosing ? " " + SingingModels.AddOn(SongVoiceMatch.VevoSing)!.Terms : "") +
-        " Songs are sung in a voice from your voice library, cloned from its recording, which goes to that computer: only use voices " +
-        "that are yours or that you have permission to use, and never to imitate someone without permission or to deceive. ACE-Step " +
-        "asks you to check that songs are original and to say they are AI-generated.";
+    /// <summary>What setting Singing up downloads and agrees to, in one sentence for its confirmation (role.conf's terms in short;
+    /// the wiki's Singing#consent-and-licenses has every model and licence).</summary>
+    internal static string SingingTerms() =>
+        "It needs an NVIDIA graphics card with 6 GB+ and downloads about 16 GB of open models (MIT and Apache-2.0), and it may only " +
+        "sing in voices that are yours or that you have permission to use.";
 
     /// <summary>Sets the singing role up on <paramref name="host"/> (null: this PC), or adds a model (<paramref name="addOn"/>) where it
     /// runs, after one confirmation naming the downloads, licences and terms, through the same martlet-host add as every role. A
@@ -491,27 +485,25 @@ public partial class MainWindow
         // The Singing card follows one setup at a time (what it shows while setting up); everything else goes ahead meanwhile.
         if (singingPendingHost is not null)
         {
-            ActionText.Text = $"Singing is still being set up on {(singingPendingHost == SingingThisPc ? "this PC" : singingPendingHost)}. " +
-                "Its window shows progress; set up the next one when it's done.";
+            ActionText.Text = $"Singing is still being set up on {(singingPendingHost == SingingThisPc ? "this PC" : singingPendingHost)}; " +
+                "set up the next one when its window says it's done.";
             return;
         }
         var where = host is null ? "this PC" : host.HostId;
-        if (host is null && ThisPcCannotSing() is { } cannot) { ActionText.Text = $"Singing can't run on this PC. {cannot}"; return; }
+        if (host is null && ThisPcCannotSing() is { } cannot)
+        {
+            ActionText.Text = $"Singing can't run on this PC: {char.ToLowerInvariant(cannot[0])}{cannot[1..]}";
+            return;
+        }
         var thisPc = ThisPcHost();
         var confirmed = addOn is not null
-            ? ConfirmationDialog.Confirm(this,
-                $"Add {addOn.Name} to Singing on {where}?\n\n{addOn.About} " +
-                (addOn.Music is not null ? "ACE-Step 1.5 stays set up, and each computer's Music model switches between them."
-                    : "SoulX-Singer stays set up, and each computer's voice match model switches between them.") +
-                "\n\n" + addOn.Terms, $"Add {addOn.Name}")
+            ? ConfirmationDialog.Confirm(this, $"Add {addOn.Name} to Singing on {where}?\n\n{addOn.Terms}", $"Add {addOn.Name}")
             : ConfirmationDialog.Confirm(this,
-                $"Set up Singing on {where}?\n\n" +
                 (host is null && thisPc is null
-                    ? machine.DockerInstalled ? "Martlet first sets up its host service in Docker Desktop. "
-                        : "Martlet first installs Docker Desktop (it asks for its own terms) and sets up its host service. "
-                    : "") +
-                "It needs an NVIDIA graphics card with 6 GB+ and is a large download; Martlet shows the progress. " + SingingGpuNote +
-                "\n\n" + SingingTerms(vevosing: false),
+                    ? machine.DockerInstalled ? $"Set up Singing on {where} in Docker Desktop?"
+                        : $"Install Docker Desktop, then set up Singing on {where}?"
+                    : $"Set up Singing on {where}?") +
+                "\n\n" + SingingTerms(),
                 "Set up Singing");
         if (!confirmed) return;
         // An addition keeps every model the computer already has.
@@ -537,14 +529,14 @@ public partial class MainWindow
                 var done = await RunHostActionAsync(host, HostRoles.Get(HostRoles.Singing).Add, answers);
                 if (closing) return;
                 singingServices.Remove(host.HostId);
-                if (done is null) Failed($"Setting it up on {host.HostId} stopped. Its run window has details.");
+                if (done is null) Failed($"Setting it up on {host.HostId} stopped; its run window has details.");
                 else if (await WaitForSingingAsync(host, addOn, lifetime.Token) is { } why)
-                    Failed($"Setup finished, but Martlet can't see {what} on {host.HostId} yet ({why}). Check it in a minute.");
+                    Failed($"Setup finished, but Martlet can't see {what} on {host.HostId} yet ({why}); check again in a minute.");
                 else
                 {
                     // Setting the role up from the page's main choice uses it: Martlet sings there (and isn't off any more).
                     if (addOn is null) SaveSinging(p => p with { Off = false, Host = host.HostId }, null);
-                    ActionText.Text = addOn is null ? $"Singing is ready on {host.HostId}. Ask Martlet to sing you a song."
+                    ActionText.Text = addOn is null ? $"Singing is ready on {host.HostId}: ask Martlet to sing you a song."
                         : $"{what} is ready on {host.HostId}.";
                 }
             }
@@ -581,18 +573,18 @@ public partial class MainWindow
                 singingServices.Remove(pc.HostId);
                 if (await WaitForSingingAsync(pc, addOn, run.Token) is { } why)
                 {
-                    stopped = $"Setup finished, but Martlet can't see {what} yet ({why}). Check this PC in a minute.";
+                    stopped = $"Setup finished, but Martlet can't see {what} yet ({why}); check this PC again in a minute.";
                     throw new InvalidOperationException(stopped);
                 }
                 if (addOn is null) Dispatcher.Invoke(() => SaveSinging(p => p with { Off = false, Host = pc.HostId }, null));
-                return addOn is null ? "Singing is ready on this PC. Ask Martlet to sing you a song." : $"{what} is ready on this PC.";
+                return addOn is null ? "Singing is ready on this PC: ask Martlet to sing you a song." : $"{what} is ready on this PC.";
             }
 
             string? status;
             if (thisPc is not null)
                 status = await HostRunWindow.RunAsync(this, addOn is null ? "Set up Singing on this PC" : $"Add {what} on this PC",
                     run => Continue(run, thisPc)) ??
-                    (stopped is null ? $"{what} wasn't set up. The run window has details." : $"{what} wasn't set up: {stopped}");
+                    (stopped is null ? $"{what} wasn't set up; the run window has details." : $"{what} wasn't set up: {stopped}");
             else
             {
                 (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(dataDirectory), setup,

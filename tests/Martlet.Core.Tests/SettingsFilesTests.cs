@@ -45,6 +45,37 @@ public sealed class SettingsFilesTests
         }
     }
 
+    /// <summary>Settings files a store declares that are not decided yet (shared, or kept here with a reason): each is a known gap
+    /// with the issue that tracks it. Remove a name here when its row is added to <see cref="SettingsFiles.All"/>.</summary>
+    private static readonly Dictionary<string, string> KnownGaps = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["check-ins.json"] = Gaps, ["deep-thinking.json"] = Gaps, ["pictures.json"] = Gaps, ["pictures-workflow.json"] = Gaps,
+        ["chatterbox-style.json"] = Gaps, ["reading.json"] = Gaps, ["thinking-pool.json"] = Gaps, ["recommended-setup.json"] = Gaps
+    };
+
+    private const string Gaps = "https://github.com/throndir2/Martlet/issues/1040";
+
+    [Fact]
+    public void Every_file_a_store_declares_is_registered_or_named_as_not_a_setting()
+    {
+        var src = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(ClusterDocs()))!, "src");
+        var declared = new Regex(@"const string \w+\s*=\s*""([\w\-.]+\.(?:json|txt))""");
+        var names = Directory.EnumerateFiles(src, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+                !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .SelectMany(path => declared.Matches(File.ReadAllText(path)).Select(m => (Name: m.Groups[1].Value, Where: Path.GetFileName(path))))
+            .ToArray();
+        Assert.NotEmpty(names);
+        var registered = SettingsFiles.All.Select(f => Path.GetFileName(f.FileName)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unknown = names.Where(n => !registered.Contains(n.Name) && !SettingsFiles.NotSettings.ContainsKey(n.Name) && !KnownGaps.ContainsKey(n.Name))
+            .Select(n => $"{n.Name} ({n.Where})").Distinct().ToArray();
+        Assert.True(unknown.Length == 0, "These files are neither in SettingsFiles.All nor in SettingsFiles.NotSettings. Register each settings " +
+            "file (shared, or kept here with its row in docs/CLUSTER.md), or name a file that holds no choice in NotSettings: " + string.Join(", ", unknown));
+        Assert.DoesNotContain(SettingsFiles.NotSettings.Keys, registered.Contains);
+        Assert.DoesNotContain(KnownGaps.Keys, name => registered.Contains(name) || SettingsFiles.NotSettings.ContainsKey(name));
+        Assert.All(KnownGaps.Keys, name => Assert.Contains(names, n => string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)));
+    }
+
     // The table under "### What stays with each computer": each row's two cells.
     private static IReadOnlyList<(string What, string Why)> StaysHereRows()
     {

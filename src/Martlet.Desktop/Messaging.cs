@@ -7,118 +7,6 @@ using Martlet.Messaging;
 
 namespace Martlet.Desktop;
 
-/// <summary>One messaging app's choices on this PC: whether Martlet answers it, which Credential Manager entry keeps its
-/// secrets, the paired chats and whether replies are also said aloud.</summary>
-internal abstract record ChannelPreferences
-{
-    /// <summary>Martlet answers the app's paired chats while it runs on this PC.</summary>
-    public bool Enabled { get; init; }
-    /// <summary>Which Windows Credential Manager entry holds the secrets (Martlet/v3/messaging/&lt;app&gt;/&lt;id&gt;).</summary>
-    public Guid CredentialId { get; init; }
-    /// <summary>The chats paired with a code: the only chats Martlet answers.</summary>
-    public IReadOnlyList<MessagingChat> Chats { get; init; } = [];
-    /// <summary>Also say replies to messages aloud on this PC (off: you are usually away from it).</summary>
-    public bool SpeakReplies { get; init; }
-    /// <summary>Set up (a bot or a number is connected).</summary>
-    internal abstract bool Connected { get; }
-    /// <summary>How the owner's chats find it: @bot for Telegram, the number for WhatsApp.</summary>
-    internal abstract string Handle { get; }
-}
-
-/// <summary>Companion › Messaging's Telegram choices on this PC. The bot token lives in Windows Credential Manager, never here.
-/// Only one program may read a bot's messages, so this stays on this PC (it is not synced to the other computers).</summary>
-internal sealed record TelegramPreferences : ChannelPreferences
-{
-    public string BotName { get; init; } = "";
-    public string BotUsername { get; init; } = "";
-    internal override bool Connected => BotUsername.Length > 0;
-    internal override string Handle => "@" + BotUsername;
-}
-
-/// <summary>Companion › Messaging's WhatsApp choices on this PC: the WhatsApp Cloud API account (IDs only; the access token
-/// and app secret live in Windows Credential Manager), the local webhook port and an optional public address of the owner's
-/// own (empty: a Cloudflare quick tunnel). Meta delivers each number's messages to one webhook, so this stays on this PC.</summary>
-internal sealed record WhatsAppPreferences : ChannelPreferences
-{
-    public string Name { get; init; } = "";
-    /// <summary>The business phone number as WhatsApp shows it (+1 555-0100).</summary>
-    public string Number { get; init; } = "";
-    public string AppId { get; init; } = "";
-    public string BusinessAccountId { get; init; } = "";
-    public string PhoneNumberId { get; init; } = "";
-    /// <summary>The localhost port Martlet's webhook listens on (kept so an own public address can forward to it).</summary>
-    public int Port { get; init; }
-    /// <summary>The owner's own public HTTPS address forwarding to <see cref="Port"/>; empty uses a Cloudflare quick tunnel.</summary>
-    public string PublicAddress { get; init; } = "";
-    internal override bool Connected => PhoneNumberId.Length > 0;
-    internal override string Handle => Number;
-    /// <summary>The number's digits, as wa.me links take them.</summary>
-    internal string Digits => new([.. Number.Where(char.IsAsciiDigit)]);
-}
-
-internal sealed record MessagingPreferences
-{
-    internal const string FileName = "messaging.json";
-    public TelegramPreferences Telegram { get; init; } = new();
-    public WhatsAppPreferences WhatsApp { get; init; } = new();
-
-    internal ChannelPreferences this[MessagingApp app] => app == MessagingApp.WhatsApp ? WhatsApp : Telegram;
-
-    internal MessagingPreferences With(MessagingApp app, Func<ChannelPreferences, ChannelPreferences> change) => app == MessagingApp.WhatsApp
-        ? this with { WhatsApp = (WhatsAppPreferences)change(WhatsApp) }
-        : this with { Telegram = (TelegramPreferences)change(Telegram) };
-
-    private static IReadOnlyList<MessagingChat> Clean(IReadOnlyList<MessagingChat>? chats) =>
-        [.. (chats ?? []).Where(chat => chat is { Id.Length: > 0 }).Select(chat => chat with { Name = chat.Name ?? chat.Id })];
-
-    internal static MessagingPreferences Load(string? directory)
-    {
-        if (directory is null) return new();
-        try
-        {
-            var path = Path.Combine(directory, FileName);
-            if (!File.Exists(path)) return new();
-            var loaded = JsonSerializer.Deserialize<MessagingPreferences>(File.ReadAllText(path)) ?? new();
-            var telegram = loaded.Telegram ?? new();
-            var whatsApp = loaded.WhatsApp ?? new();
-            return new()
-            {
-                Telegram = telegram with { BotName = telegram.BotName ?? "", BotUsername = telegram.BotUsername ?? "", Chats = Clean(telegram.Chats) },
-                WhatsApp = whatsApp with
-                {
-                    Name = whatsApp.Name ?? "", Number = whatsApp.Number ?? "", AppId = whatsApp.AppId ?? "",
-                    BusinessAccountId = whatsApp.BusinessAccountId ?? "", PhoneNumberId = whatsApp.PhoneNumberId ?? "",
-                    PublicAddress = whatsApp.PublicAddress ?? "", Port = whatsApp.Port is > 0 and < 65536 ? whatsApp.Port : 0,
-                    Chats = Clean(whatsApp.Chats)
-                }
-            };
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
-    }
-
-    internal bool Save(string? directory)
-    {
-        if (directory is null) return false;
-        try
-        {
-            Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, FileName);
-            var temporary = Path.Combine(directory, $"messaging.{Guid.NewGuid():N}.tmp");
-            try
-            {
-                File.WriteAllText(temporary, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
-                File.Move(temporary, path, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(temporary)) File.Delete(temporary);
-            }
-            return true;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
-    }
-}
-
 /// <summary>Martlet in messaging apps: runs each app's <see cref="MessagingBridge"/> (Telegram's bot, WhatsApp's business
 /// number) while it is turned on and its secrets are saved, keeps the paired chats in messaging.json and hands each message to
 /// <see cref="Answer"/> (the conversation).</summary>
@@ -411,6 +299,32 @@ internal sealed class MessagingService : IDisposable
             if (!preferences.Save(directory) && directory is not null) ErrorLog.Warn("Couldn't save messaging.json.");
         }
         Changed?.Invoke();
+    }
+
+    /// <summary>Takes another computer's messaging setup (<see cref="MessagingSharing"/>): saves it, and starts again an app that
+    /// runs here and whose account, secrets or paired chats changed (or stops one that is no longer connected). False when it
+    /// couldn't be saved.</summary>
+    internal bool Follow(Func<MessagingPreferences, MessagingPreferences> change)
+    {
+        MessagingPreferences before, after;
+        lock (gate)
+        {
+            before = preferences;
+            after = change(preferences);
+            if (!after.Save(directory)) return false;
+            preferences = after;
+        }
+        foreach (var app in Enum.GetValues<MessagingApp>())
+            if (before[app].CredentialId != after[app].CredentialId || !before[app].Chats.SequenceEqual(after[app].Chats) ||
+                before[app].Handle != after[app].Handle)
+            {
+                var running = Running(app);
+                Stop(app);
+                lock (gate) channels.Remove(app);
+                if (running) Start(app);
+            }
+        Changed?.Invoke();
+        return true;
     }
 
     public void Dispose() => Stop();

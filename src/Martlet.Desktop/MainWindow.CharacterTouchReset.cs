@@ -36,8 +36,9 @@ public partial class MainWindow
     {
         var section = new StackPanel { Margin = new Thickness(0, 20, 0, 0) };
         section.Children.Add(new TextBlock { Text = "Start over", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
-        section.Children.Add(Note("Reset this character's touch to how a fresh character starts. Choose how much to reset. Martlet asks " +
-            "first and lists what you lose. Only the model shown and the active persona change.", new Thickness(0, 0, 0, 6)));
+        section.Children.Add(HelpTip.Explain("Reset this character's touch to how a fresh character starts. Choose how much to reset: " +
+            "Martlet asks first and lists what you lose. Only the model shown and the active persona change.", new Thickness(0, 0, 0, 6),
+            "TouchZonesStartOver", "starting over", wiki: "The-Character#start-over"));
         var levels = CharacterTouchReset.Levels;
         var chosen = CharacterTouchReset.Level(touchResetLevel);
         var list = Compact(new ComboBox { ItemsSource = levels.Select(l => l.Label).ToArray(), SelectedIndex = IndexOf(chosen), MinWidth = 180 });

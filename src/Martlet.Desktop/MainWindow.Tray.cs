@@ -92,7 +92,7 @@ public partial class MainWindow
         if (!background.HintShown)
         {
             tray!.ShowNotice("Martlet is still running",
-                "Martlet keeps running in the notification area. Right-click its icon to talk, pause or exit, or change this in Settings.");
+                "Martlet keeps running in the notification area: right-click its icon to talk, pause or exit.");
             background = background with { HintShown = true };
             background.Save(store?.DataDirectory);
         }
@@ -296,7 +296,7 @@ public partial class MainWindow
         if (changingBackgroundChoice) return;
         var on = StartInTrayCheck.IsChecked == true;
         background = background with { StartInTray = on };
-        var problem = background.Save(store?.DataDirectory) ? null : "Couldn't save this choice. It applies until Martlet closes.";
+        var problem = background.Save(store?.DataDirectory) ? null : "Couldn't save this choice, so it applies only until Martlet closes.";
         if (ReadStartup().State == StartupState.On) problem = ChangeStartup(true) ?? problem;
         RenderBackground(problem);
     }
@@ -309,7 +309,7 @@ public partial class MainWindow
             ErrorLog.Info(on ? "Closing the window keeps Martlet in the notification area." : "Closing the window exits Martlet.");
             if (!background.Save(store?.DataDirectory))
             {
-                RenderBackground("Couldn't save this choice. It applies until Martlet closes.");
+                RenderBackground("Couldn't save this choice, so it applies only until Martlet closes.");
                 return;
             }
         }
@@ -370,8 +370,8 @@ public partial class MainWindow
             ? "Martlet's notification-area icon isn't available, so closing the window exits Martlet."
             : background.CloseToTray
                 ? host
-                    ? "Closing the window keeps Martlet running in the notification area by the clock. Right-click its icon to open or exit Martlet."
-                    : "Closing the window keeps Martlet running in the notification area by the clock. Right-click its icon to talk, pause or exit."
+                    ? "Closing the window keeps Martlet running in the notification area by the clock; right-click its icon to open or exit Martlet."
+                    : "Closing the window keeps Martlet running in the notification area by the clock; right-click its icon to talk, pause or exit."
                 : "Closing the window exits Martlet.";
         string? expected;
         try { expected = StartupCommand(background.StartInTray); }

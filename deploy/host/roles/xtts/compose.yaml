@@ -8,9 +8,9 @@
 services:
   xtts:
     build:
-      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/xtts
-      dockerfile: host/Dockerfile
-    image: martlet-xtts:1
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers
+      dockerfile: xtts/host/Dockerfile
+    image: martlet-xtts:2
     pull_policy: build
     restart: unless-stopped
     environment:

@@ -129,7 +129,7 @@ public sealed record VoiceRoster
     public const int MaximumBytes = MaximumVoices * MaximumVoiceJsonBytes + MaximumTombstones * MaximumTombstoneJsonBytes + 4_096;
     private const long MaximumRevision = long.MaxValue / 4;
     private static readonly string TooLargeMessage =
-        $"The voice list is larger than {(MaximumBytes + (1 << 20) - 1) >> 20} MB. Forget or merge some voices in Companion › People first.";
+        $"The voice list is larger than {(MaximumBytes + (1 << 20) - 1) >> 20} MB, so forget or merge some voices in Companion › People first.";
 
     internal static readonly JsonSerializerOptions Json = new()
     {

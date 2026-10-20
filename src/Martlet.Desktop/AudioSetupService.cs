@@ -178,7 +178,7 @@ public sealed class AudioSetupService
                 original.IsCancellationRequested ? "Microphone test canceled." :
                 failure is not null ? "Microphone test failed." : signal switch
                 {
-                    AudioInputSignal.DetectableAmplitude => "Microphone test passed. Sound was received and discarded.",
+                    AudioInputSignal.DetectableAmplitude => "Microphone test passed; sound was received and discarded.",
                     AudioInputSignal.BelowAdvisoryThreshold => "Sound was too quiet.",
                     AudioInputSignal.InsufficientFrames => "Not enough sound was received.",
                     AudioInputSignal.IntermittentAmplitude => "Sound was too brief or uneven.",
@@ -237,7 +237,7 @@ public sealed class AudioSetupService
                 terminal.DeviceConsumedSamples == SyntheticTone.SampleCount && released && failure is null && !original.IsCancellationRequested;
             view.Publish(new(AudioSetupAction.Output, factory.ExpiredOpenReleased
                     ? "Speaker test expired."
-                    : succeeded ? "Test sound played. Confirm if you heard it." : terminal.State.ToString(),
+                    : succeeded ? "Test sound played; confirm if you heard it." : terminal.State.ToString(),
                 true, succeeded, released, Samples: terminal.DeviceConsumedSamples, Error: failure,
                 Checkpoint: succeeded ? new() { ConfigurationRevision = choice.ConfigurationRevision, TestedAt = clock.GetUtcNow(), Outcome = LocalAudioOutcome.ToneDrained } : null));
         }

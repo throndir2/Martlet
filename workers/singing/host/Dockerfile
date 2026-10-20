@@ -2,13 +2,13 @@
 # Demucs 4.0.1 (MIT), Amphion's code (MIT) for the optional VevoSing and Vevo2, and the other models the owner may add
 # (HeartMuLa, DiffRhythm, YuE2, Seed-VC: each only when chosen, with its own packages), with hash-pinned PyTorch 2.10
 # (CUDA 12.8) and the singing worker and its loopback HTTP front (martlet_singing). Built on the host by
-# "martlet-host add singing" (compose build, context workers/singing). Sources are fetched at pinned commits (the commit
+# "martlet-host add singing" (compose build, context workers). Sources are fetched at pinned commits (the commit
 # ID is checked); models are not in the image: the role's provisioning step downloads the pinned files into the
 # martlet-singing-models volume, and nothing is downloaded at run time (HF_HUB_OFFLINE; every model loads from local paths).
 FROM python:3.11-slim-bookworm@sha256:2333bd330d12de02514770b3585cad313644316047cdee24a7acfdece6de6efb AS sources
 
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY martlet_singing/pins.py /tmp/pins.py
+COPY singing/martlet_singing/pins.py /tmp/pins.py
 # Each source at its pinned commit; the checkout is refused unless HEAD is exactly that commit.
 RUN set -eu; \
     fetch() { git init -q "$1" && git -C "$1" fetch -q --depth 1 "$2" "$3" && git -C "$1" checkout -q FETCH_HEAD \
@@ -40,7 +40,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN echo 'pip==26.2.1 --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e' > /tmp/pip.lock \
  && python3.11 -m pip install --no-deps --require-hashes --no-compile -r /tmp/pip.lock && rm -f /tmp/pip.lock
 
-COPY host/requirements.lock /tmp/requirements.lock
+COPY singing/host/requirements.lock /tmp/requirements.lock
 RUN grep -A1 '^setuptools==' /tmp/requirements.lock | sed 's/ \\$//; s/^ *//' | tr '\n' ' ' > /tmp/setuptools.lock \
  && python3.11 -m pip install --no-deps --require-hashes --no-compile -r /tmp/setuptools.lock \
  && python3.11 -m pip install --no-deps --require-hashes --no-compile --no-build-isolation \
@@ -50,7 +50,7 @@ RUN grep -A1 '^setuptools==' /tmp/requirements.lock | sed 's/ \\$//; s/^ *//' | 
 
 # The voice-match stage's own Transformers (4.46.3, for SoulX-Singer's and VevoSing's Llama code), first on that process's path
 # only (martlet_singing.match; ACE-Step keeps 4.57).
-COPY host/requirements-match.lock /tmp/requirements-match.lock
+COPY singing/host/requirements-match.lock /tmp/requirements-match.lock
 RUN python3.11 -m pip install --no-deps --require-hashes --no-compile --target /opt/martlet-singing/match-site \
       -r /tmp/requirements-match.lock \
  && rm -rf /opt/martlet-singing/match-site/bin /tmp/requirements-match.lock
@@ -62,8 +62,8 @@ ARG SINGING_HEARTMULA=no
 ARG SINGING_DIFFRHYTHM=no
 ARG SINGING_SEEDVC=no
 ARG SINGING_YUE=no
-COPY host/requirements-heartmula.lock host/requirements-diffrhythm.lock host/requirements-seedvc.lock \
-     host/requirements-yue.lock /tmp/extras/
+COPY singing/host/requirements-heartmula.lock singing/host/requirements-diffrhythm.lock singing/host/requirements-seedvc.lock \
+     singing/host/requirements-yue.lock /tmp/extras/
 RUN set -eu; mkdir -p /opt/martlet-singing/extras; \
     for name in heartmula diffrhythm seedvc yue; do \
       variable="SINGING_$(echo "$name" | tr a-z A-Z)"; eval "chosen=\${$variable}"; \
@@ -79,7 +79,8 @@ RUN set -eu; mkdir -p /opt/martlet-singing/extras; \
     rm -rf /tmp/extras
 
 COPY --from=sources /src /opt/martlet-singing/src
-COPY martlet_singing /opt/martlet-singing/app/martlet_singing
+COPY singing/martlet_singing /opt/martlet-singing/app/martlet_singing
+COPY common/martlet_worker_host.py /opt/martlet-singing/app/martlet_worker_host.py
 ENV PYTHONPATH=/opt/martlet-singing/app:/opt/martlet-singing/src/ace-step:/opt/martlet-singing/src/ace-step/acestep/third_parts/nano-vllm:/opt/martlet-singing/src/soulx-singer \
     MARTLET_SINGING_ROOT=/opt/martlet-singing MARTLET_SINGING_SOURCES=/opt/martlet-singing/src MARTLET_SINGING_PORT=50085 \
     MARTLET_SINGING_JOBS=/tmp/martlet-singing-jobs MARTLET_SINGING_MATCH_SITE=/opt/martlet-singing/match-site \

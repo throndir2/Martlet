@@ -105,7 +105,7 @@ public partial class MainWindow
             Row(reset));
     }
 
-    /// <summary>What the style card says is saved: "Saved on this PC. General: exaggeration 0.5, CFG weight 0.5. ..."</summary>
+    /// <summary>What the style card says is saved, in one sentence: "Saved on this PC (general: exaggeration 0.5, ...)."</summary>
     internal static string StyleState(ChatterboxStyle style) =>
-        (style == ChatterboxStyle.Default ? "Resemble's suggestions. " : "Saved on this PC. ") + style.Describe();
+        (style == ChatterboxStyle.Default ? "Resemble's suggestions (" : "Saved on this PC (") + Lowered(style.Describe()).TrimEnd('.') + ").";
 }

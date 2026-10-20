@@ -1,4 +1,4 @@
-# Martlet Chatterbox Turbo host role image. Built by "martlet-host add chatterbox" from workers/chatterbox.
+# Martlet Chatterbox Turbo host role image. Built by "martlet-host add chatterbox" from workers/chatterbox (compose build, context workers).
 FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
 
 ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_ROOT_USER_ACTION=ignore \
@@ -8,7 +8,7 @@ RUN echo 'pip==26.2.1 --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d8
  && python3.12 -m pip install --no-deps --require-hashes --no-compile -r /tmp/pip.lock && rm -f /tmp/pip.lock
 ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 NUMBA_CACHE_DIR=/tmp/numba MPLCONFIGDIR=/tmp/matplotlib MARTLET_CHATTERBOX_PORT=50083
 
-COPY host/requirements.lock /tmp/requirements.lock
+COPY chatterbox/host/requirements.lock /tmp/requirements.lock
 RUN grep -A200 '^setuptools==' /tmp/requirements.lock | sed '/^    # via/q' > /tmp/setuptools.lock \
  && python3.12 -m pip install --no-deps --require-hashes --no-compile -r /tmp/setuptools.lock \
  && python3.12 -m pip install --no-deps --require-hashes --no-compile --no-build-isolation -r /tmp/requirements.lock \
@@ -16,7 +16,7 @@ RUN grep -A200 '^setuptools==' /tmp/requirements.lock | sed '/^    # via/q' > /t
  && find /usr/local/lib/python3.12/site-packages -name __pycache__ -type d -prune -exec rm -rf {} + \
  && find /usr/local/lib/python3.12/site-packages -name '*.pyc' -type f -exec rm -f {} +
 
-COPY martlet_chatterbox_host.py /opt/martlet-chatterbox/host/martlet_chatterbox_host.py
+COPY chatterbox/martlet_chatterbox_host.py common/martlet_worker_host.py /opt/martlet-chatterbox/host/
 ENV MARTLET_CHATTERBOX_ROOT=/opt/martlet-chatterbox PYTHONPATH=/opt/martlet-chatterbox/host
 RUN printf '#!/bin/sh\nexec /usr/local/bin/python3.12 /opt/martlet-chatterbox/host/martlet_chatterbox_host.py "$@"\n' > /usr/local/bin/martlet-chatterbox \
  && chmod 0755 /usr/local/bin/martlet-chatterbox \

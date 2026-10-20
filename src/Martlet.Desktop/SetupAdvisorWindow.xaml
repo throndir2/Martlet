@@ -24,19 +24,17 @@
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="24" MaxWidth="900">
                 <TextBlock Text="Find your setup" FontSize="24" FontWeight="SemiBold"/>
-                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16"
-                    Text="Answer three quick questions. Martlet will suggest a setup. Nothing changes until you choose an action."/>
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16">Answer three quick questions, and Martlet suggests a setup.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Nothing changes until you choose an action on the last step." Wiki="First-Steps#4-use-the-suggested-setup" AutomationProperties.AutomationId="Help-AdvisorIntro" AutomationProperties.Name="About the setup advisor"/></InlineUIContainer></TextBlock>
 
                 <StackPanel x:Name="GoalStep">
                     <TextBlock Text="1. What matters most to you?" Style="{DynamicResource SectionHeading}"/>
-                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
-                        Text="The conversation model is the biggest choice. Martlet runs it on your own computers for free, with no account; an online model can be smarter but needs a sign-up and may cost money."/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10">The conversation model (Thinking) is the biggest choice.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Martlet runs it free on your own computers, with no account. An online model can be smarter, but it needs a sign-up and may cost money." Wiki="First-Steps#4-use-the-suggested-setup" AutomationProperties.AutomationId="Help-AdvisorGoal" AutomationProperties.Name="About the conversation model"/></InlineUIContainer></TextBlock>
                     <RadioButton x:Name="BalancedGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalBalanced"
                                  AutomationProperties.Name="Balanced, recommended">
                         <StackPanel>
                             <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="Run Thinking free on your own graphics card, or the processor if there is none. No account or sign-up needed."/>
+                                Text="Run Thinking free on your own graphics card, or on the processor if there is none, with no account or sign-up."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="SmartestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalSmartest"
@@ -44,7 +42,7 @@
                         <StackPanel>
                             <TextBlock Text="Smartest answers" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="Use a larger online model for the best replies. Needs an account with the provider, and costs may apply."/>
+                                Text="Use a larger online model for the best replies; it needs an account with the provider and may cost money."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="FastestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalFastest"
@@ -60,7 +58,7 @@
                         <StackPanel>
                             <TextBlock Text="Private and offline" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="Run everything on your own computers. Works best with a strong GPU."/>
+                                Text="Run everything on your own computers; a strong GPU works best."/>
                         </StackPanel>
                     </RadioButton>
                 </StackPanel>
@@ -68,7 +66,7 @@
                 <StackPanel x:Name="FeatureStep" Visibility="Collapsed">
                     <TextBlock Text="2. What should Martlet do?" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
-                        Text="Choose how you want to use Martlet. You can also just type and read replies."/>
+                        Text="Choose how you want to use Martlet (you can also just type and read replies)."/>
                     <CheckBox x:Name="VoiceInputChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureVoiceInput"
                               Content="Talk with my microphone"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
@@ -84,7 +82,7 @@
                     <CheckBox x:Name="CustomVoiceChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureCustomVoice"
                               Content="Use a custom voice" Checked="CustomVoice_Checked"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
-                        Text="Needs an NVIDIA GPU. Only use voices you have permission to use."/>
+                        Text="Needs an NVIDIA GPU, and use only voices you have permission to use."/>
                 </StackPanel>
 
                 <StackPanel x:Name="HardwareStep" Visibility="Collapsed">
@@ -105,7 +103,7 @@
                     <ComboBox x:Name="ExtraMachinesChoice" MinHeight="30" SelectionChanged="ExtraMachines_Changed"
                               AutomationProperties.AutomationId="ExtraMachines" AutomationProperties.Name="Other computers I can dedicate to Martlet"/>
                     <TextBlock x:Name="ExtraMachinesHint" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
-                        Text="Add computers you can dedicate to Martlet. If you have more than five, list the strongest."/>
+                        Text="Add the computers you can dedicate to Martlet (with more than five, list the strongest)."/>
                     <StackPanel x:Name="OtherComputersPanel" AutomationProperties.AutomationId="OtherComputers"/>
                 </StackPanel>
 

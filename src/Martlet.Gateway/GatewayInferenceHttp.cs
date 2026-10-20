@@ -7,9 +7,11 @@ using Microsoft.AspNetCore.Http.Features;
 
 namespace Martlet.Gateway;
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayInferenceRoutes(GatewayHttpServices services, GatewaySpeakingVoiceStore speakingVoices) : GatewayRouteHandler(services)
 {
-    private async ValueTask InvokeInferenceAsync(
+    private GatewaySpeakingVoiceStore SpeakingVoices { get; } = speakingVoices;
+
+    internal async ValueTask InvokeInferenceAsync(
         HttpContext context,
         Guid traceId,
         GatewayInferenceRoute route)
@@ -95,7 +97,7 @@ internal sealed partial class GatewayHttpApplication
         return text;
     }
 
-    private async ValueTask InvokeInferenceCancellationAsync(
+    internal async ValueTask InvokeInferenceCancellationAsync(
         HttpContext context,
         Guid traceId)
     {
@@ -531,58 +533,6 @@ internal sealed partial class GatewayHttpApplication
                 if (failureCode is null)
                     context.Abort();
             }
-        }
-    }
-
-    private static async ValueTask<byte[]> ReadInferenceBodyAsync(
-        HttpRequest request,
-        int maximumBytes,
-        CancellationToken cancellationToken)
-    {
-        GatewayRules.Require(
-            (request.ContentType is "application/json" or
-                "application/json; charset=utf-8") &&
-            !request.Headers.ContainsKey("Content-Encoding") &&
-            (request.ContentLength is null or >= 1) &&
-            (request.ContentLength is null ||
-                request.ContentLength <= maximumBytes),
-            request.ContentLength > maximumBytes
-                ? "request.too_large"
-                : "request.invalid");
-        var feature = request.HttpContext.Features
-            .Get<IHttpMaxRequestBodySizeFeature>();
-        if (feature is { IsReadOnly: false })
-            feature.MaxRequestBodySize = maximumBytes;
-
-        using var output = request.ContentLength is > 0
-            ? new MemoryStream(checked((int)request.ContentLength.Value))
-            : new MemoryStream();
-        var buffer = new byte[8_192];
-        try
-        {
-            while (true)
-            {
-                var read = await request.Body.ReadAsync(
-                    buffer,
-                    cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                    break;
-                if (output.Length + read > maximumBytes)
-                    throw new GatewayProtocolException("request.too_large");
-                output.Write(buffer, 0, read);
-            }
-            GatewayRules.Require(output.Length > 0 &&
-                (request.ContentLength is null ||
-                    output.Length == request.ContentLength),
-                "request.invalid");
-            return output.ToArray();
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(buffer);
-            if (output.TryGetBuffer(out var segment))
-                CryptographicOperations.ZeroMemory(
-                    segment.AsSpan(0, checked((int)output.Length)));
         }
     }
 

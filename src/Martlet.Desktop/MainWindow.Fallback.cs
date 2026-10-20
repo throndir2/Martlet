@@ -27,8 +27,8 @@ public partial class MainWindow
 
     /// <summary>The fallback in words for its status line ("FallbackNow").</summary>
     internal static string FallbackStatus(ThinkingFallbackSettings? fallback, SetupRoute? thinking) =>
-        fallback is null ? "Off. If Thinking fails, Martlet says so and you try again."
-        : fallback.Same(thinking) ? $"Same as Thinking ({fallback.ModelId}), so it adds nothing. Choose another model or provider."
+        fallback is null ? "Off: when Thinking fails, Martlet says so and you try again."
+        : fallback.Same(thinking) ? $"Same as Thinking ({fallback.ModelId}), so it adds nothing; choose another model or provider."
         : $"{LiveConversationConfiguration.FallbackName(fallback)}: {fallback.ModelId}" +
             (fallback.CredentialId is not null ? " (its own key saved)"
                 : fallback.UsesThinkingKey(thinking) ? " (uses Thinking's key)" : " (no key)");
@@ -59,8 +59,9 @@ public partial class MainWindow
 
         return Card(
             Heading("If Thinking fails"),
-            Note("If Thinking fails before it says anything (an error, a rate limit or no answer in 15 seconds), Martlet asks this " +
-                "one instead. Screen and camera glances use it too, so choose a model that sees images.", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("If Thinking fails before it says anything, Martlet asks this model instead. Screen and camera glances use " +
+                "it too, so choose a model that sees images.", new Thickness(0, 0, 0, 8), "FallbackAbout", "the Thinking fallback",
+                wiki: "Thinking#when-thinking-fails-or-is-slow"),
             now,
             // Off and the recommended provider; Show N more lists the others.
             OptionPickerBody("Fallback", options, rows: 2));
@@ -91,16 +92,16 @@ public partial class MainWindow
         }
         var url = Url();
         var keyStatus = Note(saved?.CredentialId is not null && saved.Origin == url
-                ? $"Its {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
+                ? $"Its {p.Name} key is saved; leave this empty to keep it, or paste a new key."
             : thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin == url
                 ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
-            : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
+            : p.NeedsKey ? $"Paste your {p.Name} API key; Martlet saves it in Windows Credential Manager."
             : "Add a key only if your server needs one.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "FallbackKeyStatus");
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8), IsChecked = saved is not null && saved.Origin == url,
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                Text = $"I choose {p.Name} as the fallback for Thinking. When Thinking fails, your messages, recent " +
-                    "conversation and any screen or camera image of that reply are sent there instead, and requests may cost money." } };
+                Text = $"I choose {p.Name} as the fallback for Thinking: when Thinking fails, my messages, recent " +
+                    "conversation and any screen or camera image of that reply go there instead, and requests may cost money." } };
         AutomationProperties.SetAutomationId(consent, "FallbackConsent");
         baseUrl.TextChanged += (_, _) => { if (!baseUrl.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         model.TextChanged += (_, _) => { if (!model.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
@@ -154,7 +155,7 @@ public partial class MainWindow
                 var keep = old?.Origin == url ? old.CredentialId : null;
                 chosen = new() { Origin = url, ModelId = model, CredentialId = keep, ConfigurationRevision = Guid.NewGuid() };
                 if (chosen.Same(thinking))
-                    throw new ContractException(ErrorCode.InvalidContract, "That's what Thinking uses already. Choose another model or provider.");
+                    throw new ContractException(ErrorCode.InvalidContract, "That's what Thinking uses already, so choose another model or provider.");
                 if (key is null && provider.NeedsKey && keep is null && !chosen.UsesThinkingKey(thinking))
                     throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
                 if (key is not null)

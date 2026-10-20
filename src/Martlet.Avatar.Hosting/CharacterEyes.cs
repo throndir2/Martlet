@@ -662,6 +662,32 @@ public static class CharacterEyes
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
+    // ---------- shared with the owner's other computers ----------
+
+    /// <summary>The household setting that carries every model's measurement to the owner's other computers, so a model is
+    /// measured once for all of them (the pictures stay on the computer that measured).</summary>
+    public const string SharedKey = "character-eyes";
+    private static readonly JsonSerializerOptions ShareJson = new(Json) { WriteIndented = false };
+
+    /// <summary>Every measurement as it travels: the file's document, compact, sorted by model.</summary>
+    public static string Share(string dataDirectory) =>
+        JsonSerializer.Serialize(new Document(1, [.. LoadAll(dataDirectory).OrderBy(m => m.ModelId, StringComparer.Ordinal)]), ShareJson);
+
+    /// <summary>Takes another computer's measurements (<see cref="Share"/>'s text) in place of this PC's. False when they were saved
+    /// by a newer Martlet or can't be read.</summary>
+    public static async Task<bool> ReplaceAllAsync(string dataDirectory, string shared, CancellationToken token = default)
+    {
+        Document? document;
+        try { document = JsonSerializer.Deserialize<Document>(shared, Json); }
+        catch (Exception error) when (error is JsonException or NotSupportedException) { return false; }
+        if (document is not { Version: 1, Models: { } models }) return false;
+        var valid = models.Where(m => m is { ModelId.Length: > 0, Left.IsValid: true, Right.IsValid: true } && m.Hint.IsValid).ToArray();
+        await Gate.WaitAsync(token).ConfigureAwait(false);
+        try { await WriteAsync(dataDirectory, valid, token).ConfigureAwait(false); }
+        finally { Gate.Release(); }
+        return true;
+    }
+
     /// <summary>Empties the model's picture folder before a new measurement, so it holds only what that one sends.</summary>
     public static string ClearPictures(string dataDirectory, string modelId)
     {

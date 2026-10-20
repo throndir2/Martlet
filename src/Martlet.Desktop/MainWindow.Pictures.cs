@@ -39,11 +39,11 @@ public partial class MainWindow
     internal const string PicturesTestPrompt =
         "A small songbird with a bright red breast perched on a mossy branch at sunrise, soft watercolour, warm light";
 
+    // What setting the role up downloads and agrees to, in one sentence; the wiki's
+    // Pictures-and-Creations#set-up-the-picture-making-role has every file and licence.
     private const string PicturesTerms =
-        "It builds a container with ComfyUI (GPL-3.0) and PyTorch, then downloads about 20 GB of pinned Z-Image Turbo files from " +
-        "huggingface.co/Comfy-Org/z_image_turbo (Apache-2.0): the diffusion model, its Qwen3 4B text encoder and the VAE. The " +
-        "descriptions Martlet writes go to that computer. Don't use it for anything illegal or harmful or to depict real people " +
-        "without their consent, and say pictures are AI-generated when you share them.";
+        "It needs an NVIDIA graphics card with 8 GB+ and downloads about 20 GB (ComfyUI, GPL-3.0, and Z-Image Turbo, Apache-2.0), " +
+        "and you may not use it for anything illegal or harmful or to depict real people without their consent.";
 
     private string? picturesPending;
     private string? picturesFailure;
@@ -75,8 +75,9 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(image, "PicturesTestImage");
         AutomationProperties.SetName(image, "Test picture");
         page.Children.Add(Card(Heading("Now"), now,
-            Note("Ask Martlet to draw, paint or sketch something. It draws in the background while you keep talking, shows the picture " +
-                "in the talk window and keeps it in Creations on all your computers.", new Thickness(0, 4, 0, 0)), check, image,
+            HelpTip.Explain("Ask Martlet to draw, paint or sketch something. It draws in the background while you keep talking, shows " +
+                "the picture in the talk window and keeps it in Creations on all your computers.", new Thickness(0, 4, 0, 0),
+                "PicturesAsk", "asking for a picture", wiki: "Pictures-and-Creations#asking-for-a-picture"), check, image,
             Row(on ? PageButton("Check", () => CheckPicturesAsync(test: false).Forget(), id: "PicturesCheck") : null,
                 on ? PageButton("Draw a test picture", () => CheckPicturesAsync(test: true).Forget(), id: "PicturesTest") : null)));
 
@@ -84,10 +85,10 @@ public partial class MainWindow
         {
             Area = PoolAreas.PictureMaking,
             Heading = "Where it draws",
-            Intro = "The places that draw pictures, in order. A picture goes to the first one that is free; when all are busy, it waits " +
-                "for the one with the shortest line. Each place keeps its own settings: open Settings to set up the Picture making role there " +
-                "or choose its workflow. With nothing on, pictures are off. This list stays on this PC; the pictures are shared with " +
-                "all your computers.",
+            Intro = "The places that draw pictures, in order. A picture goes to the first one that is free, and open Settings to set " +
+                "a place up or choose its workflow. With nothing on, pictures are off; this list stays on this PC, but the pictures " +
+                "are shared with all your computers.",
+            Wiki = "Pictures-and-Creations#picture-making",
             Status = PictureMemberStatus,
             Settings = PictureMemberSettings,
             CanAdd = host => !host.Shared && HostCan(host.HostId, HostRoles.Pictures) is not { Allowed: false },
@@ -101,11 +102,11 @@ public partial class MainWindow
     {
         if (PictureClient.Fixture) return "FIXTURE - NOT AI: pictures come from the test picture maker (MARTLET_PICTURES_FIXTURE).";
         if (order.Count == 0)
-            return list.Members.Count == 0 ? $"Off. {OptionalExtras.OffMeans(CompanionTab.Pictures)}. Add a place below to turn pictures on."
+            return list.Members.Count == 0 ? $"Off: {OptionalExtras.OffMeans(CompanionTab.Pictures)} until you add a place below."
                 : "Off: no place in the Picture making list is on and usable on this PC.";
         var first = $"Martlet draws on {PictureMakingPoolMembers.Describe(order[0])}.";
         return order.Count == 1 ? first
-            : first + $" When it is busy, {string.Join(" or ", order.Skip(1).Select(PictureMakingPoolMembers.Describe))} draws instead (it tries them in this order).";
+            : first.TrimEnd('.') + $", or {string.Join(" or ", order.Skip(1).Select(PictureMakingPoolMembers.Describe))} when it is busy (in this order).";
     }
 
     // A place's position in the saved list, for its settings' automation IDs.
@@ -118,7 +119,7 @@ public partial class MainWindow
         if (store is null) return;
         if (!PictureClient.SaveList(store.DataDirectory, next))
         {
-            ActionText.Text = "Couldn't save the Picture making list on this PC. Check access to Martlet's data folder.";
+            ActionText.Text = "Couldn't save the Picture making list on this PC: check access to Martlet's data folder.";
             return;
         }
         picturesCheck = null;
@@ -215,14 +216,16 @@ public partial class MainWindow
                     AutomationProperties.SetHelpText(setUp, state.Cannot);
                 }
                 stack.Children.Add(Row(setUp));
-                stack.Children.Add(Note("Set up by Martlet in Docker like its other roles. It shares the graphics card with the voice and " +
-                    "listening, uses it only while drawing and frees it a few minutes after the last picture.", new Thickness(0, 4, 0, 8)));
+                stack.Children.Add(HelpTip.Explain("Set up by Martlet in Docker like its other roles. It shares the graphics card with " +
+                    "the voice and listening, uses it only while drawing and frees it a few minutes after the last picture.",
+                    new Thickness(0, 4, 0, 8), $"PicturesRole-{i}", "the Picture making role",
+                    wiki: "Pictures-and-Creations#set-up-the-picture-making-role"));
             }
         }
         else
-            stack.Children.Add(Note("Martlet sends ComfyUI the workflow and the description through ComfyUI's own API and fetches the " +
-                "picture. Start ComfyUI with --listen so other computers can reach it (it has no password, so only on your own network).",
-                new Thickness(0, 0, 0, 8)));
+            stack.Children.Add(HelpTip.Explain("Start ComfyUI with --listen so Martlet can reach it, but only on your own network, since " +
+                "it has no password. Martlet sends it the workflow and the description through ComfyUI's own API and fetches the picture.",
+                new Thickness(0, 0, 0, 8), $"PicturesComfy-{i}", "your own ComfyUI", wiki: "Pictures-and-Creations#your-own-comfyui"));
         PictureWorkflowEditor(member, i, stack);
         return stack;
     }
@@ -247,10 +250,12 @@ public partial class MainWindow
         var checkpointRow = Labeled("Checkpoint", checkpoint);
         var file = member.Setting(PoolSettingKeys.File);
         var custom = file is null ? null : PicturesSettings.LoadWorkflow(store!.DataDirectory, file);
-        var customNote = Note(custom is null
-            ? "In ComfyUI, open your workflow and use Workflow › Export (API), then load that file. Put {{prompt}} where the description " +
-              "goes (and {{negative}}, {{seed}}, {{width}}, {{height}} if you like); otherwise Martlet fills the sampler's prompt itself."
-            : $"Its workflow is loaded ({custom.Count} nodes).", new Thickness(28, 6, 0, 0));
+        var customNote = custom is null
+            ? HelpTip.Explain("In ComfyUI, open your workflow and use Workflow › Export (API), then load that file. Put {{prompt}} where " +
+                "the description goes (and {{negative}}, {{seed}}, {{width}}, {{height}} if you like), or Martlet fills the sampler's " +
+                "prompt itself.", new Thickness(28, 6, 0, 0), $"PicturesWorkflowFile-{i}", "your own workflow",
+                wiki: "Pictures-and-Creations#your-own-comfyui")
+            : Note($"Its workflow is loaded ({custom.Count} nodes).", new Thickness(28, 6, 0, 0));
         var load = PageButton(custom is null ? "Load workflow file…" : "Load another file…", () => LoadPicturesWorkflow(member), link: true,
             id: $"PicturesLoadWorkflow-{i}");
         var customPanel = new StackPanel { Children = { customNote, Row(load) } };
@@ -329,8 +334,9 @@ public partial class MainWindow
         catch (PictureException error)
         {
             picturesComfyStatus.Remove(member.Key);
-            picturesComfyState[member.Key] = error.Message +
-                (member.Kind == PoolMemberKind.Address ? " Is ComfyUI running, started with --listen, and is the address right?" : "");
+            picturesComfyState[member.Key] = member.Kind == PoolMemberKind.Address
+                ? error.Message.TrimEnd('.') + ": check that ComfyUI runs, started with --listen, and that the address is right."
+                : error.Message;
         }
         finally { (api as IDisposable)?.Dispose(); }
         if (!closing && openTab == CompanionTab.Pictures) RenderTab();
@@ -386,11 +392,11 @@ public partial class MainWindow
             : member.Provider == PictureMakingPoolMembers.OpenRouter ? "Paste your OpenRouter key (sk-or-v1-…)"
             : $"Paste your {name} API key");
         key.PasswordChanged += (_, _) => tabEdited = true;
-        var status = Note(Capitalized(PictureKeyText(member)) + ". Paste a key to save it as its own.", new Thickness(0, 4, 0, 0));
+        var status = Note(Capitalized(PictureKeyText(member)) + "; paste a key to save it as its own.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(status, $"PicturesKeyStatus-{i}");
         var save = PageButton("Save key", () => SavePictureKeyAsync(member, key).Forget(), primary: true, id: $"PicturesSaveKey-{i}");
         AutomationProperties.SetName(save, $"Save the {name} key for pictures");
-        stack.Children.Add(Note($"Its model is part of the place. To draw with another {name} model, add {name} again with that model.",
+        stack.Children.Add(Note($"Its model is part of the place, so add {name} again to draw with another {name} model.",
             new Thickness(0, 0, 0, 8)));
         stack.Children.Add(new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 0, 0, 4) });
         stack.Children.Add(key);
@@ -472,11 +478,11 @@ public partial class MainWindow
         InputHint.SetText(key, provider == PictureMakingPoolMembers.NvidiaBuild ? "Paste your NVIDIA Build key (nvapi-…)"
             : "Paste your OpenRouter key (sk-or-v1-…)");
         var keyStatus = Note(draft.UsesThinkingKey(thinking) ? $"Leave this empty to use Thinking's {name} key, or paste another key."
-            : $"Paste your {name} API key. Martlet saves it in Windows Credential Manager.", new Thickness(0, 4, 0, 0));
+            : $"Paste your {name} API key; Martlet saves it in Windows Credential Manager.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "PicturesKeyStatus");
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8),
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                Text = $"I add {name} to the Picture making list. The description of each picture drawn there goes to {name}, and each picture may cost money." } };
+                Text = $"I add {name} to the Picture making list: the description of each picture drawn there goes to {name}, and each picture may cost money." } };
         AutomationProperties.SetAutomationId(consent, "PicturesConsent");
         model.TextChanged += (_, _) => { if (model.IsKeyboardFocusWithin) { tabEdited = true; consent.IsChecked = false; } };
         key.PasswordChanged += (_, _) => tabEdited = true;
@@ -488,7 +494,7 @@ public partial class MainWindow
         stack.Children.Add(new TextBlock { Text = "A cloud provider", FontWeight = FontWeights.SemiBold });
         stack.Children.Add(Note(provider == PictureMakingPoolMembers.NvidiaBuild
             ? "NVIDIA's FLUX models (build.nvidia.com), with the same nvapi- key as NVIDIA Build's chat models."
-            : "Any OpenRouter model that draws (openrouter.ai/models, output: image). Martlet asks for one picture at about 1K in the shape it chose.",
+            : "Any OpenRouter model that draws (openrouter.ai/models, output: image), for one picture of about 1K in the shape Martlet chose.",
             new Thickness(0, 2, 0, 8)));
         stack.Children.Add(Labeled("Provider", choice));
         stack.Children.Add(new Label { Content = "_Model ID", Target = model, Padding = new Thickness(0, 8, 0, 4) });
@@ -550,8 +556,8 @@ public partial class MainWindow
             }
             written = null;
             picturesCheck = null;
-            var done = $"{PictureMakingPoolMembers.Describe(member)} is now last in the Picture making list. Move it up to draw there sooner." +
-                (key is null ? "" : " Its API key is saved in Windows Credential Manager.");
+            var done = $"{PictureMakingPoolMembers.Describe(member)} is now last in the Picture making list" +
+                (key is null ? "" : ", with its API key in Windows Credential Manager") + "; move it up to draw there sooner.";
             ErrorLog.Info($"Pictures: added {PictureMakingPoolMembers.Describe(member)} to the Picture making list (the owner agreed to pay).");
             ActionText.Text = picturesCloudState = done;
         }
@@ -575,11 +581,11 @@ public partial class MainWindow
     private string? ThisPcCannotDraw()
     {
         if (ReferenceEquals(machine, MachineInfo.Unknown)) return null;
-        if (machine.ArmRefusal("pictures") is { } arm) return arm + " Use another computer, your own ComfyUI or a cloud provider.";
+        if (machine.ArmRefusal("pictures") is { } arm) return arm.TrimEnd('.') + ": use another computer, your own ComfyUI or a cloud provider.";
         var nvidia = machine.Gpus.Where(g => g.IsNvidia).OrderByDescending(g => g.MemoryGb ?? 0).FirstOrDefault();
         if (nvidia is null)
-            return $"Needs an NVIDIA graphics card; this PC has {(machine.Gpus.Count == 0 ? "none" : string.Join(", ", machine.Gpus.Select(g => g.Describe())))}. " +
-                "Use another computer, your own ComfyUI or a cloud provider.";
+            return $"Needs an NVIDIA graphics card, and this PC has {(machine.Gpus.Count == 0 ? "none" : string.Join(", ", machine.Gpus.Select(g => g.Describe())))}: " +
+                "use another computer, your own ComfyUI or a cloud provider.";
         return nvidia.MemoryGb is { } gb && gb < 7.5 ? $"Needs an NVIDIA graphics card with 8 GB+; this PC has {nvidia.Describe()}." : null;
     }
 
@@ -589,16 +595,14 @@ public partial class MainWindow
     {
         if (store is null || setupService is null || closing || picturesPending is not null) return;
         var where = host is null ? "this PC" : host.HostId;
-        if (host is null && ThisPcCannotDraw() is { } cannot) { ActionText.Text = $"Picture making can't run on this PC. {cannot}"; return; }
+        if (host is null && ThisPcCannotDraw() is { } cannot) { ActionText.Text = $"Picture making can't run on this PC: {char.ToLowerInvariant(cannot[0])}{cannot[1..]}"; return; }
         var thisPc = ThisPcHost();
         if (!ConfirmationDialog.Confirm(this,
-                $"Set up Picture making on {where}?\n\n" +
                 (host is null && thisPc is null
-                    ? machine.DockerInstalled ? "Martlet first sets up its host service in Docker Desktop. "
-                        : "Martlet first installs Docker Desktop (it asks for its own terms) and sets up its host service. "
-                    : "") +
-                "It needs an NVIDIA graphics card with 8 GB+ (12 GB+ is faster) and is a large download; Martlet shows the progress.\n\n" +
-                PicturesTerms, "Set up Picture making"))
+                    ? machine.DockerInstalled ? $"Set up Picture making on {where} in Docker Desktop?"
+                        : $"Install Docker Desktop, then set up Picture making on {where}?"
+                    : $"Set up Picture making on {where}?") +
+                "\n\n" + PicturesTerms, "Set up Picture making"))
             return;
         var answers = new Dictionary<string, string>(StringComparer.Ordinal) { ["choice.PICTURES_MODEL"] = "z-image-turbo" };
         picturesFailure = null;
@@ -610,9 +614,9 @@ public partial class MainWindow
             {
                 var done = await RunHostActionAsync(host, HostRoles.Get(HostRoles.Pictures).Add, answers);
                 if (closing) return;
-                if (done is null) picturesFailure = $"Setting it up on {host.HostId} stopped. Its run window has details.";
+                if (done is null) picturesFailure = $"Setting it up on {host.HostId} stopped; its run window has details.";
                 else if (await WaitForPicturesAsync(host, lifetime.Token) is { } why)
-                    picturesFailure = $"Setup finished, but Martlet can't see Picture making on {host.HostId} yet ({why}). Check it in a minute.";
+                    picturesFailure = $"Setup finished, but Martlet can't see Picture making on {host.HostId} yet ({why}), so check it in a minute.";
                 else UsePicturesHost(host.HostId, host.HostId, thisPc: false);
                 return;
             }
@@ -628,17 +632,17 @@ public partial class MainWindow
                 var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Pictures], SetupProgress(run, "Picture making", why => stopped ??= why),
                     run.Token, answers: chosen);
                 if (exit != 0)
-                    throw new InvalidOperationException($"Installing Picture making stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
+                    throw new InvalidOperationException($"Installing Picture making stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped.TrimEnd('.'))}; the output has details.");
                 run.Status("Checking Picture making on this PC...");
                 if (await WaitForPicturesAsync(pc, run.Token) is { } why)
-                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Picture making yet ({why}). Check this PC in a minute.");
+                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Picture making yet ({why}), so check this PC in a minute.");
                 Dispatcher.Invoke(() => UsePicturesHost(pc.HostId, "this PC", thisPc: true));
-                return "Picture making is ready on this PC. Ask Martlet to draw you something.";
+                return "Picture making is ready on this PC: ask Martlet to draw you something.";
             }
             string? status;
             if (thisPc is not null)
                 status = await HostRunWindow.RunAsync(this, "Set up Picture making on this PC", run => Continue(run, thisPc)) ??
-                    (stopped is null ? "Picture making wasn't set up. The run window has details." : $"Picture making wasn't set up: {stopped}");
+                    (stopped is null ? "Picture making wasn't set up; the run window has details." : $"Picture making wasn't set up: {stopped}");
             else
             {
                 (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,
@@ -670,7 +674,7 @@ public partial class MainWindow
     private void UsePicturesHost(string hostId, string where, bool thisPc)
     {
         if (store is null) return;
-        var done = $"Picture making is ready on {where}. Ask Martlet to draw you something.";
+        var done = $"Picture making is ready on {where}: ask Martlet to draw you something.";
         var list = PictureClient.List(store.DataDirectory);
         var member = (thisPc ? list.Find(PoolMember.ThisPcKey) : null) ?? list.Find(PoolMember.Computer(hostId).Key);
         if (member is { Off: false })
@@ -719,7 +723,7 @@ public partial class MainWindow
     {
         if (store is null || picturesChecking || closing) return;
         if (test && PictureClient.FirstPaid(store.DataDirectory) is { } paid && !PictureClient.Fixture &&
-            !ConfirmationDialog.Confirm(this, $"Draw a test picture? It may go to {paid}, which may cost money.", "Draw a test picture", "Draw", "Cancel"))
+            !ConfirmationDialog.Confirm(this, $"Draw a test picture, which may go to {paid} and cost money?", "Draw a test picture", "Draw", "Cancel"))
             return;
         var thinking = homeSettings.ThinkingRoute();
         var maker = PictureClient.For(store.DataDirectory, homeSettings?.Profile.Id ?? Guid.Empty, thinking);
@@ -737,9 +741,9 @@ public partial class MainWindow
                 foreach (var place in places)
                 {
                     var availability = await place.GetAvailabilityAsync(lifetime.Token);
-                    lines.Add(availability.Available ? $"Ready: {place.Where} can draw now." : (availability.Reason ?? $"{place.Where} can't draw now.").TrimEnd('.') + ".");
+                    lines.Add(availability.Available ? $"ready: {place.Where} can draw now" : (availability.Reason ?? $"{place.Where} can't draw now").TrimEnd('.'));
                 }
-                picturesCheck = string.Join(" ", lines);
+                picturesCheck = Capitalized(string.Join("; ", lines)) + ".";
             }
             else
             {

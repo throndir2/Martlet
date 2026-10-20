@@ -272,7 +272,7 @@ public sealed class VoiceEngineKeeper<T> : IDisposable
     {
         VoiceEngineException engine => engine.Message,
         DllNotFoundException or BadImageFormatException or EntryPointNotFoundException =>
-            "The voice recognition runtime couldn't be loaded. Reinstall Martlet if this keeps happening.",
+            "The voice recognition runtime couldn't be loaded; reinstall Martlet if this keeps happening.",
         _ when error.GetType().Name == "SherpaException" => error.Message,
         _ => $"The voice recognition engine stopped working ({error.GetType().Name}: {error.Message})."
     };

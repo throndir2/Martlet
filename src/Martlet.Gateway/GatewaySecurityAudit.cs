@@ -2,13 +2,20 @@ using Microsoft.AspNetCore.Http;
 
 namespace Martlet.Gateway;
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewaySecurityAuditRoutes(GatewayHttpServices services, GatewayCredentialStore credentials, GatewayNetworkStore network,
+    GatewayFrontDoorSessions frontDoorSessions, Func<IReadOnlyList<string>> outsideListeners, Func<IReadOnlyList<string>> frontDoorListeners) : GatewayRouteHandler(services)
 {
     internal const string SecurityAuditPath = "/martlet/v1/security/audit";
 
+    private readonly GatewayCredentialStore credentials = credentials;
+    private GatewayNetworkStore Network { get; } = network;
+    private GatewayFrontDoorSessions FrontDoorSessions { get; } = frontDoorSessions;
+    private Func<IReadOnlyList<string>> OutsideListeners { get; } = outsideListeners;
+    private Func<IReadOnlyList<string>> FrontDoorListeners { get; } = frontDoorListeners;
+
     /// <summary>GET returns this host's exposure choices, its guard's totals and its most recent authentication and
     /// pairing decisions (source address, outcome, code, device or account; never secrets). Paired devices only.</summary>
-    private async ValueTask InvokeSecurityAuditAsync(HttpContext context)
+    internal async ValueTask InvokeSecurityAuditAsync(HttpContext context)
     {
         GatewayRules.Require(context.Request.Method == HttpMethods.Get, "request.invalid");
         EnsureEmptyRequest(context.Request);

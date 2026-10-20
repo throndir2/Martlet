@@ -286,9 +286,31 @@ Each stage is one pull request.
      estimate, writes text, is at most 80 GB, and its weights' size agrees with
      its parameters (a broken record, such as a split file's part, never wins a
      card). Unknown is not Yes. The planners still check the card, the headroom
-     and the owner's online answer. Martlet's host roles offer a fixed list of
-     models (`role.conf`), so a model outside it is `NativeOnly`: only a
-     companion PC's own Ollama runs it.
+     and the owner's online answer. The host roles' model choice is open
+     (`choice_open=OLLAMA_MODEL` in `role.conf`): a host installs any Ollama
+     tag or `hf.co/{repo}:{quant}` from the catalog, so a catalog model can go
+     to a host's Thinking or Deep thinking role. Only an install name a host
+     can't take is `NativeOnly` (a companion PC's own Ollama runs it). A host
+     with an older Martlet refuses the model, and the review says to update
+     Martlet there.
+   - **Bigger models for big hardware.** Deep thinking on a host takes the
+     smartest model that fits a card, the fastest of those (a mixture-of-experts
+     model writes as fast as its active parameters allow). A host's Deep
+     thinking role whose cards have room for a bigger model at least one
+     quality step smarter switches to it (an Improvement); a smaller model
+     never replaces a big one the owner runs. Live Thinking keeps its
+     first-word rule, so the bigger models go to Deep thinking, never to the
+     conversation's path.
+   - **One model across several cards (tensor split).** On a host with two or
+     more NVIDIA cards, a Deep thinking model that no single card has room for
+     is split across the fewest cards (two to four) that no live job or other
+     language model uses. Each card takes its share of the model plus 0.5 GB of
+     buffers. The change carries `GpuIndexes`, and the host gets
+     `choice.gpu=GPU-a,GPU-b` (Ollama splits the model across the cards that
+     `CUDA_VISIBLE_DEVICES` lists). A host doesn't report which cards a role
+     runs on, so a Deep thinking model too big for one card counts as split
+     across the cards with the most room. Live Thinking is never split: each
+     token would pass between cards before the first word.
    - **Smartness.** `catalog.Smartness` gives the tier of new options, served
      models and models a host keeps (`ServedModels.Tier` is the fallback).
      Martlet's own options keep the tier Martlet chose, and show the catalog's
