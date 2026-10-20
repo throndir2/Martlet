@@ -267,10 +267,10 @@ public partial class MainWindow
             case CompanionTab.Hearing: RenderHearingPage(body); break;
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Profiles: RenderProfilesTab(body); break;
-            case CompanionTab.Character: RenderCharacterTab(body); break;
+            case CompanionTab.Character: CharacterPage.Render(body); break;
             case CompanionTab.SpeechBubbles: RenderSpeechBubblesTab(body); break;
             case CompanionTab.Emotes: RenderEmotesTab(body); break;
-            case CompanionTab.Eyes: RenderEyesTab(body); break;
+            case CompanionTab.Eyes: EyesPage.Render(body); break;
             case CompanionTab.Touch: TouchPage.Render(body); break;
             case CompanionTab.Personality: PersonalityPage.Render(body); break;
             case CompanionTab.Prompts: PromptsPage.Render(body); break;
