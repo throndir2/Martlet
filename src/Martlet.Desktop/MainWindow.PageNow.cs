@@ -229,11 +229,6 @@ public partial class MainWindow
         return PageNowCard(EyesNow(prefs.GazeUsual, personality, prefs.GazeFree, from, characterEyes.Current is not null, showing), null, "EyesNow", problem);
     }
 
-    private Border TouchNowCard() => characterActions.Current is null
-        ? PageNowCard("Reading the character...", null, "TouchNow")
-        : PageNowCard(TouchNow(characterTouchZones.Current, Talk.TouchInterrupts), null, "TouchNow",
-            avatar.IsShowing ? null : "The character is hidden, so touches do nothing until it shows.");
-
     // ---------- People, Tools, Discord and Messaging ----------
 
     private Border PeopleNowCard()

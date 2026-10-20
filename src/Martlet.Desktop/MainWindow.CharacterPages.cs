@@ -89,17 +89,6 @@ public partial class MainWindow
         page.Children.Insert(0, EyesNowCard());
     }
 
-    /// <summary>Companion › Touch: Now, the shown model's touch zones, then the active persona's touch temperament (which joins
-    /// with the zones' last rows on a page just opened).</summary>
-    private void RenderTouchTab(Panel page)
-    {
-        FollowCharacterActions();
-        page.Children.Add(CharacterTouchZonesCard());
-        page.Children.Insert(0, TouchNowCard());
-        AddRow(page, CharacterTemperamentCard());
-        page.Children.Add(CharacterReactionChangesCard());
-    }
-
     private ComboBox? bubblePlacementChoice;
     private TextBox? bubbleOffsetX, bubbleOffsetY;
     private TextBlock? speechDisplayText;

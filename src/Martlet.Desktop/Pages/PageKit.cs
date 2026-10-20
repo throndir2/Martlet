@@ -242,4 +242,11 @@ internal static class PageKit
         grid.Children.Add(shown);
         return grid;
     }
+
+    /// <summary>Shows a status line only while it has something to say.</summary>
+    internal static void ShowStatusLine(TextBlock line, string? text)
+    {
+        line.Text = text ?? "";
+        line.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
 }
