@@ -229,7 +229,14 @@ is on without a model that can see).
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID (without one it finds the Martlet desktop
-running in this Windows session, and says so when none or several run). `ui_snapshot` returns window accessible names,
+running in this Windows session, and says so when none or several run). Its
+`ready` says whether the main window is shown, enabled and has its navigation
+loaded: right after Martlet starts, the window can show a moment before its
+controls are in the UI Automation tree (longer on a busy PC), so call
+`ui_connect` again until `ready` is true before you click.
+`scripts\Invoke-MartletMcp.ps1 -Desktop` waits for it. A click with `focus`
+tries the keyboard focus again for about a second while Windows brings another
+window to the front. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
 It returns the first 200 controls; `idPrefix` keeps only those whose automation ID

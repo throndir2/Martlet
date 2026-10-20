@@ -20,6 +20,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- An assistant that drives Martlet's window through MCP no longer misses a button right after Martlet starts: `ui_connect` says when the window is ready, and a click that needs the keyboard focus waits a moment for Windows. ([#1099](https://github.com/throndir2/Martlet/pull/1099))
+
 - On a PC where Windows can't give the character Direct3D 9 (for example some remote sessions), Martlet says so instead of the character renderer crashing on exit or when Companion › Touch opens. ([#1091](https://github.com/throndir2/Martlet/pull/1091))
 
 ## [0.89.0] - 2026-10-19

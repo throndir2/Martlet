@@ -1072,7 +1072,9 @@ public sealed class McpServerTests(ITestOutputHelper output)
             var automation = new DesktopAutomation(false);
             Exception? lastError = null;
             var connected = false;
-            for (var attempt = 0; attempt < 50 && !connected; attempt++)
+            // A busy PC can take several seconds to show the window (#1080).
+            var starting = Stopwatch.StartNew();
+            while (!connected && starting.Elapsed < TimeSpan.FromSeconds(30))
             {
                 await Task.Delay(100);
                 try
@@ -1083,6 +1085,16 @@ public sealed class McpServerTests(ITestOutputHelper output)
                 catch (InvalidOperationException error) { lastError = error; }
             }
             Assert.True(connected, lastError?.Message);
+            // The main window shows before its navigation is in the UI Automation tree; on a busy PC a click then misses it (#1080).
+            var waited = Stopwatch.StartNew();
+            var ready = false;
+            while (!ready && waited.Elapsed < TimeSpan.FromSeconds(30))
+            {
+                ready = JsonSerializer.SerializeToElement(await Task.Run(() => automation.Connect(process.Id))).GetProperty("ready").GetBoolean();
+                if (!ready) await Task.Delay(100);
+            }
+            output.WriteLine($"The desktop was ready {waited.ElapsedMilliseconds} ms after it connected.");
+            Assert.True(ready, "The Martlet desktop's main window did not load its navigation within 30 seconds.");
             await action(process, automation);
         }
         catch
