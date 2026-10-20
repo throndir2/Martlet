@@ -749,7 +749,7 @@
             </Grid>
 
             <!-- Conversations: the record of every conversation, from this PC and the messaging apps, to read, search, edit and
-                 delete (ConversationsView.xaml; MainWindow.Shell.cs shows it). -->
+                 delete (ConversationsView.xaml; MainWindow.Navigation.cs shows it). -->
             <local:ConversationsView x:Name="ConversationsPage" Visibility="Collapsed" MaxWidth="1200"/>
 
             <!-- Creations: everything Martlet made, kept the same on all the owner's computers (MainWindow.Creations.cs, docs/CREATIONS.md).

@@ -1510,7 +1510,7 @@ Each flow below asks for a step Martlet could do itself.
 | 9 | Host role install | Role dialog with GPU/CPU choice and options on other computers; on this PC whisper's choice is made on the Listening tab and the install asks nothing | *Automatic* preselected; the NGC key field appears only for the Audio2Face NIM engine | `HostDialogs.cs:125-148` |
 | 10 | Add a computer | Method choice, typed LAN address, *Install Docker Desktop*, pairing code, *Pair with host*, *Check host* | Join the network (B1); SSH only for Linux (B6) | `HostsWindow.xaml(.cs)` |
 | 11 | Prepare a Linux host | Type target, *Read status*, *Tick what is missing*, *Run selected* | Part of B6's runner | `PrepareHostWindow.xaml(.cs)` |
-| 12 | Prerequisites | Welcome-tour tick list (installs in a run window, no console); Ollama and Windows speech left unticked | Installed on demand by the job that needs them | `Prerequisites.cs`, `MainWindow.Shell.cs:231-260` |
+| 12 | Prerequisites | Welcome-tour tick list (installs in a run window, no console); Ollama and Windows speech left unticked | Installed on demand by the job that needs them | `Prerequisites.cs`, `MainWindow.RoleTour.cs` |
 | 13 | Firewall | Separate *make network Private* confirmation, then UAC | Inside the single elevation, only when helping others | `HostsWindow.xaml.cs:308-320`, `WindowsFirewall.cs` |
 | 14 | Memory | Storage choice and enable checkbox (they save on their own; *Save memory configuration* removed) | One switch | `MemoryWindow.xaml(.cs)` |
 | 15 | Updates | Four separate preferences | All on by default | `MainWindow.Updates.cs`, `UpdateCheckPreferences.cs` |
