@@ -23,7 +23,6 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private static StepHelp StepTip(string topic, string text, string id, string? wiki = null) => new(topic, text, id, wiki);
-    private sealed record MapElement(NetworkNode Node, Button Card, System.Windows.Shapes.Path? Track, System.Windows.Shapes.Path? Flow, Ellipse? Ring);
 
     private static readonly string Version = AppVersions.Current;
     private DeviceRole? deviceRole;
@@ -50,8 +49,6 @@ public partial class MainWindow
     /// it rather than being refused.</summary>
     private readonly ChangeTurns changes = new();
     private readonly Dictionary<string, HostCheck> hostChecks = new(StringComparer.Ordinal);
-    private readonly List<MapElement> mapElements = [];
-    private Ellipse? mapGlow;
     private string selectedNode = "this-pc";
     private readonly Dictionary<Panel, HashSet<string>> previousDone = [];
     private readonly Dictionary<Panel, string> previousSteps = [];
@@ -173,14 +170,14 @@ public partial class MainWindow
 
     // ---------- small visuals ----------
 
-    private static TextBlock Glyph(string glyph, double size, Thickness margin)
+    internal static TextBlock Glyph(string glyph, double size, Thickness margin)
     {
         var text = new TextBlock { Text = glyph, FontSize = size, Margin = margin };
         text.SetResourceReference(StyleProperty, "Icon");
         return text;
     }
 
-    private static Ellipse Dot(NodeHealth health, double size, Thickness margin)
+    internal static Ellipse Dot(NodeHealth health, double size, Thickness margin)
     {
         var dot = new Ellipse { Width = size, Height = size, Margin = margin, VerticalAlignment = VerticalAlignment.Center };
         dot.SetResourceReference(Shape.FillProperty, health switch
