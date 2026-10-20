@@ -407,7 +407,7 @@ internal sealed class LiveConversationConfiguration
                 continue;
             }
             if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
-                return $"Review {RoleName(role)} in Companion. This setup isn't available in this app.";
+                return $"This {RoleName(role)} setup isn't available in this app, so review it in Companion.";
             if (route.Consent != route.Selection()) return $"Review {RoleName(role)} in Setup.";
             if (route.CredentialId is null) return "Add an API key in Setup.";
             var supported = role switch
@@ -431,14 +431,14 @@ internal sealed class LiveConversationConfiguration
         var lines = new List<string>();
 
         if (LocalOllama)
-            lines.Add("Your messages stay on this PC in Ollama. The first reply may take a moment while the model starts.");
+            lines.Add("Your messages stay on this PC in Ollama, and the first reply may take a moment while the model starts.");
         else
             lines.Add($"Your messages and recent conversation go to {(llm is null ? "OpenAI" : LlmDestinationName(llm))}.");
 
         if (IsHost(llm))
             lines.Add("That host's owner controls its logs.");
         else if (chat && llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl)
-            lines.Add("OpenRouter may forward requests to a model provider. Privacy and pricing depend on that provider.");
+            lines.Add("OpenRouter may forward requests to a model provider, whose privacy and pricing apply.");
         else if (chat && !LocalOllama && LocalModelServers.IsOnThisComputer(llm!.Origin))
             lines.Add("That app decides what it keeps, and whether anything leaves this PC.");
         else if (chat)
@@ -450,7 +450,7 @@ internal sealed class LiveConversationConfiguration
         if (IsLocalStt(stt))
             lines.Add("If you speak, transcription happens on this PC.");
         else if (sttHost is not null)
-            lines.Add($"If you speak, audio goes to your Martlet host {sttHost.HostId} for transcription. Martlet doesn't store recordings.");
+            lines.Add($"If you speak, audio goes to your Martlet host {sttHost.HostId} for transcription, and Martlet doesn't store recordings.");
         else
             lines.Add("If you speak, audio goes to OpenAI for transcription.");
 
@@ -458,11 +458,11 @@ internal sealed class LiveConversationConfiguration
         {
             var tts = Routes.SingleOrDefault(r => r.Role == SetupRole.Tts);
             if (IsElevenLabs(tts))
-                lines.Add($"Reply text goes to ElevenLabs, which speaks it with your cloned voice. Audio plays through {Audio.Output.DisplayName}.");
+                lines.Add($"Reply text goes to ElevenLabs, which speaks it with your cloned voice, and audio plays through {Audio.Output.DisplayName}.");
             else if (!IsHostVoice(tts) || tts!.Gateway is not { } gateway)
-                lines.Add($"Reply text goes to OpenAI for speech. Audio plays through {Audio.Output.DisplayName}.");
+                lines.Add($"Reply text goes to OpenAI for speech, and audio plays through {Audio.Output.DisplayName}.");
             else
-                lines.Add($"Reply text and the selected reference voice go to your Martlet host {gateway.HostId}. Audio plays through {Audio.Output.DisplayName}.");
+                lines.Add($"Reply text and the selected reference voice go to your Martlet host {gateway.HostId}, and audio plays through {Audio.Output.DisplayName}.");
             lines.Add("The voice is AI-generated.");
         }
         else lines.Add("Replies are shown as text only.");
@@ -472,7 +472,7 @@ internal sealed class LiveConversationConfiguration
             : "The selected persona, matching lorebooks and recent conversation may be included.");
         lines.Add(Memory is { Enabled: true }
             ? "Memory may add saved facts and save new ones on this PC, and keeps a record of conversations unless you turn that " +
-              "off. You can edit or delete them in Memory."
+              "off (edit or delete them in Memory)."
             : "Memory is off.");
         lines.Add("Provider requests may use quota or cost money, even if stopped.");
         lines.Add("Stop, Esc, locking Windows or closing this window stops the current action.");
@@ -811,17 +811,17 @@ internal sealed class LiveConversationConfiguration
         return Vision(route, abilities) switch
         {
             VisionSupport.Supported =>
-                $"This Thinking model can use vision{found}. Pictures go to {LlmDestinationName(route)}.",
+                $"This Thinking model can use vision{found}, and pictures go to {LlmDestinationName(route)}.",
             VisionSupport.Unsupported when IsHost(route) =>
-                "This Thinking model is text-only. Choose a vision-capable model for the host on Devices, or choose one in Companion › Thinking.",
+                "This Thinking model is text-only, so choose a vision-capable model for the host on Devices or in Companion › Thinking.",
             VisionSupport.Unsupported when IsChat(route) =>
                 ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named
-                    ? $"This Thinking model is text-only{found}. Choose {named.DefaultModelId} in Companion › Thinking, or another vision-capable model on the same endpoint."
-                    : $"This Thinking model is text-only{found}. Choose a vision-capable model on this endpoint or in Companion › Thinking.",
+                    ? $"This Thinking model is text-only{found}, so choose {named.DefaultModelId} or another vision-capable model in Companion › Thinking."
+                    : $"This Thinking model is text-only{found}, so choose a vision-capable model on this endpoint or in Companion › Thinking.",
             VisionSupport.Unsupported =>
-                "This Thinking model is text-only. Choose a vision-capable model in Companion › Thinking.",
+                "This Thinking model is text-only, so choose a vision-capable model in Companion › Thinking.",
             _ =>
-                "Martlet can't tell whether this Thinking model can see images. Try vision, or choose a known vision model in Companion › Thinking."
+                "Martlet can't tell whether this Thinking model can see images, so try vision or choose a known vision model in Companion › Thinking."
         };
     }
 
@@ -859,20 +859,20 @@ internal sealed class LiveConversationConfiguration
         {
             HearingSupport.Supported when IsHost(route) && HostAudio.IsOld(route.Gateway?.HostId) =>
                 $"This Thinking model can hear{found}, but {route.Gateway?.HostId ?? "the paired computer"} runs an older Martlet that " +
-                "takes no recordings, so only the transcript is sent. Update Martlet on that computer.",
-            HearingSupport.Supported => $"This Thinking model can hear{found}. Your recording goes to {LlmDestinationName(route)}.",
+                "takes no recordings, so only the transcript is sent until you update Martlet there.",
+            HearingSupport.Supported => $"This Thinking model can hear{found}, and your recording goes to {LlmDestinationName(route)}.",
             HearingSupport.Unsupported when IsHost(route) =>
-                $"This Thinking model can't hear audio{found}, so only the transcript is sent. Choose a model that hears in Companion › Thinking, " +
-                "for example Gemma 4 E2B or E4B in Ollama on that computer or on this PC, or gemini-2.5-flash.",
+                $"This Thinking model can't hear audio{found}, so only the transcript is sent (choose a model that hears in Companion › Thinking, " +
+                "such as Gemma 4 E2B or E4B in Ollama on that computer or on this PC, or gemini-2.5-flash).",
             HearingSupport.Unsupported when !IsChat(route) =>
-                "This OpenAI model can't take audio, so only the transcript is sent. Choose an OpenAI-compatible endpoint and a model that hears in Companion › Thinking, for example gpt-4o-audio-preview or gemini-2.5-flash.",
+                "This OpenAI model can't take audio, so only the transcript is sent (choose an OpenAI-compatible endpoint and a model that hears in Companion › Thinking, such as gpt-4o-audio-preview or gemini-2.5-flash).",
             HearingSupport.Unsupported when ability is not null =>
-                $"This Thinking model can't hear audio{found}, so only the transcript is sent. Choose a model that hears in Companion › Thinking, " +
-                "for example Gemma 4 E2B in Ollama on this PC, gemini-2.5-flash or gpt-4o-audio-preview.",
+                $"This Thinking model can't hear audio{found}, so only the transcript is sent (choose a model that hears in Companion › Thinking, " +
+                "such as Gemma 4 E2B in Ollama on this PC, gemini-2.5-flash or gpt-4o-audio-preview).",
             HearingSupport.Unsupported =>
-                "This Thinking model can't hear audio, so only the transcript is sent. Choose a model that hears in Companion › Thinking, for example Gemma 4 E2B or E4B, gemini-2.5-flash, gpt-4o-audio-preview or Qwen Omni.",
+                "This Thinking model can't hear audio, so only the transcript is sent (choose a model that hears in Companion › Thinking, such as Gemma 4 E2B or E4B, gemini-2.5-flash, gpt-4o-audio-preview or Qwen Omni).",
             _ =>
-                "Martlet can't tell whether this Thinking model can hear audio, so only the transcript is sent. Test hearing finds out."
+                "Martlet can't tell whether this Thinking model can hear audio, so only the transcript is sent until Test hearing finds out."
         };
     }
 
@@ -881,19 +881,11 @@ internal sealed class LiveConversationConfiguration
     internal static string HearingDisclosure(SetupRoute? route, SenseRoute? audio = null) => audio is { Model: not null } own
         ? "When this is on and the audio model can hear, the recording of what you say (up to " +
           $"{BoundedTextInput.MessageAudioSeconds:0} seconds a message) goes to {own.Name}, the audio model, with the last lines of the " +
-          "conversation. It describes how you sound (tone, laughter, sighs, other voices, background sounds) in words for Thinking, " +
-          "which gets the transcript and those words, never the recording. With the audio model in Ollama on this PC (not a cloud " +
-          "model) it is on unless you turn it off, since the recording never leaves this PC; anywhere else (another server here " +
-          "included) it stays off until you tick it. Speech-to-text still runs for every message. Recordings are never saved, added " +
-          "to Memory or sent to Thinking. Audio may use more quota or cost more than text."
+          "conversation. Thinking gets its words and the transcript, never the recording; recordings are never saved, and audio may " +
+          "cost more than text."
         : "When this is on and the Thinking model can hear, the recording of what you say (up to " +
-        $"{BoundedTextInput.MessageAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}, " +
-        "straight away on its own or with the transcript (When Thinking can hear you), so it hears your tone as well as your " +
-        "words. With Thinking in Ollama on this PC (not a cloud model) it is on unless you turn it off, " +
-        "since the recording never leaves this PC; anywhere else (another server here included) it stays off until you tick it. " +
-        "Speech-to-text still runs for " +
-        "every message. Recordings are never saved, added to Memory or sent to the Thinking " +
-        "fallback, which gets the transcript. Audio may use more quota or cost more than text.";
+        $"{BoundedTextInput.MessageAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}. " +
+        "Recordings are never saved, added to Memory or sent to the Thinking fallback, and audio may cost more than text.";
 
     /// <summary>Which applies to Let ... hear my voice (Companion › Listening): your own choice, or, never chosen, on because the
     /// recording stays on this PC or off until you tick it because it would leave it. It goes to Thinking, or with an audio model

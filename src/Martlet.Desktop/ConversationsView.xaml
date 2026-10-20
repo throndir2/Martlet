@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:presentation="clr-namespace:Martlet.Presentation"
+    xmlns:local="clr-namespace:Martlet.Desktop"
         AutomationProperties.AutomationId="ConversationsPage" AutomationProperties.Name="Conversations">
     <UserControl.Resources>
         <DataTemplate x:Key="WrappedText">
@@ -15,8 +16,14 @@
     <DockPanel Margin="36,30,36,24">
         <StackPanel DockPanel.Dock="Top">
             <TextBlock Text="Conversations" Style="{DynamicResource PageTitle}" />
-            <TextBlock Margin="0,8" TextWrapping="Wrap"
-                       Text="Every conversation Martlet has had with you: in the talk window and in Telegram, Discord and WhatsApp. With Keep Martlet the same on all my computers on, it is the same on every computer where you are signed in. Delete or edit a single message, a conversation or everything at any time; it changes on all of them." />
+            <TextBlock Margin="0,8" TextWrapping="Wrap" AutomationProperties.AutomationId="HistoryAbout">
+                <Run Text="Every conversation Martlet has had with you: in the talk window and in Telegram, Discord and WhatsApp."/>
+                <InlineUIContainer BaselineAlignment="Center">
+                    <local:HelpTip Margin="6,0,0,0" Wiki="Talking-to-Martlet#the-conversations-page"
+                                   AutomationProperties.AutomationId="Help-HistoryAbout" AutomationProperties.Name="About conversations"
+                                   Text="With Keep Martlet the same on all my computers on, the record is the same on every computer where you are signed in. Edit or delete a message, a conversation or everything at any time, and it changes on all of them."/>
+                </InlineUIContainer>
+            </TextBlock>
             <TextBlock x:Name="SyncText" TextWrapping="Wrap" Margin="0,0,0,6" AutomationProperties.AutomationId="HistorySyncStatus"
                        AutomationProperties.LiveSetting="Polite" Style="{DynamicResource Muted}" />
             <Label Target="{Binding ElementName=SearchText}" Content="_Search conversations" Padding="0,4" />

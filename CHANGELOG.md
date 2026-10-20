@@ -22,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
 - The speech host roles (XTTS, Dia, GPT-SoVITS, F5, Chatterbox, singing, Parakeet and voice recognition) now share one copy of their download and request code, so a request with a bad length gets a clear error instead of a dropped connection. The next host update rebuilds these roles once. ([#1061](https://github.com/throndir2/Martlet/pull/1061))
 - Home, the welcome tour, the setup advisor and Recommended setup show one short line for each explanation; the rest is behind a **?** with a link to the wiki, which now has those instructions. ([#1051](https://github.com/throndir2/Martlet/pull/1051))
 - New installations start with up-to-date model suggestions: the model list that comes with Martlet is refreshed. ([#1044](https://github.com/throndir2/Martlet/pull/1044))
