@@ -84,6 +84,10 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         }
     }
 
+    /// <summary>How the renderer's error starts when this PC can't draw the character at all (no Direct3D 9 for WebView2, #1083);
+    /// Martlet shows that message as it is.</summary>
+    internal const string GraphicsUnavailable = "This PC can't draw the character: ";
+
     public async Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted,
         CancellationToken token)
     {
@@ -100,7 +104,8 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
                 Path.GetTempPath())
         };
         info.Environment.Clear();
-        foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "DOTNET_ROOT" })
+        // MARTLET_SIMULATE_NO_DIRECT3D9 is a FIXTURE for MCP verification (RendererGraphics in the renderer).
+        foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "DOTNET_ROOT", "MARTLET_SIMULATE_NO_DIRECT3D9" })
             if (Environment.GetEnvironmentVariable(name) is { } value) info.Environment[name] = value;
         if (ErrorLog.Directory is { } logs) info.Environment[ErrorLog.DirectoryEnvironmentVariable] = logs;
         info.ArgumentList.Add("--private-pipes");
@@ -250,8 +255,10 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         var response = await connected.SendAsync(RendererProtocol.Message(kind, Activation, data), request.Token);
         if (response.Activation == Activation && response.Kind == "error" && response.Data.ValueKind == JsonValueKind.Object &&
             response.Data.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
-            code.GetString() == "avatar.model_rejected" && response.Data.TryGetProperty("message", out var reason) &&
-            reason.ValueKind == JsonValueKind.String && reason.GetString() is { Length: > 0 and <= 400 } rejected)
+            response.Data.TryGetProperty("message", out var reason) && reason.ValueKind == JsonValueKind.String &&
+            reason.GetString() is { Length: > 0 and <= 400 } rejected &&
+            (code.GetString() == "avatar.model_rejected" ||
+             code.GetString() == "avatar.renderer_unavailable" && rejected.StartsWith(GraphicsUnavailable, StringComparison.Ordinal)))
             throw new InvalidOperationException(rejected);
         if (response.Activation != Activation || response.Kind == "error")
             throw new InvalidDataException("The character renderer couldn't apply those controls.");

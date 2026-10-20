@@ -18,6 +18,10 @@ Each release's section here is also its notes on GitHub.
 - The Devices map, the job pages, the Add a computer and Prepare a Linux PC windows, the run window and the host settings show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Multiple Computers and Setting Up a Host wiki pages have the full instructions. ([#1079](https://github.com/throndir2/Martlet/pull/1079))
 - Companion › Tools, Smart home, Discord, Messaging, App guides and Check-ins, the MCP windows and Outside access now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki has the full setup steps for Discord, Telegram, WhatsApp and Home Assistant. ([#1072](https://github.com/throndir2/Martlet/pull/1072))
 
+### Fixed
+
+- On a PC where Windows can't give the character Direct3D 9 (for example some remote sessions), Martlet says so instead of the character renderer crashing on exit or when Companion › Touch opens. ([#1091](https://github.com/throndir2/Martlet/pull/1091))
+
 ## [0.89.0] - 2026-10-19
 
 ### Added
