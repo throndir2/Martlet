@@ -8677,7 +8677,7 @@ roles; on another of your computers that said what it is, `NodeAction-MakeHostPc
 which switch that computer, so they need `--allow-ui-effects` and then `ConfirmationYes`; while the ask waits,
 its `DeviceComponentDetail-member` ends with *Asked by this PC at ... to become a host PC: it switches the next time
 Martlet there syncs its settings ...*; once it has switched, the desktop log and status line say *IMOUTO is a host PC now,
-as you asked.*, and a host PC with no host service yet reads *Its host service isn't set up yet, so it does no work for your
+as you asked.*, and a host PC with no host service yet reads *Host PC; its host service isn't set up yet, so it does no work for your
 other computers until someone at it chooses Set up host service on its Home ...* there instead of the host service it runs;
 Settings › What this PC is for lists the same computers of your network: `Help-OtherRoles` (the "?" beside *Your other computers*), `OtherRolesStatus` (what the list offers, or why it
 is empty or can't switch them), `OtherRole-<device ID>` (*IMOUTO (desktop-imouto). Companion PC that also runs a host service

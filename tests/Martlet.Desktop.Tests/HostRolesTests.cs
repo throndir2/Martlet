@@ -476,7 +476,7 @@ public sealed class HostRolesTests
 
         // A host PC with no host service yet does no work for the others: its row says so instead of naming a host service.
         Assert.Contains(NetworkMap.NoHostServiceYet, Member(Device(hostPc)), StringComparison.Ordinal);
-        Assert.Equal("Host PC. " + NetworkMap.NoHostServiceYet + " Active now on gpu-a.", NetworkMap.RoleLine(hostPc, null));
+        Assert.Equal("Host PC; " + NetworkMap.NoHostServiceYetJoined + " Active now on gpu-a.", NetworkMap.RoleLine(hostPc, null));
         // One that said it runs a host service, or whose host service (named after it) this PC is paired with, runs it.
         Assert.Contains("Runs Martlet's host service (desk-b-host)", Member(Device(hostPc with { HostId = "desk-b-host" })), StringComparison.Ordinal);
         var paired = Device(hostPc, [new PairedHost { Pairing = Remote("desk-b-host", "192.168.1.52") }]);

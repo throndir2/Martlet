@@ -620,6 +620,8 @@ public partial class MainWindow
         }
         if (assignment is { MovedFrom: { } from } && assignment.HostId == local.HostId && assignment.HostId is not null)
             parts.Add($"Moved from {from} after it stopped responding; choose {from} to move it back.");
-        return parts.Count == 0 ? null : string.Join(" ", parts);
+        // Two notes at once join into one sentence.
+        return parts.Count == 0 ? null
+            : string.Join("; ", parts.Select((p, i) => (i == 0 ? p : char.ToLowerInvariant(p[0]) + p[1..]).TrimEnd('.'))) + ".";
     }
 }

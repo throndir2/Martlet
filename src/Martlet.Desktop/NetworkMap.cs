@@ -178,6 +178,9 @@ internal static class NetworkMap
     internal const string NoHostServiceYet = "Its host service isn't set up yet, so it does no work for your other computers until someone " +
         "at it chooses Set up host service on its Home (once; Windows may ask to allow it).";
 
+    /// <summary><see cref="NoHostServiceYet"/> after a semicolon, to join it to another sentence.</summary>
+    internal static string NoHostServiceYetJoined => "its" + NoHostServiceYet[3..];
+
     /// <summary>The command that switches another of your computers between companion and host PC (any of your computers can
     /// switch any other; it follows on its next settings sync), or, while an ask waits, the opposite one, which withdraws it.
     /// Null for a computer asking to join the network and for one that hasn't said what it is (an older Martlet).</summary>
@@ -198,7 +201,7 @@ internal static class NetworkMap
         var what = computer.Role switch
         {
             DeviceRole.Companion => "Companion PC" + (host is not null ? $" that also runs a host service ({host})." : "."),
-            DeviceRole.Host => host is not null ? $"Host PC, runs {host}." : "Host PC. " + NoHostServiceYet,
+            DeviceRole.Host => host is not null ? $"Host PC, runs {host}." : "Host PC; " + NoHostServiceYetJoined,
             _ => "It runs an older Martlet that doesn't say whether it is a companion or a host PC; update it to switch it from here."
         };
         return what + Asked(computer) + (computer.Activity is { } activity ? " " + activity : "");
