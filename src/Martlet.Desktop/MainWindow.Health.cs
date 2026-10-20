@@ -865,7 +865,7 @@ public partial class MainWindow
         var body = new StackPanel();
         var title = new TextBlock { Text = issue.Title, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(title, "HealthIssue-" + issue.Id);
-        AutomationProperties.SetName(title, $"{word}: {issue.Title}. {issue.Detail}");
+        AutomationProperties.SetName(title, $"{word}: {issue.Title} — {issue.Detail}");
         body.Children.Add(title);
         var detail = new TextBlock { Text = issue.Detail, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
         detail.SetResourceReference(StyleProperty, "Muted");

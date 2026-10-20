@@ -6,7 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Planning;
 using Martlet.Core.Settings;
@@ -350,7 +350,7 @@ public partial class MainWindow
     /// <summary>Companion › Thinking's line on the situation now ("While gaming: A game (Elden Ring) runs on this PC, so live
     /// Thinking leaves its graphics card for gpu-box (qwen3:8b). ...").</summary>
     private string SituationLine() => situation is not { } now ? "Situation: Normal."
-        : $"Situation: {now.Title}{(simulatedSituation is null ? "" : " (FIXTURE)")}. {now.Why}";
+        : $"Situation: {now.Title}{(simulatedSituation is null ? "" : " (FIXTURE)")} — {now.Why}";
 
     private TextBlock SituationNowLine()
     {

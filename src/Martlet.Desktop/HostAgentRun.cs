@@ -1,5 +1,5 @@
 using System.Windows;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Nodes;
 
@@ -41,7 +41,7 @@ internal static class HostAgentRun
             run.Status($"Asking Martlet on {name}...");
             HostCommandList list;
             try { list = await WhileRestartingAsync(run, name, () => connection.ReadCommandsAsync(run.Token)); }
-            catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+            catch (HostConnectionException error) when (error.Code == "request.invalid")
             {
                 throw new InvalidOperationException($"{name}'s host service is older than commands between computers. Open Martlet on {name} " +
                     "once: it brings its host service up to date by itself, and from then on this PC updates and manages it from here.");
@@ -133,7 +133,7 @@ internal static class HostAgentRun
 
     /// <summary>Sends one command and follows it to its end, showing new output lines (those <paramref name="show"/> accepts)
     /// and its state, including what it waits behind. Canceling withdraws it (or asks Martlet there to stop it).</summary>
-    private static async Task<Martlet.Core.Nodes.NodeCommand> RunCommandAsync(Audio2FaceHostConnection connection, string name, string kind,
+    private static async Task<Martlet.Core.Nodes.NodeCommand> RunCommandAsync(HostConnection connection, string name, string kind,
         IReadOnlyDictionary<string, string> arguments, IReadOnlyDictionary<string, string>? secrets, HostRunWindow run,
         Func<string, bool>? show = null)
     {
@@ -161,7 +161,7 @@ internal static class HostAgentRun
                         if (behind is not null && behind != waitingBehind) run.Output.Report(behind);
                         waitingBehind = behind;
                     }
-                    catch (Audio2FaceHostException) { }
+                    catch (HostConnectionException) { }
                     catch (OperationCanceledException) when (!run.Token.IsCancellationRequested) { }
                 }
                 run.Status(command.State == NodeCommandState.Queued
@@ -174,7 +174,7 @@ internal static class HostAgentRun
                     command = await connection.ReadCommandAsync(command.Id, run.Token);
                     unreachableSince = null;
                 }
-                catch (Audio2FaceHostException error) when (error.Code is "host.unreachable" or "auth.clock" or "gateway.internal")
+                catch (HostConnectionException error) when (error.Code is "host.unreachable" or "auth.clock" or "gateway.internal")
                 {
                     unreachableSince ??= DateTimeOffset.UtcNow;
                     if (DateTimeOffset.UtcNow - unreachableSince > UnreachablePatience)
@@ -185,7 +185,7 @@ internal static class HostAgentRun
                 {
                     unreachableSince ??= DateTimeOffset.UtcNow;
                 }
-                catch (Audio2FaceHostException error) when (error.Code == "command.not_found")
+                catch (HostConnectionException error) when (error.Code == "command.not_found")
                 {
                     throw new InvalidOperationException($"{name} no longer has this command (its host service restarted). Send it again.");
                 }
@@ -198,7 +198,7 @@ internal static class HostAgentRun
                 using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 await connection.CancelCommandAsync(command.Id, limit.Token);
             }
-            catch (Exception error) when (error is Audio2FaceHostException or OperationCanceledException or System.Net.Http.HttpRequestException) { }
+            catch (Exception error) when (error is HostConnectionException or OperationCanceledException or System.Net.Http.HttpRequestException) { }
             throw;
         }
     }
@@ -220,6 +220,6 @@ internal static class HostAgentRun
     }
 
     private static bool Restarting(Exception error, CancellationToken token) =>
-        error is Audio2FaceHostException { Code: "host.unreachable" or "gateway.internal" } ||
+        error is HostConnectionException { Code: "host.unreachable" or "gateway.internal" } ||
         error is OperationCanceledException && !token.IsCancellationRequested;
 }

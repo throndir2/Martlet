@@ -1,0 +1,322 @@
+using System.Buffers.Text;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text.Json;
+using Martlet.Core.Contracts;
+using Martlet.Core.Network;
+
+namespace Martlet.HostClient;
+
+/// <summary>A desktop that paired with a host and asks to join the host's Martlet network, as that host reports it to members.</summary>
+public sealed record HostJoinRequest(string HostId, string DeviceId, string DisplayName, string Key, string CheckNumber, DateTimeOffset RequestedAt)
+{
+    /// <summary>Who this desktop signed in as to pair with the host (an allowed identity or the owner account), as the host
+    /// attests; null when it paired another way. A member desktop lets such a request in without a check number.</summary>
+    public HostSignInAttestation? SignIn { get; init; }
+}
+
+/// <summary>A computer that joined through a sign-in the owner no longer allows on <see cref="HostId"/>: its device ID and, when
+/// the host saw it ask to join, its network key.</summary>
+public sealed record HostSignInRemoval(string HostId, string DeviceId, string? Key, string Provider, string Subject, string? Label, DateTimeOffset At);
+
+/// <summary>A computer paired with a host, as that host reports it: when its current pairing was made and when it last made
+/// a signed request (null when it hasn't since the host's gateway started). <see cref="Access"/> is "friend" for a friend's
+/// computer (that host's engines only, never in the network; <see cref="HostSignInAccess"/>), null for the owner's.</summary>
+public sealed record HostPairedDevice(string HostId, string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen)
+{
+    public string? Access { get; init; }
+    public bool Friend => Access == HostSignInAccess.Friend;
+}
+
+/// <summary>A host's place in the owner's Martlet network: <see cref="State"/> is "unbound", "bound" or "removed", with
+/// the roster it accepted (null when unbound) and, for a member desktop, pending join requests. <see cref="Supported"/>
+/// is false for hosts older than the network; <see cref="Devices"/> (the computers paired with it) is null for hosts older
+/// than that list. <see cref="MartletVersion"/> is the Martlet release the host announces it runs (null for hosts older
+/// than that announcement), so every computer that syncs the network learns of an update there (<see cref="HostRelease"/>).</summary>
+public sealed record HostNetworkView(string HostId, string State, NetworkRoster? Roster, IReadOnlyList<HostJoinRequest> Joins, bool Supported = true,
+    IReadOnlyList<HostPairedDevice>? Devices = null, string? MartletVersion = null)
+{
+    /// <summary>Outside addresses the owner set on the host itself (martlet-host owner-exposure), null when never set there.</summary>
+    public IReadOnlyList<string>? AdvertisedAddresses { get; init; }
+    /// <summary>When <see cref="AdvertisedAddresses"/> were set on the host.</summary>
+    public DateTimeOffset? AdvertisedAt { get; init; }
+    /// <summary>For a member: computers that joined through a sign-in the owner no longer allows on this host; this PC removes
+    /// them from the network on sync (<see cref="NetworkSyncEngine"/>).</summary>
+    public IReadOnlyList<HostSignInRemoval> SignInRemovals { get; init; } = [];
+
+    public static HostNetworkView Unsupported(string hostId) => new(hostId, "unsupported", null, [], false);
+    public bool Bound => State == "bound" && Roster is not null;
+}
+
+/// <summary>The host's Martlet network: read it, merge this PC's roster into it, ask to join it, turn a request down.</summary>
+public sealed partial class HostConnection
+{
+    private const string NetworkPath = "/martlet/v1/network";
+
+    /// <summary>Reads the host's network state. Hosts older than the network refuse with code <c>request.invalid</c>.</summary>
+    public async Task<HostNetworkView> ReadNetworkAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + NetworkPath);
+        Sign(request, []);
+        return await NetworkAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Merges <paramref name="roster"/> into the host's copy (binding a host in no network) and returns the result.</summary>
+    public async Task<HostNetworkView> MergeNetworkAsync(NetworkRoster roster, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(roster);
+        var body = roster.Write();
+        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + NetworkPath) { Content = HostTransport.JsonContent(body) };
+        Sign(request, body);
+        return await NetworkAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Asks to join the host's network with this PC's network key. Returns "pending" (a member must allow it) or
+    /// "member", the network ID and the check number both screens show.</summary>
+    public async Task<(string State, string NetworkId, string CheckNumber)> RequestJoinAsync(string displayName, string publicKey,
+        CancellationToken cancellationToken = default)
+    {
+        var body = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            protocol_version = new { major = 2, minor = 0 },
+            display_name = NetworkRoster.CleanName(displayName, pairing.DeviceId), key = publicKey
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + NetworkPath + "/join") { Content = HostTransport.JsonContent(body) };
+        Sign(request, body);
+        using var root = await SendNetworkAsync(request, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = root.RootElement.GetProperty("state").GetString();
+            var network = root.RootElement.GetProperty("network_id").GetString()!;
+            var check = root.RootElement.GetProperty("check_number").GetString()!;
+            if (state is not ("pending" or "member") || check.Length != 7) throw new FormatException();
+            return (state, network, check);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's answer to the join request was invalid.");
+        }
+    }
+
+    /// <summary>Turns down <paramref name="deviceId"/>'s request to join (this PC must be a member).</summary>
+    public async Task<bool> DenyJoinAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        var body = JsonSerializer.SerializeToUtf8Bytes(new { protocol_version = new { major = 2, minor = 0 }, device_id = deviceId });
+        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + NetworkPath + "/deny") { Content = HostTransport.JsonContent(body) };
+        Sign(request, body);
+        using var root = await SendNetworkAsync(request, cancellationToken).ConfigureAwait(false);
+        return root.RootElement.TryGetProperty("denied", out var denied) && denied.ValueKind == JsonValueKind.True;
+    }
+
+    private async Task<HostNetworkView> NetworkAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var document = await SendNetworkAsync(request, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var root = document.RootElement;
+            var state = root.GetProperty("state").GetString();
+            if (state is not ("unbound" or "bound" or "removed")) throw new FormatException();
+            NetworkRoster? roster = null;
+            if (root.TryGetProperty("roster", out var element) && element.ValueKind == JsonValueKind.Object)
+                roster = NetworkRoster.Parse(JsonSerializer.SerializeToUtf8Bytes(element));
+            var joins = new List<HostJoinRequest>();
+            if (root.TryGetProperty("joins", out var list) && list.ValueKind == JsonValueKind.Array)
+                foreach (var join in list.EnumerateArray().Take(16))
+                {
+                    var device = join.GetProperty("device_id").GetString()!;
+                    var key = join.GetProperty("key").GetString()!;
+                    HostTransport.RequireIdentifier(device, "device ID");
+                    if (!NetworkKey.IsPublicKey(key)) throw new FormatException();
+                    HostSignInAttestation? signIn = null;
+                    if (join.TryGetProperty("sign_in", out var attested) && attested.ValueKind == JsonValueKind.Object)
+                        signIn = new(attested.GetProperty("provider").GetString()!, attested.GetProperty("subject").GetString()!,
+                            HostSignInClient.Clean(attested.TryGetProperty("label", out var label) ? label.GetString() : null),
+                            attested.GetProperty("at").GetDateTimeOffset())
+                        {
+                            AccountId = attested.TryGetProperty("account_id", out var account) && account.ValueKind == JsonValueKind.String &&
+                                account.TryGetGuid(out var id) && id != Guid.Empty ? id : null
+                        };
+                    joins.Add(new(pairing.HostId, device, NetworkRoster.CleanName(join.GetProperty("display_name").GetString(), device), key,
+                        join.GetProperty("check_number").GetString()!, join.GetProperty("requested_at").GetDateTimeOffset()) { SignIn = signIn });
+                }
+            List<HostPairedDevice>? devices = null;
+            if (root.TryGetProperty("devices", out var paired) && paired.ValueKind == JsonValueKind.Array)
+            {
+                devices = [];
+                // The list only informs; an entry this PC can't read is left out rather than failing the network sync.
+                foreach (var item in paired.EnumerateArray().Take(32))
+                    try
+                    {
+                        var device = item.GetProperty("device_id").GetString()!;
+                        HostTransport.RequireIdentifier(device, "device ID");
+                        devices.Add(new(pairing.HostId, device, NetworkRoster.CleanName(item.GetProperty("display_name").GetString(), device),
+                            item.GetProperty("paired_at").GetDateTimeOffset(),
+                            item.TryGetProperty("last_seen", out var seen) && seen.ValueKind == JsonValueKind.String ? seen.GetDateTimeOffset() : null)
+                        {
+                            Access = item.TryGetProperty("access", out var access) && access.ValueKind == JsonValueKind.String &&
+                                access.GetString() == HostSignInAccess.Friend ? HostSignInAccess.Friend : null
+                        });
+                    }
+                    catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or HostConnectionException) { }
+            }
+            var release = root.TryGetProperty("martlet_version", out var announced) && announced.ValueKind == JsonValueKind.String
+                ? HostRelease.Normalize(announced.GetString()) : null;
+            IReadOnlyList<string>? advertised = null;
+            DateTimeOffset? advertisedAt = null;
+            if (root.TryGetProperty("advertised_addresses", out var advertisedList) && advertisedList.ValueKind == JsonValueKind.Array &&
+                root.TryGetProperty("advertised_at", out var at) && at.ValueKind == JsonValueKind.String)
+            {
+                advertised = advertisedList.EnumerateArray().Take(NetworkRoster.MaximumAddresses)
+                    .Select(a => NetworkRoster.NormalizeAddress(a.ValueKind == JsonValueKind.String ? a.GetString() : null)).OfType<string>().ToArray();
+                advertisedAt = at.GetDateTimeOffset();
+            }
+            return new(pairing.HostId, state, roster, joins, Devices: devices, MartletVersion: release)
+            {
+                AdvertisedAddresses = advertised, AdvertisedAt = advertisedAt,
+                SignInRemovals = root.TryGetProperty("sign_in_removals", out var removals) && removals.ValueKind == JsonValueKind.Array
+                    ? removals.EnumerateArray().Take(32).Select(r => new HostSignInRemoval(pairing.HostId, r.GetProperty("device_id").GetString()!,
+                        r.TryGetProperty("key", out var key) && key.ValueKind == JsonValueKind.String ? key.GetString() : null,
+                        r.GetProperty("provider").GetString()!, r.GetProperty("subject").GetString()!,
+                        HostSignInClient.Clean(r.TryGetProperty("label", out var label) && label.ValueKind == JsonValueKind.String ? label.GetString() : null),
+                        r.GetProperty("at").GetDateTimeOffset())).ToArray()
+                    : []
+            };
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or ContractException)
+        {
+            throw new HostConnectionException("response.invalid", "The host's Martlet network was invalid.");
+        }
+    }
+
+    private async Task<JsonDocument> SendNetworkAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+        var document = await HostTransport.ReadJson(response, NetworkRoster.MaximumBytes + 16_384, timeout.Token).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            if (document.RootElement.TryGetProperty("host_id", out var host) && host.GetString() == pairing.HostId) return document;
+            document.Dispose();
+            throw new HostConnectionException("response.invalid", "The host identity changed; pair again.");
+        }
+        try { throw HostTransport.Remote(document.RootElement); }
+        finally { document.Dispose(); }
+    }
+}
+
+/// <summary>Pairs this desktop with a host of its Martlet network by itself: no code, no console. The connection is pinned
+/// to the host's fingerprint from the roster (or, for a host found on the home network that the roster doesn't list yet, to
+/// the key it showed first), and the request is signed with this PC's network key.</summary>
+public static class HostNetworkPairing
+{
+    /// <param name="bring">This PC's roster: when the host doesn't count this PC in its network yet (it joined while nobody could
+    /// tell that host), the pairing is tried once more with it, so the host takes the entries its members signed.</param>
+    public static async Task<(HostPairing Pairing, string Secret)> PairAsMemberAsync(NetworkMember host, string networkId,
+        INetworkSigner signer, string displayName, CancellationToken cancellationToken = default, TimeProvider? clock = null,
+        NetworkRoster? bring = null)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(signer);
+        if (!host.IsHost || host.Removed || host.Origin is null || host.Spki is null)
+            throw new HostConnectionException("network.invalid", $"{host.Id} is not an active host of this network.");
+        var origin = HostTransport.CanonicalOrigin(host.Origin);
+        using var http = HostTransport.CreateHttpClient(origin, host.Spki);
+        return await PairBringingAsync(http, host.Id, origin, host.Spki, networkId, signer, displayName, cancellationToken, clock, bring)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Pairs by itself with a host found on the home network (<see cref="NetworkHostFinder"/>) that this PC's roster doesn't
+    /// list yet, so its key isn't known: the first connection learns which TLS key answers at <paramref name="origin"/> and
+    /// later ones must show the same key. The signed proof names that key, so it is useless at any other host. The caller keeps
+    /// the pairing only when the host's own network lists the host with that key, signed by a member desktop.
+    /// </summary>
+    public static async Task<(HostPairing Pairing, string Secret)> PairFoundAsync(string hostId, string origin, string networkId,
+        INetworkSigner signer, string displayName, CancellationToken cancellationToken = default, TimeProvider? clock = null,
+        NetworkRoster? bring = null)
+    {
+        ArgumentNullException.ThrowIfNull(signer);
+        HostTransport.RequireIdentifier(hostId, "host ID");
+        var canonical = HostTransport.CanonicalOrigin(origin);
+        string? seen = null;
+        using var http = HostTransport.CreateHttpClient(canonical, presented =>
+        {
+            seen ??= presented;
+            return presented == seen;
+        }, clock);
+        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            using var probe = new HttpRequestMessage(HttpMethod.Get, canonical + "/health/live");
+            using var live = await HostTransport.Send(http, probe, timeout.Token).ConfigureAwait(false);
+        }
+        if (seen is null) throw new HostConnectionException("host.unreachable", $"The computer at {new Uri(canonical).Authority} did not present a host key.");
+        return await PairBringingAsync(http, hostId, canonical, seen, networkId, signer, displayName, cancellationToken, clock, bring)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Pairs; when the host answers that it doesn't count this PC in the network and <paramref name="bring"/> is set,
+    /// pairs once more with this PC's roster. A host older than that refuses the roster; the first refusal then stands.</summary>
+    private static async Task<(HostPairing Pairing, string Secret)> PairBringingAsync(HttpClient http, string hostId, string origin,
+        string spki, string networkId, INetworkSigner signer, string displayName, CancellationToken cancellationToken, TimeProvider? clock,
+        NetworkRoster? bring)
+    {
+        try { return await PairAsync(http, hostId, origin, spki, networkId, signer, displayName, cancellationToken, clock, null).ConfigureAwait(false); }
+        catch (HostConnectionException denied) when (denied.Code == "network.denied" && bring?.NetworkId == networkId)
+        {
+            try { return await PairAsync(http, hostId, origin, spki, networkId, signer, displayName, cancellationToken, clock, bring).ConfigureAwait(false); }
+            catch (HostConnectionException older) when (older.Code == "request.invalid") { throw denied; }
+        }
+    }
+
+    private static async Task<(HostPairing Pairing, string Secret)> PairAsync(HttpClient http, string hostId, string origin, string spki,
+        string networkId, INetworkSigner signer, string displayName, CancellationToken cancellationToken, TimeProvider? clock, NetworkRoster? bring)
+    {
+        var name = NetworkRoster.CleanName(displayName, signer.DeviceId);
+        var timestamp = (clock ?? TimeProvider.System).GetUtcNow().ToUnixTimeMilliseconds();
+        var nonce = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
+        var signature = Base64Url.EncodeToString(signer.Sign(
+            NetworkPairing.ProofBytes(hostId, spki, networkId, signer.DeviceId, name, timestamp, nonce)));
+        var body = bring is null
+            ? JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                protocol_version = new { major = 2, minor = 0 },
+                network_id = networkId, device_id = signer.DeviceId, display_name = name, timestamp, nonce, signature
+            })
+            : JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                protocol_version = new { major = 2, minor = 0 },
+                network_id = networkId, device_id = signer.DeviceId, display_name = name, timestamp, nonce, signature,
+                roster = JsonSerializer.Deserialize<JsonElement>(bring.Write())
+            });
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, origin + NetworkPairing.Path) { Content = HostTransport.JsonContent(body) };
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            using var response = await HostTransport.Send(http, request, timeout.Token).ConfigureAwait(false);
+            using var document = await HostTransport.ReadJson(response, 16 * 1024, timeout.Token).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.Created) throw HostTransport.Remote(document.RootElement);
+            var root = document.RootElement;
+            var credentialId = root.GetProperty("credential_id").GetString()!;
+            var secret = root.GetProperty("credential_secret").GetString()!;
+            if (root.GetProperty("protocol_version").GetProperty("major").GetInt32() != 2 || root.GetProperty("host_id").GetString() != hostId ||
+                root.GetProperty("device_id").GetString() != signer.DeviceId ||
+                root.GetProperty("lifetime").GetProperty("kind").GetString() != "paired" ||
+                !root.GetProperty("roles").EnumerateArray().Any(role => role.GetString() == "voice") ||
+                !HostTransport.TryBase64Url(credentialId, 16, out _) || !HostTransport.TryBase64Url(secret, 32, out var raw))
+                throw new HostConnectionException("pairing.invalid", $"{hostId} returned an unexpected pairing.");
+            CryptographicOperations.ZeroMemory(raw);
+            return (new HostPairing
+            {
+                Origin = origin, HostId = hostId, SpkiFingerprint = spki, DeviceId = signer.DeviceId, CredentialId = credentialId
+            }, secret);
+        }
+        catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new HostConnectionException("response.invalid", $"{hostId}'s pairing response was invalid.");
+        }
+        finally { CryptographicOperations.ZeroMemory(body); }
+    }
+}

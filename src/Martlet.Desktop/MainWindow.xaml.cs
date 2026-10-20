@@ -23,7 +23,8 @@ public partial class MainWindow : ThemedWindow
     private readonly SettingsStore? store;
     private readonly SupportController support;
     private TroubleshootingWindow? troubleshooting;
-    private readonly SetupOperationRunner setupOperations = new();
+    private readonly DesktopServices services;
+    private readonly SetupOperationRunner setupOperations;
     private readonly ISetupService? setupService;
     private readonly ICompanionSettingsService? companionService;
     private readonly DesktopMemoryService? memory;
@@ -39,9 +40,9 @@ public partial class MainWindow : ThemedWindow
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
-    private readonly AvatarController avatar = new();
+    private readonly AvatarController avatar;
     private readonly SpeechCaptions captions;
-    private readonly WindowsAudioSessionEvents audioSessionEvents = new();
+    private readonly WindowsAudioSessionEvents audioSessionEvents;
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
     private readonly DispatcherTimer ageTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -61,64 +62,75 @@ public partial class MainWindow : ThemedWindow
     public MainWindow(SettingsStore? store, string? startupError) : this(store, startupError, new(store?.DataDirectory)) { }
 
     internal MainWindow(SettingsStore? store, string? startupError, SupportController support)
+        : this(startupError, DesktopServices.Create(store, support)) { }
+
+    /// <summary>The window over <paramref name="services"/> (<see cref="DesktopServices.Create"/>): it wires them to each other and
+    /// to its pages, and builds the live conversation, which needs the window's own callbacks.</summary>
+    internal MainWindow(string? startupError, DesktopServices services)
     {
         InitializeComponent();
+        this.services = services;
+        var store = services.Store;
         this.store = store;
         // Who uses Martlet now (MainWindow.Accounts.cs), before anything loads that belongs to an account.
-        accounts = OpenAccounts(store);
+        accounts = services.Accounts;
         ThemeChoice.SelectedIndex = (int)((Application.Current as App)?.SelectedTheme ?? AppearanceTheme.Light);
         AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
             ?? "Choose a palette; your other computers use the same choice.";
         InitializeUpdates();
-        this.support = support;
-        audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
+        support = services.Support;
+        setupOperations = services.SetupOperations;
+        audioSetup = services.AudioSetup;
+        audioSessionEvents = services.AudioSessionEvents;
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
-        var vault = new WindowsCredentialStore();
-        setupService = store is null ? null : new SetupService(store, vault);
+        var vault = services.Vault;
+        setupService = services.SetupService;
         if (store is not null) store.Saved += settingsChanges.Written;
-        companionService = store is null ? null : new CompanionSettingsService(store);
-        memory = store is null ? null : new DesktopMemoryService(store);
-        conversationHistory = store is null ? null : new DesktopConversationHistory(store.DataDirectory);
+        companionService = services.CompanionService;
+        memory = services.Memory;
+        conversationHistory = services.ConversationHistory;
         if (conversationHistory is not null) ConversationsPage.Attach(conversationHistory);
         // Lorebooks are each account's own, in its folder (docs/ACCOUNTS.md).
-        lorebooks = store is null ? null : new LorebookStore(accounts?.AccountFolder ?? store.DataDirectory);
-        smartHome = new(store?.DataDirectory, vault);
-        discord = new(store?.DataDirectory, vault);
+        lorebooks = services.Lorebooks;
+        smartHome = services.SmartHome;
+        discord = services.Discord;
         // A Discord message naming the companion (a persona's name) is meant for Martlet.
         discord.CompanionNames = () => Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name)).Names;
-        discordCalls = new(store?.DataDirectory);
-        mcpTools = new(store?.DataDirectory);
+        discordCalls = services.DiscordCalls;
+        mcpTools = services.McpTools;
         mcpTools.Changed += ToolsChanged;
         smartHome.Attach(mcpTools);
-        messaging = new(store?.DataDirectory, vault) { Answer = AnswerMessageAsync, History = conversationHistory };
+        messaging = services.Messaging;
+        messaging.Answer = AnswerMessageAsync;
+        messaging.History = conversationHistory;
         messaging.Changed += () => Dispatcher.BeginInvoke(MessagingChanged);
         // Discord text exchanges join the record while it is kept; deletions and edits there go to Telegram and Discord too.
         discord.History = conversationHistory;
         discord.Recording = () => conversationHistory?.Active(homeSettings?.Memory) == true;
         conversationHistory?.Platforms.Start();
-        voiceIdentity = new(store?.DataDirectory);
-        voiceIdentity.Load();
-        localVoices = new(store?.DataDirectory);
-        parakeet = store is null ? null : new(LocalVoices.SpeechRoot(store.DataDirectory));
+        voiceIdentity = services.VoiceIdentity;
+        localVoices = services.LocalVoices;
+        parakeet = services.Parakeet;
         // Discord calls transcribe on this PC or a paired computer and speak with a host's voice engine; never the cloud.
         discord.Speech = new DiscordSpeech(() => homeSettings?.Setup?.Routes, parakeet, store?.DataDirectory, () => conversation?.Replying == true);
-        recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
-        captions = new(avatar, store?.DataDirectory);
+        recovery = services.Recovery;
+        avatar = services.Avatar;
+        captions = services.Captions;
         captions.Changed += () => ShowSpeechDisplay();
         avatar.Placement = CharacterPlacementStore.Load(store?.DataDirectory);
         avatar.ClickThrough = CharacterClickThroughStore.Load(store?.DataDirectory);
         avatar.VoiceMuted = !Talk.SpeakReplies;
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         avatar.Gaze.Decides = Talk.DecideGaze;
-        characterActions = new(store?.DataDirectory);
-        characterTouchZones = new(store?.DataDirectory);
-        characterEyes = new(store?.DataDirectory);
-        characterTemperaments = new(store?.DataDirectory);
-        characterReactionChanges = new(store?.DataDirectory);
+        characterActions = services.CharacterActions;
+        characterTouchZones = services.CharacterTouchZones;
+        characterEyes = services.CharacterEyes;
+        characterTemperaments = services.CharacterTemperaments;
+        characterReactionChanges = services.CharacterReactionChanges;
         // The character's usual gaze: your choice, else what the active persona's temperament decided.
         avatar.Gaze.Personality = () => characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)?.Gaze;
         avatar.Gaze.Configure(Talk.GazeUsual, Talk.GazeFree);
-        characterThemes = new(store?.DataDirectory);
+        characterThemes = services.CharacterThemes;
         if (setupService is not null)
         {
             // MARTLET_SIMULATE_MICROPHONE / MARTLET_SIMULATE_SPEAKERS: fixture devices for MCP verification (never real audio).

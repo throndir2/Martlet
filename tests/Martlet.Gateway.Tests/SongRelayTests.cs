@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Singing;
 using Martlet.Core.Voices;
 using Martlet.F5;
@@ -171,13 +171,13 @@ public sealed class SongRelayTests
         Style = "acoustic pop", VoiceId = voiceId ?? VoiceId, DurationSeconds = 30, Seed = 7
     };
 
-    private static async Task<(Audio2FaceHostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
+    private static async Task<(HostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
     {
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
-        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == Audio2FaceHostConnection.SongRouteId);
+        var connection = new HostConnection(pairing, secret, host.Clock);
+        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostConnection.SongRouteId);
         await connection.MergeSpeakingVoicesAsync(SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters));
         return (connection, route);
     }
@@ -273,7 +273,7 @@ public sealed class SongRelayTests
         Assert.Equal(VoiceId, match.GetProperty("voice_id").GetString());
         Assert.Equal(Voice.AudioSha256, match.GetProperty("reference").GetProperty("audio_sha256").GetString());
         Assert.False(match.TryGetProperty("lyrics", out _));
-        Assert.Equal([0L, Audio2FaceHostConnection.SongInputPageBytes / 2], singing.InputOffsets);
+        Assert.Equal([0L, HostConnection.SongInputPageBytes / 2], singing.InputOffsets);
         Assert.Equal(Halved(music.Vocals.Pcm16.ToArray()), matched.Vocals.Pcm16.ToArray());
         Assert.Equal(SongVoiceMatch.SoulX, matched.VoiceMatch);
         Assert.Contains(matched.StageTimings, t => t.Stage == SongStage.MatchingVoice);

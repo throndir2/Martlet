@@ -24,7 +24,7 @@ machine whenever possible: build it and drive the actual feature with
 UI) on a disposable data directory. **Always extend the MCP server in the same
 change** so new controls, status and capabilities are reachable and observable
 (automation IDs, `SafeClicks`/`SafeValues`, new tools or Doctor probes,
-`docs/MCP.md`). Run what tests do not cover the way it is used. Report anything
+`docs/MCP.md` and its area pages in `docs/mcp/`). Run what tests do not cover the way it is used. Report anything
 this environment cannot exercise as NOT RUN with the reason, and put the
 runner's `summary.md` and the MCP results in the PR. Never claim an unrun check
 passed, and add to `tests\known-failures.txt` only tests shown failing on

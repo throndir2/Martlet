@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Gateway.Stt;
 using Microsoft.AspNetCore.Builder;
@@ -48,13 +48,13 @@ public sealed class SttRelayTests
 
     private static readonly byte[] Utterance = Enumerable.Range(0, 16_000).SelectMany(i => BitConverter.GetBytes((short)(i % 200 - 100))).ToArray();
 
-    private static async Task<(Audio2FaceHostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
+    private static async Task<(HostConnection Connection, HostRoute Route)> ConnectAsync(GatewayTestHost host)
     {
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
-        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == Audio2FaceHostConnection.TranscriptionRouteId);
+        var connection = new HostConnection(pairing, secret, host.Clock);
+        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostConnection.TranscriptionRouteId);
         return (connection, route);
     }
 
@@ -94,7 +94,7 @@ public sealed class SttRelayTests
         await using var gateway = await GatewayTestHost.StartAsync(inferenceWorkers: [stopped]);
         var (client, stt) = await ConnectAsync(gateway);
         using var ownedClient = client;
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(() =>
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(() =>
             client.TranscribeAsync(stt, NewIds(), 0, gateway.Clock.GetUtcNow().AddSeconds(30), Utterance));
         Assert.Equal("worker.unavailable", failure.Code);
     }

@@ -135,7 +135,7 @@ public sealed class LiveConversationTests
         {
             Settings = paired with { Generation = new() { ContextTokens = 2_048 } }
         })!.TextLimits.MaxOutputTokens);
-        Assert.Contains("Maximum length is 4096 tokens, including any hidden thinking",
+        Assert.Contains("maximum length is 4096 tokens, including any hidden thinking",
             MainWindow.DescribeGeneration(null, paired.Setup!.Routes.Single(r => r.Role == SetupRole.Llm)));
         Assert.Contains("your Martlet host fixture-host", configuration.Disclosure(false));
         var request = configuration.Request(new("Hello host"), false, [], null, null, out _, out _, out _);
@@ -167,8 +167,8 @@ public sealed class LiveConversationTests
             SchemaVersion = 1, Origin = "https://192.168.1.20:9443", HostId = "gpu-host",
             SpkiFingerprint = "sha256:" + new string('a', 64), DeviceRole = "voice"
         }, pairing, "desktop-test", MainWindow.Snapshot(new(
-            Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostConnection.TranscriptionRouteId,
-            Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostConnection.TranscriptionPath, "martlet.transcription-relay", "1.0",
+            Martlet.HostClient.HostConnection.TranscriptionRouteId,
+            Martlet.HostClient.HostConnection.TranscriptionPath, "martlet.transcription-relay", "1.0",
             "stt-host", "whisper-relay", "1.0.0", "small", "whisper.cpp-1.9.4", new string('c', 64), "sha256:" + new string('d', 64),
             1_400_000, 960_000, 16_384, 16_384, 16, 262_144, TimeSpan.FromSeconds(60), "request_abort"), SetupRouteType.GatewayStt));
         var configuration = LiveConversationConfiguration.From(loaded with { Settings = settings })!;
@@ -1356,8 +1356,8 @@ public sealed class LiveConversationTests
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
         // MainWindow's statics need WPF's pack: scheme, which a test that shows no window hasn't registered yet.
         _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
-        Assert.Contains("Spoken replies don't start with a short first sentence.", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
-        Assert.Contains("Spoken replies start with a short first sentence.", MainWindow.DescribeGeneration(null));
+        Assert.Contains("spoken replies don't start with a short first sentence", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
+        Assert.Contains("spoken replies start with a short first sentence", MainWindow.DescribeGeneration(null));
     }
 
     [Fact]

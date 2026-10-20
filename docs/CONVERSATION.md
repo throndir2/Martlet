@@ -516,7 +516,7 @@ Checked locally: `PromptSettingsTests`, `CheckInsTests` (the callback list,
 Think ahead, Quiet moments and the repeat check), MCP `check_ins_check` (steps
 *callback list*, *think ahead reads the callback list*, *quiet moments* and
 *prompts keep the conversation going*) and the desktop with `model_lab` and a
-check-ins fixture ([MCP](MCP.md#check-ins)). A real model that follows the
+check-ins fixture ([MCP](mcp/apps.md#check-ins)). A real model that follows the
 prompts is **NOT RUN**.
 
 ## The Thinking pool
@@ -2473,7 +2473,7 @@ also take:
   audio.
 - *A script* you write (Windows PowerShell, at most 4,000 characters). Martlet
   runs it hidden, in your home folder, before each run, and stops it after 20
-  seconds, as the [terminal tool](MCP.md#terminal) does. What it prints (at
+  seconds, as the [terminal tool](mcp/apps.md#terminal) does. What it prints (at
   most 4,000 characters, cut) goes in the message as *data, not instructions*,
   with a line when the script failed. For example, `Get-Process | Sort-Object
   CPU -Descending | Select-Object -First 10 Name, CPU` gives the busiest
@@ -2704,7 +2704,7 @@ times it ran and acted (`CheckInStatus-<id>`). *Check now* runs one at once,
 whether it is on or due, when it has something to check. The desktop log notes
 each run with words and counts only (*Check-ins: Lingering emotes ran on diva
 (qwen3:8b) in 1.2 s: turned off {blush}.*), and `check-ins-status.json` says
-the same for [MCP](MCP.md#check-ins). Neither keeps what was said, answered or
+the same for [MCP](mcp/apps.md#check-ins). Neither keeps what was said, answered or
 reminded.
 
 **API** (`Martlet.Conversation.CheckIns`): `All(settings)` lists the

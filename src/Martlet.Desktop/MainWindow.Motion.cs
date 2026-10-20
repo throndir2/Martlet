@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Cluster;
@@ -297,7 +297,7 @@ public partial class MainWindow
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
-            JsonException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
+            JsonException or ArgumentException or HostConnectionException || ClusterSync.IsHostFailure(error))
         {
             motionFailures[key] = error.Message;
             ActionText.Text = error.Message;
@@ -313,7 +313,7 @@ public partial class MainWindow
     /// motion route and its service says it is provisioned. Returns null once it does, else what it saw last.</summary>
     private Task<string?> WaitForMotionAsync(PairedHost host, CancellationToken token) => WaitForRoleAsync(host, async check =>
     {
-        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.MotionRouteId) != true || store is null) return new(check.Text);
+        if (check.Routes?.Any(r => r.RouteId == HostConnection.MotionRouteId) != true || store is null) return new(check.Text);
         using var maker = new HostMotionMaker(store.DataDirectory, host.HostId);
         var availability = await maker.GetAvailabilityAsync(token);
         return availability.Available ? null : new(availability.Reason ?? check.Text);

@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Core.Contracts;
 using Martlet.Core.Network;
@@ -214,14 +214,14 @@ internal static class OpenAiRehearsal
     /// <summary>A simulated desktop: its network key, its pairings (secrets in memory) and its network state.</summary>
     private sealed class LabDesktop(NetworkKey key, string name)
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly NetworkSyncEngine engine = new(key, name);
         private NetworkLocalState state = NetworkLocalState.Empty;
 
         internal async Task PairByCodeAsync(LabHost host, CancellationToken token)
         {
             var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
-            var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), key.DeviceId, name, token);
+            var (pairing, secret) = await HostTransport.PairWithCodeAsync(host.Origin, card.Code.Reveal(), key.DeviceId, name, token);
             pairings[pairing.HostId] = (pairing, secret);
             state = state.WithAdopted(pairing.HostId);
         }
@@ -229,12 +229,12 @@ internal static class OpenAiRehearsal
         internal async Task SyncAsync(CancellationToken token)
         {
             var result = await engine.SyncAsync(state, pairings.Values.Select(p => p.Pairing).ToArray(),
-                pairing => new Audio2FaceHostConnection(pairing, pairings[pairing.HostId].Secret), token);
+                pairing => new HostConnection(pairing, pairings[pairing.HostId].Secret), token);
             foreach (var (pairing, secret) in result.Paired) pairings[pairing.HostId] = (pairing, secret);
             state = NetworkLocalState.Parse(result.State.Write());
         }
 
-        private Audio2FaceHostConnection Connect(LabHost host) => new(pairings[host.HostId].Pairing, pairings[host.HostId].Secret);
+        private HostConnection Connect(LabHost host) => new(pairings[host.HostId].Pairing, pairings[host.HostId].Secret);
 
         internal async Task<HostApiKeys> MergeKeysAsync(LabHost host, ApiKeyList list, CancellationToken token)
         {

@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -193,7 +193,7 @@ internal static class ClusterSync
             {
                 var routes = await connection.ReadRoutesAsync(token);
                 try { return new ClusterProbe(host.HostId, true, "", routes, await connection.ReadClusterAsync(token), true); }
-                catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "response.invalid")
+                catch (HostConnectionException error) when (error.Code is "request.invalid" or "response.invalid")
                 {
                     return new ClusterProbe(host.HostId, true, "", routes);
                 }
@@ -217,7 +217,7 @@ internal static class ClusterSync
         catch (Exception error) when (IsHostFailure(error)) { return null; }
     }
 
-    internal static async Task<T> WithConnectionAsync<T>(AvatarRemoteHost host, Func<Audio2FaceHostConnection, Task<T>> action)
+    internal static async Task<T> WithConnectionAsync<T>(AvatarRemoteHost host, Func<HostConnection, Task<T>> action)
     {
         var connection = Connect(host);
         try { return await action(connection); }
@@ -225,18 +225,18 @@ internal static class ClusterSync
     }
 
     /// <summary>A paired connection to <paramref name="host"/> for several requests in a row; the caller disposes it.</summary>
-    internal static Audio2FaceHostConnection Connect(AvatarRemoteHost host)
+    internal static HostConnection Connect(AvatarRemoteHost host)
     {
-        Audio2FaceHostConnection? connection = null;
+        HostConnection? connection = null;
         using (var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId))
         {
             if (read.Error != CredentialError.None || read.Secret is null)
                 throw new InvalidOperationException("Pair this host again.");
-            read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), secret));
+            read.Secret.Use(secret => connection = new HostConnection(GatewayAvatarHostLink.Pairing(host), secret));
         }
         return connection!;
     }
 
-    internal static bool IsHostFailure(Exception error) => error is Audio2FaceHostException or IOException or UnauthorizedAccessException or
+    internal static bool IsHostFailure(Exception error) => error is HostConnectionException or IOException or UnauthorizedAccessException or
         ContractException or InvalidOperationException or ArgumentException or JsonException or TimeoutException or HttpRequestException;
 }

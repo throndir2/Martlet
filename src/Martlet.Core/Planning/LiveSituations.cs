@@ -122,7 +122,7 @@ public static class LiveSituations
         var away = facts.Away.ToHashSet(StringComparer.Ordinal);
         var homeName = facts.HomeName ?? facts.HomeHost ?? "the host";
         var backupNote = facts.Backup is not null && !facts.BackupAllowed
-            ? $" Online services are set to Never, so {facts.Backup} isn't used." : "";
+            ? $"; online services are set to Never, so {facts.Backup} isn't used" : "";
 
         if (facts.Home == LiveHome.ThisPc && game is not null && facts.PlaysGames)
         {
@@ -130,8 +130,8 @@ public static class LiveSituations
             order.Add(new(LivePlaceKind.ThisPc, "This PC", facts.HomeModel ?? facts.LocalModel ?? "its model") { CardKept = true });
             var place = order[0];
             var why = place.Kind == LivePlaceKind.ThisPc
-                ? $"A game ({game}) runs on this PC and no other place can do live Thinking, so it stays on this PC's {place.Model}." + backupNote
-                : $"A game ({game}) runs on this PC, so live Thinking uses {place.Text} until the game ends." + backupNote;
+                ? $"A game ({game}) runs on this PC and no other place can do live Thinking, so it stays on this PC's {place.Model}" + backupNote + "."
+                : $"A game ({game}) runs on this PC, so live Thinking uses {place.Text} until the game ends" + backupNote + ".";
             return new(Situation.Gaming, place, order, why);
         }
 
@@ -142,9 +142,9 @@ public static class LiveSituations
                 order.Add(new(LivePlaceKind.ThisPc, "This PC", local) { CardKept = game is not null && facts.PlaysGames });
             if (order.Count == 0)
                 return new(Situation.HostAway, null, order,
-                    $"{homeName} doesn't answer, and no other place can do live Thinking, so Martlet waits for it." + backupNote);
+                    $"{homeName} doesn't answer, and no other place can do live Thinking, so Martlet waits for it" + backupNote + ".");
             return new(Situation.HostAway, order[0], order,
-                $"{homeName} doesn't answer, so live Thinking uses {order[0].Text} until {homeName} answers again." + backupNote);
+                $"{homeName} doesn't answer, so live Thinking uses {order[0].Text} until {homeName} answers again" + backupNote + ".");
         }
 
         var normal = facts.Home switch

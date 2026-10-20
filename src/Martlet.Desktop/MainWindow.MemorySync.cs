@@ -1,6 +1,6 @@
 using System.IO;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Sync;
 using Martlet.Memory;
@@ -203,7 +203,7 @@ public partial class MainWindow
             result.Unreadable, result.Problem, null, result.Full);
     }
 
-    private async Task GiveMemoriesAsync(PairedHost host, string key, Func<Audio2FaceHostConnection, Task<SharedMemories>> merge)
+    private async Task GiveMemoriesAsync(PairedHost host, string key, Func<HostConnection, Task<SharedMemories>> merge)
     {
         try
         {
@@ -289,8 +289,8 @@ public partial class MainWindow
                         () => connection.ReadMemorySpaceAsync(space, lifetime.Token));
                     ok = true;
                 }
-                catch (Audio2FaceHostException error) when (IsOlderHost(error)) { noSpaces = true; }
-                catch (Audio2FaceHostException error) when (error.Code == "memories.space_denied") { denied = true; }
+                catch (HostConnectionException error) when (IsOlderHost(error)) { noSpaces = true; }
+                catch (HostConnectionException error) when (error.Code == "memories.space_denied") { denied = true; }
                 if (oldDocument)
                 {
                     try
@@ -298,7 +298,7 @@ public partial class MainWindow
                         old = await ReadCachedAsync(host.HostId, OldMemoryDocument, () => connection.ReadMemoriesDigestAsync(lifetime.Token),
                             () => connection.ReadMemoriesAsync(lifetime.Token));
                     }
-                    catch (Audio2FaceHostException error) when (IsOlderHost(error)) { }
+                    catch (HostConnectionException error) when (IsOlderHost(error)) { }
                 }
                 return true;
             });
@@ -317,7 +317,7 @@ public partial class MainWindow
         }
     }
 
-    private static bool IsOlderHost(Audio2FaceHostException error) => error.Code is "request.invalid" or "request.not_found" or "route.not_found";
+    private static bool IsOlderHost(HostConnectionException error) => error.Code is "request.invalid" or "request.not_found" or "route.not_found";
 
     private void ShowMemorySyncStatus() => MemorySyncStatusText.Text = memorySyncStatus;
 }

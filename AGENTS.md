@@ -208,7 +208,7 @@ flow in [Validating changes](docs/VALIDATION.md). Both parts are required:
   everything new reachable and observable through MCP: stable automation IDs
   on new controls, passive navigation in `SafeClicks`, non-secret status
   fields in `SafeValues`, and new or extended tools (or Doctor probes) for new
-  headless capabilities, with [MCP](docs/MCP.md) updated to match. A feature
+  headless capabilities, with the [MCP](docs/MCP.md) page of its area updated to match. A feature
   MCP cannot reach or observe is not finished.
 - `--allow-ui-effects` is allowed for this verification only with a disposable
   data directory and no real credentials. It never authorizes spending, real
@@ -239,7 +239,7 @@ optional; use them when the change warrants it.
 ## Use Martlet through its MCP server
 
 Martlet has its own MCP server, `src\Martlet.Mcp`
-([Use Martlet from an AI assistant](docs/MCP.md#use-martlet-from-an-ai-assistant)).
+([Use Martlet from an AI assistant](docs/mcp/start-here.md#use-martlet-from-an-ai-assistant)).
 Use it to work with Martlet itself, not only to validate changes:
 
 - To make or change a character, change a setting or see how Martlet is set

@@ -352,7 +352,8 @@ public partial class MainWindow
         card.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
         AutomationProperties.SetAutomationId(card, "WizardPlanCard-" + component);
         AutomationProperties.SetAutomationId(title, "WizardPlanItem-" + component);
-        AutomationProperties.SetName(title, kept is null ? plan.Describe(component) : title.Text);
+        AutomationProperties.SetName(title, title.Text);
+        if (kept is null) AutomationProperties.SetHelpText(title, plan.Describe(component));
         return card;
     }
 

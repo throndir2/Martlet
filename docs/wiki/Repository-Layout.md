@@ -43,6 +43,7 @@ This page tells you where things are in the repository. Before you change a rule
 | `Martlet.Perception` | The contracts for the reading (OCR) and seeing (VLM) host workers. |
 | `Martlet.Discord`, `Martlet.Messaging`, `Martlet.Home` | Discord, Telegram and WhatsApp, and Home Assistant. |
 | `Martlet.Avatars`, `Martlet.Avatar.Hosting`, `Martlet.Avatar.Audio2Face` | Character contracts, hosting and Audio2Face lip-sync. |
+| `Martlet.HostClient` | The client for a Martlet host's API (pairing, sign-in and accounts, chat, memories, media, cluster, settings) and the network sync and household sign-in. |
 | `Martlet.Avatar.Vrm`, `Martlet.Avatar.Live2D` | The VRM and Live2D web packages (npm). |
 | `Martlet.Gateway`, `Martlet.Gateway.Persistence` | The host gateway and its saved pairings and state. |
 | `Martlet.Gateway.*` (Ollama, Stt, F5, Xtts, GptSovits, Dia, Singing, Pictures, Ocr, Motion, VoiceRecognition, Audio2Face) | The relays from the gateway to each host role. |

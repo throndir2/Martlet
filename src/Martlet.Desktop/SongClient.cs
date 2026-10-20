@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Audio.Windows;
@@ -123,7 +123,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
     {
         using var connection = ClusterSync.Connect(host);
         var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
-        if (routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) is not { } route) return null;
+        if (routes.FirstOrDefault(r => r.RouteId == HostConnection.SongRouteId) is not { } route) return null;
         for (var attempt = 0; ; attempt++)
         {
             try
@@ -132,7 +132,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
                     new Dictionary<string, object> { ["operation"] = "status" }, token).ConfigureAwait(false));
             }
             // The gateway runs one request per route at a time: another computer's poll can hold it for a moment.
-            catch (Audio2FaceHostException error) when (error.Code == "job.busy" && attempt < 8)
+            catch (HostConnectionException error) when (error.Code == "job.busy" && attempt < 8)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(250), token).ConfigureAwait(false);
             }
@@ -322,9 +322,9 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
 
         // One job on one computer: its connection and song route, the log line, and its failures in a pool's words.
         async Task<T> OnHostAsync<T>(PairedHost host, string what, IReadOnlyList<(PoolMember Member, PairedHost? Host)> pool,
-            Func<Audio2FaceHostConnection, HostRoute, Task<T>> run, CancellationToken token)
+            Func<HostConnection, HostRoute, Task<T>> run, CancellationToken token)
         {
-            Audio2FaceHostConnection connection;
+            HostConnection connection;
             HostRoute route;
             try
             {
@@ -332,7 +332,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
                 try
                 {
                     route = (await connection.ReadRoutesAsync(token).ConfigureAwait(false))
-                        .FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) ??
+                        .FirstOrDefault(r => r.RouteId == HostConnection.SongRouteId) ??
                         throw new SongException(SongErrorCodes.Unavailable, $"{host.HostId} doesn't sing any more.");
                 }
                 catch

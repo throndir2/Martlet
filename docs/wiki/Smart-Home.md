@@ -273,4 +273,4 @@ immediately.
 camera's picture as a camera for Vision. See [Vision](Vision). When a camera
 doesn't work, see [Camera problems](Vision#camera-problems).
 
-More detail: [Smart home](https://github.com/throndir2/Martlet/blob/main/docs/SMART_HOME.md), [MCP](https://github.com/throndir2/Martlet/blob/main/docs/MCP.md#tools-while-you-talk-mcp-client), [Cluster](https://github.com/throndir2/Martlet/blob/main/docs/CLUSTER.md#the-shared-home-assistant-connection).
+More detail: [Smart home](https://github.com/throndir2/Martlet/blob/main/docs/SMART_HOME.md), [MCP](https://github.com/throndir2/Martlet/blob/main/docs/mcp/apps.md#tools-while-you-talk-mcp-client), [Cluster](https://github.com/throndir2/Martlet/blob/main/docs/CLUSTER.md#the-shared-home-assistant-connection).

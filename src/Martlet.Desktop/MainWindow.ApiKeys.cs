@@ -109,13 +109,13 @@ public partial class MainWindow
                     return (host.HostId, Copy: copy, Old: false);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
-                catch (Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+                catch (Martlet.HostClient.HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
                 {
-                    return (host.HostId, Copy: (Martlet.Avatar.Audio2Face.Remote.HostApiKeys?)null, Old: true);
+                    return (host.HostId, Copy: (Martlet.HostClient.HostApiKeys?)null, Old: true);
                 }
                 catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
                 {
-                    return (host.HostId, Copy: (Martlet.Avatar.Audio2Face.Remote.HostApiKeys?)null, Old: false);
+                    return (host.HostId, Copy: (Martlet.HostClient.HostApiKeys?)null, Old: false);
                 }
             }));
             if (closing) return;

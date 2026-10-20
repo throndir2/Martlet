@@ -4,7 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;
 
@@ -26,7 +26,7 @@ public partial class MainWindow
     private string accountsSyncStatus = "Accounts: not synced yet.";
 
     /// <summary>The session App opened at start, or (in tests, without App) one opened here.</summary>
-    private static AccountSession? OpenAccounts(Martlet.Core.Settings.SettingsStore? store)
+    internal static AccountSession? OpenAccounts(Martlet.Core.Settings.SettingsStore? store)
     {
         if (store is null) return null;
         if (Application.Current is App { Accounts: { } opened } && opened.HouseholdFolder == store.DataDirectory) return opened;
@@ -317,7 +317,7 @@ public partial class MainWindow
             return (host.HostId, host, copy, true, false);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
-        catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+        catch (HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
         {
             return (host.HostId, host, null, false, true);
         }

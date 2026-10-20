@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Accounts;
 using Martlet.Core.Network;
 using Martlet.Gateway;
@@ -216,7 +216,7 @@ internal static class AccountRehearsal
     /// kept through accounts.json's format between syncs.</summary>
     private sealed class LabDesktop(NetworkKey key)
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         internal NetworkRoster? Roster { get; set; }
         internal AccountDirectory Local { get; private set; } = AccountDirectory.Empty;
         internal string Digest => Local.Digest();
@@ -224,11 +224,11 @@ internal static class AccountRehearsal
         internal async Task PairAsync(LabHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = key.DeviceId, DisplayName = key.DeviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, key.DeviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, key.DeviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
-        private Audio2FaceHostConnection Connect(LabHost host) => new(pairings[host.HostId].Pairing, pairings[host.HostId].Secret);
+        private HostConnection Connect(LabHost host) => new(pairings[host.HostId].Pairing, pairings[host.HostId].Secret);
 
         internal async Task MergeNetworkAsync(LabHost host, NetworkRoster roster, CancellationToken token)
         {

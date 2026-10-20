@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Core.Accounts;
 using Martlet.Core.Network;
@@ -81,7 +81,7 @@ internal static class SignInLab
         // it ran first), as a real pairing would be, its secret in the lab folder, the host in its hosts.json.
         var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
         var desktopDevice = DeviceIds.Peek(dataDirectory) is { Id: { } named } ? named : DesktopDevice;
-        var (pairing, pairingSecret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice, "LAB-DESKTOP", token);
+        var (pairing, pairingSecret) = await HostTransport.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice, "LAB-DESKTOP", token);
         using (var lease = new SecretLease(pairingSecret))
         {
             var stored = new WindowsCredentialStore().WriteAvatarHostSecret(pairing.HostId, pairing.CredentialId, lease);
@@ -130,7 +130,7 @@ internal static class SignInLab
                 friendState = "signed in";
                 friendRefusals = await friend.RefusalsAsync(host.HostId, token);
             }
-            catch (Audio2FaceHostException error) { friendState = "refused: " + error.Code; }
+            catch (HostConnectionException error) { friendState = "refused: " + error.Code; }
         }
         await FriendSignInAsync();
 
@@ -452,7 +452,7 @@ internal static class SignInLab
             account = a.AccountId, device = a.DeviceId, login = a.Login.ToString(), a.Algorithm, a.IssuedAt, a.ExpiresAt, check = result.ToString(),
             textLength = a.ToText().Length
         };
-        async Task<HostAccountProof?> Prove(string name, Func<Audio2FaceHostConnection, Task<HostAccountProof>> proving, Guid expected, string login)
+        async Task<HostAccountProof?> Prove(string name, Func<HostConnection, Task<HostAccountProof>> proving, Guid expected, string login)
         {
             try
             {
@@ -465,7 +465,7 @@ internal static class SignInLab
                     $"account {proof.AccountId:N} as {proof.Attestation.Login} on {proof.Attestation.DeviceId}: {result} ({proof.Attestation.Algorithm})");
                 return proof;
             }
-            catch (Audio2FaceHostException error)
+            catch (HostConnectionException error)
             {
                 Record(name, false, "refused: " + error.Code);
                 return null;
@@ -478,7 +478,7 @@ internal static class SignInLab
                 await attempt();
                 Record(name, false, "it was not refused");
             }
-            catch (Audio2FaceHostException error) { Record(name, error.Code == expected, "refused: " + error.Code); }
+            catch (HostConnectionException error) { Record(name, error.Code == expected, "refused: " + error.Code); }
         }
 
         // The authenticator steps the setups used are spent, so the first proofs use the next step (one step of drift).
@@ -518,7 +518,7 @@ internal static class SignInLab
             Record("a laptop adds itself as Sam and gets Sam's attestation", who.AccountId == SamAccount && result == AccountAttestationCheck.Valid &&
                 who.Attestation!.DeviceId == laptopKey.DeviceId, $"signed in as {who}, account {who.AccountId:N}, attestation {result}");
         }
-        catch (Audio2FaceHostException error) { Record("a laptop adds itself as Sam and gets Sam's attestation", false, "refused: " + error.Code); }
+        catch (HostConnectionException error) { Record("a laptop adds itself as Sam and gets Sam's attestation", false, "refused: " + error.Code); }
         await Refused("Alex can't add a computer without an authenticator", "signin.needs_authenticator", async () =>
         {
             var attempt = await HostSignInClient.BeginAsync(invite, host.Origin, "martlet", cancellationToken: token);

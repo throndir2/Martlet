@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Conversation;
 using Martlet.Core.Accounts;
 using Martlet.Core.Network;
@@ -235,7 +235,7 @@ internal static class ConversationRehearsal
     /// wires them for the account signed in.</summary>
     private sealed class LabDesktop
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly Guid account;
         internal string DeviceId { get; }
         internal ConversationHistory History { get; }
@@ -252,14 +252,14 @@ internal static class ConversationRehearsal
         internal async Task PairAsync(LabHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = DeviceId, DisplayName = DeviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
-        private Audio2FaceHostConnection Connect(LabHost host)
+        private HostConnection Connect(LabHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
 
         /// <summary>What the desktop's record sync does: one peer per paired host for the account signed in, the real engine.</summary>

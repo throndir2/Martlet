@@ -99,13 +99,13 @@ public sealed class ConfigurationTests
         var code = PairingCode.Format(card);
         Assert.StartsWith("martlet-pair-v1.", code, StringComparison.Ordinal);
         Assert.DoesNotContain('\n', code);
-        var parsed = Martlet.Avatar.Audio2Face.Remote.HostPairingCode.Parse("  " + code + "\r\n");
+        var parsed = Martlet.HostClient.HostPairingCode.Parse("  " + code + "\r\n");
         Assert.Equal((card.Origin, card.HostId, card.SpkiFingerprint, card.PairingId, token),
             (parsed.Origin, parsed.HostId, parsed.SpkiFingerprint, parsed.PairingId, parsed.Token));
         Assert.DoesNotContain(token, parsed.ToString(), StringComparison.Ordinal);
         foreach (var bad in new[] { "", "martlet-pair-v1.", "martlet-pair-v1.e30", code[..^4], code.Replace("v1", "v2") })
-            Assert.Throws<Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException>(
-                () => Martlet.Avatar.Audio2Face.Remote.HostPairingCode.Parse(bad));
+            Assert.Throws<Martlet.HostClient.HostConnectionException>(
+                () => Martlet.HostClient.HostPairingCode.Parse(bad));
     }
 
     [Fact]

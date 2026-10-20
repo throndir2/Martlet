@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Core.Contracts;
 using Martlet.Presentation;
@@ -104,7 +104,7 @@ public partial class MainWindow
                 }
                 catch (Exception error) when (ClusterSync.IsHostFailure(error))
                 {
-                    return (host.HostId, Models: null, Problem: error is Audio2FaceHostException { Code: "request.invalid" or "not_found" or "route.not_found" }
+                    return (host.HostId, Models: null, Problem: error is HostConnectionException { Code: "request.invalid" or "not_found" or "route.not_found" }
                         ? "runs an older Martlet without the OpenAI-compatible endpoint; update it" : error.Message);
                 }
             }));

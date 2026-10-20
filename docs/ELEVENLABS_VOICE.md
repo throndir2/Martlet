@@ -157,7 +157,7 @@ cut into base64 chunks at odd byte boundaries.
 - Unit tests (`ElevenLabsTests` in `Martlet.Providers.Tests`,
   `ElevenLabsSettingsTests` in `Martlet.Core.Tests`, `ElevenLabsTagTests` in
   `Martlet.Conversation.Tests`).
-- `elevenlabs_check` in [Martlet MCP](MCP.md#elevenlabs-voice): cloning, one
+- `elevenlabs_check` in [Martlet MCP](mcp/voice.md#elevenlabs-voice): cloning, one
   piece, and a whole spoken reply through the production conversation runtime,
   plus a refused model and a wrong key.
 - Companion › Voice through the desktop's MCP automation (`ElevenLabsStatus`,

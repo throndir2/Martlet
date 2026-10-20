@@ -244,7 +244,7 @@ public sealed partial class MainWindow : Window
             SyncStatus.Text = $"Paired with {pairing.HostId}.";
             await SyncNowAsync();
         }
-        catch (Exception error) when (error is Avatar.Audio2Face.Remote.Audio2FaceHostException or HttpRequestException or IOException or
+        catch (Exception error) when (error is HostClient.HostConnectionException or HttpRequestException or IOException or
             OperationCanceledException or InvalidOperationException or Core.Contracts.ContractException)
         {
             SyncStatus.Text = "Couldn't pair: " + error.Message;
