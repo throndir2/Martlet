@@ -76,8 +76,8 @@ internal static class AccountsStatus
 
     private static NetworkRoster? ReadRoster(string dataDirectory)
     {
-        var path = Path.Combine(dataDirectory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
-        try { return File.Exists(path) ? Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster : null; }
+        var path = Path.Combine(dataDirectory, Martlet.HostClient.NetworkLocalState.FileName);
+        try { return File.Exists(path) ? Martlet.HostClient.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster : null; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException) { return null; }
     }
 

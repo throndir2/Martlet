@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Gateway.VoiceRecognition;
 using Martlet.Sherpa;
@@ -35,7 +35,7 @@ internal static class VoiceRecognitionEngineCheck
         {
             await using var host = await VoiceEngineCheck.LiveHost.StartAsync(new VoiceRecognitionRelayWorker(endpoint));
             using var connection = await host.PairAsync("voice-recognition-check-desktop", token);
-            var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == Audio2FaceHostConnection.VoiceRecognitionRouteId);
+            var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == HostConnection.VoiceRecognitionRouteId);
             (model, revision) = (route.ModelId, route.ModelRevision);
             // The service listens at once and loads its models after; the desktop asks again until it is ready.
             var waited = Stopwatch.StartNew();
@@ -70,7 +70,7 @@ internal static class VoiceRecognitionEngineCheck
                 });
             }
         }
-        catch (Audio2FaceHostException error)
+        catch (HostConnectionException error)
         {
             failure = error.Code;
             problem = error.Message;
@@ -84,7 +84,7 @@ internal static class VoiceRecognitionEngineCheck
         var ok = failure is null && heard.Count == clips.Length;
         return (ok, new
         {
-            ok, endpoint = endpoint.ToString(), route = Audio2FaceHostConnection.VoiceRecognitionRouteId, model, modelRevision = revision,
+            ok, endpoint = endpoint.ToString(), route = HostConnection.VoiceRecognitionRouteId, model, modelRevision = revision,
             state, provider, readyMs, service, clips = heard, failure, problem
         });
     }

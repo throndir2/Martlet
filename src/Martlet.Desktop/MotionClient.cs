@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Text.Json.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Motion;
 
@@ -229,7 +229,7 @@ internal sealed class PoolMotionMaker(string dataDirectory, IReadOnlyList<string
 /// </summary>
 internal sealed class HostMotionMaker(string dataDirectory, string hostId, int busyRetries = 40) : IMotionMaker, IDisposable
 {
-    private (PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)? open;
+    private (PairedHost Host, HostRoute Route, HostConnection Connection)? open;
 
     public string Where => $"{hostId}'s Motion role";
 
@@ -300,11 +300,11 @@ internal sealed class HostMotionMaker(string dataDirectory, string hostId, int b
                 return [.. answer.Select(element => JsonNode.Parse(element.GetRawText()) as JsonObject ?? throw Invalid())];
             }
             // The gateway runs one request per route at a time: a status poll can hold it for a moment.
-            catch (Audio2FaceHostException error) when (error.Code == "job.busy" && attempt < busyRetries)
+            catch (HostConnectionException error) when (error.Code == "job.busy" && attempt < busyRetries)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(250), token).ConfigureAwait(false);
             }
-            catch (Audio2FaceHostException error)
+            catch (HostConnectionException error)
             {
                 throw new MotionException(error.Code switch
                 {
@@ -322,17 +322,17 @@ internal sealed class HostMotionMaker(string dataDirectory, string hostId, int b
         }
     }
 
-    private async Task<(PairedHost, HostRoute, Audio2FaceHostConnection)> OpenAsync(CancellationToken token)
+    private async Task<(PairedHost, HostRoute, HostConnection)> OpenAsync(CancellationToken token)
     {
         if (open is { } known) return known;
         var host = MotionClient.Paired(dataDirectory).FirstOrDefault(h => h.HostId == hostId) ??
             throw new MotionException(MotionErrorCodes.Unavailable, $"This PC isn't paired with {hostId}, which makes motions.");
-        Audio2FaceHostConnection? connection = null;
+        HostConnection? connection = null;
         try
         {
             connection = ClusterSync.Connect(host.Pairing);
             var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
-            if (routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.MotionRouteId) is not { } route)
+            if (routes.FirstOrDefault(r => r.RouteId == HostConnection.MotionRouteId) is not { } route)
                 throw new MotionException(MotionErrorCodes.Unavailable, $"{hostId} doesn't run the Motion role. Add it there in Martlet hosts.");
             open = (host, route, connection);
             connection = null;

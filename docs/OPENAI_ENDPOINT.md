@@ -450,7 +450,7 @@ thinking). A person who wants them in another app asks the owner for a key.
 | Rank, slots and the queue | `GatewayInferenceOutside.cs` (`GatewayInferenceRouteRegistry.BeginOutside`, `EnqueueOutside`, `WaitOutsideAsync`, `GatewayOutsideJob`, `GatewayOutsideWaiter`), with `GatewayInferencePriority.cs` |
 | Translation to Ollama | `Martlet.Gateway.Ollama` `OllamaOpenAi.cs` and `OllamaRelayWorker.OpenAi.cs` (`OpenAiContextAsync`) |
 | Key checks | `GatewayApiKeys.cs` (`AuthenticateOpenAi`, `EqualPriority`) |
-| Desktop client | `Remote/HostOpenAiModels.cs` (`ReadOpenAiModelsAsync`) |
+| Desktop client | `Martlet.HostClient/HostOpenAiModels.cs` (`ReadOpenAiModelsAsync`) |
 | Desktop UI | `MainWindow.OpenAiEndpoint.cs` (the Share page and its card), `MainWindow.FrontDoor.cs` (Front door, Check address), `OpenAiDialogs.cs` (Show setup); the Share page in `MainWindow.xaml` (`SharePage`, `NavShare`) |
 | MCP | `openai_endpoint_status`, `openai_selftest` (`Martlet.NodeLinkCheck openai`), `front_door_selftest` (`Martlet.NodeLinkCheck front-door`); IDs in [MCP](MCP.md) |
 

@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Installation;
 
 namespace Martlet.Desktop;
@@ -473,13 +473,13 @@ internal static partial class HostLocal
 
     /// <summary>Pairs this desktop with this PC's host: runs "pair --device-id ... --name ...", reads the one-use code from
     /// its output (never shown), redeems it and lets the host restart its gateway.</summary>
-    internal static async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsync(HostSetupTarget target, string deviceId,
+    internal static async Task<(HostPairing Pairing, string Secret)> PairAsync(HostSetupTarget target, string deviceId,
         string name, IProgress<string> output, CancellationToken token)
     {
         var label = new string(name.Where(c => c is >= ' ' and <= '~').Take(64).ToArray()).Trim();
         if (label.Length == 0 || label[0] == '-') label = "Martlet desktop";
         var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<(Audio2FaceHostPairing, string)>? pairing = null;
+        Task<(HostPairing, string)>? pairing = null;
         var sink = new LineSink(line =>
         {
             var match = PairingCodePattern().Match(line);
@@ -490,7 +490,7 @@ internal static partial class HostLocal
             pairing = RedeemAsync(match.Value);
         });
 
-        async Task<(Audio2FaceHostPairing, string)> RedeemAsync(string code)
+        async Task<(HostPairing, string)> RedeemAsync(string code)
         {
             try { return await HostPairingCode.Parse(code).PairAsync(deviceId, token); }
             catch

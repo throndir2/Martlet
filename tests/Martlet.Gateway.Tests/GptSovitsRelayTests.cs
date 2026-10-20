@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.F5;
@@ -41,7 +41,7 @@ public sealed class GptSovitsRelayTests(ITestOutputHelper output)
         using var connection = await ConnectAsync(host);
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.GptSovitsRouteId);
         // "Bee (cute, bubbly)" is 10.6 seconds long.
-        var error = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var error = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.StreamSpeechAsync(route, Ids(), 1, host.Clock.GetUtcNow().AddSeconds(30),
                 Reference(F5BundledVoices.All.Single(v => v.Key == "librivox-woollybee")), "Hello."))
@@ -83,12 +83,12 @@ public sealed class GptSovitsRelayTests(ITestOutputHelper output)
         }
     }
 
-    private static async Task<Audio2FaceHostConnection> ConnectAsync(GatewayTestHost host)
+    private static async Task<HostConnection> ConnectAsync(GatewayTestHost host)
     {
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        return new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        return new HostConnection(pairing, secret, host.Clock);
     }
 
     private static CorrelationIds Ids() => new() { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };

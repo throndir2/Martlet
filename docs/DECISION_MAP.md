@@ -277,7 +277,7 @@ reach the hosts the others use; and what each PC says when the network isn't
 the same everywhere yet.
 
 **Owner:** `NetworkSyncEngine.SyncAsync`
-(`src\Martlet.Avatar.Audio2Face\Remote\NetworkSync.cs`): it merges every
+(`src\Martlet.HostClient\NetworkSync.cs`): it merges every
 reachable host's roster, looks for hosts of the network that no reachable host
 has heard of on the home network (`NetworkHostFinder`, `NetworkFind.cs`),
 pairs by itself with every host of the roster and brings its roster to a host
@@ -304,7 +304,7 @@ for the host on the home network; and which address that answered it uses (only
 one where the host shows its pinned key). The paired origin stays the host's
 name for TLS, requests and signatures.
 
-**Owner:** `HostRoutes.ConnectAsync` (`src\Martlet.Avatar.Audio2Face\Remote\HostRoutes.cs`),
+**Owner:** `HostRoutes.ConnectAsync` (`src\Martlet.HostClient\HostRoutes.cs`),
 with the find question in `HostFind` (`src\Martlet.Core\Network\HostFind.cs`).
 `HostRegistry.Moved` (`src\Martlet.Desktop\HostControl.cs`) keeps the new
 address with the pairing (`movedTo`) and moves an SSH target that named the old
@@ -312,7 +312,7 @@ one. On a host, `GatewayHomeListeners` (`src\Martlet.Gateway`) and the Docker
 keeper's `follow_home` (`deploy\host\lib\docker.sh`) decide where it listens.
 
 **Tests:** `HostFindTests` (Martlet.Core.Tests), `HostMoveTests`
-(Martlet.Avatar.Audio2Face.Tests), `HomeListenerTests` (Martlet.Gateway.Tests),
+(Martlet.HostClient.Tests), `HomeListenerTests` (Martlet.Gateway.Tests),
 `HostMovedTests` and `HostOutsideAddressTests` (Martlet.Desktop.Tests).
 
 **MCP:** `host_move_selftest`, `hosts_find`, `exposure_selftest` (outside

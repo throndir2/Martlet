@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Gateway;
 using Martlet.Gateway.Persistence;
@@ -27,8 +27,8 @@ internal static class ExposureRehearsal
         var started = DateTimeOffset.UtcNow;
         await using var host = await LabHost.StartAsync("lab-exposure");
         using var stranger = PinnedGatewayClient.Create(new GatewayOrigin(host.Origin), host.Identity);
-        Audio2FaceHostConnection? desktop = null;
-        Audio2FaceHostPairing? saved = null;
+        HostConnection? desktop = null;
+        HostPairing? saved = null;
         string? savedSecret = null;
 
         async Task Run(string name, Func<Task<(bool Ok, string Detail)>> action)
@@ -66,9 +66,9 @@ internal static class ExposureRehearsal
         await Run("At home (default exposure) a desktop pairs with the host over pinned TLS", async () =>
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = "lab-desktop", DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-            var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, "lab-desktop",
+            var (pairing, secret) = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, "lab-desktop",
                 card.PairingId, card.Token.Reveal(), token);
-            desktop = new Audio2FaceHostConnection(pairing, secret);
+            desktop = new HostConnection(pairing, secret);
             (saved, savedSecret) = (pairing, secret);
             var audit = await desktop.ReadSecurityAuditAsync(token);
             return (audit.Events.Any(e => e is { Outcome: "success", Subject: "lab-desktop", SourceKind: "loopback" }) && !audit.InternetReachable &&
@@ -88,8 +88,8 @@ internal static class ExposureRehearsal
             var refused = await Call(HttpMethod.Post, "/martlet/v1/pair/code", "{}");
             var stillOpen = host.Server.Pairing.IsOpen(code.PairingId);
             string? desktopSees = null;
-            try { await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, code.Code.Reveal(), "lab-phone", "LAB-PHONE", token); }
-            catch (Audio2FaceHostException error) { desktopSees = error.Code; }
+            try { await HostTransport.PairWithCodeAsync(host.Origin, code.Code.Reveal(), "lab-phone", "LAB-PHONE", token); }
+            catch (HostConnectionException error) { desktopSees = error.Code; }
             return (refused is { Status: 403, Code: "pair.outside_home" } && stillOpen && desktopSees == "pair.outside_home" &&
                     host.Server.Pairing.IsOpen(code.PairingId),
                 $"HTTP {refused.Status} {refused.Code}; window still open: {stillOpen}; the desktop's code pairing gets {desktopSees}");
@@ -108,10 +108,10 @@ internal static class ExposureRehearsal
         {
             host.Server.Exposure = host.Server.Exposure with { AllowPairingOutsideHome = true };
             string? codeSees = null, auditSees = null;
-            try { await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, code!.Code.Reveal(), "lab-phone", "LAB-PHONE", token); }
-            catch (Audio2FaceHostException error) { codeSees = error.Code; }
+            try { await HostTransport.PairWithCodeAsync(host.Origin, code!.Code.Reveal(), "lab-phone", "LAB-PHONE", token); }
+            catch (HostConnectionException error) { codeSees = error.Code; }
             try { await desktop!.ReadSecurityAuditAsync(token); }
-            catch (Audio2FaceHostException error) { auditSees = error.Code; }
+            catch (HostConnectionException error) { auditSees = error.Code; }
             var reason = host.Server.Guard.OutsideAccessBlockedReason;
             // Sign-in's own settings stay reachable for the paired owner, so it can be fixed from outside.
             var secret = Totp.NewSecret();
@@ -131,7 +131,7 @@ internal static class ExposureRehearsal
 
         await Run("The owner allows pairing codes from outside home: the same typed code then pairs", async () =>
         {
-            var (pairing, _) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, code!.Code.Reveal(), "lab-phone", "LAB-PHONE", token);
+            var (pairing, _) = await HostTransport.PairWithCodeAsync(host.Origin, code!.Code.Reveal(), "lab-phone", "LAB-PHONE", token);
             return (pairing.DeviceId == "lab-phone", $"paired {pairing.DeviceId} with {pairing.HostId}");
         });        // The refusal above counted once against this address's pairing; wait out anything left before guessing.
         await Run("A stranger guessing credentials is locked out after five failures, with Retry-After", async () =>
@@ -193,9 +193,9 @@ internal static class ExposureRehearsal
                     new QuietAudit(), LocalGatewayDecision.Enable, token);
                 await durable.StartAsync(token);
                 var card = durable.OpenPairing(new() { DeviceId = "lab-durable-desktop", DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-                var (pairing, secret) = await Audio2FaceHostClient.PairAsync(origin.CanonicalOrigin, "lab-durable",
+                var (pairing, secret) = await HostTransport.PairAsync(origin.CanonicalOrigin, "lab-durable",
                     durable.Identity!.SpkiFingerprint, "lab-durable-desktop", card.PairingId, card.Token.Reveal(), token);
-                using var connection = new Audio2FaceHostConnection(pairing, secret);
+                using var connection = new HostConnection(pairing, secret);
                 HostSecurityAudit audit = null!;
                 for (var i = 0; i < 20; i++)
                     audit = await connection.ReadSecurityAuditAsync(token);
@@ -215,12 +215,12 @@ internal static class ExposureRehearsal
         await Run("Home address doesn't answer: the desktop reaches the host at its outside address, pinned to the same key", async () =>
         {
             HostRoutes.Set(deadHome, host.HostId, [$"127.0.0.1:{port}"]);
-            using var away = new Audio2FaceHostConnection(saved! with { Origin = deadHome }, savedSecret);
+            using var away = new HostConnection(saved! with { Origin = deadHome }, savedSecret);
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var first = await away.ReadRoutesAsync(token);
             var firstMs = clock.ElapsedMilliseconds;
             var route = HostRoutes.For(deadHome);
-            using var again = new Audio2FaceHostConnection(saved! with { Origin = deadHome }, savedSecret);
+            using var again = new HostConnection(saved! with { Origin = deadHome }, savedSecret);
             clock.Restart();
             await again.ReadRoutesAsync(token);
             return (route is { Route: "outside" } && route.Address == $"127.0.0.1:{port}",
@@ -229,7 +229,7 @@ internal static class ExposureRehearsal
         await Run("Home address answers: it is used at once, never waiting on an outside one", async () =>
         {
             HostRoutes.Set(host.Origin, host.HostId, [$"127.0.0.1:{LabHost.FreePort()}"]);
-            using var home = new Audio2FaceHostConnection(saved!, savedSecret);
+            using var home = new HostConnection(saved!, savedSecret);
             var clock = System.Diagnostics.Stopwatch.StartNew();
             await home.ReadRoutesAsync(token);
             var route = HostRoutes.For(host.Origin);
@@ -240,13 +240,13 @@ internal static class ExposureRehearsal
         {
             var nowhere = $"https://127.0.0.1:{LabHost.FreePort()}";
             HostRoutes.Set(nowhere, host.HostId, [$"127.0.0.1:{LabHost.FreePort()}"]);
-            using var lost = new Audio2FaceHostConnection(saved! with { Origin = nowhere }, savedSecret);
+            using var lost = new HostConnection(saved! with { Origin = nowhere }, savedSecret);
             try
             {
                 await lost.ReadRoutesAsync(token);
                 return (false, "unexpectedly connected");
             }
-            catch (Audio2FaceHostException error)
+            catch (HostConnectionException error)
             {
                 return (error.Code == "host.unreachable" && error.Message.Contains("Couldn't reach the host at home or outside", StringComparison.Ordinal) &&
                     HostRoutes.For(nowhere) is { Route: "none" }, $"{error.Code}: {error.Message}");
@@ -269,8 +269,8 @@ internal static class ExposureRehearsal
             host.Server.Exposure = new() { OutsideAddresses = ["gpu-box.tailnet.ts.net:9443"], OutsideAddressesSetAt = DateTimeOffset.UtcNow };
             using var key = Martlet.Core.Network.NetworkKey.Create("lab-desktop");
             var engine = new NetworkSyncEngine(key, "LAB-DESKTOP");
-            var first = await engine.SyncAsync(NetworkLocalState.Empty, [saved!], p => new Audio2FaceHostConnection(p, savedSecret), token);
-            var second = await engine.SyncAsync(first.State, [saved!], p => new Audio2FaceHostConnection(p, savedSecret), token);
+            var first = await engine.SyncAsync(NetworkLocalState.Empty, [saved!], p => new HostConnection(p, savedSecret), token);
+            var second = await engine.SyncAsync(first.State, [saved!], p => new HostConnection(p, savedSecret), token);
             var listed = second.State.Roster?.Host(host.HostId)?.Addresses;
             var reachable = host.Server.Guard.InternetReachable;
             host.Server.Exposure = new();
@@ -282,11 +282,11 @@ internal static class ExposureRehearsal
         {
             await using var other = await LabHost.StartAsync("lab-other");
             HostRoutes.Set(other.Origin, host.HostId, [$"127.0.0.1:{port}"]);
-            using var collide = new Audio2FaceHostConnection(saved! with { Origin = other.Origin }, savedSecret);
+            using var collide = new HostConnection(saved! with { Origin = other.Origin }, savedSecret);
             string firstOutcome;
             try { await collide.ReadRoutesAsync(token); firstOutcome = "connected"; }
-            catch (Audio2FaceHostException error) { firstOutcome = error.Code; }
-            using var retry = new Audio2FaceHostConnection(saved! with { Origin = other.Origin }, savedSecret);
+            catch (HostConnectionException error) { firstOutcome = error.Code; }
+            using var retry = new HostConnection(saved! with { Origin = other.Origin }, savedSecret);
             var routes = await retry.ReadRoutesAsync(token);
             var route = HostRoutes.For(other.Origin);
             return (firstOutcome == "host.unreachable" && route is { Route: "outside" },
@@ -306,9 +306,9 @@ internal static class ExposureRehearsal
                 var outside = $"{overlayAddress}:{lanPort}";
                 // The laptop pairs at home, on the host's home address.
                 var card = lanHost.Server.Pairing.OpenWindow(new() { DeviceId = "lab-laptop", DisplayName = "LAB-LAPTOP", Roles = [GatewayRole.Voice] });
-                var (pairing, secret) = await Audio2FaceHostClient.PairAsync(lanHost.Origin, lanHost.HostId, spki, "lab-laptop",
+                var (pairing, secret) = await HostTransport.PairAsync(lanHost.Origin, lanHost.HostId, spki, "lab-laptop",
                     card.PairingId, card.Token.Reveal(), token);
-                using var laptop = new Audio2FaceHostConnection(pairing, secret);
+                using var laptop = new HostConnection(pairing, secret);
                 var before = await HostRoutes.ProbeAsync(lanHost.Origin, spki, outside, TimeSpan.FromSeconds(3), token);
                 // A MagicDNS name the host can't resolve: the host still listens on its own Tailscale address.
                 lanHost.Server.Exposure = new() { OutsideAddresses = [$"lab-overlay.tailnet.ts.net:{lanPort}"], OutsideAddressesSetAt = DateTimeOffset.UtcNow };

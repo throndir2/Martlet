@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -148,7 +148,7 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
                 if (!links.TryGetValue(host.HostId, out var link))
                 {
                     try { link = open(host); }
-                    catch (Exception error) when (error is Audio2FaceHostException or ContractException) { link = null; }
+                    catch (Exception error) when (error is HostConnectionException or ContractException) { link = null; }
                     links[host.HostId] = link;
                 }
                 if (link is not null) list.Add(new(place.Key, host.HostId, link));
@@ -178,14 +178,14 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
         int sampleRate, ReadOnlyMemory<byte> pcm, [EnumeratorCancellation] CancellationToken token)
     {
         if (!await member.Link.ReadyAsync(token).ConfigureAwait(false))
-            throw new Audio2FaceHostException("worker.unavailable", $"{member.HostId} isn't ready for lip-sync.");
+            throw new HostConnectionException("worker.unavailable", $"{member.HostId} isn't ready for lip-sync.");
         await using var frames = WorkSharingRoster.Shared.Watched(member.HostId, "lip-sync",
             member.Link.AnimateAsync(ids, epoch, sampleRate, pcm, token), token).GetAsyncEnumerator(token);
         while (true)
         {
             bool next;
             try { next = await frames.MoveNextAsync().ConfigureAwait(false); }
-            catch (Exception error) when (!token.IsCancellationRequested && error is Audio2FaceHostException or HttpRequestException or
+            catch (Exception error) when (!token.IsCancellationRequested && error is HostConnectionException or HttpRequestException or
                 IOException && WorkSharingRoster.Classify(error) is WorkRefusal.Unavailable or WorkRefusal.None)
             {
                 // A computer that doesn't answer or fails is left out for a while (its link checks again after 30 s); a busy

@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Accounts;
 using Martlet.Core.Network;
 using Martlet.Core.Sync;
@@ -297,9 +297,9 @@ public sealed class ConversationRecordTests
         await using var host = await GatewayTestHost.StartAsync();
         host.Server.MemorySpaceAccess = (principal, space, use) => space == MemorySpaceId.Account(Sam);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint,
             "desktop-test", card.PairingId, card.Token.Reveal());
-        Audio2FaceHostConnection Connect() => new(pairing, secret, host.Clock);
+        HostConnection Connect() => new(pairing, secret, host.Clock);
         var october = Month(October, Said(Guid.NewGuid(), "Hello there."), Said(Guid.NewGuid(), "Lovely day."));
 
         using (var peer = new HostConversationPeer(card.HostId, Connect, Sam))

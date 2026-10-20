@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Speakers;
 using Martlet.Sherpa;
@@ -15,7 +15,7 @@ namespace Martlet.Mcp;
 /// (voice-recognition-state.json: this PC's engine, the last recognition, the computers tried). <see cref="RunAsync"/> rehearses
 /// the production routing (<see cref="VoiceRecognitionRouter{T}"/> through <see cref="WorkQueue"/>), the engine keeper
 /// (<see cref="VoiceEngineKeeper{T}"/>), the answer checks (<see cref="SpeakerAnswers"/>) and the request
-/// (<see cref="Audio2FaceHostConnection.VoiceRecognitionPayload"/>) with SIMULATED computers and a simulated engine, NOT real
+/// (<see cref="HostConnection.VoiceRecognitionPayload"/>) with SIMULATED computers and a simulated engine, NOT real
 /// hosts. With a Martlet folder it also runs the real engine on this PC through the keeper and reports its speed.
 /// </summary>
 internal static class VoiceRecognitionCheck
@@ -150,7 +150,7 @@ internal static class VoiceRecognitionCheck
         var samples = new float[3 * Rate];
         for (var i = 0; i < samples.Length; i++) samples[i] = (float)(0.3 * Math.Sin(2 * Math.PI * 180 * i / Rate));
         var pcm = SpeakerAnswers.Pcm16(samples);
-        var payload = Audio2FaceHostConnection.VoiceRecognitionPayload("analyze", pcm);
+        var payload = HostConnection.VoiceRecognitionPayload("analyze", pcm);
         Step("The request: operation analyze, sample_rate 16000 and the audio as PCM16 in base64 (3 s: 96,000 bytes)",
             (string)payload["operation"] == "analyze" && (int)payload["sample_rate"] == Rate &&
             Convert.FromBase64String((string)payload["pcm16_base64"]).Length == pcm.Length && pcm.Length == 96_000,

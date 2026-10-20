@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;

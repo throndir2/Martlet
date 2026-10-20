@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 
 namespace Martlet.Gateway.Tests;
 
@@ -6,10 +6,10 @@ namespace Martlet.Gateway.Tests;
 /// check or sync), and a host that stops is still noticed at once.</summary>
 public sealed class HostConnectionPoolTests
 {
-    private static async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsync(GatewayTestHost host)
+    private static async Task<(HostPairing Pairing, string Secret)> PairAsync(GatewayTestHost host)
     {
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        return await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint, "desktop-test",
+        return await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint, "desktop-test",
             card.PairingId, card.Token.Reveal());
     }
 
@@ -23,7 +23,7 @@ public sealed class HostConnectionPoolTests
         // As the desktop does: a new paired connection for each regular check, two requests each, then disposed.
         for (var check = 0; check < 8; check++)
         {
-            using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+            using var connection = new HostConnection(pairing, secret, host.Clock);
             await connection.ReadRoutesAsync();
             await connection.ReadMachineReportAsync();
         }
@@ -39,11 +39,11 @@ public sealed class HostConnectionPoolTests
     {
         await using var host = await GatewayTestHost.StartAsync();
         var (pairing, secret) = await PairAsync(host);
-        using (var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock)) await connection.ReadRoutesAsync();
+        using (var connection = new HostConnection(pairing, secret, host.Clock)) await connection.ReadRoutesAsync();
 
         var wrongPin = pairing with { SpkiFingerprint = "sha256:" + new string('0', 64) };
-        using var spoofed = new Audio2FaceHostConnection(wrongPin, secret, host.Clock);
-        Assert.Equal("host.unreachable", (await Assert.ThrowsAsync<Audio2FaceHostException>(() => spoofed.ReadRoutesAsync())).Code);
+        using var spoofed = new HostConnection(wrongPin, secret, host.Clock);
+        Assert.Equal("host.unreachable", (await Assert.ThrowsAsync<HostConnectionException>(() => spoofed.ReadRoutesAsync())).Code);
     }
 
     [Fact]
@@ -51,12 +51,12 @@ public sealed class HostConnectionPoolTests
     {
         await using var host = await GatewayTestHost.StartAsync();
         var (pairing, secret) = await PairAsync(host);
-        using (var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock)) await connection.ReadRoutesAsync();
+        using (var connection = new HostConnection(pairing, secret, host.Clock)) await connection.ReadRoutesAsync();
 
         await host.Listener.DisposeAsync();
 
-        using var after = new Audio2FaceHostConnection(pairing, secret, host.Clock);
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(() => after.ReadRoutesAsync());
+        using var after = new HostConnection(pairing, secret, host.Clock);
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(() => after.ReadRoutesAsync());
         Assert.Equal("host.unreachable", failure.Code);
         var route = HostRoutes.For(pairing.Origin);
         Assert.NotNull(route);

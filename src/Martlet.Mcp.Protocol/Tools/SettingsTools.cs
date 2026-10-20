@@ -256,8 +256,8 @@ internal sealed partial class McpServer
         Martlet.Core.Network.NetworkRoster? roster = null;
         try
         {
-            var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
-            if (File.Exists(path)) roster = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster;
+            var path = Path.Combine(directory, Martlet.HostClient.NetworkLocalState.FileName);
+            if (File.Exists(path)) roster = Martlet.HostClient.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { }
         var hosts = roster?.ActiveHosts.OrderBy(h => h.Id, StringComparer.Ordinal).ToArray() ?? [];

@@ -17,7 +17,7 @@ public sealed class SingingPoolMembersTests
             Origin = $"https://192.168.1.{octet}:9443/", HostId = id, SpkiFingerprint = "sha256:" + new string('a', 64),
             DeviceId = "desktop-test", CredentialId = new string('B', 22)
         },
-        Access = friend ? Martlet.Avatar.Audio2Face.Remote.HostSignInAccess.Friend : null
+        Access = friend ? Martlet.HostClient.HostSignInAccess.Friend : null
     };
 
     [Fact]

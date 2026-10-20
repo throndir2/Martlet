@@ -393,18 +393,18 @@ public sealed class LifecycleTests
         var code = System.Text.RegularExpressions.Regex.Match(shown, @"Code:\s+([2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4})").Groups[1].Value;
         var address = System.Text.RegularExpressions.Regex.Match(shown, @"Address:\s+(\S+)").Groups[1].Value;
         Assert.Equal(9, code.Length);
-        var origin = Martlet.Avatar.Audio2Face.Remote.HostPairingInput.Origin(address);
+        var origin = Martlet.HostClient.HostPairingInput.Origin(address);
         Assert.Equal(platform.Origin.CanonicalOrigin, origin);
 
         var wrong = (code[0] == '2' ? "3" : "2") + code[1..];
-        var refused = await Assert.ThrowsAsync<Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException>(() =>
-            Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(origin, wrong, "fixture-desktop", "Fixture PC"));
+        var refused = await Assert.ThrowsAsync<Martlet.HostClient.HostConnectionException>(() =>
+            Martlet.HostClient.HostTransport.PairWithCodeAsync(origin, wrong, "fixture-desktop", "Fixture PC"));
         Assert.Equal("pairing.invalid", refused.Code);
         // Ten minutes later on the host's clock (past the old five-minute window), the code still waits for the desktop.
         platform.Clock.Offset = TimeSpan.FromMinutes(10);
         await Task.Delay(1200);
         Assert.False(run.IsCompleted);
-        var (paired, secret) = await Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(
+        var (paired, secret) = await Martlet.HostClient.HostTransport.PairWithCodeAsync(
             origin, " " + code.ToLowerInvariant().Replace("-", " ") + " ", "fixture-desktop", "Fixture PC");
         Assert.Equal(platform.Owner!.Identity!.SpkiFingerprint, paired.SpkiFingerprint);
         Assert.Equal(platform.Owner.Identity.HostId, paired.HostId);
@@ -446,8 +446,8 @@ public sealed class LifecycleTests
         var code = System.Text.RegularExpressions.Regex.Match(pairing.ToString(), @"Code:\s+([2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4})").Groups[1].Value;
         var wrong = (code[0] == '2' ? "3" : "2") + code[1..];
         for (var attempt = 0; attempt < GatewayPairingService.MaximumFailedAttempts; attempt++)
-            await Assert.ThrowsAsync<Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException>(() =>
-                Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(
+            await Assert.ThrowsAsync<Martlet.HostClient.HostConnectionException>(() =>
+                Martlet.HostClient.HostTransport.PairWithCodeAsync(
                     platform.Origin.CanonicalOrigin, wrong, "fixture-desktop", "Fixture PC"));
         Assert.Equal(3, await run.WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Contains("pairing.closed: the code was typed wrong five times", pairing.ToString());

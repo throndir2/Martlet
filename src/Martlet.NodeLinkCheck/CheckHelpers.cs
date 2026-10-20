@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 
 namespace Martlet.NodeLinkCheck;
 
@@ -25,6 +25,6 @@ internal static class CheckHelpers
             await call();
             return false;
         }
-        catch (Audio2FaceHostException error) { return error.Code == code; }
+        catch (HostConnectionException error) { return error.Code == code; }
     }
 }

@@ -4,7 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -65,7 +65,7 @@ internal static class HostPairingCredential
     /// <summary>Opens a connection to <paramref name="saved"/>'s host with this PC's current pairing (<see cref="Current(AvatarRemoteHost, out bool)"/>)
     /// and its secret from Windows Credential Manager. A missing secret is <see cref="ProviderFailureCode.CredentialUnavailable"/>,
     /// said once in the desktop log with why and what to do.</summary>
-    internal static Audio2FaceHostConnection Connect(AvatarRemoteHost saved)
+    internal static HostConnection Connect(AvatarRemoteHost saved)
     {
         var pairing = Current(saved, out var paired);
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(pairing.HostId, pairing.CredentialId);
@@ -79,9 +79,9 @@ internal static class HostPairingCredential
             }
             throw new HostTextException(ProviderFailureCode.CredentialUnavailable);
         }
-        Audio2FaceHostConnection? connection = null;
-        try { read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(pairing), secret)); }
-        catch (Audio2FaceHostException) { throw new HostTextException(ProviderFailureCode.CredentialUnavailable); }
+        HostConnection? connection = null;
+        try { read.Secret.Use(secret => connection = new HostConnection(GatewayAvatarHostLink.Pairing(pairing), secret)); }
+        catch (HostConnectionException) { throw new HostTextException(ProviderFailureCode.CredentialUnavailable); }
         Missing.TryRemove(pairing.HostId, out _);
         return connection!;
     }
@@ -196,7 +196,7 @@ internal sealed class HostTextClient : IHostTextClient
     // The hosts found older than whole-conversation requests (HostRoute.TakesWholeConversation), each logged once.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> OlderHosts = new(StringComparer.Ordinal);
 
-    internal static Audio2FaceHostConnection Connect(HostTextTarget target) => HostPairingCredential.Connect(
+    internal static HostConnection Connect(HostTextTarget target) => HostPairingCredential.Connect(
         HostPairingCredential.Saved(target.Origin, target.HostId, target.SpkiFingerprint, target.DeviceId, target.CredentialId));
 
     private static async Task<T> Guard<T>(Func<Task<T>> call, CancellationToken token, string? hostId = null)
@@ -206,9 +206,9 @@ internal sealed class HostTextClient : IHostTextClient
         catch (Exception error) when (Failure("reply", error) is { } failure)
         {
             // The host keeps its graphics card for a live turn: pool work there waits and goes on later (HostLiveHolds).
-            if (hostId is not null && error is Audio2FaceHostException { HeldForLive: true }) HostLiveHolds.Note(hostId);
+            if (hostId is not null && error is HostConnectionException { HeldForLive: true }) HostLiveHolds.Note(hostId);
             // The host does another job now: a sense job's pool tries another computer, then waits (HostBusy).
-            else if (hostId is not null && error is Audio2FaceHostException { Code: "job.busy" or "worker.busy", OwnerFirst: false }) HostBusy.Note(hostId);
+            else if (hostId is not null && error is HostConnectionException { Code: "job.busy" or "worker.busy", OwnerFirst: false }) HostBusy.Note(hostId);
             throw failure;
         }
     }
@@ -217,8 +217,8 @@ internal sealed class HostTextClient : IHostTextClient
     /// host a friend shares that is busy with its owner's own work is a rate limit: busy now, worth trying again later.</summary>
     internal static HostTextException? Failure(string job, Exception error) => error switch
     {
-        Audio2FaceHostException { OwnerFirst: true } owner => Failed(job, ProviderFailureCode.RateLimited, $"[{owner.Code} {owner.Detail}] {owner.Message}"),
-        Audio2FaceHostException host => Failed(job, Map(host.Code), $"[{host.Code}] {host.Message}"),
+        HostConnectionException { OwnerFirst: true } owner => Failed(job, ProviderFailureCode.RateLimited, $"[{owner.Code} {owner.Detail}] {owner.Message}"),
+        HostConnectionException host => Failed(job, Map(host.Code), $"[{host.Code}] {host.Message}"),
         // A cloud member of the Speaking or Listening list (PoolCloud) failed: its provider's own failure.
         PoolCloud.Refused refused => Failed(job, refused.Code, refused.Message),
         ElevenLabsException eleven => Failed(job, eleven.Code, eleven.Message),
@@ -296,15 +296,15 @@ internal static class HostHearingTest
             }
             return ModelHearingTest.Read(reply.ToString(), word, modelId, server, watch.ElapsedMilliseconds);
         }
-        catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+        catch (HostConnectionException error) when (error.Code == "request.invalid")
         {
             return new(false, $"{server} refused the recording for {modelId}, so it can't hear.", true, null, watch.ElapsedMilliseconds);
         }
-        catch (Audio2FaceHostException error) when (error.Code is "job.busy" or "job.preempted")
+        catch (HostConnectionException error) when (error.Code is "job.busy" or "job.preempted")
         {
             return new(null, $"{server} is busy now; test again in a moment.", true);
         }
-        catch (Audio2FaceHostException error)
+        catch (HostConnectionException error)
         {
             return new(null, $"{server} answered {error.Code}, so Martlet can't tell whether {modelId} hears.", true);
         }

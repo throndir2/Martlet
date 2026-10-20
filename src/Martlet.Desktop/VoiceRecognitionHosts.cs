@@ -1,6 +1,6 @@
 using System.IO;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Speakers;
 using Martlet.Sherpa;
@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 /// <summary>
 /// The Voice recognition list on this PC (Companion › People, <see cref="VoiceRecognitionPool"/>, pools.json: shared by all your
 /// computers) and the client for the computers in it: their <c>voice-recognition</c> role through their gateways (route
-/// <see cref="Audio2FaceHostConnection.VoiceRecognitionRouteId"/>). The list is read from local files only, again only when a file
+/// <see cref="HostConnection.VoiceRecognitionRouteId"/>). The list is read from local files only, again only when a file
 /// changed (<see cref="WorkSharingRoster"/>), never the network. Until the owner changes it there is no saved list, which means
 /// this PC's processor, as before: nothing is saved for a new computer, so it never shares a list over another computer's choice.
 /// Each computer's connection is kept between utterances and dropped when that computer fails. The audio goes to a computer as
@@ -20,7 +20,7 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
 {
     internal const string StateFile = "voice-recognition-state.json";
     private readonly object gate = new();
-    private readonly Dictionary<string, (HostRoute Route, Audio2FaceHostConnection Connection)> open = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (HostRoute Route, HostConnection Connection)> open = new(StringComparer.Ordinal);
 
     /// <summary>The saved list, or none (this PC's processor).</summary>
     internal static PoolList? Load(string? directory) => WorkSharingRoster.Shared.Pool(directory, PoolAreas.VoiceRecognition);
@@ -41,7 +41,7 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
     internal async Task<SpeakerAnalysis> AnalyzeAsync(VoiceRecognitionTarget target, float[] samples, CancellationToken token)
     {
         var host = (directory is null ? [] : WorkSharingRoster.Shared.Hosts(directory)).FirstOrDefault(h => h.HostId == target.HostId)
-            ?? throw new Audio2FaceHostException("host.unreachable", $"{target.HostId} isn't paired with this PC.");
+            ?? throw new HostConnectionException("host.unreachable", $"{target.HostId} isn't paired with this PC.");
         var pcm = SpeakerAnswers.Pcm16(samples);
         var (route, connection) = await OpenAsync(host, token).ConfigureAwait(false);
         try
@@ -49,9 +49,9 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
             var answer = await WorkSharingRoster.Shared.WatchedOnce(host.HostId, "voice recognition",
                 connection.VoiceRecognitionAnalyzeAsync(route, pcm, token)).ConfigureAwait(false);
             try { return SpeakerAnswers.Analysis(answer, samples.Length / (double)SpeakerEngine.SampleRate); }
-            catch (SherpaException error) { throw new Audio2FaceHostException("response.invalid", $"{host.HostId}: {error.Message}"); }
+            catch (SherpaException error) { throw new HostConnectionException("response.invalid", $"{host.HostId}: {error.Message}"); }
         }
-        catch (Exception error) when (error is not (OperationCanceledException or Audio2FaceHostException { Code: "job.busy" or "job.preempted" }))
+        catch (Exception error) when (error is not (OperationCanceledException or HostConnectionException { Code: "job.busy" or "job.preempted" }))
         {
             Drop(host.HostId, connection);
             throw;
@@ -69,16 +69,16 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
 
     // The computer's kept connection and its route; a new one when there is none. A computer that doesn't answer, or doesn't run
     // the role, refuses as unavailable (host.unreachable, worker.unavailable), so the queue passes it over.
-    private async Task<(HostRoute Route, Audio2FaceHostConnection Connection)> OpenAsync(PairedHost host, CancellationToken token)
+    private async Task<(HostRoute Route, HostConnection Connection)> OpenAsync(PairedHost host, CancellationToken token)
     {
         lock (gate)
             if (open.TryGetValue(host.HostId, out var known)) return known;
-        Audio2FaceHostConnection? connection = null;
+        HostConnection? connection = null;
         try
         {
             connection = ClusterSync.Connect(host.Pairing);
             var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
-            var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.VoiceRecognitionRouteId) ?? throw new Audio2FaceHostException(
+            var route = routes.FirstOrDefault(r => r.RouteId == HostConnection.VoiceRecognitionRouteId) ?? throw new HostConnectionException(
                 "worker.unavailable", $"{host.HostId} doesn't run the Voice recognition role. Add it there on Devices.");
             lock (gate)
             {
@@ -90,14 +90,14 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
             return kept;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch (Exception error) when (ClusterSync.IsHostFailure(error) && error is not Audio2FaceHostException { Code: "worker.unavailable" })
+        catch (Exception error) when (ClusterSync.IsHostFailure(error) && error is not HostConnectionException { Code: "worker.unavailable" })
         {
-            throw new Audio2FaceHostException("host.unreachable", $"{host.HostId} isn't reachable ({error.Message}).");
+            throw new HostConnectionException("host.unreachable", $"{host.HostId} isn't reachable ({error.Message}).");
         }
         finally { connection?.Dispose(); }
     }
 
-    private void Drop(string host, Audio2FaceHostConnection connection)
+    private void Drop(string host, HostConnection connection)
     {
         lock (gate)
             if (open.TryGetValue(host, out var kept) && ReferenceEquals(kept.Connection, connection)) open.Remove(host);
@@ -106,7 +106,7 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
 
     public void Dispose()
     {
-        (HostRoute, Audio2FaceHostConnection Connection)[] all;
+        (HostRoute, HostConnection Connection)[] all;
         lock (gate)
         {
             all = [.. open.Values];

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Companion.Platform;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -227,12 +227,12 @@ public sealed class CompanionHosts(string folder, ICredentialStore credentials)
     public const string FileName = "hosts.json";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private sealed record Entry(Audio2FaceHostPairing Pairing);
+    private sealed record Entry(HostPairing Pairing);
     private sealed record Document(IReadOnlyList<Entry> Hosts);
 
     public string FilePath => Path.Combine(folder, FileName);
 
-    public IReadOnlyList<Audio2FaceHostPairing> Load()
+    public IReadOnlyList<HostPairing> Load()
     {
         try
         {
@@ -243,13 +243,13 @@ public sealed class CompanionHosts(string folder, ICredentialStore credentials)
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return []; }
     }
 
-    private static bool Valid(Audio2FaceHostPairing? pairing)
+    private static bool Valid(HostPairing? pairing)
     {
         try { pairing?.Validate(); return pairing is not null; }
-        catch (Audio2FaceHostException) { return false; }
+        catch (HostConnectionException) { return false; }
     }
 
-    private void Save(IEnumerable<Audio2FaceHostPairing> hosts)
+    private void Save(IEnumerable<HostPairing> hosts)
     {
         Directory.CreateDirectory(folder);
         var temporary = FilePath + ".tmp";
@@ -257,10 +257,10 @@ public sealed class CompanionHosts(string folder, ICredentialStore credentials)
         File.Move(temporary, FilePath, overwrite: true);
     }
 
-    private static string SecretName(Audio2FaceHostPairing pairing) => "host-" + pairing.CredentialId;
+    private static string SecretName(HostPairing pairing) => "host-" + pairing.CredentialId;
 
     /// <summary>Keeps <paramref name="pairing"/> (replacing an earlier one with the same host) and its secret.</summary>
-    public async Task AddAsync(Audio2FaceHostPairing pairing, string secret, CancellationToken token)
+    public async Task AddAsync(HostPairing pairing, string secret, CancellationToken token)
     {
         pairing.Validate();
         await credentials.SetAsync(SecretName(pairing), secret, token);
@@ -278,9 +278,9 @@ public sealed class CompanionHosts(string folder, ICredentialStore credentials)
     }
 
     /// <summary>Pairs with the host at <paramref name="address"/> that shows <paramref name="code"/> (docs/HOST_SETUP.md) and keeps it.</summary>
-    public async Task<Audio2FaceHostPairing> PairAsync(string address, string code, string deviceId, CancellationToken token)
+    public async Task<HostPairing> PairAsync(string address, string code, string deviceId, CancellationToken token)
     {
-        var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(HostPairingInput.Origin(address), code, deviceId,
+        var (pairing, secret) = await HostTransport.PairWithCodeAsync(HostPairingInput.Origin(address), code, deviceId,
             Environment.MachineName, token);
         await AddAsync(pairing, secret, token);
         return pairing;
@@ -288,8 +288,8 @@ public sealed class CompanionHosts(string folder, ICredentialStore credentials)
 
     /// <summary>A signed connection to <paramref name="pairing"/>, or null when this computer no longer has its secret (keys kept
     /// only until Martlet quits, for example): pair again.</summary>
-    public async Task<Audio2FaceHostConnection?> ConnectAsync(Audio2FaceHostPairing pairing, CancellationToken token) =>
-        await credentials.GetAsync(SecretName(pairing), token) is { Length: > 0 } secret ? new Audio2FaceHostConnection(pairing, secret) : null;
+    public async Task<HostConnection?> ConnectAsync(HostPairing pairing, CancellationToken token) =>
+        await credentials.GetAsync(SecretName(pairing), token) is { Length: > 0 } secret ? new HostConnection(pairing, secret) : null;
 }
 
 /// <summary>What one sync of the companion did.</summary>
@@ -339,10 +339,10 @@ public sealed class CompanionSync
     }
 
     /// <summary>One sync through <paramref name="hosts"/> (signed connections to the paired hosts).</summary>
-    public async Task<CompanionSyncReport> SyncAsync(IReadOnlyList<Audio2FaceHostConnection> hosts, CancellationToken token, int? paired = null)
+    public async Task<CompanionSyncReport> SyncAsync(IReadOnlyList<HostConnection> hosts, CancellationToken token, int? paired = null)
     {
         var copies = new List<SharedSettings>();
-        var reached = new List<Audio2FaceHostConnection>();
+        var reached = new List<HostConnection>();
         foreach (var host in hosts)
         {
             try
@@ -368,7 +368,7 @@ public sealed class CompanionSync
     public async Task<CompanionSyncReport> SyncPairedAsync(CancellationToken token)
     {
         var paired = Enabled ? Hosts.Load() : [];
-        var connections = new List<Audio2FaceHostConnection>();
+        var connections = new List<HostConnection>();
         try
         {
             foreach (var pairing in paired)
@@ -382,7 +382,7 @@ public sealed class CompanionSync
     }
 
     private static bool IsHostFailure(Exception error, CancellationToken token) =>
-        error is Audio2FaceHostException or HttpRequestException or IOException or ContractException or InvalidOperationException or
+        error is HostConnectionException or HttpRequestException or IOException or ContractException or InvalidOperationException or
             JsonException or TimeoutException || error is OperationCanceledException && !token.IsCancellationRequested;
 
     /// <summary>The sync as the headless status reports it: no keys.</summary>

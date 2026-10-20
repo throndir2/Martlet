@@ -1,6 +1,6 @@
 using System.IO;
 using System.Net.Http;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Settings;
 using Martlet.Providers;
@@ -188,10 +188,10 @@ internal sealed partial class WorkSharingRoster : IDisposable
     /// (a host a friend shares keeps its card for its owner's own work: try the next at once; background work goes on later).</summary>
     internal static WorkRefusal Classify(Exception error) => error switch
     {
-        Audio2FaceHostException { OwnerFirst: true } => WorkRefusal.Owner,
-        Audio2FaceHostException { HeldForLive: true } => WorkRefusal.Preempted,
-        Audio2FaceHostException { Code: "job.busy" or "worker.busy" } => WorkRefusal.Busy,
-        Audio2FaceHostException { Code: "host.unreachable" or "host.redirect" or "worker.unavailable" or "worker.quarantined" } =>
+        HostConnectionException { OwnerFirst: true } => WorkRefusal.Owner,
+        HostConnectionException { HeldForLive: true } => WorkRefusal.Preempted,
+        HostConnectionException { Code: "job.busy" or "worker.busy" } => WorkRefusal.Busy,
+        HostConnectionException { Code: "host.unreachable" or "host.redirect" or "worker.unavailable" or "worker.quarantined" } =>
             WorkRefusal.Unavailable,
         HostTextException { Code: ProviderFailureCode.ModelNotFound or ProviderFailureCode.CredentialUnavailable } => WorkRefusal.Unavailable,
         HttpRequestException or IOException => WorkRefusal.Unavailable,
@@ -221,11 +221,11 @@ internal sealed partial class WorkSharingRoster : IDisposable
         {
             bool moved;
             try { moved = await items.MoveNextAsync().ConfigureAwait(false); }
-            catch (Audio2FaceHostException error) when ((error.OwnerFirst || error.Code == "job.preempted") && IsShared(hostId))
+            catch (HostConnectionException error) when ((error.OwnerFirst || error.Code == "job.preempted") && IsShared(hostId))
             {
                 NoteOwnerFirst(hostId, job);
                 if (started || error.OwnerFirst) throw;
-                throw new Audio2FaceHostException("job.busy", error.Message) { Detail = Audio2FaceHostException.OwnerDetail };
+                throw new HostConnectionException("job.busy", error.Message) { Detail = HostConnectionException.OwnerDetail };
             }
             if (!moved) yield break;
             started = true;
@@ -241,11 +241,11 @@ internal sealed partial class WorkSharingRoster : IDisposable
     internal async Task<T> WatchedOnce<T>(string hostId, string job, Task<T> answer)
     {
         try { return await answer.ConfigureAwait(false); }
-        catch (Audio2FaceHostException error) when ((error.OwnerFirst || error.Code == "job.preempted") && IsShared(hostId))
+        catch (HostConnectionException error) when ((error.OwnerFirst || error.Code == "job.preempted") && IsShared(hostId))
         {
             NoteOwnerFirst(hostId, job);
             if (error.OwnerFirst) throw;
-            throw new Audio2FaceHostException("job.busy", error.Message) { Detail = Audio2FaceHostException.OwnerDetail };
+            throw new HostConnectionException("job.busy", error.Message) { Detail = HostConnectionException.OwnerDetail };
         }
     }
 

@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Access;
 using Martlet.Core.Contracts;
@@ -45,7 +45,7 @@ public partial class SignInSettingsWindow : ThemedWindow
         };
     }
 
-    private async Task RunAsync(Func<Audio2FaceHostConnection, Task> action, string doing)
+    private async Task RunAsync(Func<HostConnection, Task> action, string doing)
     {
         StatusText.Text = doing + "...";
         try
@@ -54,7 +54,7 @@ public partial class SignInSettingsWindow : ThemedWindow
             await action(connection);
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or ContractException or JsonException)
+        catch (Exception error) when (error is HostConnectionException or InvalidOperationException or IOException or ContractException or JsonException)
         {
             StatusText.Text = error.Message;
         }

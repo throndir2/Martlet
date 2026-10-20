@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Platforms;
@@ -97,7 +97,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
     private readonly HostRead read;
     private readonly LocalRead local;
     private readonly object gate = new();
-    private readonly Dictionary<string, (HostRoute Route, Audio2FaceHostConnection Connection)> open = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (HostRoute Route, HostConnection Connection)> open = new(StringComparer.Ordinal);
     private WindowsScreenTextReader? windows;
     private volatile string? last;
 
@@ -137,7 +137,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
                 {
                     // Windows can't read here (no OCR language): the next place reads.
                     try { return ("Windows OCR on this PC", await local(bgra, width, height, t).ConfigureAwait(false)); }
-                    catch (ScreenReadException error) { throw new Audio2FaceHostException("worker.unavailable", error.Message); }
+                    catch (ScreenReadException error) { throw new HostConnectionException("worker.unavailable", error.Message); }
                 }
                 // Encoded once, below normal priority: the conversation's own work on this PC comes first.
                 jpeg ??= await LowPriority.RunAsync(() => Jpeg(bgra, width, height), t, "Martlet screen reading").ConfigureAwait(false);
@@ -155,17 +155,17 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
                 ? $"{shared.HostId} is busy with its owner's own work; Martlet reads again in a moment."
                 : "The computers in the Reading list keep their graphics cards for other work now; Martlet reads again in a moment.", busy: true);
         }
-        catch (Audio2FaceHostException error) when (error.Code == "job.busy")
+        catch (HostConnectionException error) when (error.Code == "job.busy")
         {
             throw new ScreenReadException(error.OwnerFirst ? $"{Name(tried)} is busy with its owner's own work; Martlet reads again in a moment."
                 : targets.Count == 1 ? $"{Name(tried)}'s Reading role is busy."
                 : $"Every place in the Reading list is busy ({targets.Count}); Martlet reads again in a moment.", busy: true, error);
         }
-        catch (Audio2FaceHostException error) when (error.Code is "host.unreachable" or "worker.unavailable")
+        catch (HostConnectionException error) when (error.Code is "host.unreachable" or "worker.unavailable")
         {
             throw new ScreenReadException(error.Message, inner: error);
         }
-        catch (Audio2FaceHostException error)
+        catch (HostConnectionException error)
         {
             throw new ScreenReadException($"{Name(tried)}'s Reading role: {error.Message}", inner: error);
         }
@@ -200,11 +200,11 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
             var answer = await connection.OcrStatusAsync(route, token).ConfigureAwait(false);
             return answer.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String ? state.GetString()! : "unknown";
         }
-        catch (Audio2FaceHostException error) when (error.Code is "host.unreachable" or "worker.unavailable")
+        catch (HostConnectionException error) when (error.Code is "host.unreachable" or "worker.unavailable")
         {
             throw new ScreenReadException(error.Message, inner: error);
         }
-        catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException)
+        catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException)
         {
             throw new ScreenReadException($"{host.HostId}'s Reading role: {error.Message}", inner: error);
         }
@@ -220,7 +220,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
             return (route, Lines(await connection.OcrReadAsync(route, jpeg, "image/jpeg", token).ConfigureAwait(false)));
         }
         catch (Exception error) when (error is not (OperationCanceledException or ScreenReadException or
-            Audio2FaceHostException { Code: "job.busy" or "job.preempted" }))
+            HostConnectionException { Code: "job.busy" or "job.preempted" }))
         {
             Drop(host.HostId, connection);
             throw;
@@ -238,7 +238,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
             encoder.Frames.Add(BitmapFrame.Create(source));
             using var stream = new MemoryStream();
             encoder.Save(stream);
-            if (stream.Length <= Audio2FaceHostConnection.OcrMaximumImageBytes) return stream.ToArray();
+            if (stream.Length <= HostConnection.OcrMaximumImageBytes) return stream.ToArray();
             Array.Clear(stream.GetBuffer());
         }
         throw new ScreenReadException("The screenshot is too large for the Reading role.");
@@ -266,16 +266,16 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
 
     // The computer's kept connection and its Reading route; a new one when there is none. A computer that doesn't answer, or
     // doesn't run the role, refuses as unavailable (host.unreachable, worker.unavailable), so the queue passes it over.
-    private async Task<(HostRoute Route, Audio2FaceHostConnection Connection)> OpenAsync(PairedHost host, CancellationToken token)
+    private async Task<(HostRoute Route, HostConnection Connection)> OpenAsync(PairedHost host, CancellationToken token)
     {
         lock (gate)
             if (open.TryGetValue(host.HostId, out var known)) return known;
-        Audio2FaceHostConnection? connection = null;
+        HostConnection? connection = null;
         try
         {
             connection = ClusterSync.Connect(host.Pairing);
             var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
-            var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.OcrRouteId) ?? throw new Audio2FaceHostException(
+            var route = routes.FirstOrDefault(r => r.RouteId == HostConnection.OcrRouteId) ?? throw new HostConnectionException(
                 "worker.unavailable", $"{host.HostId} doesn't run the Reading role. Set it up there in Companion › Reading.");
             lock (gate)
             {
@@ -287,14 +287,14 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
             return kept;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch (Exception error) when (ClusterSync.IsHostFailure(error) && error is not Audio2FaceHostException { Code: "worker.unavailable" })
+        catch (Exception error) when (ClusterSync.IsHostFailure(error) && error is not HostConnectionException { Code: "worker.unavailable" })
         {
-            throw new Audio2FaceHostException("host.unreachable", $"{host.HostId} isn't reachable ({error.Message}).");
+            throw new HostConnectionException("host.unreachable", $"{host.HostId} isn't reachable ({error.Message}).");
         }
         finally { connection?.Dispose(); }
     }
 
-    private void Drop(string host, Audio2FaceHostConnection connection)
+    private void Drop(string host, HostConnection connection)
     {
         lock (gate)
             if (open.TryGetValue(host, out var kept) && ReferenceEquals(kept.Connection, connection)) open.Remove(host);
@@ -303,7 +303,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
 
     public void Dispose()
     {
-        (HostRoute, Audio2FaceHostConnection Connection)[] all;
+        (HostRoute, HostConnection Connection)[] all;
         lock (gate)
         {
             all = [.. open.Values];

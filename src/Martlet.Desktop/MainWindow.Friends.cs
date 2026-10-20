@@ -5,7 +5,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -93,7 +93,7 @@ public partial class MainWindow
                 }
                 catch (Exception error) when (ClusterSync.IsHostFailure(error))
                 {
-                    return (host.HostId, Settings: null, Problem: error is Audio2FaceHostException { Code: "signin.unsupported" or "request.invalid" }
+                    return (host.HostId, Settings: null, Problem: error is HostConnectionException { Code: "signin.unsupported" or "request.invalid" }
                         ? "runs an older Martlet without sign-in; update it" : error.Message);
                 }
             }));

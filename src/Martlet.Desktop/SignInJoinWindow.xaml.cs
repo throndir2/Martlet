@@ -2,7 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Network;
 
@@ -17,14 +17,14 @@ public partial class SignInJoinWindow : ThemedWindow
 {
     private readonly string deviceId;
     private readonly string dataDirectory;
-    private readonly Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep;
+    private readonly Func<HostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep;
     private readonly Func<string, Task>? acceptShareLink;
     private readonly CancellationTokenSource lifetime = new();
     private NetworkInvite? invite;
     private string? origin;
     private HostSignInProvider? provider;
 
-    internal SignInJoinWindow(string deviceId, string dataDirectory, Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep,
+    internal SignInJoinWindow(string deviceId, string dataDirectory, Func<HostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep,
         string? invite = null, Func<string, Task>? acceptShareLink = null)
     {
         InitializeComponent();
@@ -77,7 +77,7 @@ public partial class SignInJoinWindow : ThemedWindow
             StatusText.Text = "Choose how to sign in.";
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is ContractException or Audio2FaceHostException)
+        catch (Exception error) when (error is ContractException or HostConnectionException)
         {
             StatusText.Text = error.Message;
         }
@@ -97,7 +97,7 @@ public partial class SignInJoinWindow : ThemedWindow
         try
         {
             StatusText.Text = "Signing in...";
-            (Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity) result;
+            (HostPairing Pairing, string Secret, HostSignInIdentity Identity) result;
             if (!provider.InBrowser)
                 result = await HostSignInClient.SignInWithPasswordAsync(invite, origin, provider.Id, UserText.Text.Trim(), PasswordText.Password,
                     CodeText.Text.Trim(), deviceId, Martlet.Core.Network.ThisComputer.Name, lifetime.Token);
@@ -139,7 +139,7 @@ public partial class SignInJoinWindow : ThemedWindow
             ErrorLog.Info($"Sign-in: paired with {result.Pairing.HostId} as {result.Identity.Provider}.");
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or ContractException or JsonException or
+        catch (Exception error) when (error is HostConnectionException or InvalidOperationException or IOException or ContractException or JsonException or
             System.ComponentModel.Win32Exception or System.Net.Sockets.SocketException)
         {
             StatusText.Text = error.Message;

@@ -132,13 +132,13 @@ internal static class ModelAbilityCheck
         return new { ok, rows };
     }
 
-    /// <summary>Whether a paired computer's Thinking route takes a recording (<see cref="Martlet.Avatar.Audio2Face.Remote.HostRoute.CarriesAudio"/>):
+    /// <summary>Whether a paired computer's Thinking route takes a recording (<see cref="Martlet.HostClient.HostRoute.CarriesAudio"/>):
     /// a host of this version advertises room for one; an older host's route (room for a screen image only) gets the transcript and
     /// should be updated.</summary>
     private static object HostRouteAudio()
     {
         const int olderBytes = 1_497_432;
-        static Martlet.Avatar.Audio2Face.Remote.HostRoute Route(string id, string path, int bytes) =>
+        static Martlet.HostClient.HostRoute Route(string id, string path, int bytes) =>
             new(id, path, "martlet.ollama-chat", "1", "ollama", "ollama", "1", "gemma4-e4b", "1", new string('0', 64),
                 new string('0', 64), bytes, 98_304, 65_536, 4_096, 4_096, 1_048_576, TimeSpan.FromMinutes(5), "request_abort");
         var rows = new

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Processes;
 using Martlet.Core.Singing;
@@ -33,12 +33,12 @@ internal static class SingingStatus
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                 timeout.CancelAfter(TimeSpan.FromSeconds(20));
                 var routes = await connection.ReadRoutesAsync(timeout.Token);
-                var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.SongRouteId);
+                var route = routes.FirstOrDefault(r => r.RouteId == HostConnection.SongRouteId);
                 var (service, state) = route is null ? (null, null) : await ServiceAsync(connection, route, timeout.Token);
                 if (route is null || state is not null) states[host.HostId] = state;
                 hosts.Add(new { host = host.HostId, reachable = true, offersSinging = route is not null, model = route?.ModelId, service });
             }
-            catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or
+            catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException or
                 InvalidOperationException or OperationCanceledException && !token.IsCancellationRequested)
             {
                 hosts.Add(new { host = host.HostId, reachable = false, problem = error.Message });
@@ -123,7 +123,7 @@ internal static class SingingStatus
         }
     }
 
-    private static async Task<(object View, SingerState? State)> ServiceAsync(Audio2FaceHostConnection connection, HostRoute route, CancellationToken token)
+    private static async Task<(object View, SingerState? State)> ServiceAsync(HostConnection connection, HostRoute route, CancellationToken token)
     {
         try
         {
@@ -145,7 +145,7 @@ internal static class SingingStatus
                 licenses = artifacts.Select(a => a.TryGetProperty("license_id", out var license) ? license.GetString() : null).Distinct()
             }, SingerState.Parse(status));
         }
-        catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or JsonException or
+        catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException or JsonException or
             InvalidOperationException)
         {
             return (new { answered = false, problem = error.Message }, null);

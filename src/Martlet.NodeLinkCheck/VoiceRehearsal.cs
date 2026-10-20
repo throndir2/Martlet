@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Voices;
 using Martlet.F5;
@@ -375,7 +375,7 @@ internal static class VoiceRehearsal
             await call();
             return null;
         }
-        catch (Audio2FaceHostException error) { return error.Code; }
+        catch (HostConnectionException error) { return error.Code; }
     }
 
     /// <summary>A quiet mono PCM16 tone of <paramref name="seconds"/> (24 kHz unless <paramref name="rate"/> says otherwise): a
@@ -405,7 +405,7 @@ internal static class VoiceRehearsal
     /// the real desktop makes.</summary>
     private sealed class LabDesktop(string deviceId, string directory)
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         internal string DeviceId => deviceId;
         internal string StoreDirectory => Path.Combine(directory, "f5-voices");
         internal SpeakingVoiceLibrary Library { get; set; } = SpeakingVoiceLibrary.Empty;
@@ -414,7 +414,7 @@ internal static class VoiceRehearsal
         internal async Task PairAsync(VoiceHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = deviceId, DisplayName = deviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
@@ -507,7 +507,7 @@ internal static class VoiceRehearsal
         }
 
         // A restarted lab host has a new port and forgets volatile pairings; the desktop pairs again, as it would after a reset.
-        private Audio2FaceHostConnection Connect(VoiceHost host)
+        private HostConnection Connect(VoiceHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
             if (pairing.Origin != host.Origin)
@@ -515,7 +515,7 @@ internal static class VoiceRehearsal
                 PairAsync(host).GetAwaiter().GetResult();
                 (pairing, secret) = pairings[host.HostId];
             }
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
     }
 

@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -643,7 +643,7 @@ public partial class MainWindow
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
-            JsonException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
+            JsonException or ArgumentException or HostConnectionException || ClusterSync.IsHostFailure(error))
         {
             picturesFailure = error.Message;
             ActionText.Text = error.Message;
@@ -679,7 +679,7 @@ public partial class MainWindow
     /// pictures route and its ComfyUI answers ready. Returns null once it does, else what it saw last.</summary>
     private Task<string?> WaitForPicturesAsync(PairedHost host, CancellationToken token) => WaitForRoleAsync(host, async check =>
     {
-        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.PictureRouteId) != true || store is null) return new(check.Text);
+        if (check.Routes?.Any(r => r.RouteId == HostConnection.PictureRouteId) != true || store is null) return new(check.Text);
         using var api = new GatewayComfyApi(store.DataDirectory, host.HostId);
         try
         {

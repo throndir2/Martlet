@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.F5;
@@ -26,9 +26,9 @@ public sealed class DiaRelayTests(ITestOutputHelper output)
         await using var dia = DiaRelay.Create(new Uri("http://127.0.0.1:50084/"), DiaRelay.DefaultModel);
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [f5, xtts, dia]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var routes = await connection.ReadRoutesAsync();
         var voice = Assert.Single(routes, r => r.RouteId == HostRoute.DiaRouteId);
         Assert.Equal(SpeechEngines.Dia.Path, voice.Path);
@@ -52,9 +52,9 @@ public sealed class DiaRelayTests(ITestOutputHelper output)
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker],
             clock: new ManualGatewayClock(DateTimeOffset.UtcNow));
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.DiaRouteId);
 
         var voice = F5BundledVoices.Default;

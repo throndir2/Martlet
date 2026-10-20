@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Gateway;
@@ -39,10 +39,10 @@ internal static class GpuPriorityRehearsal
         await using var deep = await FixtureOllama.StartAsync("I thought it over: ", "here's the plan.");
         await using var host = await LabHost.StartAsync("lab-gpu", conversation, [Shared], deep, [Shared]);
         var (pairing, secret) = await host.PairAsync("lab-desktop");
-        using var replies = new Audio2FaceHostConnection(pairing, secret);
-        using var thinks = new Audio2FaceHostConnection(pairing, secret);
+        using var replies = new HostConnection(pairing, secret);
+        using var thinks = new HostConnection(pairing, secret);
         var logged = new List<string>();
-        using var holds = new HostLiveGpuHold(id => id == pairing.HostId ? new Audio2FaceHostConnection(pairing, secret) : null,
+        using var holds = new HostLiveGpuHold(id => id == pairing.HostId ? new HostConnection(pairing, secret) : null,
             line => { lock (logged) logged.Add(line); });
         HostRoute? thinkingRoute = null, deepRoute = null;
 
@@ -165,8 +165,8 @@ internal static class GpuPriorityRehearsal
             deep2.Hold();
             await using var separate = await LabHost.StartAsync("lab-gpu-two", conversation2, [Shared], deep2, [Own]);
             var (pairing2, secret2) = await separate.PairAsync("lab-desktop");
-            using var replies2 = new Audio2FaceHostConnection(pairing2, secret2);
-            using var thinks2 = new Audio2FaceHostConnection(pairing2, secret2);
+            using var replies2 = new HostConnection(pairing2, secret2);
+            using var thinks2 = new HostConnection(pairing2, secret2);
             var routes = await replies2.ReadRoutesAsync(token);
             var reply2 = routes.Single(r => r.RouteId == HostRoute.OllamaChatRouteId);
             var deep2Route = routes.Single(r => r.RouteId == HostRoute.DeepThinkingRouteId);
@@ -218,7 +218,7 @@ internal static class GpuPriorityRehearsal
 
     /// <summary>Starts a think on <paramref name="route"/>: <c>Done</c> ends with "completed" or the code it failed with;
     /// <c>First</c> completes with its first text.</summary>
-    private static (Task<string> Done, Task First) StartThink(Audio2FaceHostConnection connection, HostRoute route, CancellationToken token)
+    private static (Task<string> Done, Task First) StartThink(HostConnection connection, HostRoute route, CancellationToken token)
     {
         var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var done = Task.Run(async () =>
@@ -230,7 +230,7 @@ internal static class GpuPriorityRehearsal
                     first.TrySetResult();
                 return "completed";
             }
-            catch (Audio2FaceHostException error) { return error.Code; }
+            catch (HostConnectionException error) { return error.Code; }
             finally { first.TrySetResult(); }
         }, token);
         return (done, first.Task);
@@ -238,7 +238,7 @@ internal static class GpuPriorityRehearsal
 
     private static async Task<string> Ended(Task<string> think) => await think.WaitAsync(TimeSpan.FromSeconds(20));
 
-    private static async Task<(string Text, long FirstTextMilliseconds)> ReplyAsync(Audio2FaceHostConnection connection, HostRoute route,
+    private static async Task<(string Text, long FirstTextMilliseconds)> ReplyAsync(HostConnection connection, HostRoute route,
         CancellationToken token)
     {
         var clock = Stopwatch.StartNew();
@@ -270,13 +270,13 @@ internal static class GpuPriorityRehearsal
         public Task<HostGpuHold> HoldGpusAsync(IReadOnlyList<string> routeIds, TimeSpan ttl, CancellationToken cancellationToken = default)
         {
             Calls++;
-            throw new Audio2FaceHostException("request.invalid", "The Martlet host refused the request (request.invalid).");
+            throw new HostConnectionException("request.invalid", "The Martlet host refused the request (request.invalid).");
         }
 
         public Task<bool> ReleaseGpusAsync(CancellationToken cancellationToken = default)
         {
             Calls++;
-            throw new Audio2FaceHostException("request.invalid", "The Martlet host refused the request (request.invalid).");
+            throw new HostConnectionException("request.invalid", "The Martlet host refused the request (request.invalid).");
         }
 
         public void Dispose() { }
@@ -319,10 +319,10 @@ internal static class GpuPriorityRehearsal
             }
         }
 
-        internal async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsync(string deviceId)
+        internal async Task<(HostPairing Pairing, string Secret)> PairAsync(string deviceId)
         {
             var card = server.Pairing.OpenWindow(new() { DeviceId = deviceId, DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-            return await Audio2FaceHostClient.PairAsync(origin, hostId, identity.SpkiFingerprint, deviceId, card.PairingId, card.Token.Reveal());
+            return await HostTransport.PairAsync(origin, hostId, identity.SpkiFingerprint, deviceId, card.PairingId, card.Token.Reveal());
         }
 
         public void Record(GatewayAuditEvent gatewayEvent) { }

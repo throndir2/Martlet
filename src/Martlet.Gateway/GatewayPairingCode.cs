@@ -14,7 +14,7 @@ namespace Martlet.Gateway;
 /// cannot answer without the code. Observing one attempt leaves only an offline guess per code at 100,000 PBKDF2
 /// iterations each; the desktop then reports that the host could not prove the code, and withdrawing that code on the host
 /// ends the search. Desktops implement the same derivation
-/// (<c>Audio2FaceHostClient.PairWithCodeAsync</c>); keep both in step.
+/// (<c>HostTransport.PairWithCodeAsync</c>); keep both in step.
 /// </summary>
 public static class GatewayPairingCode
 {

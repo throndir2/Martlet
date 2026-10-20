@@ -139,6 +139,12 @@
           "Martlet.Core": "[0.89.0, )"
         }
       },
+      "martlet.hostclient": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.89.0, )"
+        }
+      },
       "martlet.mcp.client": {
         "type": "Project"
       },

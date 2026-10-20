@@ -8245,7 +8245,7 @@ to a paired host and reports its status (`src\Martlet.NodeLinkCheck`, mode
 One real gateway (`lab-connections`; Kestrel, pinned TLS, signed requests) runs
 on 127.0.0.1 behind a loopback TCP forwarder that the check stops and starts at
 the same address. A simulated desktop checks the host as the 15-second sync does
-(a new `Audio2FaceHostConnection` per check: routes, then the plan copy) and
+(a new `HostConnection` per check: routes, then the plan copy) and
 logs through the desktop's status tracker (`HostAnswers`). Its steps: twelve
 checks share one kept TCP and TLS connection (`HostRoutes` connections dialed
 and connections the forwarder accepted are both 0 after the first); the host

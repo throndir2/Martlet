@@ -65,7 +65,7 @@ public sealed class RendererFailureTests
     {
         public string Authority => "192.168.1.20:9443";
         public Task<bool> ReadyAsync(CancellationToken token) => Task.FromResult(true);
-        public async IAsyncEnumerable<Martlet.Avatar.Audio2Face.Remote.RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch,
+        public async IAsyncEnumerable<Martlet.HostClient.RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch,
             int sampleRate, ReadOnlyMemory<byte> pcm, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
         {
             await Task.Yield();

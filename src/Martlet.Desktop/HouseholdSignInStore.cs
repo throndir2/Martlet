@@ -1,9 +1,9 @@
 using System.IO;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Credentials.Windows;
-using Document = Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.Document;
-using Summary = Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.Summary;
+using Document = Martlet.HostClient.HouseholdSignInFile.Document;
+using Summary = Martlet.HostClient.HouseholdSignInFile.Summary;
 
 namespace Martlet.Desktop;
 

@@ -98,7 +98,7 @@ internal static class DeepThinkingFit
         if (offers.GetValueOrDefault(HostRoles.Ollama) is not { } alias) return null;
         var routes = check.Routes ?? [];
         var mine = routes.FirstOrDefault(r => r.RouteId == member.HostRoute)?.Gpus ?? [];
-        var theirs = routes.FirstOrDefault(r => r.RouteId == Martlet.Avatar.Audio2Face.Remote.HostRoute.OllamaChatRouteId)?.Gpus ?? [];
+        var theirs = routes.FirstOrDefault(r => r.RouteId == Martlet.HostClient.HostRoute.OllamaChatRouteId)?.Gpus ?? [];
         var cards = hardware is null ? 1 : DedicatedCards(hardware.Gpus.Select(g => (g.Vendor, g.MemoryGb)));
         if (mine.Count > 0 && theirs.Count > 0 && !mine.Contains("cpu") && !theirs.Contains("cpu"))
             return mine.Any(gpu => theirs.Contains(gpu, StringComparer.Ordinal)) ? SharedCard(host, Tag(alias), cards, sameCard: true) : null;
