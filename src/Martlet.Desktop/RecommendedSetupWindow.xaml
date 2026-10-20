@@ -58,8 +58,7 @@
                      the preferences and plans again at once. -->
                 <TextBlock Text="Your preferences" Style="{DynamicResource SectionHeading}"/>
                 <TextBlock x:Name="PreferencesText" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
-                           AutomationProperties.AutomationId="RecommendedSetupPreferences"
-                           Text="Martlet plans with these. A change plans again at once and is saved for all your computers (each computer keeps its own games answer)."/>
+                           AutomationProperties.AutomationId="RecommendedSetupPreferences">Martlet plans with these, and a change plans again at once.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="A change is saved for all your computers. Each computer keeps its own games answer." Wiki="Multiple-Computers#recommended-setup" AutomationProperties.AutomationId="Help-RecommendedSetupPreferences" AutomationProperties.Name="About your preferences"/></InlineUIContainer></TextBlock>
                 <StackPanel x:Name="PreferencesPanel" Margin="0,0,0,16" AutomationProperties.Name="Your preferences"/>
 
                 <!-- Your choices (RecommendedSetupReview.Choices): each job's lock (RecommendedSetupLock-<job>; a change saves the
@@ -70,8 +69,7 @@
                 <StackPanel x:Name="ChoicesSection">
                     <TextBlock Text="Your choices" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
-                               AutomationProperties.AutomationId="RecommendedSetupChoicesIntro"
-                               Text="A locked job keeps its model: Martlet only suggests a clearly better one (smarter at the same speed, or as smart with less memory). Unlock a job to let Martlet choose. A job you change by hand locks again."/>
+                               AutomationProperties.AutomationId="RecommendedSetupChoicesIntro">A locked job keeps its model, and Martlet only suggests a clearly better one.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="A clearly better model is smarter at the same speed, or as smart with less memory. Unlock a job to let Martlet choose. A job you change by hand locks again." Wiki="Multiple-Computers#recommended-setup" AutomationProperties.AutomationId="Help-RecommendedSetupChoices" AutomationProperties.Name="About locked jobs"/></InlineUIContainer></TextBlock>
                     <StackPanel x:Name="ChoicesPanel" Margin="0,0,0,8" AutomationProperties.Name="Your choices"
                                 AutomationProperties.AutomationId="RecommendedSetupChoices"/>
                     <TextBlock x:Name="MeasuredText" TextWrapping="Wrap" Margin="0,0,0,16" Visibility="Collapsed"
@@ -83,8 +81,7 @@
                      People and Smart home are set on their Companion pages (ComponentRanking.SetOnPage). -->
                 <StackPanel x:Name="PartsSection" Visibility="Collapsed">
                     <TextBlock Text="Every part, in priority order" Style="{DynamicResource SectionHeading}"/>
-                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
-                               Text="Martlet sets up the parts at the top first. Needed parts make a conversation work. Optional parts can be off: tick Off to plan without one. Vision, Reading, Hearing, People and Smart home are set on their Companion pages: turn them off there."/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8">Martlet sets up the parts at the top first.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Needed parts make a conversation work. Tick Off to plan without an optional part. Turn off Vision, Reading, Hearing, People and Smart home on their Companion pages." Wiki="Multiple-Computers#recommended-setup" AutomationProperties.AutomationId="Help-RecommendedSetupParts" AutomationProperties.Name="About the parts"/></InlineUIContainer></TextBlock>
                     <StackPanel x:Name="PartsPanel" Margin="0,0,0,16" AutomationProperties.Name="Every part, in priority order"
                                 AutomationProperties.AutomationId="RecommendedSetupParts"/>
                 </StackPanel>
@@ -107,8 +104,7 @@
 
                 <StackPanel x:Name="SituationsSection" Visibility="Collapsed">
                     <TextBlock Text="Three plans" Style="{DynamicResource SectionHeading}"/>
-                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
-                               Text="Martlet changes between these plans by itself: while a game runs on a companion PC used for games, and while a host doesn't answer. Each live job comes back when the game ends or the host answers again."/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8">Martlet changes between these plans by itself.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Martlet changes the plan while a game runs on a companion PC used for games, and while a host doesn't answer. Each live job comes back when the game ends or the host answers again." Wiki="Multiple-Computers#recommended-setup" AutomationProperties.AutomationId="Help-RecommendedSetupSituations" AutomationProperties.Name="About the three plans"/></InlineUIContainer></TextBlock>
                     <StackPanel x:Name="SituationsPanel" Margin="0,0,0,16" AutomationProperties.Name="Three plans"
                                 AutomationProperties.AutomationId="RecommendedSetupSituations"/>
                 </StackPanel>
@@ -116,7 +112,7 @@
                 <StackPanel x:Name="ManualSection" Visibility="Collapsed">
                     <TextBlock Text="Needs someone at the computer" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
-                               Text="Martlet can't change these computers from here. Make these changes at each one, or connect it on the Devices page."/>
+                               Text="Martlet can't change these computers from here: make these changes at each one, or connect it on the Devices page."/>
                     <StackPanel x:Name="ManualPanel" Margin="0,0,0,16" AutomationProperties.Name="Needs someone at the computer"/>
                 </StackPanel>
 
@@ -124,7 +120,7 @@
                            AutomationProperties.AutomationId="RecommendedSetupDownloads"/>
 
                 <StackPanel x:Name="PreflightSection" Visibility="Collapsed">
-                    <TextBlock Text="Before it starts" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock Style="{DynamicResource SectionHeading}">Before it starts<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Your other companion PCs follow this PC's Thinking and Listening through the shared settings once they can. Their Companion page says what they need." Wiki="Multiple-Computers#recommended-setup" AutomationProperties.AutomationId="Help-RecommendedSetupPreflight" AutomationProperties.Name="About before it starts"/></InlineUIContainer></TextBlock>
                     <StackPanel x:Name="PreflightPanel" Margin="0,0,0,8" AutomationProperties.Name="Before it starts"
                                 AutomationProperties.AutomationId="RecommendedSetupPreflight"/>
                     <StackPanel x:Name="TermsSection" Visibility="Collapsed">
@@ -133,8 +129,7 @@
                     </StackPanel>
                     <StackPanel x:Name="SecretsSection" Visibility="Collapsed">
                         <TextBlock Text="Keys it needs" FontWeight="SemiBold" Margin="0,4,0,4"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6"
-                                   Text="Type each key the change needs. A change whose key you leave empty is skipped, and its computer shows it needs attention."/>
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6">Type each key the change needs.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="Martlet skips a change whose key you leave empty, and that computer shows that it needs attention." Wiki="Multiple-Computers#recommended-setup" AutomationProperties.AutomationId="Help-RecommendedSetupKeys" AutomationProperties.Name="About the keys"/></InlineUIContainer></TextBlock>
                         <StackPanel x:Name="SecretsPanel" Margin="0,0,0,8" AutomationProperties.Name="Keys it needs"/>
                     </StackPanel>
                     <Border Height="8"/>

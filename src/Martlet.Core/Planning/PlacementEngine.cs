@@ -603,8 +603,11 @@ public static class PlacementEngine
 
         private string Why(ComponentOption chosen, ComponentOption? betterLocal)
         {
+            // Some names already say where they run ("Parakeet on the processor").
+            var named = chosen.DisplayName.EndsWith(WhereText(chosen), StringComparison.Ordinal) ? chosen.DisplayName
+                : $"{chosen.DisplayName} {WhereText(chosen)}";
             var text = chosen.IsLocal
-                ? $"{chosen.DisplayName} {WhereText(chosen)}" + (chosen.FirstWordMs is { } ms ? $" (first word in about {Seconds(ms)})." : ".")
+                ? named + (chosen.FirstWordMs is { } ms ? $" (first word in about {Seconds(ms)})." : ".")
                 : $"{chosen.DisplayName}: no local option that fits is as good.";
             if (betterLocal is not null)
                 text += $" {betterLocal.DisplayName} would be better but has no room" +

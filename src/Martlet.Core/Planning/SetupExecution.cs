@@ -400,7 +400,7 @@ public static class SetupExecutor
         {
             var choice = ModelChoice(needs, model, arguments);
             if (choice is null && needs.Choices.Count > 0)
-                return (arguments, $"{change.MachineId}'s {role} role doesn't offer {model}. Update Martlet there, then check again.");
+                return (arguments, $"{change.MachineId}'s {role} role doesn't offer {model}: update Martlet there, then check again.");
             if (choice is not null)
             {
                 arguments["choice." + choice.Variable] = choice.Options.First(o => string.Equals(o, model, StringComparison.OrdinalIgnoreCase));
@@ -603,7 +603,7 @@ public static class SetupExecutor
     {
         var item = preflight.Items.FirstOrDefault(i => i.Index == index);
         if (item is null || item.Change != change)
-            return SetupStepResult.Attention("This change wasn't in the review, so Martlet didn't make it. Check the recommended setup again.");
+            return SetupStepResult.Attention("This change wasn't in the review, so Martlet didn't make it: check the recommended setup again.");
         switch (item.Verdict)
         {
             case SetupStepVerdict.Automatic: return SetupStepResult.Done(item.Text);
@@ -611,8 +611,8 @@ public static class SetupExecutor
             // The owner makes it elsewhere (a provider chosen in Companion): never reported as done here.
             case SetupStepVerdict.NeedsOwner when item.Secrets.Count == 0: return SetupStepResult.Attention(item.Text);
             case SetupStepVerdict.NeedsOwner when item.Secrets.Any(s => !preflight.Answered(s)):
-                return SetupStepResult.Attention($"It needs {string.Join(" and ", item.Secrets.Where(s => !preflight.Answered(s)).Select(s => s.Prompt))}. " +
-                    $"Enter it in the review and Reconfigure again, or install {targets.RoleName(change.RoleKind!)} on {change.MachineId} from the Devices map.");
+                return SetupStepResult.Attention($"It needs {string.Join(" and ", item.Secrets.Where(s => !preflight.Answered(s)).                Select(s => s.Prompt))}: " +
+                                    $"enter it in the review and Reconfigure again, or install {targets.RoleName(change.RoleKind!)} on {change.MachineId} from the Devices map.");
         }
         try
         {

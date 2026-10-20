@@ -178,7 +178,7 @@ public partial class MainWindow
     /// <summary>The sentence on Home's issue: which model Martlet proposes instead, or the provider's remedy.</summary>
     private string RetiredProposal(string origin, string model, RetiredModel retired) =>
         RetiredReplacement(origin, model, retired) is { } replacement
-            ? $"Martlet proposes {replacement}{(replacement == retired.Suggestion ? $", {retired.Server}'s current choice" : ", the smartest current model there that takes the same inputs")}. Choose Use {replacement}."
+            ? $"Martlet proposes {replacement}{(replacement == retired.Suggestion ? $", {retired.Server}'s current choice" : ", the smartest current model there that takes the same inputs")}: choose Use {replacement}."
             : retired.Remedy;
 
     private async Task UseRetiredReplacementAsync(string origin, string replacement)

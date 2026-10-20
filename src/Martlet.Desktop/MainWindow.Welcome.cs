@@ -76,7 +76,7 @@ public partial class MainWindow
         catch (Exception error) when (error is SocketException or IOException)
         {
             welcomeFound = [];
-            WizardScanStatus.Text = $"Couldn't look on your network ({error.Message}). Enter the other computer's address and pairing code instead.";
+            WizardScanStatus.Text = $"Couldn't look on your network ({error.Message}): enter the other computer's address and pairing code instead.";
             return;
         }
         finally
@@ -122,10 +122,10 @@ public partial class MainWindow
         }
         WizardScanStatus.Text = welcomeFound.Count switch
         {
-            0 => "No Martlet network answered. Open Martlet on your other computer (it must run a host, with Let my other computers " +
-                "find this PC on), then Look again, or enter its address and pairing code.",
-            1 => "Found your Martlet network. Press Join, then Allow on that computer when both show the same check number.",
-            _ => $"Found {welcomeFound.Count} computers with Martlet. Press Join on one, then Allow there when both show the same check number."
+            0 => "No Martlet network answered: open Martlet on your other computer, check that its host has Let my other computers " +
+                "find this PC on, then press Look again.",
+            1 => "Found your Martlet network: press Join, then Allow on that computer when both show the same check number.",
+            _ => $"Found {welcomeFound.Count} computers with Martlet: press Join on one, then Allow there when both show the same check number."
         } + (welcomeScanning ? " Still looking for more..." : "");
     }
 
@@ -138,7 +138,7 @@ public partial class MainWindow
         await RefreshHomeAsync();
         if (closing) return;
         if (InMartletNetwork()) JoinedNetwork();
-        else WizardScanStatus.Text = "This PC hasn't joined yet. Press Join again, or enter the other computer's address and pairing code.";
+        else WizardScanStatus.Text = "This PC hasn't joined yet: press Join again, or enter the other computer's address and pairing code.";
     }
 
     private void WizardJoinManual_Click(object sender, RoutedEventArgs e) => JoinNetworkAsync(null).Forget();
@@ -178,7 +178,7 @@ public partial class MainWindow
         SpecRow("Ram", "Memory", machine.MemoryGb is null ? $"unknown (planned as {Gb(specs.RamGb)})" : Gb(specs.RamGb));
         SpecRow("Cpu", "Processor", $"{specs.CpuThreads} threads" + (machine.Processor is { } cpu ? $" · {cpu}" : ""));
         WizardSpecs.Text = DescribeSpecs(specs) + (card is { IsNvidia: true } && welcomeGpus.Count == 0
-            ? ". Martlet can't reach the NVIDIA driver (nvidia-smi), so jobs that need it stay on the processor or online"
+            ? "; Martlet can't reach the NVIDIA driver (nvidia-smi), so jobs that need it stay on the processor or online"
             : "");
         WizardSpecsNextButton.IsEnabled = true;
         ErrorLog.Info($"Welcome: this PC has {WizardSpecs.Text}.");
@@ -276,13 +276,13 @@ public partial class MainWindow
             ConfiguredProviders(), WelcomeNetwork(), welcomePreferences, games);
         var routes = homeSettings?.Setup?.Routes ?? [];
         WizardPlanTitle.Text = welcomeJoined ? "Here's what this PC can do for your network" : "Here's what fits this PC";
-        var summary = $"You chose: {WelcomePreferences.Describe(welcomePreferences, games)}. ";
-        if (welcomeJoined)
-            summary += "Jobs your Martlet network already does stay where they are; this PC sets up the ones it should take on. ";
-        summary += plan.ThinkingHosted is { } hosted
-            ? $"Thinking goes online with {hosted.Option.DisplayName}" + (ConfiguredProviders().Contains(hosted.Option.ProviderId ?? "") ? "." : ", so you'll get a free key next.")
-            : plan.Placement.External.Count == 0 ? "Everything runs on your computers." : "";
-        WizardPlanSummary.Text = summary.Trim();
+        var summary = new List<string> { $"You chose: {WelcomePreferences.Describe(welcomePreferences, games)}" };
+        if (welcomeJoined) summary.Add("jobs your Martlet network already does stay where they are");
+        if (plan.ThinkingHosted is { } hosted)
+            summary.Add($"Thinking goes online with {hosted.Option.DisplayName}" +
+                (ConfiguredProviders().Contains(hosted.Option.ProviderId ?? "") ? "" : ", so you'll get a free key next"));
+        else if (plan.Placement.External.Count == 0) summary.Add("everything runs on your computers");
+        WizardPlanSummary.Text = string.Join("; ", summary) + ".";
         foreach (var component in WelcomePlan.Shown) WizardPlanList.Children.Add(PlanCard(plan, component, routes));
         if (plan.Joining.Count > 0)
         {
@@ -296,8 +296,9 @@ public partial class MainWindow
             }
         }
         var (vram, ram, cpu) = plan.Total();
-        WizardPlanTotals.Text = $"All together on this PC: {vram}% graphics memory, {ram}% memory, {cpu}% processor while Martlet talks." +
-            (plan.Placement.Notes.Count > 0 ? " " + string.Join(" ", plan.Placement.Notes) : "");
+        WizardPlanTotals.Text = $"All together on this PC: {vram}% graphics memory, {ram}% memory, {cpu}% processor while Martlet talks.";
+        WizardPlanNotes.Text = string.Join(" ", plan.Placement.Notes);
+        WizardPlanNotes.Visibility = plan.Placement.Notes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         WizardAcceptButton.IsEnabled = true;
         ErrorLog.Info($"Welcome: suggested ({welcomePreference}) {string.Join(" | ", WelcomePlan.Shown.Select(plan.Describe))}" +
             (plan.Joining.Count > 0 ? " Joining: " + string.Join(" | ", plan.Joining.Select(j => $"{j.Kind} {j.Component} {j.ToOptionId}")) : ""));
@@ -335,8 +336,8 @@ public partial class MainWindow
             : assignment.Why + (plan.Placement.Fallback(component) is { } fallback
                 ? $" If it's down, {fallback.Option.DisplayName} ({WelcomePlan.Where(fallback)}) can take over; set that up later in Companion › {FallbackPage(component)}."
                 : "");
-        var reason = new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 6) };
-        reason.SetResourceReference(StyleProperty, "Muted");
+        var reason = HelpTip.Explain(why, new Thickness(0, 2, 0, 6), "WizardPlanWhy-" + component, "this choice",
+            wiki: "First-Steps#4-use-the-suggested-setup");
         stack.Children.Add(reason);
         if (kept is null && assignment is not null)
         {
@@ -388,15 +389,23 @@ public partial class MainWindow
     private void ShowWelcomeKey()
     {
         var model = PlanningCatalog.SuggestedModel(ChatCompletionsEndpointCatalog.NvidiaBuildId) ?? ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId;
-        WizardKeyIntro.Text = $"Martlet thinks with {model} on NVIDIA Build: free, no card needed, with a free NVIDIA account. It takes " +
-            "about two minutes. NVIDIA logs what is sent to improve its products, so don't share personal data or voices with it. " +
-            "Listening stays on this PC (Parakeet), so Thinking gets the words you said, not your voice.";
+        var intro = $"Martlet thinks with {model} on NVIDIA Build, free with a free NVIDIA account, but NVIDIA logs what is sent, so " +
+            "don't share personal data or voices with it. It takes about two minutes and needs no payment card. Listening stays on " +
+            "this PC (Parakeet), so Thinking gets the words you said, not your voice. Windows Credential Manager keeps the key, and " +
+            "the same key also works for Picture making.";
+        var (summary, _) = HelpTip.Split(intro);
+        WizardKeyIntro.Inlines.Clear();
+        WizardKeyIntro.Inlines.Add(new System.Windows.Documents.Run(summary));
+        var tip = HelpTip.For("the free NVIDIA key", intro, "WizardKeyIntro", wiki: "First-Steps#4-use-the-suggested-setup");
+        tip.Margin = new Thickness(6, 0, 0, 0);
+        WizardKeyIntro.Inlines.Add(new System.Windows.Documents.InlineUIContainer(tip) { BaselineAlignment = BaselineAlignment.Center });
+        AutomationProperties.SetName(WizardKeyIntro, summary);
+        AutomationProperties.SetHelpText(WizardKeyIntro, intro);
         WizardKeySteps.Text =
-            "1. Press Open build.nvidia.com below and sign in, or create a free NVIDIA account with your email and confirm the email NVIDIA sends.\n" +
-            "2. On the API Keys page choose Generate API Key. Accept NVIDIA's trial terms if asked; some accounts must verify a phone number.\n" +
+            "1. Press Open build.nvidia.com below and sign in, or create a free NVIDIA account and confirm the email NVIDIA sends.\n" +
+            "2. On the API Keys page, choose Generate API Key (accept NVIDIA's trial terms or verify a phone number if it asks).\n" +
             "3. Copy the key now: it starts with nvapi- and isn't shown again.\n" +
-            "4. Paste it below, tick the box and press Save key. Windows Credential Manager keeps it; Martlet never shows it again. The same key also works for Picture making.\n" +
-            "Want Thinking to hear your voice? Google Gemini can, with a free Google key: choose it later in Companion › Thinking.";
+            "4. Paste it below, tick the box and press Save key.";
         WizardKeyStatus.Text = "";
         ShowTour(TourKey);
     }
@@ -406,7 +415,7 @@ public partial class MainWindow
         try { Process.Start(new ProcessStartInfo(NvidiaKeyPage) { UseShellExecute = true })?.Dispose(); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            WizardKeyStatus.Text = $"Couldn't open the browser ({error.Message}). Go to {NvidiaKeyPage} yourself.";
+            WizardKeyStatus.Text = $"Couldn't open the browser ({error.Message}): go to {NvidiaKeyPage} yourself.";
         }
     }
 
@@ -434,7 +443,7 @@ public partial class MainWindow
             var saved = homeSettings.ThinkingRoute();
             if (saved?.Origin != ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl || saved.CredentialId is null)
             {
-                WizardKeyStatus.Text = string.IsNullOrWhiteSpace(ActionText.Text) ? "The key wasn't saved. Try again." : ActionText.Text;
+                WizardKeyStatus.Text = string.IsNullOrWhiteSpace(ActionText.Text) ? "The key wasn't saved; try again." : ActionText.Text;
                 return;
             }
             ErrorLog.Info("Welcome: Thinking uses NVIDIA Build with the key saved in Windows Credential Manager.");
@@ -464,9 +473,9 @@ public partial class MainWindow
         var lipSync = plan.Placement.Primary(PlanComponent.LipSync);
         var lipSyncHost = lipSync is { MachineId: { } id } && id != DefaultSetup.ThisPc && FindHost(id) is not null ? id : null;
         var lipSyncLine = plan.Setup.LipSyncOnGpu
-            ? "Lip-sync: Audio2Face on the graphics card (Martlet sets up its host service in Docker on this PC). The mouth follows the voice's loudness until it's ready."
+            ? "Lip-sync: Audio2Face on the graphics card, in a host service Martlet sets up in Docker on this PC (until then, the mouth follows the voice's loudness)."
             : lipSyncHost is not null ? $"Lip-sync: Audio2Face on {lipSyncHost}."
-            : "Lip-sync: the mouth opens and closes with the voice's loudness. Nothing to install.";
+            : "Lip-sync: the mouth opens and closes with the voice's loudness, with nothing to install.";
         ErrorLog.Info($"Welcome: applying the suggestion ({welcomePreference}).");
         if (!await SetUpDefaultsAsync(Here(PlanComponent.Thinking), Here(PlanComponent.Listening), Here(PlanComponent.Voice),
                 extra: lipSyncLine, planned: plan.Setup))

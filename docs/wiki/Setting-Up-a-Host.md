@@ -22,6 +22,14 @@ You pair a host once. Every other computer in your [Martlet network](Multiple-Co
 
 Martlet starts Docker Desktop, builds the host, sets it up and pairs it, with no console. Jobs that need the graphics card need an NVIDIA card and WSL 2 GPU support.
 
+On a host PC, Home lists the steps that are left. Each step ticks by itself when it is done, because Martlet checks them every few seconds.
+
+- The first start of Docker Desktop can take a few minutes. You don't have to wait: set up the host service now, and it carries on as soon as Docker Desktop runs.
+- Windows may ask you to allow private-network access for the host service. If Windows Firewall isn't changed, your other PCs may not reach this host.
+- **Start host service** and **Set up again** keep your pairings and roles.
+- After a start, the host service can take a moment to answer on your network. If **not answering** stays, choose **Set up again**.
+- When Docker Desktop doesn't start, or Windows isn't ready for it, the progress window shows the details. See [Docker Desktop or WSL won't start](Troubleshooting#docker-desktop-or-wsl-wont-start).
+
 For another Windows PC, choose **Use as a Martlet host** there. It then shows under **Martlet on your network** on your other PCs: pick it, and choose **Allow** when both screens show the same check number. Or use **Pair your main PC › Show a pairing code** on that PC's Home.
 
 ## Linux over SSH
@@ -66,13 +74,25 @@ Cloned voices, singing, picture making, motion and lip-sync need an x86_64 PC wi
 - To pair by code, the host shows its address and a short code such as `K7QM-4XPA`. In Martlet, open **Devices › Add a computer › Enter a pairing code**. Type the **Host address** and the **Code**, then choose **Pair with host**.
 - A code works once. It stays valid until a computer uses it or you cancel it. The host's jobs pause until then. Five wrong tries close the code.
 
+To pair a host PC with your main PC from the host PC's Home:
+
+1. On your main PC, choose **Devices › Add a computer**. The host PC is listed under **Martlet on your network**.
+2. Press **Connect** there.
+3. Press **Allow** on the host PC when both screens show the same check number.
+
+Or choose **Show a pairing code** on the host PC, and type it in **Enter a pairing code** on the other computer. To use the host from more computers, do the same on each one. **Pair another computer** works at any time.
+
+- Paired computers connect only on your private network.
+- **Settings › Your other computers › Let my other computers find this PC and ask to use its hosts** uses port 9444. It also covers the hosts that this PC reaches over SSH. Each request shows a check number, and nothing happens until you choose **Allow** on this PC.
+- A computer can also ask to join your Martlet network through a host. Allow it only if that computer shows the same check number.
+
 ## Choose the host's jobs
 
 After pairing, **Choose jobs for this host** lists the roles. Later, select the host on the Devices map and choose **Install** *role*, **Change** *role* **settings** or **Remove** *role*.
 
 The roles are Thinking, Thinking pool, Listening, Speaking (one voice engine for each host), Lip-sync, Reading, Singing, Picture making, Motion, Voice recognition and Home Assistant. Before Martlet installs a role, it shows what the role needs, its terms and its choices. Your **Install** click is your confirmation. **Remove** keeps the downloads, so adding a role again is fast.
 
-**Recommended setup** on Home can also install the roles for you.
+**Recommended setup** on Home can also install the roles for you. On a host PC, the **Add roles** step on Home adds or removes roles at any time.
 
 ## Commands on the host
 
@@ -102,9 +122,13 @@ For the Docker commands, see the [host guide](https://github.com/throndir2/Martl
 
 **Update host** keeps the host's identity, pairings, roles and data. **Settings › App updates › Update hosts** updates all your hosts, and **Update paired hosts automatically** keeps them on your PC's version. After the computer restarts, the host service starts again by itself.
 
+A PC's own host service follows that PC's Martlet version. Martlet updates it by itself in the background, or when the service runs again. **Update host service** on Home does it now. Pairings and roles stay.
+
 ## A new address after a restart
 
 You don't need to reserve addresses in your router. When a host's computer gets another address, the host listens there and answers on UDP 9444, and your computers find it there by themselves, check its key and keep using the same pairing. A firewall on the host must let UDP 9444 in from your home network.
+
+On a Windows host PC, Martlet moves the host service to the new address by itself. Pairings and roles stay. If Martlet can't move it, **Background tasks** says why. Then choose **Set up again** on Home.
 
 To use your hosts from outside your home or share them with a friend, see [Sharing with Friends](Sharing-with-Friends).
 

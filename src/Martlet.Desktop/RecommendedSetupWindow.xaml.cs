@@ -78,7 +78,14 @@ public partial class RecommendedSetupWindow : ThemedWindow
     private void Render()
     {
         TitleText.Text = review.Title;
-        SummaryText.Text = review.Summary;
+        SummaryText.Inlines.Clear();
+        SummaryText.Inlines.Add(new System.Windows.Documents.Run(review.Summary));
+        var rules = HelpTip.For("the recommended setup",
+            "Companion PCs stay light so games keep their graphics card, and each graphics card runs at most one language model. " +
+            "Nothing changes until you choose Reconfigure or Use the suggestion.", "RecommendedSetupSummary", wiki: "Multiple-Computers#recommended-setup");
+        rules.Margin = new Thickness(6, 0, 0, 0);
+        SummaryText.Inlines.Add(new System.Windows.Documents.InlineUIContainer(rules) { BaselineAlignment = BaselineAlignment.Center });
+        AutomationProperties.SetName(SummaryText, review.Summary);
         OfflineText.Text = review.Offline ?? "";
         OfflineText.Visibility = review.Offline is null ? Visibility.Collapsed : Visibility.Visible;
         var servedNote = !review.UseServed ? "Off: Martlet plans only with its own models and your keys."
@@ -319,7 +326,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
             var locked = new CheckBox
             {
                 Content = "Locked", IsChecked = choice.Locked, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, 2, 0, 0),
-                ToolTip = $"Keep {choice.Title.ToLowerInvariant()}'s choice: Martlet only suggests a better one. Clear it to let Martlet choose."
+                ToolTip = $"Keep {choice.Title.ToLowerInvariant()}'s choice, so Martlet only suggests a better one; clear it to let Martlet choose."
             };
             AutomationProperties.SetAutomationId(locked, $"RecommendedSetupLock-{choice.Job}");
             AutomationProperties.SetName(locked, $"{choice.Title} locked");
@@ -356,7 +363,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
             if (choice.Locked && !choice.SuggestionApplied)
             {
                 var use = new Button { Content = "Use the suggestion", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 4, 12, 4),
-                    Margin = new Thickness(0, 2, 0, 0), ToolTip = "Plan this suggestion once, then review the changes before anything changes. The job stays locked." };
+                    Margin = new Thickness(0, 2, 0, 0), ToolTip = "Plan this suggestion once and review the changes before anything changes; the job stays locked." };
                 AutomationProperties.SetAutomationId(use, $"RecommendedSetupUseSuggestion-{choice.Job}");
                 AutomationProperties.SetName(use, $"Use the suggestion for {choice.Title.ToLowerInvariant()}");
                 use.Click += (_, _) =>
