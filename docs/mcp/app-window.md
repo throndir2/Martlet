@@ -386,7 +386,7 @@ device ID; `recommended_setup_status` with the same data directory reads them
 back under `preferences`) and shows the placement engine's suggestion planned
 with them: `WizardPlanSummary` (the three answers and whether Thinking goes
 online), `WizardPlanItem-Thinking`, `-Voice`,
-`-Listening` and `-LipSync` (what, where, *Uses 64% graphics memory, 5% memory,
+`-Listening` and `-LipSync` (what and where; their `help` adds *Uses 64% graphics memory, 5% memory,
 6% processor* and why, or why it's left out; a part that grows while it works
 reads *Uses 31-35% graphics memory*: what it usually holds, then the most),
 `WizardJoinSuggestion-<n>` after
@@ -997,7 +997,7 @@ part. `StageTitle` and `StageText` return the hero's headline and line,
 example *1 problem stops Martlet replying · 3 good to know.*) the list's
 heading, and `HealthAllClear` shows when nothing needs attention. Each item's
 title `HealthIssue-<id>` returns its level, title and detail (*Problem: Ollama
-isn't running on this PC. ...*); ids include `data-folder`, `settings`,
+isn't running on this PC — ...*); ids include `data-folder`, `settings`,
 `thinking-setup`, `thinking-retired`, `ollama`, `job-<job>` (coverage, for
 example `job-listening`), `host-service`, `failed-thinking`, `failed-listening`,
 `failed-voice` (a reply's text arrived but speaking it failed),

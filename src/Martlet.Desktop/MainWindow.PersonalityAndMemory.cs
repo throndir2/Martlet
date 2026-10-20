@@ -51,7 +51,7 @@ public partial class MainWindow
             new TextBlock { Text = on ? "On" : "Off", FontSize = 15, TextWrapping = TextWrapping.Wrap },
             Note(on
                 ? "Martlet remembers lasting facts you share and uses them later. Everything stays on this PC; manage facts in Manage memory."
-                : "Martlet doesn't remember or recall anything between conversations. Turn memory on in Manage memory.",
+                : "Martlet doesn't remember or recall anything between conversations: turn memory on in Manage memory.",
                 new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
         if (conversation?.MemoryBrief is { } brief) page.Children.Add(MemoryBriefCard(brief, on));

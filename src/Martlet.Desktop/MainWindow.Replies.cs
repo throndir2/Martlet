@@ -336,31 +336,30 @@ public partial class MainWindow
 
     internal static string DescribeGeneration(GenerationSettings? settings, SetupRoute? route = null)
     {
-        const string brief = "Replies are brief";
+        // One sentence (the UI text rule, #992): its facts are joined with semicolons.
+        var facts = new List<string> { "Replies are brief" };
         // Ollama on this PC gets no reply token budget unless a max reply length is set.
-        var stop = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "No maximum length is set"
-            : $"Maximum length is {GenerationSupport.ReplyTokens(route?.RouteType, settings)} tokens" +
-              (GenerationSupport.BudgetIncludesThinking(route?.RouteType) ? ", including any hidden thinking" : "");
+        facts.Add(settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "no maximum length is set"
+            : $"maximum length is {GenerationSupport.ReplyTokens(route?.RouteType, settings)} tokens" +
+              (GenerationSupport.BudgetIncludesThinking(route?.RouteType) ? ", including any hidden thinking" : ""));
         // Thinking steps is Off unless On is chosen; routes whose models don't reason don't mention it.
-        var thinking = route is not null && GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning) ==
-            GenerationSettingUse.Unused ? "" : GenerationSettings.ThinkingSteps(settings) ? "Thinking steps are on. " : "Thinking steps are off. ";
-        thinking += GenerationSettings.StartsShort(settings) ? "Spoken replies start with a short first sentence. "
-            : "Spoken replies don't start with a short first sentence. ";
-        if (GenerationSettings.Adult(settings)) thinking += "Adult content is on. ";
-        thinking += GenerationSettings.Personal(settings) switch
+        if (route is null || GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning) != GenerationSettingUse.Unused)
+            facts.Add(GenerationSettings.ThinkingSteps(settings) ? "Thinking steps are on" : "Thinking steps are off");
+        facts.Add(GenerationSettings.StartsShort(settings) ? "spoken replies start with a short first sentence"
+            : "spoken replies don't start with a short first sentence");
+        if (GenerationSettings.Adult(settings)) facts.Add("adult content is on");
+        switch (GenerationSettings.Personal(settings))
         {
-            PersonalContent.Messages => "Martlet may read your messages. ",
-            PersonalContent.Everything => "Martlet may read your messages and see private windows. ",
-            _ => ""
-        };
-        if (settings is null)
-            return $"{brief}. {stop}. {thinking}Other settings use the model default.";
+            case PersonalContent.Messages: facts.Add("Martlet may read your messages"); break;
+            case PersonalContent.Everything: facts.Add("Martlet may read your messages and see private windows"); break;
+        }
         var parts = new List<string>();
-        foreach (var setting in ReplySettings.Skip(1))
-            if (setting.Read(settings) is { } value)
-                parts.Add($"{char.ToLower(setting.Name[0], CultureInfo.CurrentCulture)}{setting.Name[1..]} {setting.Format(value)}");
-        return $"{brief}. {stop}. {thinking}" +
-            (parts.Count == 0 ? "Other settings use the model default." : string.Join(", ", parts) + ".");
+        if (settings is not null)
+            foreach (var setting in ReplySettings.Skip(1))
+                if (setting.Read(settings) is { } value)
+                    parts.Add($"{char.ToLower(setting.Name[0], CultureInfo.CurrentCulture)}{setting.Name[1..]} {setting.Format(value)}");
+        facts.Add(parts.Count == 0 ? "other settings use the model default" : string.Join(", ", parts));
+        return string.Join("; ", facts) + ".";
     }
 
     /// <summary>The Companion page's Replies tab auto-save: reads the fields and, when every one is valid, writes them into the

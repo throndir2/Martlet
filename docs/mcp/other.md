@@ -158,7 +158,7 @@ the browser and ends it after 90 seconds; and Recommended setup's three plans
 on a FIXTURE network. `ok` is true when every step passed.
 
 On the desktop, Companion › Thinking's *Now* card reads `ThinkingSituationNow`
-(*Situation: While gaming. A game (ELDEN RING) runs on this PC, so live
+(*Situation: While gaming — A game (ELDEN RING) runs on this PC, so live
 Thinking leaves its graphics card for gpu-box (qwen3:8b). ...*). To drive it
 without a game or a host that goes away, set `MARTLET_SIMULATE_SITUATION`
 before you launch the desktop (FIXTURE): `1` uses this PC's own setup;
