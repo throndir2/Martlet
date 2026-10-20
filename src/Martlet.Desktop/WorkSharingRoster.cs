@@ -205,8 +205,8 @@ internal sealed partial class WorkSharingRoster : IDisposable
 
     /// <summary>A plain sentence for <see cref="OwnerFirst"/>.</summary>
     internal static string OwnerFirstText(string hostId, string job) =>
-        $"{hostId} is busy with its owner's own work right now. A friend shares it with this PC, and their own work always comes first, " +
-        $"so Martlet used another of your computers for {job} if one runs it, or tries {hostId} again on the next request.";
+        $"{hostId} is busy with its owner's own work right now, so Martlet used another of your computers for {job} if one runs it, " +
+        $"or tries {hostId} again on the next request.";
 
     /// <summary><paramref name="source"/>, a request to <paramref name="hostId"/>: when that is a host a friend shares and it turns
     /// the request away for its owner's work (<c>job.busy</c> with detail owner, or <c>job.preempted</c>), the desktop log says so

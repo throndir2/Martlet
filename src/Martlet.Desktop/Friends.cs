@@ -87,23 +87,20 @@ internal static class FriendsOverview
         .ToArray();
     }
 
-    /// <summary>The Friends card's status line.</summary>
+    /// <summary>The Friends card's status line: one sentence, ending with a period.</summary>
     internal static string Status(IReadOnlyList<FriendView> friends, int hostsRead, int hostsTotal)
     {
         if (hostsTotal == 0) return "Pair a host first: you share your hosts' engines with friends from here.";
         var shared = friends.Count(f => f.SharedOn.Any());
         var asking = friends.Count(f => !f.SharedOn.Any() && f.Asking);
         var unread = hostsTotal - hostsRead;
-        var limits = " Friends use only those hosts' engines, never join your Martlet network, never get your API keys, and your own work always goes first.";
         var text = shared == 0 && asking == 0
-            ? "You share no host with a friend yet. The easy way: Make a share link, choose your hosts (or all of them) and send the link " +
-              "to your friend. Their Martlet signs in with it and uses only those hosts' engines. A friend outside your home also needs " +
-              "a way to reach your hosts: Outside access on the Devices map (open a port on your router, or Tailscale)."
+            ? "You share no host with a friend yet: choose Make a share link and send the link to your friend"
             : shared == 0
-                ? $"{Count(asking, "person", "people")} asked to use one of your hosts: share it with them below." + limits
+                ? $"{Count(asking, "person", "people")} asked to use one of your hosts: share it with them below"
                 : $"You share {Count(friends.Sum(f => f.SharedOn.Count()), "host")} with {Count(shared, "friend")}" +
-                  (asking > 0 ? $"; {Count(asking, "person", "people")} asked to use a host." : ".") + limits;
-        return unread > 0 ? text + $" {Count(unread, "host")} didn't answer." : text;
+                  (asking > 0 ? $"; {Count(asking, "person", "people")} asked to use a host" : "");
+        return text + (unread > 0 ? $"; {Count(unread, "host")} didn't answer." : ".");
 
         static string Count(int count, string what, string? many = null) => count == 1 ? $"1 {what}" : $"{count} {many ?? what + "s"}";
     }

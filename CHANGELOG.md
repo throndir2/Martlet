@@ -29,6 +29,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The account, sign-in, sharing and shared-settings windows and dialogs say each thing in one short line; the details are behind a **?** with a link to the wiki. ([#1066](https://github.com/throndir2/Martlet/pull/1066))
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
 - The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
 - The speech host roles (XTTS, Dia, GPT-SoVITS, F5, Chatterbox, singing, Parakeet and voice recognition) now share one copy of their download and request code, so a request with a bad length gets a clear error instead of a dropped connection. The next host update rebuilds these roles once. ([#1061](https://github.com/throndir2/Martlet/pull/1061))
@@ -46,6 +47,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Test vision no longer sends a blank picture when Windows fails to draw the test word, so it can't wrongly mark a model as unable to see; it says to try again instead. ([#1068](https://github.com/throndir2/Martlet/pull/1068))
 - Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Background tasks that wait for a free computer now start in the order you asked for them. Before, two that were asked at the same moment could swap places. ([#1047](https://github.com/throndir2/Martlet/pull/1047))
 - Each request to a host answers faster: the host saves the request's one-use number with one small write instead of saving all its pairings (about 3 ms instead of 27 ms on a fast disk, and more on slow disks). ([#1046](https://github.com/throndir2/Martlet/pull/1046))

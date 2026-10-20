@@ -67,8 +67,10 @@
 
                 <StackPanel x:Name="ProviderSection">
                 <TextBlock Text="Sign-ins from your household's providers" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
-                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                           Text="Link Google, Microsoft, Authentik or another provider your household set up on its hosts. Then you can sign in to this account with it on any of your computers, and a new computer joins as yours when you sign in with it."/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}">Link Google, Microsoft, Authentik or another provider your household set up on its hosts.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0"
+                           Text="Then you can sign in to this account with it on any of your computers. A new computer joins as yours when you sign in with it there."
+                           Wiki="Accounts-and-Household#linked-sign-ins-and-vroid-hub" AutomationProperties.AutomationId="Help-AccountProviderSignIns"
+                           AutomationProperties.Name="About sign-ins from your household's providers"/></InlineUIContainer></TextBlock>
                 <TextBlock x:Name="ProviderLoginsText" TextWrapping="Wrap" Margin="0,6,0,0" Text="Reading your hosts..."
                            AutomationProperties.AutomationId="AccountProviderLogins"/>
                 <StackPanel x:Name="ProviderLoginRows" Margin="0,4,0,0"/>
@@ -77,8 +79,10 @@
 
                 <StackPanel x:Name="LinkedSection">
                 <TextBlock Text="Linked services" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
-                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                           Text="VRoid Hub: link your pixiv account so Martlet can show your VRoid Hub characters, and characters their creators let anyone use (Companion › Character › Find a character). The link belongs to this account on this PC; you sign in on VRoid Hub's own page."/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}">VRoid Hub: link your pixiv account to show VRoid Hub characters in Companion › Character › Find a character.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0"
+                           Text="Martlet shows your own VRoid Hub characters and the ones their creators let anyone use. The link belongs to this account on this PC, and you sign in on VRoid Hub's own page."
+                           Wiki="Accounts-and-Household#linked-sign-ins-and-vroid-hub" AutomationProperties.AutomationId="Help-AccountVRoidHub"
+                           AutomationProperties.Name="About linking VRoid Hub"/></InlineUIContainer></TextBlock>
                 <TextBlock x:Name="VRoidHubStateText" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.AutomationId="AccountVRoidHubState"/>
                 <WrapPanel Margin="0,6,0,0">
                     <Button x:Name="VRoidHubLinkButton" Content="Link _VRoid Hub..." Click="VRoidHubLink_Click" Margin="0,0,8,0"
@@ -98,12 +102,24 @@
                     <Button x:Name="PinSetButton" Content="Set _PIN" Click="PinSet_Click" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountPinSet"/>
                     <Button x:Name="PinRemoveButton" Content="Remove PIN" Click="PinRemove_Click" AutomationProperties.AutomationId="AccountPinRemove"/>
                 </WrapPanel>
-                <CheckBox x:Name="HelloCheck" Content="Unlock with _Windows Hello" Checked="Hello_Click" Unchecked="Hello_Click" Margin="0,8,0,0"
-                          AutomationProperties.AutomationId="AccountHello"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox x:Name="HelloCheck" Content="Unlock with _Windows Hello" Checked="Hello_Click" Unchecked="Hello_Click" VerticalAlignment="Center"
+                              AutomationProperties.AutomationId="AccountHello"/>
+                    <local:HelpTip Margin="6,0,0,0" VerticalAlignment="Center"
+                                   Text="Windows Hello can't tell apart people who share this Windows login. Use it only if nobody else set up Windows Hello on this login."
+                                   Wiki="Accounts-and-Household#privacy-notes" AutomationProperties.AutomationId="Help-AccountHello"
+                                   AutomationProperties.Name="About unlocking with Windows Hello"/>
+                </StackPanel>
                 <TextBlock x:Name="HelloText" TextWrapping="Wrap" Margin="22,2,0,0" Style="{DynamicResource Muted}"
                            AutomationProperties.AutomationId="AccountHelloState"/>
-                <CheckBox x:Name="EncryptCheck" Content="_Encrypt my files on this PC while locked" Checked="Encrypt_Click" Unchecked="Encrypt_Click" Margin="0,8,0,0"
-                          AutomationProperties.AutomationId="AccountEncrypt"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox x:Name="EncryptCheck" Content="_Encrypt my files on this PC while locked" Checked="Encrypt_Click" Unchecked="Encrypt_Click"
+                              VerticalAlignment="Center" AutomationProperties.AutomationId="AccountEncrypt"/>
+                    <local:HelpTip Margin="6,0,0,0" VerticalAlignment="Center"
+                                   Text="Only encryption keeps out other people who use this Windows login. Your PIN opens the files; Windows Hello can't. If you forget the PIN, this PC's copy can be lost, but your hosts keep your synced things."
+                                   Wiki="Accounts-and-Household#privacy-notes" AutomationProperties.AutomationId="Help-AccountEncrypt"
+                                   AutomationProperties.Name="About encrypting your files"/>
+                </StackPanel>
                 <TextBlock x:Name="EncryptText" TextWrapping="Wrap" Margin="22,2,0,0" Style="{DynamicResource Muted}"
                            AutomationProperties.AutomationId="AccountEncryptState"/>
                 <CheckBox x:Name="RememberCheck" Content="_Remember me on this PC" Checked="Remember_Click" Unchecked="Remember_Click" Margin="0,8,0,0"
@@ -115,8 +131,10 @@
 
                 <StackPanel x:Name="MergeSection">
                 <TextBlock Text="Merge another account into this one" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
-                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                           Text="For one person with two accounts: its characters, memories, conversations and voices move into this account, its logins sign in here, and it goes away. You sign in as the other account first."/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}">For one person with two accounts: the other account's characters, memories, conversations and voices move into this one.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0"
+                           Text="Its logins then sign in to this account, and the other account goes away. You sign in as the other account first."
+                           Wiki="Accounts-and-Household#merge-two-accounts" AutomationProperties.AutomationId="Help-AccountMerge"
+                           AutomationProperties.Name="About merging accounts"/></InlineUIContainer></TextBlock>
                 <WrapPanel Margin="0,6,0,0">
                     <ComboBox x:Name="MergeChoice" MinWidth="220" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountMergeChoice"/>
                     <Button x:Name="MergeButton" Content="_Merge into this account" Click="Merge_Click" AutomationProperties.AutomationId="AccountMerge"/>

@@ -28,7 +28,7 @@ public partial class AccountWindow
         var hosts = ProviderHosts();
         if (hosts.Count == 0)
         {
-            ProviderLoginsText.Text = "Your sign-ins are kept on your hosts. Pair a host of your network first.";
+            ProviderLoginsText.Text = "Your sign-ins are kept on your hosts: pair a host of your network under Devices first.";
             ProviderLoginRows.Children.Clear();
             ProviderLinkButtons.Children.Clear();
             return;
@@ -73,11 +73,12 @@ public partial class AccountWindow
             ProviderLinkButtons.Children.Add(link);
         }
         var text = logins.Count == 0
-            ? "No sign-in from a provider is linked to this account yet."
-            : "Linked: " + string.Join(", ", logins.Select(l => $"{ProviderName(l.Provider)} as {l.Label ?? l.Subject}")) + ".";
+            ? "No sign-in from a provider is linked to this account yet"
+            : "Linked: " + string.Join(", ", logins.Select(l => $"{ProviderName(l.Provider)} as {l.Label ?? l.Subject}"));
         if (providers.Length == 0)
-            text += " Your household has no sign-in provider yet: an admin sets one up under Devices › a host › Sign-in from outside.";
-        if (problems.Count > 0) text += " Couldn't read " + string.Join(", ", problems.Keys) + ".";
+            text += "; your household has no sign-in provider yet, so an admin sets one up under Devices › a host › Sign-in from outside";
+        if (problems.Count > 0) text += "; couldn't read " + string.Join(", ", problems.Keys);
+        text += ".";
         ProviderLoginsText.Text = done is null ? text : done + " " + text;
     }
 
@@ -108,7 +109,7 @@ public partial class AccountWindow
             if (proves)
             {
                 var prove = new AccountProveWindow(host.Hosts, host.DataDirectory, $"Sign in as {host.ActiveName}",
-                    $"Prove it's you first, with your Martlet password or a sign-in already linked. Then sign in with {state.Provider.Name} to link it.",
+                    $"Prove it's you with your Martlet password or a sign-in already linked, then sign in with {state.Provider.Name} to link it.",
                     id, offerRemember: false) { Owner = this };
                 if (prove.ShowDialog() != true || prove.Proof is not { } proof)
                 {
@@ -166,8 +167,8 @@ public partial class AccountWindow
             ProviderLoginsText.Text = why;
             return;
         }
-        if (!ConfirmationDialog.Confirm(this, $"Unlink {login} from {host.ActiveName}? It no longer signs in to this account. Computers that " +
-                "joined your network with it leave it on your computers' next sync, as for any removed sign-in.", "Unlink"))
+        if (!ConfirmationDialog.Confirm(this, $"Unlink {login} from {host.ActiveName}? Computers that joined your network with it leave the network at the next sync.",
+                "Unlink"))
             return;
         var hosts = ProviderHosts();
         providerBusy = true;

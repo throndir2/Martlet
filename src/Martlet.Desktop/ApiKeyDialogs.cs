@@ -37,8 +37,7 @@ internal sealed class ApiKeyCreateDialog : ThemedWindow
         root.Children.Add(heading);
         root.Children.Add(new TextBlock
         {
-            Text = "Give an app or script its own key, so you can see what uses your hosts and revoke it on its own. The key works on " +
-                "every host in your Martlet network. Choose only what the app needs.",
+            Text = "Give each app or script its own key, which works on every host in your Martlet network; choose only what the app needs.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
         });
         AutomationProperties.SetAutomationId(name, "ApiKeyName");
@@ -135,8 +134,7 @@ internal sealed class ApiKeyCreatedDialog : ThemedWindow
         root.Children.Add(heading);
         root.Children.Add(new TextBlock
         {
-            Text = "Copy the key now and keep it in the app's secret settings. Martlet doesn't keep it and can't show it again; " +
-                "if it's lost, revoke it and make a new one.",
+            Text = "Copy the key now and keep it in the app's secret settings: Martlet can't show it again, so if it's lost, revoke it and make a new one.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 10)
         });
         var value = new TextBox
@@ -153,7 +151,7 @@ internal sealed class ApiKeyCreatedDialog : ThemedWindow
         copied.SetResourceReference(StyleProperty, "Muted");
         copy.Click += (_, _) =>
         {
-            try { Clipboard.SetText(issued.Token); copied.Text = "Copied. Paste it where the app keeps secrets."; }
+            try { Clipboard.SetText(issued.Token); copied.Text = "Copied: paste it where the app keeps secrets."; }
             catch (System.Runtime.InteropServices.COMException) { copied.Text = "The clipboard is busy; select the key and copy it."; }
         };
         var row = new DockPanel();
@@ -165,7 +163,7 @@ internal sealed class ApiKeyCreatedDialog : ThemedWindow
 
         var reach = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
         reach.Text = hosts.Count == 0
-            ? "No host is paired yet. The key reaches your hosts as soon as you pair one."
+            ? "No host is paired yet; the key reaches your hosts as soon as you pair one."
             : "Your hosts (the key reaches each within a minute; pin the host key, it never changes):\n" +
               string.Join("\n", hosts.Select(h => $"• {h.HostId}: {h.Pairing.Origin}  (curl --pinnedpubkey {ApiKeyText.CurlPin(h.Pairing.SpkiFingerprint)})"));
         AutomationProperties.SetAutomationId(reach, "ApiKeyHosts");
