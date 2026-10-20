@@ -199,7 +199,7 @@ public sealed class CharacterTouchTemperamentTests
                 (_, _, _, _) => { calls++; return Task.FromResult<(string?, string?)>((null, null)); }, CancellationToken.None);
             await Task.Delay(CharacterTemperamentService.Settle + TimeSpan.FromSeconds(1));
             Assert.Equal(0, calls);
-            Assert.Contains("Your own touch choices stay", service.Status);
+            Assert.Contains("your own touch choices stay", service.Status);
         }
         finally { Directory.Delete(directory, true); }
     }
