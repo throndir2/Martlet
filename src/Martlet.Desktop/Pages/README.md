@@ -16,7 +16,7 @@ A moved page has these parts:
 | Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Status` (a status line with an automation ID), `Warning`, `Row`, `PageButton`, `Choice` (a large radio choice), `TerminalRow`, `TakeKey`, the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`), the option rows (`Option`, `OptionTitle`), `PageNowCard` and `WithHint`. |
 
 Moved pages: Thinking pool (`ThinkingPool\`), Check-ins (`CheckIns\`), Vision
-(`Vision\`), Picture making (`Pictures\`), App guides (`AppGuides\`), Reading (`Reading\`), Singing (`Singing\`), Replies (`Replies\`), People (`People\`), Personality (`Personality\`), Memory (`Memory\`), Prompts (`Prompts\`), Lorebook (`Lorebook\`), Smart home (`SmartHome\`), Discord (`Discord\`), Messaging (`Messaging\`) and the Touch zones card of Companion › Touch (`TouchZones\`).
+(`Vision\`), Picture making (`Pictures\`), App guides (`AppGuides\`), Reading (`Reading\`), Singing (`Singing\`), Replies (`Replies\`), People (`People\`), Personality (`Personality\`), Memory (`Memory\`), Prompts (`Prompts\`), Lorebook (`Lorebook\`), Smart home (`SmartHome\`), Discord (`Discord\`), Messaging (`Messaging\`) and Touch (`Touch\`, with its Touch zones card in `TouchZones\`).
 The Discord page reads the app's `DiscordService` and `DiscordCallService`
 through its services interface; they hold no WPF.
 The host dashboard's steps are `HostDashboard\HostDashboardModel` (no WPF), with
@@ -25,8 +25,7 @@ The host dashboard's steps are `HostDashboard\HostDashboardModel` (no WPF), with
 `MainWindow.Companion.cs` is only the frame (the side list and `RenderTab`). The
 pages that are not moved yet have one file each: the job pages (Thinking,
 Listening, Voice) in `MainWindow.JobPages.cs` and `MainWindow.LocalThinking.cs`,
-Character, Eyes and Touch in `MainWindow.CharacterPages.cs` (Touch adds the
-moved Touch zones card to its Now card, touch temperament and reaction changes). The job pages call about 25
+Character and Eyes in `MainWindow.CharacterPages.cs`. The job pages call about 25
 cards from other `MainWindow` files, so move those cards first before the job
 pages get a page class. `Shared\` has the parts that more than one page uses, such as
 `ChattinessPicker` (Vision and Listening) and `PictureFiles` (the decoded

@@ -271,7 +271,7 @@ public partial class MainWindow
             case CompanionTab.SpeechBubbles: RenderSpeechBubblesTab(body); break;
             case CompanionTab.Emotes: RenderEmotesTab(body); break;
             case CompanionTab.Eyes: RenderEyesTab(body); break;
-            case CompanionTab.Touch: RenderTouchTab(body); break;
+            case CompanionTab.Touch: TouchPage.Render(body); break;
             case CompanionTab.Personality: PersonalityPage.Render(body); break;
             case CompanionTab.Prompts: PromptsPage.Render(body); break;
             case CompanionTab.Lorebook: LorebookPage.Render(body); break;

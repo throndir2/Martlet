@@ -84,7 +84,7 @@ public sealed class DenseRowTests
     [Fact]
     public Task TemperamentColumnsShareWidthsAndWrapUnderTheNames() => OnDispatcher(() =>
     {
-        var table = new MainWindow.TemperamentTable();
+        var table = new TemperamentTable();
         var rows = new[] { Cells(), Cells() };
         foreach (var row in rows) table.Add(new Border(), row);
         var window = new Window
