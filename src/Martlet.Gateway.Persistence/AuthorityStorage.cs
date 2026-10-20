@@ -14,10 +14,14 @@ internal interface IOwnedAuthorityDirectory : IDisposable
     void Validate(string name);
     byte[] Read(string name, int maximum);
     void WriteNew(string name, ReadOnlySpan<byte> bytes);
+    /// <summary>Appends to an existing file whose length is <paramref name="expectedLength"/>, then flushes the file once.
+    /// <paramref name="written"/> runs after the write and before the flush.</summary>
+    void Append(string name, long expectedLength, ReadOnlySpan<byte> bytes, Action? written = null);
     void Prepare();
     void Promote(bool replace, Action? replaced = null);
     void RemoveUnpreparedStage();
     void RemoveRunning();
+    void RemoveJournal();
 }
 
 internal interface IAuthorityEnvelope

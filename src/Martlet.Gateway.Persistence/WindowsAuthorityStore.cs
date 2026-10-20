@@ -30,6 +30,7 @@ internal sealed class WindowsAuthorityStore(AuthorityStore store) : IGatewayPers
     internal void ReplaceCertificate(byte[] replacement, GatewayCheckpoint checkpoint) =>
         store.ReplaceCertificate(replacement, checkpoint);
     public void Commit(GatewayCheckpoint checkpoint) => store.Commit(checkpoint);
+    public bool AppendNonces(IReadOnlyList<StoredGatewayNonceRecord> nonces) => store.AppendNonces(nonces);
     public void Complete(GatewayCheckpoint checkpoint, Action validateBeforeClean) =>
         store.Complete(checkpoint, validateBeforeClean);
     public void Dispose() => store.Dispose();

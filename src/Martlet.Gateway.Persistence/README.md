@@ -189,11 +189,13 @@ owner and protected DACL granting only current-user/SYSTEM. Directory pinning,
 file-type/link/ACL checks and an exclusive owner lock reject UNC/ADS/reparse/
 hardlink attacks and concurrent writers; permissions are never auto-repaired.
 
-The exact allowlist is `owner.lock`, `authority.bin`, `running`, `staging.bin`
-and `pending.bin`. The state format is strict, bounded to 16 MiB, 128 credential
+The exact allowlist is `owner.lock`, `authority.bin`, `running`, `staging.bin`,
+`pending.bin` and `nonces.log`. The state format is strict, bounded to 16 MiB, 128 credential
 registrations and 1,024 live nonces per registration; no live eviction.
-Full escaped-field capacity is tested through actual DPAPI. Each mutation
+Full escaped-field capacity is tested through actual DPAPI. Each pairing change
 writes a complete protected checkpoint, not an unchecked write-behind cache.
+A signed request's nonce is the exception: it is made durable in the nonce
+journal (below) before the request is admitted.
 
 1. Serialize the canonical transition under its authority gate. The protected
    successor binds host ID, generation, revision + 1 and SHA-256 of the exact
@@ -225,6 +227,40 @@ bytes for diagnosis. Reopen after correcting access/clock problems retries
 nondestructively. Arbitrary corrupted authority cannot be reconstructed safely
 without verified original data: this library does not pretend deleting pending
 records, resetting devices or restoring stale snapshots is recovery.
+
+## Nonce journal
+
+A full checkpoint (steps 1-4) took about 23-28 ms on an NVMe Windows PC, and
+every signed request waited for one. So a request's nonce goes to `nonces.log`
+instead: one append and one flush of that file (about 3-4 ms on the same PC;
+issue #1025). Requests that arrive while an append writes share the next one.
+
+- **Format.** A 32-byte header (magic `MRTLNJ01`, the store generation and a
+  checksum), then 64-byte records: credential ID, nonce, expiry, the observed
+  time and an 8-byte SHA-256 checksum bound to the generation. The file is not
+  encrypted: nonces and credential IDs travel in clear request headers. The
+  checksum detects damage, not tampering by a writer of the store directory.
+- **Fold.** Every full checkpoint holds every live nonce, so after it is
+  promoted the old journal is removed and a new, empty one is created. An old
+  journal that comes back after a crash only repeats nonces the new checkpoint
+  holds; a record for a credential that is gone is dropped. The journal holds
+  at most 8,192 records; after that the next request saves a full checkpoint.
+- **Load.** Open reads `authority.bin`, then adds the journal's nonces. The
+  newest observed time in the journal is the clock's high-water mark, so a
+  clock step back is detected as before. An undamaged journal keeps taking
+  appends after a restart.
+- **Damage fails safe.** A damaged header, a damaged record or a partial last
+  record may hide the nonce of an admitted request. The store then refuses
+  every request signed at or before the open time plus the clock skew and the
+  allowed step back (`ReplayFloor`), because a lost request can carry such a
+  timestamp. The first admitted request saves a full checkpoint, with that
+  time in it, before the damaged journal is replaced; so a restart keeps the
+  refusal. A header shorter than 32 bytes is a creation that was interrupted:
+  no request could append to it, so it holds nothing. A journal of another
+  store generation fails closed (`RecoveryRequired`).
+- **Platforms.** Windows appends with an unbuffered write and
+  `FlushFileBuffers`. Linux and macOS open the file `O_APPEND`, write, and
+  `fsync` the file once (the directory entry is already durable).
 
 ## Independent time safeguards
 
