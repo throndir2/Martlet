@@ -437,7 +437,10 @@ public sealed class BackgroundJobs : IDisposable
             });
             if (job.Place is { } place) job.Request.Begin(place);
         }
-        _ = Task.Run(() => RunAsync(job, run));
+        // A job that waits joins the place line here, on the caller's thread, so jobs started one after another wait in the order
+        // they were started (on a pool thread they would race for their place in line).
+        var seated = SeatAsync(job);
+        _ = Task.Run(() => RunAsync(job, run, seated));
         Notify();
         if (job.Queued is not { } line) return new(job);
         var held = Places.HeldForConversation(line, kind.Demand(line));
@@ -494,12 +497,12 @@ public sealed class BackgroundJobs : IDisposable
         finally { Places.Changed -= Line; }
     }
 
-    private async Task RunAsync(BackgroundJob job, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run)
+    private async Task RunAsync(BackgroundJob job, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run, Task<bool> seated)
     {
         // Every path ends the job: one whose seating or start fails ends Failed, so it never stays running and blocks its kind.
         try
         {
-            if (!await SeatAsync(job).ConfigureAwait(false)) return;
+            if (!await seated.ConfigureAwait(false)) return;
             if (job.Queued is not null) job.Report(BackgroundJobState.Running);
             using var limit = job.Kind.TimeLimit is { } time ? new CancellationTokenSource(time, clock) : new CancellationTokenSource();
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, limit.Token);
