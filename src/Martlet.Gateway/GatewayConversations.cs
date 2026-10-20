@@ -182,7 +182,7 @@ internal sealed class GatewayConversationRecords
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayConversationRoutes(GatewayHttpServices services, GatewayConversationRecords conversations, GatewayMemorySpaces memorySpaces) : GatewayRouteHandler(services)
 {
     internal const string ConversationsPath = "/martlet/v1/conversations";
     internal const string ConversationAccountsPath = ConversationsPath + "/accounts/";
@@ -191,9 +191,11 @@ internal sealed partial class GatewayHttpApplication
     private const int MaximumConversationMonthsBytes = 1_048_576;
     private static System.Text.Json.JsonSerializerOptions? conversationsJson;
 
-    internal GatewayConversationRecords Conversations { get; } = new();
+    internal GatewayConversationRecords Conversations { get; } = conversations;
 
-    private static bool IsConversationsTarget(string rawTarget) =>
+    private GatewayMemorySpaces MemorySpaces { get; } = memorySpaces;
+
+    internal static bool IsConversationsTarget(string rawTarget) =>
         rawTarget == ConversationsPath || rawTarget.StartsWith(ConversationsPath + "/", StringComparison.Ordinal);
 
     /// <summary>GET /conversations/accounts/&lt;32 hex&gt; lists the months this host keeps of the account's record of
@@ -202,7 +204,7 @@ internal sealed partial class GatewayHttpApplication
     /// Only paired member devices that <see cref="GatewayMemorySpaces.Access"/> lets use the account's memory space may use them,
     /// over their signed, pinned connection (never friends or API keys): reading needs read access, a POST read and write
     /// access. Anything else is <c>request.invalid</c>.</summary>
-    private async ValueTask InvokeConversationsAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeConversationsAsync(HttpContext context, string rawTarget)
     {
         GatewayRules.Require(rawTarget.StartsWith(ConversationAccountsPath, StringComparison.Ordinal), "request.invalid");
         var tail = rawTarget[ConversationAccountsPath.Length..];

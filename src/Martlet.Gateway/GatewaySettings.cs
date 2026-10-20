@@ -67,22 +67,27 @@ internal sealed class GatewaySettingsStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed partial class GatewaySettingsRoutes(GatewayHttpServices services, GatewaySettingsStore settings, GatewayAccountSettings accountSettings,
+    GatewayAccountDirectoryStore accounts, GatewayMemorySpaces memorySpaces) : GatewayRouteHandler(services)
 {
     internal const string SettingsPath = "/martlet/v1/settings";
     internal const string SettingsDigestPath = SettingsPath + "/digest";
     private const int MaximumSettingsResponseBytes = SharedSettings.MaximumBytes + 16_384;
 
-    internal GatewaySettingsStore Settings { get; } = new();
+    internal GatewaySettingsStore Settings { get; } = settings;
 
-    private static bool IsSettingsTarget(string rawTarget) =>
+    internal GatewayAccountSettings AccountSettings { get; } = accountSettings;
+    private GatewayAccountDirectoryStore Accounts { get; } = accounts;
+    private GatewayMemorySpaces MemorySpaces { get; } = memorySpaces;
+
+    internal static bool IsSettingsTarget(string rawTarget) =>
         rawTarget is SettingsPath or SettingsDigestPath || IsAccountSettingsTarget(rawTarget);
 
     /// <summary>GET /settings returns this host's copy of the shared settings and POST merges a desktop's copy into it and returns
     /// the merged result; GET /settings/digest returns only the copy's digest, so desktops read the copy when it changed. The
     /// copy holds API keys: only paired devices may use these, over their signed, pinned connection; API keys may not.
     /// /settings/accounts/... are each account's own settings (GatewayAccountSettings.cs).</summary>
-    private async ValueTask InvokeSettingsAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeSettingsAsync(HttpContext context, string rawTarget)
     {
         if (IsAccountSettingsTarget(rawTarget))
         {

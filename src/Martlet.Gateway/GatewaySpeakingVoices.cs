@@ -139,22 +139,24 @@ internal sealed class GatewaySpeakingVoiceStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewaySpeakingVoiceRoutes(GatewayHttpServices services, GatewaySpeakingVoiceStore speakingVoices, GatewayVoiceStore voices) : GatewayRouteHandler(services)
 {
     internal const string SpeakingVoicesPath = "/martlet/v1/speaking-voices";
     internal const string SpeakingVoiceAudioPath = SpeakingVoicesPath + "/audio/";
     private const int MaximumSpeakingVoicesResponseBytes = SpeakingVoiceLibrary.MaximumHostAnswerBytes;
     private const int MaximumSpeakingVoiceAudioBytes = (SpeakingVoiceLibrary.MaximumAudioBytes + 2) / 3 * 4 + 4_096;
 
-    internal GatewaySpeakingVoiceStore SpeakingVoices { get; } = new();
+    internal GatewaySpeakingVoiceStore SpeakingVoices { get; } = speakingVoices;
 
-    private static bool IsSpeakingVoicesTarget(string rawTarget) =>
+    private GatewayVoiceStore Voices { get; } = voices;
+
+    internal static bool IsSpeakingVoicesTarget(string rawTarget) =>
         rawTarget == SpeakingVoicesPath || rawTarget.StartsWith(SpeakingVoiceAudioPath, StringComparison.Ordinal);
 
     /// <summary>GET /speaking-voices returns this host's copy of the voice list and the recordings it holds; POST merges a
     /// desktop's copy into it. GET /speaking-voices/audio/&lt;sha256&gt; returns a recording; POST sends one for a live voice.
     /// Any paired device may do each over its signed, pinned connection; API keys may not.</summary>
-    private async ValueTask InvokeSpeakingVoicesAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeSpeakingVoicesAsync(HttpContext context, string rawTarget)
     {
         if (rawTarget == SpeakingVoicesPath)
         {

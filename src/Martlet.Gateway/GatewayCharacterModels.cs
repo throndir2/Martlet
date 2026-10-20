@@ -139,7 +139,7 @@ internal sealed class GatewayCharacterModelStore
     }
 }
 
-internal sealed partial class GatewayHttpApplication
+internal sealed class GatewayCharacterModelRoutes(GatewayHttpServices services, GatewayCharacterModelStore characterModels) : GatewayRouteHandler(services)
 {
     internal const string CharacterModelsPath = "/martlet/v1/character-models";
     internal const string CharacterModelChunkPath = CharacterModelsPath + "/chunks/";
@@ -147,21 +147,15 @@ internal sealed partial class GatewayHttpApplication
     private const int MaximumCharacterModelsResponseBytes = 2 * CharacterModelLibrary.MaximumBytes + 262_144;
     private const int MaximumCharacterModelChunkBytes = (CharacterModelLibrary.ChunkBytes + 2) / 3 * 4 + 4_096;
 
-    internal GatewayCharacterModelStore CharacterModels { get; } = new();
+    internal GatewayCharacterModelStore CharacterModels { get; } = characterModels;
 
-    // Base64 written as is (character model pieces, voice recordings, inference audio frames): the default encoder escapes
-    // every '+' as \u002B, which can push ordinary data past limits sized for plain base64.
-    private static System.Text.Json.JsonSerializerOptions? unescapedJson;
-    private static System.Text.Json.JsonSerializerOptions UnescapedJson =>
-        unescapedJson ??= new(Json) { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-
-    private static bool IsCharacterModelsTarget(string rawTarget) =>
+    internal static bool IsCharacterModelsTarget(string rawTarget) =>
         rawTarget == CharacterModelsPath || rawTarget.StartsWith(CharacterModelChunkPath, StringComparison.Ordinal);
 
     /// <summary>GET /character-models returns this host's copy of the character list and the pieces it holds; POST merges a
     /// desktop's copy into it. GET /character-models/chunks/&lt;sha256&gt; returns a piece; POST sends one of a live model.
     /// Any paired device may do each over its signed, pinned connection; API keys may not.</summary>
-    private async ValueTask InvokeCharacterModelsAsync(HttpContext context, string rawTarget)
+    internal async ValueTask InvokeCharacterModelsAsync(HttpContext context, string rawTarget)
     {
         if (rawTarget == CharacterModelsPath)
         {
