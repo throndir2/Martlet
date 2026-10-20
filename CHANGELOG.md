@@ -25,6 +25,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Your Picture making, Vision and Hearing lists are now the same on all your computers, with each place's API key and custom workflow, so a new computer is set up at once. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- Your check-ins, Chatterbox Original's style and the recommended setups you declined are now the same on all your computers. A check-in's PowerShell script stays on the computer where you wrote it. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - The share link's Copied line and the VRoid Hub sign-in errors are one short sentence each. ([#1073](https://github.com/throndir2/Martlet/pull/1073))
 - The account, sign-in, sharing and shared-settings windows and dialogs say each thing in one short line; the details are behind a **?** with a link to the wiki. ([#1066](https://github.com/throndir2/Martlet/pull/1066))
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))

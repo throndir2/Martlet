@@ -490,6 +490,39 @@ internal static class SettingsRehearsal
                     $"on lab-settings-2: {travelled}; F keeps no clips: {clips}; F has E's touch zones: {zones} and VRoid Hub credit: {credit}; " +
                     $"Discord bot, owner and token on F (not connecting there): {bot}; Telegram bot, chat and token on F (not answering there): {telegram}; " +
                     $"no token in F's files or the shared value: {noKeyInFiles}");
+            });
+            await Run("E and F share the Vision list (moved from pools-local.json) with its key, a check-in without its script and Chatterbox's style", async () =>
+            {
+                await e.EditAsync(s => s);
+                await f.EditAsync(s => s);
+                var profile = (await e.SettingsAsync()).Profile.Id;
+                var server = Martlet.Core.Cluster.PoolMember.Cloud("llm-lan", "qwen3-vl", "https://llm.example.com/v1");
+                new Martlet.Core.Cluster.PoolSettings().With(new Martlet.Core.Cluster.PoolList { Area = Martlet.Core.Cluster.PoolAreas.Vision.Id, Members = [server] })
+                    .Save(e.Data, shared: false);
+                const string key = "sk-lab-vision-key-for-the-rehearsal";
+                var credential = Guid.NewGuid();
+                using (var lease = new SecretLease(key))
+                    e.Vault.Write(Martlet.Core.Cluster.PoolKeyShare.Binding(Martlet.Core.Cluster.PoolAreas.Vision, server, profile, credential)!, lease);
+                Martlet.Core.Cluster.PoolKeys.Load(e.Data).With(Martlet.Core.Cluster.PoolAreas.Vision.Id, server.Key, credential).Save(e.Data);
+                new Martlet.Conversation.CheckInSettings().With(new Martlet.Conversation.CustomCheckIn
+                {
+                    Id = "c1", Name = "Tea break", On = true, Task = "Remind me to drink tea.", Script = "Get-Date"
+                }).Save(e.Data);
+                new ChatterboxStyle(0.8, 0.4, 1.2, 0.2).Save(e.Data);
+                await e.SyncAsync(hosts, token);
+                var onHost = await e.ReadAsync(h1, token);
+                await f.SyncAsync(hosts, token);
+                await f.SyncAsync(hosts, token);
+                var list = Martlet.Core.Cluster.PoolSettings.LoadFor(f.Data, Martlet.Core.Cluster.PoolAreas.Vision)?.Members.Select(m => m.Key).ToArray() ?? [];
+                var keyOnF = f.Vault.Has(key) && Martlet.Core.Cluster.PoolKeys.Load(f.Data).For(Martlet.Core.Cluster.PoolAreas.Vision.Id, server.Key) is not null;
+                var checkIn = Martlet.Conversation.CheckInSettings.Load(f.Data).Custom.SingleOrDefault();
+                var style = ChatterboxStyle.Load(f.Data) == new ChatterboxStyle(0.8, 0.4, 1.2, 0.2);
+                var noSecrets = !onHost.Find(Martlet.Core.Cluster.PoolKeyShare.SharedKey)!.Value.Contains(key, StringComparison.Ordinal) &&
+                    !onHost.Find(Martlet.Conversation.CheckInSettings.SharedKey)!.Value.Contains("Get-Date", StringComparison.Ordinal) && !f.FileContains(key);
+                return (list.SequenceEqual([server.Key]) && keyOnF && checkIn is { Name: "Tea break", Script: "" } && style && noSecrets,
+                    $"F has E's Vision list: {list.SequenceEqual([server.Key])}; its key in F's own credential store: {keyOnF}; " +
+                    $"the check-in without its script: {checkIn is { Name: "Tea break", Script: "" }}; Chatterbox's style: {style}; " +
+                    $"no key or script in the shared values or F's files: {noSecrets}");
             });        }
         finally
         {
@@ -591,7 +624,9 @@ internal static class SettingsRehearsal
             if (files)
                 shared = [.. shared, Martlet.Core.Speakers.VoiceChoices.ClipsSection(directory), Martlet.Avatar.Hosting.CharacterSharedSections.TouchZones(directory),
                     Martlet.Avatar.Hosting.CharacterSharedSections.Eyes(directory), Martlet.Avatar.Hosting.CharacterSharedSections.VRoidHub(directory),
-                    Martlet.Discord.DiscordSharing.Section(directory, Tokens), Martlet.Messaging.MessagingSharing.Section(directory, Tokens)];
+                    Martlet.Discord.DiscordSharing.Section(directory, Tokens), Martlet.Messaging.MessagingSharing.Section(directory, Tokens),
+                    StoreSections.Pools(directory), Martlet.Core.Cluster.PoolKeyShare.Section(directory, Vault), Martlet.Core.Pictures.PictureWorkflowFiles.Section(directory),
+                    ChatterboxStyle.Section(directory), Martlet.Core.Planning.RecommendedSetupMemory.Section(directory), Martlet.Conversation.CheckInSettings.Section(directory)];
             Node = new SharedSettingsNode(directory, deviceId, [.. shared], sections.Invalidate);
         }
 

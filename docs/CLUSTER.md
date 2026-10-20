@@ -330,8 +330,8 @@ switch and no single-computer choice.
 | Kept for | `PoolMember.OnlyFor`: the companion PCs (device IDs) that may use the member; empty means every one |
 | Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings that go with a reply, while background jobs with a picture or a recording go to Thinking pool models that see or hear, [as SENSE_MODELS.md says](SENSE_MODELS.md#the-image-and-audio-pools); for voice recognition, this PC's processor, also when no computer in the list answers in time) |
 | Area (`PoolAreas`) | Its ID (also its `WorkQueue` lane), page, member kinds, host role, required or optional, shared or per PC. Thinking has `ConversationFirst`: the conversation's own model always goes first and is not a member |
-| Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision, hearing and reading). An area with no list yet makes it once from its older choices (`PoolMigration`) |
-| Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
+| Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for Reading, which reads that PC's own screen. The Picture making, Vision and Hearing lists were each PC's own before Martlet 0.89; a computer moves its list once into `pools.json` when it updates. An area with no list yet makes it once from its older choices (`PoolMigration`) |
+| Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. The keys themselves travel as the `pool-keys` shared setting (one bundled secret), so a member set up with a key on one computer has it on every computer. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
 | Cloud consent | `PoolMember.Consent` binds the owner's agreement (data leaves this PC, requests may cost money) to the area and the member key. A cloud member without a matching agreement takes no work |
 | Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). `PoolRouting.Stops(area, list, device, stop)` turns them into stops (`PoolStop`: the member, its paired computer from `PoolRouting.HostOf`, and its key in `WorkQueue`), each key once. The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the stop's key |
 | Runner | `PoolRunner<TStop>` (src\Martlet.Core\Cluster\PoolRunner.cs) is the one runner for ordered pools: the first stop that takes the request does it, a busy or unavailable stop is passed over, every stop busy means a wait (`RunAsync`: for the first stop to free; `RunOrWaitInLineAsync`: in the shortest of the stops' own lines, for singing hosts and ComfyUI; `StreamAsync`: a stream such as lip-sync's frames, taken when its first item arrives), and a real failure ends the request. Its result (`PoolRun`) says which stop took the request, its position and how many stops were busy or unavailable first. Each pool gives only its rules: lane, key, `classify`, priority and one stop's attempt |
@@ -582,6 +582,11 @@ NVIDIA Build and its old key.
 | `character-eyes` | Every model's eye measurement (`character-eyes.json`), so a model is measured once with vision for all computers | The close-up pictures of the measurement |
 | `vroid-hub-looks` | The VRoid Hub characters used, with their creator, credit and conditions of use (`vroid-hub-looks.json`) | |
 | `character-reaction-changes` | The character's own changes to how it reacts to touches (`character-reaction-changes.json`; made per personality, so each person's) | |
+| `check-ins` | Companion › Check-ins (`check-ins.json`): the built-in check-ins' choices and your own check-ins (each person's) | A check-in's PowerShell script |
+| `pool-keys` | The API keys of the cloud and server members of the Speaking, Listening, Picture making, Vision and Hearing lists (one bundled secret), so a member set up with a key on one computer works on all of them | Where each computer keeps the keys (`pool-keys.json`) |
+| `pictures-workflows` | The custom ComfyUI workflows the Picture making list names (`pictures-workflow*.json`) | |
+| `chatterbox-style` | Chatterbox Original's style (`chatterbox-style.json`): its exaggeration and CFG weight | |
+| `recommended-setup` | The recommended setups you declined and the parts you turned off in its review (`recommended-setup.json`), so no computer asks again | |
 | `discord` | Martlet's Discord setup (`discord.json`, `discord-calls.json`): the bot and **its token**, your own account, the home server, the chat modes, the channel rules, the people Martlet knows, and in your own calls your display name, seeing who speaks, also playing on your usual output, stopping when talked over and the camera framing | Whether the bot connects on this PC; in calls, whether Martlet joins them here, what it hears, its output and the camera background |
 | `messaging` | Companion › Messaging (`messaging.json`): the Telegram bot and the WhatsApp number with **their secrets**, the paired chats and saying replies aloud | Whether Martlet answers each app on this PC; WhatsApp's webhook port and own public address |
 | `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, how chatty Martlet is about what it sees and what the PC plays (Martlet decides included; a computer on an older Martlet reads it as Chatty), how often Martlet reads the text on the screen (Companion › Reading › Read the screen; a computer on an older Martlet leaves each computer's own) | Microphone sensitivity, cameras and video addresses, Watch on or off and what it looks at (consent at that screen), echo reduction, hearing what the PC plays |
@@ -612,12 +617,13 @@ With [accounts](ACCOUNTS.md#account-settings), the settings above are split
 into the household's and each person's. The household keeps `thinking`,
 `listening`, `speaking` with their API keys, `thinking-fallback`, `thinking-pool`,
 `thinking-pool-choices`, `character-actions`, `character-touch-zones`, `character-eyes`, `vroid-hub-looks`,
-`voice-recognition`, `voice-clips`, `smart-home`, `discord`, `messaging`, `updates`,
+`voice-recognition`, `voice-clips`, `smart-home`, `discord`, `messaging`, `pool-keys`, `pictures-workflows`,
+`chatterbox-style`, `recommended-setup`, `updates`,
 `model-abilities`, `work-sharing`, `motion`, `meaning-search`, `pools` and the `pc.*`, `role.*` and
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
-`touch-temperament`, `character-reaction-changes`, `memory-brief`, `conversation-history` and their own `reminders.<device ID>` entries. A person's
+`touch-temperament`, `character-reaction-changes`, `check-ins`, `memory-brief`, `conversation-history` and their own `reminders.<device ID>` entries. A person's
 settings go only to the computers where that person is signed in, and switching
 person on a computer gives Martlet that person's settings. A computer on an
 older Martlet keeps the owner's settings in step through this document, as
@@ -643,8 +649,10 @@ with the reason from its row here; `SettingsFilesTests` checks that they agree.
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 | Memory local models took in Ollama (`model-memory.json`) | Measured on this PC |
-| The Picture making, Vision, Hearing and Reading lists (`pools-local.json`) | Each computer chooses them itself |
-| Which saved key each cloud pool member uses (`pool-keys.json`) | The keys are in this PC's Windows Credential Manager |
+| The Reading list (`pools-local.json`) | It reads this PC's screen |
+| Which saved key each cloud pool member uses (`pool-keys.json`; the keys themselves travel as the `pool-keys` setting) | The keys are in this PC's Windows Credential Manager |
+| A check-in's PowerShell script (in `check-ins.json`; the rest of the check-ins travel as `check-ins`) | It runs commands as you on this PC, so it is allowed at that PC |
+| The paired computers in the Thinking pool and its models in Ollama on this PC (in `thinking-pool.json`; the cloud members and choices travel as `thinking-pool` and `thinking-pool-choices`) | Paired computers join each computer's pool by themselves, and models in Ollama on this PC are this PC's own |
 | Which saved key each Singing cloud provider uses (`singing-keys.json`; the keys themselves travel as the `singing-keys` setting) | The keys are in this PC's Windows Credential Manager |
 | Embedding vectors for finding by meaning (memory's and reports' in memory only; guides' in `meaning\guides`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
 | That this computer made or saw Martlet's [starter motions](AVATARS.md#starter-motions) made (`motion-starters.json` in the account's creations folder) | What this computer saw, so it never makes them again after you delete them; the motions themselves are shared creations |

@@ -36,14 +36,11 @@ internal static class CharacterThemeCheck
         var renderer = AvatarRenderer.Live2D;
         if (modelPath is null && dataDirectory is not null)
         {
-            try
+            if (Martlet.Avatar.Hosting.AvatarProfileStore.Peek(dataDirectory) is { } shown)
             {
-                using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "avatar.json")));
-                modelPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
-                if (avatar.RootElement.TryGetProperty("renderer", out var kind) && kind.ToString().Contains("vrm", StringComparison.OrdinalIgnoreCase))
-                    renderer = AvatarRenderer.Vrm;
+                modelPath = shown.ModelPath;
+                if (shown.Renderer == AvatarRenderer.Vrm) renderer = AvatarRenderer.Vrm;
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
         }
         modelPath ??= BundledLive2D.Prefix + BundledLive2D.DefaultCharacter;
         if (modelPath.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase)) renderer = AvatarRenderer.Vrm;

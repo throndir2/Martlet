@@ -28,7 +28,7 @@ namespace Martlet.Desktop;
 internal static partial class Nearby
 {
     internal const int Port = 9444;
-    internal const string PreferenceFile = "nearby.txt";
+    internal const string PreferenceFile = Martlet.Core.Network.NearbyChoice.FileName;
     /// <summary>The longest message line of a request: room for the sealed codes and notes of every host a desktop can share.</summary>
     internal const int MaximumLine = 131_072;
     /// <summary>The most hosts one desktop offers: all it can remember (<see cref="HostRegistry.MaximumHosts"/>), so this is no
@@ -66,12 +66,11 @@ internal static partial class Nearby
     /// <summary>On unless nearby.txt says "off".</summary>
     internal static bool LoadEnabled(string directory)
     {
-        try { return File.ReadAllText(Path.Combine(directory, PreferenceFile)).Trim() != "off"; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
+        return Martlet.Core.Network.NearbyChoice.Enabled(directory);
     }
 
     internal static void SaveEnabled(string directory, bool on) =>
-        File.WriteAllText(Path.Combine(directory, PreferenceFile), on ? "on" : "off");
+        Martlet.Core.Network.NearbyChoice.Save(directory, on);
 
     /// <summary>A computer name as other computers see it: printable ASCII, at most 64 characters.</summary>
     internal static string Label(string name)

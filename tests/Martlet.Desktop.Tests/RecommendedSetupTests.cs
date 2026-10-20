@@ -643,7 +643,7 @@ public sealed class RecommendedSetupTests
         Assert.Equal(SetupAskStep.Nothing, SetupAskRule.Decide(minor, memory, companion: true, active).Step);
         Assert.Equal(SetupAskStep.Nothing, SetupAskRule.Decide(optimal, memory, companion: true, active).Step);
         var declined = memory.Decline(worth.Fingerprint, Now);
-        Assert.Equal((SetupAskStep.Nothing, "you declined this setup on this PC before"), SetupAskRule.Decide(worth, declined, companion: true, active));
+        Assert.Equal((SetupAskStep.Nothing, "you declined this setup before"), SetupAskRule.Decide(worth, declined, companion: true, active));
         // Something changed: a new recommended setup is asked about again.
         Assert.Equal(SetupAskStep.Ask, SetupAskRule.Decide(worth with { Fingerprint = "def456" }, declined, companion: true, active).Step);
     }
