@@ -82,20 +82,11 @@ public partial class MainWindow
             line.Text = EarlyRepliesText(Talk, conversation.Configuration, conversation.EarlyReplies);
     }
 
-    private static readonly string[] PauseChoices = ["Short (0.5 s)", "Normal (0.8 s)", "Long (1.2 s)"];
     private static readonly string[] ChattinessChoices = ["Quiet", "Normal", "Chatty", "Martlet decides"];
-    // Companion › Listening › Word check, in the order shown.
-    private static readonly string[] WordCheckChoices = ["Relaxed", "Normal (recommended)", "Sensitive"];
-    private static readonly ListeningSensitivity[] WordCheckOrder =
-        [ListeningSensitivity.Relaxed, ListeningSensitivity.Normal, ListeningSensitivity.Sensitive];
     internal const string WordCheckAbout = "Martlet ignores sounds that aren't words (mm, a cough, laughter) and the words " +
         "speech-to-text makes up from noise, so they never get a reply. Relaxed ignores more, Sensitive also takes single short " +
         "words, and what Martlet ignored shows faded in the talk window.";
 
-    // Companion › Listening › When you talk over Martlet, in the order shown.
-    private static readonly string[] BargeInStyleChoices = ["Pause and decide (recommended)", "Stop at once"];
-    private static readonly Martlet.Conversation.BargeInBehavior[] BargeInStyleOrder =
-        [Martlet.Conversation.BargeInBehavior.PauseAndDecide, Martlet.Conversation.BargeInBehavior.StopAtOnce];
     internal const string BargeInStyleAbout = "Pause and decide pauses Martlet at once and lets it carry on when your words weren't " +
         "for it; \"stop\", \"wait\" or its name still stop it. Stop at once stops the reply at any real words.";
 
@@ -127,144 +118,8 @@ public partial class MainWindow
 
     // ---------- Listening: how you talk ----------
 
-    /// <summary>Always listening (the default; started from the talk window's Start listening) or push-to-talk, the
-    /// voice-activity tuning and Voice ID.</summary>
-    private Border TalkModeCard()
-    {
-        var prefs = Talk;
-        var always = Choice("TalkMode", "Always listening (recommended)",
-            "Press Start listening on Home and Martlet answers when you pause, until you press Stop listening.",
-            prefs.HandsFree, "TalkModeAlways");
-        var push = Choice("TalkMode", "Push-to-talk",
-            "Hold the talk button, or Space, when you want Martlet to listen.", !prefs.HandsFree, "TalkModePushToTalk");
-        always.Checked += (_, _) => { if (!Talk.HandsFree) SaveTalk(Talk with { HandsFree = true }, render: true); };
-        push.Checked += (_, _) => { if (Talk.HandsFree) SaveTalk(Talk with { HandsFree = false }, render: true); };
-        var children = new List<UIElement> { Heading("How you talk"), always, push };
-
-        if (prefs.HandsFree)
-        {
-            var sensitivity = new Slider { Minimum = 0, Maximum = 1, Value = prefs.Sensitivity, SmallChange = 0.05, LargeChange = 0.1,
-                Width = 240, VerticalAlignment = VerticalAlignment.Center };
-            AutomationProperties.SetName(sensitivity, "How sensitive listening is");
-            AutomationProperties.SetAutomationId(sensitivity, "TalkSensitivity");
-            sensitivity.ValueChanged += (_, e) => SaveTalk(Talk with { Sensitivity = e.NewValue });
-            var scale = new StackPanel { Orientation = Orientation.Horizontal };
-            scale.Children.Add(Note("Low", new Thickness(0, 0, 8, 0)));
-            scale.Children.Add(sensitivity);
-            scale.Children.Add(Note("High", new Thickness(8, 0, 0, 0)));
-            foreach (var label in scale.Children.OfType<TextBlock>()) label.VerticalAlignment = VerticalAlignment.Center;
-
-            var pause = new ComboBox { Width = 240, ItemsSource = PauseChoices, SelectedIndex = Math.Clamp(prefs.PauseIndex, 0, PauseChoices.Length - 1) };
-            AutomationProperties.SetName(pause, "How long a pause before Martlet replies");
-            AutomationProperties.SetAutomationId(pause, "TalkPauseLength");
-            pause.SelectionChanged += (_, _) => { if (pause.SelectedIndex >= 0) SaveTalk(Talk with { PauseIndex = pause.SelectedIndex }); };
-
-            children.Add(Labeled("Sensitivity", scale));
-            children.Add(Labeled("Reply after", pause));
-            children.Add(HelpTip.Explain("Martlet listens again after each reply, with or without the talk window open. Stop listening " +
-                "ends it, and locking Windows pauses it.", new Thickness(0, 8, 0, 0), "TalkListensAgain", "always listening",
-                wiki: "Talking-to-Martlet#ways-to-talk"));
-
-            var judgeTurns = new CheckBox { Content = "Judge when I finish talking (recommended)", IsChecked = prefs.JudgeTurns, Margin = new Thickness(0, 16, 0, 4) };
-            AutomationProperties.SetAutomationId(judgeTurns, "TalkJudgeTurns");
-            judgeTurns.Checked += (_, _) => { if (!Talk.JudgeTurns) SaveTalk(Talk with { JudgeTurns = true }, render: true); };
-            judgeTurns.Unchecked += (_, _) => { if (Talk.JudgeTurns) SaveTalk(Talk with { JudgeTurns = false }, render: true); };
-            children.Add(judgeTurns);
-            var judgeStatus = Note(TurnJudgeText(prefs.JudgeTurns, conversation?.TurnJudgeStatus), new Thickness(0, 0, 0, 4));
-            AutomationProperties.SetAutomationId(judgeStatus, "TalkJudgeTurnsStatus");
-            turnJudgeStatus = judgeStatus;
-            children.Add(judgeStatus);
-            children.Add(HelpTip.Explain("A small model on this PC (Smart Turn) hears how you end each sentence, so Martlet answers " +
-                "sooner when you finished and waits longer when you trail off. Your voice never leaves this PC for this.",
-                new Thickness(0, 0, 0, 0), "SmartTurn", "Smart Turn", wiki: "Talking-to-Martlet#how-martlet-takes-turns"));
-
-            var earlyReplies = new CheckBox { Content = "Start replies early (recommended)", IsChecked = prefs.EarlyReplies, Margin = new Thickness(0, 16, 0, 4) };
-            AutomationProperties.SetAutomationId(earlyReplies, "TalkEarlyReplies");
-            earlyReplies.Checked += (_, _) => { if (!Talk.EarlyReplies) SaveTalk(Talk with { EarlyReplies = true }, render: true); };
-            earlyReplies.Unchecked += (_, _) => { if (Talk.EarlyReplies) SaveTalk(Talk with { EarlyReplies = false }, render: true); };
-            children.Add(earlyReplies);
-            if (prefs.EarlyReplies)
-            {
-                var earlyCloud = new CheckBox { Content = "Also for cloud models (may add a small cost)", IsChecked = prefs.EarlyRepliesCloud,
-                    Margin = new Thickness(24, 2, 0, 2) };
-                AutomationProperties.SetAutomationId(earlyCloud, "TalkEarlyRepliesCloud");
-                earlyCloud.Checked += (_, _) => { if (!Talk.EarlyRepliesCloud) SaveTalk(Talk with { EarlyRepliesCloud = true }, render: true); };
-                earlyCloud.Unchecked += (_, _) => { if (Talk.EarlyRepliesCloud) SaveTalk(Talk with { EarlyRepliesCloud = false }, render: true); };
-                children.Add(earlyCloud);
-                var earlyVoice = new CheckBox { Content = "Prepare the voice early too", IsChecked = prefs.EarlyVoice, Margin = new Thickness(24, 2, 0, 4) };
-                AutomationProperties.SetAutomationId(earlyVoice, "TalkEarlyVoice");
-                earlyVoice.Checked += (_, _) => { if (!Talk.EarlyVoice) SaveTalk(Talk with { EarlyVoice = true }, render: true); };
-                earlyVoice.Unchecked += (_, _) => { if (Talk.EarlyVoice) SaveTalk(Talk with { EarlyVoice = false }, render: true); };
-                children.Add(earlyVoice);
-            }
-            var earlyStatus = Note(EarlyRepliesText(prefs, conversation?.Configuration, conversation?.EarlyReplies ?? []), new Thickness(0, 0, 0, 4));
-            AutomationProperties.SetAutomationId(earlyStatus, "TalkEarlyRepliesStatus");
-            earlyRepliesStatus = earlyStatus;
-            children.Add(earlyStatus);
-            var earlyAbout = HelpTip.Explain(EarlyRepliesAbout, new Thickness(0, 0, 0, 0), "TalkEarlyReplies", "starting replies early",
-                wiki: "Talking-to-Martlet#how-martlet-takes-turns");
-            AutomationProperties.SetAutomationId(earlyAbout, "TalkEarlyRepliesAbout");
-            children.Add(earlyAbout);
-
-            var wordCheck = new ComboBox { Width = 240, ItemsSource = WordCheckChoices, SelectedIndex = Array.IndexOf(WordCheckOrder, prefs.WordCheck) };
-            AutomationProperties.SetName(wordCheck, "Word check: how readily Martlet takes what it hears as words");
-            AutomationProperties.SetAutomationId(wordCheck, "TalkWordCheck");
-            wordCheck.SelectionChanged += (_, _) =>
-            {
-                if (wordCheck.SelectedIndex >= 0 && WordCheckOrder[wordCheck.SelectedIndex] != Talk.WordCheck)
-                    SaveTalk(Talk with { WordCheck = WordCheckOrder[wordCheck.SelectedIndex] });
-            };
-            var wordCheckRow = Labeled("Word check", wordCheck);
-            wordCheckRow.Margin = new Thickness(0, 12, 0, 0);
-            children.Add(wordCheckRow);
-            var wordCheckAbout = HelpTip.Explain(WordCheckAbout, new Thickness(0, 4, 0, 0), "TalkWordCheck", "word check",
-                wiki: "Talking-to-Martlet#how-martlet-takes-turns");
-            AutomationProperties.SetAutomationId(wordCheckAbout, "TalkWordCheckAbout");
-            children.Add(wordCheckAbout);
-
-            var bargeIn = new CheckBox { Content = "Let me interrupt Martlet by talking", IsChecked = prefs.BargeIn, Margin = new Thickness(0, 16, 0, 4) };
-            AutomationProperties.SetAutomationId(bargeIn, "TalkBargeIn");
-            bargeIn.Checked += (_, _) => SaveTalk(Talk with { BargeIn = true });
-            bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
-            children.Add(bargeIn);
-            var bargeInAbout = HelpTip.Explain("On, talking over Martlet with real words stops its reply and gets an answer. Off (the " +
-                "default), Martlet answers what you said once it finishes, and Stop (or Esc) interrupts it.", new Thickness(0, 0, 0, 0),
-                "TalkOptional", "this setting", wiki: "Talking-to-Martlet#talking-over-martlet");
-            AutomationProperties.SetAutomationId(bargeInAbout, "TalkBargeInAbout");
-            children.Add(bargeInAbout);
-            var bargeInStyle = new ComboBox { Width = 240, ItemsSource = BargeInStyleChoices,
-                SelectedIndex = Math.Max(0, Array.IndexOf(BargeInStyleOrder, prefs.BargeInStyle)) };
-            AutomationProperties.SetName(bargeInStyle, "When you talk over Martlet");
-            AutomationProperties.SetAutomationId(bargeInStyle, "TalkBargeInBehavior");
-            bargeInStyle.SelectionChanged += (_, _) =>
-            {
-                if (bargeInStyle.SelectedIndex >= 0 && BargeInStyleOrder[bargeInStyle.SelectedIndex] != Talk.BargeInStyle)
-                    SaveTalk(Talk with { BargeInStyle = BargeInStyleOrder[bargeInStyle.SelectedIndex] });
-            };
-            var bargeInStyleRow = Labeled("When you talk over Martlet", bargeInStyle);
-            bargeInStyleRow.Margin = new Thickness(0, 8, 0, 0);
-            children.Add(bargeInStyleRow);
-            var bargeInStyleAbout = HelpTip.Explain(BargeInStyleAbout, new Thickness(0, 4, 0, 0), "TalkBargeInBehavior", "talking over Martlet",
-                wiki: "Talking-to-Martlet#talking-over-martlet");
-            AutomationProperties.SetAutomationId(bargeInStyleAbout, "TalkBargeInBehaviorAbout");
-            children.Add(bargeInStyleAbout);
-        }
-
-        var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };
-        AutomationProperties.SetAutomationId(voiceId, "TalkVoiceId");
-        voiceId.Checked += (_, _) => SaveTalk(Talk with { VoiceId = true }, render: true);
-        voiceId.Unchecked += (_, _) => SaveTalk(Talk with { VoiceId = false }, render: true);
-        children.Add(voiceId);
-        var enrolled = voiceIdentity.Current;
-        var status = voiceIdentity.LoadError ?? (enrolled is not null
-            ? $"Your voice is enrolled ({enrolled.CreatedAt.LocalDateTime:d}), so Martlet checks it on this PC and ignores other voices."
-            : prefs.VoiceId ? "Set up Voice ID to use this."
-            : "Optional: set up Voice ID so Martlet ignores other voices.");
-        children.Add(prefs.VoiceId && enrolled is null ? Warning(status) : Note(status, new Thickness(0, 0, 0, 0)));
-        children.Add(Row(PageButton(enrolled is null ? "Set up Voice ID" : "Set up Voice ID again", SetUpVoiceId,
-            primary: prefs.VoiceId && enrolled is null, id: "SetupVoiceId")));
-        return Card([.. children]);
-    }
+    // The Listening cards (How you talk, Speakers and echo, Watch along) are ListeningCards in Pages\Listening, and Voice's talk
+    // cards are TalkCards in Pages\Talk; MainWindow gives them their services in MainWindow.ListeningCards.cs.
 
     private void SetUpVoiceId()
     {
@@ -276,24 +131,6 @@ public partial class MainWindow
     }
 
     // ---------- Listening: echo from the speakers ----------
-
-    /// <summary>Companion › Listening › Reduce echo from my speakers (on by default): while the microphone listens, Martlet also
-    /// reads what this PC plays and removes it from the microphone, so on speakers it doesn't hear its own voice, a video or music
-    /// as you talking, and always listening can go on while Martlet speaks. The status line says how the last listen went.</summary>
-    private Border EchoCard()
-    {
-        var reduce = new CheckBox { Content = "Reduce echo from my speakers", IsChecked = Talk.ReduceEcho, Margin = new Thickness(0, 0, 0, 6) };
-        AutomationProperties.SetAutomationId(reduce, "TalkReduceEcho");
-        reduce.Checked += (_, _) => { if (!Talk.ReduceEcho) SaveTalk(Talk with { ReduceEcho = true }, render: true); };
-        reduce.Unchecked += (_, _) => { if (Talk.ReduceEcho) SaveTalk(Talk with { ReduceEcho = false }, render: true); };
-        var (text, problem) = EchoStatus(Talk.ReduceEcho, conversation?.EchoReport);
-        var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
-        AutomationProperties.SetAutomationId(status, "TalkReduceEchoStatus");
-        return Card(Heading("Speakers and echo"), reduce, status,
-            HelpTip.Explain("Martlet removes what this PC plays from the microphone, so it works without headphones and keeps listening " +
-                "while it speaks. That sound stays on this PC and is never saved or sent.", new Thickness(0, 0, 0, 0), "EchoCancel",
-                "hearing this PC", wiki: "Talking-to-Martlet#speakers-and-echo"));
-    }
 
     internal static (string Text, bool Problem) EchoStatus(bool on, EchoReductionReport? report) => !on
         ? ("Off, so through speakers Martlet may hear its own voice and what this PC plays (use headphones, or turn this on).", false)
@@ -307,47 +144,6 @@ public partial class MainWindow
         };
 
     // ---------- Listening: hear what this PC plays ----------
-
-    /// <summary>Companion › Listening › Hear what this PC plays (off by default): while always listening runs, Martlet also hears
-    /// what the PC plays (a video, a stream, a call, a game), beside the microphone, so it can watch along. Ticking it is the
-    /// consent; the text says what is heard, how it is marked and that it never reaches memory or voice recognition.</summary>
-    private Border PcAudioCard()
-    {
-        var hear = new CheckBox { Content = "Hear what this PC plays", IsChecked = Talk.HearPc, Margin = new Thickness(0, 0, 0, 6),
-            IsEnabled = Talk.HearPc || conversation?.CanHearPc != false };
-        AutomationProperties.SetAutomationId(hear, "TalkHearPc");
-        hear.Checked += (_, _) => { if (!Talk.HearPc) SaveTalk(Talk with { HearPc = true }, render: true); };
-        hear.Unchecked += (_, _) => { if (Talk.HearPc) SaveTalk(Talk with { HearPc = false }, render: true); };
-        // Which outputs are in use now (their sessions only, no sound), until a conversation has heard the PC itself.
-        var outputs = Talk.HearPc ? Martlet.Audio.Windows.WasapiPcAudioSourceFactory.Outputs() : null;
-        var (text, problem) = PcAudioStatus(Talk, conversation?.CanHearPc != false,
-            conversation?.PcWithoutMartlet ?? (outputs is { Elsewhere: not null } ? false : null),
-            conversation?.PcOutput ?? outputs?.Output, outputs?.Elsewhere);
-        var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
-        AutomationProperties.SetAutomationId(status, "TalkHearPcStatus");
-        var describe = new CheckBox { Content = "Describe PC sounds", IsChecked = Talk.DescribePcSounds, Margin = new Thickness(0, 0, 0, 6),
-            IsEnabled = Talk.HearPc };
-        AutomationProperties.SetAutomationId(describe, "TalkDescribePcSounds");
-        describe.Checked += (_, _) => { if (!Talk.DescribePcSounds) SaveTalk(Talk with { DescribePcSounds = true }, render: true); };
-        describe.Unchecked += (_, _) => { if (Talk.DescribePcSounds) SaveTalk(Talk with { DescribePcSounds = false }, render: true); };
-        var digest = conversation?.SoundDigest?.Status;
-        var describeStatus = Note(SoundDigestStatus(Talk, conversation?.CanHearPc != false, digest,
-            digest is null ? SavedSoundJudge() : (digest.Judge, digest.JudgeKind),
-            conversation?.Clock ?? TimeProvider.System), new Thickness(0, 0, 0, 6));
-        AutomationProperties.SetAutomationId(describeStatus, "TalkDescribePcSoundsStatus");
-        return Card([Heading("Watch along"), hear, status,
-            HelpTip.Explain("While always listening runs, Martlet also hears the sound your PC plays (videos, streams, calls, games), " +
-                "as if it were watching with you. Listening transcribes it like your microphone, and it goes to Thinking marked as the " +
-                "PC's, never remembered or saved.", new Thickness(0, 0, 0, 8), "TalkHearPcAbout", "hearing what this PC plays",
-                wiki: "Vision#hearing-what-your-pc-plays"),
-            describe, describeStatus,
-            HelpTip.Explain("About every 10 seconds while something plays, Martlet describes the rest of the sound (music, game " +
-                "sounds, laughter) in one short line for its next reply. The line is never saved, and a reply never waits for it.",
-                new Thickness(0, 0, 0, 8), "SoundDigest", "sound descriptions", wiki: "Vision#hearing-what-your-pc-plays"),
-            Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
-            .. ChattinessPicker.Create("TalkPcChattiness", () => Talk.ScreenChattiness, conversation?.DecidedChattiness,
-                choice => SaveTalk(Talk with { ScreenChattiness = choice }, render: true))]);
-    }
 
     /// <summary>The sound judge the saved settings choose before a conversation runs, as <see cref="SenseJobRouting"/> decides
     /// <see cref="SenseJobKind.PcSound"/> (the conversation's <see cref="LiveConversationController.SoundJudge"/> follows the same
@@ -444,40 +240,6 @@ public partial class MainWindow
 
     private CheckBox? speakRepliesCheck;
 
-    private Border SpeakRepliesCard()
-    {
-        var speak = speakRepliesCheck = new CheckBox { Content = "Speak Martlet's replies aloud", IsChecked = Talk.SpeakReplies };
-        AutomationProperties.SetAutomationId(speak, "SpeakReplies");
-        speak.Checked += (_, _) => { if (!Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = true }); };
-        speak.Unchecked += (_, _) => { if (Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = false }); };
-
-        var volume = new Slider { Minimum = 0, Maximum = 100, Value = Math.Round(Talk.VoiceVolume * 100), SmallChange = 5,
-            LargeChange = 10, TickFrequency = 5, IsSnapToTickEnabled = true, Width = 240, VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(volume, "Voice volume: how loud Martlet speaks and sings");
-        AutomationProperties.SetAutomationId(volume, "VoiceVolume");
-        var level = Note(VoiceVolumeLabel(Talk.VoiceVolume), new Thickness(8, 0, 0, 0));
-        level.VerticalAlignment = VerticalAlignment.Center;
-        AutomationProperties.SetAutomationId(level, "VoiceVolumeLevel");
-        volume.ValueChanged += (_, e) =>
-        {
-            var next = e.NewValue / 100;
-            level.Text = VoiceVolumeLabel(next);
-            if (Math.Abs(next - Talk.VoiceVolume) > 0.001) SaveTalk(Talk with { VoiceVolume = next });
-        };
-        var scale = new StackPanel { Orientation = Orientation.Horizontal };
-        scale.Children.Add(volume);
-        scale.Children.Add(level);
-        var volumeRow = Labeled("Voice volume", scale);
-        volumeRow.Margin = new Thickness(0, 12, 0, 0);
-
-        return Card(Heading("In conversations"), speak,
-            HelpTip.Explain("Martlet speaks each reply and shows it in the talk window. Off, replies show only as text, and Mute voice " +
-                "on the character's right-click menu does the same.", new Thickness(0, 6, 0, 0), "TalkSpeaks", "spoken replies",
-                wiki: "Voices#volume-and-muting"),
-            volumeRow,
-            Note("How loud Martlet speaks and sings on this PC, without changing Windows' own volume.", new Thickness(0, 4, 0, 0)));
-    }
-
     /// <summary>Companion › Voice › Voice volume's level, as a percentage ("80%").</summary>
     internal static string VoiceVolumeLabel(double volume) => $"{Math.Round(Martlet.Audio.PcmGain.Clamp(volume) * 100):0}%";
 
@@ -485,43 +247,6 @@ public partial class MainWindow
 
     private TextBlock? quickSoundsStatus;
     private Button? quickSoundsMake;
-    private static readonly string[] QuickSoundDelayNames = ["After 0.5 s", "After 0.7 s (recommended)", "After 1 s", "After 1.5 s"];
-
-    private Border QuickSoundsCard()
-    {
-        var prefs = Talk;
-        var on = new CheckBox { Content = "Play a quick sound while Martlet thinks", IsChecked = prefs.QuickSounds };
-        AutomationProperties.SetAutomationId(on, "VoiceQuickSounds");
-        on.Checked += (_, _) => { if (!Talk.QuickSounds) SaveTalk(Talk with { QuickSounds = true }, render: true); };
-        on.Unchecked += (_, _) => { if (Talk.QuickSounds) SaveTalk(Talk with { QuickSounds = false }, render: true); };
-        var delay = new ComboBox
-        {
-            Width = 240, ItemsSource = QuickSoundDelayNames,
-            SelectedIndex = Math.Max(0, Martlet.Conversation.QuickSoundOptions.DelayChoices.ToList().IndexOf(prefs.QuickSoundDelayMs))
-        };
-        AutomationProperties.SetName(delay, "How long a reply may stay silent before a quick sound plays");
-        AutomationProperties.SetAutomationId(delay, "VoiceQuickSoundsDelay");
-        delay.SelectionChanged += (_, _) =>
-        {
-            if (delay.SelectedIndex >= 0 && Martlet.Conversation.QuickSoundOptions.DelayChoices[delay.SelectedIndex] is var ms && ms != Talk.QuickSoundDelayMs)
-                SaveTalk(Talk with { QuickSoundDelayMs = ms });
-        };
-        var status = quickSoundsStatus = Note("", new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(status, "VoiceQuickSoundsStatus");
-        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        quickSoundsMake = PageButton("Make quick sounds now", () =>
-        {
-            if (conversation?.MakeQuickSounds() != true) ActionText.Text = "Quick sounds need a voice: choose one above first.";
-        }, link: true, id: "VoiceQuickSoundsMake");
-        ShowQuickSounds();
-        var delayRow = Labeled("Play one", delay);
-        delayRow.Margin = new Thickness(0, 10, 0, 0);
-        return Card(Heading("Quick sounds while Martlet thinks"), on,
-            HelpTip.Explain("When a reply is slow to start, Martlet first says a quick \"Mm,\" or \"Hmm...\" in its own voice. With a " +
-                "paid cloud voice, Martlet makes the sounds only when you press Make quick sounds now.", new Thickness(0, 6, 0, 0),
-                "Fillers", "quick sounds", wiki: "Talking-to-Martlet#how-martlet-answers"),
-            delayRow, status, Row(quickSoundsMake));
-    }
 
     // Companion › Voice's quick sounds line and its Make button, as the conversation says they stand.
     private void ShowQuickSounds()

@@ -18,64 +18,6 @@ public partial class MainWindow
 {
     // ---------- this PC: Ollama for thinking ----------
 
-    /// <summary>The model typed under Another Ollama model, kept while the page draws again.</summary>
-    private string? ollamaTyped;
-
-    /// <summary>Thinking › This PC › Ollama: Ollama's state, then its models as an option picker (<c>Picker-OllamaModel-&lt;model&gt;</c>):
-    /// the suggestions with their facts (fit on this PC's card, graphics memory, how soon they answer, whether they hear),
-    /// the models Ollama already has, and Another Ollama model for typing any name (<c>SetupLocalModel</c>). The shown
-    /// model's details hold Download model, Check Ollama, Test model and Use Ollama on this PC, and the last test.</summary>
-    private Border LocalThinkingCard(SetupRoute? route)
-    {
-        var installed = !Prerequisites.IsMissing(Prerequisites.Ollama);
-        // What Ollama already has decides whether switching needs a download, so look once without being asked (loopback only).
-        if (installed && ollamaModels is null && !ollamaAutoChecked)
-        {
-            ollamaAutoChecked = true;
-            CheckOllamaAsync(quiet: true).Forget();
-        }
-        var inUse = IsLocalOllama(route) ? route!.ModelId : null;
-        var options = JobOptions.OllamaModels(LocalChatModels, ollamaModels, inUse, machine.BestGpu?.MemoryGb)
-            .Select(option => option with { Details = () => OllamaModelControls(option.Key == JobOptions.OtherOllamaModel ? null : option.Key, installed) })
-            .ToList();
-
-        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
-            Text = (!installed ? "Ollama isn't installed on this PC yet"
-                : ollamaModels is null && LocalOllamaRecovery.Last is { Stops: true, OllamaError: { } said }
-                    ? $"Ollama is installed, but it stops when it starts (Ollama says: \"{said.TrimEnd('.')}\"); Check Ollama shows what to do"
-                : ollamaModels is null ? "Ollama is installed; choose Check Ollama to see which models are downloaded"
-                : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet"
-                : $"Ollama is running with: {string.Join(", ", ollamaModels)}") +
-                (inUse is not null ? $"; Thinking uses {inUse}." : ".") };
-        AutomationProperties.SetAutomationId(status, "SetupOllamaStatus");
-        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-
-        var recommended = RecommendedLocalModel(machine.BestGpu?.MemoryGb);
-        var smartest = LargestLocalModel(machine.BestGpu?.MemoryGb);
-        var suggestion = HelpTip.Explain($"Recommended for this PC: {recommended.Id}, the fastest. " +
-            (machine.BestGpu is { } best ? $"This PC has {best.Describe()}" : "No dedicated graphics card was found, so models run on the processor") +
-            (smartest.Id != recommended.Id ? $": it fits up to {smartest.Id} with room for a game and Martlet's character. " : ". ") +
-            "Bigger models are smarter but slower.", new Thickness(0, 0, 0, 8), "LocalRecommendation", "the recommended model",
-            wiki: "Thinking#ollama-on-this-pc");
-        AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
-
-        // Use a model file you downloaded: a GGUF from Hugging Face, LM Studio's folder or anywhere else becomes an Ollama model.
-        var addFile = Row(PageButton("Use a model file you downloaded...", () => AddOllamaModelFileAsync().Forget(), id: "SetupAddModelFile"));
-        var addFileNote = HelpTip.Explain("Choose a GGUF model file on this PC, and Martlet adds it to Ollama and thinks with it. " +
-            "An mmproj file in the same folder comes too, so the model can see. Ollama keeps its own copy, so you can delete your " +
-            "file afterwards.", new Thickness(0, 4, 0, 8), "AddModelFile", "using a model file", wiki: "Thinking#ollama-on-this-pc");
-        AutomationProperties.SetAutomationId(addFileNote, "SetupAddModelFileNote");
-
-        return Card(Heading("Ollama on this PC"),
-            HelpTip.Explain("Ollama runs a local conversation model. Your messages stay on this PC, with no API key or per-request cost.",
-                new Thickness(0, 0, 0, 8), "OllamaThisPc", "Ollama on this PC", wiki: "Thinking#ollama-on-this-pc"),
-            status,
-            suggestion,
-            addFile,
-            addFileNote,
-            OptionPickerBody("OllamaModel", options));
-    }
-
     /// <summary>Use a model file you downloaded: the owner picks GGUF files, Martlet puts them into this PC's Ollama under a name
     /// made from the file name (<see cref="OllamaModelImport"/>) in a run window, then switches Thinking to that model the way
     /// Use Ollama on this PC does (it loads first). Nothing is saved about the file: the model lives in Ollama on this PC.</summary>
@@ -130,57 +72,8 @@ public partial class MainWindow
         if (await SaveLocalThinkingAsync(model, confirmed: true) && !closing) await TestLocalModelAsync(model);
     }
 
-    /// <summary>The shown Ollama model's controls: for Another Ollama model (<paramref name="fixedModel"/> null) the name box,
-    /// then Ollama's buttons for that model and the last test of it.</summary>
-    private IEnumerable<UIElement> OllamaModelControls(string? fixedModel, bool installed)
-    {
-        TextBox? model = null;
-        if (fixedModel is null)
-        {
-            model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = ollamaTyped ?? "" };
-            AutomationProperties.SetName(model, "Local model");
-            AutomationProperties.SetAutomationId(model, "SetupLocalModel");
-            InputHint.SetText(model, "gemma4:e4b");
-            model.TextChanged += (_, _) => { tabEdited = true; ollamaTyped = model.Text; };
-            yield return new Label { Content = "Ollama _model", Target = model, Padding = new Thickness(0, 4, 0, 4) };
-            yield return model;
-            var own = Note("Download model gets it; models already downloaded are listed above.", new Thickness(0, 4, 0, 0));
-            AutomationProperties.SetAutomationId(own, "SetupLocalOwnModels");
-            yield return own;
-        }
-
-        string ModelId() => fixedModel ?? (model!.Text ?? "").Trim();
-        var tested = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
-        AutomationProperties.SetAutomationId(tested, "SetupLocalModelTest");
-        AutomationProperties.SetLiveSetting(tested, AutomationLiveSetting.Polite);
-        void ShowTest()
-        {
-            var last = localModelTest is { } outcome && outcome.Model == ModelId() ? outcome : null;
-            tested.Text = last?.Text ?? (ModelId().Length == 0 ? "" : $"{ModelId()} isn't tested yet; test it before you use it.");
-            tested.SetResourceReference(TextBlock.ForegroundProperty, last is null ? "MutedBrush" : last.Passed && !last.Warning ? "SuccessBrush"
-                : "WarningBrush");
-        }
-        ShowTest();
-        showLocalTest = ShowTest;
-        if (model is not null) model.TextChanged += (_, _) => ShowTest();
-        var test = PageButton("Test model", () => TestLocalModelAsync(ModelId()).Forget(), id: "SetupTestLocalModel");
-        // Until Ollama is installed, installing it (with the chosen model, then switching to it) is the only step that does anything.
-        var buttons = installed
-            ? Row(
-                PageButton("Download model", () => PullOllamaModelAsync(ModelId()).Forget(), id: "SetupPullModel"),
-                PageButton("Check Ollama", () => CheckOllamaAsync().Forget(), id: "SetupCheckOllama"),
-                test,
-                PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), primary: true, id: "SetupUseLocalThinking"))
-            : Row(
-                PageButton("Install Ollama and use it", () => InstallOllamaAsync(ModelId()).Forget(), primary: true, id: "SetupInstallOllama"),
-                test,
-                PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
-        buttons.Margin = new Thickness(0, 8, 0, 0);
-        yield return buttons;
-        yield return tested;
-    }
     /// <summary>The last model test on this PC's Ollama: which model, what it found, and whether it worked.</summary>
-    private sealed record LocalModelTestOutcome(string Model, string Text, bool Passed, bool Warning);
+    internal sealed record LocalModelTestOutcome(string Model, string Text, bool Passed, bool Warning);
 
     /// <summary>Loads <paramref name="model"/> in this PC's Ollama and asks it for a short streamed reply, the way Martlet's
     /// replies do, so a model that won't run here shows up while it is being set up rather than on the first message.</summary>

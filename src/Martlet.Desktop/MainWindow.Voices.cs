@@ -13,174 +13,17 @@ using Martlet.F5;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Voice › Voices: the voices Martlet speaks with, copied from short recordings (no training). There are
-/// no built-in voices: a new list starts with a few starter voices, and every voice can be heard, used in one click and
-/// removed. The list, the chosen voice and every recording are shared with the owner's paired Martlet computers (through
-/// each paired host), so whichever computer speaks already holds the recording and any of them can be the companion.
-/// Using a voice applies it in the F5 preset store and, when a computer speaks, saves it on the speaking route.</summary>
+/// <summary>Companion › Voice › Voices, the work: <see cref="VoiceCards"/> (Pages\Voice\VoiceCards.Voices.cs) draws the card, and
+/// this file plays, adds, records, removes and chooses the voices Martlet speaks with. The list, the chosen voice and every
+/// recording are shared with the owner's paired Martlet computers (through each paired host), so whichever computer speaks
+/// already holds the recording and any of them can be the companion. Using a voice applies it in the F5 preset store and, when
+/// a computer speaks, saves it on the speaking route.</summary>
 public partial class MainWindow
 {
     private SoundPlayer? voicePlayer;
     private bool retiredVoiceChecked;
 
-    /// <summary>One voice in the list: its ID (reference revision), name, where it comes from (<paramref name="Note"/>), this
-    /// PC's recording of it (null while it is still being copied here, or for a starter voice not used yet) and its automation
-    /// key: a starter recording's key, else the first 16 hex digits of its ID. <paramref name="Clips"/> are the lengths of the
-    /// recordings it was made from (null for one recording).</summary>
-    private sealed record VoiceItem(string Id, string Name, string? Note, string? Transcript, string AudioSha256, int DurationMilliseconds,
-        DateTimeOffset AddedAt, F5ReferenceSnapshot? Local, string Key, bool Starter, IReadOnlyList<int>? Clips = null)
-    {
-        /// <summary>Its recording is here, or Martlet carries it.</summary>
-        internal bool Available => Local is not null || Starter;
-    }
-
-    /// <summary>The voices to list: every live voice of the shared list in the order it joined, then recordings only this PC
-    /// has (added before voices were shared; they join the list on the next change).</summary>
-    private static List<VoiceItem> VoiceItems(SpeakingVoiceLibrary library, IReadOnlyDictionary<string, F5ReferenceSnapshot> local)
-    {
-        static (string Key, bool Starter) KeyOf(string id, string sha256) =>
-            F5BundledVoices.ForAudio(sha256) is { } starter ? (starter.Key, true) : (id[..16], false);
-        var items = library.Live.Select(v =>
-        {
-            var (key, starter) = KeyOf(v.Id, v.AudioSha256!);
-            return new VoiceItem(v.Id, v.Name!, v.Note, v.Transcript, v.AudioSha256!, v.DurationMilliseconds, v.AddedAt,
-                local.GetValueOrDefault(v.Id), key, starter, v.ClipMilliseconds);
-        }).ToList();
-        foreach (var (id, snapshot) in local.Where(pair => library.Find(pair.Key) is null).OrderBy(pair => pair.Value.CreatedAtUtc))
-        {
-            var (key, starter) = KeyOf(id, snapshot.AudioSha256);
-            items.Add(new(id, snapshot.PresetName, null, null, snapshot.AudioSha256, snapshot.AudioFormat.DurationMilliseconds,
-                snapshot.CreatedAtUtc, snapshot, key, starter));
-        }
-        return items;
-    }
-
-    private Border VoicesCard(SetupRoute? route)
-    {
-        var f5 = route?.RouteType == SetupRouteType.GatewayF5 ? route : null;
-        var destination = f5?.GatewaySnapshot?.DestinationId ?? F5Destination;
-        // The engine that speaks (or will): some clone only recordings of certain lengths (GPT-SoVITS: 3-10 seconds).
-        var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot?.RouteId) ?? SpeakingEngineChoice.Current;
-        string? Cannot(VoiceItem item) => SpeechEngines.ReferenceProblem(engine, item.DurationMilliseconds, item.Clips);
-        string Language(string? transcript) => engine == SpeechEngines.GptSovits && transcript is not null
-            ? SpeechEngines.ReferenceLanguage(transcript) == "ja" ? " Japanese recording." : " English recording."
-            : "";
-        var stack = new List<UIElement>
-        {
-            Heading("Voices"),
-            HelpTip.Explain($"{engine.Name} copies these voices from short recordings" + (engine.SampleLimits is { } limits ? $" ({limits})" : "") +
-                ". A voice can have several recordings" + (engine.MultipleReferences ? $"; {engine.Name} learns from each." : ", heard one after another.") +
-                " They're shared with your paired computers.", new Thickness(0, 0, 0, 10), "VoicesAbout", "your voices", wiki: "Voices#your-voices")
-        };
-        var library = SpeakingVoiceLibrary.Empty;
-        IReadOnlyDictionary<string, F5ReferenceSnapshot> local = new Dictionary<string, F5ReferenceSnapshot>();
-        F5ReferenceSnapshot? applied = null;
-        try
-        {
-            if (store is not null)
-            {
-                library = F5Voices.View(store.DataDirectory);
-                (local, applied) = F5Voices.Local(store.DataDirectory, destination);
-            }
-        }
-        catch (F5Exception error) { stack.Add(Note(F5Voices.Describe(error), new Thickness(0, 0, 0, 8))); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            stack.Add(Note("Martlet couldn't read your voices: " + error.Message, new Thickness(0, 0, 0, 8)));
-        }
-        var items = VoiceItems(library, local);
-        // The voice in use: the one the speaking route keeps when a computer speaks, else the one applied on this PC.
-        var inUseId = f5?.Reference?.ReferenceRevision ?? applied?.ReferenceRevision;
-        var mark = f5 is null ? "chosen" : "in use";
-        var inUse = items.FirstOrDefault(i => i.Id == inUseId);
-        var status = Note($"{items.Count} voice{(items.Count == 1 ? "" : "s")}; " + (inUse is not null
-                ? $"{mark}: {(inUse.Starter ? inUse.Name : "one of your recordings")}."
-                : inUseId is not null ? $"{mark}: a voice no longer in the list."
-                : items.FirstOrDefault(i => i.Available) is { } first ? $"none {mark} yet, so Martlet starts with {(first.Starter ? first.Name : "your first voice")}."
-                : "add a voice to speak with."),
-            new Thickness(0, 0, 0, 4));
-        AutomationProperties.SetAutomationId(status, "F5VoicesStatus");
-        stack.Add(status);
-        var shared = Note(speakingVoiceStatus, new Thickness(0, 0, 0, 10));
-        AutomationProperties.SetAutomationId(shared, "F5VoicesShared");
-        stack.Add(shared);
-
-        var chosenId = library.ChosenVoice?.Id;
-        // A voice made from several recordings says how many and whether the engine learns from each or hears them joined.
-        string Recorded(VoiceItem item) => item.Clips is { Count: > 1 } clips
-            ? $"{clips.Count} recordings, {item.DurationMilliseconds / 1000d:0.#} seconds joined, added {item.AddedAt.ToLocalTime():d}; " +
-              (SpeechEngines.UsesClips(engine, clips) ? $"{engine.Name} learns from each recording."
-                  : $"{engine.Name} hears them one after another with a short pause.")
-            : $"{item.DurationMilliseconds / 1000d:0.#} second recording, added {item.AddedAt.ToLocalTime():d}.";
-        foreach (var item in items)
-        {
-            var used = item.Id == inUseId;
-            var cannot = Cannot(item);
-            var detail = (item.Note ?? Recorded(item)) +
-                (item.Available ? "" : " Copying to this PC...") + (cannot is null ? Language(item.Transcript) : " " + cannot);
-            stack.Add(VoiceRow(item.Name, detail, used, mark, item.Key, status: item.Starter,
-                () => PlayVoiceAsync(item), () => UseVoiceAsync(item.Id, destination),
-                used || item.Id == chosenId ? null : () => RemoveVoiceAsync(item, destination), cannot, item.Available));
-        }
-        // A voice still in use here that is not in the list (removed on another computer, or a recording Martlet no longer ships).
-        if (inUseId is not null && inUse is null)
-        {
-            var name = f5?.Reference?.PresetName ?? applied?.PresetName ?? "Previous voice";
-            stack.Add(VoiceRow(name, "No longer in your voice list.", true, mark,
-                inUseId[..16], status: false, () => PlayAppliedAsync(applied, name), () => Task.CompletedTask, null));
-        }
-        stack.Add(Row(PageButton("Add a voice...", () => AddVoiceAsync(destination).Forget(), id: "F5AddVoice"),
-            PageButton("Record your own voice...", () => RecordVoiceAsync(destination).Forget(), id: "F5RecordVoice")));
-        return Card([.. stack]);
-    }
-
     internal static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
-
-    /// <summary>One voice: its name (with the in-use mark), a detail line, and Play, Use and (when it may go) Remove. Controls
-    /// are identified by <paramref name="key"/>; starter recordings' titles are also readable status (<c>F5VoiceRow-key</c>),
-    /// never the names of the owner's own recordings, and every voice's detail line (<c>F5VoiceDetail-key</c>: its length or
-    /// recordings, where it comes from and why the engine can't use it; never its name or words) is readable status.
-    /// <paramref name="cannot"/> says why the speaking engine cannot use it and <paramref name="available"/> is false while its
-    /// recording is still being copied here (Use is then off).</summary>
-    private UIElement VoiceRow(string name, string detail, bool inUse, string mark, string key, bool status, Func<Task> play, Func<Task> use,
-        Func<Task>? remove, string? cannot = null, bool available = true)
-    {
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var title = new TextBlock { Text = name + (inUse ? $"  \u00b7  {mark}" : "") + (cannot is null ? "" : "  \u00b7  wrong length for this engine"),
-            FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
-        if (status) AutomationProperties.SetAutomationId(title, $"F5VoiceRow-{key}");
-        text.Children.Add(title);
-        var line = Note(detail, new Thickness(0, 2, 0, 0));
-        AutomationProperties.SetAutomationId(line, $"F5VoiceDetail-{key}");
-        text.Children.Add(line);
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        Button Small(string label, Func<Task> run, string id)
-        {
-            var button = PageButton(label, () => run().Forget(), id: $"F5Voice{id}-{key}");
-            button.MinWidth = 72;
-            button.Margin = new Thickness(8, 0, 0, 0);
-            AutomationProperties.SetName(button, $"{label} {name}");
-            return button;
-        }
-        var playButton = Small("Play", play, "Play");
-        playButton.IsEnabled = available;
-        buttons.Children.Add(playButton);
-        var useButton = Small(inUse ? "In use" : "Use", use, "Use");
-        useButton.IsEnabled = !inUse && cannot is null && available;
-        if (cannot is not null)
-        {
-            useButton.ToolTip = cannot;
-            ToolTipService.SetShowOnDisabled(useButton, true);
-            AutomationProperties.SetHelpText(useButton, cannot);
-        }
-        buttons.Children.Add(useButton);
-        if (remove is not null) buttons.Children.Add(Small("Remove", remove, "Remove"));
-        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-        DockPanel.SetDock(buttons, Dock.Right);
-        row.Children.Add(buttons);
-        row.Children.Add(text);
-        return row;
-    }
 
     /// <summary>Plays a voice's recording on Windows' default speakers: this PC's copy, or a starter clip Martlet carries.</summary>
     private async Task PlayVoiceAsync(VoiceItem item)

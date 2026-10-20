@@ -16,18 +16,25 @@ A moved page has these parts:
 | Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Status` (a status line with an automation ID), `Warning`, `Row`, `PageButton`, `Choice` (a large radio choice), `TerminalRow`, `TakeKey`, the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`), the option rows (`Option`, `OptionTitle`), `PageNowCard` and `WithHint`. |
 
 Moved pages: Thinking pool (`ThinkingPool\`), Check-ins (`CheckIns\`), Vision
-(`Vision\`), Picture making (`Pictures\`), App guides (`AppGuides\`), Reading (`Reading\`), Singing (`Singing\`), Replies (`Replies\`), People (`People\`), Personality (`Personality\`), Memory (`Memory\`), Prompts (`Prompts\`), Lorebook (`Lorebook\`), Motion (`Motion\`), Tools (`Tools\`), Smart home (`SmartHome\`), Discord (`Discord\`), Messaging (`Messaging\`) and Touch (`Touch\`, with its Touch zones card in `TouchZones\`).
+(`Vision\`), Picture making (`Pictures\`), App guides (`AppGuides\`), Reading (`Reading\`), Singing (`Singing\`), Replies (`Replies\`), People (`People\`), Personality (`Personality\`), Memory (`Memory\`), Prompts (`Prompts\`), Lorebook (`Lorebook\`), Motion (`Motion\`), Tools (`Tools\`), Smart home (`SmartHome\`), Discord (`Discord\`), Messaging (`Messaging\`), the job pages Thinking, Listening and Voice (`Jobs\`) and Touch (`Touch\`, with its Touch zones card in `TouchZones\`).
 The Discord page reads the app's `DiscordService` and `DiscordCallService`
 through its services interface; they hold no WPF.
+The job pages' cards are in `Thinking\` (Model app, your model app, Ollama on
+this PC, If Thinking fails, the situation fixture), `Voice\` (Voice engine,
+Voices, Chatterbox Original's style), `Listening\` (This PC's listening, How you
+talk, echo, what this PC plays) and `Talk\` (Speak replies, quick sounds). Each
+card group has its own services interface, which MainWindow implements
+(`MainWindow.ThinkingCards.cs`, `MainWindow.VoiceCards.cs`,
+`MainWindow.ListeningCards.cs`); the job page gets the cards as builders through
+`IJobPageServices` (`MainWindow.JobPage.cs`). The pool list card (`JobPoolCard`),
+Keys from before and the lines that other pages also show stay in MainWindow
+and come to the page as builders too.
 The host dashboard's steps are `HostDashboard\HostDashboardModel` (no WPF), with
 `IHostDashboardServices`; MainWindow draws them and runs what their buttons start. `Companion\CompanionPages.cs` is the catalog of all Companion pages
 (titles, groups, icons, intros and job roles), without WPF.
 `MainWindow.Companion.cs` is only the frame (the side list and `RenderTab`). The
-pages that are not moved yet have one file each: the job pages (Thinking,
-Listening, Voice) in `MainWindow.JobPages.cs` and `MainWindow.LocalThinking.cs`,
-Character and Eyes in `MainWindow.CharacterPages.cs`. The job pages call about 25
-cards from other `MainWindow` files, so move those cards first before the job
-pages get a page class. `Shared\` has the parts that more than one page uses, such as
+pages that are not moved yet have one file each: Character and Eyes in
+`MainWindow.CharacterPages.cs`. `Shared\` has the parts that more than one page uses, such as
 `ChattinessPicker` (Vision and Listening) and `PictureFiles` (the decoded
 pictures that Touch zones and Eyes show). Vision's image-model list and its Now
 lines are shared with Hearing, so `MainWindow` still makes them and gives them

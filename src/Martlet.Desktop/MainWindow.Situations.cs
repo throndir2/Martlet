@@ -360,28 +360,6 @@ public partial class MainWindow
         return situationNowText = line;
     }
 
-    /// <summary>FIXTURE (MARTLET_SIMULATE_SITUATION): Companion › Thinking's buttons that start or end a simulated game and make the
-    /// Thinking host simulated away or back. They change nothing saved.</summary>
-    private Border? SituationFixtureCard()
-    {
-        if (simulatedSituation is not { } fixture) return null;
-        var game = PageButton(fixture.Game is null ? "Simulate a game" : "End the simulated game", () =>
-        {
-            fixture.Game = fixture.Game is null ? SimulatedSituation.GameName : null;
-            ObserveSituation();
-            RenderTab();
-        }, id: "SituationSimulateGame");
-        var away = PageButton(fixture.Away ? "The simulated host answers again" : "Simulate the Thinking host away", () =>
-        {
-            fixture.Away = !fixture.Away;
-            ObserveSituation();
-            RenderTab();
-        }, id: "SituationSimulateAway");
-        return Card(Heading("FIXTURE: situations"),
-            Note($"{SimulatedSituation.Variable} is set: {fixture.Describe()}, and nothing is played, contacted or saved.", new Thickness(0, 0, 0, 0)),
-            Row(game, away));
-    }
-
     /// <summary>Writes situation.json when what it says changed. A failed write only costs that status.</summary>
     private void ReportSituation(SituationDecision decision, SituationFacts facts)
     {

@@ -98,82 +98,8 @@ public partial class MainWindow
 
     // ---------- Listening › This PC ----------
 
-    /// <summary>How it listens on this PC, as one option picker (<c>Picker-Listening-&lt;key&gt;</c>): the three Parakeet models
-    /// inside Martlet (no Docker), then Whisper on the graphics card and on the processor in Martlet's host service. Each row
-    /// says where it runs, how soon the transcript comes and its languages; the chosen one's details hold its button
-    /// (<c>SetupListenParakeet-&lt;model&gt;</c>, <c>SetupListenGpu</c>, <c>SetupListenCpu</c>).</summary>
-    private Border LocalListeningCard(SetupRoute? route, PairedHost? thisPc)
-    {
-        if (gpuProbe is null) ProbeGpuAsync().Forget();
-        var advice = gpuProbe is null ? null : ListeningAdviceNow();
-        var inUse = route?.RouteType == SetupRouteType.GatewayStt && thisPc is not null && route.Gateway?.HostId == thisPc.HostId;
-        var running = inUse ? gpuProbe?.SttAccelerator : null;
-        var gpuInUse = inUse && running == "gpu";
-        var cpuInUse = inUse && running == "cpu";
-        var parakeetInUse = route?.RouteType == SetupRouteType.LocalParakeet ? route.ModelId : null;
-        var runtime = SherpaComponents.RuntimeDirectory() is not null && parakeet is not null;
-        parakeetState = null;
+    // How it listens on this PC is ListeningCards.LocalListening in Pages\Listening; the setup it starts stays here.
 
-        IEnumerable<UIElement> WhisperDetails(bool gpu)
-        {
-            if (advice is not null)
-                yield return HelpTip.Explain($"For Whisper, {(advice.UseGpu ? "the graphics card" : "the processor")} suits this PC best, " +
-                    $"because {advice.Reason}. " + advice.GpuNote, new Thickness(0, 4, 0, 0), gpu ? "ListeningWhisperGpu" : "ListeningWhisperCpu",
-                    "Whisper on this PC", wiki: "Listening-and-Voice-ID#listening");
-            if (thisPc is null)
-                yield return Note(machine.DockerRunning ? "Docker Desktop is running; the first setup may take a while."
-                        : machine.DockerInstalled ? "Docker Desktop is installed; Martlet starts it when needed, and the first setup may take a while."
-                        : "Docker Desktop isn't installed yet; Martlet installs it first, and the first setup may take a while.",
-                    new Thickness(0, 4, 0, 0));
-            if (inUse && running is null && gpu)
-                yield return Note(LocalSpeechSetup.IsParakeetModel(route!.ModelId)
-                    ? $"In use: {ParakeetName(route.ModelId)} in this PC's host service."
-                    : "In use: Whisper on this PC.", new Thickness(0, 4, 0, 0));
-        }
-
-        var options = JobOptions.Recognizers(new(parakeetInUse, LocalSpeechSetup.RecommendedParakeetModel(CultureInfo.CurrentUICulture),
-                id => parakeet?.Installed(id) == true, installingParakeet, parakeetProgress, runtime, advice, gpuInUse, cpuInUse, machine.Threads))
-            .Select(option => option.Key switch
-            {
-                JobOptions.WhisperGpu => option with
-                {
-                    Details = () => WhisperDetails(gpu: true),
-                    Action = () =>
-                    {
-                        var button = PageButton(gpuInUse ? "Set it up again" : "Use Whisper on the graphics card",
-                            () => UseListeningHereAsync(gpu: true).Forget(), primary: !gpuInUse, id: "SetupListenGpu");
-                        button.IsEnabled = advice is not null && advice.GpuBlocked is null;
-                        return button;
-                    }
-                },
-                JobOptions.WhisperCpu => option with
-                {
-                    Details = () => WhisperDetails(gpu: false),
-                    Action = () => PageButton(cpuInUse ? "Set it up again" : "Use Whisper on the processor",
-                        () => UseListeningHereAsync(gpu: false).Forget(), primary: !cpuInUse, id: "SetupListenCpu")
-                },
-                _ when ParakeetModels.Find(option.Key) is { } model => option with
-                {
-                    // The download's progress line, updated while it downloads.
-                    State = installingParakeet == model.Id ? null : option.State,
-                    Details = () => ParakeetDetails(model),
-                    Action = () => ParakeetButton(model, parakeetInUse, runtime)
-                },
-                _ => option
-            }).ToList();
-
-        var stack = new List<UIElement>
-        {
-            Heading("How it listens on this PC"),
-            HelpTip.Explain("Choose a speech recognizer. With Parakeet or Whisper on this PC, speech stays on this PC and recordings aren't saved.",
-                new Thickness(0, 0, 0, 6), "ListeningRecognizer", "speech recognizers", wiki: "Listening-and-Voice-ID#listening"),
-            OptionPickerBody("Listening", options)
-        };
-        stack.Add(Row(
-            PageButton("Check the graphics card again", () => { gpuProbe = null; ProbeGpuAsync().Forget(); RenderTab(); }, link: true, id: "SetupListenRecheck"),
-            thisPc is null ? null : PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), link: true, id: "SetupCheckLocal-listening")));
-        return Card([.. stack]);
-    }
     // ---------- Listening › This PC › Parakeet ----------
 
     /// <summary>The Parakeet model downloading now, or null.</summary>
@@ -183,7 +109,7 @@ public partial class MainWindow
     private string? parakeetProgress;
 
     /// <summary>A Parakeet model's name for status lines: "Parakeet TDT 110M (English)", or the ID of one this Martlet doesn't know.</summary>
-    private static string ParakeetName(string modelId) => ParakeetModels.Find(modelId)?.ToString() ?? modelId;
+    internal static string ParakeetName(string modelId) => ParakeetModels.Find(modelId)?.ToString() ?? modelId;
 
     /// <summary>Why this PC can't listen yet with the Parakeet model another computer chose (Settings for all devices): it isn't
     /// downloaded here (the owner downloads it in Listening; nothing downloads by itself) or a newer Martlet chose it. Null when
@@ -231,32 +157,6 @@ public partial class MainWindow
         return panel;
     }
 
-    /// <summary>A Parakeet model's own lines in its details: its full name and, while it downloads, the progress line
-    /// (<c>ListenParakeetModelState-&lt;model&gt;</c>), which the download updates.</summary>
-    private IEnumerable<UIElement> ParakeetDetails(ParakeetModel model)
-    {
-        var name = Note($"{model}, inside Martlet: no Docker or host service.", new Thickness(0, 4, 0, 0));
-        yield return name;
-        if (installingParakeet != model.Id) yield break;
-        var state = Note(parakeetProgress ?? "Downloading...", new Thickness(0, 4, 0, 0));
-        AutomationProperties.SetAutomationId(state, "ListenParakeetModelState-" + model.Id);
-        AutomationProperties.SetLiveSetting(state, AutomationLiveSetting.Polite);
-        parakeetState = state;
-        yield return state;
-    }
-
-    /// <summary>A Parakeet model's button: download it once (when needed) and listen with it (<c>SetupListenParakeet-&lt;model&gt;</c>).</summary>
-    private Button ParakeetButton(ParakeetModel model, string? inUse, bool runtime)
-    {
-        var installed = parakeet?.Installed(model.Id) == true;
-        var used = inUse == model.Id;
-        var downloading = installingParakeet == model.Id;
-        var button = PageButton(downloading ? "Downloading..." : used ? "In use" : installed ? $"Use {model.Name}"
-                : $"Download and use ({SherpaComponents.Megabytes(model.DownloadBytes)})",
-            () => UseParakeetAsync(model).Forget(), primary: !used, id: "SetupListenParakeet-" + model.Id);
-        button.IsEnabled = !used && installingParakeet is null && runtime;
-        return button;
-    }
     /// <summary>Listening with Parakeet <paramref name="model"/> on this PC: one confirmation for its download (when needed),
     /// then the route switches to it. With <paramref name="use"/> false it is only downloaded, so this PC's processor hears you
     /// when Listening's own route (a paired host or OpenAI) can't, and Listening doesn't change.</summary>
