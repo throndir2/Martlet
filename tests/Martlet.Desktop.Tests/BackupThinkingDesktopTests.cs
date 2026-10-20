@@ -101,7 +101,7 @@ public sealed class BackupThinkingDesktopTests
     [Fact]
     public void The_backup_thinking_line_says_whether_it_is_on_who_may_answer_and_the_wait()
     {
-        Assert.StartsWith("Off.", LiveConversationController.BackupLine(new(), [], null, 0));
+        Assert.StartsWith("Off:", LiveConversationController.BackupLine(new(), [], null, 0));
         var on = new ThinkingPoolSettings { BackupThinking = true };
         Assert.Contains("no machine is a backup for slow replies yet", LiveConversationController.BackupLine(on, [], null, 0));
         Assert.Contains("no words after 1200 ms, diva (qwen3-8b) may answer instead",

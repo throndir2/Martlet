@@ -1,5 +1,9 @@
 using System.Globalization;
 using Martlet.Core.Contracts;
+using static Martlet.Conversation.CheckInAnswers;
+using static Martlet.Conversation.CheckInPrompts;
+using static Martlet.Conversation.CheckInSchedule;
+using static Martlet.Conversation.CheckInText;
 
 namespace Martlet.Conversation;
 

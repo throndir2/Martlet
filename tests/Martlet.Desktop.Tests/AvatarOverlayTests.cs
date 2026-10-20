@@ -12,7 +12,7 @@ namespace Martlet.Desktop.Tests;
 
 public sealed class AvatarOverlayTests
 {
-    [DesktopSessionFact]
+    [Direct3DFact]
     public Task Shared_renderer_is_transparent_topmost_and_exposes_a_drag_surface_without_startup_effects() => OnDispatcher(async () =>
     {
         using var input = new PendingInput();
@@ -67,7 +67,7 @@ public sealed class AvatarOverlayTests
         Assert.True(RendererProtocol.Data<RendererTheme>(message).Dark);
     }
 
-    [DesktopSessionFact]
+    [Direct3DFact]
     public Task Speech_bubble_is_drawn_in_the_overlay_palette_and_follows_it_in_Martlets_typeface() => OnDispatcher(async () =>
     {
         using var input = new PendingInput();
@@ -132,7 +132,7 @@ public sealed class AvatarOverlayTests
             ((SolidColorBrush)palette[key]).Color is var c ? $"#{c.R:X2}{c.G:X2}{c.B:X2}" : "";
     });
 
-    [DesktopSessionFact]
+    [Direct3DFact]
     public Task Overlay_supports_keyboard_positioning_recovery_and_escape_close() => OnDispatcher(async () =>
     {
         using var input = new PendingInput();

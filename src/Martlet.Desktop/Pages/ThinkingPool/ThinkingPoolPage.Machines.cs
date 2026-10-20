@@ -17,14 +17,15 @@ internal sealed partial class ThinkingPoolPage
         var stack = new List<UIElement>
         {
             Heading("Machines"),
-            HelpTip.Explain("This list is the Thinking pool. Each machine that is on (a graphics card on one of your computers, a model " +
-                "in Ollama on this PC, or a cloud provider or server) does Martlet's background work; untick On to stop using one and " +
-                "keep its settings. With no machine on, the pool is off. Quick jobs are the judges (are you done talking, did you " +
+            HelpTip.Explain("This list is the Thinking pool: the machines that do Martlet's background work. Each machine that is on (a " +
+                "graphics card on one of your computers, a model in Ollama on this PC, or a cloud provider or server) takes jobs; untick " +
+                "On to stop using one and keep its settings. With no machine on, the pool is off. Quick jobs are the judges (are you done talking, did you " +
                 "interrupt) and the screen and sound summaries. Long jobs are thinking longer, research, a song's lyrics and the " +
                 "other helpers. Each job goes to a free machine that takes it, the one that shares least with the conversation " +
                 "first. Tick what each machine may do. Cloud providers and servers on your network, with their API keys and " +
                 "choices, are the same on all your computers, and so are Backup for slow replies and Busy pool; paired computers join each PC's pool by themselves, and models in " +
-                "Ollama on this PC stay this PC's own.", new Thickness(0, 0, 0, 8), "ThinkingPool", "the Thinking pool")
+                "Ollama on this PC stay this PC's own.", new Thickness(0, 0, 0, 8), "ThinkingPool", "the Thinking pool",
+                wiki: "Thinking#machines-in-the-pool")
         };
 
         var summary = Note(model.Summary, new Thickness(0, 0, 0, 8));
@@ -51,8 +52,10 @@ internal sealed partial class ThinkingPoolPage
         AutomationProperties.SetAutomationId(warning, "ThinkingPoolWarnings");
         stack.Add(warning);
         // The live floor: which members wait while you talk with Martlet (they share the conversation's computer).
-        var floorLine = Note(model.LiveFloor, new Thickness(0, 4, 0, 4));
-        floorLine.Visibility = floorLine.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var floorText = model.LiveFloor;
+        var floorLine = floorText.Length > 0
+            ? HelpTip.Explain(floorText, new Thickness(0, 4, 0, 4), "ThinkingPoolLiveFloor", "waiting while you talk", wiki: "Thinking#machines-in-the-pool")
+            : new TextBlock { Visibility = Visibility.Collapsed };
         AutomationProperties.SetAutomationId(floorLine, "ThinkingPoolLiveFloor");
         stack.Add(floorLine);
         stack.Add(Note("Martlet sets the order by itself: quick jobs go first, and when the pool has two or more slots, long jobs " +
@@ -84,7 +87,7 @@ internal sealed partial class ThinkingPoolPage
             IsChecked = model.Pool.UseConversationModelWhenEmpty, Margin = new Thickness(0, 6, 0, 0),
             Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap },
             ToolTip = "Thinking longer and research then run on the conversation's own Thinking model when its provider answers " +
-                "several requests at once. Quick jobs then use their own simple rules."
+                "several requests at once."
         };
         AutomationProperties.SetAutomationId(fallback, "ThinkingPoolUseConversationModel");
         AutomationProperties.SetName(fallback, label);
@@ -134,7 +137,8 @@ internal sealed partial class ThinkingPoolPage
         text.Children.Add(line);
         if (computer.SharedCard is { } shared)
         {
-            var warning = Note(shared, new Thickness(0, 2, 0, 0));
+            var warning = HelpTip.Explain(shared + " " + DeepThinkingFit.SharedCardMore, new Thickness(0, 2, 0, 0), "SharedCard-" + host.HostId,
+                "sharing a graphics card", wiki: "Thinking#add-a-machine");
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             AutomationProperties.SetName(warning, $"{host.HostId}: {shared}");
             AutomationProperties.SetAutomationId(warning, "DeepThinkingShare-" + host.HostId);
@@ -161,7 +165,7 @@ internal sealed partial class ThinkingPoolPage
         {
             Content = "In the pool", IsChecked = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
             IsEnabled = computer.Usable && check?.Reachable == true,
-            ToolTip = "Computers with a Thinking model join the pool by themselves. Tick to add this one now."
+            ToolTip = "Computers with a Thinking model join the pool by themselves; tick to add this one now."
         };
         AutomationProperties.SetName(inPool, $"{host.HostId} in the Thinking pool");
         AutomationProperties.SetAutomationId(inPool, "DeepThinkingPool-" + host.HostId);

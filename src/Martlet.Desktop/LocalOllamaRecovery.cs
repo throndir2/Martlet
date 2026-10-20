@@ -123,7 +123,9 @@ internal static class LocalOllamaRecovery
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or HttpRequestException
                                           or Win32Exception)
         {
-            result = new(false, $"Martlet couldn't fix Ollama: {error.Message.TrimEnd('.')}. {diagnosis.Guidance}", [], null, null, diagnosis);
+            result = new(false, $"Martlet couldn't fix Ollama ({error.Message.TrimEnd('.')})" +
+                (diagnosis.Guidance is { Length: > 0 } guidance ? "; " + char.ToLowerInvariant(guidance[0]) + guidance[1..] : "."),
+                [], null, null, diagnosis);
         }
         foreach (var change in result.Changes) log("Ollama repair changed " + change);
         if (result.Backup is { } backup) log($"Ollama repair: Ollama's app database as it was is in {backup}.");
@@ -167,7 +169,7 @@ internal static class LocalOllamaRecovery
     internal static string? Short()
     {
         if (Repairing) return "Ollama keeps stopping because of its linked models folder; Martlet is fixing it…";
-        return Last is { Stops: true, OllamaError: { } said } ? $"Ollama keeps stopping: \"{said.TrimEnd('.')}\". Home shows what to do." : null;
+        return Last is { Stops: true, OllamaError: { } said } ? $"Ollama keeps stopping (\"{said.TrimEnd('.')}\"); Home shows what to do." : null;
     }
 
     /// <summary>Opens the folder with Ollama's own logs (server.log, app.log). False when it can't be opened.</summary>

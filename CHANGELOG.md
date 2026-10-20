@@ -25,6 +25,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The share link's Copied line and the VRoid Hub sign-in errors are one short sentence each. ([#1073](https://github.com/throndir2/Martlet/pull/1073))
+- The account, sign-in, sharing and shared-settings windows and dialogs say each thing in one short line; the details are behind a **?** with a link to the wiki. ([#1066](https://github.com/throndir2/Martlet/pull/1066))
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
 - The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
 - The speech host roles (XTTS, Dia, GPT-SoVITS, F5, Chatterbox, singing, Parakeet and voice recognition) now share one copy of their download and request code, so a request with a bad length gets a clear error instead of a dropped connection. The next host update rebuilds these roles once. ([#1061](https://github.com/throndir2/Martlet/pull/1061))
@@ -35,6 +37,7 @@ Each release's section here is also its notes on GitHub.
 - Check-ins that use tools now work in several steps until they are done, like a coding agent: they look things up, read the result and keep going. When you say "that's for Minecraft, not Terraria!", Act on what was said finds every fact it touches and corrects each one. Learning names can also look up voices in more steps. ([#1033](https://github.com/throndir2/Martlet/pull/1033))
 - The **?** help marks can now link to the full instructions in the wiki, starting on Companion › Check-ins, and the page shows only one short sentence before a **?**. ([#1016](https://github.com/throndir2/Martlet/pull/1016))
 - Listening, Voice, People, Singing, *Microphone and speakers* and *Voice ID* now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki pages for listening, voices and singing have the full instructions. ([#1049](https://github.com/throndir2/Martlet/pull/1049))
+- The Thinking, Thinking pool, Prompts, Memory and Lorebook pages and the Memory and Lorebooks windows show one short line for each explanation and status. The details are behind a **?** that links to the wiki, and each prompt's **?** says when Martlet sends it. ([#1059](https://github.com/throndir2/Martlet/pull/1059))
 - Companion › Vision, Reading and Picture making, the Creations page and camera messages now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the Vision and Pictures and Creations wiki pages have the full instructions, including what to do when a camera doesn't work. ([#1056](https://github.com/throndir2/Martlet/pull/1056))
 - Your character's touch zones (also the ones you drew or changed), its eye measurement, its VRoid Hub credit and its own changes to how it reacts to touches are now the same on all your computers, so each model is set up once. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
 - Your Discord setup (the bot and its token, the people Martlet knows, the chat modes and channel rules) and your Telegram and WhatsApp connections with their paired chats are now the same on all your computers. Each computer still chooses for itself whether it runs the bot. ([#1055](https://github.com/throndir2/Martlet/pull/1055))
@@ -42,7 +45,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- Test vision no longer sends a blank picture while your Remote Desktop session is disconnected, so Martlet no longer decides that a model can't see. It tells you to connect and test again. ([#1067](https://github.com/throndir2/Martlet/pull/1067))
+- Test vision no longer sends a blank picture when Windows fails to draw the test word, so it can't wrongly mark a model as unable to see; it says to try again instead. ([#1068](https://github.com/throndir2/Martlet/pull/1068))
 - Set it all up for me no longer counts a model that Ollama or LM Studio has loaded already twice, so it can think with it on a card that holds it. Martlet also reads LM Studio's real model sizes instead of guessing them from the name. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Background tasks that wait for a free computer now start in the order you asked for them. Before, two that were asked at the same moment could swap places. ([#1047](https://github.com/throndir2/Martlet/pull/1047))
 - Each request to a host answers faster: the host saves the request's one-use number with one small write instead of saving all its pairings (about 3 ms instead of 27 ms on a fast disk, and more on slow disks). ([#1046](https://github.com/throndir2/Martlet/pull/1046))

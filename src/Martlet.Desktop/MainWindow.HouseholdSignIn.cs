@@ -75,8 +75,8 @@ public partial class MainWindow
         {
             JoinedAccount.Forget(store.DataDirectory);
             ErrorLog.Warn("Accounts: couldn't sign in the account this PC joined as: " + error.Message);
-            ActionText.Text = "This PC joined your Martlet network, but the sign-in to your account can't be used any more. Sign in to your " +
-                "account from the account button.";
+            ActionText.Text = "This PC joined your Martlet network, but the sign-in to your account can't be used any more: sign in " +
+                "from the account button.";
             return;
         }
         RenderAccount();

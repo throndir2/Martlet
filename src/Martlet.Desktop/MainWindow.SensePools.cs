@@ -103,9 +103,10 @@ public partial class MainWindow
                 ? "The models that look at pictures of your screen and camera and describe them in words for Thinking, in order. The " +
                   "first one that sees takes the pictures; the next ones take a picture when it is busy or can't. Empty: the line " +
                   "below says which model takes each picture instead. A reply never waits for an image model."
-                : "The models that hear the recordings of your voice and of what this PC plays and describe them in words for Thinking, " +
+                : "The models that describe recordings of your voice and of what this PC plays in words for Thinking, " +
                   "in order. The first one that hears takes the recordings; the next ones take one when it is busy or can't. Empty: " +
                   "the line below says which model takes each recording instead. A reply never waits for an audio model.",
+            Wiki = "Thinking#image-and-audio-models",
             Status = member => SenseMemberStatus(kind, member, SenseLists.Model(member, area, id => hosts.GetValueOrDefault(id), keys), chosen,
                 thinking, abilities, keys),
             Settings = member => SenseMemberSettings(kind, options, member, thinking, keys),
@@ -131,16 +132,18 @@ public partial class MainWindow
             new TextBlock { Text = $"Also gets your {SenseInputs(kind)}: the Thinking pool", FontWeight = FontWeights.SemiBold,
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 4) }
         };
-        var summary = Note(SensePoolUsers.Summary(kind, users), new Thickness(0, 0, 0, 8));
+        var summary = HelpTip.Explain(SensePoolUsers.Summary(kind, users), new Thickness(0, 0, 0, 8), "SensePoolAlso-" + SenseLists.Area(kind).Id,
+            "the Thinking pool's models", wiki: "Thinking#image-and-audio-models");
         AutomationProperties.SetAutomationId(summary, id + "Summary");
         elements.Add(summary);
         for (var i = 0; i < users.Count; i++)
         {
             var user = users[i];
-            var offline = user.Gets && user.Member.HostId is { } host && HostPresence.IsOffline(host) ? " Its computer doesn't answer now." : "";
+            var line = SensePoolUsers.Line(kind, user, senseModel);
+            if (user.Gets && user.Member.HostId is { } host && HostPresence.IsOffline(host)) line = line.TrimEnd('.') + "; its computer doesn't answer now.";
             var row = NetworkRowFrame();
             row.Margin = new Thickness(0, 0, 0, 8);
-            row.Children.Add(NetworkRowText($"{id}-{i}", user.Name, SensePoolUsers.Line(kind, user, senseModel) + offline));
+            row.Children.Add(NetworkRowText($"{id}-{i}", user.Name, line));
             elements.Add(row);
         }
         elements.Add(Row(PageButton("Open Thinking pool", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: id + "Open")));
@@ -194,8 +197,8 @@ public partial class MainWindow
         void Save(PoolMember next, string done) => SavePoolList(options, list, list.With(next), done);
         if (member.Kind == PoolMemberKind.ThisPc)
             return SenseLocalPanel(kind, member, thinking, model => Save(member.WithSetting(PoolSettingKeys.Model, model),
-                $"This PC's {SenseWord(kind)} model is now {model} in Ollama." +
-                (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $" Download {model} to use it." : "")));
+                $"This PC's {SenseWord(kind)} model is now {model} in Ollama" +
+                (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $"; download {model} to use it." : ".")));
         var panel = new StackPanel();
         if (member.Kind == PoolMemberKind.Cloud)
             panel.Children.Add(Note(SenseSent(kind, new DeepThinkingSettings
@@ -256,8 +259,8 @@ public partial class MainWindow
             InputHint.SetText(key, member.Kind == PoolMemberKind.Cloud ? "Paste the provider's API key" : "Paste the server's key, if it needs one");
             panel.Children.Add(new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) });
             panel.Children.Add(key);
-            panel.Children.Add(Note(keys.For(area.Id, member.Key) is not null ? "A key is saved on this PC. Paste a new one to replace it."
-                : "Paste a key only if it needs one. Martlet saves it in Windows Credential Manager on this PC.", new Thickness(0, 4, 0, 0)));
+            panel.Children.Add(Note(keys.For(area.Id, member.Key) is not null ? "A key is saved on this PC; paste a new one to replace it."
+                : "Paste a key only if it needs one (Martlet saves it in Windows Credential Manager on this PC).", new Thickness(0, 4, 0, 0)));
         }
         var save = PageButton("Save", () => SaveSenseMemberAsync(kind, options, member, model?.Text.Trim(),
             (engine?.SelectedItem as ComboBoxItem)?.Tag as string, media?.IsChecked, key).Forget(), primary: true, id: $"{id}-Save-{i}");
@@ -407,7 +410,7 @@ public partial class MainWindow
             var url = Url();
             keyStatus.Text = thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin == url
                 ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
-                : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager on this PC."
+                : p.NeedsKey ? $"Paste your {p.Name} API key (Martlet saves it in Windows Credential Manager on this PC)."
                 : "Add a key only if your server needs one.";
             InputHint.SetText(key, p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? "Paste your NVIDIA Build key (nvapi-…)"
                 : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? "Paste your OpenRouter key (sk-or-v1-…)"
@@ -428,8 +431,9 @@ public partial class MainWindow
         key.PasswordChanged += (_, _) => tabEdited = true;
 
         var panel = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
-        panel.Children.Add(Note($"Choose a model that {(kind == SenseKind.Image ? "sees pictures" : "hears recordings")}. It describes them " +
-            "in words for Thinking and never answers you itself. It goes at the end of the list; move it up with Up.", new Thickness(0, 0, 0, 8)));
+        panel.Children.Add(HelpTip.Explain($"Choose a model that {(kind == SenseKind.Image ? "sees pictures" : "hears recordings")}. It describes them " +
+            "in words for Thinking and never answers you itself. It goes at the end of the list; move it up with Up.", new Thickness(0, 0, 0, 8),
+            "SenseCloud-" + options.Area.Id, "the cloud form", wiki: "Thinking#image-and-audio-models"));
         panel.Children.Add(new Label { Content = "_Provider", Target = provider, Padding = new Thickness(0, 0, 0, 4) });
         panel.Children.Add(provider);
         panel.Children.Add(baseUrlPanel);
@@ -473,8 +477,8 @@ public partial class MainWindow
             tabEdited = false;
             senseCloudShown.Remove(kind);
             var list = WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
-            SavePoolList(options, list, list.With(member), $"{provider.Name} ({model}) is now in the {area.Title} list." +
-                (entered.Length > 0 ? " Its API key is saved in Windows Credential Manager." : ""));
+            SavePoolList(options, list, list.With(member), $"{provider.Name} ({model}) is now in the {area.Title} list" +
+                (entered.Length > 0 ? ", and its API key is saved in Windows Credential Manager." : "."));
             // Ask its server quietly what the model takes, as for a first model.
             CheckChosenModelAsync(new() { Place = DeepThinkingPlace.Endpoint, Origin = origin, ModelId = model }, thinking).Forget();
         }
@@ -502,7 +506,7 @@ public partial class MainWindow
         if (!next.Save(directory))
         {
             vault.Delete(binding);
-            throw new InvalidOperationException("Couldn't save which key the model uses. Check access to Martlet's data folder.");
+            throw new InvalidOperationException("Couldn't save which key the model uses; check access to Martlet's data folder.");
         }
         if (old is { } gone && !next.Keys.Values.Contains(gone)) await Task.Run(() => vault.Delete(KeyPlace(origin).Binding(profile, gone)), CancellationToken.None);
     }
