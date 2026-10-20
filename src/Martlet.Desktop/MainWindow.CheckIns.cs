@@ -30,7 +30,7 @@ public partial class MainWindow
     /// was said or answered), which MCP's check_ins_status reads.</summary>
     internal const string CheckInStatusFile = "check-ins-status.json";
     /// <summary>A text file whose content answers every check-in instead of the Thinking pool (FIXTURE - NOT AI), for automated
-    /// checks of the desktop (docs/MCP.md#check-ins). Read before each run, so a check can change it.</summary>
+    /// checks of the desktop (docs/mcp/apps.md#check-ins). Read before each run, so a check can change it.</summary>
     internal const string CheckInFixtureVariable = "MARTLET_CHECK_INS_FIXTURE";
     private readonly DispatcherTimer checkInTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private CheckInSettings checkInSettings = new();

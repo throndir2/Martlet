@@ -496,9 +496,11 @@ one line for each safe click and each safe value,
 `new("<ID>", "<page>", "<what it does or shows>")`. A tool is one `Tool(...)`
 registration in `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs`, and
 `ToolGroups()` (`src\Martlet.Mcp.Protocol\McpServer.cs`) puts each group in
-its guide area. A new control or tool goes there, and `docs\MCP.md` names it.
+its guide area. A new control or tool goes there, and the page of its guide area
+in `docs\mcp\` names it (`docs\MCP.md` is the index).
 
 **Tests:** `AutomationPolicyTests` and `McpDocsAgreementTests` (every tool is
-named in `docs\MCP.md` as `` `name` ``; Martlet.Desktop.Tests).
+named in `docs\MCP.md` or a page in `docs\mcp\` as `` `name` ``;
+Martlet.Desktop.Tests).
 
-**Docs:** [MCP.md](MCP.md).
+**Docs:** [MCP.md](MCP.md) and its pages in [mcp/](mcp/).

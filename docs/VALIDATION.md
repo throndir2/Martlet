@@ -259,9 +259,9 @@ the UI part as NOT RUN.
 **Extend MCP with every feature:** stable `AutomationProperties.AutomationId` on new
 controls, passive navigation in `SafeClicks`, non-secret status fields in
 `SafeValues`, new tools or Doctor probes for new headless capabilities, and
-[MCP](MCP.md) updated to match. A feature MCP cannot reach or observe is not
-finished. [MCP](MCP.md#local-mcp-control-windows) documents every tool and
-[Extending the server](MCP.md#extending-the-server) the conventions.
+the [MCP](MCP.md) page of its area updated to match. A feature MCP cannot reach or observe is not
+finished. [MCP](MCP.md) and its pages document every tool and
+[Extending the server](mcp/start-here.md#extending-the-server) the conventions.
 
 ## Writing tests
 

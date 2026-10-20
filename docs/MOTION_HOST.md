@@ -189,7 +189,7 @@ A computer that is making another motion still counts as ready, so a motion wait
 
 MCP: `motion_status` reads the Motion list, the computers a motion tries and the older choice from a data directory.
 `motion_pool_check` rehearses the pool with simulated computers. `motion_check` makes one motion (fixture, a worker on
-loopback, or a paired host's route) and saves the `.vrma` file ([MCP](MCP.md#motion)).
+loopback, or a paired host's route) and saves the `.vrma` file ([MCP](mcp/characters.md#motion)).
 
 ## Motions in conversation
 
@@ -200,7 +200,7 @@ pool, kept as a shared `motion` creation and played on the character when it is 
 of the list away from background thinks (its duty is `motions`), and Martlet frees the graphics card three minutes after the
 last motion. Every VRM character on every computer of the account then does a kept motion again by its tag, without this
 role. Martlet also makes five starter motions once (`cheer`, `clap`, `deep_bow`, `stretch` and `facepalm`) when this role is
-first ready. MCP `kept_motions_status` and `kept_motions_check` check that part ([MCP](MCP.md#body-motions)).
+first ready. MCP `kept_motions_status` and `kept_motions_check` check that part ([MCP](mcp/characters.md#body-motions)).
 
 A Live2D character doesn't get `body_motion`: HY-Motion makes motions for a humanoid skeleton, which only VRM models have.
 With a Live2D character, the Motion list stays as it is and is used again when you choose a VRM character. Companion › Motion
