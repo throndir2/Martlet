@@ -70,10 +70,9 @@ public partial class MainWindow
         var (engine, voice) = TouchVoice();
         var sounds = VoiceSounds.Supported(engine);
         var text = VoiceSounds.NoSoundsReason(engine, voice) is { } none
-            ? none.TrimEnd('.') + " (sounds already in a zone's list stay there for a voice that makes them)."
-            : $"Voice sounds: {engine!.Name} makes {string.Join(", ", sounds.Select(t => t.Cue))}; add one with Add a reaction, and " +
-              "Martlet's own voice makes it when the zone is touched (never while Martlet speaks or you talk)" +
-              (engine.Cloud ? $", but {engine.Name} is paid, so a sound is made only when you click \u25B6 on it." : ".");
+            ? none
+            : $"Voice sounds: {engine!.Name} makes {string.Join(", ", sounds.Select(t => t.Cue))}; add one to a zone with Add a reaction" +
+              (engine.Cloud ? $" ({engine.Name} is paid, so a sound is made only when you click \u25B6 on it)." : ".");
         if (conversation?.VoiceSoundsNow is { } status && status.Voice is not null)
         {
             if (status.Making.Count > 0) text += $" Making {string.Join(", ", status.Making)}...";

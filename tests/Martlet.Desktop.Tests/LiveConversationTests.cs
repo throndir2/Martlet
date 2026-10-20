@@ -85,7 +85,7 @@ public sealed class LiveConversationTests
         var route = settings.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
         var disabled = SetupSettings.SetRouteEnabled(settings, SetupRole.Llm, false, true);
         var configuration = LiveConversationConfiguration.From(loaded with { Settings = disabled })!;
-        Assert.Contains("Review Thinking in Companion", configuration.Unavailable(false, false));
+        Assert.Contains("review it in Companion", configuration.Unavailable(false, false));
         var selfHost = SetupSettings.ConfigureGatewayEndpoint(settings with
         {
             Setup = settings.Setup with { Routes = settings.Setup.Routes.Where(item => item.Role != SetupRole.Llm).ToArray() }
@@ -95,7 +95,7 @@ public sealed class LiveConversationTests
             SpkiFingerprint = "sha256:" + new string('a', 64), DeviceRole = "voice"
         }, route.ModelId);
         configuration = LiveConversationConfiguration.From(loaded with { Settings = selfHost })!;
-        Assert.Contains("This setup isn't available", configuration.Unavailable(false, false));
+        Assert.Contains("setup isn't available in this app", configuration.Unavailable(false, false));
 
         // Handed to a paired host on the Devices page: pairing reference, route snapshot and recorded selection.
         var pairingCredential = HostPairingCredential.FromGuid(Guid.NewGuid());
@@ -228,7 +228,7 @@ public sealed class LiveConversationTests
             Assert.Equal(Visibility.Collapsed, Control<Button>(window, "PttButton").Visibility);
             Assert.Equal(Visibility.Visible, Control<Button>(window, "MicChip").Visibility);
             Assert.Equal("Can't listen", window.MicLabel);
-            Assert.Contains("Review Listening", (string)Control<Button>(window, "MicChip").ToolTip, StringComparison.Ordinal);
+            Assert.Contains("review Listening", (string)Control<Button>(window, "MicChip").ToolTip, StringComparison.Ordinal);
             Assert.Empty(window.Messages);
             Click(window, "SendButton"); // An empty message box sends nothing, even through a routed click.
             Click(window, "MicChip");
@@ -2122,7 +2122,7 @@ public sealed class LiveConversationTests
             await Heartbeat();
             Assert.Equal(PlaybackMode.Reply, fixture.Controller.Speaking);
             Assert.Equal(disposals, fixture.Capture.Disposals);
-            Assert.StartsWith("Listening. Martlet listens for you, even while it speaks",
+            Assert.StartsWith("Listening. Martlet listens for you even while it speaks",
                 System.Windows.Automation.AutomationProperties.GetName(Control<Button>(window, "MicChip")));
             // What you say now is heard and shown...
             EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
@@ -2474,7 +2474,7 @@ public sealed class LiveConversationTests
             // Soon after the first failure, then longer with each one in a row; the microphone stays closed for each wait.
             foreach (var (opens, wait) in new[] { (1, 1), (2, 5), (3, 10) })
             {
-                var status = $"Martlet can't open the microphone. Check that it is connected and enabled. Martlet keeps trying every {wait} s.";
+                var status = $"Martlet can't open the microphone; check that it is connected and enabled (Martlet keeps trying every {wait} s).";
                 await fixture.Advance(() => fixture.Capture.Opens == opens && window.Listener?.Retry == TimeSpan.FromSeconds(wait));
                 await Task.Delay(50);
                 fixture.Clock.Advance(TimeSpan.FromSeconds(wait) - TimeSpan.FromMilliseconds(200));
@@ -3403,7 +3403,7 @@ public sealed class LiveConversationTests
             Assert.Equal(2, window.Messages.Count(m => m.Role == ChatRole.Martlet));
             Assert.All(window.Messages.Where(m => m.Role == ChatRole.Martlet), m => Assert.StartsWith("Ivy · ", m.Caption));
             Assert.DoesNotContain(window.Messages, m => (m.Caption + m.Text + m.Note).Contains("Martlet", StringComparison.Ordinal));
-            Assert.Equal("Ivy went quiet about what it sees and hears. It speaks up only for something notable.",
+            Assert.Equal("Ivy went quiet about what it sees and hears and speaks up only for something notable.",
                 LiveConversationWindow.ChattinessSwitched(Chattiness.Normal, Chattiness.Quiet, window.CharacterName));
         }
         finally { window.Close(); }
@@ -3446,7 +3446,7 @@ public sealed class LiveConversationTests
             Assert.Equal(Visibility.Visible, Control<Grid>(window, "TasksPanel").Visibility);
             await Until(() => Find<TextBlock>(window, "LiveJobState-" + first.Id)?.Text == "Comparing the routes.");
             Assert.Equal("the trip plan", Find<TextBlock>(window, "LiveJob-" + first.Id)!.Text);
-            Assert.Equal("Martlet keeps working on these while you talk. Stop (Esc) doesn't end them.",
+            Assert.Equal("Martlet keeps working on these while you talk, and Stop (Esc) doesn't end them.",
                 Control<TextBlock>(window, "JobsText").Text);
 
             // Cancel stops just that task; the list says so and the chip counts what still runs.

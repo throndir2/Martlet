@@ -23,6 +23,7 @@ Each release's section here is also its notes on GitHub.
 ### Changed
 
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
+- The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
 - Home, the welcome tour, the setup advisor and Recommended setup show one short line for each explanation; the rest is behind a **?** with a link to the wiki, which now has those instructions. ([#1051](https://github.com/throndir2/Martlet/pull/1051))
 - New installations start with up-to-date model suggestions: the model list that comes with Martlet is refreshed. ([#1044](https://github.com/throndir2/Martlet/pull/1044))
 - Martlet starts answering sooner: it no longer waits for Home Assistant or for tool servers that are still starting before it answers, and it reads memories and lorebooks at the same time. A tool from a server that is still starting waits for it only when Martlet uses that tool. ([#1037](https://github.com/throndir2/Martlet/pull/1037))

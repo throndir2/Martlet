@@ -291,7 +291,7 @@ public partial class MessageContextWindow : ThemedWindow
         AutomationProperties.SetName(play, "Play the recording");
         play.Click += (_, _) => TogglePlay(play, audio);
         var about = Muted(string.Create(CultureInfo.CurrentCulture,
-            $"{audio.Duration.TotalSeconds:0.0} s, {audio.Format.SampleRate:N0} Hz, mono. It plays on Windows' default speakers."));
+            $"{audio.Duration.TotalSeconds:0.0} s, {audio.Format.SampleRate:N0} Hz, mono, on Windows' default speakers"));
         about.Margin = new Thickness(12, 0, 0, 0);
         about.VerticalAlignment = VerticalAlignment.Center;
         return new StackPanel { Orientation = Orientation.Horizontal, Children = { play, about } };
