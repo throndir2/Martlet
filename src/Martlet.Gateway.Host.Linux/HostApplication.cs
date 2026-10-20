@@ -50,6 +50,9 @@ internal sealed class NativeHostPlatform : IHostPlatform
             {
                 "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
                 "ollama" => new Martlet.Gateway.Ollama.OllamaRelayWorker(role.Endpoint, role.Model),
+                // The Thinking pool on card 1's route, relayed to the owner's own model app (one Thinking pool model per card).
+                HostConfiguration.AppDeepThinkingKind when role.AppPath is { } path =>
+                    Martlet.Gateway.Ollama.OllamaRelayWorker.App(role.Endpoint, path, role.Model),
                 "deep-thinking" or "deep-thinking-2" or "deep-thinking-3" or "deep-thinking-4" => Martlet.Gateway.Ollama.OllamaRelayWorker.DeepThinking(
                     role.Endpoint, role.Model, slots: role.Slots, card: Martlet.Core.Settings.SelfHostSetup.DeepThinkingCardOfRole(role.Kind)!.Value),
                 "f5" => new Martlet.Gateway.F5.F5RelayWorker(role.Endpoint, role.Model),

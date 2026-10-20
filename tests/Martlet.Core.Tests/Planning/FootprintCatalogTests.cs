@@ -57,8 +57,10 @@ public sealed class FootprintCatalogTests
         // so the planner knows its footprint.
         var roles = Directory.GetDirectories(Path.Combine(RepositoryRoot(), "deploy", "host", "roles")).Select(Path.GetFileName).ToList();
         Assert.NotEmpty(roles);
-        // A Thinking pool model on an extra graphics card (deep-thinking-2...) has the deep-thinking role's footprint.
-        foreach (var role in roles.Select(r => Martlet.Core.Settings.SelfHostSetup.DeepThinkingCardOfRole(r) is > 1 ? "deep-thinking" : r))
+        // A Thinking pool model on an extra graphics card (deep-thinking-2...) has the deep-thinking role's footprint. The
+        // deep-thinking-app role runs nothing of Martlet's: its option is the model the owner's own app serves, made when planning.
+        foreach (var role in roles.Where(r => r != NetworkRecommender.AppDeepThinkingRole)
+            .Select(r => Martlet.Core.Settings.SelfHostSetup.DeepThinkingCardOfRole(r) is > 1 ? "deep-thinking" : r))
             Assert.True(Options.Any(o => o.IsLocal && o.HostRoleKind == role), $"No catalog option runs the {role} host role.");
         Assert.All(Options.Where(o => o.HostRoleKind == "ocr"), o => Assert.Equal(PlanComponent.Reading, o.Component));
         Assert.Equal(["ppocrv5-mobile", "ppocrv5-server", "rapidocr-ppocrv4"], Options.Where(o => o.HostRoleKind == "ocr").Select(o => o.ModelId).Order());

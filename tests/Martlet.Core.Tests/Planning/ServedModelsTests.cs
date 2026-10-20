@@ -141,4 +141,55 @@ public sealed class ServedModelsTests
             NetworkRecommender.Recommend(request).Target.Jobs.Select(j => j.OptionId),
             NetworkRecommender.Recommend(request with { ServedModels = [LmStudio("text-embedding-3")] }).Target.Jobs.Select(j => j.OptionId));
     }
+    [Fact]
+    public void A_smarter_model_an_app_on_a_host_serves_takes_that_hosts_thinking_pool_place()
+    {
+        NetworkSetupRequest Request(string? deep, params ServedModel[] served) => new(
+        [
+            new NetworkMachine(new MachineSpecs("pc", "pc") { RamGb = 32, CpuThreads = 16, IsPrimary = true }, NetworkMachineKind.Companion),
+            new NetworkMachine(new MachineSpecs("lab", "lab") { Gpus = [Nvidia(8)], RamGb = 128, CpuThreads = 32, Platform = "linux" },
+                NetworkMachineKind.Host)
+            {
+                HasHostService = true, Roles = deep is null ? [] : [new HostedRolePlacement("deep-thinking", deep, null)]
+            }
+        ]) { VoiceEngine = "chatterbox", Wanted = [PlanComponent.DeepThinking], ServedModels = served };
+        // gpt-oss-120b (in main memory) is smarter than any Thinking pool model an 8 GB card holds.
+        var big = LmStudio("openai/gpt-oss-120b", 63.4, machine: "lab") with { LoadedGb = 0 };
+        var models = ModelCatalog.Build(ModelCatalogStore.Snapshot());
+        var catalog = models.Models.Count == 0 ? FootprintCatalog.Default : FootprintCatalog.FromModels(models);
+
+        var recommendation = NetworkRecommender.Recommend(Request("gemma4:e4b", big), catalog);
+        var change = Assert.Single(recommendation.Changes, c => c.RoleKind == NetworkRecommender.AppDeepThinkingRole);
+        Assert.Equal((SetupChangeKind.AddRole, "lab", "openai/gpt-oss-120b", "gemma4:e4b"), (change.Kind, change.MachineId, change.Model, change.FromModel));
+        Assert.Equal(new Dictionary<string, string> { ["APP_PORT"] = "1234", ["APP_PATH"] = "/v1" }, change.Choices);
+        Assert.DoesNotContain(recommendation.Changes, c => c.RoleKind == "deep-thinking");
+        Assert.Contains("lab", recommendation.Target.ThinkingPool);
+        Assert.Contains("openai/gpt-oss-120b in LM Studio on lab", recommendation.Components.Single(c => c.Component == PlanComponent.DeepThinking).Where);
+
+        // Once the host relays to it (its Deep thinking route runs the app's model), it stays: no change, also with a smarter model.
+        var kept = NetworkRecommender.Recommend(Request("openai/gpt-oss-120b", big), catalog);
+        Assert.DoesNotContain(kept.Changes, c => c.RoleKind is "deep-thinking" or NetworkRecommender.AppDeepThinkingRole);
+        // A model that isn't smarter than what Martlet runs there, a model on another computer, or an embedding model: no relay.
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Request("gemma4:e4b", LmStudio("llama3.2:1b", 1.3, machine: "lab")), catalog).Changes,
+            c => c.RoleKind == NetworkRecommender.AppDeepThinkingRole);
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Request("gemma4:e4b", big with { MachineId = "pc" }), catalog).Changes,
+            c => c.RoleKind == NetworkRecommender.AppDeepThinkingRole);
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Request("gemma4:e4b", LmStudio("text-embedding-3-large", 1, machine: "lab")), catalog).Changes,
+            c => c.RoleKind == NetworkRecommender.AppDeepThinkingRole);
+
+        // The executor installs it with the port and path the change names, and the model through the open model choice.
+        var needs = new SetupRoleNeeds("deep-thinking-app", "")
+        {
+            Choices =
+            [
+                new("APP_PORT", ["1234", "8080"], "1234"), new("APP_PATH", ["/v1", "/api/v1"], "/v1"),
+                new("APP_MODEL", ["model"], "model") { Open = true }
+            ]
+        };
+        var (arguments, problem) = SetupExecutor.Arguments(change, needs, null);
+        Assert.Null(problem);
+        Assert.Equal(("1234", "/v1", "openai/gpt-oss-120b"),
+            (arguments["choice.APP_PORT"], arguments["choice.APP_PATH"], arguments["choice.APP_MODEL"]));
+        Assert.Contains("doesn't offer 9999", SetupExecutor.Arguments(change with { Choices = new Dictionary<string, string> { ["APP_PORT"] = "9999" } }, needs, null).Problem);
+    }
 }

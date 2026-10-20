@@ -35,6 +35,9 @@ public sealed class GatewayServer
     private readonly GatewayOrigin origin;
     private readonly GatewayHttpApplication application;
     private readonly GatewayInferenceRouteRegistry inference;
+
+    /// <summary>The inference routes this server relays (tests reach the served-model look through it).</summary>
+    internal GatewayInferenceRouteRegistry Inference => inference;
     private int started;
 
     public GatewayCredentialStore Credentials { get; }
