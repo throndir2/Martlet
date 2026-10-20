@@ -69,7 +69,9 @@ public sealed class ActiveAppTests
         Assert.Equal(("", false), ActiveApp.Of(0));
         double width = SystemParameters.PrimaryScreenWidth, height = SystemParameters.PrimaryScreenHeight;
         // Borderless and see-through, so nothing shows while the test runs: first over the whole primary monitor, then smaller.
-        foreach (var (covers, left, top, w, h) in new[] { (true, -20.0, -20.0, width + 40, height + 40), (false, 40.0, 40.0, width / 2, height / 2) })
+        // It overshoots each edge only a little: Windows caps a window at about the screen size plus 26 pixels, so a bigger
+        // overshoot leaves the far edges uncovered on a PC with one monitor.
+        foreach (var (covers, left, top, w, h) in new[] { (true, -1.0, -1.0, width + 2, height + 2), (false, 40.0, 40.0, width / 2, height / 2) })
         {
             var window = new Window
             {
