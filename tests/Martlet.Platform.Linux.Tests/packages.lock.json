@@ -100,19 +100,33 @@
       "martlet.companion.platform": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.49.0, )"
+          "Martlet.Core": "[0.89.0, )",
+          "Martlet.HostClient": "[0.89.0, )",
+          "Martlet.Providers": "[0.89.0, )"
         }
       },
       "martlet.core": {
         "type": "Project"
       },
+      "martlet.hostclient": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.89.0, )"
+        }
+      },
       "martlet.platform.linux": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Companion.Platform": "[0.49.0, )",
+          "Martlet.Companion.Platform": "[0.89.0, )",
           "SkiaSharp": "[3.119.4, )",
           "SkiaSharp.NativeAssets.Linux": "[3.119.4, )",
           "Tmds.DBus.Protocol": "[0.94.1, )"
+        }
+      },
+      "martlet.providers": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.89.0, )"
         }
       },
       "SkiaSharp": {

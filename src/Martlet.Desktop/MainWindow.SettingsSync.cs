@@ -426,6 +426,7 @@ public partial class MainWindow
         }
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
         if (applied.Any(a => a.Key is AppSettingsSections.ThinkingPool or AppSettingsSections.ThinkingPoolChoices)) conversation?.ReloadThinkingPool();
+        await FollowSectionsAsync(applied.Select(a => a.Key).ToHashSet(StringComparer.Ordinal));
         await RefreshHomeAsync(SettingsChangeSource.RemoteSync);
         // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
         if (applied.Any(a => a.Key is AppSettingsSections.Thinking or AppSettingsSections.Listening or AppSettingsSections.Speaking))
@@ -440,6 +441,35 @@ public partial class MainWindow
     }
 
     private static string Sentence(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
+    /// <summary>What this PC does after it took the settings with <paramref name="keys"/> from another computer: the sections
+    /// themselves only save files (#955), so the running parts and the pages follow here, once the sync finished.</summary>
+    private async Task FollowSectionsAsync(IReadOnlySet<string> keys)
+    {
+        if (keys.Contains(CharacterActionsKey) && characterActions.Current is not null)
+            await characterActions.LoadAsync(avatar.IsShowing ? avatar.InspectedProfile : homeAvatar, force: true, lifetime.Token);
+        if (keys.Contains(TouchTemperamentKey)) characterTemperaments.Reload();
+        if (keys.Contains(SmartHomeKey) && smartHome.Preferences is { Control: true, ModelTools: true }) mcpTools.EnsureStarted(retry: true);
+        if (keys.Contains(ModelAbilities.SharedKey)) conversation?.ReloadAbilities();
+        if (keys.Contains(PoolSettings.SharedKey))
+        {
+            // Speaking and Listening turn off (or on again) with their lists, as on the computer that changed them; the running
+            // conversation takes the shared Vision and Hearing lists (#805).
+            try
+            {
+                await FollowPoolOnOffAsync(PoolAreas.Speaking, SetupRole.Tts);
+                await FollowPoolOnOffAsync(PoolAreas.Listening, SetupRole.Stt);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException)
+            {
+                ErrorLog.Info($"Pools: couldn't follow the shared lists' on and off here yet: {error.Message}");
+            }
+            conversation?.ReloadSenseModels();
+        }
+        if ((keys.Contains(WorkSharingSettings.SharedKey) || keys.Contains(PoolSettings.SharedKey)) && DevicesPage.IsVisible) RenderWorkSharing();
+        if (keys.Contains(Martlet.Core.Access.OpenAiEndpointSettings.SharedKey) && SharePage.IsVisible) RenderOpenAi();
+        if (keys.Contains(Martlet.Core.Planning.RecommendationPreferences.SharedKey) && SettingsPage.IsVisible) RenderRecommendationPreferences();
+    }
 
     private void ShowSettingsStatus()
     {
@@ -527,21 +557,14 @@ public partial class MainWindow
             SaveTalk(TalkSharing.Follow(Talk, setting.Value));
             return Task.FromResult(SharedApply.Done);
         }, () => TalkSharing.Value(new TalkPreferences()));
-        yield return new DelegateSection(SpeechDisplayKey, "Speech bubbles", _ =>
-        {
-            // Where the bubble sits (beside the character or in one place, and its offsets) depends on this PC's screens, like
-            // the character's own place, so only whether bubbles and subtitles show travels.
-            var path = Path.Combine(directory, SpeechDisplayPreferences.FileName);
-            var prefs = captions.Preferences;
-            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(new SharedSpeechDisplay(prefs.SpeechBubbles, prefs.Subtitles), SharedJson),
-                null, !File.Exists(path), FileTime(path)));
-        }, (setting, _) =>
-        {
-            var value = JsonSerializer.Deserialize<SharedSpeechDisplay>(setting.Value, SharedJson) ?? throw new JsonException();
-            return Task.FromResult(captions.Update(captions.Preferences with { SpeechBubbles = value.SpeechBubbles, Subtitles = value.Subtitles })
-                ? SharedApply.Done : SharedApply.Waiting("They couldn't be saved on this PC."));
-        }, () => JsonSerializer.Serialize(new SharedSpeechDisplay(new SpeechDisplayPreferences().SpeechBubbles, new SpeechDisplayPreferences().Subtitles),
-            SharedJson));
+        // Where the bubble sits (beside the character or in one place, and its offsets) depends on this PC's screens, like the
+        // character's own place, so only whether bubbles and subtitles show travels.
+        var speechPath = Path.Combine(directory, SpeechDisplayPreferences.FileName);
+        yield return FileSection.Json(SpeechDisplayKey, "Speech bubbles", [speechPath],
+            () => new SharedSpeechDisplay(captions.Preferences.SpeechBubbles, captions.Preferences.Subtitles), _ => !File.Exists(speechPath),
+            value => captions.Update(captions.Preferences with { SpeechBubbles = value.SpeechBubbles, Subtitles = value.Subtitles })
+                ? SharedApply.Done : FileSection.NotSaved,
+            new SharedSpeechDisplay(new SpeechDisplayPreferences().SpeechBubbles, new SpeechDisplayPreferences().Subtitles));
         // The owner's custom palette travels before the theme, so a computer that switches to Custom has its colors.
         yield return new DelegateSection(AppearanceCustomKey, "Custom palette", _ =>
         {
@@ -572,30 +595,12 @@ public partial class MainWindow
                 theme == AppearanceTheme.Custom ? Appearance.LoadColors(directory, theme) : characterThemes.Colors(theme));
             return Task.FromResult(SharedApply.Done);
         }, () => JsonSerializer.Serialize(AppearanceTheme.Light.ToString()));
-        yield return new DelegateSection(CharacterActionsKey, "Emotes and motions", _ =>
-        {
-            var path = CharacterActions.Path(directory);
-            return Task.FromResult<SharedLocal?>(new(CharacterActions.Share(directory), null, !CharacterActions.HasAny(directory), FileTime(path)));
-        }, async (setting, token) =>
-        {
-            if (characterActions.Busy) return SharedApply.Waiting("The Thinking model is naming this PC's emotes and motions.");
-            await CharacterActions.ReplaceAllAsync(directory, setting.Value, token);
-            if (characterActions.Current is not null)
-                await characterActions.LoadAsync(avatar.IsShowing ? avatar.InspectedProfile : homeAvatar, force: true, token);
-            return SharedApply.Done;
-        });
-        // Each persona's touch temperament travels with the personas, so every computer's character reacts to touch the same way.
-        yield return new DelegateSection(TouchTemperamentKey, "Touch temperament", _ =>
-        {
-            var path = CharacterTouchTemperaments.Path(directory);
-            return Task.FromResult<SharedLocal?>(new(CharacterTouchTemperaments.Share(directory), null, !CharacterTouchTemperaments.HasAny(directory), FileTime(path)));
-        }, async (setting, token) =>
-        {
-            if (characterTemperaments.Busy) return SharedApply.Waiting("The Thinking model is deciding a touch temperament on this PC.");
-            await CharacterTouchTemperaments.ReplaceAllAsync(directory, setting.Value, token);
-            characterTemperaments.Reload();
-            return SharedApply.Done;
-        }, () => CharacterTouchTemperaments.Share(Path.Combine(directory, AccountWorkingCopy.DirectoryName, "no-temperaments")));
+        // Every model's emotes and motions, and each persona's touch temperament (each person's); this PC reloads them after the
+        // sync (AfterSettingsAppliedAsync).
+        yield return CharacterSharedSections.Actions(directory, new(
+            () => characterActions.Busy ? "The Thinking model is naming this PC's emotes and motions." : null));
+        yield return CharacterSharedSections.TouchTemperaments(directory, new(
+            () => characterTemperaments.Busy ? "The Thinking model is deciding a touch temperament on this PC." : null));
         // What each character model was found or told to be: its touch zones, its eyes' measurement and its VRoid Hub credit, the
         // household's, so a model is found and measured once for every computer; and the character's own changes to its touch
         // reactions, each person's. The pictures stay on the computer that made them.
@@ -608,45 +613,33 @@ public partial class MainWindow
         // Whether Martlet keeps a record of your conversations and may search it on its own: each person's, the same on every
         // computer they are signed in on (the record itself travels as the shared record of conversations).
         if (conversationHistory is { } history)
-            yield return new DelegateSection(ConversationHistoryKey, "Conversation history", _ =>
-            {
-                var path = Path.Combine(directory, ConversationHistoryPreferences.FileName);
-                var prefs = history.Preferences;
-                return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(new SharedConversationHistory(prefs.Keep, prefs.Search), SharedJson),
-                    null, !File.Exists(path), FileTime(path)));
-            }, (setting, _) =>
-            {
-                var value = JsonSerializer.Deserialize<SharedConversationHistory>(setting.Value, SharedJson) ?? throw new JsonException();
-                var next = new ConversationHistoryPreferences(value.Keep, value.Search);
-                if (next == history.Preferences) return Task.FromResult(SharedApply.Done);
-                if (!history.SetPreferences(next)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
-                return Task.FromResult(SharedApply.Done);
-            }, () => JsonSerializer.Serialize(new SharedConversationHistory(true, false), SharedJson));
+        {
+            var historyPath = Path.Combine(directory, ConversationHistoryPreferences.FileName);
+            yield return FileSection.Json(ConversationHistoryKey, "Conversation history", [historyPath],
+                () => new SharedConversationHistory(history.Preferences.Keep, history.Preferences.Search), _ => !File.Exists(historyPath),
+                value =>
+                {
+                    var next = new ConversationHistoryPreferences(value.Keep, value.Search);
+                    return next == history.Preferences || history.SetPreferences(next) ? SharedApply.Done : FileSection.NotSaved;
+                }, new SharedConversationHistory(true, false));
+        }
         // The memory brief travels with each person's settings, so every computer sends the same one; a brief taken from another
         // computer (or another person's, on a switch) goes with messages at once.
         yield return MemoryBriefFile.Section(directory, () => conversation?.MemoryBrief?.Followed());
         // Finding by meaning (on or off, and which embedding model) is the household's choice, the same on every computer; each
         // computer makes its own vectors.
         yield return MeaningSearchFile.Section(directory, () => conversation?.Meaning?.Reload());
-        yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
-            Task.FromResult<SharedLocal?>(localVoices.Available
-                ? new(JsonSerializer.Serialize(new SharedSwitch(localVoices.Enabled), SharedJson), null, localVoices.EnabledChangedAt is null,
-                    localVoices.EnabledChangedAt)
-                : null),
-            (setting, _) =>
+        yield return FileSection.Json(VoiceRecognitionKey, "Recognizing voices", [Path.Combine(directory, Martlet.Core.Speakers.VoiceChoices.RecognitionFile)],
+            () => localVoices.Available ? new SharedSwitch(localVoices.Enabled) : null, _ => localVoices.EnabledChangedAt is null,
+            value =>
             {
-                var value = JsonSerializer.Deserialize<SharedSwitch>(setting.Value, SharedJson) ?? throw new JsonException();
                 if (value.On != localVoices.Enabled) localVoices.SetEnabled(value.On);
-                return Task.FromResult(SharedApply.Done);
+                return SharedApply.Done;
             });
         // Whether Martlet keeps the last few clips of voices the owner hasn't named: the household's privacy choice, the same on
         // every computer. Turning it off anywhere deletes the clips each computer kept.
         if (localVoices.Available)
-            yield return Martlet.Core.Speakers.VoiceChoices.ClipsSection(directory, on =>
-            {
-                localVoices.Clips.SetEnabled(on);
-                Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.People) RenderTab(); });
-            });
+            yield return Martlet.Core.Speakers.VoiceChoices.ClipsSection(directory, localVoices.Clips.SetEnabled);
         yield return new DelegateSection(VoiceIdKey, "Voice ID", _ =>
         {
             if (!voiceIdentity.Available) return Task.FromResult<SharedLocal?>(null);
@@ -673,145 +666,45 @@ public partial class MainWindow
             if (Talk.VoiceId != value.On) SaveTalk(Talk with { VoiceId = value.On });
             return Task.FromResult(SharedApply.Done);
         }, () => JsonSerializer.Serialize(new SharedVoiceId(false, null), SharedJson));
-        yield return new DelegateSection(SmartHomeKey, "Smart home permissions", _ =>
-        {
-            if (!smartHome.Connected) return Task.FromResult<SharedLocal?>(null);
-            var saved = smartHome.Preferences;
-            var value = new SharedHomePermissions(saved.Control, saved.AllowSensitive, saved.ModelTools);
-            // Turning control on with the connection is what connecting does, not a choice of its own.
-            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !saved.AllowSensitive && !saved.ModelTools,
-                smartHome.ChangedAt));
-        }, (setting, _) =>
-        {
-            var value = JsonSerializer.Deserialize<SharedHomePermissions>(setting.Value, SharedJson) ?? throw new JsonException();
-            if (!smartHome.Connected) return Task.FromResult(SharedApply.Waiting("Home Assistant isn't connected on this PC yet."));
-            if (!smartHome.SetControl(value.Control, value.AllowSensitive, value.ModelTools))
-                return Task.FromResult(SharedApply.Waiting("They couldn't be saved on this PC."));
-            if (value.ModelTools && value.Control) mcpTools.EnsureStarted(retry: true);
-            if (SmartHomeCanRender()) RenderTab();
-            return Task.FromResult(SharedApply.Done);
-        });
+        // Turning control on with the connection is what connecting does, not a choice of its own.
+        yield return FileSection.Json(SmartHomeKey, "Smart home permissions", [Path.Combine(directory, Martlet.Home.HomePreferences.FileName)],
+            () => smartHome.Connected ? new SharedHomePermissions(smartHome.Preferences.Control, smartHome.Preferences.AllowSensitive,
+                smartHome.Preferences.ModelTools) : null,
+            value => !value.AllowSensitive && !value.ModelTools,
+            value => !smartHome.Connected ? SharedApply.Waiting("Home Assistant isn't connected on this PC yet.")
+                : smartHome.SetControl(value.Control, value.AllowSensitive, value.ModelTools) ? SharedApply.Done
+                : SharedApply.Waiting("They couldn't be saved on this PC."));
         // Martlet's Discord setup (the bot and its token, the owner, chat modes, channel rules, the people it knows and the call
         // choices that aren't about this PC's devices) is the household's; whether the bot connects here stays with each computer.
         yield return Martlet.Discord.DiscordSharing.Section(directory, new WindowsDiscordTokenVault(settingsVault), discord.Save, discordCalls.Save);
         // Telegram and WhatsApp: the connected bot or number with its secrets, the paired chats and speaking replies aloud; whether
         // Martlet answers them here, and WhatsApp's webhook port, stay with each computer.
         yield return Martlet.Messaging.MessagingSharing.Section(directory, new WindowsMessagingSecretVault(settingsVault), messaging.Follow);
-        yield return new DelegateSection(UpdatesKey, "App updates", _ =>
-        {
-            var value = new SharedUpdates(updateChecksEnabled, updatePreferences.IntervalMinutes, updatePreferences.AutoInstall,
-                updatePreferences.AutoUpdateHosts);
-            var times = new[] { FileTime(Path.Combine(directory, UpdateCheckPreferences.FileName)), FileTime(Path.Combine(directory, UpdatePreferences.FileName)) };
-            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, times.All(t => t is null), times.Max()));
-        }, (setting, _) =>
-        {
-            var value = JsonSerializer.Deserialize<SharedUpdates>(setting.Value, SharedJson) ?? throw new JsonException();
-            if (!UpdatePreferences.Intervals.Contains(value.IntervalMinutes))
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
-            ApplySharedUpdates(value.Checks, new UpdatePreferences
+        yield return FileSection.Json(UpdatesKey, "App updates",
+            [Path.Combine(directory, UpdateCheckPreferences.FileName), Path.Combine(directory, UpdatePreferences.FileName)],
+            () => new SharedUpdates(updateChecksEnabled, updatePreferences.IntervalMinutes, updatePreferences.AutoInstall, updatePreferences.AutoUpdateHosts),
+            _ => FileSection.Changed(Path.Combine(directory, UpdateCheckPreferences.FileName), Path.Combine(directory, UpdatePreferences.FileName)) is null,
+            value =>
             {
-                IntervalMinutes = value.IntervalMinutes, AutoInstall = value.AutoInstall, AutoUpdateHosts = value.AutoUpdateHosts
+                if (!UpdatePreferences.Intervals.Contains(value.IntervalMinutes)) return FileSection.Newer;
+                ApplySharedUpdates(value.Checks, new UpdatePreferences
+                {
+                    IntervalMinutes = value.IntervalMinutes, AutoInstall = value.AutoInstall, AutoUpdateHosts = value.AutoUpdateHosts
+                });
+                return SharedApply.Done;
             });
-            return Task.FromResult(SharedApply.Done);
-        });
-        // What Thinking models were found to hear and see (their servers' metadata, Test hearing, a refused recording): found out
-        // once, on whichever computer, for all of them.
-        yield return new DelegateSection(ModelAbilitiesKey, "What Thinking models hear and see", _ =>
-        {
-            var path = Path.Combine(directory, ModelAbilities.FileName);
-            var saved = ModelAbilities.Load(directory);
-            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.Models.Count == 0, FileTime(path)));
-        }, (setting, _) =>
-        {
-            if (ModelAbilities.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet; update this PC to use it."));
-            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
-            conversation?.ReloadAbilities();
-            return Task.FromResult(SharedApply.Done);
-        });
-        // Devices › Sharing work: which computers each job may go to when the one doing it is busy, in what order, and which
-        // computers are kept for one companion PC. The same on all computers, so every companion PC follows the same rules.
-        yield return new DelegateSection(WorkSharingSettings.SharedKey, "Sharing work", _ =>
-        {
-            var path = Path.Combine(directory, WorkSharingSettings.FileName);
-            var saved = WorkSharingSettings.Load(directory);
-            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
-        }, (setting, _) =>
-        {
-            if (WorkSharingSettings.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet; update this PC to use it."));
-            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
-            if (DevicesPage.IsVisible) RenderWorkSharing();
-            return Task.FromResult(SharedApply.Done);
-        });
-        // Where Martlet makes motions (motion.json: automatic, off or one computer's Motion role), the same on all computers.
-        yield return new DelegateSection(Martlet.Core.Motion.MotionSettings.SharedKey, "Motion", _ =>
-        {
-            var path = Path.Combine(directory, Martlet.Core.Motion.MotionSettings.FileName);
-            var saved = Martlet.Core.Motion.MotionSettings.Load(directory);
-            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
-        }, (setting, _) =>
-        {
-            if (Martlet.Core.Motion.MotionSettings.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
-            return Task.FromResult(shared.Save(directory) ? SharedApply.Done : SharedApply.Waiting("It couldn't be saved on this PC."));
-        });
-        // Share › Share your language models: the address people use and the host the proxy sends it to (openai-endpoint.json),
-        // the same on all computers, so every one of them gives people the same address.
-        yield return new DelegateSection(Martlet.Core.Access.OpenAiEndpointSettings.SharedKey, "Language models address", _ =>
-        {
-            var path = Path.Combine(directory, Martlet.Core.Access.OpenAiEndpointSettings.FileName);
-            var saved = Martlet.Core.Access.OpenAiEndpointSettings.Load(directory);
-            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
-        }, (setting, _) =>
-        {
-            if (Martlet.Core.Access.OpenAiEndpointSettings.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
-            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
-            if (SharePage.IsVisible) RenderOpenAi();
-            return Task.FromResult(SharedApply.Done);
-        });
-        // The recommendation preferences (Recommended setup's Your preferences, Settings): the reply quality, online services,
-        // hearing, the host card share and the two model choices are the same on all computers; each computer's games answer
-        // travels in the same document, by its device ID.
-        yield return new DelegateSection(Martlet.Core.Planning.RecommendationPreferences.SharedKey, "Recommended setup preferences", _ =>
-        {
-            var path = Path.Combine(directory, Martlet.Core.Planning.RecommendationPreferences.FileName);
-            var saved = Martlet.Core.Planning.RecommendationPreferences.Load(directory);
-            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, !Martlet.Core.Planning.RecommendationPreferences.Saved(directory), FileTime(path)));
-        }, (setting, _) =>
-        {
-            if (Martlet.Core.Planning.RecommendationPreferences.Parse(setting.Value) is not { } shared)
-                return Task.FromResult(SharedApply.Waiting("They were chosen on a newer Martlet; update this PC to use them."));
-            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("They couldn't be saved on this PC."));
-            if (SettingsPage.IsVisible) RenderRecommendationPreferences();
-            return Task.FromResult(SharedApply.Done);
-        });
-        // The pool lists of the areas that are the same on all computers (Companion › Voice, Listening, Thinking and the
-        // others): which machines do each area's requests, in order, with each one's settings.
-        yield return new DelegateSection(PoolSettings.SharedKey, "Pools", _ =>
-        {
-            var path = Path.Combine(directory, PoolSettings.FileName);
-            var saved = PoolSettings.Load(directory);
-            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
-        }, async (setting, _) =>
-        {
-            if (PoolSettings.Parse(setting.Value) is not { } shared)
-                return SharedApply.Waiting("It was written by a newer Martlet; update this PC to use it.");
-            if (!shared.Save(directory)) return SharedApply.Waiting("It couldn't be saved on this PC.");
-            // Speaking and Listening turn off (or on again) with their lists, as on the computer that changed them.
-            try
-            {
-                await FollowPoolOnOffAsync(PoolAreas.Speaking, SetupRole.Tts);
-                await FollowPoolOnOffAsync(PoolAreas.Listening, SetupRole.Stt);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException)
-            {
-                ErrorLog.Info($"Pools: couldn't follow the shared lists' on and off here yet: {error.Message}");
-            }
-            if (DevicesPage.IsVisible) RenderWorkSharing();
-            return SharedApply.Done;
-        });
+        // The settings backed by one Core store each: what Thinking models hear and see, Devices › Sharing work, Motion, the
+        // language models address, the recommendation preferences and the shared pool lists. This PC follows them after the sync
+        // (AfterSettingsAppliedAsync).
+        foreach (var section in StoreSections.All(directory)) yield return section;
+        // The API keys of the pool lists' cloud and server members (Speaking, Listening, Picture making, Vision, Hearing; #805).
+        yield return PoolKeyShare.Section(directory, settingsVault);
+        // The custom workflows the Picture making list names, Chatterbox Original's style, the recommended setups you declined,
+        // and each person's check-ins (their scripts stay on the computer where they were written).
+        yield return Martlet.Core.Pictures.PictureWorkflowFiles.Section(directory);
+        yield return ChatterboxStyle.Section(directory);
+        yield return Martlet.Core.Planning.RecommendedSetupMemory.Section(directory);
+        yield return Martlet.Conversation.CheckInSettings.Section(directory, next => SaveCheckIns(next, null));
         // The API keys of Singing's cloud providers (Companion › Singing's lists), so every computer that makes a song can use them.
         yield return new SingingCloudKeys.Section(directory);
     }
@@ -907,11 +800,7 @@ public partial class MainWindow
         return SharedApply.Done;
     }
 
-    private static DateTimeOffset? FileTime(string path)
-    {
-        try { return File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) : null; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
-    }
+    private static DateTimeOffset? FileTime(string path) => FileSection.Changed(path);
 
     /// <summary>Why this PC can't use a shared route yet: Parakeet not downloaded, or Ollama without the model. Null when it
     /// can.</summary>

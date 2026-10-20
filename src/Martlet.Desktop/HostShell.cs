@@ -136,7 +136,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
             try { await execute; }
             catch (OperationCanceledException)
             {
-                output?.Report("Canceled. The host may finish its current step.");
+                output?.Report("Canceled; the host may finish its current step.");
                 throw;
             }
             finally
@@ -265,7 +265,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                     await InstallAsync(mine);
                     installed = true;
                     output?.Report($"Signed in to {target} once with your own SSH key ({string.Join(", ", own.Select(k => k.Name))} in " +
-                        $"{OwnerSsh.Folder}) to add Martlet's key. Martlet doesn't copy or keep your key.");
+                        $"{OwnerSsh.Folder}) to add Martlet's key, without copying or keeping your key.");
                 }
                 catch (SshAuthenticationException) { }
                 catch (Exception error) when (error is not (OperationCanceledException or HostShellException)) { throw trust.Explain(error, target); }
@@ -406,7 +406,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                 var answer = prompts.SudoPassword(target, attempt > 0);
                 if (answer is null)
                 {
-                    output?.Report("No sudo password entered. Steps that need administrator rights will stop.");
+                    output?.Report("No sudo password entered, so steps that need administrator rights will stop.");
                     return null;
                 }
                 (password, remember) = (answer.Password, answer.Remember);

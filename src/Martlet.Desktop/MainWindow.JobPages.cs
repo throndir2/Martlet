@@ -46,18 +46,18 @@ public partial class MainWindow
         else page.Children.Add(WhereItRunsCard(section, section.ToString(), "Where it runs", null, route is null ? null : current, place,
             (JobPlace.ThisPc, "This PC (recommended)", role switch
             {
-                SetupRole.Llm => "Ollama or your own model app, on this PC's graphics card. Private and free.",
-                SetupRole.Tts => "A voice engine on this PC's NVIDIA graphics card, or Chatterbox Nano on the processor. Audio stays here.",
-                _ => "Parakeet on the processor (no setup) or Whisper on the graphics card. Your voice stays here."
+                SetupRole.Llm => "Ollama or your own model app on this PC's graphics card: private and free.",
+                SetupRole.Tts => "A voice engine on this PC's NVIDIA graphics card, or Chatterbox Nano on the processor; audio stays here.",
+                _ => "Parakeet on the processor (no setup) or Whisper on the graphics card; your voice stays here."
             }),
             (JobPlace.Computer, "Another of your computers",
                 $"A paired computer does {job.Job} with its own graphics card, so this PC stays free."),
             (JobPlace.Cloud, "A cloud provider", role switch
             {
-                SetupRole.Llm => "NVIDIA Build (free key), OpenAI, OpenRouter and others. Your messages leave this PC; some charge.",
-                SetupRole.Tts => "OpenAI's voices, or ElevenLabs with your cloned voice. No graphics card needed, but reply text leaves " +
+                SetupRole.Llm => "NVIDIA Build (free key), OpenAI, OpenRouter and others; your messages leave this PC, and some charge.",
+                SetupRole.Tts => "OpenAI's voices, or ElevenLabs with your cloned voice: no graphics card needed, but reply text leaves " +
                     "this PC and requests cost money.",
-                _ => "OpenAI with your API key. Your recordings leave this PC and requests cost money."
+                _ => "OpenAI with your API key; your recordings leave this PC, and requests cost money."
             })));
 
         if (place == JobPlace.ThisPc && role == SetupRole.Llm)
@@ -125,7 +125,7 @@ public partial class MainWindow
         if (section == CompanionTab.Listening)
             page.Children.Add(Card(Heading("Who is talking"),
                 Note(localVoices.Active
-                    ? "Voice recognition is on. Manage known voices on People."
+                    ? "Voice recognition is on; manage known voices on People."
                     : "Turn on voice recognition so Martlet can learn who's speaking.",
                     new Thickness(0, 0, 0, 0)),
                 Row(PageButton("Open People", () => OpenCompanion(CompanionTab.People), link: true, id: "OpenPeople"))));
@@ -152,8 +152,8 @@ public partial class MainWindow
             ? clusterEnabled && clusterPlan.For(job.Job)?.HostId is not null
                 ? "Not set up on this PC yet."
                 : section == CompanionTab.Voice
-                ? "Not chosen yet. Pick a voice engine below."
-                : "Not chosen yet. This PC is recommended below."
+                ? "Not chosen yet: pick a voice engine below."
+                : "Not chosen yet: this PC is recommended below."
             : routeName +
                 VoiceSuffix(route) +
                 (route.Enabled == false ? " (turned off)" : route.Consent is null ? " (not confirmed yet)" : "");
@@ -186,15 +186,17 @@ public partial class MainWindow
         if (section == CompanionTab.Listening && StandInLine(route) is { } standIn) now.Children.Add(standIn);
         if (problem is not null)
         {
-            var warning = new TextBlock { Text = $"Needs attention: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            // The problem shows; the "?" also has what it means for you.
+            var warning = HelpTip.Explain($"Needs attention: {problem.Problem} {problem.Effect}".Trim(), new Thickness(0, 6, 0, 0),
+                "SetupJobProblem-" + section, job.Job, wiki: "Multiple-Computers#when-no-machine-can-do-a-job");
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             now.Children.Add(warning);
         }
         if (section == CompanionTab.Listening && AudioMissing(output: false))
         {
             var mic = new TextBlock { Text = homeSettings?.Audio?.Input.EndpointId is null
-                    ? "No microphone found. Plug one in or type instead."
-                    : "Your chosen microphone isn't connected. Plug it in, pick another or type instead.",
+                    ? "No microphone found: plug one in or type instead."
+                    : "Your chosen microphone isn't connected: plug it in, pick another or type instead.",
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             mic.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             AutomationProperties.SetAutomationId(mic, "ListeningMicMissing");
@@ -239,14 +241,15 @@ public partial class MainWindow
         var device = choice?.EndpointId is null
             ? output ? "your Windows default speakers" : "your Windows default microphone"
             : $"\"{choice.DisplayName}\"";
+        var tested = checkpoint is not null ? $" (tested on {checkpoint.TestedAt.ToLocalTime():d})" : "";
         var text = missing
             ? choice?.EndpointId is null
-                ? output ? "No speakers or headset found. Plug them in or turn them on in Windows Sound settings."
-                    : "No microphone found. Plug one in or turn it on in Windows Sound settings."
-                : $"{device} isn't connected. Plug it in or pick another."
-            : $"Using {device}" + (checkpoint is not null ? $", tested on {checkpoint.TestedAt.ToLocalTime():d}." : ".");
-        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens here when you talk in the talk window."),
-            new Thickness(0, 0, 0, 8));
+                ? output ? "No speakers or headset found: plug them in or turn them on in Windows Sound settings."
+                    : "No microphone found: plug one in or turn it on in Windows Sound settings."
+                : $"{device} isn't connected: plug it in or pick another."
+            : output ? $"Martlet speaks through {device}{tested}."
+            : $"Martlet listens with {device}{tested} when you talk in the talk window.";
+        var line = Note(text, new Thickness(0, 0, 0, 8));
         if (missing) line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         return Card(Heading(what), line,
             Row(PageButton(missing ? $"Fix {what.ToLowerInvariant()}" : $"Test or change {what.ToLowerInvariant()}",
@@ -276,10 +279,10 @@ public partial class MainWindow
         var hosts = paired.Except(unable).ToArray();
         if (hosts.Length == 0)
         {
-            var add = $"Add another computer to run {job} there.";
-            var none = Note(unable.Length > 0 ? $"None of your paired computers can run {engine}. {add}"
-                : exclude is not null ? $"This PC is already selected. {add}"
-                : $"No other computers are paired yet. {add}", new Thickness(0, 0, 0, 8));
+            var add = $"add another computer to run {job} there.";
+            var none = Note(unable.Length > 0 ? $"None of your paired computers can run {engine}, so {add}"
+                : exclude is not null ? $"This PC is already selected, so {add}"
+                : $"No other computers are paired yet, so {add}", new Thickness(0, 0, 0, 8));
             AutomationProperties.SetAutomationId(none, "HostChoices-" + job);
             stack.Add(none);
         }
@@ -291,7 +294,7 @@ public partial class MainWindow
             var detail = owner == host.HostId ? ownerDetail
                 : cannot is not null ? $"Unavailable: {cannot}"
                 : model is not null ? $"Runs {engine} ({HostInputDialog.OptionText(model)})."
-                : check?.Reachable == true ? $"{engine} isn't installed there yet. Martlet can set it up."
+                : check?.Reachable == true ? $"{engine} isn't installed there yet, but Martlet can set it up."
                 : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
@@ -330,10 +333,10 @@ public partial class MainWindow
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
             var offers = check?.Offers?.Keys.Any(k => k == roleKind || HostRoles.Speaks(roleKind) && HostRoles.Speaks(k)) == true;
-            var detail = owner == host.HostId ? ownerDetail + " A friend shares it with this PC."
-                : offers ? $"A friend shares it with this PC. It offers {engine}."
-                : check?.Reachable == true ? $"A friend shares it with this PC, but it doesn't offer {engine}. Only its owner can add it."
-                : check?.Reachable == false ? "A friend shares it with this PC. Not reachable right now." : "A friend shares it with this PC.";
+            var detail = owner == host.HostId ? ownerDetail.TrimEnd('.') + "; a friend shares it with this PC."
+                : offers ? $"A friend shares it with this PC, and it offers {engine}."
+                : check?.Reachable == true ? $"A friend shares it with this PC, but it doesn't offer {engine}, and only its owner can add it."
+                : check?.Reachable == false ? "A friend shares it with this PC, but it isn't reachable right now." : "A friend shares it with this PC.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
             var line = Note(detail, new Thickness(0, 2, 0, 0));
@@ -354,7 +357,9 @@ public partial class MainWindow
             PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: hosts.Length == 0, id: "SetupAddComputer-" + job),
             paired.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job),
             PageButton("Open Devices", () => Navigate(NavDevices), id: "SetupOpenMap-" + job)));
-        stack.Add(Note(disclosure, new Thickness(0, 8, 0, 0)));
+        // What goes to that computer shows; the "?" also has the voice engine's model licence.
+        stack.Add(HelpTip.Explain(disclosure, new Thickness(0, 8, 0, 0), "HostJobData-" + job, $"{job} on your computers",
+            wiki: "Multiple-Computers#hand-a-job-to-another-computer"));
         return Card([.. stack]);
     }
 
@@ -477,26 +482,28 @@ public partial class MainWindow
             InputHint.SetText(key, keySaved ? null : keyHint);
         }
         RefreshKeyMark();
-        var keyStatus = Note(SetAside() ? $"Your {p.Name} key from before is still saved. Leave this empty to use it again, or paste a new key."
-                : keySaved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
+        var keyStatus = Note(SetAside() ? $"Your {p.Name} key from before is still saved: leave this empty to use it again, or paste a new key."
+                : keySaved ? $"Your {p.Name} key is saved: leave this empty to keep it, or paste a new key."
                 : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
-                    ? $"Paste your {p.Name} API key (it starts with nvapi-). Martlet saves it in Windows Credential Manager."
-                : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
+                    ? $"Paste your {p.Name} API key (it starts with nvapi-); Martlet saves it in Windows Credential Manager."
+                : p.NeedsKey ? $"Paste your {p.Name} API key; Martlet saves it in Windows Credential Manager."
                 : "Add a key only if your server needs one.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
         var retired = SameAsSaved() && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId, SavedModelAbilities()) : null;
-        // The recommended model is in the provider's summary above and prefilled; the hint adds only what it doesn't say.
-        var hint = Note(((retired is null ? "" : $"{retired.Server} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
-            (p == OpenAiCloud || p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? ""
+        // The recommended model is in the provider's summary above and prefilled; the hint adds only what it doesn't say. A
+        // retired model says only that, so the line stays one sentence.
+        var hint = Note((retired is not null ? $"{retired.Server} no longer supports {cloudRoute!.ModelId}, so choose another model."
+            : p == OpenAiCloud || p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? ""
             : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? "Any exact OpenRouter model ID works."
             : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
-            : "Use the server's HTTPS base URL and enter the exact model ID. For a model app on this PC (LM Studio, llama.cpp and " +
-                "others), choose This PC › Model app.")).Trim(), new Thickness(0, 4, 0, 0));
+            : "Use the server's HTTPS base URL and its exact model ID; for a model app on this PC (LM Studio, llama.cpp and " +
+                "others), choose This PC › Model app.").Trim(), new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
         if (hint.Text.Length == 0) hint.Visibility = Visibility.Collapsed;
+        // One sentence that names what is sent there and that requests may cost money (OpenAiSetup.Boundary says the same).
         consent.Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-            Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there" +
-                (FreeKeyPrompt.IsFree(p.BaseUrl) ? ". " : ", and requests may cost money. ") + OpenAiSetup.Boundary(role) };
+            Text = $"I choose {p.Name} for {job.Job}, and {Lowered(job.Sent)} will be sent there" +
+                (FreeKeyPrompt.IsFree(p.BaseUrl) ? "." : ", where requests may cost money.") };
         consent.IsChecked = SameAsSaved() && cloudRoute!.Consent is not null;
         modelText.TextChanged += (_, _) => { if (!modelText.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         model.SelectionChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
@@ -549,7 +556,7 @@ public partial class MainWindow
         var role = job.Role;
         // A voice engine Speaking leaves on a host stops there once the cloud voice is saved (asked first, before the key is taken).
         var leaving = role == SetupRole.Tts ? LeavingEngine(null, null) : null;
-        if (leaving is not null && !ConfirmationDialog.Confirm(this, $"Use {provider.Name} for {job.Job}?" + LeavingNote(leaving),
+        if (leaving is not null && !ConfirmationDialog.Confirm(this, $"Use {provider.Name} for {job.Job}{StopsClause([], leaving)}?",
                 $"Use {provider.Name}"))
             return;
         var url = provider.Chat ? provider.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl : null;
@@ -581,8 +588,9 @@ public partial class MainWindow
             if (!await SaveSectionRouteAsync(job, settings => provider.Chat
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
-                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")}" +
-                    (FreeKeyPrompt.IsFree(url) ? "" : " Requests may cost money there."),
+                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)})" +
+                    (key is null ? "" : ", with your API key saved in Windows Credential Manager") +
+                    (FreeKeyPrompt.IsFree(url) ? "." : ", where requests may cost money."),
                 provider.NeedsKey ? missingKey : null))
                 return;
             // A new Thinking model: ask its server how much context it takes, so replies stay within it. Choosing a model Martlet
@@ -659,7 +667,7 @@ public partial class MainWindow
             pendingJobHosts.Remove(role);
             pendingJobVoices.Remove(role);
             RecordClusterJob(job.Job, new(null, false));
-            ActionText.Text = done + (reused ? " It uses the key you saved for it before." : "") + OpenConversationFollows;
+            ActionText.Text = (reused ? done.TrimEnd('.') + " (it uses the key you saved for it before)." : done) + OpenConversationFollows;
             tabPlace.Remove(openTab ?? CompanionTab.Thinking);
             return true;
         }

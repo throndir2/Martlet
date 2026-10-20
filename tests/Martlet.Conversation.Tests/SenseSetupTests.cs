@@ -45,7 +45,8 @@ public sealed class SenseSetupTests : IDisposable
     public void A_damaged_list_file_reads_as_the_text_model_and_is_never_replaced_by_a_new_list()
     {
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, PoolSettings.LocalFileName);
+        // The Vision and Hearing lists are shared (pools.json, #805).
+        var path = Path.Combine(directory, PoolSettings.FileName);
         File.WriteAllText(path, "{ not json");
         Assert.True(new SenseModels { Image = new() { Source = SenseSource.Own, Own = Endpoint("qwen2.5vl:7b") } }.Save(directory));
 

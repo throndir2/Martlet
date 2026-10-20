@@ -99,8 +99,8 @@ public sealed class DeviceCapacityInputsTests
         Assert.Equal(["Room for 2 more Thinking models (Gemma 4 E4B) here.", "Room for another Deep thinking model (Gemma 4 12B) here."], view.AlsoFits);
 
         var network = DeviceCapacityInputs.Network(nodes, machines, plan, Catalog);
-        Assert.Equal("On your computers: Character (This PC), Thinking (gpu-box), Deep thinking (gpu-box). Online: Voice (Example Voice). " +
-            "Not set up: Listening, Lip-sync, Singing, Picture making, Motion.", network.Coverage);
+        Assert.Equal("On your computers: Character (This PC), Thinking (gpu-box), Deep thinking (gpu-box); online: Voice (Example Voice); " +
+            "not set up: Listening, Lip-sync, Singing, Picture making, Motion.", network.Coverage);
         Assert.Equal("Totals across 2 computers: 32 GB graphics memory, 80 GB memory, 40 processor threads, 500 GB free disk.", network.Totals);
         Assert.Equal("Your computers could also run 2 more Thinking models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).", network.Fits);
     }
@@ -147,7 +147,7 @@ public sealed class DeviceCapacityInputsTests
         var current = DeviceCapacityInputs.Current(inputs, nodes, Catalog);
         var plan = PlacementEngine.Measure(new PlanRequest(machines) { Current = current }, Catalog);
         var view = DeviceCapacityInputs.Device(nodes[1], machines, plan, current, Catalog, null)!;
-        Assert.Equal("This device hasn't reported its hardware yet. Use Check connection.", view.Specs);
+        Assert.Equal("This device hasn't reported its hardware yet; use Check connection.", view.Specs);
         Assert.Equal(2, view.Components.Count);
         Assert.Empty(view.AlsoFits);
         Assert.Equal("This device hasn't reported its hardware yet, so Martlet can't tell what is left.", view.Headroom);

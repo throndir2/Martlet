@@ -46,7 +46,8 @@ public sealed record SettingsFile(string FileName, SettingsFileScope Scope, stri
 /// <summary>The settings files and who they belong to: the one list to read before a change adds or moves a setting (AGENTS.md,
 /// "Martlet is one app"). A new settings file gets a row here, a store that owns it, and (when it is not shared) a row in
 /// docs/CLUSTER.md, "What stays with each computer"; <c>SettingsFilesTests</c> checks that they agree. settings.json is not
-/// listed: <see cref="AppSettingsSections"/> splits it into its shared settings.</summary>
+/// listed: <see cref="AppSettingsSections"/> splits it into its shared settings, and on the Linux and macOS companion
+/// <c>CompanionSharedSections</c> (src/Martlet.Companion.Platform) splits that app's own settings.json the same way.</summary>
 public static class SettingsFiles
 {
     public static readonly SettingsFile TalkPreferences = new("talk-preferences.json", SettingsFileScope.Account, SettingScopes.Talk,
@@ -64,6 +65,11 @@ public static class SettingsFiles
         new(RecommendationPreferences.FileName, SettingsFileScope.Shared, RecommendationPreferences.SharedKey,
             "Martlet.Core.Planning.RecommendationPreferences"),
         new(PoolSettings.FileName, SettingsFileScope.Shared, PoolSettings.SharedKey, "Martlet.Core.Cluster.PoolSettings"),
+        new(ThinkingPoolSettings.FileName, SettingsFileScope.Shared, AppSettingsSections.ThinkingPool, "Martlet.Core.Settings.ThinkingPoolSettings",
+            "Paired computers join each computer's pool by themselves, and models in Ollama on this PC are this PC's own"),
+        new(Pictures.PicturesSettings.WorkflowFile, SettingsFileScope.Shared, Pictures.PictureWorkflowFiles.SharedKey, "Martlet.Core.Pictures.PicturesSettings"),
+        new(ChatterboxStyle.FileName, SettingsFileScope.Shared, ChatterboxStyle.SharedKey, "Martlet.Core.Settings.ChatterboxStyle"),
+        new(RecommendedSetupMemory.FileName, SettingsFileScope.Shared, RecommendedSetupMemory.SharedKey, "Martlet.Core.Planning.RecommendedSetupMemory"),
         new(MeaningSearchFile.FileName, SettingsFileScope.Shared, MeaningSearchFile.SharedKey, "Martlet.Core.Settings.MeaningSearchFile"),
         new("character-actions.json", SettingsFileScope.Shared, "character-actions", "Martlet.Avatar.Hosting.CharacterActions"),
         new("character-touch-zones.json", SettingsFileScope.Shared, "character-touch-zones", "Martlet.Avatar.Hosting.CharacterTouchZones"),
@@ -90,6 +96,8 @@ public static class SettingsFiles
             "Martlet.Avatar.Hosting.CharacterTouchTemperaments"),
         new("conversation-history.json", SettingsFileScope.Account, SettingScopes.ConversationHistory,
             "Martlet.Desktop.ConversationHistoryPreferences"),
+        new("check-ins.json", SettingsFileScope.Account, SettingScopes.CheckIns, "Martlet.Conversation.CheckInSettings",
+            "It runs commands as you on this PC, so it is allowed at that PC"),
         new(MemoryBriefFile.FileName, SettingsFileScope.Account, MemoryBriefFile.SharedKey, "Martlet.Core.Settings.MemoryBriefFile"),
         new("voice-id.json", SettingsFileScope.Account, SettingScopes.VoiceId, "Martlet.Desktop.VoiceIdentity"),
         new("avatar.json", SettingsFileScope.Account, SettingScopes.Character, "Martlet.Avatar.Hosting.AvatarProfileStore"),
@@ -97,7 +105,7 @@ public static class SettingsFiles
             "Martlet.Avatar.Hosting.CharacterReactionChanges"),
         new(Lorebooks.LorebookStore.FileName, SettingsFileScope.Account, AppSettingsSections.Lorebooks, "Martlet.Core.Lorebooks.LorebookStore"),
         // This computer's.
-        new(PoolSettings.LocalFileName, SettingsFileScope.Local, null, "Martlet.Core.Cluster.PoolSettings", "Each computer chooses them itself"),
+        new(PoolSettings.LocalFileName, SettingsFileScope.Local, null, "Martlet.Core.Cluster.PoolSettings", "It reads this PC's screen"),
         new(PoolKeys.FileName, SettingsFileScope.Local, null, "Martlet.Core.Cluster.PoolKeys",
             "The keys are in this PC's Windows Credential Manager"),
         new(Singing.SingingKeys.FileName, SettingsFileScope.Local, null, "Martlet.Core.Singing.SingingKeys",
@@ -117,7 +125,7 @@ public static class SettingsFiles
         new("hosts.json", SettingsFileScope.Local, null, "Martlet.Desktop.HostRegistry", "How this computer reaches others, and who may reach it"),
         new("cluster-sync.txt", SettingsFileScope.Local, null, "Martlet.Desktop.ClusterSync", "How this computer reaches others, and who may reach it"),
         new("router-port.json", SettingsFileScope.Local, null, "Martlet.Desktop.RouterPort", "How this computer reaches others, and who may reach it"),
-        new("nearby.txt", SettingsFileScope.Local, null, "Martlet.Desktop.Nearby", "How this computer reaches others, and who may reach it"),
+        new(Network.NearbyChoice.FileName, SettingsFileScope.Local, null, "Martlet.Core.Network.NearbyChoice", "How this computer reaches others, and who may reach it"),
         new("device-role.txt", SettingsFileScope.Local, null, "Martlet.Desktop.DeviceRolePreference", "What this computer is for"),
         new("background.json", SettingsFileScope.Local, null, "Martlet.Desktop.BackgroundPreferences", "How Martlet starts for this Windows user"),
         new(SenseModels.FileName, SettingsFileScope.Local, null, "Martlet.Core.Settings.SenseModels",
@@ -140,7 +148,7 @@ public static class SettingsFiles
     public const string DerivedHere = "Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report";
 
     /// <summary>Files in Martlet's data folder (and on its hosts) that hold no choice of the owner's, so they need no row in
-    /// <see cref="All"/>: what each one is. A file that holds a choice is never listed here; <c>SettingsFilesTests</c> finds every
+    /// <see cref="All"/>: what each one is (status, cache, record, host, package, test, or migration: an older choice read once into a shared list). A file that holds a choice is never listed here; <c>SettingsFilesTests</c> finds every
     /// file name a store declares and checks that it is in one of the two lists.</summary>
     public static IReadOnlyDictionary<string, string> NotSettings { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -173,6 +181,8 @@ public static class SettingsFiles
         ["journal-v3.json"] = "package", ["journal-v4.json"] = "package", ["import-evidence.v1.json"] = "package",
         ["package-owner.v1.json"] = "package", ["package-receipt.v1.json"] = "package", ["whisper-package.v1.json"] = "package",
         ["sbom.cdx.json"] = "package", ["cloudflared.json"] = "package", ["Martlet.VoiceActivity.model-manifest.json"] = "package",
+        // Older choices read once into a shared list or setting, and never written again.
+        ["deep-thinking.json"] = "migration", ["reading.json"] = "migration", ["pictures.json"] = "migration",
         // Checks' own lab files.
         ["role-lab.json"] = "test", ["signin-lab.json"] = "test"
     };

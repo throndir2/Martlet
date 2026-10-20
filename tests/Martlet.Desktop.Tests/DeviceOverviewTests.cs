@@ -49,7 +49,7 @@ public sealed class DeviceOverviewTests
         Assert.Equal(MapSlot.More, DeviceOverview.Slot(more));
         Assert.Equal(MapSlot.Cloud, DeviceOverview.Slot(map[1]));
         Assert.Equal(MapSlot.Add, DeviceOverview.Slot(map[^1]));
-        Assert.Equal("52 devices, 2 need attention. Select one to see details.", DeviceOverview.Summary(nodes));
+        Assert.Equal("52 devices, 2 need attention; select one to see details.", DeviceOverview.Summary(nodes));
     }
 
     [Fact]

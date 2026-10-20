@@ -42,10 +42,10 @@ public sealed class LocalModelAppTests
             new("port-8000", "Model app on port 8000", "http://127.0.0.1:8000/v1", []) { NeedsKey = true }
         ];
         Assert.Equal("Found on this PC: LM Studio at http://127.0.0.1:1234/v1 (3 models); Model app on port 8000 at " +
-            "http://127.0.0.1:8000/v1 (asks for a key). Ollama is running too; choose Ollama above to use it.",
+            "http://127.0.0.1:8000/v1 (asks for a key), and Ollama is running too (choose Ollama above to use it).",
             MainWindow.LocalServersSummary(found, looking: false, ollamaRunning: false));
         Assert.Equal("Looking for model apps on this PC...", MainWindow.LocalServersSummary(null, looking: true, ollamaRunning: false));
-        Assert.StartsWith("No other model app answers on this PC.", MainWindow.LocalServersSummary([], false, false), StringComparison.Ordinal);
+        Assert.StartsWith("No other model app answers on this PC, so start", MainWindow.LocalServersSummary([], false, false), StringComparison.Ordinal);
         Assert.Equal("LM Studio · http://127.0.0.1:1234/v1 · 3 models", MainWindow.LocalServerItem(found[1]));
         Assert.Equal("Model app on port 8000 · http://127.0.0.1:8000/v1 · asks for a key", MainWindow.LocalServerItem(found[2]));
     }

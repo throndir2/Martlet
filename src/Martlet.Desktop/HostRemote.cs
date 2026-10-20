@@ -130,17 +130,16 @@ internal sealed partial class HostRemote(HostShell shell)
     internal static string? Blocker(HostSetupMethod method, HostProbe probe, string target) => method switch
     {
         HostSetupMethod.SshDocker when !probe.Docker && probe.Nas is { } nas =>
-            $"{target} is a {nas} NAS, and Docker is not installed there. Martlet sets up a NAS only in Docker and installs " +
-            $"nothing into the NAS system. {NasDocker(nas)}, then try again.",
+            $"{target} is a {nas} NAS, and Docker is not installed there, which Martlet needs on a NAS: {NasDocker(nas)}, then try again.",
         HostSetupMethod.SshDocker when !probe.Docker =>
             $"Docker is not installed on {target}, and it runs {probe.OperatingSystem ?? "an unknown system"} without systemd " +
-            "(which Martlet needs to set it up without Docker). Install Docker Engine there, then try again.",
+            "(which Martlet needs to set it up without Docker), so install Docker Engine there and try again.",
         HostSetupMethod.SshDocker when !probe.DockerAccess && probe.Sudo == "none" =>
-            $"The account on {target} can't use Docker. Use an account with Docker access or sudo" +
+            $"The account on {target} can't use Docker, so use an account with Docker access or sudo" +
             (probe.Nas is null ? "." : ", such as the NAS's administrator account."),
         HostSetupMethod.SshNative when !probe.Systemd =>
             $"{target} runs {probe.OperatingSystem ?? "an unknown system"} without systemd, which Martlet needs to run the host " +
-            "without Docker. Choose the Docker method instead.",
+            "without Docker, so choose the Docker method instead.",
         _ when probe.Architecture is { } arch && arch is not ("x86_64" or "aarch64" or "arm64") =>
             $"{target} is not a 64-bit Intel, AMD or ARM computer.",
         _ => null
@@ -223,11 +222,11 @@ internal sealed partial class HostRemote(HostShell shell)
     internal static string? OfflineBlocker(HostSetupMethod method, HostVerb verb, string target) => (method, verb) switch
     {
         (_, HostVerb.Add) =>
-            $"{target} can't reach the internet. Martlet sends a computer without internet access what its gateway needs, " +
-            "but not yet the Docker images and models a role needs. Connect it to the internet to add this role.",
+            $"{target} can't reach the internet, and Martlet can't send it the Docker images and models a role needs yet, so " +
+            "connect it to the internet to add this role.",
         (HostSetupMethod.SshDocker, _) =>
-            $"{target} can't reach the internet. Martlet sends what a computer without internet access needs             only to a Linux " +
-                        "host it runs without Docker. Connect it to the internet, or set it up without Docker.",
+            $"{target} can't reach the internet, and Martlet sends what an offline computer needs only to a Linux host it runs " +
+            "without Docker, so connect it to the internet or set it up without Docker.",
         _ => null
     };
 
@@ -293,7 +292,7 @@ internal sealed partial class HostRemote(HostShell shell)
             throw new InvalidOperationException($"{target.SshTarget} couldn't create a pairing code. See the output.");
         var (paired, secret) = await pairing;
         if (result.ExitCode != 0)
-            output.Report($"Paired, but the host reported exit {result.ExitCode} while restarting. Check host status.");
+            output.Report($"Paired, but the host reported exit {result.ExitCode} while restarting, so check host status.");
         return (paired, secret, result.HostKey);
     }
 

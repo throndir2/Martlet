@@ -20,6 +20,14 @@
           "Martlet.Core": "[0.89.0, )"
         }
       },
+      "martlet.companion.platform": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.89.0, )",
+          "Martlet.HostClient": "[0.89.0, )",
+          "Martlet.Providers": "[0.89.0, )"
+        }
+      },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {

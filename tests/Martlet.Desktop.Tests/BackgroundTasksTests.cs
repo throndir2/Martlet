@@ -74,7 +74,7 @@ public sealed class BackgroundTasksTests
             Assert.Equal("test-pc is ready.", Field<TextBlock>(record, "StatusText").Text);
             Assert.Equal("_Close", ById<Button>(record, "HostRunHide").Content);
             Assert.Equal(Visibility.Collapsed, ById<Button>(record, "HostRunCancel").Visibility);
-            Assert.Equal(Visibility.Collapsed, Field<TextBlock>(record, "HideHint").Visibility);
+            Assert.Equal(Visibility.Collapsed, Field<DockPanel>(record, "HideHint").Visibility);
             Click(record, "HostRunHide");
             Assert.False(record.IsVisible);
             Assert.Null(task.Window);

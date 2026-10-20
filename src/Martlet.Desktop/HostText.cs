@@ -89,9 +89,9 @@ internal static class HostPairingCredential
     /// <summary>The desktop log's line for a host whose pairing secret this PC can't read.</summary>
     internal static string MissingText(string hostId, bool paired, CredentialError error) => paired
         ? $"Martlet host {hostId}: this PC's pairing key for it can't be read from Windows Credential Manager ({error}), so jobs " +
-          $"can't run there. Pair {hostId} again (Devices › Add a computer)."
+          $"can't run there until you pair {hostId} again (Devices › Add a computer)."
         : $"Martlet host {hostId}: this PC isn't paired with it now (it was forgotten here or removed from your Martlet network), " +
-          $"so jobs saved for it can't run there. Add {hostId} again (Devices › Add a computer), or choose another computer for them.";
+          $"so jobs saved for it can't run there until you add {hostId} again (Devices › Add a computer) or choose another computer for them.";
 }
 
 /// <summary>Streams replies from a paired host's Ollama through its pinned gateway, reading the pairing secret from
@@ -282,8 +282,8 @@ internal static class HostHearingTest
             if (!route.CarriesAudio)
             {
                 HostAudio.NoteOld(target.HostId);
-                return new(null, $"{server} is older than recordings, so it can't take the test. Update Martlet on {target.HostId}, " +
-                    "then test again.", true);
+                return new(null, $"{server} is older than recordings, so it can't take the test until you update Martlet on " +
+                    $"{target.HostId}.", true);
             }
             var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
             var reply = new System.Text.StringBuilder();

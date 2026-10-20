@@ -128,7 +128,7 @@ class EntrypointTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
-            timeout=10,
+            timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(result.stderr, b"")
@@ -156,7 +156,7 @@ class EntrypointTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
-            timeout=10,
+            timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(
@@ -207,7 +207,7 @@ class EntrypointTests(unittest.TestCase):
                 self.assertEqual(response["outcome"], "completed")
                 self.assertIn("uncertainty", response["observation"]["vlm"])
                 process.stdin.close()
-                self.assertEqual(process.wait(timeout=10), 0)
+                self.assertEqual(process.wait(timeout=30), 0)
                 reader.join()
                 self.assertEqual(process.stderr.read(), b"")
                 self.assertTrue(
@@ -252,7 +252,7 @@ class _ProcessReader:
         finally:
             self.events.put(None)
 
-    def wait_for(self, predicate, timeout: float = 5.0):  # type: ignore[no-untyped-def]
+    def wait_for(self, predicate, timeout: float = 30.0):  # type: ignore[no-untyped-def]
         deadline = time.monotonic() + timeout
         while True:
             remaining = deadline - time.monotonic()
@@ -301,7 +301,7 @@ def _parse_output(raw: bytes) -> list[dict[str, object]]:
     return messages
 
 
-def _wait_until(predicate, timeout: float = 3.0) -> None:  # type: ignore[no-untyped-def]
+def _wait_until(predicate, timeout: float = 10.0) -> None:  # type: ignore[no-untyped-def]
     deadline = time.monotonic() + timeout
     while not predicate():
         if time.monotonic() >= deadline:

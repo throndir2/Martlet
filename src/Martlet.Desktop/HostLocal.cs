@@ -95,8 +95,8 @@ internal static partial class HostLocal
                 else if (probe.Failed && MachineInfo.DockerDesktopRunning())
                 {
                     output.Report(windows.Ready
-                        ? "Martlet finds nothing missing in Windows, so Docker Desktop checked too early. Restarting Docker Desktop..."
-                        : "Docker Desktop gave up starting. Restarting Docker Desktop once in case it checked Windows too early...");
+                        ? "Martlet finds nothing missing in Windows, so Docker Desktop checked too early; restarting Docker Desktop..."
+                        : "Docker Desktop gave up starting; restarting it once in case it checked Windows too early...");
                     desktop.Restarted();
                     restarted = await RestartDockerDesktopAsync(output, token);
                 }
@@ -105,7 +105,7 @@ internal static partial class HostLocal
                     failed => !handled.Contains(failed) && WindowsVirtualization.WindowsCanFix(failed));
                 if (!probe.Answered && probe.Precondition is { } next && !handled.Contains(next) && WindowsVirtualization.WindowsCanFix(next))
                 {
-                    output.Report($"Docker Desktop says \"{next}\". Martlet sets up Windows for it.");
+                    output.Report($"Docker Desktop says \"{next}\", so Martlet sets up Windows for it.");
                     check = next;
                     continue;
                 }
@@ -154,7 +154,7 @@ internal static partial class HostLocal
     {
         Action<string> status = run.Status;
         var (output, token) = (run.Output, run.Token);
-        const string Waiting = "Waiting for Docker Desktop to start. Accept Docker's terms if it asks.";
+        const string Waiting = "Waiting for Docker Desktop to start (accept Docker's terms if it asks)...";
         output.Report("Docker Desktop isn't ready yet: " + probe.Error);
         if (!MachineInfo.DockerDesktopRunning())
         {
@@ -196,7 +196,7 @@ internal static partial class HostLocal
                 output.Report((probe.Precondition is { } check ? $"Docker Desktop says \"{check}\"" : $"Docker Desktop says it is unable to start ({probe.Error})") +
                     (windowsReady
                         ? ", but Martlet finds nothing missing in Windows: Docker Desktop checked too early (before Windows restarted, or while it was still starting)."
-                        : ". Restarting Docker Desktop once in case it checked Windows too early."));
+                        : "; restarting Docker Desktop once in case it checked Windows too early."));
                 status("Restarting Docker Desktop...");
                 // Taken before the restart: "docker desktop restart" waits while the new session runs its start check.
                 desktop.Restarted();
@@ -312,7 +312,7 @@ internal static partial class HostLocal
             {
                 unavailable = true;
                 State = null;
-                output.Report("Docker Desktop can't show status here. Open Docker Desktop for details.");
+                output.Report("Docker Desktop can't show status here; open Docker Desktop for details.");
                 return;
             }
             var now = exit == 0 ? DockerDesktopStatus.Parse(string.Join('\n', lines)) : exit is null ? "no answer" : Shorten(lines.FirstOrDefault() ?? $"exit {exit}");
@@ -360,7 +360,7 @@ internal static partial class HostLocal
         var winget = Winget() ?? throw new InvalidOperationException(
             "App Installer isn't available on this PC, so Martlet can't install Docker Desktop. " +
             "Install Docker Desktop from docker.com, then try again.");
-        status("Installing Docker Desktop. Windows asks for administrator approval; this can take several minutes...");
+        status("Installing Docker Desktop (Windows asks for administrator approval; this can take several minutes)...");
         string[] args = ["install", "--exact", "--id", "Docker.DockerDesktop", "--source", "winget",
             "--accept-package-agreements", "--accept-source-agreements"];
         output.Report("$ winget " + string.Join(' ', args));
@@ -404,8 +404,7 @@ internal static partial class HostLocal
             if (await RunAsync(["image", "inspect", image], null, token) == 0 && (role is null || await KnowsRoleAsync(image, role, token)))
             {
                 output.Report($"Martlet {target.Version}'s host engine isn't prepared on this PC yet, so this runs with the Martlet " +
-                    $"{running} engine this PC's host service runs now instead of waiting for it. The host service is brought to " +
-                    $"{target.Version} afterwards.");
+                    $"{running} engine that this PC's host service runs now, and the host service moves to {target.Version} afterwards.");
                 return current;
             }
         }
@@ -430,7 +429,7 @@ internal static partial class HostLocal
         CancellationToken token)
     {
         if (await RunAsync(["image", "inspect", image], null, token) == 0) return;
-        status("Preparing Martlet host. The first time can take a few minutes...");
+        status("Preparing Martlet host (the first time can take a few minutes)...");
         foreach (var reference in new[] { "v" + target.Version, "main" })
         {
             output.Report($"$ docker build -t {image} -f deploy/host/Dockerfile {HostSetupCommands.Repository}#{reference}");
@@ -506,7 +505,7 @@ internal static partial class HostLocal
         finally { withdraw.TrySetResult(null); }
         if (pairing is null) throw new InvalidOperationException("This PC's host couldn't create a pairing code. See the output.");
         var result = await pairing;
-        if (exit != 0) output.Report($"Paired, but the host reported exit {exit} while restarting. Check the host.");
+        if (exit != 0) output.Report($"Paired, but the host reported exit {exit} while restarting; check the host.");
         return result;
     }
 

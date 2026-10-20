@@ -137,7 +137,7 @@ public partial class MainWindow
         var who = change.Name == change.HostId ? change.HostId : $"{change.Name} ({change.HostId})";
         return change.Kind switch
         {
-            PresenceChangeKind.WentMissing => $"{who} is missing: no answer since {change.At.ToLocalTime():T}. Home says Martlet works with less.",
+            PresenceChangeKind.WentMissing => $"{who} is missing: no answer since {change.At.ToLocalTime():T}, so Martlet works with less (see Home).",
             PresenceChangeKind.StayedAway => $"{who} stayed away for {NodePresenceNotices.Duration(presenceWatch.AwayAfter)}: " +
                 "time to look for a better setup.",
             _ => $"{who} is back: it answers again since {change.At.ToLocalTime():T}."

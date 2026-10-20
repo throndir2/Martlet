@@ -43,7 +43,7 @@ public static class CompanionStatus
     };
 
     public static object Build(CompanionPlatform platform, PlatformInfo info, bool simulated = false,
-        (string File, IReadOnlyList<string> Refusals, CompanionSettings Admitted)? import = null)
+        (string File, IReadOnlyList<string> Refusals, CompanionSettings Admitted)? import = null, string? dataFolder = null)
     {
         var guardrails = new CompanionGuardrails(info);
         return new
@@ -85,6 +85,8 @@ public static class CompanionStatus
             defaults = CompanionSettingsStore.Defaults(guardrails) is var defaults
                 ? new { defaults.Thinking, defaults.Listening, defaults.Speaking, defaults.LipSync, defaults.PushToTalkKey } : null,
             guardrails = guardrails.Describe(),
+            // Shared with the owner's other computers through the paired hosts (docs/CLUSTER.md); never a key.
+            sync = CompanionSync.Describe(dataFolder ?? CompanionSettingsStore.DefaultFolder()),
             import = import is { } imported ? new
             {
                 file = imported.File,
@@ -95,10 +97,10 @@ public static class CompanionStatus
     }
 
     public static string Json(CompanionPlatform platform, PlatformInfo info, bool simulated = false,
-        (string File, IReadOnlyList<string> Refusals, CompanionSettings Admitted)? import = null) =>
-        JsonSerializer.Serialize(Build(platform, info, simulated, import), Options);
+        (string File, IReadOnlyList<string> Refusals, CompanionSettings Admitted)? import = null, string? dataFolder = null) =>
+        JsonSerializer.Serialize(Build(platform, info, simulated, import, dataFolder), Options);
 
-    /// <summary>Runs <c>--status [--as profile] [--import settings.json]</c>; returns the exit code.</summary>
+    /// <summary>Runs <c>--status [--as profile] [--import settings.json] [--data folder]</c>; returns the exit code.</summary>
     public static int Run(string[] args, TextWriter output)
     {
         var platform = PlatformSelector.Create();
@@ -132,7 +134,8 @@ public static class CompanionStatus
                 return 2;
             }
         }
-        output.WriteLine(Json(platform, info, simulated, import));
+        var data = Array.IndexOf(args, "--data") is var d and >= 0 && d + 1 < args.Length ? args[d + 1] : null;
+        output.WriteLine(Json(platform, info, simulated, import, data));
         return 0;
     }
 }

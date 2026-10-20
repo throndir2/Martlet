@@ -305,7 +305,8 @@ public sealed class ConversationHistoryDesktopTests
                 Assert.StartsWith("▶ ", Texts(Control<ListBox>(page, "MessagesList")));
 
                 Click(page, "DeleteButton");
-                await Until(() => history.Store.Stats.Exchanges == 1);
+                // The store changes a moment before the page ends its work; until then it ignores clicks (its buttons are off).
+                await Until(() => history.Store.Stats.Exchanges == 1 && Control<Button>(page, "ShowAllButton").IsEnabled);
                 Assert.Equal(["Delete conversation"], asked);
                 Click(page, "ShowAllButton");
                 Assert.Single(list.Items);

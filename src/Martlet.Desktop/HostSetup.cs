@@ -188,17 +188,17 @@ internal static partial class HostSetupCommands
         var image = Image(target);
         var build = $"docker build -t {image} -f deploy/host/Dockerfile {Repository}#";
         lines.Append("echo Martlet host on this PC (Docker Desktop): ").Append(Engine(action)).Append("\r\n");
-        lines.Append("where docker >NUL 2>&1 || (echo Docker Desktop is not installed. Use Install Docker Desktop in Martlet hosts. & goto :eof)\r\n");
+        lines.Append("where docker >NUL 2>&1 || (echo Docker Desktop is not installed; use Install Docker Desktop in Martlet. & goto :eof)\r\n");
         lines.Append("docker info >NUL 2>&1 && goto :ready\r\n");
-        lines.Append("echo Starting Docker Desktop. The first start can take a few minutes; accept Docker's terms if it asks.\r\n");
+        lines.Append("echo Starting Docker Desktop, which can take a few minutes the first time; accept Docker's terms if it asks.\r\n");
         lines.Append(DockerDesktopStart);
         lines.Append("for /l %%i in (1,1,100) do (\r\n  docker info >NUL 2>&1 && goto :ready\r\n  ping -n 4 127.0.0.1 >NUL\r\n)\r\n");
-        lines.Append("echo Docker Desktop is not running yet. When it shows it is running, press the same button again. & goto :eof\r\n");
+        lines.Append("echo Docker Desktop is not running yet; when it shows it is running, press the same button again. & goto :eof\r\n");
         lines.Append(":ready\r\n");
         lines.Append($"docker image inspect {image} >NUL 2>&1 || {build}v{target.Version} || {build}main\r\n");
         // The owner's click in Martlet is the confirmation (--yes), as for SSH hosts; the console only asks for secrets and choices.
         lines.Append($"docker run --rm -it -u 0 -v {DockerSocket}{Environment(target, action == HostAction.Setup)} {image} --yes {Engine(action)}\r\n");
-        lines.Append("echo.\r\necho Finished. You can close this window.\r\n");
+        lines.Append("echo.\r\necho Finished; you can close this window.\r\n");
         return lines.ToString();
     }
 
@@ -209,7 +209,7 @@ internal static partial class HostSetupCommands
             $"Martlet sends \"{Engine(action)}\" to Martlet on {target.HostId ?? target.Address} through its paired host service; " +
             "Martlet there runs it and its output shows here.",
         HostSetupMethod.OnHost =>
-            "Nothing to type on that PC: install Martlet there and choose Use as a Martlet host. Once paired, this PC sends \"" +
+            "Nothing to type on that PC: install Martlet there and choose Use as a Martlet host, and once it is paired this PC sends \"" +
             Engine(action) + "\" and other commands to Martlet there, which runs them.",
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
             $"Martlet will run this on {target.SshTarget}:\r\n  " +

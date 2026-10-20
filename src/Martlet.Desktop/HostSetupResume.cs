@@ -45,7 +45,7 @@ internal static class HostSetupResume
             InvalidOperationException)
         {
             ErrorLog.Warn("Could not ask Windows to start Martlet at the next sign-in", error);
-            return $"After you sign in again, open Martlet. It will continue {task}.";
+            return $"After you sign in again, open Martlet, and it continues {task}.";
         }
     }
 

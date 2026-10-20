@@ -103,8 +103,8 @@ public static partial class NetworkRecommender
                 var role = Place(fallback, nano, job, benefit, why);
                 voice = nano;
                 Decide(job, node.Id, fallback.Option.Id, why, benefit);
-                Starve(benefit, reason, prefer, $"{room}: Martlet speaks with {where} instead. To use {EngineName} again, free room " +
-                    $"on a computer for it, then choose it in Companion › Voice.", () =>
+                Starve(benefit, reason, prefer, $"{room}: Martlet speaks with {where} instead; to use {EngineName} again, free room " +
+                    $"on a computer for it and choose it in Companion › Voice.", () =>
                     {
                         node.Roles.Remove(role);
                         if (old is not null) node.Pending.Add(old);

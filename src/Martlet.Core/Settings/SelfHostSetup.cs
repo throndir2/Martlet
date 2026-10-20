@@ -94,7 +94,7 @@ public static class SelfHostSetup
         };
 
     public const string Disclosure =
-        "Self-hosted routes stay off until you pair and enable them. Saving settings does not start hosts, downloads or local processes.";
+        "Self-hosted routes stay off until you pair and enable them; saving settings starts no hosts, downloads or local processes.";
 
     internal static void Identifier(string? value, int maximum = 128)
     {

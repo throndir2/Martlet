@@ -125,13 +125,13 @@ internal static class DeviceOverview
         : IsMore(node.Id) ? $"{node.Title}: {node.HealthText}. Opens the list of every device."
         : $"{node.Title}, {node.Subtitle}. {node.HealthText}. Runs: {string.Join(", ", node.Roles.Select(r => r.Name))}";
 
-    /// <summary>"53 devices, 2 need attention. Select one to see details."</summary>
+    /// <summary>"53 devices, 2 need attention; select one to see details."</summary>
     internal static string Summary(IReadOnlyList<NetworkNode> nodes)
     {
         var devices = Devices(nodes);
         var attention = nodes.Count(n => n.Kind is not (NodeKind.Add or NodeKind.Missing) && n.Health == NodeHealth.Attention);
         return $"{devices} device{(devices == 1 ? "" : "s")}" +
-               (attention > 0 ? $", {attention} need{(attention == 1 ? "s" : "")} attention" : "") + ". Select one to see details.";
+               (attention > 0 ? $", {attention} need{(attention == 1 ? "s" : "")} attention" : "") + "; select one to see details.";
     }
 
     /// <summary>"Showing 12 of 53 devices." or why nothing shows.</summary>

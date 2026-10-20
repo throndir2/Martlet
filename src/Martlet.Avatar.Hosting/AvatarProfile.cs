@@ -114,6 +114,25 @@ public sealed class AvatarProfileStore
         FilePath = Path.Combine(dataDirectory, FileName);
     }
 
+    /// <summary>The character profile saved in <paramref name="dataDirectory"/>, whatever application profile it belongs to (for
+    /// read-only checks, such as MCP's); null without a file. Throws <see cref="IOException"/>, <see cref="UnauthorizedAccessException"/>
+    /// or <see cref="ContractException"/> when it can't be read.</summary>
+    public static AvatarProfile? Read(string dataDirectory)
+    {
+        var path = Path.Combine(dataDirectory, FileName);
+        if (!File.Exists(path)) return null;
+        if (new FileInfo(path).Length > AvatarProfile.MaximumBytes)
+            throw new ContractException(ErrorCode.PayloadTooLarge, "The character profile is too large.");
+        return ContractJson.Read<AvatarProfile>(File.ReadAllBytes(path), AvatarProfile.MaximumBytes);
+    }
+
+    /// <summary><see cref="Read"/>, or null when there is no file or it can't be read.</summary>
+    public static AvatarProfile? Peek(string dataDirectory)
+    {
+        try { return Read(dataDirectory); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or System.Text.Json.JsonException) { return null; }
+    }
+
     public async Task<AvatarProfileLoad> LoadAsync(Guid profileId, CancellationToken token = default)
     {
         byte[] bytes;

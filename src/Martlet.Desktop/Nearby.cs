@@ -28,7 +28,7 @@ namespace Martlet.Desktop;
 internal static partial class Nearby
 {
     internal const int Port = 9444;
-    internal const string PreferenceFile = "nearby.txt";
+    internal const string PreferenceFile = Martlet.Core.Network.NearbyChoice.FileName;
     /// <summary>The longest message line of a request: room for the sealed codes and notes of every host a desktop can share.</summary>
     internal const int MaximumLine = 131_072;
     /// <summary>The most hosts one desktop offers: all it can remember (<see cref="HostRegistry.MaximumHosts"/>), so this is no
@@ -66,12 +66,11 @@ internal static partial class Nearby
     /// <summary>On unless nearby.txt says "off".</summary>
     internal static bool LoadEnabled(string directory)
     {
-        try { return File.ReadAllText(Path.Combine(directory, PreferenceFile)).Trim() != "off"; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
+        return Martlet.Core.Network.NearbyChoice.Enabled(directory);
     }
 
     internal static void SaveEnabled(string directory, bool on) =>
-        File.WriteAllText(Path.Combine(directory, PreferenceFile), on ? "on" : "off");
+        Martlet.Core.Network.NearbyChoice.Save(directory, on);
 
     /// <summary>A computer name as other computers see it: printable ASCII, at most 64 characters.</summary>
     internal static string Label(string name)
@@ -507,7 +506,7 @@ internal sealed class NearbyResponder : IDisposable
                 {
                     // Read the asker's first line before answering, so its write is not cut off by this side closing.
                     await channel.ReceiveAsync(TimeSpan.FromSeconds(3), stop.Token);
-                    await channel.SendAsync(new { type = "busy", message = "It is already answering another computer. Try again in a minute." }, stop.Token);
+                    await channel.SendAsync(new { type = "busy", message = "It is already answering another computer, so try again in a minute." }, stop.Token);
                 }
                 catch (Exception error) when (error is IOException or SocketException or JsonException or InvalidDataException or
                     TimeoutException or OperationCanceledException or ObjectDisposedException) { }
@@ -579,7 +578,7 @@ internal sealed class JoinSession
         if (Nearby.Text(hello, "type") != "join") return null;
         if (Nearby.Number(hello, "v") != 1)
         {
-            await channel.SendAsync(new { type = "failed", message = "It runs a different Martlet version. Update both computers, then try again." }, token);
+            await channel.SendAsync(new { type = "failed", message = "It runs a different Martlet version, so update both computers and try again." }, token);
             return null;
         }
         var device = Nearby.Text(hello, "device");
@@ -677,11 +676,11 @@ internal sealed class NearbyJoin : IDisposable
                 try { await client.ConnectAsync(target.Address, Nearby.Port, connect.Token); }
                 catch (OperationCanceledException) when (!token.IsCancellationRequested)
                 {
-                    throw new InvalidOperationException($"Martlet on {target.Name} ({target.Where}) did not answer. Is it still open?");
+                    throw new InvalidOperationException($"Martlet on {target.Name} ({target.Where}) did not answer; is it still open?");
                 }
                 catch (SocketException)
                 {
-                    throw new InvalidOperationException($"Couldn't reach Martlet on {target.Name} ({target.Where}). Is it still open? Find again to refresh the list.");
+                    throw new InvalidOperationException($"Couldn't reach Martlet on {target.Name} ({target.Where}), so check that it is still open and use Find again.");
                 }
             }
             var channel = new JoinChannel(client.GetStream());
