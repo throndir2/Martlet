@@ -601,11 +601,15 @@ didn't answer.
   sign-in and the network roster try a save twice; an API key or account copy
   that still is not saved is saved again at the next sync.
 - **Authority saves.** Each signed request saves its nonce (a one-use request
-  number that stops replays) before it is admitted. Requests that arrive during
-  a save share the next one, and the save runs outside the authority's main
-  lock. The audit's `authority_commits` gives the number of saves and their
-  average and longest time; a save of 50 ms or more is written to the host log.
-  A cancelled request never closes the authority; only a storage failure does.
+  number that stops replays) before it is admitted, with one append and one
+  flush to the store's nonce journal (`nonces.log`), not a full save of the
+  authority. Requests that arrive during a save share the next one, and the
+  save runs outside the authority's main lock. The audit's `nonce_saves` gives
+  the number of nonce saves and their average and longest time;
+  `authority_commits` does the same for full saves (pairing changes, a clean
+  close, and the first request after a damaged journal). A save of 50 ms or
+  more is written to the host log. A cancelled request never closes the
+  authority; only a storage failure does.
 - **Member pairing limits.** Only failed member-pairing proofs count toward the
   limit of 30 a minute, for each source address, so false proofs from one home
   device cannot block real members. A re-pair issues the new credential and
