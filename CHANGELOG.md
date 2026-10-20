@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- On a host PC with several graphics cards, Deep thinking can run a model that no single card has room for: Recommended setup splits it across cards that the conversation doesn't use. ([#1064](https://github.com/throndir2/Martlet/pull/1064))
 - On computers with big graphics cards, Recommended setup gives Deep thinking a bigger, smarter model from Martlet's model catalog when a card has room, and your host PCs can now install any model from the catalog, not only Martlet's short list. Replies stay as fast as before: the conversation keeps its fast model. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - Doctor now warns when Martlet's model catalog hasn't refreshed fully for over a week. ([#1052](https://github.com/throndir2/Martlet/pull/1052))
 - While you play a game, Martlet gets a short *While you play* note (Companion › Prompts) that names the game and keeps what it remembers from that game to that game, and a lorebook entry with the game's name as a keyword joins in on every reply, so you can give Martlet its own instructions for one game. ([#1043](https://github.com/throndir2/Martlet/pull/1043))
