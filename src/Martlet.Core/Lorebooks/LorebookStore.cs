@@ -83,7 +83,7 @@ public sealed class LorebookStore
             var current = await LoadCoreAsync(token).ConfigureAwait(false);
             if (current.Revision != expectedRevision)
                 return new(false, current.Library, current.Revision,
-                    "The lorebooks were changed somewhere else since they were opened. Reload them and make your changes again.");
+                    "The lorebooks were changed somewhere else since they were opened; reload them and make your changes again.");
             return await WriteAsync(library, token).ConfigureAwait(false);
         }
         finally { gate.Release(); }
@@ -141,15 +141,15 @@ public sealed class LorebookStore
             }
             catch (Exception error) when (error is JsonException or ContractException or NotSupportedException)
             {
-                result = Failed($"{FileName} can't be used: {(error is ContractException ? error.Message : "it is not valid lorebook JSON.")} " +
-                    "Fix or remove the file, then reload. Martlet won't overwrite it.", revision);
+                result = Failed($"Fix or remove {FileName}, then reload (Martlet won't overwrite it): " +
+                    (error is ContractException ? error.Message : "it is not valid lorebook JSON."), revision);
             }
             cache = (info.LastWriteTimeUtc, info.Length, result);
             return result;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return Failed($"{FileName} could not be read. Check access to your data folder, then reload.", null);
+            return Failed($"{FileName} could not be read; check access to your data folder, then reload.", null);
         }
     }
 
@@ -161,7 +161,7 @@ public sealed class LorebookStore
         catch (ContractException error) { return new(false, library, null, error.Message); }
         var bytes = JsonSerializer.SerializeToUtf8Bytes(library, Options);
         if (bytes.Length > MaximumFileBytes)
-            return new(false, library, null, $"The lorebooks are too large to save (over {MaximumFileBytes / (1024 * 1024)} MB). Remove some entries.");
+            return new(false, library, null, $"The lorebooks are too large to save (over {MaximumFileBytes / (1024 * 1024)} MB); remove some entries.");
         var path = FilePath;
         var temporary = Path.Combine(DataDirectory, $".{FileName}.{Guid.NewGuid():N}.tmp");
         try
@@ -190,7 +190,7 @@ public sealed class LorebookStore
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new(false, library, null, $"The lorebooks could not be saved to {FileName}. Check access to your data folder and free space, then try again.");
+            return new(false, library, null, $"The lorebooks could not be saved to {FileName}; check access to your data folder and free space.");
         }
         finally
         {

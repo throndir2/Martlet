@@ -96,7 +96,7 @@ public sealed class ThinkingRequestsDesktopTests
         var done = requests.List().Single(r => r.Done);
         Assert.Equal(Output, done.Output);
         Assert.Equal($"Output: {Output.Length} characters.", MainWindow.OutputLine(done));
-        Assert.Equal("Output: none yet. It shows here when the request ends.", MainWindow.OutputLine(requests.List().Single(r => r.Active)));
+        Assert.Equal("Output: none yet; it shows here when the request ends.", MainWindow.OutputLine(requests.List().Single(r => r.Active)));
 
         var cut = requests.Post(new(ThinkingJobKind.Research, ThinkingRequestSource.Conversation, "research-1"));
         cut.Finish(ThinkingRequestState.Succeeded, wasCut: true, text: new string('y', ThinkingRequests.OutputKept + 1));
@@ -107,8 +107,8 @@ public sealed class ThinkingRequestsDesktopTests
         var list = requests.List();
         Assert.Equal($"Output: the first {ThinkingRequests.OutputKept:N0} of {ThinkingRequests.OutputKept + 1:N0} characters, cut at the token limit.",
             MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Research)));
-        Assert.Equal("Output: none. It ended: timed out.", MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Memory)));
-        Assert.Equal("Output: none. The answer was empty.", MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Naming)));
+        Assert.Equal("Output: none; it ended: timed out.", MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Memory)));
+        Assert.Equal("Output: none; the answer was empty.", MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Naming)));
         Assert.All(list, r => Assert.DoesNotContain("picnic", MainWindow.OutputLine(r), StringComparison.Ordinal));
     }
 
@@ -125,9 +125,9 @@ public sealed class ThinkingRequestsDesktopTests
         Assert.Equal($"Input: {waiting.Input!.Length} characters, not sent yet.", MainWindow.InputLine(waiting));
 
         var later = requests.Post(new(ThinkingJobKind.Research, ThinkingRequestSource.Conversation, "research-1"));
-        Assert.Equal("Input: none yet. It shows here when the request is sent.", MainWindow.InputLine(requests.List().Single(r => r.Id == later.Id)));
+        Assert.Equal("Input: none yet; it shows here when the request is sent.", MainWindow.InputLine(requests.List().Single(r => r.Id == later.Id)));
         later.Finish(ThinkingRequestState.Canceled);
-        Assert.Equal("Input: none. It wasn't sent.", MainWindow.InputLine(requests.List().Single(r => r.Id == later.Id)));
+        Assert.Equal("Input: none; it wasn't sent.", MainWindow.InputLine(requests.List().Single(r => r.Id == later.Id)));
         var never = requests.Post(new(ThinkingJobKind.Naming, ThinkingRequestSource.Pool, "naming-1") { Input = ThinkingRequestInput.Of(null, "x") });
         never.Finish(ThinkingRequestState.NoMember);
         Assert.Equal("Input: 11 characters, never sent.", MainWindow.InputLine(requests.List().Single(r => r.Id == never.Id)));

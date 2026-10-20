@@ -25,7 +25,7 @@ public sealed class ThinkingPoolAutoJoinTests
         Assert.Equal(2, member.Slots);
         Assert.Equal(Now, member.ChosenAt);
         member.Validate();
-        Assert.Equal("diva joined the Thinking pool by itself (its Thinking pool role, qwen3:8b, 2 slots). Untick it in Companion › " +
+        Assert.Equal("diva joined the Thinking pool by itself (its Thinking pool role, qwen3:8b, 2 slots); untick it in Companion › " +
             "Thinking pool to keep it out.", result.Why);
     }
 
@@ -120,8 +120,8 @@ public sealed class ThinkingPoolAutoJoinTests
         Assert.Equal([2, 3], result.Pool.Members.Select(m => m.ThinksAtOnce));
         Assert.All(result.Pool.Members, m => { Assert.True(m.OnHostRole); m.Validate(); });
         Assert.Equal(2, result.Changes.Count);
-        Assert.Equal("diva joined the Thinking pool by itself with 2 graphics cards (card 1: qwen3:8b, 2 slots; card 2: qwen3:8b, 3 slots). " +
-            "Untick it in Companion › Thinking pool to keep it out.", result.Why);
+        Assert.Equal("diva joined the Thinking pool by itself with 2 graphics cards (card 1: qwen3:8b, 2 slots; card 2: qwen3:8b, 3 slots); " +
+            "untick it in Companion › Thinking pool to keep it out.", result.Why);
         Assert.Equal("diva's Thinking pool, card 2 (qwen3:8b)", result.Pool.Members[1].Describe());
         // Every member saved before cards had members of their own keeps its key: card 1 is host:diva.
         Assert.Equal("host:diva", DeepThinkingSettings.KeyOf("diva"));

@@ -387,11 +387,11 @@ public sealed class HelperJobsTests
             Place = Martlet.Core.Settings.DeepThinkingPlace.Endpoint, Origin = MainWindow.LocalOllamaBaseUrl, ModelId = "gemma4:e4b"
         };
         var empty = new Martlet.Core.Settings.ThinkingPoolSettings();
-        Assert.Equal("The Thinking pool is off: no machine is on. Thinking longer and research use the conversation model meanwhile. " +
-            "Add a machine below.", ThinkingPoolPageModel.PoolSummary(empty, 0));
+        Assert.Equal("The Thinking pool is off: no machine is on, so thinking longer and research use the conversation model meanwhile; " +
+            "add a machine below.", ThinkingPoolPageModel.PoolSummary(empty, 0));
         var off = empty.Add(local).TurnOff(local.Key);
-        Assert.Equal("The Thinking pool is off: no machine is on. 1 machine is turned off. The conversation model isn't used either, " +
-            "so Martlet doesn't think in the background. Tick On to use one again.",
+        Assert.Equal("The Thinking pool is off: no machine is on and 1 machine is turned off, and the conversation model isn't used either, " +
+            "so Martlet doesn't think in the background; tick On to use one again.",
             ThinkingPoolPageModel.PoolSummary(off with { UseConversationModelWhenEmpty = false }, 0));
         Assert.Equal("1 machine is on, with 2 usable slots in all.", ThinkingPoolPageModel.PoolSummary(off.TurnOn(local.Key), 2));
     }
@@ -400,16 +400,16 @@ public sealed class HelperJobsTests
     public void The_busy_pool_line_says_the_choices_and_counts()
     {
         var pool = new Martlet.Core.Settings.ThinkingPoolSettings();
-        Assert.Equal("More important requests may stop less important ones; a request stopped 3 times becomes more important. " +
-            "A failed request is tried once more.", ThinkingPoolPageModel.PriorityLine(pool, null));
-        Assert.Equal("Requests wait for a free slot and never stop each other. A failed request isn't tried again.",
+        Assert.Equal("More important requests may stop less important ones, and a request stopped 3 times becomes more important; " +
+            "a failed request is tried once more.", ThinkingPoolPageModel.PriorityLine(pool, null));
+        Assert.Equal("Requests wait for a free slot and never stop each other; a failed request isn't tried again.",
             ThinkingPoolPageModel.PriorityLine(pool with { PreemptLowerPriority = false, RetriesOnFailure = 0 }, null));
         var status = new Martlet.Conversation.ThinkingPoolStatus([], 2, 1, false, new Dictionary<string, int>(), new Dictionary<string, int>(), [])
         {
             StoppedForPriority = 4, Raised = 1, Retried = 2
         };
-        Assert.Equal("More important requests may stop less important ones; a request stopped once becomes more important. " +
-            "A failed request is tried up to 5 more times. Since Martlet started: 4 stopped, 1 made more important, 2 tried again.",
+        Assert.Equal("More important requests may stop less important ones, and a request stopped once becomes more important; " +
+            "a failed request is tried up to 5 more times (since Martlet started: 4 stopped, 1 made more important, 2 tried again).",
             ThinkingPoolPageModel.PriorityLine(pool with { RaisePriorityAfterStops = 1, RetriesOnFailure = 5 }, status));
     }
 
