@@ -9725,7 +9725,9 @@ Martlet: `SetupCharacterClickThrough` reads
 `TrayCharacterClickThrough`'s `checkedState` is `On`, and clicking any of them
 turns it off (opened through UI Automation, the overlay menu's
 `CharacterClickThrough` reads *Stop letting clicks pass through* and does the
-same). `SetupCharacterClickThroughNote` says whether it is on, and
+same). `SetupCharacterClickThroughNote` says whether it is on in one sentence
+(its *?* `Help-SetupCharacterClickThroughNote` has the rest and links to the
+wiki's *Move, zoom and lock*), and
 `SetupCharacterView` ends with *Clicks pass through.* when the overlay reports
 it. A newly shown character starts click-through when it is on (after a
 Hide/Show or a restart). The camera view always catches clicks and applies
@@ -10238,7 +10240,19 @@ computer can't make motions). It runs `martlet-host add motion` with the role's
 own dialog (the model and Tencent's license terms), so it needs
 `--allow-ui-effects`, as do the list's On, Up, Down, Remove, Add and kept-for
 choices, which save `pools.json` and share it. `MotionAbout` (fixed text) says
-what the Motion role is.
+in one sentence what the Motion role needs and where its license doesn't apply;
+its *?* `Help-MotionAbout` has the rest. The Companion character pages
+(Character, Speech bubbles, Lip-sync, Motion, Eyes, Touch, Profiles) and the
+Character, Find a character and Personality windows put their longer
+explanations behind *?* marks that link to the wiki's *The Character* and
+*Personality and Characters* pages, such as `Help-SetupCharacterModelAbout`,
+`Help-SpeechBubbleOffsets`, `Help-LipSyncThisPcSetUp`, `Help-MotionWhat`,
+`Help-CharacterGazeUsual`, `Help-TouchZonesStartOver`,
+`Help-TouchTemperamentZones`, `Help-HouseholdCharacters`,
+`Help-AvatarWindowAbout`, `Help-CharacterFinderAbout`,
+`Help-CompanionTextHelp` and `Help-CompanionVoicePauses`. A pool's intro
+(`Pool-<area>-...`) shows its first sentence with the rest behind
+`Help-Pool-<area>-Intro`.
 On Companion › Tools (`CompanionTab-Tools`), the Now line `ToolsNow` comes first, then the Terminal card with
 the page's main choice: the radio buttons `ToolsTerminalOn` (*Let Martlet run terminal commands*) and
 `ToolsTerminalOff` (*Off*, the default) report which one is `selected`, and

@@ -151,7 +151,7 @@ internal sealed class CharacterActionService(string? dataDirectory)
             var named = CharacterActions.Parse(answer, current.Inventory, current.Settings, DateTimeOffset.Now);
             if (named is null)
                 return Report(failure is null
-                    ? "The Thinking model's answer couldn't be read, so the names from the model's files stay. Try again or edit them below."
+                    ? "The Thinking model's answer couldn't be read, so the names from the model's files stay; try again or edit them below."
                     : $"Couldn't ask the Thinking model ({failure}), so the names from the model's files stay.");
             if (await SaveAsync(named, token) is { } why) return Report("The Thinking model named them, but they couldn't be saved: " + why);
             var nameable = CharacterActions.Nameable(current.Inventory);

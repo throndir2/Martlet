@@ -15,7 +15,7 @@ internal static class CustomThemeParts
         (ThemeRoles.Text, "Text", "Most of the text."),
         (ThemeRoles.Muted, "Quiet text", "Hints, details and second lines."),
         (ThemeRoles.Border, "Outlines", "Lines around cards, buttons and boxes."),
-        (ThemeRoles.Accent, "Accent", "Main buttons, selected items, links, icons and headings. The mascot's badge takes its hue."),
+        (ThemeRoles.Accent, "Accent", "Main buttons, selected items, links, icons and headings, and the hue of the mascot's badge."),
         (ThemeRoles.OnAccent, "Text on accent", "Text on main buttons and selected items."),
         (ThemeRoles.Focus, "Focus ring", "The ring around the control the keyboard is on, and around what the mouse points at."),
         (ThemeRoles.Success, "Good news", "Ready and OK states."),

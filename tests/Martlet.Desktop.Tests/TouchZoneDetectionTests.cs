@@ -780,8 +780,8 @@ public sealed class TouchZoneDetectionTests
         var line = await service.DetectAsync(avatar, scope.Profile(), (_, _, _, _, _) => FailsAtThree(++requests), CancellationToken.None);
 
         Assert.Equal(3, requests);
-        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated). Your 7 zones from before are kept. " +
-            "Try again when it answers.", line);
+        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated); your 7 zones from before are kept, " +
+            "so try again when it answers.", line);
         Assert.Equal(line, service.Detection);
         // The zones found until then were saved over the earlier ones as they came; the earlier ones and their picture are back.
         Assert.Equal(Truth.Select(z => z.Id), service.Current!.Zones.Select(z => z.Id));
@@ -807,8 +807,8 @@ public sealed class TouchZoneDetectionTests
 
         var line = await service.DetectAsync(avatar, scope.Profile(), (_, _, _, _, _) => FailsAtThree(++requests), CancellationToken.None);
 
-        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated). The 1 zone found until then is kept. " +
-            "Press Detect again to find the rest.", line);
+        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated); the 1 zone found until then is kept, " +
+            "and Detect again finds the rest.", line);
         Assert.Equal(["nose"], service.Current!.Zones.Select(z => z.Id));
         Assert.Equal(png, File.ReadAllBytes(CharacterTouchZones.SnapshotPath(data, "model-1")));
         Assert.True(service.Sent!.Saved);
@@ -993,8 +993,8 @@ public sealed class TouchZoneDetectionTests
         // A request fails part way: the first guess comes back, with its picture.
         var requests = 0;
         var failed = await service.DetectAsync(avatar, scope.Profile(), (_, _, _, _, _) => FailsAtThree(++requests), CancellationToken.None);
-        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated). The 24 zones of the first guess are kept. " +
-            "Try again when it answers.", failed);
+        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated); the 24 zones of the first guess are kept, " +
+            "so try again when it answers.", failed);
         Assert.Equal(guessed.Zones.Select(z => z.Id), service.Current!.Zones.Select(z => z.Id));
         Assert.Equal(CharacterTouchZoneSettings.ByEstimate, service.Current.DetectedBy);
         Assert.Equal(png, File.ReadAllBytes(service.SnapshotPath!));

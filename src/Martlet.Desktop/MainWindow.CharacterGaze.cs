@@ -43,8 +43,9 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Where the character looks"),
-            Note("What the character's eyes do when nothing else draws them. You can also change it on the character's right-click " +
-                "menu, under Eyes.", new Thickness(0, 0, 0, 8))
+            HelpTip.Explain("What the character's eyes do when nothing else draws them. You can also change it on the character's " +
+                "right-click menu, under Eyes.", new Thickness(0, 0, 0, 8), "CharacterGazeUsual", "where the character looks",
+                wiki: "The-Character#where-the-character-looks")
         };
         var personalityChoice = Choice("CharacterGaze", "As the personality decides (recommended)",
             "Your Thinking model picks it from the personality, with the touch temperament (on the Touch page): " +

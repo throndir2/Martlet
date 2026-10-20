@@ -71,7 +71,7 @@ public sealed class CharacterTouchResetTests : IDisposable
             "the rest you changed for 1 zone: Left cheek"], loses);
         var question = CharacterTouchReset.Question(level, target, loses);
         Assert.Contains("\u2022 The reactions you chose for 2 zones: Hair and Chest.", question);
-        Assert.Contains("You can't undo this.", question);
+        Assert.Contains("You can't undo this;", question);
 
         Assert.Null(await level.Run(target, CancellationToken.None));
         var reset = CharacterTouchZones.Load(directory, "model-1")!;

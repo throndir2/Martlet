@@ -152,7 +152,7 @@ public partial class MainWindow
         var decide = PageButton("Re-decide from personality", () => DecideTemperamentAsync().Forget(), id: "TouchTemperamentDecide");
         decide.IsEnabled = canDecide;
         const string decideHelp = "Sends the persona's personality text to your Thinking model, which decides how the character reacts to " +
-            "touch: actions only, never words. It never asks while Martlet replies. The persona then uses what it decides.";
+            "touch (actions only, never words, and never while Martlet replies).";
         AutomationProperties.SetHelpText(decide, decideHelp);
         decide.ToolTip = decideHelp;
         ToolTipService.SetShowOnDisabled(decide, true);
@@ -235,8 +235,8 @@ public partial class MainWindow
         });
         AutomationProperties.SetName(use, $"The touch temperament {persona.Name} uses");
         AutomationProperties.SetAutomationId(use, "TouchTemperamentUse");
-        use.ToolTip = $"{CharacterTouchTemperaments.OwnLabel}: {persona.Name}'s own, which your Thinking model decides. " +
-            $"{CharacterTouchTemperaments.BuiltInLabel}: each part's built-in reaction. Or one of your custom temperaments.";
+        use.ToolTip = $"{CharacterTouchTemperaments.OwnLabel}: {persona.Name}'s own, from your Thinking model; " +
+            $"{CharacterTouchTemperaments.BuiltInLabel}: each part's built-in reaction; or one of your custom temperaments.";
         use.SelectionChanged += async (_, _) =>
         {
             var index = use.SelectedIndex;
@@ -270,10 +270,10 @@ public partial class MainWindow
                 AfterChange(why, $"Deleted the custom temperament \"{custom.Name}\". {PersonaNames(users)} " +
                     (users.Count == 1 ? "uses its" : "use their") + " own temperament again.");
             }, id: "TouchTemperamentDelete"));
-            delete.ToolTip = "Deletes this custom temperament. Each persona that used it uses its own temperament again.";
+            delete.ToolTip = "Deletes this custom temperament, and each persona that used it uses its own temperament again.";
             AutomationProperties.SetHelpText(delete, (string)delete.ToolTip);
             stack.Add(UseLine("Custom temperament", name, name, rename, delete));
-            var usedBy = Note($"Used by {PersonaNames(users)}. Changing it below changes it for every persona that uses it.", new Thickness(0, 2, 0, 0));
+            var usedBy = Note($"Used by {PersonaNames(users)}, so a change below changes it for each of them.", new Thickness(0, 2, 0, 0));
             AutomationProperties.SetAutomationId(usedBy, "TouchTemperamentCustomUsers");
             stack.Add(usedBy);
         }
@@ -291,11 +291,11 @@ public partial class MainWindow
             await SavePendingAsync();
             var made = newName.Text.Trim();
             var why = await characterTemperaments.CreateCustomAsync(persona.Id, made, lifetime.Token);
-            AfterChange(why, $"Made the custom temperament \"{made}\", a copy of {copied}. {persona.Name} uses it now.");
+            AfterChange(why, $"Made the custom temperament \"{made}\", a copy of {copied}, and {persona.Name} uses it now.");
         }, id: "TouchTemperamentNew"));
         AutomationProperties.SetName(create, "Create a custom temperament");
-        create.ToolTip = $"Makes a custom temperament with this name: a copy of what {persona.Name} uses now. {persona.Name} then uses it, " +
-            "and you can choose it for other personas too.";
+        create.ToolTip = $"Makes a custom temperament with this name, a copy of what {persona.Name} uses now, that {persona.Name} then " +
+            "uses and other personas can choose too.";
         AutomationProperties.SetHelpText(create, (string)create.ToolTip);
         stack.Add(UseLine("New custom temperament", newName, newName, create));
         stack.Add(useState);
@@ -464,12 +464,12 @@ public partial class MainWindow
         stack.Add(escalationRow);
         var steps = temperament?.Escalation ?? new TouchEscalation();
         stack.Add(Note($"Touches are in a row when each comes within {CharacterTouchTemperaments.RepeatWindowSeconds:0} seconds of the one " +
-            $"before. A disliked part then plays {TemperamentRow.Words(steps.Disliked)} first, and a loved part {TemperamentRow.Words(steps.Loved)}.",
+            $"before; a disliked part then plays {TemperamentRow.Words(steps.Disliked)} first, and a loved part {TemperamentRow.Words(steps.Loved)}.",
             new Thickness(0, 4, 0, 0)));
-        stack.Add(Note("Under Touch zones each zone plays its own reaction list. A new zone's list starts from these reactions (Defaults " +
-            "there fills it again); how the persona feels, the linger, the look and the escalation apply to every zone. Intimate parts " +
-            "react only with Include intimate zones on.",
-            new Thickness(0, 10, 0, 0)));
+        stack.Add(HelpTip.Explain("Under Touch zones each zone plays its own reaction list. A new zone's list starts from these reactions " +
+            "(Defaults there fills it again); how the persona feels, the linger, the look and the escalation apply to every zone. " +
+            "Intimate parts react only with Include intimate zones on.",
+            new Thickness(0, 10, 0, 0), "TouchTemperamentZones", "the temperament and touch zones", wiki: "The-Character#touch-temperament"));
         stack.Add(saveState);
         var card = Card([.. stack]);
         card.Unloaded += (_, _) => { if (autoSave is { Pending: true } waiting) waiting.SaveNowAsync().Forget(); };

@@ -28,7 +28,9 @@ public partial class MainWindow
         var resetPosition = showing || avatar.Placement is not null
             ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null;
         var modelCard = Card(Heading("Character model"),
-            Note("Choose a character model, then adjust its size, position and motion. Choices save on their own and a showing character switches right away.", new Thickness(0, 0, 0, 8)),
+            HelpTip.Explain("Choose a character model, then adjust its size, position and motion. Choices save on their own and a showing " +
+                "character switches right away.", new Thickness(0, 0, 0, 8), "SetupCharacterModelAbout", "the character model",
+                wiki: "The-Character#show-and-add-characters"),
             Row(PageButton(showing ? "Hide character" : "Show character", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 resetPosition,
@@ -44,10 +46,10 @@ public partial class MainWindow
             var placementNote = characterPlacementNote = Note(CharacterPlacementText(), new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(placementNote, "SetupCharacterPlacement");
             modelPanel.Children.Add(placementNote);
-            var clickThroughNote = Note(avatar.ClickThrough
+            var clickThroughNote = HelpTip.Explain(avatar.ClickThrough
                 ? "Click-through is on: clicks pass through the character to the windows under it, so you can't drag, zoom or right-click it. Turn it off here or from Martlet's icon in the notification area."
                 : "Click-through is off: the character catches clicks. Turn it on here or from the character's right-click menu to let clicks pass through it, for example while you play a game.",
-                new Thickness(0, 4, 0, 0));
+                new Thickness(0, 4, 0, 0), "SetupCharacterClickThroughNote", "click-through", wiki: "The-Character#move-zoom-and-lock");
             AutomationProperties.SetAutomationId(clickThroughNote, "SetupCharacterClickThroughNote");
             modelPanel.Children.Add(clickThroughNote);
         }
@@ -66,7 +68,8 @@ public partial class MainWindow
             characterViewText = Note("", new Thickness(0, 8, 0, 0));
             AutomationProperties.SetAutomationId(characterViewText, "SetupCharacterView");
             page.Children.Add(Card(Heading("Zoom"),
-                Note("Use the mouse wheel over the character to zoom. Ctrl+drag or middle-drag pans when zoomed in.", new Thickness(0, 0, 0, 0)),
+                HelpTip.Explain("Use the mouse wheel over the character to zoom. Ctrl+drag or middle-drag pans when zoomed in.",
+                    new Thickness(0, 0, 0, 0), "SetupCharacterZoom", "zooming", wiki: "The-Character#move-zoom-and-lock"),
                 Row(PageButton("Zoom in", () => ZoomCharacterAsync("in").Forget(), id: "SetupCharacterZoomIn"),
                     PageButton("Zoom out", () => ZoomCharacterAsync("out").Forget(), id: "SetupCharacterZoomOut")),
                 characterViewText));
@@ -148,9 +151,10 @@ public partial class MainWindow
                 new Thickness(0, 0, 0, 0)),
             new Label { Content = "Bubble _position", Target = bubblePlacementChoice, Padding = new Thickness(0, 12, 0, 4) },
             bubblePlacementChoice, offsets,
-            Note("Following the character, the bubble sits beside its head on whichever side has room, and keeps up as you move or zoom; " +
-                "the offsets nudge it (in pixels, positive is right and down). Staying in one place, the offsets are measured from the " +
-                "top-left of the character's screen.", new Thickness(0, 6, 0, 0)),
+            HelpTip.Explain("The offsets move the bubble in pixels, positive to the right and down. Following the character, the bubble sits " +
+                "beside its head on whichever side has room and keeps up as you move or zoom; staying in one place, the offsets are " +
+                "measured from the top-left of the character's screen.", new Thickness(0, 6, 0, 0), "SpeechBubbleOffsets", "the bubble's offsets",
+                wiki: "The-Character#speech-bubbles-and-subtitles"),
             speechDisplayText, Row(speechPreviewButton));
     }
 
@@ -198,20 +202,20 @@ public partial class MainWindow
         }
         finally { showingSpeechDisplay = false; }
         if (speechPreviewButton is not null) speechPreviewButton.IsEnabled = avatar.IsShowing && prefs.SpeechBubbles;
-        var bubbles = !prefs.SpeechBubbles ? "Speech bubbles are off."
-            : avatar.IsShowing ? "Speech bubbles are on."
-            : "Speech bubbles will appear when the character is showing.";
+        var bubbles = !prefs.SpeechBubbles ? "Speech bubbles are off"
+            : avatar.IsShowing ? "Speech bubbles are on"
+            : "Speech bubbles appear when the character shows";
         var position = prefs.StaticBubble
-            ? $" Bubbles stay in one place, {prefs.BubbleOffsetX:0.##}, {prefs.BubbleOffsetY:0.##} from the top-left of the character's screen."
-            : $" Bubbles follow the character, offset by {prefs.BubbleOffsetX:0.##}, {prefs.BubbleOffsetY:0.##}.";
-        speechDisplayText.Text = $"{bubbles} Subtitles are {(prefs.Subtitles ? "on" : "off")}." + position + (outcome is null ? "" : " " + outcome);
+            ? $"bubbles stay at {prefs.BubbleOffsetX:0.##}, {prefs.BubbleOffsetY:0.##} from the top-left of the character's screen"
+            : $"bubbles follow the character, offset by {prefs.BubbleOffsetX:0.##}, {prefs.BubbleOffsetY:0.##}";
+        speechDisplayText.Text = $"{bubbles}; subtitles are {(prefs.Subtitles ? "on" : "off")}; {position}." + (outcome is null ? "" : " " + outcome);
     }
 
     private async Task PreviewSpeechBubbleAsync()
     {
         var shown = await captions.PreviewAsync("Hi! While I talk, what I say shows up here.");
         if (closing) return;
-        ShowSpeechDisplay(shown is null ? "Couldn't show the preview. Show the character and try again."
+        ShowSpeechDisplay(shown is null ? "Couldn't show the preview; show the character and try again."
             : $"Preview shown {BubbleWhere(shown)}" +
               $"{BubbleTheme(shown, SelectedTheme.Name(), key => TryFindResource(key) as System.Windows.Media.Brush, SystemParameters.HighContrast)}.");
     }
