@@ -40,13 +40,10 @@ document. See [architecture](ARCHITECTURE.md) for contracts and privacy.
 
 ## 1. One Windows golden path
 
-The internal [configuration publisher](../src/Martlet.Host.Setup/README.md#selected-role-configuration-publication-h05c-a)
-binds selected host/owner roles to verified OCI-byte observations and writes
-reviewed owned configuration revisions. Its partial service fragments and
-missing-recipe findings are **not runnable Compose, installation completion or
-runtime permission**. The [next service/recipe and supervision work](../deploy/ubuntu/compose/README.md)
-must supply a real Linux gateway/Ollama path independently of optional F5/STT.
-Permanent device identity remains separate and is never reset by publication.
+Hosts are set up with the [host gateway and its `martlet-host` tool](../deploy/host/README.md).
+An earlier internal configuration publisher, artifact acquisition library and
+Ubuntu Compose plan were removed because no app used them (#1039).
+Permanent device identity remains separate and is never reset by setup.
 
 Target Windows 11 25H2 x64 Home/Pro on a currently serviced patch. Test a clean
 standard-user account with no Git, Python, Node, Docker, developer SDK, or
@@ -453,20 +450,6 @@ size, staging space, rollback retention, and user-data reserve. Metadata can
 inform planning but is not the checksum verification of a downloaded file.
 Unknown expanded/installed/peak quantities must remain unknown, not inferred
 from compressed descriptor bytes.
-
-The focused [acquisition library](../src/Martlet.Host.Setup/README.md)
-separates durable local review from fresh exact-artifact acquisition consent.
-It supports pinned public GitHub release assets through a bounded reviewed CDN
-policy and owned, hash-verified local staging. Its separate image API also
-acquires the current named public Docker Hub Ollama and GHCR F5 candidates,
-exact `linux/amd64`, using scoped anonymous tokens and documented CDN redirects.
-The entire selected image batch is verified before atomic OCI-layout publication;
-original Docker schema-2 bytes and repeated layer order are retained. Deduplication
-is within that batch only, so separate batches may repeat downloads/storage.
-Neither API installs, loads or executes containers. Hugging Face/model downloads
-remain unsupported, so this is not a completed model-provisioning or F5
-installation journey. Catalog inspection, host/runtime qualification and
-permanent device-pairing trust remain unchanged.
 
 | Artifact | Observed upstream metadata / planning treatment |
 | --- | --- |
