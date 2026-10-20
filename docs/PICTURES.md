@@ -7,9 +7,9 @@ full size), keeps it in **Creations** on all your Martlet computers, and shows i
 
 ## Where it draws
 
-Companion › Picture making › *Where it draws* is this PC's own list of places that draw, in order (the Picture making list,
-`pools-local.json` in the data folder; never shared, since which machine is free to draw depends on the computer you talk
-to). The pictures themselves are shared.
+Companion › Picture making › *Where it draws* is the list of places that draw, in order (the Picture making list,
+`pools.json` in the data folder). It is the same on all your computers, with each place's API key and custom workflow;
+*This PC* means each computer's own host service. The pictures themselves are shared too.
 
 The page has the standard order: **Now** (where Martlet draws, with **Check** and **Draw a test picture**), then *Where
 it draws*, the shared pool list ([More than one picture computer](#more-than-one-picture-computer)). Each place in the
@@ -59,8 +59,8 @@ fetches the saved picture. Cancelling the job (the talk window's Cancel) takes i
 
 ### More than one picture computer
 
-Pictures use a list of places, in order (the Pictures pool: `pictures` in `pools-local.json`, this PC's own and never
-shared; see [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A place is Martlet's Picture making role on this
+Pictures use a list of places, in order (the Pictures pool: `pictures` in `pools.json`, the same on all your computers;
+see [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A place is Martlet's Picture making role on this
 PC's host service or on one of your paired computers, a ComfyUI you run at an address, or OpenRouter or NVIDIA Build. Each
 place keeps its own settings: the workflow, the checkpoint and a custom workflow file for ComfyUI, the model for a cloud
 provider. An empty list means pictures are off.

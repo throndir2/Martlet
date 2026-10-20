@@ -1945,9 +1945,10 @@ matter for that question, and Martlet acts on the answer.
 **Built-in check-ins.** The first five, How I react, Unanswered question,
 Quiet moments, Talking to someone else, Describe touches, Think ahead, Act on
 what was said, Callback list and Memory care are on by default. Welcome back and Someone
-else is here, which wait for a signal, are off until you turn them on. The choices are this PC's own
-(`check-ins.json` in the data folder, never shared), because each PC shows its
-own character and runs its own conversation.
+else is here, which wait for a signal, are off until you turn them on. The choices and your own check-ins
+(`check-ins.json` in the data folder) are the same on every computer where you are signed in (the
+`check-ins` shared setting). A check-in's PowerShell script stays on the computer where you wrote it,
+because it runs commands as you on that PC.
 
 | Check-in | Every | Asks, with these facts | Martlet then |
 | --- | --- | --- | --- |

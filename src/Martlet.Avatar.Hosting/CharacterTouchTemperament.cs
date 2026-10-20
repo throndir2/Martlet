@@ -750,9 +750,9 @@ public static class CharacterTouchTemperaments
         try { set = Valid(JsonSerializer.Deserialize<Document>(shared, Json)); }
         catch (Exception error) when (error is JsonException or NotSupportedException)
         {
-            throw new ContractException(ErrorCode.UnsupportedVersion, "They were saved by a newer Martlet. Update this PC to use them.");
+            throw new ContractException(ErrorCode.UnsupportedVersion, "They were saved by a newer Martlet; update this PC to use them.");
         }
-        ContractRules.Require(set is not null, "They were saved by a newer Martlet. Update this PC to use them.", ErrorCode.UnsupportedVersion);
+        ContractRules.Require(set is not null, "They were saved by a newer Martlet; update this PC to use them.", ErrorCode.UnsupportedVersion);
         await Gate.WaitAsync(token);
         try { await WriteAsync(dataDirectory, set! with { Personas = set.Personas.Take(MaximumPersonas).ToArray() }, token); }
         finally { Gate.Release(); }

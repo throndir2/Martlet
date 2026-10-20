@@ -87,6 +87,12 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "martlet.audio": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.88.2, )"
+        }
+      },
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
@@ -97,6 +103,14 @@
         "type": "Project",
         "dependencies": {
           "Martlet.Core": "[0.88.2, )"
+        }
+      },
+      "martlet.conversation": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Audio": "[0.88.2, )",
+          "Martlet.Core": "[0.88.2, )",
+          "Martlet.Providers": "[0.88.2, )"
         }
       },
       "martlet.core": {
@@ -123,6 +137,12 @@
         }
       },
       "martlet.messaging": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.88.2, )"
+        }
+      },
+      "martlet.providers": {
         "type": "Project",
         "dependencies": {
           "Martlet.Core": "[0.88.2, )"

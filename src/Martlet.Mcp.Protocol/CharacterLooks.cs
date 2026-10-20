@@ -140,16 +140,6 @@ internal static class CharacterLooks
 
     private static string? ShownModelPath(string directory)
     {
-        try
-        {
-            var path = Path.Combine(directory, "avatar.json");
-            if (!File.Exists(path) || new FileInfo(path).Length > 1024 * 1024) return null;
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            foreach (var property in document.RootElement.EnumerateObject())
-                if (property.Name.Equals("modelPath", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
-                    return property.Value.GetString();
-            return null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
+        return Martlet.Avatar.Hosting.AvatarProfileStore.Peek(directory)?.ModelPath;
     }
 }

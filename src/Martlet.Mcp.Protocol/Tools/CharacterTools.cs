@@ -450,13 +450,9 @@ internal sealed partial class McpServer
         string? renderer = null;
         if (modelPath is null && directory is not null)
         {
-            try
-            {
-                using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "avatar.json")));
-                modelPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
-                renderer = avatar.RootElement.TryGetProperty("renderer", out var kind) ? kind.ToString() : null;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+            var shown = Martlet.Avatar.Hosting.AvatarProfileStore.Peek(directory);
+            modelPath = shown?.ModelPath;
+            renderer = shown?.Renderer.ToString();
         }
         if (modelPath is null) throw new ArgumentException("Give modelPath (a .model3.json or .vrm), or a dataDirectory whose avatar.json shows one.");
         var vrm = modelPath.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase) || renderer?.Contains("vrm", StringComparison.OrdinalIgnoreCase) == true;
@@ -614,13 +610,8 @@ internal sealed partial class McpServer
         var settingsPath = Path.Combine(directory, "settings.json");
         var settings = File.Exists(settingsPath) ? Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(settingsPath)) : null;
         var companion = settings?.Companion;
-        string? shownPath = null;
-        try
-        {
-            using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "avatar.json")));
-            shownPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+        var shownPath = Martlet.Avatar.Hosting.AvatarProfileStore.Peek(directory)?.ModelPath;
+
         var library = Martlet.Avatar.Hosting.SharedCharacterModels.Load(directory) ?? Martlet.Core.Characters.CharacterModelLibrary.Empty;
         var modelNow = shownPath is null || Martlet.Avatar.Hosting.BundledLive2D.IsBuiltIn(shownPath)
             ? Martlet.Core.Settings.CharacterProfile.BuiltInModel
@@ -671,55 +662,30 @@ internal sealed partial class McpServer
         };
     }
 
-    /// <summary>character-profiles-local.json in a data directory (Martlet.Desktop's CharacterProfileLocalStore): the profile whose
-    /// choices this PC uses (InUse) and what each character profile keeps on this PC, by profile ID: its place (device-independent
-    /// pixels, the monitor and whether it is locked; null without one), its usual gaze (<c>personality</c> or a gaze's word),
-    /// whether replies may change it, and which touches stop it while it talks (<c>any</c>, <c>intimate</c> or <c>never</c>). No
-    /// file means no profile keeps anything here.</summary>
+    /// <summary>character-profiles-local.json in a data directory, read through its store (CharacterProfileLocalStore, built into
+    /// this server from Martlet.Desktop): the profile whose choices this PC uses (InUse) and what each character profile keeps on this
+    /// PC, by profile ID: its place (device-independent pixels, the monitor and whether it is locked; null without one), its usual
+    /// gaze (<c>personality</c> or a gaze's word), whether replies may change it, and which touches stop it while it talks
+    /// (<c>any</c>, <c>intimate</c> or <c>never</c>). No file means no profile keeps anything here.</summary>
     private static (string State, Guid? InUse, Dictionary<Guid, object> Profiles) ProfilesHere(string directory)
     {
-        var path = Path.Combine(directory, "character-profiles-local.json");
-        if (!File.Exists(path)) return ("none", null, []);
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            if (document.RootElement.ValueKind != JsonValueKind.Object ||
-                !document.RootElement.TryGetProperty("Profiles", out var saved) || saved.ValueKind != JsonValueKind.Object)
-                return ("unreadable", null, []);
-            Guid? inUse = document.RootElement.TryGetProperty("InUse", out var used) && used.ValueKind == JsonValueKind.String &&
-                Guid.TryParse(used.GetString(), out var usedId) ? usedId : null;
-            var profiles = new Dictionary<Guid, object>();
-            foreach (var entry in saved.EnumerateObject())
-            {
-                if (!Guid.TryParse(entry.Name, out var id) || entry.Value.ValueKind != JsonValueKind.Object) continue;
-                var kept = entry.Value;
-                object? place = null;
-                if (kept.TryGetProperty("Placement", out var at) && at.ValueKind == JsonValueKind.Object)
-                {
-                    double? Number(string name) => at.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
-                        value.TryGetDouble(out var number) ? number : null;
-                    place = new
-                    {
-                        locked = at.TryGetProperty("Locked", out var locked) && locked.ValueKind == JsonValueKind.True,
-                        left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height"),
-                        screen = at.TryGetProperty("Screen", out var screen) && screen.ValueKind == JsonValueKind.String ? screen.GetString() : null
-                    };
-                }
-                profiles[id] = new
-                {
-                    place,
-                    gaze = kept.TryGetProperty("GazeUsual", out var usual) && usual.ValueKind == JsonValueKind.String ? usual.GetString() : "personality",
-                    gazeFree = !(kept.TryGetProperty("GazeFree", out var free) && free.ValueKind == JsonValueKind.False),
-                    touchInterrupts = kept.TryGetProperty("TouchInterrupts", out var touches) && touches.ValueKind == JsonValueKind.String
-                        ? touches.GetString() : "any"
-                };
-            }
-            return ("loaded", inUse, profiles);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        Martlet.Mcp.Shared.CharacterProfilesHere? here;
+        try { here = Martlet.Mcp.Shared.CharacterProfileLocalStore.Read(directory); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
         {
             return ("unreadable", null, []);
         }
+        if (here is null) return ("none", null, []);
+        var profiles = here.Profiles.ToDictionary(entry => entry.Key, entry => (object)new
+        {
+            place = entry.Value.Placement is { } at
+                ? new { locked = at.Locked, left = (double?)at.Left, top = (double?)at.Top, width = (double?)at.Width, height = (double?)at.Height, screen = at.Screen }
+                : null,
+            gaze = entry.Value.GazeUsual is { } usual ? JsonSerializer.Serialize(usual).Trim('"') : "personality",
+            gazeFree = entry.Value.GazeFree,
+            touchInterrupts = JsonNamingPolicy.CamelCase.ConvertName(entry.Value.TouchInterrupts.ToString())
+        });
+        return ("loaded", here.InUse, profiles);
     }
 
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's
@@ -728,13 +694,8 @@ internal sealed partial class McpServer
     private static object CharacterModels(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
-        string? shownPath = null;
-        try
-        {
-            using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "avatar.json")));
-            shownPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+        var shownPath = Martlet.Avatar.Hosting.AvatarProfileStore.Peek(directory)?.ModelPath;
+
         var path = Path.Combine(directory, Martlet.Avatar.Hosting.SharedCharacterModels.LibraryFile);
         Martlet.Core.Characters.CharacterModelLibrary? library = null;
         string state;
@@ -994,17 +955,14 @@ internal sealed partial class McpServer
         };
 
         object character;
-        var avatar = Path.Combine(directory, "avatar.json");
-        if (!File.Exists(avatar)) character = new { state = "none" };
+        if (!File.Exists(Path.Combine(directory, Martlet.Avatar.Hosting.AvatarProfileStore.FileName))) character = new { state = "none" };
         else
         {
             try
             {
-                using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(avatar, cancellation));
-                var root = document.RootElement;
-                string? Text(JsonElement parent, string name) =>
-                    parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                var model = Text(root, "model_path") ?? "";
+                // avatar.json through its store (Martlet.Avatar.Hosting.AvatarProfileStore).
+                var shown = Martlet.Avatar.Hosting.AvatarProfileStore.Read(directory)!;
+                var model = shown.ModelPath;
                 const string builtIn = "builtin:";
                 character = new
                 {
@@ -1013,13 +971,13 @@ internal sealed partial class McpServer
                     builtInCharacter = model.StartsWith(builtIn, StringComparison.Ordinal) ? model[builtIn.Length..] : null,
                     ownModelType = model.StartsWith(builtIn, StringComparison.Ordinal) ? null
                         : model.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase) ? ".model3.json" : Path.GetExtension(model).ToLowerInvariant(),
-                    renderer = Text(root, "renderer"),
-                    lipSync = Text(root, "lip_sync") ?? "auto",
-                    autoShow = root.TryGetProperty("auto_show", out var show) && show.ValueKind == JsonValueKind.True,
-                    lipSyncHost = root.TryGetProperty("remote_host", out var host) && host.ValueKind == JsonValueKind.Object ? Text(host, "host_id") : null
+                    renderer = shown.Renderer.ToString().ToLowerInvariant(),
+                    lipSync = shown.LipSync.ToString().ToLowerInvariant(),
+                    autoShow = shown.AutoShow,
+                    lipSyncHost = shown.RemoteHost?.HostId
                 };
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or Martlet.Core.Contracts.ContractException)
             {
                 character = new { state = "unreadable", problem = error.GetType().Name };
             }

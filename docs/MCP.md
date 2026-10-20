@@ -775,7 +775,7 @@ audio), `MessageContextCopyAll` (the clipboard) and choosing a request with
 Thinking, the text model, writes every reply. Pictures and recordings go to it,
 or to an image or audio model of their own that puts them into words for it
 ([Image and audio models](SENSE_MODELS.md)). `sense_models_status`
-(`dataDirectory`) reads the Vision and Hearing lists (`pools-local.json`; `file`
+(`dataDirectory`) reads the Vision and Hearing lists (`pools.json`, shared; `file`
 is `lists`, or before the desktop made them `loaded` for `sense-models.json`,
 `none` or `unreadable`; it never makes them): for each kind its `list` as saved
 (each member's `position`, `key`, `kind`, `on`, `model`, `engine`, `mayReceive`
@@ -1217,7 +1217,7 @@ lines (where, size, seconds; never the description).
 
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
-its Picture making list as `pool` (`pools-local.json`: `configured`, `off`, each
+its Picture making list as `pool` (`pools.json`, shared: `configured`, `off`, each
 member's `key`, `kind`, `name`, `settings`, `consented`, `ownKeySaved` and the
 `place` it reads as; without a list yet, the list the desktop would make from
 `pictures.json`) and `tries` (the places a picture tries now, in order),

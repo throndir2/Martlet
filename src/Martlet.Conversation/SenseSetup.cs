@@ -6,8 +6,8 @@ namespace Martlet.Conversation;
 /// <summary>This PC's image and audio models as the lists on Companion › Vision and Companion › Hearing say
 /// (<see cref="SenseLists"/>): each kind's places in order (<see cref="Image"/>, <see cref="Audio"/>), its list
 /// (<see cref="ImageList"/>, <see cref="AudioList"/>; null before it has one) and the choices <see cref="SenseRouting"/> reads
-/// (<see cref="Senses"/>). <see cref="State"/>: <c>lists</c> (from pools-local.json), <c>sense-models</c> (no list yet, so
-/// sense-models.json), <c>none</c> (neither) or <c>unreadable</c> (pools-local.json is a newer Martlet's or damaged; the text model
+/// (<see cref="Senses"/>). <see cref="State"/>: <c>lists</c> (from pools.json, shared by all the owner's computers), <c>sense-models</c> (no list yet, so
+/// sense-models.json), <c>none</c> (neither) or <c>unreadable</c> (pools.json is a newer Martlet's or damaged; the text model
 /// takes both).</summary>
 public sealed record SenseSetup(SenseModels Senses, IReadOnlyList<DeepThinkingSettings> Image, IReadOnlyList<DeepThinkingSettings> Audio,
     PoolList? ImageList, PoolList? AudioList, string State)
@@ -31,7 +31,7 @@ public sealed record SenseSetup(SenseModels Senses, IReadOnlyList<DeepThinkingSe
     public static SenseSetup Load(string? directory, string device, ModelAbilities? abilities, bool migrate, Func<string, SenseHost?>? hosts = null)
     {
         if (directory is null) return new(new(), [], [], null, null, "none");
-        var path = Path.Combine(directory, PoolSettings.LocalFileName);
+        var path = Path.Combine(directory, PoolSettings.File(PoolAreas.Vision.Shared));
         try
         {
             if (File.Exists(path) && PoolSettings.Parse(File.ReadAllText(path)) is null) return new(new(), [], [], null, null, "unreadable");

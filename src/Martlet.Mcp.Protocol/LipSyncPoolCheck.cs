@@ -63,19 +63,13 @@ internal static class LipSyncPoolCheck
     // avatar.json: whether it exists, its lip-sync mode (auto, loudness or audio2face) and the host it names.
     private static (string State, string Mode, string? Host) Avatar(string dataDirectory)
     {
-        var path = Path.Combine(dataDirectory, "avatar.json");
-        if (!File.Exists(path)) return ("none", "auto", null);
+        if (!File.Exists(Path.Combine(dataDirectory, Martlet.Avatar.Hosting.AvatarProfileStore.FileName))) return ("none", "auto", null);
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            var root = document.RootElement;
-            var mode = root.TryGetProperty("lip_sync", out var value) && value.ValueKind == JsonValueKind.String
-                ? value.GetString()!.ToLowerInvariant() : "auto";
-            var host = root.TryGetProperty("remote_host", out var remote) && remote.ValueKind == JsonValueKind.Object &&
-                remote.TryGetProperty("host_id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null;
-            return ("loaded", mode, host);
+            var shown = Martlet.Avatar.Hosting.AvatarProfileStore.Read(dataDirectory)!;
+            return ("loaded", shown.LipSync.ToString().ToLowerInvariant(), shown.RemoteHost?.HostId);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or Martlet.Core.Contracts.ContractException)
         {
             return ("unreadable", "auto", null);
         }

@@ -63,7 +63,7 @@ public static class VoiceChoices
         (setting, _) =>
         {
             if (Parse(setting.Value) is not { } on)
-                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
             if (on == KeepClips(directory)) return Task.FromResult(SharedApply.Done);
             try
             {

@@ -91,9 +91,9 @@ image model and Companion › Hearing for the audio model
   paired computer and model) counts as the text model.
 - To use one model for both kinds, put it in both lists. Both kinds then share
   that model's one job line.
-- The lists belong to this PC (`pools-local.json`, areas `vision` and
-  `hearing`). They are never shared, because the models that fit beside
-  Thinking depend on the computer.
+- The lists are the same on all your computers (`pools.json`, areas `vision`
+  and `hearing`), with each member's API key. *This PC* means each computer's
+  own Ollama, so a computer without that model passes it over.
 - A paired computer's model now takes recordings too: its gateway hands them
   to its Ollama. A computer with a Martlet older than recordings gets none
   until it is updated.
@@ -649,8 +649,8 @@ computer that the conversation shares stops when a reply starts.
 
 ## Files
 
-The Vision and Hearing lists are in `pools-local.json` (this PC's own; never
-shared), areas `vision` and `hearing`. A member's model is its `model` setting
+The Vision and Hearing lists are in `pools.json` (shared by all your computers;
+a list kept in `pools-local.json` before moves there), areas `vision` and `hearing`. A member's model is its `model` setting
 (a cloud member's is part of the member), a computer's engine its `engine`
 setting (`deep-thinking`, the default, or `ollama`), and a server's
 permission its `media` setting (`allowed`):

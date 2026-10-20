@@ -13,6 +13,8 @@
     <ProjectReference Include="..\..\src\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Discord\Martlet.Discord.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Messaging\Martlet.Messaging.csproj" />
+    <!-- The shared check-ins (SharedListsTwoComputersTests). -->
+    <ProjectReference Include="..\..\src\Martlet.Conversation\Martlet.Conversation.csproj" />
     <Using Include="Xunit" />
     <None Include="..\..\contracts\golden\**\*.json" Link="golden\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

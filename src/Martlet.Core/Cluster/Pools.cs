@@ -225,12 +225,12 @@ public static class PoolAreas
     };
     /// <summary>Picture making (pictures Martlet draws when asked; docs/GLOSSARY.md): Martlet's pictures role on this PC's host
     /// service or a paired computer (one ComfyUI per computer, so no card members), a ComfyUI the owner runs at an address, or a
-    /// cloud provider ("openrouter", "nvidia-build"). Each PC keeps its own list. Member settings: workflow, checkpoint and file (a
+    /// cloud provider ("openrouter", "nvidia-build"). The list is the same on all the owner's computers ("this PC" is each computer's own host service); a custom workflow file travels with it (<see cref="Martlet.Core.Pictures.PictureWorkflowFiles"/>). Member settings: workflow, checkpoint and file (a
     /// custom workflow in the data directory). The ID, lane and host role stay "pictures": they are saved and sent to hosts.</summary>
     public static readonly PoolArea PictureMaking = new()
     {
         Id = "pictures", Title = "Picture making", Page = "Companion › Picture making", HostRole = "pictures",
-        Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
+        Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)]
     };
     /// <summary>Singing's music (docs/SINGING.md): this PC's own host service, a paired computer or one of its cards that runs the
     /// <c>singing</c> role writes a song's music with the music model's own singer, separates it and times it; or a cloud
@@ -251,17 +251,17 @@ public static class PoolAreas
         Fallback = "Songs keep the music model's own singer"
     };
     /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.
-    /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware). An empty list means no model of its
-    /// own. <see cref="PoolArea.Fallback"/> is then true for the pictures and recordings of a reply only; which model takes each
+    /// The lists are the same on all the owner's computers ("this PC" is each computer's own Ollama, so a computer without the
+    /// model passes it over). An empty list means no model of its own. <see cref="PoolArea.Fallback"/> is then true for the pictures and recordings of a reply only; which model takes each
     /// background job is picture and recording routing (docs/DECISION_MAP.md).</summary>
     public static readonly PoolArea Vision = new()
     {
-        Id = "vision", Title = "Vision", Page = "Companion › Vision", Kinds = AllKinds, Shared = false, Required = true,
+        Id = "vision", Title = "Vision", Page = "Companion › Vision", Kinds = AllKinds, Required = true,
         Fallback = "Thinking's own model takes the pictures itself"
     };
     public static readonly PoolArea Hearing = new()
     {
-        Id = "hearing", Title = "Hearing", Page = "Companion › Hearing", Kinds = AllKinds, Shared = false, Required = true,
+        Id = "hearing", Title = "Hearing", Page = "Companion › Hearing", Kinds = AllKinds, Required = true,
         Fallback = "Thinking's own model takes the recordings itself"
     };
     /// <summary>Reading the text on the screen (<see cref="Martlet.Core.Reading.ReadingPool"/>): This PC (Windows OCR, or the Reading
@@ -402,6 +402,20 @@ public sealed record PoolSettings
 
     public static PoolSettings Load(string? directory, bool shared = true)
     {
+        var settings = Read(directory, shared);
+        if (!shared || directory is null) return settings;
+        // A pools.json this Martlet can't read (a newer one's, or damaged) is never written over.
+        if (settings.IsDefault && Saved(directory, true)) return settings;
+        // Areas that became shared (Picture making, Vision and Hearing, #805): a list this computer kept in pools-local.json before
+        // reads as part of pools.json (nothing is written on a read), so it travels as the pools setting; the next save of
+        // pools.json takes it in and removes it from pools-local.json.
+        foreach (var list in Read(directory, false).Pools.Where(p => PoolAreas.Find(p.Area)?.Shared == true && !settings.Has(p.Area)))
+            settings = settings.With(list);
+        return settings;
+    }
+
+    private static PoolSettings Read(string? directory, bool shared)
+    {
         if (directory is null) return new();
         try
         {
@@ -446,6 +460,13 @@ public sealed record PoolSettings
                 if (System.IO.File.Exists(temporary)) System.IO.File.Delete(temporary);
             }
             SettingsFiles.NotifySaved(path);
+            if (shared)
+            {
+                // The lists of areas that became shared now live here only (#805).
+                var local = Read(directory, false);
+                if (local.Pools.Any(p => Has(p.Area) && PoolAreas.Find(p.Area)?.Shared == true))
+                    (local with { Pools = [.. local.Pools.Where(p => !(Has(p.Area) && PoolAreas.Find(p.Area)?.Shared == true))] }).Save(directory, false);
+            }
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
