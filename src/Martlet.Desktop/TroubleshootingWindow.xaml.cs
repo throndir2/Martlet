@@ -58,7 +58,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         if (closed) return;
         WorkText.Text = support.Status;
         var report = support.Report;
-        StatusText.Text = report is null ? "No status report yet. Click Refresh status."
+        StatusText.Text = report is null ? "No status report yet, so click Refresh status."
             : ReportFormatter.Human(report);
         StatusText.Text += "\n\n" + support.LiveStatus;
         var available = !support.IsBusy && !support.NeedsCleanup && !awaiting && !confirming;
@@ -87,7 +87,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         {
             support.CancelAndClose();
             ClearPresentation();
-            ResultText.Text = "Troubleshooting timed out. Wait for the current action to finish, then try again.";
+            ResultText.Text = "Troubleshooting timed out, so wait for the current action to finish, then try again.";
             Render();
             return false;
         }
@@ -106,7 +106,7 @@ public partial class TroubleshootingWindow : ThemedWindow
     {
         support.CancelAndClose();
         ClearPresentation();
-        ResultText.Text = "Stopping troubleshooting. Wait for cleanup to finish.";
+        ResultText.Text = "Stopping troubleshooting; wait for cleanup to finish.";
         Render();
     }
     private async void Cleanup_Click(object sender, RoutedEventArgs e) { if (CleanupButton.IsEnabled) await Observe(support.RetryCleanup()); }
@@ -171,7 +171,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         Render();
         var text = $"Export these reviewed support files?\nDestination: {destination}\n" +
             string.Join("\n", preview.Files.Select(f => $"{f.Name}: {f.Bytes} bytes")) +
-            "\nNo files will be overwritten. Nothing will be uploaded.";
+            "\nNothing will be overwritten or uploaded.";
         bool approved;
         try
         {
@@ -180,23 +180,23 @@ public partial class TroubleshootingWindow : ThemedWindow
         }
         finally { confirming = false; }
         if (closed) return;
-        if (!approved) { ResultText.Text = "Export canceled. Nothing was written."; Render(); return; }
+        if (!approved) { ResultText.Text = "Export canceled, and nothing was written."; Render(); return; }
         if (selection != chosen || pathRevision != destinationRevision || support.Revision != sourceRevision || support.Preview?.Id != preview.Id)
-        { ResultText.Text = "The preview or destination changed. Review the files and export again."; Render(); return; }
+        { ResultText.Text = "The preview or destination changed, so review the files and export again."; Render(); return; }
         await Observe(support.Export(preview.Id, preview.Digest, destination, explicitlyApproved: true));
     }
     private void Selection_Changed(object sender, RoutedEventArgs e)
     {
         if (!initialized) return;
         selection++;
-        ResultText.Text = "Selection changed. Preview the files again before exporting.";
+        ResultText.Text = "Selection changed, so preview the files again before exporting.";
         Render();
     }
     private void Destination_Changed(object sender, TextChangedEventArgs e)
     {
         if (!initialized) return;
         destinationRevision++;
-        ResultText.Text = "Destination changed. Confirm export again.";
+        ResultText.Text = "Destination changed, so confirm export again.";
         Render();
     }
     private async void Clear_Click(object sender, RoutedEventArgs e)

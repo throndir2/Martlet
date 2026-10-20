@@ -122,9 +122,9 @@ public partial class MainWindow
         {
             Heading("Friends and calls"),
             status,
-            Note("Discord bots can't have a friends list, so these people are Martlet's friends: they can DM it, and Martlet " +
-                "can call those who take calls. Anyone can ask with /friend ask; you decide here. They can leave with /friend remove.",
-                new Thickness(0, 0, 0, 8))
+            HelpTip.Explain("Discord bots can't have a friends list, so these people are Martlet's friends: they can DM it, and Martlet " +
+                "can call those who take calls. Anyone can ask with /friend ask and you decide here; they can leave with /friend remove.",
+                new Thickness(0, 0, 0, 8), "DiscordFriends", "Martlet's friends", wiki: "Discord#friends-and-calls")
         };
 
         if (state.Requests.Count > 0)
@@ -208,9 +208,8 @@ public partial class MainWindow
             Header = "What Discord allows",
             Margin = new Thickness(0, 8, 0, 0),
             Content = HelpTip.Explain("A Discord bot can't start a DM call, join a group DM or send camera video. So Martlet calls through a " +
-                "private voice channel in your home server (only you, the friend and Martlet can see it; it's removed after the call), " +
-                "its Discord picture follows the character, and /selfie posts a picture of it. Showing the live character in a call " +
-                "would need a Discord Activity, a possible later step.", new Thickness(0, 4, 0, 0), "DiscordBot", "Discord bots")
+                "private voice channel in your home server (removed after the call), and its Discord picture follows the character.",
+                new Thickness(0, 4, 0, 0), "DiscordBot", "Discord bots", wiki: "Discord#what-discord-allows")
         };
         AutomationProperties.SetAutomationId(about, "DiscordFriendsAbout");
         stack.Add(about);
@@ -232,11 +231,11 @@ public partial class MainWindow
         var waiting = companion.State.Requests.Count;
         var call = companion.ActiveCall();
         var text = $"{saved.People.Count} {(saved.People.Count == 1 ? "friend" : "friends")}, " +
-            $"{waiting} {(waiting == 1 ? "request" : "requests")} waiting. " +
-            (call is null ? "No call now." : $"On a call in {call.Name}.");
-        if (companion.LastCall is { } last) text += $" Last call: {last}";
-        if (saved.HomeGuildId == 0) text += " Choose a home server to call people.";
-        return text;
+            $"{waiting} {(waiting == 1 ? "request" : "requests")} waiting, " +
+            (call is null ? "no call now" : $"on a call in {call.Name}");
+        if (companion.LastCall is { } last) text += $" (last call: {last.TrimEnd('.')})";
+        if (saved.HomeGuildId == 0) text += "; choose a home server to call people";
+        return text + ".";
     }
 
     private string DiscordPresenceSummary() => discord.Companion.Presence is { } shown
@@ -246,8 +245,8 @@ public partial class MainWindow
     private string DiscordAvatarSummary()
     {
         var state = discord.Companion.State;
-        var last = state.AvatarUpdatedAt is { } at ? $"Picture last changed {at.ToLocalTime():g}." : "Picture not changed by Martlet yet.";
-        return discord.Companion.LastAvatar is { } note ? $"{last} {note}" : last;
+        var last = state.AvatarUpdatedAt is { } at ? $"Picture last changed {at.ToLocalTime():g}" : "Picture not changed by Martlet yet";
+        return discord.Companion.LastAvatar is { } note ? $"{last} ({note.TrimEnd('.')})." : last + ".";
     }
 
     private static TimeSpan UserIdle() => DiscordIdle.UserIdle();

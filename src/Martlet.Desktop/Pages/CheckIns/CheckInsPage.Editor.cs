@@ -21,11 +21,11 @@ internal sealed partial class CheckInsPage
         {
             ItemsSource = CheckInsPageModel.OutcomeChoices.Select(c => c.Label).ToArray(),
             SelectedIndex = Math.Max(0, Array.FindIndex(CheckInsPageModel.OutcomeChoices, c => c.Outcome == start.Outcome)), Width = 250,
-            ToolTip = CheckInsPageModel.OutcomeHelp
+            ToolTip = CheckInsPageModel.OutcomeSummary
         });
         AutomationProperties.SetAutomationId(outcome, "CheckInOutcome-" + id);
         AutomationProperties.SetName(outcome, name + ": what happens with its answer");
-        AutomationProperties.SetHelpText(outcome, CheckInsPageModel.OutcomeHelp);
+        AutomationProperties.SetHelpText(outcome, CheckInsPageModel.OutcomeSummary);
         outcome.SelectionChanged += (_, _) => SaveNow();
         CheckBox Choice(string label, bool on, string help, string automationId)
         {
@@ -78,8 +78,8 @@ internal sealed partial class CheckInsPage
         var untilHour = Compact(new ComboBox { ItemsSource = hours, SelectedIndex = start.UntilHour, Width = 90 });
         AutomationProperties.SetAutomationId(untilHour, "CheckInUntil-" + id);
         AutomationProperties.SetName(untilHour, name + ": runs until");
-        const string hoursHelp = "With Only between these hours ticked, it runs from the first hour up to the second, past " +
-            "midnight when the second comes first. The two must differ.";
+        const string hoursHelp = "With Only between these hours ticked, it runs from the first hour up to the second (past " +
+            "midnight when the second comes first; the two must differ).";
         fromHour.ToolTip = untilHour.ToolTip = hoursHelp;
         AutomationProperties.SetHelpText(fromHour, hoursHelp);
         AutomationProperties.SetHelpText(untilHour, hoursHelp);
@@ -121,7 +121,7 @@ internal sealed partial class CheckInsPage
             VerticalAlignment = VerticalAlignment.Center
         };
         AutomationProperties.SetAutomationId(screenshot, "CheckInScreenshot-" + id);
-        AutomationProperties.SetHelpText(screenshot, "Each run takes a screenshot of the screen you work on. It doesn't run while a private window is in front.");
+        AutomationProperties.SetHelpText(screenshot, "Each run takes a screenshot of the screen you work on, but not while a private window is in front.");
         var recording = Compact(new ComboBox
         {
             ItemsSource = new[] { "No recording", "The last seconds of the microphone", "The last seconds of what this PC plays" },
@@ -147,8 +147,8 @@ internal sealed partial class CheckInsPage
         };
         AutomationProperties.SetAutomationId(script, "CheckInScript-" + id);
         AutomationProperties.SetName(script, "A script it runs first");
-        AutomationProperties.SetHelpText(script, "Windows PowerShell runs it hidden in your home folder before each run, " +
-            $"for at most {CheckIns.ScriptTimeout.TotalSeconds:0} seconds. What it prints goes to the check-in.");
+        AutomationProperties.SetHelpText(script, "Windows PowerShell runs it hidden in your home folder before each run " +
+            $"(for at most {CheckIns.ScriptTimeout.TotalSeconds:0} seconds), and what it prints goes to the check-in.");
         InputHint.SetText(script, "PowerShell, for example: Get-Process | Select-Object -First 5 Name");
         void ShowNeeds()
         {
@@ -188,16 +188,18 @@ internal sealed partial class CheckInsPage
 
         var view = new StackPanel();
         view.Children.Add(HelpTip.After(new TextBlock { Text = "It gets to know", Margin = new Thickness(0, 8, 0, 0) }, "what it gets to know",
-            "It always gets the day and time. Each fact you tick adds a few lines of text to its question; a fact Martlet doesn't " +
-            "have now (for example the screen, while Martlet doesn't watch it) says so instead. Point at each one to see what it gets.",
-            "CheckInFacts-" + id));
+            "It always gets the day and time, and each fact you tick adds a few lines of text to its question. A fact Martlet " +
+            "doesn't have now says so instead. Point at each one to see what it gets.",
+            "CheckInFacts-" + id, wiki: "Thinking#what-a-check-in-knows"));
         view.Children.Add(facts);
         view.Children.Add(HelpTip.After(new TextBlock { Text = "It waits until", Margin = new Thickness(0, 4, 0, 0) }, "when it waits",
             "Every check-in also waits for its time, while you talk and while nobody uses this PC. Check now skips the waits for " +
-            "time and something new, but not the others. Point at each one to see when.", "CheckInWhen-" + id));
+            "time and something new, but not the others. Point at each one to see when.", "CheckInWhen-" + id,
+            wiki: "Thinking#when-a-check-in-runs"));
         view.Children.Add(conditions);
         view.Children.Add(HelpTip.After(new TextBlock { Text = "It starts when (instead of every few minutes)", Margin = new Thickness(0, 4, 0, 0) },
-            "what starts it", CheckInsPageModel.TriggersHelp + " Point at each one to see when.", "CheckInTriggers-" + id));
+            "what starts it", CheckInsPageModel.TriggersHelp + " Point at each one to see when.", "CheckInTriggers-" + id,
+            wiki: "Thinking#when-a-check-in-runs"));
         view.Children.Add(triggers);
         view.Children.Add(limits);
         view.Children.Add(new TextBlock { Text = "With each run it takes", Margin = new Thickness(0, 4, 0, 0) });
@@ -209,21 +211,21 @@ internal sealed partial class CheckInsPage
         view.Children.Add(HelpTip.After(new Label
         {
             Content = "A _script it runs first (optional)", Target = script, Padding = new Thickness(0), Margin = new Thickness(0, 6, 0, 0)
-        }, "the script", "A Windows PowerShell script; the check-in reads what it prints. For example, the busiest programs: " +
+        }, "the script", "A Windows PowerShell script whose output the check-in reads, such as the busiest programs: " +
             "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU. It runs hidden in your home folder, " +
-            $"as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.", "CheckInScript-" + id));
+            $"as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.", "CheckInScript-" + id,
+            wiki: "Thinking#what-a-check-in-knows"));
         view.Children.Add(script);
         view.Children.Add(HelpTip.After(new TextBlock { Text = "It may use these tools", Margin = new Thickness(0, 8, 0, 0) }, "its tools",
             $"The model can call these tools while it answers, at most {CheckIns.MaximumToolCalls} calls in " +
-            $"{CheckIns.MaximumToolRounds} rounds. Only Thinking pool members on an endpoint, whose model calls tools, take a " +
-            "check-in with tools. With Its tools act, the tools are what it does. Point at each one to see what it does.",
-            "CheckInTools-" + id));
+            $"{CheckIns.MaximumToolRounds} rounds. Only Thinking pool members on an endpoint whose model calls tools take a " +
+            "check-in with tools. Point at each one to see what it does.",
+            "CheckInTools-" + id, wiki: "Thinking#check-in-tools-and-models"));
         view.Children.Add(toolSets);
         view.Children.Add(HelpTip.After(new TextBlock { Text = "The model must handle", Margin = new Thickness(0, 8, 0, 0) }, "what the model must handle",
-            "Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model " +
-            "that sees pictures, and a recording needs one that hears recordings. They go only to that member, which can be a " +
-            "cloud service. The microphone and what this PC plays are kept in memory, only while a check-in that is on asks for " +
-            "them and Martlet hears them. " + CheckInsPageModel.LengthHelp, "CheckInNeeds-" + id));
+            "Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model that sees " +
+            "pictures and a recording one that hears recordings, and they go only to that member, which can be a cloud service. " +
+            CheckInsPageModel.LengthHelp, "CheckInNeeds-" + id, wiki: "Thinking#check-in-tools-and-models"));
         view.Children.Add(needs);
         // Where it runs in the Thinking pool: like other check-ins, or its own choice.
         var (runsOnView, readRunsOn) = RunsOnPicker.Create("CheckInRunsOn-" + id, "CheckInRunsOnMember-" + id, name, start.RunsOn, inherit: true,

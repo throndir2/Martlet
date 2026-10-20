@@ -10,55 +10,49 @@ internal sealed partial class CheckInsPageModel
     internal static readonly (CheckInFacts Fact, string Label, string Help)[] FactChoices =
     [
         (CheckInFacts.Conversation, "The conversation",
-            "The last 6 exchanges of the conversation (you and Martlet, oldest first) and how long it has been quiet since. " +
-            "Placeholder: {conversation}."),
+            "The last 6 exchanges of the conversation (you and Martlet, oldest first) and how long it has been quiet since " +
+            "({conversation})."),
         (CheckInFacts.Persona, "Its personality",
-            "The active personality: the character's name and the text you wrote for it. Placeholder: {persona}."),
+            "The active personality: the character's name and the text you wrote for it ({persona})."),
         (CheckInFacts.Replies, "Martlet's last replies",
-            "Martlet's last 6 replies, numbered, oldest first, without what you said. Placeholder: {replies}."),
+            "Martlet's last 6 replies, numbered, oldest first, without what you said ({replies})."),
         (CheckInFacts.Said, "What Martlet said in the last hour",
             "Everything Martlet said in the last hour (replies, remarks and reactions; the newest 10), each with when it said it, " +
-            "such as \"10:05 PM (12 min ago)\". Placeholder: {said}."),
+            "such as \"10:05 PM (12 min ago)\" ({said})."),
         (CheckInFacts.Character, "Emotes and gaze",
-            "The emotes a reply turned on that still show on the character, with their hints and how long each has shown, and " +
-            "where its eyes look now and usually. Placeholders: {emotes}, {example} (the first emote's tag), {looking}, {usual} " +
-            "and {since}."),
+            "The emotes a reply turned on that still show, with their hints and how long each has shown, and where the eyes look " +
+            "now and usually ({emotes}, {example} for the first emote's tag, {looking}, {usual} and {since})."),
         (CheckInFacts.Work, "Reminders and background work",
-            "The reminders that are set and the background work Martlet started or finished in this conversation. Placeholder: {work}."),
+            "The reminders that are set and the background work Martlet started or finished in this conversation ({work})."),
         (CheckInFacts.Screen, "What changed on screen",
-            "Martlet's newest words about what changed on your screen, while it watches the screen. It isn't a screenshot: " +
-            "tick A screenshot below for that. Placeholder: {screen}."),
+            "Martlet's newest words about what changed on your screen while it watches the screen, not a screenshot ({screen})."),
         (CheckInFacts.Sound, "What the PC plays",
-            "Martlet's newest words about what this PC plays (music, videos, games), while it hears it. It isn't a recording: " +
-            "choose one below for that. Placeholder: {sound}."),
+            "Martlet's newest words about what this PC plays (music, videos, games) while it hears it, not a recording ({sound})."),
         (CheckInFacts.Presence, "Whether you're at the PC",
-            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse. Placeholder: {presence}."),
+            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse ({presence})."),
         (CheckInFacts.Touches, "How you touched the character",
-            $"What you did to the character on the desktop in the last {TouchLedger.OftenWindow.TotalMinutes:0} minutes, oldest " +
-            "first, each with when: pokes, pats, holds, strokes with their path and direction, and moves. It says which touches " +
-            "were intimate, how the personality feels about them and the places you keep coming back to. Martlet only reads " +
-            "it: its next reply still gets your touches. Placeholder: {touches}."),
+            $"What you did to the character in the last {TouchLedger.OftenWindow.TotalMinutes:0} minutes (pokes, pats, holds, " +
+            "strokes and moves, each with when), which touches were intimate, how the personality feels about them and the places " +
+            "you keep coming back to ({touches})."),
         (CheckInFacts.Activity, "What you are doing",
-            "What you seem to be doing on this PC (a game, a call or voice chat, a video, music, full screen), what it was before " +
-            "and when it changed. Martlet knows it only while it hears what this PC plays. Placeholder: {activity}."),
+            "What you seem to be doing on this PC (a game, a call, a video, music, full screen), what it was before and when it " +
+            "changed, while Martlet hears what this PC plays ({activity})."),
         (CheckInFacts.People, "Who is here",
-            $"The voices Martlet heard in the last {CheckIns.PeopleWindow.TotalMinutes:0} minutes (Voice ID): the names of the " +
-            "voices it knows, a voice it doesn't know, which one is yours, each with when. Never what they said. Placeholder: {people}."),
+            $"The voices Martlet heard in the last {CheckIns.PeopleWindow.TotalMinutes:0} minutes (Voice ID), each with when: the " +
+            "names of the voices it knows, a voice it doesn't know and which one is yours, never what they said ({people})."),
         (CheckInFacts.WhileAway, "What happened while you were away",
             $"After you come back from {CheckIns.Idle.TotalMinutes:0} minutes or more away: how long you were away, what Martlet " +
-            "said meanwhile, the background work that finished and the reminders that came due. Placeholder: {away}."),
+            "said meanwhile, the background work that finished and the reminders that came due ({away})."),
         (CheckInFacts.Latest, "The latest exchange",
-            "What you said last and Martlet's reply, in full, or every exchange since it last ran (at most " +
-            $"{CheckIns.MaximumLatest}), so a check-in that runs after each reply misses nothing. Placeholder: {{exchange}}."),
+            "What you said last and Martlet's reply in full, or every exchange since it last ran (at most " +
+            $"{CheckIns.MaximumLatest}), so a check-in that runs after each reply misses nothing ({{exchange}})."),
         (CheckInFacts.Heard, "What Martlet heard you say",
-            $"What always listening heard you say in the last {CheckIns.HeardWindow.TotalMinutes:0} minutes, oldest first, each " +
-            "with when, who spoke (Voice ID), other voices, people talking over each other, lines this PC played with it, and " +
-            "whether Martlet answered or stayed quiet; then whether Martlet holds back now while you talk to someone else. " +
-            "Placeholder: {heard}."),
+            $"What always listening heard you say in the last {CheckIns.HeardWindow.TotalMinutes:0} minutes, each with when, who " +
+            "spoke (Voice ID) and whether Martlet answered, and whether Martlet holds back now while you talk to someone else " +
+            "({heard})."),
         (CheckInFacts.Callbacks, "The callback list",
-            $"The few things from this conversation worth bringing back later (at most {CallbackList.MaximumItems}): what you're " +
-            "in the middle of, running jokes, things you said in your own words and facts that fit a tease, each with when it " +
-            "came up. The Callback list check-in writes it after each reply. Placeholder: {callbacks}.")
+            $"The few things from this conversation worth bringing back later (at most {CallbackList.MaximumItems}), such as what " +
+            "you're in the middle of and running jokes, which the Callback list check-in writes after each reply ({callbacks}).")
     ];
 
     internal static readonly (CheckInConditions Condition, string Label, string Help)[] ConditionChoices =
@@ -88,16 +82,16 @@ internal sealed partial class CheckInsPageModel
         (CheckInConditions.NotOnCall, "Not on a call",
             "It waits while you're in a call or a voice chat (Discord, Zoom, Teams...), as far as Martlet can tell from what this PC plays."),
         (CheckInConditions.ActivityChanged, "What you do changed",
-            "It waits until a game, a call or a full-screen app started or ended since it last ran. Martlet tells only while it " +
-            "hears what this PC plays."),
+            "It waits until a game, a call or a full-screen app started or ended since it last ran (Martlet tells only while it " +
+            "hears what this PC plays)."),
         (CheckInConditions.Between, "Only between these hours",
             "It runs only between the hours you choose below, such as in the morning, or not at night."),
         (CheckInConditions.Unanswered, "Martlet asked something you didn't answer",
-            $"It waits until Martlet's last remark asked you something, you're at the PC and didn't answer for " +
-            $"{CheckIns.UnansweredAfter.TotalMinutes:0} minutes. It runs once for each question."),
+            $"It waits until Martlet's last remark asked you something and you're at the PC but didn't answer for " +
+            $"{CheckIns.UnansweredAfter.TotalMinutes:0} minutes, once for each question."),
         (CheckInConditions.Attention, "A taskbar button flashed or a notification showed",
-            "It waits until a taskbar button flashed or a pop-up notification showed since it last ran. Martlet notices them " +
-            "only while a check-in that is on waits for them, and never reads what they say."),
+            "It waits until a taskbar button flashed or a pop-up notification showed since it last ran (Martlet never reads what " +
+            "they say)."),
         (CheckInConditions.SongEnded, "A song ended", "It waits until a song Martlet sang played to its end since it last ran."),
         (CheckInConditions.ScriptChanged, "The script's output changed",
             "Its script runs at its pace; when what it prints is the same as last time, the run ends there without asking the " +
@@ -107,8 +101,8 @@ internal sealed partial class CheckInsPageModel
             "(Voice ID), since it last ran."),
         (CheckInConditions.Lull, "The conversation went quiet",
             $"It waits until nothing was said for {CheckIns.LullAfter.TotalMinutes:0} minutes (but not more than " +
-            $"{CheckIns.PromiseWindow.TotalMinutes:0}), you're at the PC, the callback list has something and Martlet's last " +
-            "remark didn't ask you something. It runs once in each quiet spell.")
+            $"{CheckIns.PromiseWindow.TotalMinutes:0}) while you're at the PC, the callback list has something and Martlet's last " +
+            "remark didn't ask you something, once in each quiet spell.")
     ];
 
     // What can start a check-in at once, in the order of its It starts when boxes.
@@ -125,18 +119,15 @@ internal sealed partial class CheckInsPageModel
             $"It runs after your touches stop, when they touched a place you touched {TouchLedger.OftenTouches} times or more in the " +
             $"last {TouchLedger.OftenWindow.TotalMinutes:0} minutes."),
         (CheckInTriggers.ExchangeEnded, "A reply ends",
-            "It runs right after each of Martlet's replies (once it was said), with what you said and the reply. Exchanges " +
-            "that end while it waits for its Every are kept, and it reads them all when it runs."),
+            "It runs right after each of Martlet's replies with what you said and the reply, and it reads every exchange that " +
+            "ended while it waited for its Every."),
         (CheckInTriggers.Spoke, "You say something",
-            "It runs right after always listening hears you say something, whether Martlet answered or stayed quiet. Only what " +
-            "the microphone hears counts, not what you type.")
+            "It runs right after always listening hears you say something (not what you type), whether Martlet answered or " +
+            "stayed quiet.")
     ];
 
-    internal const string TriggersHelp = "With one ticked, it runs only when one of them happens (a moment after your " +
-        "touches stop, right after a reply, or right after you say something), and at most once per Every (Every is then the " +
-        "time it waits before it can run " +
-        "again). It runs on the Thinking pool, so a reply never waits for it. It still waits while it's off, while nobody uses " +
-        "this PC, for its conditions and for a pool member. With none ticked, it runs every few minutes.";
+    internal const string TriggersHelp = "With one ticked, it runs only when one of them happens, at most once per Every, and a " +
+        "reply never waits for it. With none ticked, it runs every few minutes.";
 
     // The answers a check-in can give, in the order of its Its answer list.
     internal static readonly (CheckInOutcome Outcome, string Label)[] OutcomeChoices =
@@ -152,19 +143,12 @@ internal sealed partial class CheckInsPageModel
         (CheckInOutcome.Tools, "Its tools act")
     ];
 
-    internal const string OutcomeHelp = "Martlet adds the answer format to the prompt. A reminder: a REMIND: line goes in " +
-        "the notes of your next message, so Martlet's next reply follows it. Brings it up: a SAY: line, which Martlet says on its " +
-        "own as soon as it's free. Adds to what Martlet knows: a KNOW: line, a short description of what is happening, goes in " +
-        "the notes of your next message (within a few minutes) as background Martlet may draw on, not a reminder to follow. " +
-        "Thinks ahead: a PLAN: line, the character's own thoughts about what you'll likely say next and what it means to say " +
-        "then, goes in the notes of your next message, once; it's dropped when another reply ends first. " +
-        "Holds back: an ASIDE: line (you talk to someone else) makes Martlet stay quiet while that lasts, unless you talk to " +
-        "it; BACK ends it, and so do a few quiet minutes. " +
-        "Keeps the callback list: CALLBACK: lines are the whole new list of things worth bringing back later, which Think ahead " +
-        "and Quiet moments read; KEEP leaves it and NONE empties it. " +
-        "Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
-        "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing. Its tools act: the tools it " +
-        "calls (tick at least one set under It may use these tools) are what it does, and its answer only says what it did.";
+    // The tooltip of Its answer; the "?" next to it shows OutcomeHelp, and the wiki has what each answer does.
+    internal const string OutcomeSummary = "What Martlet does with the check-in's answer, such as remind itself in its next reply.";
+
+    internal const string OutcomeHelp = "Martlet adds the answer format to the prompt, so the model answers with a line, such as " +
+        "a REMIND: line for Martlet's next reply. Martlet says a SAY: line on its own as soon as it's free. " +
+        "With Its tools act, the tools it calls are what it does.";
 
     internal const string PlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {adult} (whether " +
         "Adult content is on: an explicit or a non-explicit line, from Companion › Prompts), {conversation}, " +
@@ -176,7 +160,7 @@ internal sealed partial class CheckInsPageModel
         "Martlet then acts on the answer, so its next reply follows it.";
 
     // What models hear of a long recording (docs/CONVERSATION.md#check-ins).
-    internal const string LengthHelp = "Gemma 4 and Gemma 3n hear only the first 30 seconds of a recording. " +
+    internal const string LengthHelp = "Gemma 4 and Gemma 3n hear only the first 30 seconds of a recording, while " +
         "Gemini, OpenAI's audio models and Voxtral hear a whole minute.";
 
 }

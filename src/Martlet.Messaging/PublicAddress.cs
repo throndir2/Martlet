@@ -224,7 +224,7 @@ public sealed partial class CloudflareQuickTunnel(string cloudflared) : IPublicA
                     await target.WriteAsync(buffer.AsMemory(0, read), cancellation).ConfigureAwait(false);
                     progress?.Report((double)done / latest.Bytes);
                 }
-                if (done != latest.Bytes) throw new InvalidDataException("The cloudflared download stopped before the end. Try again.");
+                if (done != latest.Bytes) throw new InvalidDataException("The cloudflared download stopped before the end, so try again.");
                 if (Convert.ToHexStringLower(digest.GetHashAndReset()) != latest.Sha256)
                     throw new InvalidDataException("The cloudflared download doesn't match the SHA-256 GitHub publishes for it.");
             }

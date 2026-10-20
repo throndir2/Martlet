@@ -1403,7 +1403,13 @@ fails* has `Help-FallbackAbout` (`Thinking#when-thinking-fails-or-is-slow`); Com
 *What Martlet sends* (`VisionDisclosure`, its first sentence) has `Help-VisionSends` with all of
 it (`Vision#privacy`); and the Conversations page has `Help-HistoryAbout`
 (`#the-conversations-page`). The talk window's error lines are one sentence each; the wiki's
-`Talking-to-Martlet#messages-in-the-talk-window` lists what to do for each.
+`Talking-to-Martlet#messages-in-the-talk-window` lists what to do for each. A job page's *Keys from
+before* card has `Help-OldKeys-<role>` (`App-Settings-and-Updates#keys-from-before`). Settings'
+update, appearance, exit and troubleshooting status lines are one sentence each; the wiki's
+`App-Settings-and-Updates` and `Troubleshooting#the-troubleshooting-window` have the rest. The Linux
+and Mac Companion app has its own `HelpMark` (`src/Martlet.Companion/HelpMark.cs`):
+`Help-CompanionThinking` next to Settings › *Thinking* (`Linux-and-Mac#what-the-early-app-can-do`),
+with `-Card` and `-Wiki` IDs like `HelpTip`; MCP doesn't drive that app.
 
 Companion › Check-ins reads through `ui_snapshot`: `CheckInsNow` (how many are on
 and the member that takes them first, or why they can't run), `CheckInsLast`
@@ -1419,7 +1425,10 @@ is under *More settings* (`Fold-CheckInMore-<id>`, closed at first: click it
 before you read or change these), each group with its own *?*
 (`Help-CheckInFacts-<id>`, `Help-CheckInWhen-<id>`, `Help-CheckInTriggers-<id>`,
 `Help-CheckInScript-<id>`, `Help-CheckInTools-<id>`, `Help-CheckInNeeds-<id>`,
-and the placeholders in `Help-CheckInPrompt-<id>` or `Help-CheckInTask-<id>`):
+and the placeholders in `Help-CheckInPrompt-<id>` or `Help-CheckInTask-<id>`,
+each with a link to its *Check-ins* subsection in the wiki; `Help-CheckInOutcome-<id>`
+after *Its answer* links to *What its answer does*, and a built-in check-in's description shows its
+first sentence with `Help-CheckInAbout-<id>`):
 `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
 `Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`,
@@ -4474,11 +4483,11 @@ Martlet then closes for the update, the helper switches folders and runs
 `/STAGE=finish`, so Martlet is back in about a second instead of after the whole
 install. It logs *Restarting into Martlet x.y.z, installed beside this one, ...*.
 If that install fails, the update installs the classic way. With automatic
-installs off, Install first asks *Install it now?* (Martlet installs it in the
-background), then asks `RestartIntoUpdateQuestion`, *Martlet x.y.z is installed.
-Restart Martlet now to start using it?*; `ConfirmationYes` (*Restart now*)
+installs off, Install first asks *Install Martlet x.y.z (... MB) now?* (Martlet installs it in the
+background), then asks `RestartIntoUpdateQuestion`, *Restart Martlet now to start
+using x.y.z?*; `ConfirmationYes` (*Restart now*)
 restarts and `ConfirmationNo` (*Later*) leaves `AppUpdateStatus` reading
-*Martlet x.y.z is installed. Restart Martlet to start using it (a few seconds),
+*Martlet x.y.z is installed, so restart Martlet to use it (a few seconds),
 or it switches over when Martlet exits.* `InstallAppUpdate` reads *Install x.y.z
 now*, then *Restart into x.y.z*; clicking it needs `--allow-ui-effects`. A
 development build has no program folder and installs the classic way. To
@@ -5989,7 +5998,7 @@ ID) and returns each `outcome` (`Answered`, `Passed`, `NotConsidered`,
 `reply` (up to 4,096 characters) replaces the fixture's answer. Both return
 `preferences` (counts and modes only) and `stats`, the same counts as the
 desktop's Companion › Discord `DiscordTextStatus` line (*Text chat: 3 seen, 2
-considered, 1 answered, 1 passed, 0 dropped, 0 failed. Last reply: DM. Last
+considered, 1 answered, 1 passed, 0 dropped, 0 failed; last reply: DM; last
 problem: none.*; no message text, names or IDs). The live bot logs each
 answered, passed, dropped or failed turn as *Discord text: Answered (Mentions,
 addressed), 1 message(s)*.
@@ -6015,7 +6024,7 @@ refuses without an explicit (disposable) `dataDirectory`. The desktop then lists
 it on Companion › Discord › Friends and calls (see below).
 
 Companion › Discord's **Friends and calls** card: `DiscordFriendsStatus` (*2
-friends, 1 request waiting. No call now. Last call: ...*), `DiscordPresenceStatus`
+friends, 1 request waiting, no call now (last call: ...).*), `DiscordPresenceStatus`
 (*Discord status: Online, "Hanging out".*), `DiscordAvatarStatus` (when the
 bot's picture last changed and why it didn't), `DiscordFriendsResult` (what the
 last action did) and each friend's line `DiscordFriend-<user id>` (*Ana (123) —
@@ -8346,7 +8355,10 @@ page's controls are only visible after you open it: click `NavHome`,
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`; Listening, Voice, People,
 Singing, *Microphone and speakers* and *Voice ID* have, for example, `Help-ListeningRecognizer`,
 `Help-VoicesAbout`, `Help-ElevenLabsConsent`, `Help-PeopleRecognize`, `Help-SingingAbout`,
-`Help-AudioSetupIntro` and `Help-VoiceIdAbout`; Vision, Reading and Picture making have `Help-VisionChattiness`,
+`Help-AudioSetupIntro` and `Help-VoiceIdAbout`; Tools, Smart home, Discord, Messaging and App guides have `Help-ToolsServers`,
+`Help-Terminal`, `Help-SmartHomeAddress`, `Help-DiscordSetup`, `Help-TelegramSetup`, `Help-WhatsAppSetup` and `Help-AppGuidesAbout`,
+the *MCP servers* and *MCP directory* windows `Help-McpConfigAbout` and `Help-McpDirectoryAbout`, and *Outside access*
+`Help-OutsideAccessAbout`; Vision, Reading and Picture making have `Help-VisionChattiness`,
 `Help-VisionAddress`, `Help-VisionGaze`, `Help-VisionScreenSummary`, `Help-Reading`, `Help-ReadingModels-<place>`,
 `Help-Pool-reading-Intro`, `Help-PicturesAsk`, `Help-Pool-pictures-Intro`, `Help-PicturesRole-<i>`, `Help-PicturesComfy-<i>` and
 `Help-PicturesWorkflowFile-<i>`):
@@ -8621,8 +8633,8 @@ outside home.*, with *Outside access paused: sign-in is off; sign-in needed firs
 (overlay network)* once a native host listens on its Tailscale address), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
 (`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
 default for Docker hosts; while sign-in isn't usable on the host its note
-`OutsideAccessBlockedReason` returns why, starting *Outside access paused: sign-in
-is off.* when the host has outside addresses, ending with the reason code, the
+`OutsideAccessBlockedReason` returns why in one sentence, starting *Outside access is
+paused because* when the host has outside addresses, ending with the reason code, the
 outsideAccessBlockedReason `signin.not_set_up` or `signin.no_allowed_identity`,
 and `OutsideAccessSetUpSignIn` opens the host's sign-in settings (a passive click);
 `HostInputCancel` closes it, `HostInputOk` runs
@@ -10492,7 +10504,7 @@ or turning vision on in Companion starts neither. Home's `HomeWarmupStatus`
 second: *Warming up: loading gemma4:e4b on this PC (12 s of about 20 s).
 Martlet answers once the model has loaded.*, with *getting the conversation
 ready*, *loading Parakeet TDT 0.6B v3 for listening* or *starting the
-character* for the other parts, then *Warmed up in 18 s. Martlet is ready to
+character* for the other parts, then *Warmed up in 18 s, and Martlet is ready to
 talk.* for 8 s; the desktop log says *Martlet is warming up: ...* and *Martlet
 warmed up in 18.0 s.*) and the talk window's `LiveWarmup` (the banner's line
 under its *Warming up* title: *Loading gemma4:e4b on this PC (3 s of about
@@ -10869,17 +10881,17 @@ verifying on a desktop whose sound must not be captured. Each reply writes a
 `logs_tail` returns and `latency_report` summarizes.
 
 Companion › *App guides* (`CompanionTab-AppGuides`,
-[App guides](APP_GUIDES.md)): `AppGuidesNow` (*Off. Martlet doesn't read up on
-games and apps, or notice which one you play.*, *On. No guides yet.* or *On. 2
-guides, 84 pages, 6.1 MB. Reading up on Stardew Valley: Reading page 3.*), the
-fixed `AppGuidesDisclosure`, `AppGuidesFront` (*In front:
+[App guides](APP_GUIDES.md)): `AppGuidesNow` (*Off: Martlet doesn't read up on
+games and apps, or notice which one you play.*, *On: no guides yet.* or *On: 2
+guides, 84 pages, 6.1 MB; reading up on Stardew Valley (Reading page 3).*), the
+fixed `AppGuidesDisclosure` (its first sentence, with `Help-AppGuidesAbout`), `AppGuidesFront` (*In front:
 Elden Ring (a game, full screen), its guide is ready.*, or why Martlet doesn't
 look), `AppGuidesEmpty` and `AppGuidesResult` (what the last action did), the
 `AppGuidesOn` and `AppGuidesAsk` (*Read up when I start a game or app*) check boxes (`checkedState`; `ui_toggle` saves
 `guides\library.json`, so it needs `--allow-ui-effects`), and for each app on
 the list `AppGuideName-<key>` and `AppGuideStatus-<key>` (*42 pages, 3.1 MB, read
-10 Oct 2026, 18:40. Reads from stardewvalleywiki.com. Programs: StardewValley.*,
-*No guide yet.*, *Reading up now: ...* or the last problem; never a guide's
+10 Oct 2026, 18:40; reads from stardewvalleywiki.com; programs: StardewValley.*,
+*No guide yet.*, *Reading up now (...).* or the last problem; never a guide's
 text). Its buttons `AppGuideRead-<key>` (*Read up now* or *Read again*: reads on
 the web and keeps the pages Read more added), `AppGuideMore-<key>` (*Read more*,
 on an app with a guide: reads more pages of its wiki on the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
@@ -10926,7 +10938,7 @@ playback devices, looks for Discord and sets up a process loopback unstarted).
 Toggling, choosing, the picture controls, the camera button and the framing buttons save
 `discord-calls.json`, draw or show a window, so they need `--allow-ui-effects`.
 Returned (SafeValues):
-`DiscordCallStatus` (*Off. Martlet isn't in your Discord calls.* or *On.
+`DiscordCallStatus` (*Off: Martlet isn't in your Discord calls.* or *On:
 Martlet hears the Discord app* (or *hears everything this PC plays except
 itself*)*, sees who talks: <source>, and speaks into <output>.*),
 `DiscordCallAttribution` (*Who is talking: the Discord window; 2 people named
@@ -11059,9 +11071,9 @@ by default, saves `background.json`, so toggling it needs
 `--allow-ui-effects`) with `GreetingStatus` under it (*Martlet greets you once
 a conversation has warmed up (Start talking or Start listening on Home).*,
 *Martlet greets you once it has warmed up.*, *Martlet greets you as soon as
-it's free. It knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
-5:08 PM and greeted you. It knew the time of day, your name, the update and 3
-open apps.*, *... and stayed quiet: your character wouldn't greet you. ...*,
+it's free, and it knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
+5:08 PM and greeted you, knowing the time of day, your name, the update and 3
+open apps.*, *... and stayed quiet because your character wouldn't greet you (...)*,
 or why it didn't: the greeting was off, you were already talking,
 or it was let go; counts only, never your name, app names, reminders or what was said;
 the talk window's task list shows the job as *Greeting* and the log says

@@ -39,9 +39,9 @@ public partial class MainWindow
         var name = MessagingService.Name(app);
         var asked = await Dispatcher.InvokeAsync(() =>
         {
-            if (closing) return Task.FromResult("Martlet is closing. Try again once it runs again.");
+            if (closing) return Task.FromResult("Martlet is closing, so try again once it runs again.");
             if (Role == DeviceRole.Host) return Task.FromResult("This PC is a Martlet host now, so Martlet doesn't talk on it.");
-            if (ConversationSession() is not { } talk) return Task.FromResult("Martlet is busy on your PC right now. Try again in a moment.");
+            if (ConversationSession() is not { } talk) return Task.FromResult("Martlet is busy on your PC right now, so try again in a moment.");
             if (!talk.IsVisible) talk.StartInBackground();
             ErrorLog.Info($"{name}: a paired chat sent a message; Martlet answers it in the conversation.");
             var origin = new Martlet.Conversation.HistorySource(app.ToString().ToLowerInvariant(), message.ChatId, null, message.ChatName,
@@ -67,10 +67,9 @@ public partial class MainWindow
         page.Children.Add(Card(
             Heading("How it works"),
             HelpTip.Explain("Messages travel through Telegram's or WhatsApp's servers to Martlet on this PC, which asks the Thinking model you chose and " +
-                "sends the reply back. Martlet answers only the chats you paired here, never groups or strangers, and only while it runs on this " +
-                "PC (also while Windows is locked). Replies are text and join the same conversation as the talk window, so Martlet remembers what " +
-                "you said in either. Use each bot or number on one PC. Martlet reads text messages only for now; a tool or smart-home action " +
-                "that asks first waits for you at this PC.", new Thickness(0, 0, 0, 0), "Messaging", "messaging")));
+                "sends the reply back. Martlet answers only the chats you paired here, and only while it runs on this PC (also while Windows is " +
+                "locked). Replies are text and join the same conversation as the talk window.", new Thickness(0, 0, 0, 0), "Messaging", "messaging",
+                wiki: "Telegram#how-it-works")));
     }
 
     private Border TelegramCard(TelegramPreferences saved, MessagingStatus status, bool connected)
@@ -96,9 +95,9 @@ public partial class MainWindow
         };
         if (messagingNote is { } note) children.Add(Status(note, "MessagingNote"));
         if (!connected)
-            children.Add(Note("1. In Telegram, open BotFather, send /newbot and pick a name for your Martlet bot.\n" +
-                "2. Paste the token BotFather gives you here and press Connect.\n3. Pair your chat with the code Martlet shows.",
-                new Thickness(0, 8, 0, 0)));
+            children.Add(HelpTip.Explain("Make a bot with BotFather in Telegram, paste its token here and press Connect. " +
+                "Then pair your chat with the code Martlet shows.", new Thickness(0, 8, 0, 0), "TelegramSetup", "setting up Telegram",
+                wiki: "Telegram#set-up-telegram"));
         children.Add(new Label { Content = "Bot _token", Target = token, Padding = new Thickness(0, 10, 0, 4) });
         children.Add(tokenField);
         children.Add(Note("Martlet checks the token with Telegram, keeps it in Windows Credential Manager on this PC and sends it only to Telegram.",
@@ -158,7 +157,8 @@ public partial class MainWindow
         if (whatsAppNote is { } note) children.Add(Status(note, "MessagingWhatsAppNote"));
         if (!connected)
         {
-            children.Add(Note(WhatsAppSteps, new Thickness(0, 8, 0, 0)));
+            children.Add(HelpTip.Explain(WhatsAppSteps, new Thickness(0, 8, 0, 0), "WhatsAppSetup", "setting up WhatsApp",
+                wiki: "Telegram#set-up-whatsapp"));
             children.Add(Row(
                 PageButton("Create a Meta app", () => OpenInBrowser(MetaNewApp), link: true, id: "MessagingWhatsAppOpenMeta"),
                 PageButton("Your Meta apps", () => OpenInBrowser(MetaApps), link: true, id: "MessagingWhatsAppOpenApps"),
@@ -182,25 +182,18 @@ public partial class MainWindow
         children.Add(Row(
             cloudflared is null ? PageButton(whatsAppBusy ? "Downloading..." : "Get cloudflared", () => GetCloudflaredAsync().Forget(), id: "MessagingWhatsAppGetCloudflared") : null,
             PageButton("About quick tunnels", () => OpenInBrowser(CloudflareQuickTunnel.About), link: true, id: "MessagingWhatsAppOpenTunnelHelp")));
-        children.Add(Note("Martlet checks the token and secret with Meta, keeps them in Windows Credential Manager on this PC and sends them only " +
-            "to Meta. Messages Meta delivers are checked against the app secret, so nobody else can post to Martlet's address.", new Thickness(0, 4, 0, 0)));
+        children.Add(HelpTip.Explain("Martlet checks the token and secret with Meta, keeps them in Windows Credential Manager on this PC and sends them only " +
+            "to Meta. Messages Meta delivers are checked against the app secret, so nobody else can post to Martlet's address.", new Thickness(0, 4, 0, 0),
+            "WhatsAppSecrets", "the WhatsApp secrets", wiki: "Telegram#set-up-whatsapp"));
         children.Add(Row(connect, disconnect));
         children.Add(SpeakRepliesCheck(MessagingApp.WhatsApp, saved, "MessagingWhatsApp"));
         return Card([.. children]);
     }
 
+    /// <summary>WhatsApp's setup in short; the numbered steps are in the wiki (docs/wiki/Telegram.md, "Set up WhatsApp").</summary>
     internal const string WhatsAppSteps =
-        "1. Create a Meta app (Create a Meta app below): choose the use case \"Connect with customers through WhatsApp\" and a business " +
-        "portfolio (make one if asked).\n" +
-        "2. In the app, open WhatsApp › API Setup. Meta gives you a free test number. Under \"To\", add your own phone number and confirm it " +
-        "with the code WhatsApp sends you.\n" +
-        "3. Make a permanent access token: in System users add a system user (Admin), assign it your app and your WhatsApp account with full " +
-        "control, then Generate token with whatsapp_business_messaging and whatsapp_business_management. (API Setup's temporary token also " +
-        "works, for 24 hours.)\n" +
-        "4. In the app, open App settings › Basic and copy the App secret.\n" +
-        "5. Paste both here and press Connect. Martlet finds your number, gives it a public address and sets up the webhook itself; you don't " +
-        "configure Webhooks in Meta.\n" +
-        "6. Pair your chat with the code Martlet shows.";
+        "Make a Meta app with WhatsApp, then paste its access token and app secret here and press Connect. " +
+        "Meta gives you a free test number, Martlet finds it and sets up the webhook itself, and then you pair your chat with a code.";
 
     /// <summary>Where Meta delivers WhatsApp messages: the owner's own address or a Cloudflare quick tunnel (and whether
     /// cloudflared is here).</summary>
@@ -210,18 +203,18 @@ public partial class MainWindow
         if (saved.PublicAddress.Length > 0)
             return $"Meta delivers messages to {saved.PublicAddress}, which must forward to {port} (with Host: localhost).";
         if (cloudflared is null)
-            return "Leave the address empty and Martlet opens a free Cloudflare quick tunnel (no account, port or router change). It needs Cloudflare's " +
+            return "Leave the address empty and Martlet opens a free Cloudflare quick tunnel (no account, port or router change), but it needs Cloudflare's " +
                 (own is { Verified: false }
-                    ? "cloudflared. Martlet's copy doesn't match the SHA-256 it checked at download (or is from an older Martlet), so Martlet doesn't run it: " +
+                    ? "cloudflared, and Martlet doesn't run its copy because it doesn't match the SHA-256 checked at download (or is from an older Martlet): " +
                       "Get cloudflared downloads and checks the official build again (about 60 MB)."
                     : "cloudflared, which isn't on this PC yet: Get cloudflared downloads the official build from GitHub (about 60 MB) and checks its SHA-256.");
         if (Martlet.Messaging.CloudflaredSignature.Problem(cloudflared) is { } unsigned)
-            return $"Martlet doesn't run {cloudflared}: {unsigned}. Get cloudflared downloads Cloudflare's signed build.";
+            return $"Martlet doesn't run {cloudflared} ({unsigned}), so Get cloudflared downloads Cloudflare's signed build.";
         var which = own is { Verified: true } && string.Equals(own.Path, cloudflared, StringComparison.OrdinalIgnoreCase)
             ? $"cloudflared {own.Version}, SHA-256 and Cloudflare's signature checked ({cloudflared})"
             : $"cloudflared, Cloudflare's signature checked ({cloudflared})";
-        return $"Leave the address empty and Martlet opens a free Cloudflare quick tunnel to {port} with {which}. " +
-            "Use your own https address only if you already have one that forwards there.";
+        return $"Leave the address empty and Martlet opens a free Cloudflare quick tunnel to {port} with {which}; " +
+            "use your own https address only if you already have one that forwards there.";
     }
 
     private static Grid SecretField(PasswordBox box, bool saved, string text)
@@ -255,20 +248,20 @@ public partial class MainWindow
     {
         if (!saved.Connected)
             return saved is WhatsAppPreferences
-                ? "Not connected. Follow the steps below to give Martlet a WhatsApp number."
-                : "Not connected. Make a Telegram bot and paste its token below.";
+                ? "Not connected: follow the steps below to give Martlet a WhatsApp number."
+                : "Not connected: make a Telegram bot and paste its token below.";
         var handle = saved.Handle;
         if (!saved.Enabled) return $"Connected to {handle}, but turned off on this PC.";
         var chats = saved.Chats.Count == 0 ? "no chats paired yet" : saved.Chats.Count == 1 ? "1 paired chat" : $"{saved.Chats.Count} paired chats";
-        var last = status.LastAnswered is { } at ? $" Last answered at {at.ToLocalTime():t}." : "";
+        var last = status.LastAnswered is { } at ? $", last answered at {at.ToLocalTime():t}" : "";
         return status.State switch
         {
-            MessagingState.Running => $"Answering {handle} on this PC ({chats}).{last}",
+            MessagingState.Running => $"Answering {handle} on this PC ({chats}{last}).",
             MessagingState.Connecting when saved is WhatsAppPreferences => $"Connecting {handle}: opening its public address and pointing the webhook at it...",
             MessagingState.Connecting => $"Connecting to {handle}...",
-            MessagingState.Retrying => $"Can't reach {handle} right now: {status.Problem} Martlet keeps trying.",
+            MessagingState.Retrying => $"Can't reach {handle} right now ({status.Problem?.TrimEnd('.')}), but Martlet keeps trying.",
             MessagingState.Failed => $"{handle} stopped: {status.Problem}",
-            _ when !running => $"{handle} isn't running on this PC. It starts with Martlet on your companion PC.",
+            _ when !running => $"{handle} isn't running on this PC; it starts with Martlet on your companion PC.",
             _ => $"Starting {handle}..."
         };
     }
@@ -281,7 +274,7 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading($"Paired {name} chats"),
-            Status(saved.Chats.Count == 0 ? "No chats paired yet. Pair yours so Martlet answers it." :
+            Status(saved.Chats.Count == 0 ? "No chats paired yet: pair yours so Martlet answers it." :
                 $"Martlet answers {(saved.Chats.Count == 1 ? "this chat" : $"these {saved.Chats.Count} chats")}:", prefix + "Chats")
         };
         var index = 0;
@@ -302,7 +295,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(codeText, prefix + "PairCode");
             children.Add(codeText);
             children.Add(Status($"Send this code to {saved.Handle} in {name} before {code.Expires.ToLocalTime():t}, or open the link on the " +
-                $"phone you use {name} on. It works once.", prefix + "PairStatus"));
+                $"phone you use {name} on (it works once).", prefix + "PairStatus"));
             children.Add(Row(PageButton($"Open in {name}", () => OpenInBrowser(link), link: true, id: prefix + "PairOpen"),
                 PageButton("Cancel", () => messaging.CancelPairing(app), link: true, id: prefix + "PairCancel")));
         }
@@ -341,7 +334,7 @@ public partial class MainWindow
         {
             var bot = await messaging.ConnectTelegramAsync(token, lifetime.Token);
             messagingNote = null;
-            ActionText.Text = $"Connected to @{bot.Username}. Pair your chat so Martlet answers it.";
+            ActionText.Text = $"Connected to @{bot.Username}: pair your chat so Martlet answers it.";
             ErrorLog.Info($"Telegram: connected to @{bot.Username}.");
         }
         catch (Exception error) when (error is MessagingException or ArgumentException or InvalidOperationException)
@@ -370,7 +363,7 @@ public partial class MainWindow
         var secret = secretBox.Password.Trim().Length > 0 ? secretBox.Password : kept?.AppSecret ?? "";
         if (token.Trim().Length == 0 || secret.Trim().Length == 0)
         {
-            whatsAppNote = "Paste the access token and the app secret first (steps 3 and 4).";
+            whatsAppNote = "Paste the access token and the app secret first.";
             RenderTab();
             return;
         }
@@ -383,7 +376,7 @@ public partial class MainWindow
             var found = await messaging.ConnectWhatsAppAsync(token, secret, phone.Text, account.Text, address.Text, lifetime.Token);
             whatsAppDraft = null;
             whatsAppNote = null;
-            ActionText.Text = $"Connected to {found.Number} ({found.Name}). Pair your chat so Martlet answers it.";
+            ActionText.Text = $"Connected to {found.Number} ({found.Name}): pair your chat so Martlet answers it.";
             ErrorLog.Info("WhatsApp: connected a business number.");
         }
         catch (Exception error) when (error is MessagingException or ArgumentException or InvalidOperationException)
@@ -403,9 +396,9 @@ public partial class MainWindow
     {
         if (closing || whatsAppBusy) return false;
         if (messaging.ToolsDirectory is not { } tools) return false;
-        if (!ConfirmationDialog.Confirm(this, "Download Cloudflare's cloudflared?\n\nWhatsApp delivers messages to a public web address. cloudflared " +
-                "(Cloudflare's free, official tunnel program) gives Martlet one without an account, open port or router change. Martlet downloads " +
-                $"it from {CloudflareQuickTunnel.Download.Host} (about 60 MB) into {tools} and runs it only while it answers WhatsApp. Cloudflare's " +
+        if (!ConfirmationDialog.Confirm(this, "Download Cloudflare's official cloudflared program, which opens a public web address on the internet " +
+                "where WhatsApp delivers messages to Martlet?\n\nMartlet downloads it from " +
+                $"{CloudflareQuickTunnel.Download.Host} (about 60 MB) into {tools}, runs it only while it answers WhatsApp, and Cloudflare's " +
                 "terms apply.", "Martlet - messaging", "Download", "Not now"))
             return false;
         whatsAppBusy = true;
@@ -449,7 +442,7 @@ public partial class MainWindow
                 return true;
             }
             whatsAppNote = task?.State == BackgroundTaskState.Canceled ? "The cloudflared download was canceled."
-                : $"Couldn't download cloudflared ({problem ?? task?.Status}). Install it yourself (winget install Cloudflare.cloudflared) and try again.";
+                : $"Couldn't download cloudflared ({(problem ?? task?.Status)?.TrimEnd('.')}): install it yourself (winget install Cloudflare.cloudflared) and try again.";
             return false;
         }
         finally
@@ -463,10 +456,8 @@ public partial class MainWindow
     {
         var saved = messaging.Preferences[app];
         var question = app == MessagingApp.WhatsApp
-            ? $"Disconnect {saved.Handle}?\n\nMartlet stops answering it, removes the access token and app secret from this PC and forgets the paired " +
-              "chats. Your Meta app and number stay; delete them at developers.facebook.com if you no longer need them."
-            : $"Disconnect {saved.Handle}?\n\nMartlet stops answering it, removes its token from this PC and forgets the paired " +
-              "chats. The bot itself stays in Telegram; delete it with BotFather if you no longer need it.";
+            ? $"Disconnect {saved.Handle}, remove its access token and app secret from this PC and forget its paired chats (your Meta app and number stay)?"
+            : $"Disconnect {saved.Handle}, remove its token from this PC and forget its paired chats (the bot itself stays in Telegram)?";
         if (!ConfirmationDialog.Confirm(this, question, "Martlet - messaging")) return;
         messaging.Disconnect(app);
         if (app == MessagingApp.WhatsApp)
@@ -488,7 +479,7 @@ public partial class MainWindow
 
     private void RemoveMessagingChat(MessagingApp app, MessagingChat chat)
     {
-        if (!ConfirmationDialog.Confirm(this, $"Stop answering {chat.Name}?\n\nThe chat can pair again with a new code.", "Martlet - messaging"))
+        if (!ConfirmationDialog.Confirm(this, $"Stop answering {chat.Name} (the chat can pair again with a new code)?", "Martlet - messaging"))
             return;
         messaging.RemoveChat(app, chat.Id);
         RenderTab();

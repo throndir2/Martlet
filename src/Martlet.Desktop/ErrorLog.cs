@@ -132,10 +132,10 @@ internal static class ErrorLog
                 if (showReport?.Invoke($"{productName} - Unexpected error", $"{productName} recovered from an unexpected error", report) != true)
                 {
                     var choice = MessageBox.Show(
-                        $"{productName} recovered from an unexpected error. The last action may not have finished.\n\n" +
+                        $"{productName} recovered from an unexpected error, and the last action may not have finished.\n\n" +
                         $"Error: {e.Exception.Message}\n\n" +
                         $"Details were saved locally to:\n{log}\n\n" +
-                        "Open the logs folder now? (Ctrl+C copies this message.)",
+                        "Open the logs folder now (Ctrl+C copies this message)?",
                         $"{productName} - Unexpected error", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                     if (choice == MessageBoxResult.Yes) OpenFolder();
                 }
@@ -262,8 +262,8 @@ internal static class ErrorLog
                         Warn($"Windows recorded how {which} ended: {found.Detail}");
                         if (run.Started >= newest) (newest, newestCrash) = (run.Started, found.Summary);
                     }
-                    else Info($"Windows recorded no crash for {which}. It was probably ended by Task Manager, a sign-out, " +
-                        "a shutdown or power loss, or Windows Error Reporting is off.");
+                    else Info($"Windows recorded no crash for {which}, so Task Manager, a sign-out, a shutdown or power loss " +
+                        "probably ended it, or Windows Error Reporting is off.");
                 }
                 lock (gate) previousCrash = newestCrash;
                 if (newestCrash is not null) RaisePreviousRunDescribed();

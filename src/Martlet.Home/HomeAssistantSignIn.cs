@@ -36,7 +36,7 @@ public static class HomeAssistantSignIn
         try { code = await ReceiveCodeAsync(listener, state, timeout.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new HomeAssistantException(HomeAssistantFailure.Timeout, "The sign-in wasn't finished within 5 minutes. Try again.");
+            throw new HomeAssistantException(HomeAssistantFailure.Timeout, "The sign-in wasn't finished within 5 minutes: try again.");
         }
         var session = await client.ExchangeCodeAsync(baseUri, clientId, code, cancellationToken).ConfigureAwait(false);
         return await client.MintTokenAsync(baseUri, session, clientName, cancellationToken).ConfigureAwait(false);

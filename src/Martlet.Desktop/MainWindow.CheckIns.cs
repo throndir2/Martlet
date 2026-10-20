@@ -592,7 +592,7 @@ public partial class MainWindow
         if (CheckIns.All(checkInSettings).FirstOrDefault(c => c.Id == id) is not { } checkIn) return;
         if (checkInRunning is not null || checkInTriggeredRunning == id)
         {
-            ActionText.Text = "Another check-in runs now. Try again in a moment.";
+            ActionText.Text = "Another check-in runs now, so try again in a moment.";
             return;
         }
         ActionText.Text = $"Checking {checkIn.Name}...";

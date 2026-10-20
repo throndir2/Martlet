@@ -129,11 +129,11 @@ public partial class MainWindow
                 _ => greetingJob?.Delivery switch
                 {
                     BackgroundDeliveryState.Pending or BackgroundDeliveryState.NotFinished =>
-                        $"Martlet greets you as soon as it's free. It knows {greetingKnew}.",
+                        $"Martlet greets you as soon as it's free, and it knows {greetingKnew}.",
                     BackgroundDeliveryState.Reserved => "Martlet is greeting you.",
                     BackgroundDeliveryState.Delivered when greetingQuiet == true =>
-                        $"Martlet warmed up at {at} and stayed quiet: your character wouldn't greet you. It knew {greetingKnew}.",
-                    BackgroundDeliveryState.Delivered => $"Martlet warmed up at {at} and greeted you. It knew {greetingKnew}.",
+                        $"Martlet warmed up at {at} and stayed quiet because your character wouldn't greet you (it knew {greetingKnew}).",
+                    BackgroundDeliveryState.Delivered => $"Martlet warmed up at {at} and greeted you, knowing {greetingKnew}.",
                     BackgroundDeliveryState.Dropped => "Martlet let the greeting go: you were busy for too long, or the conversation ended first.",
                     _ => "Martlet couldn't greet you: the conversation ended first."
                 }
@@ -150,7 +150,7 @@ public partial class MainWindow
     {
         if (changingBackgroundChoice) return;
         background = background with { GreetAtStart = GreetAtStartCheck.IsChecked == true };
-        RenderBackground(background.Save(store?.DataDirectory) ? null : "Couldn't save this choice. It applies until Martlet closes.");
+        RenderBackground(background.Save(store?.DataDirectory) ? null : "Couldn't save this choice, so it applies only until Martlet closes.");
     }
 }
 

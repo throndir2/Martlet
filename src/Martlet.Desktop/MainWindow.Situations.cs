@@ -378,7 +378,7 @@ public partial class MainWindow
             RenderTab();
         }, id: "SituationSimulateAway");
         return Card(Heading("FIXTURE: situations"),
-            Note($"{SimulatedSituation.Variable} is set: {fixture.Describe()}. Nothing is played, contacted or saved.", new Thickness(0, 0, 0, 0)),
+            Note($"{SimulatedSituation.Variable} is set: {fixture.Describe()}, and nothing is played, contacted or saved.", new Thickness(0, 0, 0, 0)),
             Row(game, away));
     }
 

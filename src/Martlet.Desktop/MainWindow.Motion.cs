@@ -277,24 +277,18 @@ public partial class MainWindow
             string? stopped = null;
             async Task<string> Continue(HostRunWindow run, PairedHost pc)
             {
-                var engine = pc.Target(Version);
-                await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                engine = await HostLocal.EngineForChangeAsync(engine, HostRoles.Motion, run);
-                var inputs = await HostLocal.DescribeAsync(engine, HostRoles.Motion, run.Output, run.Token);
-                var chosen = HostInputDialog.ForRole(run, "this PC", HostRoles.Motion, inputs, local: true) ?? throw new OperationCanceledException();
-                run.Status("Installing Motion on this PC (about 20 GB of downloads)...");
-                var exit = await HostLocal.EngineAsync(engine, ["add", HostRoles.Motion], SetupProgress(run, "Motion", why => stopped ??= why),
-                    run.Token, answers: chosen);
-                if (exit != 0)
-                    throw new InvalidOperationException($"Installing Motion stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
+                await InstallRoleHereAsync(run, pc, new(HostRoles.Motion, "Motion", new Dictionary<string, string>(),
+                    "Installing Motion on this PC (about 20 GB of downloads)...",
+                    exit => $"Installing Motion stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.")
+                    { Questions = LocalRoleQuestions.Role, Stopped = why => stopped ??= why });
                 run.Status("Checking Motion on this PC...");
                 if (await WaitForMotionAsync(pc, run.Token) is { } why)
                     throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Motion yet ({why}); check this PC in a minute.");
                 return "Motion is ready on this PC.";
             }
-            var (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,
-                text => ActionText.Text = text, lifetime.Token, Continue, "Set up Motion on this PC");
-            await ReadMachineAsync();
+            // No host service on this PC yet (with one, the branch above set the role up): it is set up first, in the same window.
+            var status = await RunRoleSetupHereAsync(null, "Set up Motion on this PC", "Set up Motion on this PC", Continue,
+                () => "Motion wasn't set up; the run window has details.");
             if (!closing && status is not null)
             {
                 ActionText.Text = status;
@@ -317,22 +311,11 @@ public partial class MainWindow
 
     /// <summary>After martlet-host added the role, checks <paramref name="host"/> (about a minute) until its gateway offers the
     /// motion route and its service says it is provisioned. Returns null once it does, else what it saw last.</summary>
-    private async Task<string?> WaitForMotionAsync(PairedHost host, CancellationToken token)
+    private Task<string?> WaitForMotionAsync(PairedHost host, CancellationToken token) => WaitForRoleAsync(host, async check =>
     {
-        for (var attempt = 0; ; attempt++)
-        {
-            var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, token);
-            hostChecks[host.HostId] = check;
-            var why = check.Text;
-            if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.MotionRouteId) == true && store is not null)
-            {
-                using var maker = new HostMotionMaker(store.DataDirectory, host.HostId);
-                var availability = await maker.GetAvailabilityAsync(token);
-                if (availability.Available) return null;
-                why = availability.Reason ?? why;
-            }
-            if (attempt >= 12) return why;
-            await Task.Delay(TimeSpan.FromSeconds(5), token);
-        }
-    }
+        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.MotionRouteId) != true || store is null) return new(check.Text);
+        using var maker = new HostMotionMaker(store.DataDirectory, host.HostId);
+        var availability = await maker.GetAvailabilityAsync(token);
+        return availability.Available ? null : new(availability.Reason ?? check.Text);
+    }, token);
 }
