@@ -488,10 +488,10 @@ fails*, the Thinking pool, every pool list and the HTTP MCP servers that its cal
 status values they may read, without `--allow-ui-effects`; and in which
 `martlet_guide` area each MCP tool is.
 
-**Owner:** `AutomationPolicy` (`src\Martlet.Mcp.Protocol\AutomationPolicy.cs`):
+**Owner:** `AutomationPolicy` (`src\Martlet.Mcp.Protocol\AutomationPolicy.Rules.cs` has the rules; the lists are in `AutomationPolicy.Clicks.cs` and `AutomationPolicy.Values.cs`):
 one line for each safe click and each safe value,
 `new("<ID>", "<page>", "<what it does or shows>")`. A tool is one `Tool(...)`
-registration in `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs`, and
+registration in `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs` (helpers in `<Area>Tools.<Feature>.cs` next to it), and
 `ToolGroups()` (`src\Martlet.Mcp.Protocol\McpServer.cs`) puts each group in
 its guide area. A new control or tool goes there, and `docs\MCP.md` names it.
 

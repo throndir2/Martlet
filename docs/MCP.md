@@ -11292,7 +11292,7 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
+  `src\Martlet.Mcp.Protocol\AutomationPolicy.Clicks.cs` (or `SafeClickPrefixes` for a
   family of generated IDs such as `CompanionTab-` and `Node-`). A passive click
   may read this PC, ask the local network a discovery question that carries
   none of your data, and stop what Martlet does at this moment (a reply, a
@@ -11302,7 +11302,7 @@ observe them:
   behind `--allow-ui-effects`. `AutomationPolicyTests` checks the effect texts
   for these words.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
-  `SafeValuePrefixes`) in the same file so snapshots return their text (a value
+  `SafeValuePrefixes`) in `AutomationPolicy.Values.cs` so snapshots return their text (a value
   pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
   `ui_snapshot` also replaces every e-mail address with `[email]` and every
