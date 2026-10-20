@@ -23,6 +23,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The account, sign-in, sharing and shared-settings windows and dialogs say each thing in one short line; the details are behind a **?** with a link to the wiki. ([#1066](https://github.com/throndir2/Martlet/pull/1066))
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))
 - The talk window and the talk, replies, fallback and vision settings show one short line for each text; click the **?** next to it for more, and **Read more in the wiki** for the full instructions. Error lines in the talk window still say what to do. ([#1054](https://github.com/throndir2/Martlet/pull/1054))
 - The speech host roles (XTTS, Dia, GPT-SoVITS, F5, Chatterbox, singing, Parakeet and voice recognition) now share one copy of their download and request code, so a request with a bad length gets a clear error instead of a dropped connection. The next host update rebuilds these roles once. ([#1061](https://github.com/throndir2/Martlet/pull/1061))
