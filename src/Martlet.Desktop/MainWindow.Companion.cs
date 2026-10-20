@@ -272,11 +272,11 @@ public partial class MainWindow
             case CompanionTab.Emotes: RenderEmotesTab(body); break;
             case CompanionTab.Eyes: RenderEyesTab(body); break;
             case CompanionTab.Touch: RenderTouchTab(body); break;
-            case CompanionTab.Personality: RenderPersonalityTab(body); break;
-            case CompanionTab.Prompts: RenderPromptsTab(body); break;
-            case CompanionTab.Lorebook: RenderLorebookTab(body); break;
+            case CompanionTab.Personality: PersonalityPage.Render(body); break;
+            case CompanionTab.Prompts: PromptsPage.Render(body); break;
+            case CompanionTab.Lorebook: LorebookPage.Render(body); break;
             case CompanionTab.AppGuides: RenderAppGuidesTab(body); break;
-            case CompanionTab.Memory: RenderMemoryTab(body); break;
+            case CompanionTab.Memory: MemoryPage.Render(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: new RepliesPage(this).Render(body); break;
             case CompanionTab.CheckIns: CheckInsPage.Render(body); break;
@@ -300,6 +300,6 @@ public partial class MainWindow
     }
 
     // The job pages are in MainWindow.JobPages.cs and MainWindow.LocalThinking.cs; Character, Eyes and Touch in
-    // MainWindow.CharacterPages.cs; Personality and Memory in MainWindow.PersonalityAndMemory.cs. The page catalog (titles, groups,
+    // MainWindow.CharacterPages.cs; the moved pages in Pages\<Page>. The page catalog (titles, groups,
     // icons, intros) is Pages\Companion\CompanionPages.cs, and the small builders are in Pages\PageKit.cs.
 }

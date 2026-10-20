@@ -843,7 +843,7 @@ internal static partial class AutomationPolicy
         new("DiscordRule-", "Companion › Discord", "A channel rule's line, such as DiscordRule-<channel>: the rule's name and its chat mode."),
         new("HostInput-choice.", "Add a host role", "A host role's choice in its Add dialog, such as HostInput-choice.A2F_ENGINE: local, or HostInput-choice.STT_MODEL@STT_ENGINE=parakeet. Never its secret fields."),
         new("HostInputTerms-", "Add a host role", "The terms that follow a variant choice, such as HostInputTerms-A2F_ENGINE."),
-        new("PromptState-", "Companion › Prompts", "A prompt's state, such as PromptState-reply_length: Edited. About 82 tokens., with Saving... while it saves. Never the prompt text."),
+        new("PromptState-", "Companion › Prompts", "A prompt's state, such as PromptState-reply_length: 'Edited, about 82 tokens.' ('Edited, about 82 tokens, saving.' while it saves). Never the prompt text."),
         new("Copy-", "Any page", "The Copy button of a read-only text box, such as Copy-HostRunOutput: Copy, or Copied for a few seconds after a click. Never the text it copies."),
         new("Node-", "Devices map and list", "A device's card on the map or its row in the list, such as Node-pc:desktop-miko: Miko, desktop-miko. Active now. Runs: Martlet app, Listening."),
         new("DeviceGroup-", "Devices list", "A heading of the Devices list with how many devices it holds, such as DeviceGroup-attention: Needs attention: 2 devices. Keys attention, computers, cloud."),
