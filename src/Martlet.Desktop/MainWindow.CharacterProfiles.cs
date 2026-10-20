@@ -24,9 +24,6 @@ public partial class MainWindow
 {
     /// <summary>The profile being edited in Companion › Profiles (<see cref="Guid.Empty"/> for a new one), or null.</summary>
     private Guid? editingProfile;
-    private TextBox? profileNameBox;
-    private ComboBox? profilePersonaChoice, profileLookChoice, profileVoiceChoice;
-    private TextBlock? profileEditorProblem;
     private bool renderingHomeCharacters;
 
     /// <summary>What Martlet is now, as profiles see it: the look shown, the voice chosen and the profile that matches both
@@ -48,7 +45,7 @@ public partial class MainWindow
     private Martlet.Core.Voices.SpeakingVoiceLibrary VoiceLibrary() =>
         store is null ? Martlet.Core.Voices.SpeakingVoiceLibrary.Empty : F5Voices.View(store.DataDirectory);
 
-    private static string BuiltInLookName => BundledLive2D.DefaultCharacter + " (built-in)";
+    internal static string BuiltInLookName => BundledLive2D.DefaultCharacter + " (built-in)";
 
     private string LookName(string? modelId, CharacterModelLibrary library) => modelId switch
     {
@@ -58,13 +55,13 @@ public partial class MainWindow
         _ => library.Live.FirstOrDefault(m => m.Id == modelId)?.Name ?? "a character no longer in your list"
     };
 
-    private static string VoiceName(string? voiceId, Martlet.Core.Voices.SpeakingVoiceLibrary voices) => voiceId switch
+    internal static string VoiceName(string? voiceId, Martlet.Core.Voices.SpeakingVoiceLibrary voices) => voiceId switch
     {
         null => "the current voice",
         _ => voices.Find(voiceId) is { Removed: false } voice ? voice.Name! : "a voice no longer in your list"
     };
 
-    private static string PersonaName(Guid personaId, CompanionSettings? companion) =>
+    internal static string PersonaName(Guid personaId, CompanionSettings? companion) =>
         companion?.Personas.FirstOrDefault(p => p.Id == personaId)?.Name ?? "a removed personality";
 
     /// <summary>Why a profile can't switch everything here yet (its look still copying or removed, its voice removed), or null.
@@ -84,207 +81,18 @@ public partial class MainWindow
         return null;
     }
 
-    // ---------- Companion › Profiles ----------
-
-    private void RenderProfilesTab(Panel page)
-    {
-        var companion = homeSettings?.Companion;
-        var profiles = companion?.CharacterList ?? [];
-        var library = CharacterLibrary();
-        var voices = VoiceLibrary();
-        var (modelId, voiceId, current) = CharacterNow();
-        var lookNow = modelId is null ? "a model file outside your characters" : LookName(modelId, library);
-        var mix = $"{lookNow}, the voice {(voiceId is null ? "Martlet's engine picks" : VoiceName(voiceId, voices))} and the personality " +
-            $"{companion?.ActivePersona.Name ?? "Martlet"}";
-        page.Children.Add(PageNowCard(current is not null ? $"{current.Name}: {mix}."
-            : profiles.Count == 0 ? $"Martlet is {mix}; save this as a profile to switch back to it in one step."
-            : $"No profile matches what Martlet uses now: {mix}.", null, "CharacterProfilesNow"));
-
-        var stack = new List<UIElement>
-        {
-            Heading("Your profiles"),
-            HelpTip.Explain("Each profile is a whole character: its look, its voice and its personality. Use one to switch all three at once, " +
-                "here, on Home or from Martlet's icon by the clock. Profiles are shared with your other Martlet computers.",
-                new Thickness(0, 0, 0, 6), "Profiles", "profiles"),
-            HelpTip.Explain("On each computer, a profile also keeps what you set there while you use it: where its character stands and how " +
-                "big it is, where it looks, and which touches stop it while it talks. Switch back to it and they come back.",
-                new Thickness(0, 0, 0, 10), "ProfilesPerComputer", "profiles on each computer")
-        };
-        var status = Note(profiles.Count == 0 ? "No profiles yet."
-            : $"{profiles.Count} profile{(profiles.Count == 1 ? "" : "s")}. " +
-              (current is not null ? "One of them is in use." : "None matches what Martlet uses now."), new Thickness(0, 0, 0, 10));
-        AutomationProperties.SetAutomationId(status, "CharacterProfilesStatus");
-        stack.Add(status);
-        var here = ProfilesHere();
-        var sharing = OwnSharing();
-        foreach (var profile in profiles)
-        {
-            var inUse = profile.Id == current?.Id;
-            var detail = $"Look: {LookName(profile.ModelId, library)} · Voice: {VoiceName(profile.VoiceId, voices)} · " +
-                $"Personality: {PersonaName(profile.PersonaId, companion)}";
-            var problem = ProfileProblem(profile, library, voices);
-            stack.Add(ProfileRow(profile, detail, inUse ? "In use." : problem is null ? "Ready." : problem + " Using it switches the rest.",
-                ProfileHereText(here.For(profile.Id)), inUse, ProfileSharingControls(profile, sharing), sharing?.HasJoined(profile.Id) == true));
-        }
-        stack.Add(Row(PageButton(profiles.Count == 0 ? "Save what Martlet uses now as a profile..." : "New profile...",
-            () => EditProfile(Guid.Empty), primary: profiles.Count == 0, id: "CharacterProfileNew")));
-        page.Children.Add(Card([.. stack]));
-
-        if (editingProfile is { } editing)
-        {
-            page.Children.Add(ProfileEditorCard(editing, companion, library, voices, modelId, voiceId));
-            // Keep the half-filled form while Martlet refreshes.
-            tabEdited = true;
-        }
-
-        page.Children.Add(HouseholdCharactersCard(companion, library, voices));
-
-        page.Children.Add(Card(Heading("The parts"),
-            Note("Add looks in Character, voices in Voice and personalities in Personality; every profile can use them.", new Thickness(0, 0, 0, 8)),
-            Row(PageButton("Character", () => OpenCompanion(CompanionTab.Character), id: "ProfilesOpenCharacter"),
-                PageButton("Voice", () => OpenCompanion(CompanionTab.Voice), id: "ProfilesOpenVoice"),
-                PageButton("Personality", () => OpenCompanion(CompanionTab.Personality), id: "ProfilesOpenPersonality"))));
-    }
-
-    /// <summary>One profile: its name (with the in-use mark), what it sets, a readable state line
-    /// (<c>CharacterProfileState-key</c>: never a name), what it keeps on this PC (<c>CharacterProfileHere-key</c>), how it is shared
-    /// with the household (<paramref name="sharing"/>) and Use, Edit and Remove. A character someone else shares with you together
-    /// (<paramref name="joined"/>) can't be edited here, and Leave (<c>CharacterProfileLeave-key</c>) replaces Remove.</summary>
-    private UIElement ProfileRow(CharacterProfile profile, string detail, string state, string here, bool inUse, UIElement? sharing = null,
-        bool joined = false)
-    {
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock
-        {
-            Text = profile.Name + (inUse ? "  \u00b7  in use" : ""), FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap
-        });
-        text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
-        var hereText = Note(here, new Thickness(0, 2, 0, 0));
-        AutomationProperties.SetAutomationId(hereText, "CharacterProfileHere-" + profile.Key);
-        text.Children.Add(hereText);
-        var stateText = Note(state, new Thickness(0, 2, 0, 0));
-        AutomationProperties.SetAutomationId(stateText, "CharacterProfileState-" + profile.Key);
-        text.Children.Add(stateText);
-        if (sharing is not null) text.Children.Add(sharing);
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        Button Small(string label, Action run, string id)
-        {
-            var button = PageButton(label, run, id: $"CharacterProfile{id}-{profile.Key}");
-            button.MinWidth = 72;
-            button.Margin = new Thickness(8, 0, 0, 0);
-            AutomationProperties.SetName(button, $"{label} {profile.Name}");
-            return button;
-        }
-        var use = Small(inUse ? "In use" : "Use", () => UseCharacterProfileAsync(profile.Id).Forget(), "Use");
-        use.IsEnabled = !inUse;
-        buttons.Children.Add(use);
-        var edit = Small("Edit", () => EditProfile(profile.Id), "Edit");
-        edit.IsEnabled = !joined;
-        if (joined) edit.ToolTip = "Only the person who shares it changes it.";
-        buttons.Children.Add(edit);
-        buttons.Children.Add(joined ? Small("Leave", () => LeaveSharedCharacterAsync(profile).Forget(), "Leave")
-            : Small("Remove", () => RemoveCharacterProfileAsync(profile).Forget(), "Remove"));
-        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
-        DockPanel.SetDock(buttons, Dock.Right);
-        row.Children.Add(buttons);
-        row.Children.Add(text);
-        return row;
-    }
+    // ---------- Companion › Profiles (ProfilesPage in Pages\Profiles; MainWindow.ProfilesPage.cs gives it its services) ----------
 
     private void EditProfile(Guid id)
     {
         editingProfile = id;
         if (openTab != CompanionTab.Profiles) OpenCompanion(CompanionTab.Profiles);
         else RenderTab();
-        profileNameBox?.Focus();
-        profileNameBox?.SelectAll();
+        ProfilesPage.FocusName();
     }
 
-    /// <summary>The form for a new profile (filled in with what Martlet uses now) or an existing one: its name, personality,
-    /// look and voice. "Keep the current" look or voice leaves that part alone when the profile is used.</summary>
-    private Border ProfileEditorCard(Guid id, CompanionSettings? companion, CharacterModelLibrary library,
-        Martlet.Core.Voices.SpeakingVoiceLibrary voices, string? modelNow, string? voiceNow)
+    private async Task SaveCharacterProfileAsync(Guid id, string name, Guid personaId, string? modelId, string? voiceId, Action<string> problem)
     {
-        var existing = companion?.CharacterList.FirstOrDefault(c => c.Id == id);
-        var personaId = existing?.PersonaId ?? companion?.ActivePersonaId ?? Guid.Empty;
-        var lookId = existing is null ? modelNow : existing.ModelId;
-        var voiceId = existing is null ? voiceNow : existing.VoiceId;
-        var name = existing?.Name ?? UniqueProfileName(companion?.ActivePersona.Name ?? "Martlet", companion);
-
-        profileNameBox = new TextBox { Text = name, MaxLength = CharacterProfile.MaximumNameCharacters, MinWidth = 260, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetAutomationId(profileNameBox, "CharacterProfileName");
-        AutomationProperties.SetName(profileNameBox, "Profile name");
-        InputHint.SetText(profileNameBox, "Gaming buddy");
-
-        ComboBox Choice(string automationId, string accessibleName, IEnumerable<(object? Tag, string Text)> options, object? selected)
-        {
-            var box = new ComboBox { MinHeight = 30, MinWidth = 260, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left };
-            foreach (var (tag, text) in options)
-            {
-                var item = new ComboBoxItem { Content = text, Tag = tag };
-                box.Items.Add(item);
-                if (Equals(tag, selected)) box.SelectedItem = item;
-            }
-            box.SelectedIndex = box.SelectedIndex < 0 ? 0 : box.SelectedIndex;
-            AutomationProperties.SetAutomationId(box, automationId);
-            AutomationProperties.SetName(box, accessibleName);
-            return box;
-        }
-        profilePersonaChoice = Choice("CharacterProfilePersona", "Personality",
-            companion is null ? [((object?)Guid.Empty, "Martlet (default)")] : companion.Personas.Select(p => ((object?)p.Id, p.Name)),
-            companion is null ? Guid.Empty : personaId);
-        var looks = new List<(object?, string)> { (null, "Keep the current look"), (CharacterProfile.BuiltInModel, BuiltInLookName) };
-        looks.AddRange(library.Live.Select(m => ((object?)m.Id, m.Name!)));
-        looks.AddRange((vroidHub?.Looks() ?? []).Select(l => ((object?)l.Path, l.Name + " (VRoid Hub)")));
-        if (lookId is not null && looks.All(l => !Equals(l.Item1, lookId)))
-            looks.Add((lookId, RemoteCharacterModels.IsRemote(lookId) ? "A VRoid Hub character" : "A character no longer in your list"));
-        profileLookChoice = Choice("CharacterProfileLook", "Look", looks, lookId);
-        var voiceOptions = new List<(object?, string)> { (null, "Keep the current voice") };
-        voiceOptions.AddRange(voices.Live.Select(v => ((object?)v.Id, v.Name!)));
-        if (voiceId is not null && voiceOptions.All(v => !Equals(v.Item1, voiceId))) voiceOptions.Add((voiceId, "A voice no longer in your list"));
-        profileVoiceChoice = Choice("CharacterProfileVoice", "Voice", voiceOptions, voiceId);
-
-        profileEditorProblem = Note("", new Thickness(0, 8, 0, 0));
-        profileEditorProblem.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        AutomationProperties.SetAutomationId(profileEditorProblem, "CharacterProfileEditorProblem");
-        Label Labeled(string text, Control target) => new() { Content = text, Target = target, Padding = new Thickness(0, 12, 0, 4) };
-        return Card(Heading(existing is null ? "New profile" : $"Edit '{existing.Name}'"),
-            Note(existing is null ? "It starts as what Martlet uses now; change any part, then save." : "Change any part, then save.",
-                new Thickness(0, 0, 0, 0)),
-            Labeled("_Name", profileNameBox), profileNameBox,
-            Labeled("_Personality", profilePersonaChoice), profilePersonaChoice,
-            Labeled("_Look", profileLookChoice), profileLookChoice,
-            Labeled("_Voice", profileVoiceChoice), profileVoiceChoice,
-            Note("Voices are the ones in Companion › Voice › Voices, spoken by voice-cloning engines.", new Thickness(0, 6, 0, 0)),
-            profileEditorProblem,
-            Row(PageButton(existing is null ? "Save profile" : "Save changes", () => SaveCharacterProfileAsync(id).Forget(), primary: true, id: "CharacterProfileSave"),
-                PageButton("Cancel", () => { editingProfile = null; RenderTab(); }, id: "CharacterProfileCancel")));
-    }
-
-    private static string UniqueProfileName(string name, CompanionSettings? companion)
-    {
-        var taken = new HashSet<string>((companion?.CharacterList ?? []).Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
-        if (!taken.Contains(name)) return name;
-        for (var i = 2; ; i++)
-            if (!taken.Contains($"{name} {i}")) return $"{name} {i}";
-    }
-
-    private async Task SaveCharacterProfileAsync(Guid id)
-    {
-        if (profileNameBox is null || profilePersonaChoice is null || profileLookChoice is null || profileVoiceChoice is null) return;
-        var name = profileNameBox.Text.Trim();
-        if (name.Length == 0)
-        {
-            if (profileEditorProblem is not null) profileEditorProblem.Text = "Give the profile a name.";
-            return;
-        }
-        if ((profilePersonaChoice.SelectedItem as ComboBoxItem)?.Tag is not Guid personaId)
-        {
-            if (profileEditorProblem is not null) profileEditorProblem.Text = "Choose a personality.";
-            return;
-        }
-        var modelId = (profileLookChoice.SelectedItem as ComboBoxItem)?.Tag as string;
-        var voiceId = (profileVoiceChoice.SelectedItem as ComboBoxItem)?.Tag as string;
         var saved = await ChangeCompanionAsync(companion =>
         {
             // Before any personality is saved, the form offers the default one, which is created as this saves.
@@ -295,7 +103,7 @@ public partial class MainWindow
         }, "Your character profiles changed.");
         if (saved is null)
         {
-            if (profileEditorProblem is not null) profileEditorProblem.Text = ActionText.Text;
+            problem(ActionText.Text);
             return;
         }
         // A new profile that Martlet is now (the first that matches) takes on this PC's place, eyes and touch choice.
@@ -444,189 +252,5 @@ public partial class MainWindow
                 FollowCharacterSpace();
             }
         }
-    }
-
-    // ---------- what each profile keeps on this PC ----------
-
-    /// <summary>Set while Martlet switches profiles or puts back what one keeps on this PC, so that isn't kept for another one.</summary>
-    private bool applyingProfileHere;
-
-    /// <summary>What Martlet uses on this PC now, as a profile keeps it: the character's place, eyes and touch choice.</summary>
-    private CharacterProfileLocal ProfileHereNow() => new(avatar.Placement, Talk.GazeUsual, Talk.GazeFree, Talk.TouchInterrupts);
-
-    /// <summary>What the saved profiles keep on this PC and the one whose choices this PC uses (removed profiles left out).</summary>
-    private CharacterProfilesHere ProfilesHere()
-    {
-        var here = CharacterProfileLocalStore.Load(store?.DataDirectory);
-        return homeSettings?.Companion is { } companion ? here.Of([.. companion.CharacterList.Select(c => c.Id)]) : here;
-    }
-
-    /// <summary>The character was moved, resized, locked or reset, or its eyes or touch choice changed, on this PC: the profile
-    /// Martlet is now keeps it here (<see cref="CharacterProfilesHere.Remember"/>), so switching back to it brings it back.</summary>
-    private void RememberProfileHere()
-    {
-        if (applyingProfileHere || closing || store is null || CharacterNow().Current is not { } current) return;
-        if (ProfilesHere().Remember(current.Id, ProfileHereNow()) is { } next) CharacterProfileLocalStore.Save(store.DataDirectory, next);
-    }
-
-    /// <summary>Before switching profiles: the profile in use keeps what it has on this PC now, with the place read from the
-    /// showing character (a move may still be settling).</summary>
-    private async Task RememberBeforeSwitchAsync(CancellationToken token)
-    {
-        // The camera view is its own window; the overlay's place is the one from before it opened.
-        if (avatar.IsShowing && avatar.Camera is null)
-            try
-            {
-                if (await avatar.ReadPlacementAsync(token) is { } place) CharacterPlacementStore.Save(store?.DataDirectory, place);
-            }
-            catch (Exception error) when (RendererFailures.Is(error, token))
-            {
-                RendererFailures.Log("The character's position couldn't be read before switching character profiles", error);
-            }
-        RememberProfileHere();
-    }
-
-    /// <summary>Puts back what a profile keeps on this PC: where it looks and which touches stop it, then its place. A showing
-    /// character moves there now, unless it <paramref name="opensSoon"/> again with a new look: it then opens there.</summary>
-    private async Task ApplyProfileHereAsync(CharacterProfileLocal kept, bool opensSoon, CancellationToken token)
-    {
-        var applying = applyingProfileHere;
-        applyingProfileHere = true;
-        try
-        {
-            if (Talk.GazeUsual != kept.GazeUsual || Talk.GazeFree != kept.GazeFree || Talk.TouchInterrupts != kept.TouchInterrupts)
-                SaveTalk(Talk with { GazeUsual = kept.GazeUsual, GazeFree = kept.GazeFree, TouchInterrupts = kept.TouchInterrupts },
-                    render: openTab is CompanionTab.Eyes or CompanionTab.Touch);
-            if (kept.Placement is not { } place) return;
-            if (avatar.IsShowing && !opensSoon)
-                try { await avatar.PlaceAsync(place, token); }
-                catch (Exception error) when (RendererFailures.Is(error, token))
-                {
-                    RendererFailures.Log("The character couldn't move to its profile's place", error);
-                    avatar.Placement = place;
-                }
-            else avatar.Placement = place;
-            if (closing) return;
-            CharacterPlacementStore.Save(store?.DataDirectory, avatar.Placement);
-            if (characterPlacementNote is { } note) note.Text = CharacterPlacementText();
-        }
-        finally { applyingProfileHere = applying; }
-    }
-
-    /// <summary>Follows the profile switched to last (the shared settings' <see cref="CompanionSettings.ActiveCharacterId"/>) when
-    /// this PC doesn't use its choices yet: a switch made on another computer, also one that arrived while Martlet was closed here.
-    /// What that profile keeps on this PC comes back; a profile that keeps nothing here yet takes on what this PC uses now. A
-    /// switch made here is followed by <see cref="UseCharacterProfileAsync"/> itself.</summary>
-    private void FollowCharacterProfile()
-    {
-        if (applyingProfileHere || closing || store is null || homeSettings?.Companion?.ActiveCharacterId is not { } id) return;
-        var here = ProfilesHere();
-        if (here.InUse == id) return;
-        var (next, kept) = here.Switch(id, ProfileHereNow());
-        if (!CharacterProfileLocalStore.Save(store.DataDirectory, next) || kept is null) return;
-        var profile = homeSettings.Companion.CharacterList.FirstOrDefault(c => c.Id == id);
-        ErrorLog.Info($"Following the character profile switched to last ({profile?.Key}); on this PC: {ProfileHereLog(kept)}.");
-        FollowCharacterSpace();
-        // A new look from another computer restarts a showing character (AfterSettingsAppliedAsync): it opens at the place.
-        ApplyProfileHereAsync(kept, opensSoon: characterChanged && avatar.IsShowing, lifetime.Token).Forget();
-    }
-
-    /// <summary>A profile row's line on what it keeps on this PC (<c>CharacterProfileHere-key</c>; never a name).</summary>
-    internal static string ProfileHereText(CharacterProfileLocal? kept)
-    {
-        if (kept is null) return "On this PC: nothing yet (while you use it, it keeps where its character stands, where it looks and which touches stop it).";
-        var place = kept.Placement is { } at ? $"its own spot and size ({at.Width:0} × {at.Height:0}{(at.Locked ? ", locked" : "")})" : "no spot of its own";
-        var eyes = (kept.GazeUsual is { } mode ? CharacterGaze.Label(mode) : "As the personality decides") + (kept.GazeFree ? "" : ", replies can't change it");
-        var touch = kept.TouchInterrupts switch
-        {
-            Martlet.Conversation.TouchInterrupts.Intimate => "only intimate touches stop it",
-            Martlet.Conversation.TouchInterrupts.Never => "it finishes first",
-            _ => "any touch stops it"
-        };
-        return $"On this PC: {place} · Eyes: {eyes} · While it talks: {touch}.";
-    }
-
-    /// <summary>What a profile keeps on this PC, for the desktop log: no names, only the size, lock, monitor and choices.</summary>
-    private static string ProfileHereLog(CharacterProfileLocal kept) =>
-        (kept.Placement is { } at ? $"place {at.Width:0} × {at.Height:0}{(at.Locked ? " locked" : "")}{(at.Screen is { } screen ? $" on {CharacterScreen(screen)}" : "")}"
-            : "no place") +
-        $", gaze {(kept.GazeUsual is { } mode ? CharacterGaze.Word(mode) : RendererGaze.Personality)}{(kept.GazeFree ? "" : " (fixed)")}" +
-        $", touches while talking {kept.TouchInterrupts.ToString().ToLowerInvariant()}";
-
-    // ---------- links from Character and Personality ----------
-
-    /// <summary>Character and Personality point here: a profile ties the look and personality to a voice.</summary>
-    private Border ProfilesLinkCard()
-    {
-        var count = homeSettings?.Companion?.CharacterList.Count ?? 0;
-        return Card(Heading("Character profiles"),
-            Note(count == 0 ? "Save a look, a voice and a personality together as a profile to switch between whole characters in one step."
-                : $"You have {count} profile{(count == 1 ? "" : "s")}, each switching the look, voice and personality together.", new Thickness(0, 0, 0, 8)),
-            Row(PageButton(count == 0 ? "Make a profile" : "Open profiles", () => OpenCompanion(CompanionTab.Profiles), id: "OpenProfiles")));
-    }
-
-    // ---------- Home ----------
-
-    /// <summary>Home's character switch: every profile, the one in use selected ("A mix of your own" when none matches), and
-    /// Manage profiles, which opens Companion › Profiles.</summary>
-    private void RenderHomeCharacters()
-    {
-        if (HomeCharacterRow is null) return;
-        var companion = Role == DeviceRole.Companion;
-        HomeCharacterRow.Visibility = companion ? Visibility.Visible : Visibility.Collapsed;
-        if (!companion || HomeCharacterChoice.IsDropDownOpen) return;
-        var profiles = homeSettings?.Companion?.CharacterList ?? [];
-        var current = profiles.Count == 0 ? null : CharacterNow().Current;
-        HomeCharacterChoice.Visibility = profiles.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        HomeCharacterLabel.Visibility = HomeCharacterChoice.Visibility;
-        HomeCharacterManage.Content = profiles.Count == 0 ? "Make character profiles" : "Manage profiles";
-        AutomationProperties.SetName(HomeCharacterManage, profiles.Count == 0
-            ? "Make character profiles to switch look, voice and personality at once" : "Manage character profiles");
-        renderingHomeCharacters = true;
-        try
-        {
-            HomeCharacterChoice.Items.Clear();
-            if (current is null && profiles.Count > 0)
-                HomeCharacterChoice.Items.Add(new ComboBoxItem { Content = "A mix of your own", Tag = null, IsEnabled = false });
-            foreach (var profile in profiles)
-                HomeCharacterChoice.Items.Add(new ComboBoxItem { Content = profile.Name, Tag = profile.Id });
-            HomeCharacterChoice.SelectedIndex = current is null ? 0 : profiles.ToList().FindIndex(p => p.Id == current.Id);
-        }
-        finally { renderingHomeCharacters = false; }
-    }
-
-    private void HomeCharacter_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (renderingHomeCharacters || (HomeCharacterChoice.SelectedItem as ComboBoxItem)?.Tag is not Guid id) return;
-        if (CharacterNow().Current?.Id == id) return;
-        UseCharacterProfileAsync(id).Forget();
-    }
-
-    private void HomeCharacterManage_Click(object sender, RoutedEventArgs e) => OpenCompanion(CompanionTab.Profiles);
-
-    // ---------- the notification-area menu ----------
-
-    /// <summary>The icon menu's Character submenu: each profile, the one in use ticked. Null without profiles.</summary>
-    private MenuItem? TrayCharacterProfiles(ContextMenu menu, bool enabled)
-    {
-        var profiles = homeSettings?.Companion?.CharacterList ?? [];
-        if (profiles.Count == 0) return null;
-        var current = CharacterNow().Current;
-        var parent = new MenuItem { Header = "Character profile", IsEnabled = enabled };
-        AutomationProperties.SetAutomationId(parent, "TrayCharacterProfiles");
-        foreach (var profile in profiles)
-        {
-            var item = new MenuItem { Header = profile.Name, IsCheckable = false, IsChecked = profile.Id == current?.Id };
-            AutomationProperties.SetAutomationId(item, "TrayCharacterProfile-" + profile.Key);
-            var id = profile.Id;
-            item.Click += (_, _) =>
-            {
-                menu.IsOpen = false;
-                if (id != CharacterNow().Current?.Id)
-                    Dispatcher.InvokeAsync(() => UseCharacterProfileAsync(id).Forget(), System.Windows.Threading.DispatcherPriority.Background);
-            };
-            parent.Items.Add(item);
-        }
-        return parent;
     }
 }
