@@ -66,20 +66,20 @@ public static class DiscordSetup
 
     public static string Servers(int count) => count == 1 ? "1 server" : $"{count.ToString(CultureInfo.InvariantCulture)} servers";
 
-    /// <summary>The chat modes in one line ("Servers: Off. DMs: Always (people Martlet knows). Voice: Sometimes. 2 channel rules.").</summary>
+    /// <summary>The chat modes in one line ("Servers: Off; DMs: Always (people Martlet knows); voice: Sometimes; 2 channel rules.").</summary>
     public static string ChatSummary(DiscordPreferences saved) =>
-        $"Servers: {ModeName(saved.ServerChat)}. DMs: {ModeName(saved.DirectChat)} " +
-        $"({(saved.DirectFromAnyone ? "anyone" : "people Martlet knows")}). Voice: {ModeName(saved.VoiceChat)}. " +
+        $"Servers: {ModeName(saved.ServerChat)}; DMs: {ModeName(saved.DirectChat)} " +
+        $"({(saved.DirectFromAnyone ? "anyone" : "people Martlet knows")}); voice: {ModeName(saved.VoiceChat)}; " +
         (saved.Channels.Count == 1 ? "1 channel rule." : $"{saved.Channels.Count.ToString(CultureInfo.InvariantCulture)} channel rules.");
 
     /// <summary>Who Martlet knows in one line, without names or IDs.</summary>
     public static string PeopleSummary(DiscordPreferences saved)
     {
         var callable = saved.People.Count(person => person.MayCall);
-        return (saved.OwnerUserId != 0 ? "Your account is set. " : "Your account isn't set. ") +
+        return (saved.OwnerUserId != 0 ? "Your account is set; " : "Your account isn't set; ") +
             (saved.People.Count == 1 ? "1 person" : $"{saved.People.Count.ToString(CultureInfo.InvariantCulture)} people") +
-            $" ({callable.ToString(CultureInfo.InvariantCulture)} may be called). " +
-            (saved.HomeGuildId != 0 ? "Home server set." : "No home server.");
+            $" ({callable.ToString(CultureInfo.InvariantCulture)} may be called); " +
+            (saved.HomeGuildId != 0 ? "home server set." : "no home server.");
     }
 
     /// <summary>Reads a Discord ID (a snowflake) as typed or pasted: digits, a mention like &lt;@123&gt;, &lt;@!123&gt; or

@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Companion › Tools, Smart home, Discord, Messaging, App guides and Check-ins, the MCP windows and Outside access now show one short line for each explanation and status, with the rest behind a **?** that links to the wiki; the wiki has the full setup steps for Discord, Telegram, WhatsApp and Home Assistant. ([#1072](https://github.com/throndir2/Martlet/pull/1072))
+
 ## [0.89.0] - 2026-10-19
 
 ### Added
@@ -27,6 +31,7 @@ Each release's section here is also its notes on GitHub.
 
 - Your Picture making, Vision and Hearing lists are now the same on all your computers, with each place's API key and custom workflow, so a new computer is set up at once. ([#1078](https://github.com/throndir2/Martlet/pull/1078))
 - Your check-ins, Chatterbox Original's style and the recommended setups you declined are now the same on all your computers. A check-in's PowerShell script stays on the computer where you wrote it. ([#1078](https://github.com/throndir2/Martlet/pull/1078))
+- Settings, updates, appearance, exiting, Diagnostics and Troubleshooting show one short line for each message, and the wiki has the rest; the Linux and Mac app gets a **?** with a wiki link next to Thinking. ([#1075](https://github.com/throndir2/Martlet/pull/1075))
 - The share link's Copied line and the VRoid Hub sign-in errors are one short sentence each. ([#1073](https://github.com/throndir2/Martlet/pull/1073))
 - The account, sign-in, sharing and shared-settings windows and dialogs say each thing in one short line; the details are behind a **?** with a link to the wiki. ([#1066](https://github.com/throndir2/Martlet/pull/1066))
 - The character, avatar and persona pages show one short line, with the rest behind a **?** that links to the wiki. ([#1058](https://github.com/throndir2/Martlet/pull/1058))

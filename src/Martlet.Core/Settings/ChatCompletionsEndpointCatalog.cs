@@ -50,10 +50,9 @@ public static class ChatCompletionsEndpointCatalog
             {
                 KeyUrl = GeminiKeyUrl,
                 HearingOptIn = true,
-                Guidance = $"Recommended: {GeminiDefaultModelId}, free on Google's free tier. It sees your screen, and hears your voice " +
-                    "only if you tick Companion › Listening › Let Thinking hear my voice; on the free tier Google's reviewers may read " +
-                    $"what you send, so don't send anything private. Get a free key: open {GeminiKeyUrl}, sign in with a Google " +
-                    "account, accept the Gemini API terms, then copy the key AI Studio made for you (or choose Create API key)."
+                Guidance = $"Recommended: {GeminiDefaultModelId}, free on Google's free tier, where Google's reviewers may read what " +
+                    "you send, so send nothing private (it hears your voice only with Let Thinking hear my voice; get a free key at " +
+                    $"{GeminiKeyUrl})."
             }
         ]);
 

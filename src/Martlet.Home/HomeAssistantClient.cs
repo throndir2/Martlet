@@ -206,17 +206,17 @@ public sealed partial class HomeAssistantClient : IDisposable
             var status = (int)response.StatusCode;
             if (status is >= 300 and <= 399)
                 throw new HomeAssistantException(HomeAssistantFailure.Redirected,
-                    "Home Assistant redirected Martlet. Enter the exact address you open in the browser.");
+                    "Home Assistant redirected Martlet: enter the exact address you open in the browser.");
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 throw new HomeAssistantException(HomeAssistantFailure.Unauthorized, forbidden ??
-                    "Home Assistant rejected the access token. Create a new long-lived access token and paste it here.");
+                    "Home Assistant rejected the access token: create a new long-lived access token and paste it here.");
             if (response.StatusCode == HttpStatusCode.BadRequest && forbidden is not null)
                 throw new HomeAssistantException(HomeAssistantFailure.BadResponse,
                     await ErrorTextAsync(response, timeout.Token).ConfigureAwait(false) ?? "Home Assistant refused the request.");
             if (response.StatusCode == HttpStatusCode.NotFound) throw NotHomeAssistant();
             if (status >= 500)
                 throw new HomeAssistantException(HomeAssistantFailure.ServerError,
-                    $"Home Assistant reported an error ({status}). Check its logs, then try again.");
+                    $"Home Assistant reported an error ({status}): check its logs, then try again.");
             if (!response.IsSuccessStatusCode)
                 throw new HomeAssistantException(HomeAssistantFailure.BadResponse, $"Home Assistant answered {status} {response.ReasonPhrase}.");
             if (response.Content.Headers.ContentType?.MediaType != "application/json") throw NotHomeAssistant();
@@ -236,21 +236,21 @@ public sealed partial class HomeAssistantClient : IDisposable
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new HomeAssistantException(HomeAssistantFailure.Timeout,
-                "Home Assistant didn't answer in time. Check that it is running and that this PC is on the same network.");
+                "Home Assistant didn't answer in time: check that it is running and that this PC is on the same network.");
         }
         catch (HttpRequestException error)
         {
             throw new HomeAssistantException(HomeAssistantFailure.Unreachable,
-                $"Couldn't reach Home Assistant ({error.HttpRequestError}). Check the address and that this PC is on the same network.");
+                $"Couldn't reach Home Assistant ({error.HttpRequestError}): check the address and that this PC is on the same network.");
         }
         catch (IOException)
         {
-            throw new HomeAssistantException(HomeAssistantFailure.Unreachable, "The connection to Home Assistant broke off. Try again.");
+            throw new HomeAssistantException(HomeAssistantFailure.Unreachable, "The connection to Home Assistant broke off: try again.");
         }
     }
 
     private static HomeAssistantException NotHomeAssistant() => new(HomeAssistantFailure.NotHomeAssistant,
-        "That address answered, but not like Home Assistant. Check the address.");
+        "That address answered, but not like Home Assistant: check the address.");
 
     // Home Assistant's error answers are JSON {"message": "..."} or short plain text.
     private static async Task<string?> ErrorTextAsync(HttpResponseMessage response, CancellationToken cancellationToken)

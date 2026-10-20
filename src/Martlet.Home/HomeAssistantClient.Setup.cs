@@ -87,7 +87,7 @@ public sealed partial class HomeAssistantClient
         };
         string code;
         using (var document = await SendAsync(HttpMethod.Post, baseUri, "api/onboarding/users", null, Json(body), MaximumSmallResponse,
-            cancellationToken, forbidden: "Someone already created this Home Assistant's owner account. Sign in with Home Assistant instead.")
+            cancellationToken, forbidden: "Someone already created this Home Assistant's owner account, so sign in with Home Assistant instead.")
             .ConfigureAwait(false))
             code = Text(document.RootElement, "auth_code") ?? throw NotHomeAssistant();
         return await ExchangeCodeAsync(baseUri, clientId, code, cancellationToken).ConfigureAwait(false);
@@ -155,7 +155,7 @@ public sealed partial class HomeAssistantClient
             ["grant_type"] = "authorization_code", ["code"] = code, ["client_id"] = clientId
         });
         using var document = await SendAsync(HttpMethod.Post, baseUri, "auth/token", null, form, MaximumSmallResponse, cancellationToken,
-            forbidden: "Home Assistant didn't accept the sign-in. Try again.").ConfigureAwait(false);
+            forbidden: "Home Assistant didn't accept the sign-in: try again.").ConfigureAwait(false);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object || Text(root, "access_token") is not { Length: > 0 } access ||
             Text(root, "refresh_token") is not { Length: > 0 } refresh)
@@ -182,7 +182,7 @@ public sealed partial class HomeAssistantClient
     private async Task StepAsync(Uri baseUri, HomeSession session, string path, JsonObject body, CancellationToken cancellationToken)
     {
         using var document = await SendAsync(HttpMethod.Post, baseUri, path, null, Json(body), MaximumSmallResponse, cancellationToken,
-            forbidden: "Home Assistant's setup was finished by someone else in the meantime. Sign in with Home Assistant instead.",
+            forbidden: "Someone else finished Home Assistant's setup in the meantime, so sign in with Home Assistant instead.",
             bearer: session.AccessToken).ConfigureAwait(false);
     }
 

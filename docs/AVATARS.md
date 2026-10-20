@@ -335,7 +335,7 @@ what each one is.
 
   The head part includes the body. The tables are `HOLD_PARTS` in
   `Martlet.Avatar.Live2D`'s `lib/gestures.ts` and `VRM_HOLD_PARTS` in
-  `Martlet.Avatar.Vrm`'s `src/runtime.ts`.
+  `Martlet.Avatar.Vrm`'s `src/poses.ts`.
 - **The voice has the mouth**: while Martlet speaks, its voice moves the
   character's mouth, whatever the emotes showing do to the mouth. An emote that
   sets the mouth gives way to the voice, so the lips follow the words. Examples
@@ -1481,7 +1481,12 @@ their own like the other choices (Automatic mode also uses a saved mapping for
 the same model, from the next time the character shows). It is **not a graphical
 automatic-rig wizard**. Only Audio2Face mouth and expression aspects can
 activate; gaze/head/body A2F composition and arbitrary blends are unsupported.
-Audio2Face-only activation replaces loudness lip-sync for the session. **Armed,
+Audio2Face-only activation replaces loudness lip-sync for the session. Both
+modes play a sentence's frames through the same pipeline
+(`AvatarController.LipSync.cs`, `PlayFramesAsync`): the mapping's composition on
+the playback clock, renderer commands one at a time, late frames skipped and
+every target set (its neutral value when a frame doesn't set it). Activation only
+supplies the reviewed mapping and this PC's Audio2Face service. **Armed,
 awaiting generated speech** is not a verified runtime. **STOP**/Escape, relevant
 edits, session lock and app exit revoke it; restarting never restores it. Hiding
 the character does not stop voice.

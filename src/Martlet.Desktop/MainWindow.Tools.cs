@@ -23,19 +23,20 @@ public partial class MainWindow
         page.Children.Add(TerminalCard(service));
 
         var servers = new List<UIElement> { Heading("MCP servers") };
-        servers.Add(Note("Connect tool servers so Martlet can use files, browsers, calendars and more while you talk. Servers run on this PC or at an address you set.",
-            new Thickness(0, 0, 0, 8)));
+        servers.Add(HelpTip.Explain("Connect tool servers so Martlet can use files, browsers, calendars and more while you talk. " +
+            "Servers run on this PC or at an address you set, with your permissions, so install only servers you trust.",
+            new Thickness(0, 0, 0, 8), "ToolsServers", "MCP servers", wiki: "Tools-and-MCP#mcp-servers"));
         if (toolsNotice is { } notice) servers.Add(ToolsAlert(notice));
         if (service.ConfigurationError is { } error)
             servers.Add(ToolsAlert($"Server settings have a problem, so no servers will run: {error}"));
         else if (service.Servers.Count == 0)
-            servers.Add(Note("No servers yet. Browse the MCP directory to install one, or add them in mcp.json.", new Thickness(0, 0, 0, 4)));
+            servers.Add(Note("No servers yet: browse the MCP directory to install one, or add them in mcp.json.", new Thickness(0, 0, 0, 4)));
         // Every server Martlet runs: mcp.json's first, then ones other features manage (Smart home's, for example).
         foreach (var server in service.Servers)
             servers.Add(ServerBlock(service, server, statuses.GetValueOrDefault(server.Name)));
         foreach (var conflict in service.ManagedConflicts)
-            servers.Add(ToolsAlert($"{conflict.ManagedBy} wants to add a server named \"{conflict.Name}\", but mcp.json already has one. " +
-                "Rename or remove that entry in mcp.json to use it."));
+            servers.Add(ToolsAlert($"{conflict.ManagedBy} wants to add a server named \"{conflict.Name}\", but mcp.json already has one, so rename or " +
+                "remove that entry in mcp.json to use it."));
         var anyOn = service.HasEnabledServers;
         servers.Add(Row(
             PageButton("Browse MCP directory", OpenMcpDirectory, primary: true, id: "ToolsBrowseDirectory"),
@@ -53,10 +54,10 @@ public partial class MainWindow
         page.Children.Add(Card([.. servers]));
 
         page.Children.Add(Card(Heading("Confirmations"),
-            Note("Before a tool runs, Martlet shows what it wants to do. You can allow once, always allow or deny. Terminal commands " +
-                "offer only allow once or deny, unless you let them run without asking.",
-                new Thickness(0, 0, 0, 6)),
-            Note("Only skip confirmations for servers you trust. Tool input and results are sent to your Thinking model.",
+            HelpTip.Explain("Before a tool runs, Martlet shows what it wants to do, and you allow it once, always allow it or deny it. " +
+                "Terminal commands offer only Allow once or Deny, unless you let them run without asking.",
+                new Thickness(0, 0, 0, 6), "ToolsConfirmations", "confirmations", wiki: "Tools-and-MCP#confirmations"),
+            Note("Skip confirmations only for servers you trust, because tool input and results go to your Thinking model.",
                 new Thickness(0, 0, 0, 6)),
             Note("Tools are used only for replies to what you say or type, not for screen, camera or memory work.",
                 new Thickness(0, 0, 0, 0))));
@@ -64,7 +65,7 @@ public partial class MainWindow
         var recent = service.Log;
         var log = new List<UIElement> { Heading("Recent tool use") };
         if (recent.Count == 0)
-            log.Add(Note("Nothing yet. Tool calls are listed here until you close Martlet; they are never saved.", new Thickness(0, 0, 0, 4)));
+            log.Add(Note("Nothing yet: tool calls are listed here until you close Martlet, and they are never saved.", new Thickness(0, 0, 0, 4)));
         else
         {
             foreach (var entry in recent)
@@ -86,8 +87,8 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading("Terminal"),
-            Note("Let Martlet run commands on this PC when you ask: check on something, start a program or run your scripts, " +
-                "and hear back what happened. It's off until you turn it on.", new Thickness(0, 0, 0, 8))
+            HelpTip.Explain("Let Martlet run commands on this PC when you ask: check on something, start a program or run your " +
+                "scripts, and hear back what happened.", new Thickness(0, 0, 0, 8), "Terminal", "the terminal", wiki: "Tools-and-MCP#terminal")
         };
         children.AddRange(OnOffChoices("ToolsTerminalOn", "ToolsTerminalOff", "Let Martlet run terminal commands",
             "Martlet runs the commands you ask for on this PC, as you and never as administrator.",
@@ -148,10 +149,9 @@ public partial class MainWindow
         ask.Unchecked += (_, _) => Dispatcher.BeginInvoke(() =>
         {
             if (closing || !service.Terminal.AskFirst) return;
-            if (ConfirmationDialog.Confirm(this, "Run terminal commands without asking?\n\nYour Thinking model chooses each command, " +
-                    "and anything it reads (a web page, a file, a tool's output) can try to steer it. A command can do anything you " +
-                    "can: delete or change files, change settings, install programs or send your data anywhere. Martlet still never " +
-                    "runs one as administrator, and every command is listed under Recent tool use.",
+            if (ConfirmationDialog.Confirm(this, "Run terminal commands without asking, although a command can do anything you can " +
+                    "(delete files, install programs or send your data anywhere)?\n\nYour Thinking model chooses each command, and " +
+                    "anything it reads (a web page, a file, a tool's output) can try to steer it.",
                     "Martlet - Terminal", yes: "Run without asking", no: "Keep asking", questionId: "ToolsTerminalNoAskQuestion"))
                 SaveTerminal(service, service.Terminal with { AskFirst = false });
             else RenderTab();
@@ -159,29 +159,28 @@ public partial class MainWindow
         children.Add(ask);
         children.Add(Note("The talk window shows each command with Allow once and Deny; no answer within 60 seconds means Deny.",
             new Thickness(0, 0, 0, 8)));
-        children.Add(HelpTip.Explain("Commands run hidden, one at a time, as you and never as administrator. Martlet closes their input, so " +
-            "a command that waits for typing ends at once, and one that runs past the time limit is stopped. Each command and what " +
-            "it prints go to your Thinking model. This setting stays on this PC; your other computers keep their own.",
-            new Thickness(0, 0, 0, 0), "Commands", "commands"));
+        children.Add(HelpTip.Explain("Commands run hidden, one at a time, as you and never as administrator. A command that waits " +
+            "for typing ends at once, one that runs past the time limit is stopped, and each command and what it prints go to your " +
+            "Thinking model.", new Thickness(0, 0, 0, 0), "Commands", "commands", wiki: "Tools-and-MCP#terminal"));
         return Card([.. children]);
     }
 
     /// <summary>The terminal's state in words, and whether it is a problem that keeps it from working.</summary>
     private (string Text, bool Problem) TerminalStatus(McpToolService service, TerminalSettings saved)
     {
-        if (!saved.Enabled) return ("Off. Martlet can't run commands on this PC.", false);
+        if (!saved.Enabled) return ("Off: Martlet can't run commands on this PC.", false);
         var shell = TerminalRunner.Name(saved.Shell);
-        if (TerminalRunner.Find(saved.Shell) is null) return ($"On, but {shell} isn't installed on this PC. Choose another shell.", true);
-        if (!System.IO.Directory.Exists(saved.StartFolder)) return ("On, but the start folder doesn't exist any more. Choose another.", true);
+        if (TerminalRunner.Find(saved.Shell) is null) return ($"On, but {shell} isn't installed on this PC, so choose another shell.", true);
+        if (!System.IO.Directory.Exists(saved.StartFolder)) return ("On, but the start folder doesn't exist any more, so choose another.", true);
         var route = homeSettings.ThinkingRoute();
-        if (route is null) return ("On. Set up Thinking so Martlet can use it.", true);
+        if (route is null) return ("On, but set up Thinking so Martlet can use it.", true);
         if (route.RouteType is not (SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
-            return ("On, but your Thinking model can't use tools here. Use OpenAI or a Chat Completions endpoint (such as Ollama on " +
+            return ("On, but your Thinking model can't use tools here: use OpenAI or a Chat Completions endpoint (such as Ollama on " +
                 "this PC) in Companion › Thinking.", true);
         if (service.IsUnsupported(McpToolService.ModelKey($"{route.RouteType}", route.Origin, route.ModelId)))
-            return ($"On, but {route.ModelId} turned down tools, so Martlet stops offering them to it for a week. Choose a model " +
+            return ($"On, but {route.ModelId} turned down tools, so Martlet stops offering them to it for a week: choose a model " +
                 "that can use tools.", true);
-        return ($"On. {shell}, {(saved.AskFirst ? "asks before every command" : "runs commands without asking")}, stops a command " +
+        return ($"On: {shell}, {(saved.AskFirst ? "asks before every command" : "runs commands without asking")}, stops a command " +
             $"after {(saved.TimeLimitSeconds < 60 ? $"{saved.TimeLimitSeconds} seconds" : "1 minute")}.", false);
     }
 
@@ -200,14 +199,14 @@ public partial class MainWindow
         var before = service.Terminal;
         if (!service.SetTerminal(next))
         {
-            toolsNotice = "Couldn't save the terminal settings. Check access to Martlet's data folder.";
+            toolsNotice = "Couldn't save the terminal settings: check access to Martlet's data folder.";
             RenderTab();
             return;
         }
         toolsNotice = null;
         ActionText.Text = next.Enabled != before.Enabled
             ? next.Enabled
-                ? next.AskFirst ? "The terminal is on. Martlet asks before each command." : "The terminal is on. Commands run without asking."
+                ? next.AskFirst ? "The terminal is on, and Martlet asks before each command." : "The terminal is on, and commands run without asking."
                 : "The terminal is off."
             : next.AskFirst != before.AskFirst
                 ? next.AskFirst ? "Martlet asks before every terminal command." : "Terminal commands run without asking."
@@ -221,7 +220,7 @@ public partial class MainWindow
         AutomationProperties.SetName(block, $"MCP server {server.Name}");
         block.Children.Add(new TextBlock { Text = server.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         var state = server.Disabled ? "Off."
-            : status is null ? "Not started yet. It starts when you open a talk window or press Start servers now."
+            : status is null ? "Not started yet: it starts when you open a talk window or press Start servers now."
             : status.State switch
             {
                 McpServerState.Starting => "Starting... first start may take a minute.",
@@ -240,7 +239,7 @@ public partial class MainWindow
                     "Windows Credential Manager." : "."), new Thickness(0, 2, 0, 0)));
         if (server.Problem is { } problem) block.Children.Add(Note(problem, new Thickness(0, 2, 0, 0)));
         if (server.ManagedBy is { } owner)
-            block.Children.Add(Note($"Managed by {owner}. Change its tool permissions there.", new Thickness(0, 2, 0, 0)));
+            block.Children.Add(Note($"Managed by {owner}, where you change its tool permissions.", new Thickness(0, 2, 0, 0)));
         if (status is { State: McpServerState.Failed, Diagnostics: { } output })
             block.Children.Add(Note("What it printed: " + output, new Thickness(0, 2, 0, 0)));
 
@@ -300,8 +299,8 @@ public partial class MainWindow
 
     private void RemoveToolServer(McpToolService service, string server)
     {
-        if (!ConfirmationDialog.Confirm(this, $"Remove the MCP server \"{server}\" from mcp.json? Secrets Martlet kept for it are " +
-                "forgotten too.", "Martlet - MCP servers"))
+        if (!ConfirmationDialog.Confirm(this, $"Remove the MCP server \"{server}\" from mcp.json, with the secrets Martlet kept for it?",
+                "Martlet - MCP servers"))
             return;
         try
         {
