@@ -13,7 +13,9 @@ internal sealed partial class DesktopAutomation
     /// its window, its automation ID (or, without one, the nearest container's as near), how many sentences it has and the text.
     /// Left out: lists, tables, trees and text boxes (where your own content shows), help cards (they may have two short
     /// sentences), tooltips, and controls whose automation ID ui_snapshot does not read.</summary>
-    internal object LongTexts()
+    internal object LongTexts() => Reading(LongTextsOnce);
+
+    private object LongTextsOnce()
     {
         var windows = ConnectedWindows();
         var request = new CacheRequest { TreeScope = TreeScope.Subtree, TreeFilter = Automation.ControlViewCondition };

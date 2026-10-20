@@ -40,7 +40,7 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
         if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(process.ProcessName, "Martlet.Companion", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The process is not Martlet.Desktop or Martlet.Companion.");
-        var windows = Windows(pid);
+        var windows = Reading(() => Windows(pid));
         // A Martlet in the notification area (closed to it, or started with Windows) has no visible window but its icon's window;
         // one that couldn't start shows only its problem dialog.
         if (!MainWindowVisible(windows) && !ProblemShown(windows) && !AccountStartShown(windows) && TrayWindow(pid) == 0)
@@ -51,7 +51,9 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
             ready = MainWindowReady(windows, desktop), resources = Resources(pid) };
     }
 
-    internal object Snapshot(bool layout = false, string? idPrefix = null)
+    internal object Snapshot(bool layout = false, string? idPrefix = null) => Reading(() => SnapshotOnce(layout, idPrefix));
+
+    private object SnapshotOnce(bool layout, string? idPrefix)
     {
         var windows = ConnectedWindows();
         return new
@@ -494,7 +496,9 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
 
     /// <summary>The control with automation ID <paramref name="id"/>, in the window titled <paramref name="window"/> when given
     /// (several run windows can be open side by side, each with the same controls).</summary>
-    private AutomationElement Find(string id, string? window = null)
+    private AutomationElement Find(string id, string? window = null) => Reading(() => FindOnce(id, window));
+
+    private AutomationElement FindOnce(string id, string? window)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A control automation ID is required.");
         var windows = ConnectedWindows();
@@ -521,10 +525,29 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
         if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(process.ProcessName, "Martlet.Companion", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The attached Martlet process exited.");
-        var windows = Windows(pid);
+        var windows = Reading(() => Windows(pid));
         if (!MainWindowVisible(windows) && !ProblemShown(windows) && !AccountStartShown(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet window is no longer visible.");
         return windows;
+    }
+
+    /// <summary>UI Automation gives up on a call (UIA_E_TIMEOUT) when the desktop or its character renderer does not answer in
+    /// time, which a busy PC can cause (#1098).</summary>
+    internal const int UiaTimeout = unchecked((int)0x80131505);
+
+    /// <summary>Runs a read-only UI Automation operation again, up to three times in all, when UI Automation timed out (#1098).
+    /// Reading again is safe; actions (Invoke, Select, Toggle, SetValue) are never run again, because one that timed out can
+    /// still have happened.</summary>
+    internal static T Reading<T>(Func<T> read, Action<TimeSpan>? wait = null)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { return read(); }
+            catch (COMException error) when (error.HResult == UiaTimeout && attempt < 3)
+            {
+                (wait ?? Thread.Sleep)(TimeSpan.FromMilliseconds(250 * attempt));
+            }
+        }
     }
 
     private static bool MainWindowVisible(AutomationElement[] windows) =>

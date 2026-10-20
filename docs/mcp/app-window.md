@@ -236,7 +236,11 @@ controls are in the UI Automation tree (longer on a busy PC), so call
 `ui_connect` again until `ready` is true before you click.
 `scripts\Invoke-MartletMcp.ps1 -Desktop` waits for it. A click with `focus`
 tries the keyboard focus again for about a second while Windows brings another
-window to the front. `ui_snapshot` returns window accessible names,
+window to the front. When Martlet does not answer UI Automation in time (a
+busy PC; UI Automation gives up with `Operation timed out`), `ui_connect`,
+`ui_snapshot`, finding a control and `ui_long_texts` read again, up to three
+times in all; an action (a click, a choice, a toggle, typing) is never repeated,
+because one that timed out can still have happened. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
 It returns the first 200 controls; `idPrefix` keeps only those whose automation ID
