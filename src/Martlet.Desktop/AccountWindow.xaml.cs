@@ -2,7 +2,7 @@ using System.Net.Http;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Interop;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;

@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Conversation;
 using Martlet.Core.Cluster;
 using Martlet.Core.Settings;

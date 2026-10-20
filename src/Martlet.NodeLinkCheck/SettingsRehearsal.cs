@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
@@ -564,7 +564,7 @@ internal static class SettingsRehearsal
     /// sections, and the steps the owner takes on Martlet's pages.</summary>
     private sealed class LabDesktop
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly string directory;
         internal string DeviceId { get; }
         internal string Data => directory;
@@ -598,14 +598,14 @@ internal static class SettingsRehearsal
         internal async Task PairAsync(LabHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = DeviceId, DisplayName = DeviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
-        private Audio2FaceHostConnection Connect(LabHost host)
+        private HostConnection Connect(LabHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
 
         internal async Task<SharedSettings> ReadAsync(LabHost host, CancellationToken token)
@@ -632,7 +632,7 @@ internal static class SettingsRehearsal
                     copies.Add(await ReadAsync(host, token));
                     reachable.Add(host);
                 }
-                catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or OperationCanceledException) { }
+                catch (Exception error) when (error is HttpRequestException or HostConnectionException or IOException or OperationCanceledException) { }
             }
             var result = await Node.SyncAsync(copies, true, now ?? DateTimeOffset.UtcNow, token);
             foreach (var host in reachable) await MergeAsync(host, result.Document, token);
@@ -719,7 +719,7 @@ internal static class SettingsRehearsal
     /// on another in its folder, switched and synced as the desktop does (<see cref="AccountSettingsSync"/>).</summary>
     private sealed class LabAccountDesktop
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly SharedSettingsNode household;
         private SharedSettingsNode? account;
         private Guid? signedIn;
@@ -742,14 +742,14 @@ internal static class SettingsRehearsal
         internal async Task PairAsync(LabHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = DeviceId, DisplayName = DeviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
-        private Audio2FaceHostConnection Connect(LabHost host)
+        private HostConnection Connect(LabHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
 
         internal async Task<SharedSettings> ReadAsync(LabHost host, CancellationToken token)

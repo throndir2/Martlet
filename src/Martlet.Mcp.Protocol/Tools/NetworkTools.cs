@@ -781,7 +781,7 @@ internal sealed partial class McpServer
     {
         var directory = DataDirectory(arguments);
         var key = File.Exists(Path.Combine(directory, "network", "device_ecdsa"));
-        var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
+        var path = Path.Combine(directory, Martlet.HostClient.NetworkLocalState.FileName);
         var pairedHosts = PairedHostsSummary(directory);
         var friends = FriendsSummary(directory);
         var shareLinks = ShareLinksSummary(directory);
@@ -791,8 +791,8 @@ internal sealed partial class McpServer
         var login = Martlet.Mcp.Shared.WindowsLogin.Current;
         var windowsLogin = new { kind = login.Kind, hasEmailHint = login.HasEmailHint, hasSid = login.Sid.Length > 0 };
         if (!File.Exists(path)) return new { state = "none", key, device, windowsLogin, pairedHosts, friends, shareLinks, routerPort, householdSignIn };
-        Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
-        try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
+        Martlet.HostClient.NetworkLocalState local;
+        try { local = Martlet.HostClient.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
         {
             return new { state = "unreadable", key, device, windowsLogin };
@@ -889,8 +889,8 @@ internal sealed partial class McpServer
     {
         try
         {
-            var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.FileName);
-            return File.Exists(path) ? Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.Describe(Martlet.Avatar.Audio2Face.Remote.HouseholdSignInFile.Read(directory)) : null;
+            var path = Path.Combine(directory, Martlet.HostClient.HouseholdSignInFile.FileName);
+            return File.Exists(path) ? Martlet.HostClient.HouseholdSignInFile.Describe(Martlet.HostClient.HouseholdSignInFile.Read(directory)) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
     }
@@ -954,9 +954,9 @@ internal sealed partial class McpServer
     {
         var directory = DataDirectory(arguments);
         var contact = OptionalBool(arguments, "contactHosts") == true;
-        var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
+        var path = Path.Combine(directory, Martlet.HostClient.NetworkLocalState.FileName);
         Martlet.Core.Network.NetworkRoster? roster = null;
-        try { if (File.Exists(path)) roster = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster; }
+        try { if (File.Exists(path)) roster = Martlet.HostClient.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
         {
             return new { state = "unreadable" };
@@ -973,7 +973,7 @@ internal sealed partial class McpServer
             }
             var timeout = TimeSpan.FromSeconds(4);
             var probes = await Task.WhenAll(new string?[] { null }.Concat(outside).Select(address =>
-                Martlet.Avatar.Audio2Face.Remote.HostRoutes.ProbeAsync(host.Origin!, host.Spki!, address, timeout, cancellation)));
+                Martlet.HostClient.HostRoutes.ProbeAsync(host.Origin!, host.Spki!, address, timeout, cancellation)));
             var home = probes[0];
             var outsideResults = probes.Skip(1).Select((p, i) => new { address = i + 1, reachable = p.Reachable, ms = p.Milliseconds, problem = p.Problem }).ToArray();
             var use = home.Reachable ? "home" : outsideResults.FirstOrDefault(o => o.reachable) is { } first ? $"outside {first.address}" : "none";

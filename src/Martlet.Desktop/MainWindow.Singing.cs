@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -582,7 +582,7 @@ public partial class MainWindow
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
-            JsonException or ArgumentException or Audio2FaceHostException)
+            JsonException or ArgumentException or HostConnectionException)
         {
             Failed(error.Message);
             ActionText.Text = error.Message;
@@ -626,7 +626,7 @@ public partial class MainWindow
     private Task<string?> WaitForSingingAsync(PairedHost host, SingingAddOn? addOn, CancellationToken token) => WaitForRoleAsync(host, async check =>
     {
         NoteSingingHost();
-        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) != true) return new(check.Text);
+        if (check.Routes?.Any(r => r.RouteId == HostConnection.SongRouteId) != true) return new(check.Text);
         try
         {
             var service = await SongClient.ReadServiceAsync(host.Pairing, token);

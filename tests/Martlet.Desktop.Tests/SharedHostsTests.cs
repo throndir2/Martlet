@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -40,7 +40,7 @@ public sealed class SharedHostsTests
         Assert.Equal("ana@example.net (authentik)", loaded[1].SignedInAs);
         Assert.Contains("\"access\": \"friend\"", File.ReadAllText(Path.Combine(scope.DirectoryPath, HostRegistry.FileName)), StringComparison.Ordinal);
         // A friend's host never holds this PC's voices: speaking there sends the recording from the first sentence.
-        Assert.True(Audio2FaceHostConnection.SendsRecordingTo("friends-host"));
+        Assert.True(HostConnection.SendsRecordingTo("friends-host"));
 
         // Your network's roster never moves a friend's host's addresses, even under the same name.
         using var founder = NetworkKey.Create("home-pc");
@@ -165,11 +165,11 @@ public sealed class SharedHostsTests
     [Fact]
     public void A_shared_hosts_owner_first_refusal_moves_a_request_on_and_a_live_hold_still_means_wait()
     {
-        Assert.Equal(WorkRefusal.Owner, WorkSharingRoster.Classify(new Audio2FaceHostException("job.busy", "busy") { Detail = "owner" }));
-        Assert.Equal(WorkRefusal.Preempted, WorkSharingRoster.Classify(new Audio2FaceHostException("job.busy", "busy") { Detail = "live" }));
-        Assert.Equal(WorkRefusal.Busy, WorkSharingRoster.Classify(new Audio2FaceHostException("job.busy", "busy")));
-        Assert.True(new Audio2FaceHostException("job.busy", "busy") { Detail = "owner" }.OwnerFirst);
-        Assert.False(new Audio2FaceHostException("job.preempted", "stopped").OwnerFirst);
+        Assert.Equal(WorkRefusal.Owner, WorkSharingRoster.Classify(new HostConnectionException("job.busy", "busy") { Detail = "owner" }));
+        Assert.Equal(WorkRefusal.Preempted, WorkSharingRoster.Classify(new HostConnectionException("job.busy", "busy") { Detail = "live" }));
+        Assert.Equal(WorkRefusal.Busy, WorkSharingRoster.Classify(new HostConnectionException("job.busy", "busy")));
+        Assert.True(new HostConnectionException("job.busy", "busy") { Detail = "owner" }.OwnerFirst);
+        Assert.False(new HostConnectionException("job.preempted", "stopped").OwnerFirst);
         Assert.Contains("its owner's own work", WorkSharingRoster.OwnerFirstText("friends-host", "speaking"), StringComparison.Ordinal);
     }
 

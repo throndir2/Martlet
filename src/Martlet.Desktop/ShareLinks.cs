@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Network;
 using Martlet.Credentials.Windows;
 

@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Gateway;
 
 namespace Martlet.NodeLinkCheck;
@@ -49,10 +49,10 @@ sealed class LoopbackHost(GatewayServer server, GatewayListenerHandle listener, 
         return new(server, listener, origin, identity);
     }
 
-    internal async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsync(string device)
+    internal async Task<(HostPairing Pairing, string Secret)> PairAsync(string device)
     {
         var card = server.Pairing.OpenWindow(new() { DeviceId = device, DisplayName = device, Roles = [GatewayRole.Voice] });
-        return await Audio2FaceHostClient.PairAsync(origin.CanonicalOrigin, identity.HostId, identity.SpkiFingerprint, device,
+        return await HostTransport.PairAsync(origin.CanonicalOrigin, identity.HostId, identity.SpkiFingerprint, device,
             card.PairingId, card.Token.Reveal());
     }
 
@@ -70,7 +70,7 @@ sealed class LoopbackHost(GatewayServer server, GatewayListenerHandle listener, 
 /// <summary>Signed requests the desktop client would never send (unknown commands, extra fields), signed the same way.</summary>
 static class Raw
 {
-    internal static async Task<(HttpStatusCode Status, string Body)> SendAsync(Audio2FaceHostPairing pairing, string? secret, HttpMethod method,
+    internal static async Task<(HttpStatusCode Status, string Body)> SendAsync(HostPairing pairing, string? secret, HttpMethod method,
         string path, string? json)
     {
         using var handler = new SocketsHttpHandler();

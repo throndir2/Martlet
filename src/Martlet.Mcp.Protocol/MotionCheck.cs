@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Motion;
 
@@ -48,8 +48,8 @@ internal static class MotionCheck
             paired,
             motionHost = tries.Count > 0 ? tries[0].HostId : null,
             fixtureVariable = "MARTLET_MOTION_FIXTURE",
-            route = new { id = Audio2FaceHostConnection.MotionRouteId, path = Audio2FaceHostConnection.MotionPath,
-                longestMinutes = Audio2FaceHostConnection.MotionLongest.TotalMinutes },
+            route = new { id = HostConnection.MotionRouteId, path = HostConnection.MotionPath,
+                longestMinutes = HostConnection.MotionLongest.TotalMinutes },
             role = new { kind = MotionSettings.RoleKind, models = new[] { "hy-motion-1.0-lite", "hy-motion-1.0" }, minimumGraphicsMemoryGb = new { lite = 24, standard = 26 } },
             bounds = new
             {
@@ -116,7 +116,7 @@ internal static class MotionCheck
                     var host = hosts.FirstOrDefault(h => h.HostId == hostId) ?? throw new ArgumentException($"{hostId} isn't paired in that data directory.");
                     where = $"{hostId}'s Motion role";
                     using var connection = Connect(host);
-                    var route = (await connection.ReadRoutesAsync(cancellation)).FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.MotionRouteId)
+                    var route = (await connection.ReadRoutesAsync(cancellation)).FirstOrDefault(r => r.RouteId == HostConnection.MotionRouteId)
                         ?? throw new MotionException(MotionErrorCodes.Unavailable, $"{hostId} doesn't run the Motion role.");
                     status = Objects(await connection.MotionOperationAsync(route, new Dictionary<string, object> { ["operation"] = "status" }, cancellation)).Single();
                     var payload = new Dictionary<string, object> { ["operation"] = "generate", ["prompt"] = request.Prompt, ["seconds"] = request.Seconds };
@@ -135,7 +135,7 @@ internal static class MotionCheck
         {
             return new { ok = false, place, status, code = error.Code, error = error.Message, milliseconds = watch.ElapsedMilliseconds };
         }
-        catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or JsonException or InvalidOperationException)
+        catch (Exception error) when (error is HttpRequestException or HostConnectionException or IOException or JsonException or InvalidOperationException)
         {
             return new { ok = false, place, status, error = $"{error.GetType().Name}: {error.Message}", milliseconds = watch.ElapsedMilliseconds };
         }
@@ -239,13 +239,13 @@ internal static class MotionCheck
     }
 
     // A connection signed with the pairing secret the desktop saved in Windows Credential Manager (as the desktop connects).
-    private static Audio2FaceHostConnection Connect(Martlet.Avatar.Hosting.AvatarRemoteHost host)
+    private static HostConnection Connect(Martlet.Avatar.Hosting.AvatarRemoteHost host)
     {
         using var read = new Martlet.Credentials.Windows.WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != Martlet.Core.Settings.CredentialError.None || read.Secret is null)
             throw new InvalidOperationException($"This PC has no pairing secret for {host.HostId} from that data directory ({read.Error}).");
-        Audio2FaceHostConnection? connection = null;
-        read.Secret.Use(secret => connection = new Audio2FaceHostConnection(new Audio2FaceHostPairing
+        HostConnection? connection = null;
+        read.Secret.Use(secret => connection = new HostConnection(new HostPairing
         {
             Origin = host.Origin, HostId = host.HostId, SpkiFingerprint = host.SpkiFingerprint, DeviceId = host.DeviceId,
             CredentialId = host.CredentialId

@@ -2,7 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -335,7 +335,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         }
     }
 
-    private static Audio2FaceHostConnection Connect(HostSpeechTarget target) => HostPairingCredential.Connect(
+    private static HostConnection Connect(HostSpeechTarget target) => HostPairingCredential.Connect(
         HostPairingCredential.Saved(target.Origin, target.HostId, target.SpkiFingerprint, target.DeviceId, target.CredentialId));
 
     private static async Task<T> Guard<T>(Func<Task<T>> call, CancellationToken token)

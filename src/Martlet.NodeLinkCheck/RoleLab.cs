@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Network;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
@@ -58,7 +58,7 @@ internal static class RoleLab
             // so the entries it keeps about itself (pc.<device>, role.<device>) are the ones the network knows it by.
             var desktopDevice = DeviceIds.Ensure(dataDirectory).Id;
             var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
-            var (pairing, pairingSecret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice,
+            var (pairing, pairingSecret) = await HostTransport.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice,
                 "LAB-DESKTOP", token);
             using (var lease = new SecretLease(pairingSecret))
             {
@@ -86,7 +86,7 @@ internal static class RoleLab
             using var companionKey = NetworkKey.Create(CompanionDevice);
             var network = new SignInRehearsal.LabDesktop(companionKey, CompanionName);
             var companionCard = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
-            var (companionPairing, companionSecret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, companionCard.Code.Reveal(),
+            var (companionPairing, companionSecret) = await HostTransport.PairWithCodeAsync(host.Origin, companionCard.Code.Reveal(),
                 CompanionDevice, CompanionName, token);
             network.Keep(companionPairing, companionSecret);
             var computer = new LabComputer(Path.Combine(folder, "companion"), DateTimeOffset.UtcNow);
@@ -157,7 +157,7 @@ internal static class RoleLab
                 SharedSettings? copy = null;
                 try
                 {
-                    using var connection = new Audio2FaceHostConnection(companionPairing, companionSecret);
+                    using var connection = new HostConnection(companionPairing, companionSecret);
                     var result = await computer.Node.SyncAsync([await connection.ReadSettingsAsync(token)], true, DateTimeOffset.UtcNow, token);
                     copy = await connection.MergeSettingsAsync(result.Document, token);
                     events.AddRange(result.Applied.Select(a => $"{CompanionDevice} took {a.Key} from {a.By}"));

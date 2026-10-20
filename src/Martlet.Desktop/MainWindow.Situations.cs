@@ -6,7 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Planning;
 using Martlet.Core.Settings;

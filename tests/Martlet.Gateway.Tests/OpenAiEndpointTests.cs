@@ -4,7 +4,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Core.Contracts;
 using Martlet.Gateway.Ollama;
@@ -116,7 +116,7 @@ public sealed class OpenAiEndpointTests
         internal FixtureOllama Conversation { get; private init; } = null!;
         internal FixtureOllama Deep { get; private init; } = null!;
         internal GatewayTestHost Host { get; private set; } = null!;
-        internal Audio2FaceHostConnection Connection { get; private set; } = null!;
+        internal HostConnection Connection { get; private set; } = null!;
         internal GatewayRequestSigner Signer { get; private set; } = null!;
         internal IssuedApiKey Shared { get; private set; } = null!;
         internal IssuedApiKey Equal { get; private set; } = null!;
@@ -150,9 +150,9 @@ public sealed class OpenAiEndpointTests
             var credential = await lab.Host.PairAsync(GatewayRole.Voice, "desktop-raw");
             lab.Signer = new GatewayRequestSigner(lab.Host.Identity, credential, lab.Host.Clock);
             var card = lab.Host.OpenPairing(GatewayRole.Voice, "desktop-test");
-            var pairing = await Audio2FaceHostClient.PairAsync(lab.Host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint,
+            var pairing = await HostTransport.PairAsync(lab.Host.Origin.CanonicalOrigin, card.HostId, card.SpkiFingerprint,
                 "desktop-test", card.PairingId, card.Token.Reveal());
-            lab.Connection = new Audio2FaceHostConnection(pairing.Pairing, pairing.Secret, lab.Host.Clock);
+            lab.Connection = new HostConnection(pairing.Pairing, pairing.Secret, lab.Host.Clock);
             return lab;
         }
 

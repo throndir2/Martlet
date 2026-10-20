@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Core.Accounts;
 using Martlet.Core.Network;
@@ -71,12 +71,12 @@ internal static class SignInAccountLab
         // The desktop on the data directory: paired with both hosts by a code under the device ID it names itself by (device.json),
         // its secrets in the lab folder, both in its hosts.json.
         var desktopDevice = DeviceIds.Ensure(dataDirectory).Id;
-        var desktop = new Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)>(StringComparer.Ordinal);
+        var desktop = new Dictionary<string, (HostPairing Pairing, string Secret)>(StringComparer.Ordinal);
         var entries = new List<object>();
         foreach (var host in hosts)
         {
             var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
-            var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice, "LAB-DESKTOP", token);
+            var (pairing, secret) = await HostTransport.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice, "LAB-DESKTOP", token);
             using (var lease = new SecretLease(secret))
             {
                 var stored = new WindowsCredentialStore().WriteAvatarHostSecret(pairing.HostId, pairing.CredentialId, lease);
@@ -94,7 +94,7 @@ internal static class SignInAccountLab
             });
         }
         await File.WriteAllTextAsync(Path.Combine(dataDirectory, "hosts.json"), JsonSerializer.Serialize(new { version = 1, hosts = entries }), token);
-        Audio2FaceHostConnection AsDesktop(string hostId) => new(desktop[hostId].Pairing, desktop[hostId].Secret);
+        HostConnection AsDesktop(string hostId) => new(desktop[hostId].Pairing, desktop[hostId].Secret);
 
         Console.WriteLine(JsonSerializer.Serialize(new { ready = true, mode = "account", household = true, hosts = hosts.Select(h => h.HostId).ToArray(),
             provider = Provider, providerOnHosts = hosts.OnHosts(Provider) }));
@@ -234,7 +234,7 @@ internal static class SignInAccountLab
                     }
                 }
             }
-            catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or HttpRequestException or JsonException)
+            catch (Exception error) when (error is HostConnectionException or InvalidOperationException or IOException or HttpRequestException or JsonException)
             {
                 failure = $"{phase}: {error.Message}";
                 events.Add("failed: " + failure);
@@ -382,7 +382,7 @@ internal static class SignInAccountLab
                     }
                 }
             }
-            catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or HttpRequestException)
+            catch (Exception error) when (error is HostConnectionException or InvalidOperationException or IOException or HttpRequestException)
             {
                 events.Add("owner sync failed: " + error.Message);
             }

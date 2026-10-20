@@ -1,5 +1,5 @@
 using System.Net;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Network;
 using Martlet.Core.Settings;

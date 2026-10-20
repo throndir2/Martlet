@@ -1,6 +1,6 @@
 using System.IO;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Speakers;
@@ -106,7 +106,7 @@ public sealed class VoiceRecognitionPoolTests : IDisposable
         Save(PoolMember.Computer("gpu-pc"), PoolMember.ThisPc() with { Off = true });
         var calls = new List<string>();
         using var voices = Voices((_, _, _) => Task.FromException<SpeakerAnalysis>(
-            new Audio2FaceHostException("response.invalid", "gpu-pc: The Voice recognition role's answer was invalid (voiceprint).")), calls);
+            new HostConnectionException("response.invalid", "gpu-pc: The Voice recognition role's answer was invalid (voiceprint).")), calls);
         var changed = 0;
         voices.RecognitionChanged += () => Interlocked.Increment(ref changed);
 
@@ -193,12 +193,12 @@ public sealed class VoiceRecognitionPoolTests : IDisposable
         var samples = Enumerable.Range(0, 16_000).Select(i => (float)(short)(Math.Sin(i * 0.01) * 20_000) / 32768f).ToArray();
         var pcm = SpeakerAnswers.Pcm16(samples);
         Assert.Equal(samples, Pcm.ToFloats(pcm));
-        var payload = Audio2FaceHostConnection.VoiceRecognitionPayload("analyze", pcm);
+        var payload = HostConnection.VoiceRecognitionPayload("analyze", pcm);
         Assert.Equal("analyze", payload["operation"]);
         Assert.Equal(16_000, payload["sample_rate"]);
         Assert.Equal(pcm, Convert.FromBase64String((string)payload["pcm16_base64"]));
-        Assert.Equal(["operation"], Audio2FaceHostConnection.VoiceRecognitionPayload("status", null).Keys);
-        Assert.Throws<ArgumentException>(() => Audio2FaceHostConnection.VoiceRecognitionPayload("analyze", new byte[Audio2FaceHostConnection.VoiceRecognitionMaximumBytes + 2]));
+        Assert.Equal(["operation"], HostConnection.VoiceRecognitionPayload("status", null).Keys);
+        Assert.Throws<ArgumentException>(() => HostConnection.VoiceRecognitionPayload("analyze", new byte[HostConnection.VoiceRecognitionMaximumBytes + 2]));
     }
 
     [Fact]

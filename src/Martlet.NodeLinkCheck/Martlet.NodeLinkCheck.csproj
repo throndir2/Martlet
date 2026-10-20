@@ -24,7 +24,7 @@
     <!-- singing-check paired:<data directory> and singing-status sign requests to a paired host with the desktop's pairing
          secret from Windows Credential Manager (never printed). -->
     <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
-    <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
+    <ProjectReference Include="..\Martlet.HostClient\Martlet.HostClient.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
     <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
     <ProjectReference Include="..\Martlet.Messaging\Martlet.Messaging.csproj" />

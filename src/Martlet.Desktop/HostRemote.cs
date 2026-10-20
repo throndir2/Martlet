@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Text.RegularExpressions;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Nodes;
 
 namespace Martlet.Desktop;
@@ -250,14 +250,14 @@ internal sealed partial class HostRemote(HostShell shell)
     /// <summary>Pairs this PC with an SSH host without any console: runs "pair --device-id ... --name ..." there, reads the
     /// one-use code from its output (never shown), redeems it with the same client as the Pair button and lets the host
     /// restart its gateway.</summary>
-    internal async Task<(Audio2FaceHostPairing Pairing, string Secret, string HostKey)> PairAsync(HostSetupTarget target, string deviceId,
+    internal async Task<(HostPairing Pairing, string Secret, string HostKey)> PairAsync(HostSetupTarget target, string deviceId,
         string name, bool sudo, string? pinnedHostKey, IProgress<string> output, CancellationToken token)
     {
         if (!IdentifierPattern().IsMatch(deviceId)) throw new InvalidOperationException("This PC's device ID is invalid.");
         var label = new string(name.Where(c => c is >= ' ' and <= '~' and not '\'').Take(64).ToArray()).Trim();
         if (label.Length == 0 || label[0] == '-') label = "Martlet desktop";
         var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<(Audio2FaceHostPairing Pairing, string Secret)>? pairing = null;
+        Task<(HostPairing Pairing, string Secret)>? pairing = null;
         var sink = new LineSink(line =>
         {
             var match = PairingCodePattern().Match(line);
@@ -272,7 +272,7 @@ internal sealed partial class HostRemote(HostShell shell)
             pairing = RedeemAsync(match.Value);
         });
 
-        async Task<(Audio2FaceHostPairing, string)> RedeemAsync(string code)
+        async Task<(HostPairing, string)> RedeemAsync(string code)
         {
             try { return await HostPairingCode.Parse(code).PairAsync(deviceId, token); }
             catch

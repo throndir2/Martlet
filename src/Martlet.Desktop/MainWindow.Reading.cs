@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -479,7 +479,7 @@ public partial class MainWindow
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
-            JsonException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
+            JsonException or ArgumentException or HostConnectionException || ClusterSync.IsHostFailure(error))
         {
             readingFailures[host?.HostId ?? ReadingThisPc] = error.Message;
             ActionText.Text = error.Message;
@@ -499,7 +499,7 @@ public partial class MainWindow
         var offer = check.Offers?.GetValueOrDefault(HostRoles.Ocr);
         if (!string.IsNullOrEmpty(offer) && offer != model)
             return new($"it still reads with {OptionalExtras.ReadingModelOf(offer)?.Name ?? offer}");
-        if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.OcrRouteId) != true || store is null) return new(check.Text);
+        if (check.Routes?.Any(r => r.RouteId == HostConnection.OcrRouteId) != true || store is null) return new(check.Text);
         try
         {
             var state = await PoolScreenTextReader.StatusAsync(host, token);

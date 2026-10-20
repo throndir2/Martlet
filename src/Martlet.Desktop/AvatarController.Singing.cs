@@ -1,6 +1,6 @@
 using System.IO;
 using Martlet.Avatar.Audio2Face;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Audio;
@@ -160,7 +160,7 @@ internal sealed partial class AvatarController : ISongFace
             if (Volatile.Read(ref hostLink) is { } host && await host.ReadyAsync(token).ConfigureAwait(false))
                 return (await HostFacesAsync(vocals, sampleRate, host, token).ConfigureAwait(false), $"Audio2Face on host {host.Authority}");
         }
-        catch (Exception error) when (error is Audio2FaceException or Audio2FaceHostException or ContractException or IOException or
+        catch (Exception error) when (error is Audio2FaceException or HostConnectionException or ContractException or IOException or
             InvalidOperationException or TimeoutException or ArgumentException or Grpc.Core.RpcException)
         {
             ErrorLog.Warn($"Singing: Audio2Face couldn't time the mouth to the song ({(error as Audio2FaceException)?.Failure.ToString() ?? error.GetType().Name}).");

@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
 using Martlet.Core.Settings;

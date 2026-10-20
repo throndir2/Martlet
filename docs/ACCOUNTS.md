@@ -315,7 +315,7 @@ All workstreams use these forms. Change them here first.
 Built by W2. Code: `src\Martlet.Core\Accounts\` (`Account.cs`,
 `AccountDirectory.cs`, `OwnerAccount.cs`), the host store and routes in
 `src\Martlet.Gateway\GatewayAccountDirectory.cs`, the desktop's host client in
-`src\Martlet.Avatar.Audio2Face\Remote\HostAccounts.cs`. The MCP tool
+`src\Martlet.HostClient\HostAccounts.cs`. The MCP tool
 `accounts_sync_selftest` rehearses it end to end ([MCP](MCP.md)).
 
 ### Entry
@@ -378,7 +378,7 @@ desktop can sign entries before it is in a network.
 
 Only paired devices may call them, over their signed, pinned connection.
 Friends (`access.friend`) and API keys are refused. The desktop client is
-`Audio2FaceHostConnection.ReadAccountsAsync`, `ReadAccountsDigestAsync` and
+`HostConnection.ReadAccountsAsync`, `ReadAccountsDigestAsync` and
 `MergeAccountsAsync`. A desktop checks what a host returns with
 `AccountDirectory.Accept` and its own roster.
 
@@ -396,7 +396,7 @@ Friends (`access.friend`) and API keys are refused. The desktop client is
 
 Built by W4. Code: `src\Martlet.Gateway\GatewaySignIn.cs` and
 `GatewaySignInHttp.cs`, `src\Martlet.Core\Accounts\AccountAttestation.cs`, the
-desktop client in `src\Martlet.Avatar.Audio2Face\Remote\HostSignIn.cs`. The
+desktop client in `src\Martlet.HostClient\HostSignIn.cs`. The
 user guide is [NETWORK.md](NETWORK.md#household-accounts-on-a-host); the MCP
 tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
 
@@ -418,7 +418,7 @@ tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
   `lifetime_seconds`. It answers `account_id`, `signed_in` and `attestation`
   for that computer. `/signin/complete` also answers `account_id` and
   `attestation` for the computer it adds. Desktop client:
-  `Audio2FaceHostConnection.ProveWithPasswordAsync`, `ProveInBrowserAsync`,
+  `HostConnection.ProveWithPasswordAsync`, `ProveInBrowserAsync`,
   `BeginProveAsync` and `ProveAsync` (`HostAccountProof`), and
   `HostSignInIdentity.AccountId` and `Attestation` after joining.
 - **Settings:** `POST /martlet/v1/signin/settings` actions `owner-account`,
@@ -628,7 +628,7 @@ here):
 Built by W8. Code: `Martlet.Core.Sync` (`SettingScopes.cs`,
 `AccountWorkingCopy.cs`, `AccountSettingsSync.cs`, `SharedSettingsNode.AdoptAsync`),
 the host store and routes in `src\Martlet.Gateway\GatewayAccountSettings.cs`,
-the client in `src\Martlet.Avatar.Audio2Face\Remote\HostAccountSettings.cs`
+the client in `src\Martlet.HostClient\HostAccountSettings.cs`
 and the desktop in `MainWindow.SettingsSync.cs`.
 
 Each person keeps their own personalities, character profiles, replies,
@@ -761,7 +761,7 @@ button, the picker and the directory sync), `AddPersonDialog.cs` and
 
 ## Provider logins and household providers
 
-Built by W13. Code: `src\Martlet.Avatar.Audio2Face\Remote\HouseholdSignIn.cs`
+Built by W13. Code: `src\Martlet.HostClient\HouseholdSignIn.cs`
 (the household view, sending to every host, linking), the desktop's
 `SignInSettingsWindow`, `SignInJoinWindow`, `HouseholdSignInStore.cs`,
 `MainWindow.HouseholdSignIn.cs` and `JoinedAccount.cs`. The user guide is
@@ -845,7 +845,7 @@ Account page in the desktop, `VRoidHub.cs` in `Martlet.Avatar.Hosting`.
 Each workstream is one session, one branch and one PR into `main`. Merges are
 serial: refresh `origin/main` and reconcile before each merge. Shared files
 (`CHANGELOG.md`, `docs/MCP.md`, `src/Martlet.Mcp.Protocol/McpServer.cs`, the
-host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
+host client in `src/Martlet.HostClient/`, route registration in
 `src/Martlet.Gateway`) get additive edits only.
 
 | ID | Workstream | Owns | Needs |

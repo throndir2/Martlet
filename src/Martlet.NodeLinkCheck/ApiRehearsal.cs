@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Access;
 using Martlet.Gateway;
 using Martlet.Gateway.Ollama;
@@ -213,13 +213,13 @@ internal static class ApiRehearsal
     /// <summary>A simulated desktop: its pairings (secrets in memory) and the paired client calls the real desktop makes.</summary>
     private sealed class LabDesktop(string deviceId)
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         internal string DeviceId => deviceId;
 
         internal async Task PairAsync(ApiHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = deviceId, DisplayName = "LAB-DESKTOP", Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
@@ -236,7 +236,7 @@ internal static class ApiRehearsal
         }
 
         // A restarted lab host has a new port and forgets volatile pairings; the desktop pairs again, as it would after a reset.
-        private Audio2FaceHostConnection Connect(ApiHost host)
+        private HostConnection Connect(ApiHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
             if (pairing.Origin != host.Origin)
@@ -244,7 +244,7 @@ internal static class ApiRehearsal
                 PairAsync(host).GetAwaiter().GetResult();
                 (pairing, secret) = pairings[host.HostId];
             }
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
     }
 

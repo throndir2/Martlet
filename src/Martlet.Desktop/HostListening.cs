@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -42,7 +42,7 @@ internal sealed class HostTranscriptionClient : IHostTranscriptionClient
         using var connection = HostTextClient.Connect(target);
         var routes = await connection.ReadRoutesAsync(cancellationToken).ConfigureAwait(false);
         HostRouteGpus.Note(target.HostId, routes);
-        var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.TranscriptionRouteId && r.ModelId == modelId) ??
+        var route = routes.FirstOrDefault(r => r.RouteId == HostConnection.TranscriptionRouteId && r.ModelId == modelId) ??
             throw HostTextClient.Failed("listening", ProviderFailureCode.ModelNotFound, $"{target.HostId} isn't ready for listening");
         return await connection.TranscribeAsync(route, ids, epoch, deadline, pcm16kMono, cancellationToken).ConfigureAwait(false);
     }

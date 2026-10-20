@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Cluster;
@@ -176,7 +176,7 @@ public partial class MainWindow
                 timeout.CancelAfter(TimeSpan.FromSeconds(3));
                 return await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.ReadAccountSettingsAsync(account, timeout.Token));
             }
-            catch (Exception error) when (error is OperationCanceledException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
+            catch (Exception error) when (error is OperationCanceledException or ArgumentException or HostConnectionException || ClusterSync.IsHostFailure(error))
             {
                 return null;
             }
@@ -326,7 +326,7 @@ public partial class MainWindow
             return (host.HostId, host, copy, true, false);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
-        catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+        catch (HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
         {
             return (host.HostId, host, null, false, true);
         }
@@ -377,11 +377,11 @@ public partial class MainWindow
             return (host.HostId, host, copy, true, false);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
-        catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+        catch (HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
         {
             return (host.HostId, host, null, false, true);
         }
-        catch (Exception error) when (error is OperationCanceledException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
+        catch (Exception error) when (error is OperationCanceledException or ArgumentException or HostConnectionException || ClusterSync.IsHostFailure(error))
         {
             return (host.HostId, host, null, false, false);
         }

@@ -9,7 +9,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Network;
 
 namespace Martlet.Mcp;
@@ -165,8 +165,8 @@ internal static class OutsidePathCheck
                 if (code is not null)
                 {
                     await WaitListeningAsync(spki, outside, token);
-                    try { await Audio2FaceHostClient.PairWithCodeAsync(HomeOrigin, code, DeviceId, "LAB-LAPTOP", token); seen = "paired"; }
-                    catch (Audio2FaceHostException error) { seen = error.Code; }
+                    try { await HostTransport.PairWithCodeAsync(HomeOrigin, code, DeviceId, "LAB-LAPTOP", token); seen = "paired"; }
+                    catch (HostConnectionException error) { seen = error.Code; }
                 }
                 var route = HostRoutes.For(HomeOrigin);
                 await pair.WriteLineAsync("cancel");
@@ -178,7 +178,7 @@ internal static class OutsidePathCheck
             }
 
             // A one-use card opened for this device can't be guessed, so it pairs from outside home.
-            Audio2FaceHostPairing? pairing = null;
+            HostPairing? pairing = null;
             string? secret = null;
             {
                 var container = name + "-card";
@@ -190,7 +190,7 @@ internal static class OutsidePathCheck
                 {
                     await WaitListeningAsync(spki, outside, token);
                     try { (pairing, secret) = await HostPairingCode.Parse(cardLine["pairing-code: ".Length..].Trim()).PairAsync(DeviceId, token); }
-                    catch (Audio2FaceHostException error) { problem = error.Code; }
+                    catch (HostConnectionException error) { problem = error.Code; }
                 }
                 var exit = await pair.WaitForExitAsync(TimeSpan.FromSeconds(30), token);
                 Step("card-pairs-from-outside", pairing is not null && exit == 0 && pair.Text.Contains($"Paired: {DeviceId}", StringComparison.Ordinal),
@@ -213,7 +213,7 @@ internal static class OutsidePathCheck
             // owner-exposure); then the route comes from the signed roster alone.
             using var key = NetworkKey.Create(DeviceId);
             var engine = new NetworkSyncEngine(key, "LAB-LAPTOP");
-            Audio2FaceHostConnection Connect(Audio2FaceHostPairing p) => new(p, secret);
+            HostConnection Connect(HostPairing p) => new(p, secret);
             var first = await engine.SyncAsync(NetworkLocalState.Empty, [pairing], Connect, token);
             var second = await engine.SyncAsync(first.State, [pairing], Connect, token);
             var listed = second.State.Roster?.Host(HostId)?.Addresses;
@@ -223,7 +223,7 @@ internal static class OutsidePathCheck
             HostRoutes.Set(HomeOrigin, HostId, []);
             string? homeOnly = null;
             try { using var c = Connect(pairing); await c.ReadRoutesAsync(token); homeOnly = "connected"; }
-            catch (Audio2FaceHostException error) { homeOnly = error.Code; }
+            catch (HostConnectionException error) { homeOnly = error.Code; }
             // A host with no outside address whose home address doesn't answer: the connect timeout ends the request.
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { homeOnly = "timed out"; }
             HostRoutes.Update(second.State.Roster);
@@ -263,11 +263,11 @@ internal static class OutsidePathCheck
             await Task.Delay(TimeSpan.FromSeconds(5.5), token);
             string? pausedSees = null;
             try { using var c = Connect(pairing); await c.ReadRoutesAsync(token); pausedSees = "served"; }
-            catch (Audio2FaceHostException error) { pausedSees = error.Code; }
+            catch (HostConnectionException error) { pausedSees = error.Code; }
             var strangerSees = await StrangerAsync(spki, outside, token);
             string? settingsSees;
             try { using var c = Connect(pairing); settingsSees = (await c.ReadSignInSettingsAsync(token)).BlockedReason ?? "usable"; }
-            catch (Audio2FaceHostException error) { settingsSees = error.Code; }
+            catch (HostConnectionException error) { settingsSees = error.Code; }
             Step("outside-paused-without-signin", removed == 0 && pausedSees == "outside.paused" && strangerSees.StartsWith("403 outside.paused", StringComparison.Ordinal) &&
                     settingsSees == "signin.not_set_up",
                 $"signin.json removed (exit {removed}{(removed == 0 ? "" : ", " + removedText.Trim())}): the paired desktop gets {pausedSees}, " +

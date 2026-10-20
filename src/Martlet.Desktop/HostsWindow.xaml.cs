@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
 using Martlet.Core.Installation;
@@ -196,15 +196,15 @@ public partial class HostsWindow : ThemedWindow
                 NearbyStatusText.Text = $"Pairing with {code.HostId}...";
                 try
                 {
-                    var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(HostPairingInput.Origin(code.Address), code.Code, device, name,
+                    var (pairing, secret) = await HostTransport.PairWithCodeAsync(HostPairingInput.Origin(code.Address), code.Code, device, name,
                         request.Token);
                     var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null);
                     done.Add(host.HostId);
                     try { await CheckAsync(host.Pairing, Hardware, _ => { }, request.Token); }
-                    catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }
+                    catch (Exception error) when (error is InvalidOperationException or HostConnectionException) { }
                 }
                 catch (OperationCanceledException) when (request.IsCancellationRequested) { throw; }
-                catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or
+                catch (Exception error) when (error is HostConnectionException or InvalidOperationException or IOException or
                     UnauthorizedAccessException or ContractException or ArgumentException or JsonException or TimeoutException or
                     System.Net.Http.HttpRequestException or OperationCanceledException)
                 {
@@ -227,7 +227,7 @@ public partial class HostsWindow : ThemedWindow
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is InvalidOperationException or IOException or SocketException or InvalidDataException or
-            JsonException or System.Security.Cryptography.CryptographicException or TimeoutException or Audio2FaceHostException)
+            JsonException or System.Security.Cryptography.CryptographicException or TimeoutException or HostConnectionException)
         {
             NearbyStatusText.Text = error.Message;
             StatusText.Text = error.Message;
@@ -623,7 +623,7 @@ public partial class HostsWindow : ThemedWindow
         var text = PairingCodeBox.Text;
         var device = DeviceIdText.Text.Trim();
         var card = HostPairingInput.IsCard(text);
-        Audio2FaceHostPairing pairing;
+        HostPairing pairing;
         string secret;
         if (card)
         {
@@ -638,7 +638,7 @@ public partial class HostsWindow : ThemedWindow
             HostPairingInput.NormalizeCode(text);
             StatusText.Text = $"Pairing with the host at {new Uri(origin).Authority}...";
             await pairings.CheckCanKeepAsync(lifetime.Token);
-            (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(origin, text, device, Martlet.Core.Network.ThisComputer.Name, lifetime.Token);
+            (pairing, secret) = await HostTransport.PairWithCodeAsync(origin, text, device, Martlet.Core.Network.ThisComputer.Name, lifetime.Token);
         }
         PairingCodeBox.Clear();
         var shown = new Uri(pairing.Origin);
@@ -651,14 +651,14 @@ public partial class HostsWindow : ThemedWindow
         StatusText.Text += card ? " To close the pairing console on the host, press a key, type stop and confirm." : "";
         // Read what the host is like for the map and the advisor; a host that restarts its gateway after pairing may not answer yet.
         try { StatusText.Text += " " + await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
-        catch (Exception error) when (error is InvalidOperationException or OperationCanceledException or Audio2FaceHostException) { }
+        catch (Exception error) when (error is InvalidOperationException or OperationCanceledException or HostConnectionException) { }
         if (!lifetime.IsCancellationRequested) ShowStep(1);
     });
 
     /// <summary>Keeps a new pairing: the secret in Windows Credential Manager, the host in hosts.json (with how Martlet
     /// reaches it and its pinned SSH host key). <paramref name="token"/>: a run window's, so a run that outlives this wizard
     /// (hidden in Background tasks) still keeps its pairing; this wizard's lifetime otherwise.</summary>
-    private async Task<PairedHost> SavePairingAsync(Audio2FaceHostPairing pairing, string secret, HostSetupMethod method, string? ssh,
+    private async Task<PairedHost> SavePairingAsync(HostPairing pairing, string secret, HostSetupMethod method, string? ssh,
         string? sshHostKey, CancellationToken? token = null, IReadOnlyList<string>? outsideAddresses = null)
     {
         var (host, lipSync) = await KeepPairingAsync(pairings, pairing, secret, method, ssh, sshHostKey, token ?? lifetime.Token, outsideAddresses);
@@ -670,7 +670,7 @@ public partial class HostsWindow : ThemedWindow
         return host;
     }
 
-    internal static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, Audio2FaceHostPairing pairing,
+    internal static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, HostPairing pairing,
         string secret, HostSetupMethod method, string? ssh, string? sshHostKey, CancellationToken token,
         IReadOnlyList<string>? outsideAddresses = null, string? access = null, string? signedInAs = null)
     {
@@ -770,13 +770,13 @@ public partial class HostsWindow : ThemedWindow
         return check.Text;
     }
 
-    internal static async Task<(string Text, string? MartletVersion)> ReadHardwareAsync(Audio2FaceHostConnection connection,
+    internal static async Task<(string Text, string? MartletVersion)> ReadHardwareAsync(HostConnection connection,
         HostHardwareStore? store, CancellationToken token)
     {
         HostHardware? report;
         string? version;
         try { (report, version) = await connection.ReadMachineReportAsync(token); }
-        catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+        catch (HostConnectionException error) when (error.Code == "request.invalid")
         {
             return ("Hardware details aren't available yet. Update the host from the Devices map.", null);
         }
@@ -859,7 +859,7 @@ public partial class HostsWindow : ThemedWindow
             }
             var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null, outsideAddresses: outside);
             try { await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
-            catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }
+            catch (Exception error) when (error is InvalidOperationException or HostConnectionException) { }
         }, acceptShareLink: async text =>
         {
             // A friend's share link: the main window signs in to every host it names; this wizard closes.
@@ -883,7 +883,7 @@ public partial class HostsWindow : ThemedWindow
         if (!acting.Add(what)) { StatusText.Text = "That is still running."; return; }
         try { await action(); }
         catch (OperationCanceledException) { }
-        catch (Audio2FaceHostException error) { StatusText.Text = error.Message; }
+        catch (HostConnectionException error) { StatusText.Text = error.Message; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
             InvalidOperationException or ArgumentException or JsonException or TimeoutException)
         { StatusText.Text = error.Message; }

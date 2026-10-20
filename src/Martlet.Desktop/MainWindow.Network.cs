@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
 using Martlet.Core.Network;
@@ -277,19 +277,19 @@ public partial class MainWindow
         }
     }
 
-    private static Audio2FaceHostConnection ConnectToHost(Audio2FaceHostPairing pairing)
+    private static HostConnection ConnectToHost(HostPairing pairing)
     {
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(pairing.HostId, pairing.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
             throw new InvalidOperationException("This PC's pairing secret is missing; pair again.");
-        Audio2FaceHostConnection? connection = null;
-        read.Secret.Use(secret => connection = new Audio2FaceHostConnection(pairing, secret));
+        HostConnection? connection = null;
+        read.Secret.Use(secret => connection = new HostConnection(pairing, secret));
         return connection!;
     }
 
     /// <summary>Keeps a pairing the network made: the secret in Windows Credential Manager and the host in hosts.json, reached
     /// only through its gateway (a host this PC already reached over SSH keeps that).</summary>
-    private async Task KeepNetworkPairingAsync(Audio2FaceHostPairing pairing, string secret)
+    private async Task KeepNetworkPairingAsync(HostPairing pairing, string secret)
     {
         var pairings = Pairings();
         // Fails before anything is stored when this PC's settings can't be read. A PC with no settings yet pairs fine.

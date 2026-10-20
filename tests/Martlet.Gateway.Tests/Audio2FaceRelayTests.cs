@@ -1,4 +1,4 @@
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Audio2Face.Tests;
 using Martlet.Core.Contracts;
 using Martlet.Gateway;
@@ -38,11 +38,11 @@ public sealed class Audio2FaceRelayTests
         await using var worker = new Audio2FaceRelayWorker(nim.Endpoint, "claire", "1.3");
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
         Assert.Equal(host.Identity.SpkiFingerprint, pairing.SpkiFingerprint);
 
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var route = await connection.ReadRouteAsync();
         Assert.NotNull(route);
         Assert.Equal("claire", route!.ModelId);
@@ -71,24 +71,24 @@ public sealed class Audio2FaceRelayTests
         await using var worker = new Audio2FaceRelayWorker(new Uri($"http://127.0.0.1:{port}/"), "claire", "1.3");
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         var route = (await connection.ReadRouteAsync())!;
-        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        var failure = await Assert.ThrowsAsync<HostConnectionException>(async () =>
         {
             await foreach (var _ in connection.AnimateAsync(route, NewIds(), 0, 24_000, new byte[4_800])) { }
         });
         Assert.Equal("worker.unavailable", failure.Code);
 
         var wrongSecret = new string('A', 43);
-        using var impostor = new Audio2FaceHostConnection(pairing, wrongSecret, host.Clock);
-        var denied = await Assert.ThrowsAsync<Audio2FaceHostException>(() => impostor.ReadRouteAsync());
+        using var impostor = new HostConnection(pairing, wrongSecret, host.Clock);
+        var denied = await Assert.ThrowsAsync<HostConnectionException>(() => impostor.ReadRouteAsync());
         Assert.StartsWith("auth.", denied.Code, StringComparison.Ordinal);
 
         var wrongPin = pairing with { SpkiFingerprint = "sha256:" + new string('0', 64) };
-        using var spoofed = new Audio2FaceHostConnection(wrongPin, secret, host.Clock);
-        Assert.Equal("host.unreachable", (await Assert.ThrowsAsync<Audio2FaceHostException>(() => spoofed.ReadRouteAsync())).Code);
+        using var spoofed = new HostConnection(wrongPin, secret, host.Clock);
+        Assert.Equal("host.unreachable", (await Assert.ThrowsAsync<HostConnectionException>(() => spoofed.ReadRouteAsync())).Code);
     }
 
     [Fact]
@@ -96,9 +96,9 @@ public sealed class Audio2FaceRelayTests
     {
         await using var host = await GatewayTestHost.StartAsync();
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         Assert.Null(await connection.ReadRouteAsync());
     }
 
@@ -107,9 +107,9 @@ public sealed class Audio2FaceRelayTests
     {
         await using var host = await GatewayTestHost.StartAsync();
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
         Assert.Null(await connection.ReadMachineAsync());
         var (_, version) = await connection.ReadMachineReportAsync();
         Assert.Equal(typeof(GatewayMachineReport).Assembly.GetName().Version!.ToString(3), version);

@@ -6,7 +6,7 @@ using System.Threading.Channels;
 using System.Windows;
 using Martlet.Audio;
 using Martlet.Avatar.Audio2Face;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Conversation;
@@ -40,7 +40,7 @@ internal sealed partial class AvatarController
                 if (automatic is not null && selected.RemoteHost is { } remote)
                 {
                     try { Volatile.Write(ref hostLink, openHost(remote)); }
-                    catch (Exception error) when (error is Audio2FaceHostException or ContractException) { }
+                    catch (Exception error) when (error is HostConnectionException or ContractException) { }
                 }
                 if (automatic is not null) lipSyncPool.Warm(profile, hostLink);
             }
@@ -239,7 +239,7 @@ internal sealed partial class AvatarController
             IAvatarHostLink? next = null;
             if (remote is not null && IsShowing)
                 try { next = openHost(remote); }
-                catch (Exception error) when (error is Audio2FaceHostException or ContractException) { }
+                catch (Exception error) when (error is HostConnectionException or ContractException) { }
             Interlocked.Exchange(ref hostLink, next)?.Dispose();
             lipSyncPool.Clear();
             if (profile is not null) profile = profile with { RemoteHost = remote };

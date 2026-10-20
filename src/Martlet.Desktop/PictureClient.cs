@@ -2,7 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
@@ -256,7 +256,7 @@ internal static class PictureClient
 internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IComfyApi, IDisposable
 {
     private const int PageBytes = 2 * 1024 * 1024;
-    private (PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)? open;
+    private (PairedHost Host, HostRoute Route, HostConnection Connection)? open;
 
     public string Where => open is { } found ? $"{found.Host.HostId}'s Picture making role" : hostId is null ? "Martlet's Picture making role" : $"{hostId}'s Picture making role";
 
@@ -325,11 +325,11 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
                 return [.. answer.Select(element => JsonNode.Parse(element.GetRawText()) as JsonObject ?? throw Invalid())];
             }
             // The gateway runs one request per route at a time: another computer's poll can hold it for a moment.
-            catch (Audio2FaceHostException error) when (error.Code == "job.busy" && attempt < 40)
+            catch (HostConnectionException error) when (error.Code == "job.busy" && attempt < 40)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(250), token).ConfigureAwait(false);
             }
-            catch (Audio2FaceHostException error)
+            catch (HostConnectionException error)
             {
                 throw new PictureException(error.Code switch
                 {
@@ -346,7 +346,7 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
         }
     }
 
-    private async Task<(PairedHost, HostRoute, Audio2FaceHostConnection)> OpenAsync(CancellationToken token)
+    private async Task<(PairedHost, HostRoute, HostConnection)> OpenAsync(CancellationToken token)
     {
         if (open is { } known) return known;
         IReadOnlyList<PairedHost> hosts;
@@ -358,12 +358,12 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
         // Pictures stay the owner's on a host a friend shares (it refuses them), so those hosts are skipped.
         foreach (var host in hosts.Where(h => !h.Shared && (hostId is null || h.HostId == hostId)))
         {
-            Audio2FaceHostConnection? connection = null;
+            HostConnection? connection = null;
             try
             {
                 connection = ClusterSync.Connect(host.Pairing);
                 var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
-                if (routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.PictureRouteId) is { } route)
+                if (routes.FirstOrDefault(r => r.RouteId == HostConnection.PictureRouteId) is { } route)
                 {
                     open = (host, route, connection);
                     connection = null;

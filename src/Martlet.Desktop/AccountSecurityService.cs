@@ -434,7 +434,7 @@ internal sealed class AccountSecurityService(AccountSession session, string data
 
     /// <summary>*Merge another account into this one*, before its data steps: binds this PC to the merged account with its Prove
     /// attestation and gives the directory to the hosts at once, so they let this PC read that account's memories and settings.</summary>
-    internal async Task PrepareMergeAsync(Martlet.Avatar.Audio2Face.Remote.HostAccountProof other, CancellationToken token)
+    internal async Task PrepareMergeAsync(Martlet.HostClient.HostAccountProof other, CancellationToken token)
     {
         var now = DateTimeOffset.UtcNow;
         var directory = ChangeDirectory((d, key, at) => d.Find(other.AccountId) is { Removed: false } account

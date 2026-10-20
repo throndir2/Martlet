@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Network;
 using Martlet.Desktop;
 

@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -92,7 +92,7 @@ internal static class VoiceEngineCheck
                 }
             }
         }
-        catch (Audio2FaceHostException error)
+        catch (HostConnectionException error)
         {
             failure = error.Code;
             problem = error.Message;
@@ -242,12 +242,12 @@ internal static class VoiceEngineCheck
             }
         }
 
-        internal async Task<Audio2FaceHostConnection> PairAsync(string deviceId, CancellationToken token)
+        internal async Task<HostConnection> PairAsync(string deviceId, CancellationToken token)
         {
             var card = server.Pairing.OpenWindow(new() { DeviceId = deviceId, DisplayName = deviceId, Roles = [GatewayRole.Voice] });
-            var (pairing, secret) = await Audio2FaceHostClient.PairAsync(origin, HostId, identity.SpkiFingerprint, deviceId,
+            var (pairing, secret) = await HostTransport.PairAsync(origin, HostId, identity.SpkiFingerprint, deviceId,
                 card.PairingId, card.Token.Reveal(), token);
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
 
         public void Record(GatewayAuditEvent gatewayEvent) { }

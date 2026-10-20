@@ -2,7 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Windows;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;
@@ -90,7 +90,7 @@ public partial class AccountProveWindow : ThemedWindow
                 return;
             }
             catch (OperationCanceledException) { return; }
-            catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or ContractException or
+            catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException or ContractException or
                 InvalidOperationException or JsonException) { }
         }
     }
@@ -144,14 +144,14 @@ public partial class AccountProveWindow : ThemedWindow
                     DialogResult = true;
                     return;
                 }
-                catch (Audio2FaceHostException error) when (error.Code.StartsWith("signin.", StringComparison.Ordinal) || error.Code.StartsWith("access.", StringComparison.Ordinal))
+                catch (HostConnectionException error) when (error.Code.StartsWith("signin.", StringComparison.Ordinal) || error.Code.StartsWith("access.", StringComparison.Ordinal))
                 {
                     // The host answered: the sign-in itself is wrong, so other hosts would say the same.
                     StatusText.Text = error.Message;
                     ErrorLog.Info($"Account sign-in refused by {choice.Host.HostId}: {error.Code}.");
                     return;
                 }
-                catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or TimeoutException or
+                catch (Exception error) when (error is HostConnectionException or HttpRequestException or IOException or TimeoutException or
                     InvalidOperationException or JsonException or ContractException ||
                     error is OperationCanceledException && !lifetime.IsCancellationRequested)
                 {

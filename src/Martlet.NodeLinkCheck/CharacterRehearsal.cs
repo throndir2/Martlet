@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Characters;
@@ -254,7 +254,7 @@ internal static class CharacterRehearsal
             await call();
             return null;
         }
-        catch (Audio2FaceHostException error) { return error.Code; }
+        catch (HostConnectionException error) { return error.Code; }
     }
 
     private static bool Refused(Action call)
@@ -273,14 +273,14 @@ internal static class CharacterRehearsal
     /// sync makes.</summary>
     private sealed class LabDesktop(string deviceId, string dataDirectory)
     {
-        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (HostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         internal string DeviceId => deviceId;
         internal string DataDirectory => dataDirectory;
 
         internal async Task PairAsync(ModelHost host)
         {
             var card = host.Server.Pairing.OpenWindow(new() { DeviceId = deviceId, DisplayName = deviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
-            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
+            pairings[host.HostId] = await HostTransport.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, deviceId,
                 card.PairingId, card.Token.Reveal());
         }
 
@@ -335,7 +335,7 @@ internal static class CharacterRehearsal
         }
 
         // A restarted lab host has a new port and forgets volatile pairings; the desktop pairs again, as it would after a reset.
-        private Audio2FaceHostConnection Connect(ModelHost host)
+        private HostConnection Connect(ModelHost host)
         {
             var (pairing, secret) = pairings[host.HostId];
             if (pairing.Origin != host.Origin)
@@ -343,7 +343,7 @@ internal static class CharacterRehearsal
                 PairAsync(host).GetAwaiter().GetResult();
                 (pairing, secret) = pairings[host.HostId];
             }
-            return new Audio2FaceHostConnection(pairing, secret);
+            return new HostConnection(pairing, secret);
         }
     }
 

@@ -1,5 +1,5 @@
 using System.Windows.Threading;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Home;
 
 namespace Martlet.Desktop;
@@ -110,7 +110,7 @@ public partial class MainWindow
             return (host.HostId, value, true, false);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
-        catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+        catch (HostConnectionException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
         {
             return (host.HostId, null, false, true);
         }

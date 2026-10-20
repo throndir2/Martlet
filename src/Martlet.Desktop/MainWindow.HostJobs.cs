@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.F5;
@@ -21,7 +21,7 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         "Your messages and recent conversation go to that computer instead of a cloud provider. There is no per-request charge.");
 
     internal static readonly HostJob Listening = new(SetupRole.Stt, SetupRouteType.GatewayStt, HostRoles.Stt,
-        Audio2FaceHostConnection.TranscriptionRouteId, "listening", "speech recognition", "turn what you say into text", "listening-previous.json",
+        HostConnection.TranscriptionRouteId, "listening", "speech recognition", "turn what you say into text", "listening-previous.json",
         "Your recorded speech",
         "Your speech goes to that computer for transcription instead of a cloud provider. It is not stored. There is no per-request charge.");
 
@@ -308,7 +308,7 @@ public partial class MainWindow
         catch (OperationCanceledException) { }
         catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
-            JsonException or ArgumentException or Audio2FaceHostException)
+            JsonException or ArgumentException or HostConnectionException)
         {
             ActionText.Text = error.Message;
         }

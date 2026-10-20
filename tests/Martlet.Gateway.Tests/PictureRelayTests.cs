@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.HostClient;
 using Martlet.Gateway.Pictures;
 
 namespace Martlet.Gateway.Tests;
@@ -168,10 +168,10 @@ public sealed class PictureRelayTests
         await using var worker = new PictureRelayWorker(new Uri("http://127.0.0.1:50086/"), handler: handler);
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
-        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+        var (pairing, secret) = await HostTransport.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
-        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
-        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == Audio2FaceHostConnection.PictureRouteId);
+        using var connection = new HostConnection(pairing, secret, host.Clock);
+        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostConnection.PictureRouteId);
 
         var status = Assert.Single(await connection.PictureOperationAsync(route,
             new Dictionary<string, object> { ["operation"] = "status" }));
