@@ -72,13 +72,22 @@ public partial class MainWindow
                 ? route.RouteType == SetupRouteType.ChatCompletions && route.Origin == url
                 : route.RouteType is null or SetupRouteType.OpenAi) || SetupSettings.SetAsideCredentials(homeSettings, role, url).Count > 0;
             var missingKey = $"Paste your {provider.Name} API key first.";
+            // No key pasted and none for this job: a key for the same provider saved anywhere else in Martlet is copied here.
+            string? borrowedFrom = null;
+            if (key is null && !keySaved && SavedKeyWhere(url ?? OpenAiSetup.Origin) is { } from &&
+                await ReadSavedKeyAsync(url ?? OpenAiSetup.Origin) is { } copy)
+            {
+                key = copy;
+                borrowedFrom = from;
+            }
             if (key is null && provider.NeedsKey && !keySaved)
                 throw new ContractException(ErrorCode.InvalidContract, missingKey);
             if (!await SaveSectionRouteAsync(job, settings => provider.Chat
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
                 key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)})" +
-                    (key is null ? "" : ", with your API key saved in Windows Credential Manager") +
+                    (borrowedFrom is not null ? $", with your {provider.Name} key from {borrowedFrom}"
+                        : key is null ? "" : ", with your API key saved in Windows Credential Manager") +
                     (FreeKeyPrompt.IsFree(url) ? "." : ", where requests may cost money."),
                 provider.NeedsKey ? missingKey : null))
                 return;

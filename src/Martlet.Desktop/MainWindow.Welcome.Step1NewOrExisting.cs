@@ -255,8 +255,12 @@ public partial class MainWindow
         return DeviceCapacityInputs.JoinNetwork(inputs, NetworkMap.Build(inputs), DefaultSetup.Catalog(null));
     }
 
+    /// <summary>The hosted providers with a saved key anywhere in Martlet: the Thinking route and its fallback, and also the
+    /// Thinking pool, the other routes and the Vision, Hearing and Picture making lists (<see cref="SavedProviderKeys"/>), so a key
+    /// added on another computer (it travels) never brings back the Add a free API key prompt.</summary>
     private IReadOnlyCollection<string> ConfiguredProviders() =>
-        DefaultSetup.ConfiguredProviders(homeSettings.ThinkingRoute(), homeSettings?.ThinkingFallback);
+        [.. DefaultSetup.ConfiguredProviders(homeSettings.ThinkingRoute(), homeSettings?.ThinkingFallback)
+            .Union(SavedProviderKeys.Providers(homeSettings, store?.DataDirectory), StringComparer.Ordinal)];
 
     private void RenderWelcomePlan()
     {

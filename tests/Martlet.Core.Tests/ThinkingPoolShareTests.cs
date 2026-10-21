@@ -173,6 +173,41 @@ public sealed class ThinkingPoolShareTests : IDisposable
     }
 
     [Fact]
+    public async Task A_key_added_to_the_pool_on_one_pc_counts_as_saved_on_the_next_one_and_is_used_again_there()
+    {
+        // The owner's report: a key added on one computer, then this computer asks for an NVIDIA Build key again.
+        var imouto = new Pc(Path.Combine(root, "imouto"), "desktop-imouto");
+        var lumine = new Pc(Path.Combine(root, "lumine"), "desktop-lumine");
+        var profile = await imouto.ProfileAsync();
+        await lumine.ProfileAsync();
+        await imouto.Node.SyncAsync([], true, Start, CancellationToken.None);
+        await lumine.Node.SyncAsync([imouto.Node.Document], true, Start, CancellationToken.None);
+        var before = (await lumine.Setup.LoadAsync()).Settings;
+        Assert.Empty(SavedProviderKeys.Providers(before, lumine.Data));
+        Assert.Empty(SavedProviderKeys.For(before, lumine.Data, Nvidia));
+
+        var id = Guid.NewGuid();
+        using (var lease = new SecretLease(NvidiaKey)) imouto.Vault.Write(Endpoint(Nvidia, "x").Binding(profile, id), lease);
+        Assert.True(new ThinkingPoolSettings { Members = [Endpoint(Nvidia, "nvidia/nemotron-ultra", id)] }.Save(imouto.Data));
+        await imouto.Node.SyncAsync([], true, Start.AddMinutes(1), CancellationToken.None);
+        await lumine.Node.SyncAsync([imouto.Node.Document], true, Start.AddMinutes(2), CancellationToken.None);
+
+        // LUMINE has no Thinking route or fallback of its own, but its pool has the key: NVIDIA Build counts as configured, so
+        // no Add a free API key prompt shows, and a page that asks for the key uses a copy of this one.
+        var settings = (await lumine.Setup.LoadAsync()).Settings;
+        Assert.Null(settings.ThinkingRoute());
+        Assert.Equal(["nvidia-build"], SavedProviderKeys.Providers(settings, lumine.Data));
+        var saved = Assert.Single(SavedProviderKeys.For(settings, lumine.Data, Nvidia + "/"));
+        Assert.Equal("the Thinking pool", saved.Where);
+        Assert.Empty(SavedProviderKeys.For(settings, lumine.Data, OpenRouter));
+        using var copy = SavedProviderKeys.Read(lumine.Vault, [saved]);
+        Assert.NotNull(copy);
+        string? value = null;
+        copy!.Use(chars => value = new string(chars));
+        Assert.Equal(NvidiaKey, value);
+    }
+
+    [Fact]
     public async Task NVIDIA_models_and_their_key_added_on_one_companion_pc_reach_the_next_one_and_leave_with_it()
     {
         var imouto = new Pc(Path.Combine(root, "imouto"), "desktop-imouto");

@@ -63,13 +63,17 @@ internal sealed partial class ThinkingCards
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, "Fallback API key");
         AutomationProperties.SetAutomationId(key, "FallbackKey");
-        InputHint.SetText(key, p.NeedsKey ? $"Paste your {p.Name} API key" : "Only if your server needs a key");
+        InputHint.SetText(key, services.SavedKeyWhere(Url()) is not null ? "Leave empty to use your saved key"
+            : p.NeedsKey ? $"Paste your {p.Name} API key" : "Only if your server needs a key");
         if (services.FreeKeyForFallback) services.FocusFreeKey(key);
         var url = Url();
+        var elsewhere = saved?.CredentialId is not null && saved.Origin == url ? null : services.SavedKeyWhere(url);
         var keyStatus = Note(saved?.CredentialId is not null && saved.Origin == url
                 ? $"Its {p.Name} key is saved; leave this empty to keep it, or paste a new key."
             : thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin == url
                 ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
+            : elsewhere is not null
+                ? $"Your {p.Name} key from {elsewhere} is saved: leave this empty to use it here too, or paste a new key."
             : p.NeedsKey ? $"Paste your {p.Name} API key; Martlet saves it in Windows Credential Manager."
             : "Add a key only if your server needs one.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "FallbackKeyStatus");

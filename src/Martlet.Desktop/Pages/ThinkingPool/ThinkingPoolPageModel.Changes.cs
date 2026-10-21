@@ -203,6 +203,10 @@ internal sealed partial class ThinkingPoolPageModel
             {
                 Place = DeepThinkingPlace.Endpoint, Origin = url, ModelId = model, CredentialId = keep, ChosenAt = DateTimeOffset.Now
             };
+            // A key for the same provider saved anywhere else in Martlet is copied, so it is never asked for twice.
+            if (key is null && keep is null && !next.UsesThinkingKey(thinking) &&
+                SavedProviderKeys.For(services.Settings, services.DataDirectory, url) is { Count: > 0 } elsewhere)
+                key = await Task.Run(() => SavedProviderKeys.Read(new WindowsCredentialStore(), elsewhere));
             if (key is null && provider.NeedsKey && keep is null && !next.UsesThinkingKey(thinking))
                 throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
             await SaveDeepThinkingAsync(next, key, $"{provider.Name} ({model}) joined the Thinking pool" +

@@ -41,6 +41,10 @@ internal interface IPicturesPageServices
     /// <summary>What the last Add of a cloud provider did, or why it didn't (never a key), or null. Choosing another provider clears it.</summary>
     string? CloudState { get; set; }
 
+    /// <summary>Where a key for the provider at <paramref name="origin"/> is saved already anywhere in Martlet ("the Thinking
+    /// pool"), or null; Add without a new key then uses a copy of it.</summary>
+    string? SavedKeyWhere(string? origin);
+
     /// <summary>What Connect found on the ComfyUI place with <paramref name="memberKey"/>: its words and its status, or null.</summary>
     string? ComfyState(string memberKey);
 

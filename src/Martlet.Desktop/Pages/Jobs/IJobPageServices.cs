@@ -51,6 +51,10 @@ internal interface IJobPageServices
     /// <summary>Whether Add your key opened Thinking to fill in a free key now.</summary>
     bool FocusFreeKey { get; }
 
+    /// <summary>Where a key for the provider at <paramref name="origin"/> is saved already anywhere in Martlet ("the Thinking
+    /// pool"), or null; Use without a new key then uses a copy of it.</summary>
+    string? SavedKeyWhere(string? origin);
+
     /// <summary>The model app This PC shows for Thinking: the one chosen, else the default for what is installed and found.
     /// Looks for model apps on this PC once when it hasn't yet (loopback only).</summary>
     MainWindow.LocalApp ModelApp(SetupRoute? route);

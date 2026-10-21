@@ -119,6 +119,14 @@ public partial class MainWindow
             var thinking = homeSettings.ThinkingRoute();
             using (var entered = keyBox.SecurePassword)
                 if (entered.Length > 0) key = TakeKey(keyBox);
+            // A key for the same provider saved anywhere else in Martlet is copied, so it is never asked for twice.
+            string? borrowedFrom = null;
+            if (key is null && !place.UsesThinkingKey(thinking) && SavedKeyWhere(place.Origin) is { } from &&
+                await ReadSavedKeyAsync(place.Origin) is { } copy)
+            {
+                key = copy;
+                borrowedFrom = from;
+            }
             if (key is null && !place.UsesThinkingKey(thinking)) throw new ContractException(ErrorCode.InvalidContract, $"Paste your {name} API key first.");
             if (key is not null)
             {
@@ -140,7 +148,8 @@ public partial class MainWindow
             written = null;
             picturesCheck = null;
             var done = $"{PictureMakingPoolMembers.Describe(member)} is now last in the Picture making list" +
-                (key is null ? "" : ", with its API key in Windows Credential Manager") + "; move it up to draw there sooner.";
+                (borrowedFrom is not null ? $", with your {name} key from {borrowedFrom}"
+                    : key is null ? "" : ", with its API key in Windows Credential Manager") + "; move it up to draw there sooner.";
             ErrorLog.Info($"Pictures: added {PictureMakingPoolMembers.Describe(member)} to the Picture making list (the owner agreed to pay).");
             ActionText.Text = picturesCloudState = done;
         }

@@ -611,6 +611,12 @@ Conversations are shared too: each person's [record of conversations](MEMORY.md#
 is the same on every computer where they are signed in, and what Martlet makes from them travels as the
 [shared creations](#the-shared-creations).
 
+**One key for each provider.** A key the owner saved for a provider in any place (Thinking, Listening,
+Voice, If Thinking fails, the Thinking pool, or the Vision, Hearing and Picture making lists) is a key for
+that provider everywhere, because each of these travels with its key. No page then asks for the key
+again: its key line says where the key is saved, and saving with the key box empty uses a copy of it. The
+*Add a free API key* prompt and the recommended setup count it as configured too (`SavedProviderKeys`).
+
 **On a Linux or Mac companion** ([Martlet for Linux and macOS](DESKTOP_LINUX_MACOS.md)), pair a host in
 Settings › *Your other computers* with the address and code it shows. The companion then takes and shares
 `thinking`, `listening` and `speaking` (OpenAI or an OpenAI-compatible server, with the API key) and

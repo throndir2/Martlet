@@ -94,7 +94,11 @@ internal sealed partial class JobPage
         // A key this job used with the provider before, set aside when it switched away, is used again.
         bool SetAside() => !(SameAsSaved() && cloudRoute!.CredentialId is not null) &&
             SetupSettings.SetAsideCredentials(settings, role, ChatUrl()).Count > 0;
-        bool HasKey() => SameAsSaved() && cloudRoute!.CredentialId is not null || SetAside();
+        // A key for the same provider saved anywhere else in Martlet (the Thinking pool, If Thinking fails, another job or list,
+        // on this computer or another one: keys travel) is used again, so it is never asked for twice.
+        string? Elsewhere() => SameAsSaved() && cloudRoute!.CredentialId is not null || SetAside() ? null
+            : services.SavedKeyWhere(p.Chat ? ChatUrl() : OpenAiSetup.Origin);
+        bool HasKey() => SameAsSaved() && cloudRoute!.CredentialId is not null || SetAside() || Elsewhere() is not null;
         var defaultModel = p.Chat ? p.DefaultModel : role switch
         {
             SetupRole.Llm => OpenAiTextGenerationCatalog.DefaultModelId,
@@ -128,6 +132,7 @@ internal sealed partial class JobPage
         }
         RefreshKeyMark();
         var keyStatus = Note(SetAside() ? $"Your {p.Name} key from before is still saved: leave this empty to use it again, or paste a new key."
+                : Elsewhere() is { } from ? $"Your {p.Name} key from {from} is saved: leave this empty to use it here too, or paste a new key."
                 : keySaved ? $"Your {p.Name} key is saved: leave this empty to keep it, or paste a new key."
                 : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
                     ? $"Paste your {p.Name} API key (it starts with nvapi-); Martlet saves it in Windows Credential Manager."
