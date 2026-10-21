@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
-- An API key you added on one computer, for example your NVIDIA Build key in the Thinking pool, now counts everywhere: Martlet no longer asks for a free key or shows an empty key box for that provider, and choosing it elsewhere uses the saved key. (PRLINK)
+- An API key you added on one computer, for example your NVIDIA Build key in the Thinking pool, now counts everywhere: Martlet no longer asks for a free key or shows an empty key box for that provider, and choosing it elsewhere uses the saved key. ([#1127](https://github.com/throndir2/Martlet/pull/1127))
 
 ## [0.90.0] - 2026-10-20
 
