@@ -140,9 +140,16 @@ internal static class RecommendedSetupStatus
         var (step, why) = SetupAskRule.Decide(recommendation, memory, companion: true, idle: TimeSpan.Zero);
         string Name(string? id) => id is null ? "" : build.Names.GetValueOrDefault(id) ?? id;
         var retired = fixture is null ? await RetiredAsync(dataDirectory!, cancellation) : null;
+        // The API keys saved anywhere in Martlet (which provider and where; never a key): a provider listed here counts as configured.
+        var savedKeys = fixture is null
+            ? SavedProviderKeys.All((await new SettingsStore(dataDirectory!).LoadAsync(cancellation)).Settings, dataDirectory)
+                .Select(k => new { provider = k.Provider, where = k.Where }).ToArray()
+            : [];
         return new
         {
             source,
+            configuredProviders = build.Request.ConfiguredProviders,
+            savedKeys,
             measured = new
             {
                 firstWords = measuredSpeed.Models.Select(m => new { host = m.Host, model = m.Model, ms = m.Ms, replies = m.Samples.Count, measuredAt = m.MeasuredAt }),
@@ -475,9 +482,11 @@ internal static class RecommendedSetupStatus
             if (routes.FirstOrDefault(r => r.Role == role) is { } route)
                 jobs.Add(new JobPlan(job, route.Gateway is { } gateway && SelfHostSetup.IsGateway(route.RouteType) ? gateway.HostId : null));
         var thinking = routes.ThinkingRoute();
-        var providers = thinking?.CredentialId is null ? []
+        IReadOnlyCollection<string> thinkingProviders = thinking?.CredentialId is null ? []
             : thinking.RouteType == SetupRouteType.OpenAi ? ["openai"]
             : ChatCompletionsEndpointCatalog.Named(thinking.Origin)?.Id is { } id ? new[] { id } : [];
+        // A key saved anywhere (the Thinking pool, the fallback, another route or list) counts, as on the desktop.
+        IReadOnlyCollection<string> providers = [.. thinkingProviders.Union(SavedProviderKeys.Providers(loaded.Settings, directory), StringComparer.Ordinal)];
         var speaking = routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
         var voice = SpeechEngines.ForRoute(speaking?.GatewaySnapshot?.RouteId) ?? SpeakingEngineFile.Read(directory) ?? SpeechEngines.Default;
         var poolSettings = ThinkingPoolSettings.Read(directory, save: false).Settings;

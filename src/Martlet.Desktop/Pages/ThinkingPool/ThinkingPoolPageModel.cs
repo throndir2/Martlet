@@ -330,6 +330,8 @@ internal sealed partial class ThinkingPoolPageModel
             ? $"Its {provider.Name} key is saved (for {saved.Describe()}): leave this empty to use it again, or paste a new key."
         : Route is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && Route.Origin == url
             ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
+        : SavedProviderKeys.For(services.Settings, services.DataDirectory, url).FirstOrDefault() is { } elsewhere
+            ? $"Your {provider.Name} key from {elsewhere.Where} is saved: leave this empty to use it here too, or paste a new key."
         : provider.NeedsKey ? $"Paste your {provider.Name} API key (Martlet saves it in Windows Credential Manager)."
         : "Add a key only if your server needs one.";
 

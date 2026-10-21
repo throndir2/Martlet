@@ -200,7 +200,11 @@ user's; the script gives a disposable one) to plan from that directory's
 `work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`, and this
 PC's page choices from `talk-preferences.json` (vision on, Let ... hear my
 voice), `sense-models.json`, `reading.json` and `smart-home.json` (its address
-only, never the token). A data
+only, never the token). Its `configuredProviders` lists the hosted providers
+that count as having a key, and `savedKeys` says where each key is saved (for
+example `{ "provider": "nvidia-build", "where": "the Thinking pool" }`; never
+the key): a key saved anywhere in Martlet counts, so the free-key prompt stays
+away. A data
 directory has no live host checks: a host that `node-presence.json` (the
 desktop's presence report) last saw not answering counts as offline, as the
 desktop plans it, and every other host counts as online. Its roles are the
@@ -451,6 +455,10 @@ Thinking with NVIDIA Build chosen for the key. When Martlet can't reply, the
 key goes to Thinking itself (A cloud provider: `SetupCloudKeyStatus-Thinking`
 reads *Paste your NVIDIA Build API key...*); else to If Thinking fails
 (`FallbackKeyStatus` reads the same), so a local model still answers first.
+When a key for the provider is saved anywhere else in Martlet (for example in
+the Thinking pool, also from another computer), there is no prompt, and these
+lines read *Your NVIDIA Build key from the Thinking pool is saved: leave this
+empty to use it here too...*; saving with the box empty copies that key.
 The status line (`Settings action result`) says which box to fill. Its `RecommendedSetupFreeKeyGet` (*Get
 a free key*) opens NVIDIA Build in the browser, so it is not a safe click.
 After a key is saved, Home plans again and opens the review with the new setup

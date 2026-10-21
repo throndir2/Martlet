@@ -62,6 +62,10 @@ internal interface IThinkingCardsServices
     /// <summary>Whether Add your key asks to put the cursor in the fallback's key box now.</summary>
     bool FreeKeyForFallback { get; }
 
+    /// <summary>Where a key for the provider at <paramref name="origin"/> is saved already anywhere in Martlet ("the Thinking
+    /// pool"), or null; saving without a new key then uses a copy of it.</summary>
+    string? SavedKeyWhere(string? origin);
+
     /// <summary>The FIXTURE situation (MARTLET_SIMULATE_SITUATION), or null when it isn't set.</summary>
     SimulatedSituation? SimulatedSituation { get; }
 

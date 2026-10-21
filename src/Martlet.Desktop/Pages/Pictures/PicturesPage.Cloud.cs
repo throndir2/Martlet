@@ -68,7 +68,9 @@ internal sealed partial class PicturesPage
         AutomationProperties.SetAutomationId(key, "PicturesKey");
         InputHint.SetText(key, provider == PictureMakingPoolMembers.NvidiaBuild ? "Paste your NVIDIA Build key (nvapi-…)"
             : "Paste your OpenRouter key (sk-or-v1-…)");
+        var elsewhere = draft.UsesThinkingKey(thinking) ? null : services.SavedKeyWhere(draft.Origin);
         var keyStatus = Note(draft.UsesThinkingKey(thinking) ? $"Leave this empty to use Thinking's {name} key, or paste another key."
+            : elsewhere is not null ? $"Your {name} key from {elsewhere} is saved: leave this empty to use it here too, or paste a new key."
             : $"Paste your {name} API key; Martlet saves it in Windows Credential Manager.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "PicturesKeyStatus");
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8),

@@ -47,6 +47,7 @@ public partial class MainWindow
         var token = lifetime.Token;
         var vault = new WindowsCredentialStore();
         SecretLease? key = null;
+        string? borrowedFrom = null;
         CredentialBinding? written = null;
         try
         {
@@ -67,6 +68,13 @@ public partial class MainWindow
                 chosen = new() { Origin = url, ModelId = model, CredentialId = keep, ConfigurationRevision = Guid.NewGuid() };
                 if (chosen.Same(thinking))
                     throw new ContractException(ErrorCode.InvalidContract, "That's what Thinking uses already, so choose another model or provider.");
+                // No key pasted, none of its own and not Thinking's: a key for the same provider saved anywhere else is copied.
+                if (key is null && keep is null && !chosen.UsesThinkingKey(thinking) && SavedKeyWhere(url) is { } from &&
+                    await ReadSavedKeyAsync(url) is { } copy)
+                {
+                    key = copy;
+                    borrowedFrom = from;
+                }
                 if (key is null && provider.NeedsKey && keep is null && !chosen.UsesThinkingKey(thinking))
                     throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
                 if (key is not null)
@@ -92,7 +100,9 @@ public partial class MainWindow
             homeSettings = updated;
             ActionText.Text = chosen is null
                 ? "The Thinking fallback is off."
-                : $"If Thinking fails, Martlet now asks {provider!.Name} ({model}).{(key is null ? "" : " Its API key is saved in Windows Credential Manager.")}{OpenConversationFollows}";
+                : $"If Thinking fails, Martlet now asks {provider!.Name} ({model})." +
+                    (borrowedFrom is not null ? $" It uses your {provider.Name} key from {borrowedFrom}."
+                        : key is null ? "" : " Its API key is saved in Windows Credential Manager.") + OpenConversationFollows;
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)

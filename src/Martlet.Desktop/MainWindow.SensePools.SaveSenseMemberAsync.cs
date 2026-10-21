@@ -154,8 +154,10 @@ public partial class MainWindow
             model.Text = p.DefaultModel ?? "";
             InputHint.SetText(model, p.DefaultModel ?? "gemma4:e4b");
             var url = Url();
+            var elsewhere = SavedKeyWhere(url);
             keyStatus.Text = thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin == url
                 ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
+                : elsewhere is not null ? $"Your {p.Name} key from {elsewhere} is saved: leave this empty to use it here too, or paste a new key."
                 : p.NeedsKey ? $"Paste your {p.Name} API key (Martlet saves it in Windows Credential Manager on this PC)."
                 : "Add a key only if your server needs one.";
             InputHint.SetText(key, p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? "Paste your NVIDIA Build key (nvapi-…)"
@@ -212,19 +214,28 @@ public partial class MainWindow
             ChatCompletionsSetup.ModelId(model);
             var member = PoolMember.Cloud(SenseLists.ProviderFor(origin), model, origin).WithConsent(area.Id, DateTimeOffset.UtcNow);
             using var entered = keyBox.SecurePassword;
+            var thinkingKey = thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin.TrimEnd('/') == origin;
+            string? borrowedFrom = null;
             if (entered.Length > 0)
             {
                 using var lease = TakeKey(keyBox);
                 await ReplaceSenseKeyAsync(area, member, origin, lease);
             }
-            else if (provider.NeedsKey && PoolKeys.Load(store.DataDirectory).For(area.Id, member.Key) is null &&
-                !(thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin.TrimEnd('/') == origin))
+            else if (PoolKeys.Load(store.DataDirectory).For(area.Id, member.Key) is null && !thinkingKey &&
+                SavedKeyWhere(origin) is { } from && await ReadSavedKeyAsync(origin) is { } copy)
+            {
+                // A key for the same provider saved anywhere else in Martlet is copied, so it is never asked for twice.
+                using (copy) await ReplaceSenseKeyAsync(area, member, origin, copy);
+                borrowedFrom = from;
+            }
+            else if (provider.NeedsKey && PoolKeys.Load(store.DataDirectory).For(area.Id, member.Key) is null && !thinkingKey)
                 throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
             tabEdited = false;
             senseCloudShown.Remove(kind);
             var list = WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
             SavePoolList(options, list, list.With(member), $"{provider.Name} ({model}) is now in the {area.Title} list" +
-                (entered.Length > 0 ? ", and its API key is saved in Windows Credential Manager." : "."));
+                (borrowedFrom is not null ? $", with your {provider.Name} key from {borrowedFrom}."
+                    : entered.Length > 0 ? ", and its API key is saved in Windows Credential Manager." : "."));
             // Ask its server quietly what the model takes, as for a first model.
             CheckChosenModelAsync(new() { Place = DeepThinkingPlace.Endpoint, Origin = origin, ModelId = model }, thinking).Forget();
         }
