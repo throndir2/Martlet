@@ -88,7 +88,7 @@ public sealed class LingeringEmoteTests
         var showing = catalog.Prompt(null, null, held, now)!;
         Assert.Equal(plain.Instructions, showing.Instructions);
         Assert.Equal("Your character is showing {glasses} (12 min), {star} (just now). Each stays on until you write its off tag, " +
-            "such as {/glasses}; turn one off when it no longer fits, otherwise leave it on.", showing.Showing);
+            "like {/glasses}.", showing.Showing);
         Assert.Null(catalog.Prompt(null, new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CharacterShowing] = "" } },
             held, now)!.Showing);
         Assert.Equal("2 h 5 min", CharacterActions.Age(TimeSpan.FromMinutes(125)));
@@ -100,7 +100,7 @@ public sealed class LingeringEmoteTests
     {
         var catalog = Catalog();
         var prompt = catalog.Prompt(null, null)!.Instructions;
-        Assert.Contains("Use them freely to show what you feel and do, usually one or two in a reply. Vary them: each is worth showing.", prompt);
+        Assert.Contains("Use one or two in most replies", prompt);
         Assert.DoesNotContain("need none", prompt);
         // The instructions don't grow: the old text was 459 bytes before {tags} and {example} were filled in.
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(PromptCatalog.Default(PromptCatalog.CharacterActions)) <= 459);

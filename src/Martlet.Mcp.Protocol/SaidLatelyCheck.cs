@@ -65,8 +65,8 @@ internal static class SaidLatelyCheck
         var note = SaidLately.Note(null, recent, now, StayQuiet.Marker);
         var emptied = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.SaidLately] = "" } };
         var mine = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.SaidLately] = "Lately ({time}):\n{said}" } };
-        Step("the note", note is not null && note.StartsWith("What you said lately, oldest first (it is 10:17 PM now):\n" + lines, StringComparison.Ordinal) &&
-            note.Contains("worth saying again", StringComparison.Ordinal) && note.Contains("[pass]", StringComparison.Ordinal) &&
+        Step("the note", note is not null && note.StartsWith("What you said lately (it is 10:17 PM now):\n" + lines, StringComparison.Ordinal) &&
+            note.Contains("unless something changed", StringComparison.Ordinal) && note.Contains("[pass]", StringComparison.Ordinal) &&
             SaidLately.Note(emptied, recent, now, StayQuiet.Marker) is null && SaidLately.Note(null, [], now, StayQuiet.Marker) is null &&
             SaidLately.Note(mine, recent, now, StayQuiet.Marker) == "Lately (10:17 PM):\n" + lines,
             new { note, prompt = PromptCatalog.SaidLately, placeholders = PromptCatalog.Find(PromptCatalog.SaidLately)!.Placeholders });

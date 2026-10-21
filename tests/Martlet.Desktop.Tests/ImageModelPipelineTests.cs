@@ -113,7 +113,7 @@ public sealed class ImageModelPipelineTests
         Assert.Equal(0, sent.Pictures);
         Assert.Contains(PictureDescriptions.Instructions(null)!, sent.Instructions);
         Assert.DoesNotContain(SeenTags.Instructions(null, StayQuiet.Marker)!, sent.Instructions);
-        Assert.DoesNotContain("When the user's message comes with a picture", sent.Instructions);
+        Assert.DoesNotContain("A picture with the user's message shows", sent.Instructions);
         Assert.StartsWith("What do you think?", sent.Users[^1]);
         Assert.Contains(Note, sent.Users[^1]);
         Assert.Contains("Active app in the picture: ELDEN RING (full screen). Active window: \"ELDEN RING\".", sent.Users[^1]);
@@ -195,7 +195,7 @@ public sealed class ImageModelPipelineTests
         var sent = Thinking(Encoding.UTF8.GetBytes(plain));
         Assert.Equal(1, sent.Pictures);
         Assert.Contains(SeenTags.Instructions(null, StayQuiet.Marker)!, sent.Instructions);
-        Assert.Contains("When the user's message comes with a picture", sent.Instructions);
+        Assert.Contains("A picture with the user's message shows", sent.Instructions);
         Assert.DoesNotContain(PictureDescriptions.Instructions(null)!, sent.Instructions);
         Assert.DoesNotContain("image model", plain);
         Assert.Equal(0, fixture.Chat.Calls);

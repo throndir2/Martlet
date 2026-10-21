@@ -8,6 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Each of Martlet's messages in the talk window shows how many input tokens it took and how much of that was Martlet's instructions, beside **What was sent**. ([#1129](https://github.com/throndir2/Martlet/pull/1129))
+
+### Changed
+
+- Martlet's built-in prompts are much shorter and plainer, so models are less likely to repeat instructions in replies: all of them together went from about 21,900 to under 10,000 tokens, and a reply with every feature on sends under 2,000 tokens of them (it was over 6,000). Prompts you edited stay as you wrote them. ([#1129](https://github.com/throndir2/Martlet/pull/1129))
+
 ### Fixed
 
 - An API key you added on one computer, for example your NVIDIA Build key in the Thinking pool, now counts everywhere: Martlet no longer asks for a free key or shows an empty key box for that provider, and choosing it elsewhere uses the saved key. ([#1127](https://github.com/throndir2/Martlet/pull/1127))

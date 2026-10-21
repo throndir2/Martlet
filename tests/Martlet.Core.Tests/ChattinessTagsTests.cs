@@ -33,7 +33,7 @@ public sealed class ChattinessTagsTests
     {
         var told = ChattinessTags.Instructions(null, "pass")!;
         Assert.Contains("[chattiness:quiet], [chattiness:normal] or [chattiness:chatty]", told);
-        Assert.Contains("at the very end of your reply", told);
+        Assert.Contains("end your reply with", told);
         Assert.Contains("[pass]", told);
         Assert.DoesNotContain("{", told);
         Assert.Equal("Your chattiness right now: quiet.", ChattinessTags.Note(null, Chattiness.Quiet));

@@ -97,7 +97,7 @@ public sealed class VoiceTagTests
             Assert.True(line > sounds, tag.Text);
             Assert.Equal(tag.Kind == VoiceTagKind.Sound, line < tones);
         }
-        Assert.StartsWith("Your replies are spoken aloud by Chatterbox Turbo", prompt);
+        Assert.StartsWith("Chatterbox Turbo turns these tags in your replies", prompt);
         Assert.Contains("\"That's hilarious [laugh] okay, so...\"", prompt);
         Assert.DoesNotContain("[advertisement]", prompt);
         Assert.DoesNotContain("[narration]", prompt);
@@ -330,7 +330,7 @@ public sealed class VoiceTagTests
     public void Thinking_prompt_for_chatterbox_original_offers_expressive_as_its_only_tone()
     {
         var prompt = VoiceTags.Instructions(SpeechEngines.ChatterboxOriginal, null)!;
-        Assert.StartsWith("Your replies are spoken aloud by Chatterbox Original", prompt);
+        Assert.StartsWith("Chatterbox Original turns these tags in your replies", prompt);
         Assert.DoesNotContain(VoiceTags.SoundsHeading, prompt);
         Assert.Contains(VoiceTags.TonesHeading + "\n[expressive] - expressive and animated", prompt);
         // The model can't whisper and Martlet adds no whisper of its own, so the reply isn't offered one.

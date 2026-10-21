@@ -154,7 +154,7 @@ internal static partial class CheckInsCheck
             careJob is { MaxToolRounds: CheckIns.MaximumToolRounds, MaxOutputTokens: CheckIns.MaximumToolOutputTokens } &&
             careJob.Timeout == CheckIns.ToolTimeout && careJob.Tools.Select(t => t.Name).SequenceEqual(MemoryToolSet.Set.Tools.Select(t => t.Name)) &&
             careJob.Text.Contains(CheckInPrompts.Steps, StringComparison.Ordinal) && careJob.Text.Contains("memory_note", StringComparison.Ordinal) &&
-            careJob.Text.Contains("(where)", StringComparison.Ordinal) &&
+            careJob.Text.Contains("with where", StringComparison.Ordinal) &&
             new[] { MemoryToolSet.Remember, MemoryToolSet.Update, MemoryToolSet.UpdateMany }.All(name =>
                 careJob.Tools.Single(t => t.Name == name).ParametersJson.Contains("\"where\"", StringComparison.Ordinal)) &&
             CheckIns.MaximumToolRounds <= BoundedTextInput.HardMaxToolRounds && plan.Length > 8 &&
@@ -205,7 +205,7 @@ internal static partial class CheckInsCheck
         }, "x");
         step("context: goes with one request", first.Sources.Contains("check-in-c7") &&
             first.Text!.Contains("What is happening now, from your own check-in", StringComparison.Ordinal) &&
-            first.Text.Contains("not a reminder to follow", StringComparison.Ordinal) && first.Text.Contains("hunched over a stubborn bug", StringComparison.Ordinal) &&
+            first.Text.Contains("Use it as background", StringComparison.Ordinal) && first.Text.Contains("hunched over a stubborn bug", StringComparison.Ordinal) &&
             !second.Sources.Contains("check-in-c7") && !stale.Sources.Contains("check-in-c7") && emptied is null &&
             CheckIns.ContextAge < CheckIns.NoteAge,
             new

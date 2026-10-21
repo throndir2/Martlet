@@ -60,9 +60,9 @@ public sealed class SaidLatelyTests
             "- 10:16 PM (40 s ago): \"Nice dodge!\"", lines);
 
         var note = SaidLately.Note(null, said, Now, "pass")!;
-        Assert.StartsWith("What you said lately, oldest first (it is 10:17 PM now):\n" + lines + "\n", note);
-        Assert.Contains("not even in other words", note);
-        Assert.Contains("worth saying again", note);
+        Assert.StartsWith("What you said lately (it is 10:17 PM now):\n" + lines + "\n", note);
+        Assert.Contains("even in other words", note);
+        Assert.Contains("unless something changed", note);
         Assert.EndsWith("reply [pass].", note);
         Assert.Null(SaidLately.Note(null, [], Now, "pass"));
         Assert.Null(SaidLately.Note(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.SaidLately] = "" } },

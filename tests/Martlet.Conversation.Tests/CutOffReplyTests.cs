@@ -40,7 +40,7 @@ public sealed class CutOffReplyTests
         var note = CutOffReply.Note(null, "It lived in a quiet wood.");
         Assert.NotNull(note);
         Assert.Contains("\"It lived in a quiet wood.\"", note);
-        Assert.Contains("as I was saying", note);
+        Assert.Contains("Pick up the rest only if it still fits", note);
         Assert.Null(CutOffReply.Note(null, null));
         Assert.Null(CutOffReply.Note(null, "  "));
         Assert.Equal(["unsaid"], PromptCatalog.All.Single(p => p.Id == PromptCatalog.CutOff).Placeholders);

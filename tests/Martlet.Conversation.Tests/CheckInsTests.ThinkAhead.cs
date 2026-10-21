@@ -22,7 +22,7 @@ public sealed partial class CheckInsTests
         Assert.Equal("next in 50 s", CheckInSchedule.Wait(ahead, State(), new(Now.AddSeconds(-10), 3, "x", false), fired: fired));
 
         var message = CheckInPrompts.Message(ahead, State(), null)!;
-        Assert.Contains("Think ahead as Mira", message);
+        Assert.Contains("As Mira, pick one move for the next reply", message);
         Assert.Contains("Mira is playful and teasing.", message);
         Assert.Contains("User: This bug is driving me crazy.", message);
         Assert.Contains("starts with PLAN:", message);
@@ -42,9 +42,8 @@ public sealed partial class CheckInsTests
         Assert.False(CheckInAnswers.Read(ahead, "KNOW: They code.", State()).Readable);
 
         var note = CheckIns.Plan(null, read.Text!)!;
-        Assert.StartsWith("Your own thoughts from just before this message (private; the user may have said something else): They'll say it's fixed;", note);
-        Assert.Contains("make that move", note);
-        Assert.Contains("Never mention them", note);
+        Assert.StartsWith("Your private plan from just before this message: They'll say it's fixed;", note);
+        Assert.Contains("Follow it only if it still fits", note);
         Assert.Null(CheckIns.Plan(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInPlan] = "" } }, "x"));
 
         var board = new ContextBoard();

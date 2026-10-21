@@ -230,8 +230,8 @@ public sealed class TouchLedgerTests
         var burst = ledger.Drain(S(11))!;
         Assert.NotNull(burst.Cut);
         Assert.Equal("They poked your left cheek once. They did it while you were talking, so you stopped mid-sentence. You had said, " +
-            "out loud: \"Once upon a time there was a fox.\" You were answering their message: \"Tell me a story.\" Decide for yourself " +
-            "how to go on: react to it first, then pick up where you left off, change course, or leave the rest unsaid, as you would.",
+            "out loud: \"Once upon a time there was a fox.\" You were answering their message: \"Tell me a story.\" React first, " +
+            "then go on, change course, or leave the rest unsaid.",
             TouchWording.Told(null, burst));
         // The next touches don't carry it; a reply that never answered puts it back.
         ledger.Record(Poke(12));
@@ -240,8 +240,8 @@ public sealed class TouchLedgerTests
         Assert.Equal(burst.Cut, ledger.Peek(S(12))!.Cut);
         // A remark it was making has no message it answered; what it said goes alone, and an emptied prompt leaves the line.
         var remark = new TouchBurst([new(PhysicalKind.Tap, "your nose", "nose", null, null, 1, S(1), S(1))], Cut: new("Nice shot!", null, S(1)));
-        Assert.EndsWith("You had said, out loud: \"Nice shot!\" Decide for yourself how to go on: react to it first, then pick up where you " +
-            "left off, change course, or leave the rest unsaid, as you would.", TouchWording.Told(null, remark));
+        Assert.EndsWith("You had said, out loud: \"Nice shot!\" React first, then go on, change course, or leave the rest unsaid.",
+            TouchWording.Told(null, remark));
         var emptied = Martlet.Core.Settings.PromptSettings.Normalize(new Dictionary<string, string> { [Martlet.Core.Settings.PromptCatalog.TouchedCutIn] = "" });
         Assert.Equal(remark.Line, TouchWording.Told(emptied, remark));
         // Too old, it is let go with the touches.

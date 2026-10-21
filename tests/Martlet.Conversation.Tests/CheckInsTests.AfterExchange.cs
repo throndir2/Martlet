@@ -77,8 +77,8 @@ public sealed partial class CheckInsTests
         CheckInHandOff Hand(string tool, string set) => new(tool, CheckIns.Actions, "Act on what was said", set.ToLowerInvariant(), set);
         Assert.Null(CheckIns.HandOffGuidance([], null));
         var one = CheckIns.HandOffGuidance([Hand("reminders", "Reminders")], null)!;
-        Assert.StartsWith("Some things you do happen on their own right after your reply: Reminders.", one);
-        Assert.Contains("say briefly", one);
+        Assert.StartsWith("These happen on their own right after your reply: Reminders.", one);
+        Assert.Contains("just say you'll do it", one);
         Assert.Contains(": Reminders; Memory; Songs, pictures and creations.",
             CheckIns.HandOffGuidance([Hand("reminders", "Reminders"), Hand("manage_memories", "Memory"), Hand("x", "Memory"), Hand("sing_song", "Songs, pictures and creations")], null));
         Assert.Null(CheckIns.HandOffGuidance([Hand("reminders", "Reminders")], new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.HandedOffTools] = "" } }));

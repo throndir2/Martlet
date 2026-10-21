@@ -113,15 +113,15 @@ internal static class AudioModelCheck
         var first = Read(thinking.Requests[0]);
         var second = Read(thinking.Requests[1]);
         Check("in-time-audio-model-request", heard is { Audio: true, Model: "fixture-audio-model" } &&
-            heard.System.Contains("describe only what the words miss", StringComparison.Ordinal) &&
+            heard.System.Contains("Describe only what the words miss", StringComparison.Ordinal) &&
             heard.LastUser.Contains("The recording is what the user said next.", StringComparison.Ordinal) &&
             heard.LastUser.Contains("Sure! What do you have in mind?", StringComparison.Ordinal),
             "the audio model got the recording, its fixed instructions and the last lines said");
         Check("in-time-reply-takes-the-words", result.Outcome == SenseJobOutcome.Succeeded && ready && taken &&
             first is { Audio: false } && first.LastUser.StartsWith(Transcript, StringComparison.Ordinal) &&
-            first.LastUser.Contains("How the user sounded saying this message, as the audio model heard it: Sighs and sounds tired. " +
+            first.LastUser.Contains("How the user sounded saying this message: Sighs and sounds tired. " +
                 "Speaks slowly; a TV plays in the background.", StringComparison.Ordinal) &&
-            first.System.Contains("A separate audio model also listens", StringComparison.Ordinal),
+            first.System.Contains("what the transcript misses", StringComparison.Ordinal),
             "Thinking got the transcript and the audio model's words as a note, never the recording");
         Check("in-time-kept-line", kept == "(voice: Sighs and sounds tired)" && second.Users.Length >= 2 &&
             second.Users[^2] == Transcript + "\n(voice: Sighs and sounds tired)" && !second.LastUser.Contains("How the user sounded", StringComparison.Ordinal),

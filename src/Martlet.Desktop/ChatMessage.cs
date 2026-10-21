@@ -68,10 +68,17 @@ public sealed class ChatMessage : INotifyPropertyChanged
             contextNumber = value;
             Changed(nameof(ContextNumber));
             Changed(nameof(ContextId));
+            Changed(nameof(TokensId));
         }
     }
     public string ContextId => $"LiveMessageContext-{contextNumber}";
     private int contextNumber;
+    /// <summary>The token line under the message (<see cref="MessageContext.TokensLine"/>): the input tokens its Thinking requests
+    /// read and the estimated tokens of Martlet's instructions. Numbers only; it stays after What was sent is let go.</summary>
+    public string Tokens { get => tokens; internal set { if (Set(ref tokens, value)) Changed(nameof(HasTokens)); } }
+    public bool HasTokens => tokens.Length > 0;
+    public string TokensId => $"LiveMessageTokens-{contextNumber}";
+    private string tokens = "";
     public event PropertyChangedEventHandler? PropertyChanged;
 
     internal void AddNote(string line) => Note = note.Length == 0 ? line : note + "  " + line;

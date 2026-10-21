@@ -67,8 +67,8 @@ public sealed class TouchTurnTests
         Assert.Contains("They zoomed in on your face, then poked your left cheek twice.", message, StringComparison.Ordinal);
         Assert.Contains("touched you, their desktop character", message, StringComparison.Ordinal);
         // It asks for a sound or words out loud, never silence or an emote alone.
-        Assert.Contains("make a sound", message, StringComparison.Ordinal);
-        Assert.Contains("Never stay silent: don't answer with only an emote or [pass].", message, StringComparison.Ordinal);
+        Assert.Contains("a sound (a gasp, a giggle, a sigh)", message, StringComparison.Ordinal);
+        Assert.Contains("Never answer with only an emote or [pass].", message, StringComparison.Ordinal);
         Assert.Equal(plain, Instructions(fixture.Llm.Body));
         Assert.Equal("2 touches", touched.Inputs);
 
@@ -97,8 +97,7 @@ public sealed class TouchTurnTests
         Assert.Equal("runtime.Completed", moved!.Status.Code);
         Assert.True(moved.Touch);
         var message = LastUser(fixture.Llm.Body);
-        Assert.Contains("or moved you around, without saying a word. That is how they talk to you right now.) They moved you to their " +
-            "other monitor. React to it out loud", message, StringComparison.Ordinal);
+        Assert.Contains("or moved you.) They moved you to their other monitor. React out loud", message, StringComparison.Ordinal);
         Assert.Equal("1 touch", moved.Inputs);
         Assert.Null(fixture.Controller.Touches.Peek(fixture.Controller.TouchNow));
     }
@@ -121,7 +120,7 @@ public sealed class TouchTurnTests
         var message = LastUser(fixture.Llm.Body);
         Assert.Contains("They poked your groin once (you hate being touched there). They did it while you were talking, so you stopped " +
             "mid-sentence. You had said, out loud: \"Once upon a time there was a fox.\" You were answering their message: \"Tell me a " +
-            "story.\" Decide for yourself how to go on", message, StringComparison.Ordinal);
+            "story.\" React first, then go on", message, StringComparison.Ordinal);
         Assert.Contains(reaction.TouchText!, message, StringComparison.Ordinal);
         Assert.Null(fixture.Controller.Touches.Peek(fixture.Controller.TouchNow));
 
@@ -130,8 +129,7 @@ public sealed class TouchTurnTests
         fixture.Answer("Mm, nice. Anyway, the fox...");
         await fixture.Finish(fixture.Start("Go on."));
         var notes = LastUser(fixture.Llm.Body);
-        Assert.Contains("They slowly stroked your hair once. Take it in together with what they said", notes, StringComparison.Ordinal);
-        Assert.Contains("You decide what comes first.", notes, StringComparison.Ordinal);
+        Assert.Contains("They slowly stroked your hair once. React to it together with what they said", notes, StringComparison.Ordinal);
     }
 
     [Fact]

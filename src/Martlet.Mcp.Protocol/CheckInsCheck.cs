@@ -263,7 +263,7 @@ internal static partial class CheckInsCheck
             asked.Any(a => a.Text.Contains("FIXTURE plan for the trip", StringComparison.Ordinal) && a.Text.Contains("check the oven", StringComparison.Ordinal)) &&
             asked.Any(a => a.Text.Contains("playful and teasing", StringComparison.Ordinal) && a.Text.Contains("1. {blush} No way", StringComparison.Ordinal)) &&
             asked.Any(a => a.Text.Contains("- 10:05 PM (12 min ago): \"FIXTURE: Ooh, that boss is almost down!\"", StringComparison.Ordinal) &&
-                a.Text.Contains("- 10:15 PM (2 min ago):", StringComparison.Ordinal) && a.Text.Contains("keeps saying the same things", StringComparison.Ordinal)) &&
+                a.Text.Contains("- 10:15 PM (2 min ago):", StringComparison.Ordinal) && a.Text.Contains("keep saying the same", StringComparison.Ordinal)) &&
             asked.Any(a => a.Text.Contains("SAY:", StringComparison.Ordinal) && a.Text.Contains("Nobody has used this PC", StringComparison.Ordinal) == false &&
                 a.Text.Contains("The user is using this PC now.", StringComparison.Ordinal)),
             messages);
@@ -361,9 +361,9 @@ internal static partial class CheckInsCheck
         var delivery = jobs.Take(onItsOwn: true, noticesOnly: true);
         var message = delivery is null ? null : BackgroundJobs.ReportMessage(null, delivery.Jobs).UserText;
         delivery?.Complete();
-        Step("brought up in its own words", message is not null && message.Contains("your own check-in came up with something to bring up", StringComparison.Ordinal) &&
-            message.Contains("stretch break", StringComparison.Ordinal) && message.Contains("a reminder they asked you for is due now", StringComparison.Ordinal) &&
-            notes is not null && notes.Contains("Your own check-in came up with something to bring up", StringComparison.Ordinal) &&
+        Step("brought up in its own words", message is not null && message.Contains("your own check-in found something to bring up", StringComparison.Ordinal) &&
+            message.Contains("stretch break", StringComparison.Ordinal) && message.Contains("a reminder they asked for is due now", StringComparison.Ordinal) &&
+            notes is not null && notes.Contains("Your own check-in found something to bring up", StringComparison.Ordinal) &&
             sayJob.Delivery == BackgroundDeliveryState.Delivered, new { message, notes });
 
         await OwnInputsAsync(Step, now, facts, cancellation);

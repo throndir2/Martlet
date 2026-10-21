@@ -118,11 +118,11 @@ internal static class GreetingCheck
         var message = delivery is null ? null : BackgroundJobs.ReportMessage(null, delivery.Jobs).UserText;
         delivery?.Complete();
         Step("said on its own as soon as Martlet is free", message is not null &&
-            message.StartsWith("(Martlet's note, not said by the user: Martlet just started", StringComparison.Ordinal) &&
+            message.StartsWith("(Martlet's note, not from the user: Martlet just started", StringComparison.Ordinal) &&
             message.Contains("- It's Sunday", StringComparison.Ordinal), message);
         Step("only in character, or not at all", message is not null && message.Contains("If your character would greet the user", StringComparison.Ordinal) &&
-            message.Contains("Call the user by name only if your character would", StringComparison.Ordinal) &&
-            message.Contains("replies with exactly [" + StayQuiet.Marker + "]", StringComparison.Ordinal) && !message.Contains("{silent}", StringComparison.Ordinal));
+            message.Contains("Mention at most one fact above", StringComparison.Ordinal) &&
+            message.Contains("reply exactly [" + StayQuiet.Marker + "]", StringComparison.Ordinal) && !message.Contains("{silent}", StringComparison.Ordinal));
         Step("or with the user's first message", notes is not null && notes.Contains("Answer what the user just said first", StringComparison.Ordinal) &&
             notes.Contains("only if your character would", StringComparison.Ordinal), notes);
         Step("said once", job.Delivery == BackgroundDeliveryState.Delivered && !jobs.HasNotice);

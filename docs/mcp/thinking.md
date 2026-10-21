@@ -370,7 +370,13 @@ to a touch, a screen or camera remark) has a **What was sent** link
 and so on) beside its label while Martlet still keeps what its
 Thinking requests carried: the newest 40 messages of the open conversation, in
 memory only. A message from before the window opened, a picture and a note have
-no link. The link is a safe click: it only opens the *What was sent* window
+no link. Beside the link, each message shows its token line
+(`LiveMessageTokens-<n>`, a safe value with the same number as its link), such
+as *3,412 input tokens · instructions about 1,150*: the input tokens its
+Thinking requests read (Martlet's estimate, *about ...*, when the model didn't
+say; *in 2 requests* when it sent more than one), and the estimated tokens of
+Martlet's instructions. It stays when the message lets *What was sent* go. The
+link is a safe click: it only opens the *What was sent* window
 (`MessageContextWindow`, owned by the talk window). That window shows the
 request section by section, in the order it is sent, each with a colored bar:
 *Instructions* (part by part: the persona, the tools prompt, tool guidance,

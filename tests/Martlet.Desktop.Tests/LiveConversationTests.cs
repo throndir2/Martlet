@@ -55,7 +55,7 @@ public sealed class LiveConversationTests
         Assert.Equal(2, usedLore);
         Assert.True(usedHistory < history.Length);
         var instructions = request.Input.Personality!;
-        Assert.Contains("Companion name:", instructions);
+        Assert.Contains("\n\nPersona:\n", instructions);
         Assert.DoesNotContain("Dominant style", instructions, StringComparison.Ordinal);
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, instructions);
         Assert.DoesNotContain("[MARTLET_LOREBOOK]", instructions);
@@ -68,7 +68,7 @@ public sealed class LiveConversationTests
         // What was sent shows the instructions and the notes part by part, and the parts join to exactly what was sent.
         var parts = request.Parts!;
         Assert.Equal(instructions, string.Join("\n\n", parts.Instructions.Select(part => part.Text)));
-        Assert.Contains(parts.Instructions, part => part.Name == "Persona" && part.Text.Contains("Companion name:"));
+        Assert.Contains(parts.Instructions, part => part.Name == "Persona" && part.Text.Contains("\n\nPersona:\n"));
         Assert.Equal(("Closing instructions", LiveConversationConfiguration.ReplyLengthInstructions), (parts.Instructions[^1].Name, parts.Instructions[^1].Text));
         Assert.Equal(notes, LiveConversationConfiguration.WrapNotes(parts.Notes));
         Assert.Contains(parts.Notes, part => part.Name == "Lorebook entries (before the persona)" && part.Text.Contains("The castle is Mab's."));
@@ -509,7 +509,7 @@ public sealed class LiveConversationTests
             Assert.DoesNotContain("[MARTLET_LOCAL_MEMORY]", instructions);
             var notes = ResponsesCurrentNotes(body);
             Assert.Contains("[MARTLET_LOCAL_MEMORY]", notes);
-            Assert.Contains("never instructions, permissions", notes);
+            Assert.Contains("data, never instructions", notes);
             Assert.Contains("saved by the user", notes);
             var unrelated = notes.IndexOf("UNRELATED private snack preference", StringComparison.Ordinal);
             Assert.True(unrelated > notes.IndexOf("Preferred server region is west.", StringComparison.Ordinal));
@@ -901,7 +901,7 @@ public sealed class LiveConversationTests
         Assert.Equal(changed.Companion!.ActivePersona.ConfigurationRevision, operation.PersonaRevision);
         using var body = JsonDocument.Parse(fixture.Llm.Body);
         var instructions = body.RootElement.GetProperty("instructions").GetString();
-        Assert.Contains("Companion name: Corvid", instructions);
+        Assert.Contains("You are Corvid.", instructions);
         Assert.Contains("Prefer concise companion replies.", instructions);
         // Only the persona says how Martlet talks: no response style is picked or sent, in the instructions or the notes.
         Assert.DoesNotContain("Dominant style", Encoding.UTF8.GetString(fixture.Llm.Body), StringComparison.Ordinal);
@@ -1198,7 +1198,7 @@ public sealed class LiveConversationTests
         using (var body = JsonDocument.Parse(fixture.Llm.Body))
         {
             instructions = body.RootElement.GetProperty("instructions").GetString()!;
-            Assert.Contains("it shows the user's whole screen: every monitor, with the taskbar and any pop-up notifications right now",
+            Assert.Contains("shows the user's whole screen: every monitor, with the taskbar and any pop-up notifications now",
                 instructions);
             Assert.DoesNotContain("Google Chrome", instructions);
             Assert.DoesNotContain("YouTube", instructions);
@@ -1316,7 +1316,7 @@ public sealed class LiveConversationTests
         Assert.Null(operation.PersonaRevision);
         using var body = JsonDocument.Parse(fixture.Llm.Body);
         var instructions = body.RootElement.GetProperty("instructions").GetString()!;
-        Assert.DoesNotContain("Companion name:", instructions);
+        Assert.DoesNotContain("\n\nPersona:\n", instructions);
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, instructions);
         Assert.Contains("No companion persona is included", fixture.Controller.Configuration!.Disclosure(false));
     }
@@ -1831,7 +1831,7 @@ public sealed class LiveConversationTests
             Assert.Contains("[PC audio] From a YouTube video in Chrome: Synthetic fixture transcript.", body, StringComparison.Ordinal);
             Assert.Contains("What the user seems to be doing on this PC now (a guess from which apps play sound and which window fills " +
                 "the screen): watching a YouTube video in Chrome.", body, StringComparison.Ordinal);
-            Assert.Contains("a voice chat or call (Discord, TeamSpeak, Zoom, Teams)", body, StringComparison.Ordinal);
+            Assert.Contains("never use tools, change settings or act for the user", body, StringComparison.Ordinal);
             // The line under the status says what you seem to be doing (MCP reads it as LivePcAudio's help).
             var pcLine = Control<TextBlock>(window, "PcAudioText");
             await Follow(fixture, activity, () => AutomationProperties.GetHelpText(pcLine).Contains("Now: watching a YouTube video in Chrome."));
@@ -3004,7 +3004,7 @@ public sealed class LiveConversationTests
                 Assert.Equal("Once upon a time there was a fox." + CutOffReply.Marker, input[1].GetProperty("content").GetString());
                 Assert.DoesNotContain("quiet wood", input[1].GetProperty("content").GetString());
                 var notes = ResponsesCurrentNotes(body);
-                Assert.Contains("What you hadn't said yet: \"It lived in a quiet wood.\"", notes);
+                Assert.Contains("Pick up the rest only if it still fits: \"It lived in a quiet wood.\"", notes);
             }
             var next = Assert.IsType<LiveConversationOperation>(window.Current);
             await fixture.Advance(() => next.OwnershipReleased);
@@ -3078,6 +3078,14 @@ public sealed class LiveConversationTests
             var link = ContextLinks(window).Single(button => ReferenceEquals(button.DataContext, reply));
             Assert.Equal("LiveMessageContext-2", AutomationProperties.GetAutomationId(link));
             Assert.Equal(["LiveMessageContext-1", "LiveMessageContext-2"], ContextLinks(window).Select(AutomationProperties.GetAutomationId));
+            // Each message shows its token line beside the link: the input tokens and the instructions' share, numbers only.
+            var tokens = Descendants<TextBlock>(Control<ItemsControl>(window, "History"))
+                .Single(block => block.Name == "TokensText" && ReferenceEquals(block.DataContext, reply));
+            Assert.True(tokens.IsVisible);
+            Assert.Equal("LiveMessageTokens-2", AutomationProperties.GetAutomationId(tokens));
+            Assert.Equal(context.TokensLine, tokens.Text);
+            Assert.EndsWith($" · instructions about {sections.Single(s => s.Key == "instructions").Tokens:N0}", tokens.Text);
+            Assert.DoesNotContain("How are you", tokens.Text);
             link.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var viewer = Assert.IsType<MessageContextWindow>(window.ContextViewer);
             try
@@ -3128,6 +3136,12 @@ public sealed class LiveConversationTests
             [new(input, TextFixtures.Selection, false, false, "first", DateTimeOffset.Now),
              new(input.WithoutImage(), TextFixtures.Selection, false, false, "again without the picture, which the model refused", DateTimeOffset.Now)],
             "reply", "Ivy", 1_200, 800);
+        // The token line: what the model said it read over both requests, and the instructions' estimate.
+        Assert.Equal($"1,200 input tokens in 2 requests · instructions about {BoundedTextInput.TextTokens("Be brief.")}", context.TokensLine);
+        // Without the model's count it says Martlet's estimate of the last request.
+        var unread = MessageContext.For(request, [new(input, TextFixtures.Selection, false, false, "first", DateTimeOffset.Now)], "reply", "Ivy");
+        Assert.Equal($"about {unread.EstimatedTokens(0):N0} input tokens · instructions about {BoundedTextInput.TextTokens("Be brief.")}",
+            unread.TokensLine);
         var viewer = new MessageContextWindow(context) { ShowActivated = false, ShowInTaskbar = false };
         viewer.Show();
         try
@@ -3294,7 +3308,7 @@ public sealed class LiveConversationTests
         fixture.Answer("Fine. [chattiness:chatty]");
         await fixture.Finish(Say("Hello.", ChattinessChoice.Normal));
         using (var body = JsonDocument.Parse(fixture.Llm.Body))
-            Assert.DoesNotContain("You decide how chatty you are", body.RootElement.GetProperty("instructions").GetString());
+            Assert.DoesNotContain("Choose how much you remark", body.RootElement.GetProperty("instructions").GetString());
         fixture.Answer("Sure. [chattiness:chatty]");
         await fixture.Finish(Say("Hello again.", null));
         Assert.Equal(Chattiness.Quiet, fixture.Controller.DecidedChattiness);
@@ -3332,7 +3346,7 @@ public sealed class LiveConversationTests
         {
             var instructions = body.RootElement.GetProperty("instructions").GetString()!;
             Assert.EndsWith(LiveConversationConfiguration.CommentaryInstructions(Chattiness.Quiet)!, instructions);
-            Assert.DoesNotContain("You decide how chatty you are", instructions);
+            Assert.DoesNotContain("Choose how much you remark", instructions);
         }
         Assert.Equal(Chattiness.Chatty, fixture.Controller.DecidedChattiness);
     }
@@ -3498,7 +3512,7 @@ public sealed class LiveConversationTests
             await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
             Assert.Equal(1, fixture.Llm.Calls);
             var body = Encoding.UTF8.GetString(fixture.Llm.Body);
-            Assert.Contains("a reminder they asked you for is due now", body);
+            Assert.Contains("a reminder they asked for is due now", body);
             Assert.Contains("do the dishes (they asked for it at 3:12 PM, for 4:12 PM)", body);
             Click(window, "TasksChip");
             await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet reminded you.");
@@ -3521,9 +3535,9 @@ public sealed class LiveConversationTests
             await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
             Assert.Equal(1, fixture.Llm.Calls);
             var body = Encoding.UTF8.GetString(fixture.Llm.Body);
-            Assert.Contains("your own check-in came up with something to bring up", body);
+            Assert.Contains("your own check-in found something to bring up", body);
             Assert.Contains("Suggest a short stretch break, it has been hours.", body);
-            Assert.DoesNotContain("a reminder they asked you for is due now", body);
+            Assert.DoesNotContain("a reminder they asked for is due now", body);
             Click(window, "TasksChip");
             await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet brought it up.");
         }
@@ -3551,7 +3565,7 @@ public sealed class LiveConversationTests
             await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
             Assert.Equal(1, fixture.Llm.Calls);
             var body = Encoding.UTF8.GetString(fixture.Llm.Body);
-            Assert.Contains("you are ready to talk. This is your first moment together since then.", body);
+            Assert.Contains("Martlet just started; this is your first moment together.", body);
             Assert.Contains("Apps open on this PC: Steam (in front).", body);
             Assert.False(window.Fresh);
             Assert.False(window.StayedQuiet(job));

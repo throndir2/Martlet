@@ -143,7 +143,7 @@ public sealed class ScreenDigestTests
 
         var message = ScreenDigestPrompt.Message(null, ring.Frames, at.AddSeconds(6))!;
         Assert.Contains("left 6 s ago (Steam, window \"Home\"), right 3 s ago (Steam, full screen, window \"Home\")", message);
-        Assert.Contains("skip the UI, their setup", message);
+        Assert.Contains("Skip the UI, their setup", message);
     }
 
     [Theory]

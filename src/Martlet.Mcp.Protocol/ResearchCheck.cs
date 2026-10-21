@@ -376,7 +376,7 @@ internal static class ResearchCheck
         var depths = parameters.RootElement.GetProperty("properties").GetProperty("depth").GetProperty("enum").EnumerateArray()
             .Select(e => e.GetString()).ToArray();
         var prompt = WebResearch.Instructions(null) ?? "";
-        string[] rungs = ["From what you know", "search_guide", "depth quick", "depth full", "depth deep"];
+        string[] rungs = ["search_guide", "depth quick", "depth full"];
         var ladder = rungs.All(rung => prompt.Contains(rung, StringComparison.Ordinal));
         var parsed = new[] { "quick", "full", "deep", null }.Select(depth =>
             WebResearch.Parse(JsonSerializer.Serialize(new { topic = "t", what_to_find = "f", depth })).Arguments!.Depth.ToString()).ToArray();

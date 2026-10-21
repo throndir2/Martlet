@@ -106,7 +106,7 @@ public sealed partial class CheckInsTests
     [Fact]
     public void TheRepeatCheckLetsCallbacksThroughAndRunningJokesAreRemembered()
     {
-        Assert.Contains("A callback is not a repeat", CheckInPrompts.Message(Built(CheckIns.Repeats), State(), null));
+        Assert.Contains("A callback with a new twist is fine", CheckInPrompts.Message(Built(CheckIns.Repeats), State(), null));
         Assert.Contains("running joke", PromptCatalog.DefaultMemoryCaptureInstructions);
         Assert.Contains("running jokes", PromptCatalog.DefaultMemoryBriefWritingInstructions);
         Assert.Contains("example dialogue", PromptCatalog.DefaultCharacterWritingInstructions);

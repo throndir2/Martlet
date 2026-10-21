@@ -377,7 +377,7 @@ public sealed class AppGuideServiceTests : IDisposable
         Assert.Equal(("Elden Ring", "Stormveil Castle", (string?)null), AppGuideTools.ParseBrief("{\"app\":\"Elden Ring\",\"focus\":\" Stormveil\\nCastle \"}"));
         Assert.Equal((null, null, (string?)null), AppGuideTools.ParseBrief(""));
         Assert.NotNull(AppGuideTools.ParseBrief("[1]").Problem);
-        Assert.Contains("update_guide_brief", AppGuideTools.Instructions(null));
+        Assert.Contains("search_guide", AppGuideTools.Instructions(null));
         var (readUp, _) = AppGuideTools.ParseReadUp("{\"app\":\" Elden\\nRing \",\"sites\":[\"eldenring.wiki.fextralife.com\",\"ftp://x\",\"\",5]}");
         Assert.Equal("Elden Ring", readUp!.App);
         Assert.Equal(["https://eldenring.wiki.fextralife.com/"], readUp.Sites);
@@ -407,7 +407,7 @@ public sealed class AppGuideServiceTests : IDisposable
         var message = BackgroundJobs.ReportMessage(null, [job]).UserText;
         Assert.Contains("\n- Elden Ring (a game)\n", message);
         // Martlet already reads up on it: the model only tells the user, and never says it's done before the guide is.
-        Assert.Contains("you've started reading up on it", message);
+        Assert.Contains("you started reading up on it", message);
         Assert.Contains("Don't say you're done", message);
         Assert.DoesNotContain("read_up_on", message);
         Assert.Contains("skip_guide", message);
