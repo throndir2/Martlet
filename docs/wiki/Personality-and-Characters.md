@@ -91,7 +91,9 @@ Press the **?** after a prompt's name to see when Martlet sends it and which wor
 
 ### Token counts
 
-Token counts are Martlet's own estimate: about one token for every three bytes of text. Martlet uses the same rule to keep requests within the model's limit, so the model itself may count somewhat fewer. Each count is for the prompt as written; the text filled in for words in braces adds to it when Martlet sends it. **All prompts together** adds up every prompt, but each request sends only the prompts it needs.
+Token counts are Martlet's own estimate: about one token for every three bytes of text. Martlet uses the same rule to keep requests within the model's limit, so the model itself may count somewhat fewer. Each count is for the prompt as written; the text filled in for words in braces adds to it when Martlet sends it. **All prompts together** adds up every prompt, but each request sends only the prompts it needs. The built-in prompts are short on purpose: all of them together are under 10,000 tokens, and a reply with every feature on sends under 2,000 tokens of them.
+
+Each of Martlet's messages in the talk window shows its token line beside **What was sent**, such as *3,412 input tokens · instructions about 1,150*: how many input tokens the Thinking model read for that message (Martlet's estimate when the model didn't say), and how much of it was Martlet's instructions. **What was sent** shows every request section by section, with the size of each.
 
 ## Replies
 

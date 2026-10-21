@@ -24,6 +24,7 @@ public partial class LiveConversationWindow
         // Each link has its own number (LiveMessageContext-<n>), so MCP can tell them apart and click one.
         if (message.ContextNumber == 0) message.ContextNumber = ++contextLinks;
         message.Context = context;
+        message.Tokens = context.TokensLine;
         while (withContext.Count > ContextsKept) withContext.Dequeue().Context = null;
     }
 

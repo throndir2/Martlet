@@ -239,7 +239,7 @@ internal static partial class ThinkLongerCheck
         {
             pcLines = played.All(line => message.Contains(line, StringComparison.Ordinal)),
             song = message.Contains("Monster Slayer", StringComparison.Ordinal),
-            songOffered = message.Contains("offer it and ask", StringComparison.Ordinal),
+            songOffered = message.Contains("ask first", StringComparison.Ordinal),
             report = message.Contains("Dragons hoard gold", StringComparison.Ordinal)
         };
         // The fixture request carries no image, so what it took is told without the picture the desktop would add.

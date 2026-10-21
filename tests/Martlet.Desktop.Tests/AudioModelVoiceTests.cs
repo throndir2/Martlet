@@ -105,14 +105,14 @@ public sealed class AudioModelVoiceTests
             var job = Assert.Single(jobs);
             Assert.Equal(VoiceNotes.Purpose, job.Purpose);
             Assert.NotNull(job.Audio);
-            Assert.Contains("describe only what the words miss", job.Instructions, StringComparison.Ordinal);
+            Assert.Contains("Describe only what the words miss", job.Instructions, StringComparison.Ordinal);
             // Thinking got the transcript and the audio model's words in a note, never the recording (no straight path either).
             var sent = Read(Assert.Single(bodies));
             Assert.False(sent.Recording);
             Assert.StartsWith("Hello there.", sent.Users[^1], StringComparison.Ordinal);
-            Assert.Contains("How the user sounded saying this message, as the audio model heard it: Laughs; sounds excited.", sent.Users[^1],
+            Assert.Contains("How the user sounded saying this message: Laughs; sounds excited.", sent.Users[^1],
                 StringComparison.Ordinal);
-            Assert.Contains("A separate audio model also listens", sent.Instructions, StringComparison.Ordinal);
+            Assert.Contains("what the transcript misses", sent.Instructions, StringComparison.Ordinal);
             var reply = window.Current!;
             Assert.Equal(1, reply.VoiceNotesTaken);
             Assert.False(reply.VoiceSent);
@@ -185,7 +185,7 @@ public sealed class AudioModelVoiceTests
             Assert.Equal("(voice, earlier: Sighs; sounds tired)", note.Kept);
             var next = fixture.Start("And now?");
             await fixture.Finish(next);
-            Assert.Contains("How the user sounded in what they said before this message, as the audio model heard it: Sighs; sounds tired.",
+            Assert.Contains("How the user sounded in what they said before this message: Sighs; sounds tired.",
                 Read(bodies.Last()).Users[^1], StringComparison.Ordinal);
             Assert.DoesNotContain(fixture.Controller.Board.Snapshot(fixture.Clock.GetLocalNow()).Notes, n => n.Source == VoiceNotes.BoardSource);
         }

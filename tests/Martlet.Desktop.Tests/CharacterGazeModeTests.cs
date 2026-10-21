@@ -178,7 +178,7 @@ public sealed class CharacterGazeModeTests
         Assert.Equal(CharacterGaze.ModeTags, prompt.Tags);
         Assert.Null(CharacterGaze.ReplyPrompt(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CharacterGaze] = "" } }, GazeMode.Mouse));
         var settings = new GazeSettings(GazeMode.Near, Chosen: GazeMode.Ahead);
-        Assert.Equal("Right now your eyes look straight ahead and ignore the pointer: you changed that 3 min ago. Write {look usual} to go back, or leave it.",
+        Assert.Equal("Right now your eyes look straight ahead and ignore the pointer (you changed that 3 min ago). Write {look usual} to go back, or leave it.",
             CharacterGaze.Note(null, settings, TimeSpan.FromMinutes(3)));
         Assert.Null(CharacterGaze.Note(null, settings with { Chosen = null }));
         Assert.Null(CharacterGaze.Note(null, settings with { Free = false }));

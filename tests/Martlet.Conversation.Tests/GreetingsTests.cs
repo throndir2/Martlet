@@ -96,10 +96,10 @@ public sealed class GreetingsTests
         Assert.Contains("only if your character would", BackgroundJobs.ReportNotes(null, jobs.Undelivered));
         var delivery = jobs.Take(onItsOwn: true, noticesOnly: true)!;
         var message = BackgroundJobs.ReportMessage(null, delivery.Jobs).UserText;
-        Assert.StartsWith("(Martlet's note, not said by the user: Martlet just started on the user's PC", message);
+        Assert.StartsWith("(Martlet's note, not from the user: Martlet just started", message);
         Assert.Contains("\n- It's Sunday.\n", message);
         Assert.Contains("If your character would greet the user now", message);
-        Assert.Contains("replies with exactly [pass]", message);
+        Assert.Contains("reply exactly [pass]", message);
         Assert.DoesNotContain("{silent}", message);
         delivery.Complete();
         Assert.False(jobs.HasNotice);

@@ -12,7 +12,7 @@ namespace Martlet.Desktop.Tests;
 /// touches never does, so its request stays as it was.</summary>
 public sealed class SaidLatelyDesktopTests
 {
-    private const string Header = "What you said lately, oldest first (it is ";
+    private const string Header = "What you said lately (it is ";
 
     [Fact]
     public async Task WhatMartletSaysOnItsOwnChecksWhatItSaidLatelyWhileRepliesToYouStayTheSame()
@@ -76,7 +76,7 @@ public sealed class SaidLatelyDesktopTests
         var report = fixture.Controller.StartReport(voice: false, noticesOnly: true)!;
         await fixture.Finish(report);
         message = Current(fixture.Llm.Body);
-        Assert.Contains("a reminder they asked you for is due now", message, StringComparison.Ordinal);
+        Assert.Contains("a reminder they asked for is due now", message, StringComparison.Ordinal);
         Assert.Contains("\"Ha, what a comeback!\"", message, StringComparison.Ordinal);
         Assert.Equal(4, report.SaidLately);
         var said = fixture.Controller.RecentSayings(fixture.Clock.GetLocalNow());

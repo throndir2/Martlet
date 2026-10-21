@@ -250,8 +250,8 @@ internal static class PcActivityCheck
     {
         var pc = PromptSettings.Fill(null, PromptCatalog.PcAudio, ("marker", Marker), ("silent", "pass"))!;
         var listening = PromptSettings.Fill(null, PromptCatalog.Listening, ("silent", "pass"))!;
-        string[] pcNeeds = [$"{Marker} From a YouTube video in Chrome", "a show or movie", "a game", "voice chat", "music", "never the user"];
-        string[] listeningNeeds = ["speakers", "voice chat", "what the user is doing on their PC"];
+        string[] pcNeeds = [$"{Marker} are sound from the user's PC", "never the user", "act for the user"];
+        string[] listeningNeeds = ["always-on microphone", "a call", "background sounds too, is context"];
         var missing = pcNeeds.Where(text => !pc.Contains(text, StringComparison.Ordinal))
             .Concat(listeningNeeds.Where(text => !listening.Contains(text, StringComparison.Ordinal))).ToArray();
         return (missing.Length == 0, new { whatThisPcPlays = pc, alwaysListening = listening, missing });

@@ -99,7 +99,7 @@ public sealed partial class CheckInsTests
         Assert.Contains("User: Yeah, uh-huh. No, I already ate.", message);
         Assert.Contains("The user doesn't seem to be doing anything with sound on this PC now.", message);
         Assert.Contains("Only the user seems to be here.", message);
-        Assert.Contains("a one-sided conversation, as on a phone", message);
+        Assert.Contains("on a phone (only the user's side)", message);
         Assert.Contains("starts with ASIDE:", message);
         Assert.Contains("write only: BACK", message);
         Assert.DoesNotContain("{heard}", message);
@@ -144,8 +144,8 @@ public sealed partial class CheckInsTests
         Assert.True(long_.Length <= CheckIns.MaximumAsideCharacters + 1 && long_.EndsWith('…'));
 
         var note = CheckIns.AsideNote(null, hold)!;
-        Assert.Contains("talking to someone else now, not to you (on the phone with their mom)", note);
-        Assert.Contains("reply only [pass]", note);
+        Assert.Contains("talking to someone else now (on the phone with their mom)", note);
+        Assert.Contains("Reply only [pass]", note);
         var board = new ContextBoard();
         var source = CheckIns.Source(CheckIns.Aside);
         board.Post(source, note, hold.Heard, CheckIns.AsideQuiet);

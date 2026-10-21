@@ -61,12 +61,12 @@ internal static partial class CheckInsCheck
         step("think ahead", ahead is { On: true, EveryMinutes: 1, Outcome: CheckInOutcome.Plan, Triggers: CheckInTriggers.ExchangeEnded } &&
             waits["no reply ended"] == "it waits for a reply to end" && waits["a reply ended, the user talks"] is null &&
             waits["a reply ended, ran 10 s ago"] == "next in 50 s" && waits["nothing said yet"] == "nothing was said in a conversation here yet" &&
-            job is { Kind: ThinkingJobKind.CheckIn, Reasoning: false } && message.Contains("Think ahead as Mira", StringComparison.Ordinal) &&
+            job is { Kind: ThinkingJobKind.CheckIn, Reasoning: false } && message.Contains("As Mira, pick one move", StringComparison.Ordinal) &&
             message.Contains("playful and teasing", StringComparison.Ordinal) && message.Contains("This bug is driving me crazy", StringComparison.Ordinal) &&
             message.Contains("starts with PLAN:", StringComparison.Ordinal) && message.Contains("write only: OK", StringComparison.Ordinal) &&
             !message.Contains("{persona}", StringComparison.Ordinal) && !message.Contains("{conversation}", StringComparison.Ordinal) &&
             result is { Succeeded: true } && verdict is { Act: true, Text: { } read } && read.StartsWith("FIXTURE: They'll probably", StringComparison.Ordinal) &&
-            first.Sources.Contains(source) && first.Text!.Contains("Your own thoughts from just before this message", StringComparison.Ordinal) &&
+            first.Sources.Contains(source) && first.Text!.Contains("Your private plan from just before this message", StringComparison.Ordinal) &&
             first.Text.Contains("tease them about how long it took", StringComparison.Ordinal) && !second.Sources.Contains(source) &&
             dropped == 1 && !afterNextExchange.Sources.Contains(source) && !stale.Sources.Contains(source) &&
             nothing["OK"] is { Act: false, Readable: true } && nothing["PLAN: nothing to plan"] is { Act: false, Readable: true } &&
@@ -142,8 +142,8 @@ internal static partial class CheckInsCheck
         var planNote = CheckIns.Plan(null, "FIXTURE Move: callback.") ?? "";
         step("think ahead reads the callback list", ahead.Facts.HasFlag(CheckInFacts.Callbacks) &&
             plan.Contains("callback list", StringComparison.Ordinal) && plan.Contains("FIXTURE they said \"one more try\"", StringComparison.Ordinal) &&
-            plan.Contains("pick the one move", StringComparison.Ordinal) && !plan.Contains("{callbacks}", StringComparison.Ordinal) &&
-            planNote.Contains("make that move", StringComparison.Ordinal),
+            plan.Contains("pick one move", StringComparison.Ordinal) && !plan.Contains("{callbacks}", StringComparison.Ordinal) &&
+            planNote.Contains("Follow it only if it still fits", StringComparison.Ordinal),
             new { message = plan, note = planNote });
 
         // Quiet moments: one thing from the list after a quiet spell, with the user at the PC, before 10 PM.
@@ -193,7 +193,7 @@ internal static partial class CheckInsCheck
             closing.EndsWith(PromptCatalog.DefaultReplyLengthInstructions, StringComparison.Ordinal) &&
             closing == Martlet.Core.Settings.PromptSettings.ReplyClosing(null, null, true, StayQuiet.Marker) &&
             !emptied.Contains("fun friend", StringComparison.Ordinal) && emptied.Length > 0 &&
-            repeats.Contains("A callback is not a repeat", StringComparison.Ordinal) &&
+            repeats.Contains("A callback with a new twist is fine", StringComparison.Ordinal) &&
             PromptCatalog.DefaultMemoryCaptureInstructions.Contains("running joke", StringComparison.Ordinal) &&
             PromptCatalog.DefaultMemoryBriefWritingInstructions.Contains("running jokes", StringComparison.Ordinal) &&
             PromptCatalog.DefaultCharacterWritingInstructions.Contains("example dialogue", StringComparison.Ordinal),
@@ -287,8 +287,8 @@ internal static partial class CheckInsCheck
             message.Contains("User: FIXTURE: Yeah, uh-huh.", StringComparison.Ordinal) && message.Contains("starts with ASIDE:", StringComparison.Ordinal) &&
             message.Contains("write only: BACK", StringComparison.Ordinal) && !message.Contains("{heard}", StringComparison.Ordinal) &&
             result is { Succeeded: true } && verdict is { Act: true, Text: "FIXTURE on the phone with their mom" } &&
-            first.Sources.Contains(source) && first.Text!.Contains("talking to someone else now, not to you (FIXTURE on the phone with their mom)", StringComparison.Ordinal) &&
-            first.Text.Contains("reply only [pass]", StringComparison.Ordinal) && second.Sources.Contains(source) &&
+            first.Sources.Contains(source) && first.Text!.Contains("talking to someone else now (FIXTURE on the phone with their mom)", StringComparison.Ordinal) &&
+            first.Text.Contains("Reply only [pass]", StringComparison.Ordinal) && second.Sources.Contains(source) &&
             stillTalking.Sources.Contains(source) && !quiet.Sources.Contains(source) && ended is null &&
             renewed.Since == now && renewed.By == aside.Id && renewed.About == "FIXTURE still on the phone" &&
             heard.Contains("Mira holds back now (since 10:17 PM, 0 s ago), because the user seems to be talking to someone else: FIXTURE on the phone with their mom.", StringComparison.Ordinal) &&

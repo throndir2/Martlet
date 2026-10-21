@@ -163,7 +163,7 @@ public sealed class CharacterGazeTests
         Assert.Equal(expected, glance.CharacterTags);
         var instructions = glance.Input.Personality!;
         Assert.Contains("{look top right} - the top-right corner", instructions);
-        Assert.True(instructions.IndexOf("Real friends stay quiet", StringComparison.Ordinal) <
+        Assert.True(instructions.IndexOf("Stay quiet most of the time", StringComparison.Ordinal) <
             instructions.IndexOf("{look top left}", StringComparison.Ordinal));
         var plain = Glance(2, null);
         Assert.Equal(expected[..2], plain.CharacterTags);

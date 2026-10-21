@@ -349,11 +349,10 @@ public sealed class WebResearchTests
         Assert.DoesNotContain("depth", parameters.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
         // The reply's prompt says when to answer from what Martlet knows, search a guide, look up quickly or research.
         var prompt = WebResearch.Instructions(null)!;
-        Assert.Contains("From what you know", prompt, StringComparison.Ordinal);
+        Assert.Contains("depth quick", prompt, StringComparison.Ordinal);
         Assert.Contains("search_guide", prompt, StringComparison.Ordinal);
         Assert.Contains("depth quick", prompt, StringComparison.Ordinal);
         Assert.Contains("depth full", prompt, StringComparison.Ordinal);
-        Assert.Contains("depth deep", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

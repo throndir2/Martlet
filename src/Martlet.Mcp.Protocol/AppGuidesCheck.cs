@@ -504,7 +504,7 @@ internal static partial class AppGuidesCheck
             afterNo is null && noKept is null && askedAgain is not null && hasGuide is null && notGame is null &&
             listed is { Game: false, Name: "Paint Studio" } && askOff is null && notice is { Kind.Notice: true } &&
             message.Contains("- Crystal Caverns (a game)", StringComparison.Ordinal) && !message.Contains("- - ", StringComparison.Ordinal) &&
-            message.Contains("you've started reading up on it", StringComparison.Ordinal) && !message.Contains("read_up_on", StringComparison.Ordinal) &&
+            message.Contains("you started reading up on it", StringComparison.Ordinal) && !message.Contains("read_up_on", StringComparison.Ordinal) &&
             message.Contains("skip_guide", StringComparison.Ordinal) && withMessage.Contains("Crystal Caverns", StringComparison.Ordinal);
         return (ok, new
         {

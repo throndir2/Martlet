@@ -243,6 +243,11 @@
                                             Margin="8,3.5,0,0" VerticalAlignment="Center" Visibility="Collapsed" Click="MessageContext_Click"
                                             ToolTip="See everything that was sent to the Thinking model to make this message"
                                             AutomationProperties.Name="What was sent" AutomationProperties.AutomationId="{Binding ContextId}"/>
+                                    <!-- How many input tokens the message's Thinking requests read, and Martlet's instructions' share. -->
+                                    <TextBlock x:Name="TokensText" Text="{Binding Tokens}" Style="{DynamicResource Muted}" FontSize="11" Margin="8,0,0,0"
+                                               VerticalAlignment="Center" Visibility="Collapsed"
+                                               ToolTip="Input tokens the Thinking model read for this message (Martlet's estimate when the model didn't say), and the estimated tokens of Martlet's instructions"
+                                               AutomationProperties.AutomationId="{Binding TokensId}"/>
                                 </StackPanel>
                                 <!-- As wide as its words: a longer caption or note doesn't stretch it. -->
                                 <Border x:Name="Bubble" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
@@ -310,6 +315,9 @@
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding HasContext}" Value="True">
                                     <Setter TargetName="ContextLink" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding HasTokens}" Value="True">
+                                    <Setter TargetName="TokensText" Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>

@@ -182,7 +182,7 @@ public sealed class VoiceNamingTests
         Assert.Equal(0, naming.ShownFacts);
         Assert.Equal(2, naming.Voices.Count);
         Assert.DoesNotContain("REMEMBER:", naming.Input.Personality);
-        Assert.Contains("Your only job is who the people speaking are.", naming.Input.Personality);
+        Assert.Contains("report only what was said about the names of the voices heard", naming.Input.Personality);
         Assert.Contains("NAME V<number>:", naming.Input.Personality);
         Assert.Contains("CALL V<number>:", naming.Input.Personality);
         Assert.Contains("NOT V<number>:", naming.Input.Personality);

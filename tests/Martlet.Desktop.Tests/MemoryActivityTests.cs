@@ -162,14 +162,14 @@ public sealed class MemoryActivityTests
         var plain = Ask([], null);
         var playing = Ask([], Palworld);
         Assert.Equal(plain.Input.Personality, playing.Input.Personality);
-        Assert.Contains("The user is playing Palworld right now.", playing.Input.Notes);
+        Assert.Contains("The user is playing Palworld now", playing.Input.Notes);
         Assert.DoesNotContain("playing", plain.Input.Notes ?? "");
         Assert.Equal("While you play", Assert.Single(playing.Parts!.Notes, part => part.Text.Contains("Palworld", StringComparison.Ordinal)).Name);
 
         // Carried by the conversation sent, it isn't sent again; another game is.
         TextHistoryMessage[] history = [new(TextHistoryRole.User, playing.Input.KeptUserText), new(TextHistoryRole.Assistant, "Go catch pals!")];
         Assert.DoesNotContain("right now", Ask(history, Palworld).Input.Notes ?? "");
-        Assert.Contains("The user is playing ELDEN RING right now.", Ask(history, Elden).Input.Notes);
+        Assert.Contains("The user is playing ELDEN RING now", Ask(history, Elden).Input.Notes);
         Assert.DoesNotContain("right now", Ask([], MemoryActivity.Gaming).Input.Notes ?? "");
 
         var emptied = LiveConversationConfiguration.From(loaded with { Settings = loaded.Settings! with { Prompts = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.WhilePlaying] = "" } } } })!;

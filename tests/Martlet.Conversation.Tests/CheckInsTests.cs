@@ -171,7 +171,7 @@ public sealed partial class CheckInsTests
 
         // Saying the same things gets what was said in the last hour, each with when, and nothing older.
         var repeats = CheckInPrompts.Message(Built(CheckIns.Repeats), state, null)!;
-        Assert.Contains("Mira, the user's desktop companion, said these things lately", repeats);
+        Assert.Contains("Mira, the user's desktop companion, said these lately", repeats);
         Assert.Contains("- 9:47 PM (30 min ago): \"Ooh, that boss is almost down!\"\n- 10:05 PM (12 min ago): \"Ooh, that boss is almost down!\"\n" +
             "- 10:15 PM (2 min ago): \"Ooh, that boss is almost down!\"", repeats);
         Assert.DoesNotContain("Good evening!", repeats);
@@ -248,7 +248,7 @@ public sealed partial class CheckInsTests
     {
         var board = new ContextBoard();
         var note = CheckIns.Note(null, "Set the oven reminder now.")!;
-        Assert.Contains("A reminder from your own check-in, for you only: Set the oven reminder now.", note);
+        Assert.Contains("A reminder from your own check-in: Set the oven reminder now.", note);
         board.Post(CheckIns.Source(CheckIns.Promises), note, Now, CheckIns.NoteAge, consume: true);
         var sent = board.Snapshot(Now.AddMinutes(1));
         Assert.Contains("check-in-promises", sent.Sources);
@@ -286,8 +286,8 @@ public sealed partial class CheckInsTests
         Assert.DoesNotContain("REMIND:", message);
 
         var context = CheckIns.Context(null, "She leans into the touch.")!;
-        Assert.Contains("What is happening now, from your own check-in, for you only: She leans into the touch.", context);
-        Assert.Contains("not a reminder to follow", context);
+        Assert.Contains("What is happening now, from your own check-in: She leans into the touch.", context);
+        Assert.Contains("Use it as background", context);
         var board = new ContextBoard();
         board.Post(CheckIns.Source("c1"), context, Now, CheckIns.ContextAge, consume: true);
         var sent = board.Snapshot(Now.AddMinutes(1));
@@ -313,12 +313,12 @@ public sealed partial class CheckInsTests
         Assert.True(jobs.HasNotice);
 
         var notes = BackgroundJobs.ReportNotes(null, jobs.Undelivered)!;
-        Assert.Contains("A reminder the user asked you for is due now:\n- check the oven", notes);
-        Assert.Contains("Your own check-in came up with something to bring up:\n- Time for a stretch.", notes);
+        Assert.Contains("A reminder the user asked for is due now:\n- check the oven", notes);
+        Assert.Contains("Your own check-in found something to bring up:\n- Time for a stretch.", notes);
 
         var message = BackgroundJobs.ReportMessage(null, jobs.Undelivered).UserText;
-        Assert.Contains("a reminder they asked you for is due now.)\n- check the oven", message);
-        Assert.Contains("your own check-in came up with something to bring up.)\n- Time for a stretch.", message);
+        Assert.Contains("a reminder they asked for is due now.)\n- check the oven", message);
+        Assert.Contains("your own check-in found something to bring up.)\n- Time for a stretch.", message);
         Assert.True(message.IndexOf("check the oven", StringComparison.Ordinal) < message.IndexOf("Time for a stretch.", StringComparison.Ordinal));
 
         // Only a reminder: worded exactly as before.

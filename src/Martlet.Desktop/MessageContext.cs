@@ -82,6 +82,27 @@ internal sealed class MessageContext
             (request.Fallback ? " (to the Thinking fallback)" : "");
     }
 
+    /// <summary>One request's estimated tokens: its sections, and the room a picture takes.</summary>
+    internal int EstimatedTokens(int index) =>
+        Sections(index).Sum(s => s.Tokens) + (Requests[index].Input.Image is null ? 0 : BoundedImage.TokenReservation);
+
+    /// <summary>The short token line under a message in the talk window (MCP reads it): the input tokens the model said its
+    /// requests read (or Martlet's estimate when it didn't say), and the estimated tokens of Martlet's instructions. Numbers
+    /// only, never text.</summary>
+    internal string TokensLine
+    {
+        get
+        {
+            var last = Requests.Count - 1;
+            var instructions = Sections(last).FirstOrDefault(s => s.Key == "instructions")?.Tokens ?? 0;
+            var input = InputTokens is { } read
+                ? string.Create(CultureInfo.CurrentCulture, $"{read:N0} input tokens")
+                : string.Create(CultureInfo.CurrentCulture, $"about {EstimatedTokens(last):N0} input tokens");
+            var requests = Requests.Count > 1 ? string.Create(CultureInfo.CurrentCulture, $" in {Requests.Count} requests") : "";
+            return string.Create(CultureInfo.CurrentCulture, $"{input}{requests} · instructions about {instructions:N0}");
+        }
+    }
+
     /// <summary>One line about request <paramref name="index"/> (MCP reads it): the model, how many requests, its size and what
     /// went with it, and the tokens the model said it read. Never its text.</summary>
     internal string Summary(int index)
@@ -92,7 +113,7 @@ internal sealed class MessageContext
         text.Append(CultureInfo.CurrentCulture, $" · {Requests.Count} request{(Requests.Count == 1 ? "" : "s")}");
         if (!Sent) text.Append(" (not sent yet)");
         text.Append(CultureInfo.CurrentCulture,
-            $" · {sections.Sum(s => s.Characters):N0} characters, about {sections.Sum(s => s.Tokens) + (request.Input.Image is null ? 0 : BoundedImage.TokenReservation):N0} tokens");
+            $" · {sections.Sum(s => s.Characters):N0} characters, about {EstimatedTokens(index):N0} tokens");
         if (request.Input.Image is not null) text.Append(" · a picture");
         if (request.Input.Audio is not null) text.Append(" · a recording");
         if (InputTokens is { } read)

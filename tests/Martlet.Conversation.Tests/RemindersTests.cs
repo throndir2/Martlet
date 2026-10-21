@@ -135,7 +135,7 @@ public sealed class RemindersTests
 
         var notes = BackgroundJobs.ReportNotes(null, jobs.Undelivered)!;
         Assert.Contains("do the dishes", notes);
-        Assert.Contains("by the way", notes);
+        Assert.Contains("then remind them", notes);
         Assert.DoesNotContain("Background work", notes);
 
         var think = jobs.Start(new("think", 1, 6, TimeSpan.FromMinutes(1)), "a plan", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("The plan.")));
@@ -143,14 +143,14 @@ public sealed class RemindersTests
         var notices = jobs.Take(onItsOwn: true, noticesOnly: true)!;
         Assert.Equal([started.Job!], notices.Jobs);
         var message = BackgroundJobs.ReportMessage(null, notices.Jobs).UserText;
-        Assert.StartsWith("(Martlet's note, not said by the user: a reminder", message);
+        Assert.StartsWith("(Martlet's note, not from the user: a reminder", message);
         Assert.Contains("- do the dishes (they asked for it at 2:12 PM, for 3:12 PM)", message);
         notices.Complete();
         Assert.False(jobs.HasNotice);
         Assert.True(jobs.HasNews);
 
         var mixed = BackgroundJobs.ReportMessage(null, [started.Job!, think.Job!]).UserText;
-        Assert.Contains("a reminder they asked you for", mixed);
+        Assert.Contains("a reminder they asked for", mixed);
         Assert.Contains("The plan.", mixed);
         Assert.Contains(PromptCatalog.ReminderDue, PromptCatalog.All.Select(p => p.Id));
     }

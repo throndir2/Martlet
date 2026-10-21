@@ -44,7 +44,7 @@ public sealed class AppGuidesDesktopTests
         Assert.Contains(GuideRecall.Label, notes);
         Assert.Contains("Ember Mines", notes);
         var instructions = Instructions(fixture.Llm.Body);
-        Assert.Contains("read_up_on reads up on a game or app", instructions);
+        Assert.Contains("read_up_on reads a game's or app's wiki", instructions);
         Assert.DoesNotContain("Ember Mines", instructions);
 
         // A message that isn't about the app gets no guide, and its request starts exactly like the one before.
@@ -104,7 +104,7 @@ public sealed class AppGuidesDesktopTests
         var next = fixture.Start("Hey, I'm back.");
         await fixture.Finish(next);
         var notes = Notes(fixture.Llm.Body)!;
-        Assert.Contains("you've started reading up on it", notes);
+        Assert.Contains("you started reading up on it", notes);
         Assert.Contains("- Crystal Caverns (a game)", notes);
         Assert.Contains(AppGuideTools.SkipName, ToolNames(fixture.Llm.Body));
     }
@@ -147,7 +147,7 @@ public sealed class AppGuidesDesktopTests
         Assert.True(asked.GuideSections >= 1);
         var notes = Notes(fixture.Llm.Body)!;
         Assert.Contains("Ember Mines", notes);
-        Assert.Contains("you've started reading up on it", notes);
+        Assert.Contains("you started reading up on it", notes);
         Assert.Contains("read up on Abiotic Factor", notes);
     }
 
