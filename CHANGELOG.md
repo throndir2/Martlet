@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-10-21
+
 ### Added
 
 - Each of Martlet's messages in the talk window shows how many input tokens it took and how much of that was Martlet's instructions, beside **What was sent**. ([#1129](https://github.com/throndir2/Martlet/pull/1129))
