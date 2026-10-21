@@ -156,12 +156,11 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.90.0
+## 🆕 What's new in 0.91.0
 
-- 🤫 **No more spoken prompt text**: when a model goes on past its reply and starts to write a "User:" line, Martlet's notes or a chat template token, the reply stops before it, so you never hear it.
-- 🖥️ **Your own model app on host PCs**: when LM Studio, llama.cpp, vLLM or another model app on a host serves a smarter model, that host's Thinking pool can use it. Nothing downloads.
-- 🧭 **Shorter, clearer pages**: the Devices map, job pages, host settings, Tools, Smart home, Discord, Messaging and more show one short line each, with the details behind a **?** that links to the wiki.
-- 🛠️ **Steadier for assistants and older PCs**: assistants that drive Martlet through MCP no longer time out or miss buttons, and a PC without Direct3D 9 gets a clear message instead of a crash.
+- ✂️ **Shorter built-in prompts**: Martlet's instructions to models are much shorter and plainer, so replies are less likely to repeat them. Prompts you edited stay as you wrote them.
+- 🔢 **See each message's tokens**: every Martlet message in the talk window shows how many input tokens it took and how much of that was Martlet's instructions.
+- 🔑 **Your API keys count everywhere**: a key you added on one computer, such as your NVIDIA Build key, is used on all of them, and Martlet no longer asks for it again.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
