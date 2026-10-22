@@ -172,6 +172,7 @@ public partial class MainWindow : ThemedWindow
             conversation.QuickSoundsChanged += () => Dispatcher.BeginInvoke(ShowQuickSounds);
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
             conversation.ExchangeEnded += () => Dispatcher.BeginInvoke(CheckInExchangeEnded);
+            conversation.UserTurnStarted += words => Dispatcher.BeginInvoke(() => CheckInUserTurn(words));
             conversation.Spoke += answered => Dispatcher.BeginInvoke(() => CheckInSpoke(answered));
             // A reply found a model retired on its route: Home proposes the replacement at once.
             conversation.AbilityRecorded += ability => Dispatcher.BeginInvoke(() => { if (ability.Retired is not null) FollowRetiredAsync().Forget(); });

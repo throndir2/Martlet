@@ -73,27 +73,39 @@ public partial class MainWindow
                 ? CheckIns.ExchangeTrigger(fired.At, checkInFired.GetValueOrDefault(checkIn.Id)) : fired;
         ErrorLog.Info($"Check-ins: {fired.Fired} fired ({fired.What}); " +
             (started.Length == 0 ? "no check-in that is on starts on it." : $"it starts {string.Join(", ", started.Select(c => c.Name))}."));
-        if (started.Length > 0) FollowCheckInsAsync(triggered: true).Forget();
-        else
+        if (started.Any(c => CheckInLane(c) == 2)) FollowCheckInsAsync(triggered: true, turn: true).Forget();
+        if (started.Any(c => CheckInLane(c) == 1)) FollowCheckInsAsync(triggered: true).Forget();
+        if (started.Length == 0)
         {
             ShowCheckInsNow();
             WriteCheckInStatus();
         }
     }
 
+    /// <summary>The reply to the user's own <paramref name="words"/> started (on the UI thread): the check-ins the user's turn
+    /// starts (the director) get the words and run at once in their own lane.</summary>
+    private void CheckInUserTurn(string words)
+    {
+        if (closing || Role != DeviceRole.Companion) return;
+        if (!CheckIns.All(checkInSettings).Any(c => c.On && c.Triggers.HasFlag(CheckInTriggers.UserTurn))) return;
+        checkInAsked = words;
+        FireCheckIns(CheckIns.TurnTrigger(DateTimeOffset.Now));
+    }
+
     /// <summary>One look at the check-ins: each says why it waits, and the first one that may run (or the one the owner asked
     /// for <paramref name="now"/>) runs on the Thinking pool. Nothing while one runs. With <paramref name="triggered"/>, the look
-    /// is for check-ins that start on a trigger: they run one at a time beside the paced ones, never behind them.</summary>
-    private async Task FollowCheckInsAsync(string? now = null, bool triggered = false)
+    /// is for check-ins that start on a trigger: they run one at a time beside the paced ones, never behind them; with
+    /// <paramref name="turn"/>, for those the user's turn starts (the director), in a lane of their own.</summary>
+    private async Task FollowCheckInsAsync(string? now = null, bool triggered = false, bool turn = false)
     {
-        if ((triggered ? checkInTriggeredRunning : checkInRunning) is not null || closing) return;
+        if ((turn ? checkInTurnRunning : triggered ? checkInTriggeredRunning : checkInRunning) is not null || closing) return;
         var ran = false;
         try
         {
-            var (next, state) = LookAtCheckIns(now, triggered);
+            var (next, state) = LookAtCheckIns(now, triggered, turn);
             if (next is not null)
             {
-                await RunCheckInAsync(next, state!, next.Id == now, triggered);
+                await RunCheckInAsync(next, state!, next.Id == now, triggered, turn);
                 ran = triggered;
             }
         }
@@ -107,13 +119,13 @@ public partial class MainWindow
             WriteCheckInStatus();
         }
         // Another check-in the same trigger started runs right after this one, not at the next look.
-        if (ran && checkInFired.Count > 0 && !closing) _ = Dispatcher.InvokeAsync(() => FollowCheckInsAsync(triggered: true).Forget());
+        if (ran && checkInFired.Count > 0 && !closing) _ = Dispatcher.InvokeAsync(() => FollowCheckInsAsync(triggered: true, turn: turn).Forget());
     }
 
     /// <summary>Runs <paramref name="checkIn"/> on the Thinking pool and acts on its answer; its run is kept for the page, the
-    /// status file and when it is due next. With <paramref name="triggered"/> it runs in the triggered check-ins' place and uses
-    /// up the trigger it kept.</summary>
-    private async Task RunCheckInAsync(CheckIn checkIn, CheckInState state, bool now, bool triggered = false)
+    /// status file and when it is due next. With <paramref name="triggered"/> it runs in the triggered check-ins' place (or the
+    /// user's turn's, <paramref name="turn"/>) and uses up the trigger it kept.</summary>
+    private async Task RunCheckInAsync(CheckIn checkIn, CheckInState state, bool now, bool triggered = false, bool turn = false)
     {
         var focused = CheckInSchedule.Focus(checkIn, state, now) with { Since = checkInRuns.GetValueOrDefault(checkIn.Id)?.Exchanged };
         var prompts = homeSettings?.Prompts;
@@ -122,7 +134,8 @@ public partial class MainWindow
             checkInWaits[checkIn.Id] = "its prompt is empty";
             return;
         }
-        if (triggered) checkInTriggeredRunning = checkIn.Id;
+        if (turn) checkInTurnRunning = checkIn.Id;
+        else if (triggered) checkInTriggeredRunning = checkIn.Id;
         else checkInRunning = checkIn.Id;
         var fired = triggered && checkInFired.Remove(checkIn.Id, out var trigger) ? trigger : null;
         ShowCheckInsNow();
@@ -135,7 +148,7 @@ public partial class MainWindow
         var callbackVersion = conversation?.CallbackVersion ?? 0;
         // The tools of its chosen sets that this PC runs, for every member the pool tries during this run. Optional sets (lookups
         // such as People) only when a member that calls tools can take it; without one it runs without them.
-        var offered = CheckIns.Offered(checkIn, conversation?.ThinkingPool.CanRun(ThinkingJobKind.CheckIn,
+        var offered = CheckIns.Offered(checkIn, conversation?.ThinkingPool.CanRun(checkIn.JobKind,
             checkIn.Needs | ThinkingCapability.Tools, checkIn.RunsOn) == true || CheckInFixture() is not null);
         var tools = offered.Count > 0
             ? new CheckInToolHost(offered, new(checkIn.Id, checkIn.Name, homeSettings?.Companion?.ActivePersonaId.ToString(),
@@ -208,7 +221,8 @@ public partial class MainWindow
         catch (OperationCanceledException) { return; }
         finally
         {
-            if (triggered) checkInTriggeredRunning = null;
+            if (turn) checkInTurnRunning = null;
+            else if (triggered) checkInTriggeredRunning = null;
             else checkInRunning = null;
             if (planned is not null && ReferenceEquals(checkInPlanCancel, planned)) checkInPlanCancel = null;
         }
@@ -225,7 +239,7 @@ public partial class MainWindow
         var counts = checkInCounts.GetValueOrDefault(checkIn.Id);
         checkInCounts[checkIn.Id] = (counts.Runs + 1, counts.Acted + (acted ? 1 : 0));
         checkInWaits[checkIn.Id] = "";
-        if (fired is { Fired: var by } && by.HasFlag(CheckInTriggers.ExchangeEnded) && CheckIns.ActsAfterExchanges(checkIn))
+        if (fired is { Fired: var by } && (by & (CheckInTriggers.ExchangeEnded | CheckInTriggers.UserTurn)) != 0 && CheckIns.ActsAfterExchanges(checkIn))
             ReportAfterExchange(checkIn, broken);
         ErrorLog.Info($"Check-ins: {checkIn.Name}{(fired is null ? "" : $" (started by {fired.What})")}" +
             $"{(member is null ? "" : " ran on " + member)} in {elapsed.TotalSeconds:0.0} s" +

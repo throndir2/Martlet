@@ -863,6 +863,48 @@ public sealed class AppGuideService : IDisposable
         catch (Exception error) when (Refusal(error) is not null) { return false; }
     }
 
+    /// <summary>The guide that keeps the pages quick look-ups and web research read (docs/APP_GUIDES.md#looked-up-on-the-web),
+    /// so the director's search_knowledge and search_guide find them later.</summary>
+    public const string LookedUpKey = "looked-up", LookedUpName = "Looked up on the web";
+    /// <summary>The most sections the Looked up guide keeps; the oldest pages go first.</summary>
+    public const int MaximumLookedUpSections = 400;
+
+    /// <summary>Keeps <paramref name="pages"/> (read by a look-up or research) in the Looked up guide, newest first: a page read
+    /// again replaces its earlier sections, and the oldest go past <see cref="MaximumLookedUpSections"/>; then builds its index
+    /// again. Null when they were kept, else why not in a few plain words. Only while App guides are on.</summary>
+    public async Task<string?> KeepLookedUpAsync(IReadOnlyList<GuidePage> pages, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (!On) return "App guides are off";
+        var fresh = pages.Where(p => p.Text.Length > 0).SelectMany(p => GuideChunker.Chunk(p)).ToList();
+        if (fresh.Count == 0) return "no page had text";
+        await saving.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            AppGuide? before;
+            try { before = await Store.LoadGuideAsync(LookedUpKey, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (Refusal(error) is { } why) { return why; }
+            var urls = pages.Select(p => p.Url).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var chunks = fresh.Concat((before?.Chunks ?? []).Where(c => !urls.Contains(c.Url))).Take(MaximumLookedUpSections).ToArray();
+            var kept = chunks.Select(c => c.Url).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var sources = pages.Select(p => new GuideSource(p.Url, p.Title, p.Bytes))
+                .Concat((before?.Sources ?? []).Where(s => !urls.Contains(s.Url))).Where(s => kept.Contains(s.Url)).ToArray();
+            var guide = new AppGuide(LookedUpKey, LookedUpName, [], clock.GetUtcNow(), sources, chunks);
+            try
+            {
+                await Store.SaveGuideAsync(guide, cancellationToken).ConfigureAwait(false);
+                library = await Store.LoadLibraryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception error) when (Refusal(error) is { } why) { return why; }
+            unreadable.TryRemove(LookedUpKey, out _);
+            indexes[LookedUpKey] = GuideIndex.Build(guide.Chunks, [LookedUpName]);
+        }
+        finally { saving.Release(); }
+        Touch(LookedUpKey);
+        Changed?.Invoke();
+        return null;
+    }
+
     /// <summary>Notes that <paramref name="area"/> of <paramref name="key"/>'s app was looked into now, with the
     /// <paramref name="sections"/> research added (0: the guide had enough on it), newest last.</summary>
     public async Task<bool> KeepAreaAsync(string key, string area, int sections, CancellationToken cancellationToken = default)

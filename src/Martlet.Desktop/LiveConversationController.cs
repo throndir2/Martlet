@@ -1931,6 +1931,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 operation.ScreenSent = request.Input.Image is not null;
                 operation.Described = describedNote is null ? null : description;
                 operation.Sent = request.Input;
+                // How big the reply's start is (docs/CONVERSATION.md#the-director): its instructions and its tools, by Martlet's own
+                // estimate; logged later, so the first words never wait for it.
+                if (own is not null || straight)
+                {
+                    var instructionTokens = request.Parts is { } parts
+                        ? Martlet.Providers.BoundedTextInput.TextTokens(string.Join("\n\n", parts.Instructions.Select(p => p.Text))) : 0;
+                    var toolTokens = (toolset?.Definitions ?? []).Sum(d => d.Utf8Bytes) / 3;
+                    ErrorLog.InfoLater($"Reply prompt: about {instructionTokens} tokens of instructions and {toolset?.Definitions.Count ?? 0} tools " +
+                        $"(about {toolTokens} tokens of definitions){(DirectorTakesTools(HandOffs(configured)) ? "; the director has the other tools" : "")}.");
+                }
                 // Exchanges this reply had to leave out are never sent again, so the next replies start the same way (a reply
                 // started early lets go of them once it is taken).
                 var letGo = historyStart + (history.Count - usedHistory) / 2;
@@ -1971,6 +1981,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             // The request is sent: the board's consume-on-read notes go with this reply only.
             BoardSent(board);
+            // The director starts on the user's own words now, beside the reply (MainWindow fires it on the UI thread; nothing here
+            // waits for it).
+            if (own is not null && !operation.Report && !operation.Touch) UserTurnStarted?.Invoke(own);
             operation.BoardNotes = board.Notes.Count;
             // The audio model's words it carried leave a short line after the message in the conversation, before the board's.
             operation.BoardKept = heardHow.Kept is null ? board.KeptText : board.KeptText is null ? heardHow.Kept : heardHow.Kept + "\n" + board.KeptText;

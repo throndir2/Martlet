@@ -116,7 +116,7 @@ public static partial class PromptCatalog
     public const string CheckInAsideNote = "check_in_aside_note";
     public const string CheckInOthers = "check_in_others";
     public const string CheckInReactions = "check_in_reactions";
-    public const string CheckInActions = "check_in_actions";
+    public const string CheckInDirector = "check_in_director";
     public const string CheckInMemory = "check_in_memory";
     public const string CheckInAhead = "check_in_ahead";
     public const string CheckInCallbacks = "check_in_callbacks";

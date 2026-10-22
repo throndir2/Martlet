@@ -189,7 +189,8 @@ internal static partial class CheckInsCheck
             Overrides = new Dictionary<string, string> { [PromptCatalog.ConversationMoves] = "" }
         }, null, true, StayQuiet.Marker) ?? "";
         var repeats = CheckInPrompts.Message(CheckIns.All(null).Single(c => c.Id == CheckIns.Repeats), facts, null) ?? "";
-        step("prompts keep the conversation going", closing.StartsWith(PromptCatalog.DefaultConversationMovesInstructions, StringComparison.Ordinal) &&
+        step("prompts keep the conversation going", closing.StartsWith(Martlet.Core.Settings.SkillCatalog.DefaultLookIntoIt + "\n\n" +
+                PromptCatalog.DefaultConversationMovesInstructions, StringComparison.Ordinal) &&
             closing.EndsWith(PromptCatalog.DefaultReplyLengthInstructions, StringComparison.Ordinal) &&
             closing == Martlet.Core.Settings.PromptSettings.ReplyClosing(null, null, true, StayQuiet.Marker) &&
             !emptied.Contains("fun friend", StringComparison.Ordinal) && emptied.Length > 0 &&

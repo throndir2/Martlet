@@ -59,6 +59,10 @@ internal sealed partial class LiveConversationController
             // think_longer and research handed off to the actions check-in: the reply keeps cancel_thinking and only says it'll get
             // back to the user; the check-in starts the work after the reply.
             var handedOff = owner.HandedOffReplyTools(configured);
+            // While the director takes the reply's tools over (docs/CONVERSATION.md#the-director), the reply keeps only what must act
+            // at once (cancel_thinking, stop_singing, body_motion; Home Assistant's own tools in ReplyPreparation): not even the
+            // look-ups (find_memories, list_reminders, list_creations), whose answers the director brings instead.
+            var director = owner.DirectorTakesTools(owner.HandOffs(configured));
             if (ReplyThinkTools(configured) is { Count: > 0 } thinkTools)
             {
                 var settings = configured.ThinkLonger;
@@ -105,7 +109,7 @@ internal sealed partial class LiveConversationController
             if (kinds.Count > 0 && configured.SupportsTools && owner.dataDirectory is not null)
             {
                 var definitions = CreationTools.Definitions(kinds);
-                own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
+                if (!director) own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
                 if (handedOff.Contains(definitions[1].Name)) afterReply.Add(definitions[1].Name);
                 else own.Add((definitions[1], PerformCreationAsync));
             }
@@ -116,9 +120,12 @@ internal sealed partial class LiveConversationController
             {
                 if (handedOff.Contains(MemoryTools.Name))
                 {
-                    own.Add((MemoryTools.FindDefinition, (call, token) => ManageMemoriesAsync(remembered.ConfigurationRevision,
-                        MemoryTools.WithAction(call.ArgumentsJson, "find"), operation.Heard?.Speaker?.Voice, MemoryTools.FindName, null, token)));
-                    guidance = Join(guidance, MemoryTools.HandedOffGuidance);
+                    if (!director)
+                    {
+                        own.Add((MemoryTools.FindDefinition, (call, token) => ManageMemoriesAsync(remembered.ConfigurationRevision,
+                            MemoryTools.WithAction(call.ArgumentsJson, "find"), operation.Heard?.Speaker?.Voice, MemoryTools.FindName, null, token)));
+                        guidance = Join(guidance, MemoryTools.HandedOffGuidance);
+                    }
                 }
                 else
                     own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(remembered.ConfigurationRevision, call.ArgumentsJson,
@@ -130,7 +137,7 @@ internal sealed partial class LiveConversationController
             {
                 if (handedOff.Contains(Reminders.ToolName))
                 {
-                    own.Add((Reminders.ListDefinition, (call, token) => ListRemindersAsync(token)));
+                    if (!director) own.Add((Reminders.ListDefinition, (call, token) => ListRemindersAsync(token)));
                     guidance = Join(guidance, Reminders.AfterReply);
                 }
                 else own.Add((Reminders.Definition, (call, token) => ReplyRemindAsync(call, token)));
@@ -149,8 +156,8 @@ internal sealed partial class LiveConversationController
                 else own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
             }
             // read_up_on, search_guide and skip_guide after them while App guides are on (Companion › App guides, on by default), so
-            // the tools before them start every request the same as before App guides existed.
-            owner.AddGuideTools(own, ref guidance, operation, configured);
+            // the tools before them start every request the same as before App guides existed. Not while the director has them.
+            if (!handedOff.Contains(Martlet.Conversation.Guides.AppGuideTools.ReadUpName)) owner.AddGuideTools(own, ref guidance, operation, configured);
             // body_motion last, while motions are set up and the chosen character is a VRM (saved choices only), so switching between
             // a VRM and a Live2D character changes only the end of the tools, and nothing changes without motions.
             if (configured.SupportsTools && owner.Motions is { Offered: true })

@@ -47,7 +47,7 @@ internal sealed partial class LiveConversationController
     }
 
     /// <summary>read_up_on: starts reading up in the background and returns at once.</summary>
-    private ConversationToolResult ReadUpOn(LiveConversationOperation operation, TextToolCall call)
+    private ConversationToolResult ReadUpOn(LiveConversationOperation? operation, TextToolCall call)
     {
         const string server = "Martlet";
         var (arguments, problem) = AppGuideTools.ParseReadUp(call.ArgumentsJson);
@@ -73,7 +73,7 @@ internal sealed partial class LiveConversationController
             return new(AppGuideTools.Refused(start), true);
         }
         tools?.Record(server, AppGuideTools.ReadUpName, (more is null ? "started " : "reading more ") + job.Id, "", false);
-        return new(AppGuideTools.Started(job, more?.Name ?? AppGuideTools.Label(arguments.App), !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text),
+        return new(AppGuideTools.Started(job, more?.Name ?? AppGuideTools.Label(arguments.App), operation is null || !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text),
             more is not null));
     }
 
@@ -168,7 +168,7 @@ internal sealed partial class LiveConversationController
     /// name, the guide of the app in front (or the only guide) is searched, and report sections that match well
     /// (<see cref="ResearchReportIndex.MinimumRelevance"/>) go with its best sections. A name that isn't a guide's searches the
     /// reports it names; with no guide to search, every report is searched.</summary>
-    private async ValueTask<ConversationToolResult> SearchGuideAsync(LiveConversationOperation operation, TextToolCall call, CancellationToken token)
+    private async ValueTask<ConversationToolResult> SearchGuideAsync(LiveConversationOperation? operation, TextToolCall call, CancellationToken token)
     {
         const string server = "Martlet";
         var (arguments, problem) = AppGuideTools.ParseSearch(call.ArgumentsJson);
@@ -209,7 +209,7 @@ internal sealed partial class LiveConversationController
             .OrderByDescending(h => h.Relevance).Take(AppGuideTools.SearchResults).ToArray();
         var guideHits = kept.Where(k => k.Guide is not null).Select(k => k.Guide!).ToArray();
         var reportHits = kept.Where(k => k.Report is not null).Select(k => k.Report!).ToArray();
-        if (guideHits.Length > 0) UsedGuide(operation, entry.Key);
+        if (guideHits.Length > 0 && operation is not null) UsedGuide(operation, entry.Key);
         tools?.Record(server, AppGuideTools.SearchName, $"found {guideHits.Length}" + (reportHits.Length > 0 ? $" and {reportHits.Length} in reports" : ""),
             "", false);
         ErrorLog.Info($"App guides: the Thinking model searched a guide and found {guideHits.Length} section{(guideHits.Length == 1 ? "" : "s")}" +

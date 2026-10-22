@@ -52,7 +52,12 @@ internal sealed partial class CheckInsPageModel
             "({heard})."),
         (CheckInFacts.Callbacks, "The callback list",
             $"The few things from this conversation worth bringing back later (at most {CallbackList.MaximumItems}), such as what " +
-            "you're in the middle of and running jokes, which the Callback list check-in writes after each reply ({callbacks}).")
+            "you're in the middle of and running jokes, which the Callback list check-in writes after each reply ({callbacks})."),
+        (CheckInFacts.Asked, "What you just said",
+            "What you said or typed to Martlet just now, while it answers; only with It starts when: You say or type something to " +
+            "Martlet ({asked})."),
+        (CheckInFacts.Skills, "The skills it may load",
+            "Each skill on Companion › Skills that isn't pinned, with its key and when it helps; load_skill gives its text ({skills}).")
     ];
 
     internal static readonly (CheckInConditions Condition, string Label, string Help)[] ConditionChoices =
@@ -123,7 +128,10 @@ internal sealed partial class CheckInsPageModel
             "ended while it waited for its Every."),
         (CheckInTriggers.Spoke, "You say something",
             "It runs right after always listening hears you say something (not what you type), whether Martlet answered or " +
-            "stayed quiet.")
+            "stayed quiet."),
+        (CheckInTriggers.UserTurn, "You say or type something to Martlet",
+            "It runs as soon as Martlet starts answering what you said or typed, beside the reply, every time (its Every doesn't " +
+            "hold it back), and it gets your words. The director starts this way.")
     ];
 
     internal const string TriggersHelp = "With one ticked, it runs only when one of them happens, at most once per Every, and a " +

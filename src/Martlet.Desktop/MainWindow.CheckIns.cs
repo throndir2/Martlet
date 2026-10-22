@@ -56,6 +56,10 @@ public partial class MainWindow
     private readonly Dictionary<string, CheckInTrigger> checkInFired = new(StringComparer.Ordinal);
     private CheckInTrigger? checkInFiredLast;
     private string? checkInTriggeredRunning;
+    // The check-in the user's turn started that runs now (the director), in a lane of its own beside the paced and the other
+    // triggered check-ins, so it never waits behind them; and the user's words it reads (never logged or saved).
+    private string? checkInTurnRunning;
+    private string? checkInAsked;
     // The run of a check-in that thinks ahead (CheckInOutcome.Plan) now, stopped when another reply ends: its thoughts were about
     // the message after the exchange it read.
     private CancellationTokenSource? checkInPlanCancel;
@@ -91,7 +95,7 @@ public partial class MainWindow
     /// <summary>Notes why each check-in waits now and returns the first one that may run (or the one the owner asked for
     /// <paramref name="now"/>) with the facts it would get: with <paramref name="triggered"/> only a check-in that starts on a
     /// trigger (<see cref="CheckIn.Triggers"/>), otherwise only one that runs on its pace. Nothing runs.</summary>
-    private (CheckIn? Next, CheckInState? State) LookAtCheckIns(string? now = null, bool triggered = false)
+    private (CheckIn? Next, CheckInState? State) LookAtCheckIns(string? now = null, bool triggered = false, bool turn = false)
     {
         var all = CheckIns.All(checkInSettings);
         KeepCheckInSound(all);
@@ -111,8 +115,8 @@ public partial class MainWindow
         {
             if (state.Now - old.At <= CheckIns.Age(old)) continue;
             checkInFired.Remove(id);
-            // An exchange that waited too long for its check-in is a promise Martlet didn't keep.
-            if (old.Fired.HasFlag(CheckInTriggers.ExchangeEnded) && all.FirstOrDefault(c => c.Id == id) is { } waited &&
+            // An exchange (or a turn) that waited too long for its check-in is a promise Martlet didn't keep.
+            if ((old.Fired & (CheckInTriggers.ExchangeEnded | CheckInTriggers.UserTurn)) != 0 && all.FirstOrDefault(c => c.Id == id) is { } waited &&
                 CheckIns.ActsAfterExchanges(waited))
                 ReportAfterExchange(waited, $"it waited {Reminders.Span(CheckIns.ExchangeAge)}" +
                     (checkInWaits.GetValueOrDefault(id) is { Length: > 0 } why ? ": " + why : ""));
@@ -123,15 +127,19 @@ public partial class MainWindow
         {
             var wait = CheckInSchedule.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now, homeSettings?.Prompts,
                 checkInFired.GetValueOrDefault(checkIn.Id));
-            if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs, checkIn.RunsOn))
+            if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(checkIn.JobKind, checkIn.Needs, checkIn.RunsOn))
                 wait = CheckInNoMember(checkIn);
             checkInWaits[checkIn.Id] = wait ?? "";
-            if (wait is null && next is null && (now is null ? (checkIn.Triggers != CheckInTriggers.None) == triggered : checkIn.Id == now) &&
-                checkIn.Id != checkInRunning && checkIn.Id != checkInTriggeredRunning)
+            if (wait is null && next is null && (now is null ? CheckInLane(checkIn) == (turn ? 2 : triggered ? 1 : 0) : checkIn.Id == now) &&
+                checkIn.Id != checkInRunning && checkIn.Id != checkInTriggeredRunning && checkIn.Id != checkInTurnRunning)
                 next = checkIn;
         }
         return (next, state);
     }
+
+    // Which lane a check-in runs in: 0 on its pace, 1 started by a trigger, 2 started by the user's turn (the director).
+    private static int CheckInLane(CheckIn checkIn) =>
+        checkIn.Triggers.HasFlag(CheckInTriggers.UserTurn) ? 2 : checkIn.Triggers != CheckInTriggers.None ? 1 : 0;
 
     private static string CheckInNoMember(CheckIn checkIn, bool ran = false) =>
         $"no Thinking pool member {(ran ? "could" : "can")} take it" +
