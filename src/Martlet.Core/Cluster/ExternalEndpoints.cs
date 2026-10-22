@@ -83,7 +83,7 @@ public static class ExternalEndpoints
             Add(fallback.Origin, null, new(FallbackPurpose, RolePage(SetupRole.Llm), fallback.ModelId, true));
         if (sources.ThinkingPool is { } pool)
             foreach (var member in pool.All.Where(ThinkingPoolSettings.IsExternal))
-                Add(member.Origin, null, new(ThinkingPoolPurpose, "Companion › Thinking pool", member.ModelId, !pool.IsOff(member.Key)));
+                Add(member.Origin, null, new(ThinkingPoolPurpose, "Companion › Background thinking", member.ModelId, !pool.IsOff(member.Key)));
         foreach (var area in PoolAreas.All)
             foreach (var list in sources.Pools.Where(p => p.Area == area.Id))
                 foreach (var member in list.Members)

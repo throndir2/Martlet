@@ -5,52 +5,153 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Thinking pool's machine list, which is the pool.</summary>
+/// <summary>Companion › Background thinking's Where it runs: the Thinking pool as one simple list.</summary>
 internal sealed partial class ThinkingPoolPage
 {
-    /// <summary>The machine list, which is the pool: the conversation's own model (never in the pool), each machine that is on and
-    /// each that is off (<see cref="MemberRow"/>), each graphics card of a computer in the pool without a Thinking pool model yet
-    /// (<see cref="SpareCardRow"/>) and each paired computer that isn't a member (<see cref="ComputerRow"/>); then the pool's
-    /// guidance, warnings and live floor, and Add a machine.</summary>
-    private Border MachinesCard(ThinkingPoolPageModel model)
+    /// <summary>Where it runs: every machine in the pool (on, then off) with its box and model (<see cref="MachineRow"/>), then
+    /// every machine Martlet knows that isn't in the pool yet (<see cref="JoinRow"/>: a paired computer, a spare graphics card,
+    /// Ollama on this PC), the likely slowdowns, Add a cloud provider, and pairing or checking computers.</summary>
+    private Border WhereItRunsCard(ThinkingPoolPageModel model)
     {
         var stack = new List<UIElement>
         {
-            Heading("Machines"),
-            HelpTip.Explain("This list is the Thinking pool: the machines that do Martlet's background work. Each machine that is on (a " +
-                "graphics card on one of your computers, a model in Ollama on this PC, or a cloud provider or server) takes jobs; untick " +
-                "On to stop using one and keep its settings. With no machine on, the pool is off. Quick jobs are the judges (are you done talking, did you " +
-                "interrupt) and the screen and sound summaries. Long jobs are thinking longer, research, a song's lyrics and the " +
-                "other helpers. Each job goes to a free machine that takes it, the one that shares least with the conversation " +
-                "first. Tick what each machine may do. Cloud providers and servers on your network, with their API keys and " +
-                "choices, are the same on all your computers, and so are Backup for slow replies and Busy pool; paired computers join each PC's pool by themselves, and models in " +
-                "Ollama on this PC stay this PC's own.", new Thickness(0, 0, 0, 8), "ThinkingPool", "the Thinking pool",
-                wiki: "Thinking#machines-in-the-pool")
+            Heading("Where it runs"),
+            HelpTip.Explain("Tick each machine that Martlet may use for background thinking, and choose its model. Together these " +
+                "machines are the Thinking pool. Untick one to stop using it; it keeps its settings. Cloud providers and their keys " +
+                "are the same on all your computers; paired computers and Ollama on this PC are set on each PC.",
+                new Thickness(0, 0, 0, 4), "ThinkingPool", "the Thinking pool", wiki: "Thinking#machines-in-the-pool")
         };
+        for (var i = 0; i < model.Pool.All.Count; i++) stack.Add(MachineRow(model, model.Member(i)));
+        var candidates = model.Candidates();
+        foreach (var line in candidates) stack.Add(JoinRow(model, line));
+        if (model.Pool.All.Count == 0 && candidates.Count == 0)
+            stack.Add(Note("Martlet doesn't know another machine yet. Add a cloud provider below, or pair another computer on Devices.",
+                new Thickness(0, 6, 0, 0)));
 
-        var summary = Note(model.Summary, new Thickness(0, 0, 0, 8));
-        AutomationProperties.SetAutomationId(summary, "ThinkingPoolSummary");
-        stack.Add(summary);
-        stack.Add(ConversationRow(model));
-        for (var i = 0; i < model.Pool.All.Count; i++) stack.Add(MemberRow(model, model.Member(i)));
-        stack.AddRange(model.SpareCards().Select(line => SpareCardRow(model, line)));
-        var others = model.Others;
-        if (others.Length > 0)
-        {
-            var heading = new TextBlock { Text = "Paired computers not in the pool", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 6) };
-            stack.Add(heading);
-            foreach (var host in others) stack.Add(ComputerRow(model, model.Computer(host)));
-        }
-
-        var guidance = Note(model.Guidance, new Thickness(0, 4, 0, 4));
-        AutomationProperties.SetAutomationId(guidance, "ThinkingPoolGuidance");
-        stack.Add(guidance);
         var warnings = model.Warnings;
-        var warning = Note(string.Join(" ", warnings), new Thickness(0, 4, 0, 4));
+        var warning = Note(string.Join(" ", warnings), new Thickness(0, 8, 0, 0));
         warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         warning.Visibility = warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetAutomationId(warning, "ThinkingPoolWarnings");
         stack.Add(warning);
+
+        stack.Add(Fold.Create("Add a cloud provider", "ThinkingPoolAddCloud", model.Pool.All.Count == 0, [.. DeepCloudPanel(model)]));
+        stack.Add(Row(model.Hosts.Count == 0
+            ? PageButton("Pair another computer", () => services.RunNodeAction(NodeAction.AddComputer), id: "DeepThinkingAddComputer")
+            : PageButton("Check computers", () => services.RunNodeAction(NodeAction.CheckHost), id: "DeepThinkingCheckHosts")));
+        return Card([.. stack]);
+    }
+
+    /// <summary>One line of the list: its box, its model and, at the end, <paramref name="end"/> (Remove), with
+    /// <paramref name="notes"/> under it.</summary>
+    private static StackPanel ListRow(CheckBox box, UIElement? choice, UIElement? end, params UIElement?[] notes)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        box.VerticalAlignment = VerticalAlignment.Center;
+        box.Margin = new Thickness(0, 0, 12, 0);
+        grid.Children.Add(box);
+        if (choice is FrameworkElement shown)
+        {
+            shown.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(shown, 1);
+            grid.Children.Add(shown);
+        }
+        if (end is FrameworkElement last)
+        {
+            last.Margin = new Thickness(8, 0, 0, 0);
+            last.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(last, 2);
+            grid.Children.Add(last);
+        }
+        var row = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+        row.Children.Add(grid);
+        foreach (var note in notes)
+        {
+            if (note is not FrameworkElement element) continue;
+            element.Margin = new Thickness(24, 2, 0, 0);
+            row.Children.Add(element);
+        }
+        return row;
+    }
+
+    /// <summary>The name of a machine in the list, next to its box.</summary>
+    private static TextBlock RowName(string name) => new() { Text = name, FontSize = 15, TextWrapping = TextWrapping.Wrap };
+
+    /// <summary>A machine Martlet knows that isn't in the pool yet: its box (<c>ThinkingPoolJoin-&lt;id&gt;</c>, unticked; ticking
+    /// adds it with the chosen model), its model (<c>ThinkingPoolJoinModel-&lt;id&gt;</c>) and its line
+    /// (<c>ThinkingPoolJoinDetail-&lt;id&gt;</c>: what it runs, or why it can't be ticked).</summary>
+    private StackPanel JoinRow(ThinkingPoolPageModel model, ThinkingPoolPageModel.JoinLine line)
+    {
+        var box = new CheckBox { Content = RowName(line.Title), IsChecked = false, IsEnabled = line.Cannot is null,
+            ToolTip = "Tick to use this machine for background thinking with the model chosen beside it." };
+        AutomationProperties.SetAutomationId(box, "ThinkingPoolJoin-" + line.Id);
+        AutomationProperties.SetName(box, $"{line.Title}: use for background thinking");
+        var choice = new ComboBox
+        {
+            Width = 240, ItemsSource = line.Models, SelectedItem = line.Selected, IsEditable = line.Kind == ThinkingPoolPageModel.JoinKind.ThisPc,
+            IsEnabled = line.Cannot is null, ToolTip = line.Kind == ThinkingPoolPageModel.JoinKind.ThisPc
+                ? "A model in Ollama on this PC (not Thinking's own model). Type another Ollama model if you like."
+                : "The model to run there. A new model is set up there in a run window; the computer needs a graphics card for it."
+        };
+        if (choice.IsEditable) choice.Text = line.Selected;
+        AutomationProperties.SetAutomationId(choice, "ThinkingPoolJoinModel-" + line.Id);
+        AutomationProperties.SetName(choice, $"{line.Title}: model");
+        // Checked rather than Click, so UI Automation's toggle (MCP ui_toggle) adds it too.
+        box.Checked += (_, _) =>
+        {
+            var chosen = (choice.IsEditable ? choice.Text : choice.SelectedItem as string)?.Trim() ?? "";
+            if (chosen.Length == 0)
+            {
+                services.ShowStatus("Choose a model first.");
+                box.IsChecked = false;
+                return;
+            }
+            if (line.Kind == ThinkingPoolPageModel.JoinKind.ThisPc && !CanAddLocal(model, chosen))
+            {
+                box.IsChecked = false;
+                return;
+            }
+            model.JoinAsync(line, chosen).Forget();
+        };
+        var detail = Note(line.Cannot ?? line.Detail, new Thickness(0));
+        AutomationProperties.SetAutomationId(detail, "ThinkingPoolJoinDetail-" + line.Id);
+        AutomationProperties.SetName(detail, $"{line.Title}: {detail.Text}");
+        TextBlock? shared = null;
+        if (line.SharedCard is { } text)
+        {
+            shared = HelpTip.Explain(text + " " + DeepThinkingFit.SharedCardMore, new Thickness(0), "SharedCard-" + line.Id,
+                "sharing a graphics card", wiki: "Thinking#add-a-machine");
+            shared.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            AutomationProperties.SetAutomationId(shared, "ThinkingPoolJoinShare-" + line.Id);
+        }
+        return ListRow(box, choice, null, detail, shared);
+    }
+
+    // ---------- Advanced › Each machine ----------
+
+    /// <summary>Advanced › Each machine: the pool's summary, the conversation's own model (never in the pool) with its fallback
+    /// box, each machine's settings (<see cref="MemberSettings"/>), the guidance and the live floor.</summary>
+    private List<UIElement> MachineSettings(ThinkingPoolPageModel model)
+    {
+        var stack = new List<UIElement>
+        {
+            HelpTip.After(SubHeading("Each machine"), "Each machine", "Quick jobs are the judges (are you done talking, did you " +
+                "interrupt) and the screen and sound summaries. Long jobs are thinking longer, research, a song's lyrics and the other " +
+                "helpers. Each job goes to a free machine that takes it, the one that shares least with the conversation first.",
+                "ThinkingPoolMachines", wiki: "Thinking#machines-in-the-pool")
+        };
+        var summary = Note(model.Summary, new Thickness(0, 0, 0, 8));
+        AutomationProperties.SetAutomationId(summary, "ThinkingPoolSummary");
+        stack.Add(summary);
+        stack.Add(ConversationRow(model));
+        for (var i = 0; i < model.Pool.All.Count; i++) stack.Add(MemberSettings(model, model.Member(i)));
+
+        var guidance = Note(model.Guidance, new Thickness(0, 4, 0, 4));
+        AutomationProperties.SetAutomationId(guidance, "ThinkingPoolGuidance");
+        stack.Add(guidance);
         // The live floor: which members wait while you talk with Martlet (they share the conversation's computer).
         var floorText = model.LiveFloor;
         var floorLine = floorText.Length > 0
@@ -60,18 +161,12 @@ internal sealed partial class ThinkingPoolPage
         stack.Add(floorLine);
         stack.Add(Note("Martlet sets the order by itself: quick jobs go first, and when the pool has two or more slots, long jobs " +
             "leave one slot that takes quick jobs free for them.", new Thickness(0, 4, 0, 0)));
-
-        // Add a machine: each kind opens its own form, and what it adds shows in the list above, on.
-        stack.Add(new TextBlock { Text = "Add a machine", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 0) });
-        stack.Add(Fold.Create("Another of your computers", "ThinkingPoolAddComputer", false, [.. DeepComputersPanel(model)]));
-        stack.Add(Fold.Create("A model in Ollama on this PC", "ThinkingPoolAddLocal", false, [.. DeepLocalPanel(model)]));
-        stack.Add(Fold.Create("A cloud provider or server", "ThinkingPoolAddCloud", false, [.. DeepCloudPanel(model)]));
-        return Card([.. stack]);
+        return stack;
     }
 
-    /// <summary>The conversation's own Thinking model, first in the machine list. It is never in the pool, so no pool job waits in
-    /// front of a reply and its model stays ready for the conversation. Its box lets thinking longer and research run on it when
-    /// no machine in the pool takes long jobs.</summary>
+    /// <summary>The conversation's own Thinking model. It is never in the pool, so no pool job waits in front of a reply and its
+    /// model stays ready for the conversation. Its box lets thinking longer and research run on it when no machine in the pool
+    /// takes long jobs.</summary>
     private static StackPanel ConversationRow(ThinkingPoolPageModel model)
     {
         var text = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
@@ -99,82 +194,5 @@ internal sealed partial class ThinkingPoolPage
         fallback.Unchecked += (_, _) => Use(false);
         text.Children.Add(fallback);
         return text;
-    }
-
-    /// <summary>A graphics card of a paired computer in the list that runs no Thinking pool model yet: a row with Add a model
-    /// (<c>DeepThinkingAddCard-&lt;host&gt;-gpu&lt;n&gt;</c>), which sets the model up on that card; it then joins as a machine of
-    /// its own.</summary>
-    private static DockPanel SpareCardRow(ThinkingPoolPageModel model, ThinkingPoolPageModel.SpareCardLine spare)
-    {
-        var (host, hostId, card) = (spare.Host, spare.HostId, spare.Card);
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock { Text = spare.Title, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        var line = Note(spare.Detail, new Thickness(0, 2, 0, 0));
-        AutomationProperties.SetName(line, $"{spare.Title}: {spare.Detail}");
-        AutomationProperties.SetAutomationId(line, $"DeepThinkingCard-{hostId}-gpu{card}");
-        text.Children.Add(line);
-        var add = PageButton("Add a model", () => model.AddDeepRoleAsync(host, card).Forget(), id: $"DeepThinkingAddCard-{hostId}-gpu{card}");
-        AutomationProperties.SetName(add, $"Add a Thinking pool model on {hostId}'s graphics card {card}, as a machine of its own");
-        add.ToolTip = "One Thinking model per graphics card: each card thinks over its own jobs at full speed.";
-        add.IsEnabled = spare.Cannot is null;
-        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
-        DockPanel.SetDock(add, Dock.Right);
-        row.Children.Add(add);
-        row.Children.Add(text);
-        return row;
-    }
-
-    /// <summary>A paired computer that isn't in the pool: what it offers and why it isn't in (<see cref="ThinkingPoolPageModel.Computer"/>),
-    /// with Add the Thinking pool role, Change model and In the pool.</summary>
-    private DockPanel ComputerRow(ThinkingPoolPageModel model, ThinkingPoolPageModel.ComputerLine computer)
-    {
-        var (host, check, own) = (computer.Host, computer.Check, computer.Own);
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
-        var line = Note(computer.Detail, new Thickness(0, 2, 0, 0));
-        AutomationProperties.SetName(line, $"{host.HostId}: {computer.Detail}");
-        AutomationProperties.SetAutomationId(line, "DeepThinkingHost-" + host.HostId);
-        text.Children.Add(line);
-        if (computer.SharedCard is { } shared)
-        {
-            var warning = HelpTip.Explain(shared + " " + DeepThinkingFit.SharedCardMore, new Thickness(0, 2, 0, 0), "SharedCard-" + host.HostId,
-                "sharing a graphics card", wiki: "Thinking#add-a-machine");
-            warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-            AutomationProperties.SetName(warning, $"{host.HostId}: {shared}");
-            AutomationProperties.SetAutomationId(warning, "DeepThinkingShare-" + host.HostId);
-            text.Children.Add(warning);
-        }
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        if (own is null && check?.Reachable == true && host.CanLaunch && services.CannotHand(host.HostId, HostRoles.DeepThinking, "deep thinking") is null)
-        {
-            var add = PageButton("Add the Thinking pool role", () => model.AddDeepRoleAsync(host).Forget(), primary: !computer.Usable,
-                id: "DeepThinkingAddRole-" + host.HostId);
-            AutomationProperties.SetName(add, $"Add the Thinking pool role on {host.HostId}");
-            add.Margin = new Thickness(0, 0, 8, 0);
-            buttons.Children.Add(add);
-        }
-        if (own is not null && check?.Reachable == true && services.ChangesRolesOn(host))
-        {
-            var change = PageButton("Change model", () => services.RunHostActionAsync(host, HostAction.Change(HostRoles.DeepThinking)).Forget(),
-                id: "DeepThinkingChangeModel-" + host.HostId);
-            AutomationProperties.SetName(change, $"Change the Thinking pool model and slots on {host.HostId} (now {own})");
-            change.Margin = new Thickness(0, 0, 8, 0);
-            buttons.Children.Add(change);
-        }
-        var inPool = new CheckBox
-        {
-            Content = "In the pool", IsChecked = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
-            IsEnabled = computer.Usable && check?.Reachable == true,
-            ToolTip = "Computers with a Thinking model join the pool by themselves; tick to add this one now."
-        };
-        AutomationProperties.SetName(inPool, $"{host.HostId} in the Thinking pool");
-        AutomationProperties.SetAutomationId(inPool, "DeepThinkingPool-" + host.HostId);
-        inPool.Checked += (_, _) => model.UseDeepHostAsync(host, alsoHere: true).Forget();
-        buttons.Children.Add(inPool);
-        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-        DockPanel.SetDock(buttons, Dock.Right);
-        row.Children.Add(buttons);
-        row.Children.Add(text);
-        return row;
     }
 }

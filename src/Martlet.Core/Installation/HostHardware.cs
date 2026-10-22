@@ -7,6 +7,9 @@ namespace Martlet.Core.Installation;
 public sealed record HostGpu(string Name, string Vendor, int? MemoryMb, string? Driver, double? PowerLimitW = null,
     double? PowerDefaultW = null, bool? Persistence = null)
 {
+    /// <summary>The card's UUID (GPU-...), as the host's routes name their cards; null on older hosts and other vendors.</summary>
+    public string? Uuid { get; init; }
+
     [JsonIgnore] public double? MemoryGb => MemoryMb is { } mb ? Math.Round(mb / 1024d, 1) : null;
     [JsonIgnore] public bool IsNvidia => Vendor == "nvidia";
     public string Describe() => MemoryGb is { } gb ? $"{Name} ({gb.ToString("0.#", CultureInfo.InvariantCulture)} GB)" : Name;

@@ -126,7 +126,7 @@ internal static partial class LatencyReport
                 atMs = Stats(parsed.Where(r => r.QuickSoundMs is not null).Select(r => r.QuickSoundMs!.Value)),
                 firstAudio = Stats(spoken.Where(r => r.QuickSoundMs is not null).Select(r => r.TotalMs!.Value))
             },
-            // Replies whose Thinking model was slow to start and asked Backup Thinking (Companion › Thinking pool): how each ended
+            // Replies whose Thinking model was slow to start and asked Backup Thinking (Companion › Background thinking): how each ended
             // (the member won, the conversation's model won, the member gave no answer, or no member could take it), when the
             // member was asked and when it won, and the first audio of replies it won.
             backupThinking = new

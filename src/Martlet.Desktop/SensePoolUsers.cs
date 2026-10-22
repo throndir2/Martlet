@@ -98,7 +98,7 @@ internal static class SensePoolUsers
             : getting == 0 ? $"The Thinking pool has {users.Count} model{(users.Count == 1 ? "" : "s")} that {verb}, " +
                 $"but none of them gets your {inputs} now."
             : $"Your {inputs} also go to {getting} model{(getting == 1 ? "" : "s")} in the Thinking pool for background work, set on " +
-                "Companion › Thinking pool.";
+                "Companion › Background thinking.";
     }
 
     /// <summary>Companion › Vision's "What Martlet sends" sentence on screen summaries, when Screen summary over time is

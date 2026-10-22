@@ -458,6 +458,26 @@ public sealed class OllamaRelayTests
     }
 
     [Fact]
+    public async Task A_request_without_a_window_keeps_the_window_the_relay_last_loaded()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "gemma4:12b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+
+        // A reply with the window planned from the card, then a short check (an older desktop, a test) that sends none.
+        await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            null, [], "Hello", 0.7, 512, 10_240, null, new() { ContextTokens = 32_768 })) { }
+        await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
+            null, [], "Which word?", 0, 32, 4_096)) { }
+
+        // Both load the same window, so Ollama never loads the model again between them.
+        Assert.Equal([32_768, 32_768], ollama.Requests.Select(r => r.RootElement.GetProperty("options").GetProperty("num_ctx").GetInt32()));
+    }
+
+    [Fact]
     public async Task Relay_accepts_the_desktops_reply_budget_and_context_bound()
     {
         await using var ollama = await FakeOllama.StartAsync(200,

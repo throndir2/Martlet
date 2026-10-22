@@ -89,7 +89,7 @@ public static partial class NetworkRecommender
                 .Concat((request.OnlineThinkingPool ?? []).Select(m => $"{m}, online"))
                 .ToList();
             var suggestion = onlineDeep is { } deep
-                ? $"; {deep.DisplayName} online is smarter: add it in Companion › Thinking pool to send what it thinks about to that service" : "";
+                ? $"; {deep.DisplayName} online is smarter: add it in Companion › Background thinking to send what it thinks about to that service" : "";
             if (places.Count > 0) return (true, $"Thinking pool: {List(places)}", $"It thinks things over in the background, never on the reply path{suggestion}.");
             if (!Wants(part)) return (false, OffWhere(part), "Not planned.");
             var hosts = nodes.Any(n => n.Presence == Presence.Here && !n.Companion && n.CanHost);

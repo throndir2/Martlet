@@ -20,7 +20,8 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
     public const string DefaultWorkerId = "ollama-relay";
     public const string DeepThinkingDestinationId = "deep-thinking-host";
     public const string DeepThinkingWorkerId = "deep-thinking-relay";
-    /// <summary>Context window requested from Ollama unless the client asks for another; larger windows cost VRAM on small GPUs.</summary>
+    /// <summary>Context window requested from Ollama when no client has asked for one yet; after that, a request without one keeps
+    /// the window last loaded. Desktops plan a larger window from the card's free memory (ContextWindowPlan).</summary>
     public const int MaximumContextTokens = Martlet.Core.Settings.GenerationSettings.DefaultHostContextTokens;
     private const int MaximumLineBytes = 64 * 1024;
     /// <summary>The least text one joined event carries once the first half of a route's events went token by token.</summary>
@@ -256,8 +257,10 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
             writer.WriteNumber("temperature", payload.Temperature);
             writer.WriteNumber("num_predict", payload.MaximumOutputTokens);
             var sampling = payload.Sampling;
-            // The client's context size replaces the relay's VRAM-friendly default; older clients never send one.
-            var context = sampling.ContextTokens ?? Math.Min(payload.MaximumContextTokens, MaximumContextTokens);
+            // The client's context size replaces the relay's default; a request without one (an older client, a short check) keeps
+            // the window this relay last loaded, so it never makes Ollama load the model again with another window.
+            var context = sampling.ContextTokens ?? (Volatile.Read(ref ownerContext) is > 0 and var last
+                ? last : Math.Min(payload.MaximumContextTokens, MaximumContextTokens));
             // OpenAI-compatible requests use the same context size, so they never make Ollama load the model again.
             Volatile.Write(ref ownerContext, context);
             writer.WriteNumber("num_ctx", context);

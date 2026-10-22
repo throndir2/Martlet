@@ -372,7 +372,7 @@ public sealed class AppSettingsSections
             return SharedApply.Waiting("Its API keys haven't reached this PC yet.");
         var (local, state) = ThinkingPoolSettings.Read(dataDirectory);
         if (state == "unreadable")
-            return SharedApply.Waiting("This PC's Thinking pool file can't be read; open Companion › Thinking pool to set it up again.");
+            return SharedApply.Waiting("This PC's Thinking pool file can't be read; open Companion › Background thinking to set it up again.");
         var profile = Guid.Empty;
         if (bundle.Count > 0 || local.All.Any(m => ThinkingPoolShare.IsShared(m) && m.CredentialId is not null))
         {
@@ -435,7 +435,7 @@ public sealed class AppSettingsSections
             return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet; update this PC to use it."));
         var (local, state) = ThinkingPoolSettings.Read(dataDirectory);
         if (state == "unreadable")
-            return Task.FromResult(SharedApply.Waiting("This PC's Thinking pool file can't be read; open Companion › Thinking pool to set it up again."));
+            return Task.FromResult(SharedApply.Waiting("This PC's Thinking pool file can't be read; open Companion › Background thinking to set it up again."));
         return Task.FromResult(ThinkingPoolShare.Apply(local, choices).Save(dataDirectory)
             ? SharedApply.Done : SharedApply.Waiting("This PC's Thinking pool couldn't be saved; check access to Martlet's data folder."));
     }

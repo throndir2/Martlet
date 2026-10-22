@@ -5,7 +5,7 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>A Runs on choice for a kind of Thinking pool job: Companion › Thinking pool's Runs on card has one for each kind of
+/// <summary>A Runs on choice for a kind of Thinking pool job: Companion › Background thinking's Runs on card has one for each kind of
 /// job, and each check-in's card (Companion › Check-ins) has its own.</summary>
 internal static class RunsOnPicker
 {

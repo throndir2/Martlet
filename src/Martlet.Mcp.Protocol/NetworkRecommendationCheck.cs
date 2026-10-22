@@ -102,6 +102,14 @@ internal static class NetworkRecommendationCheck
         var pinned = NetworkRecommender.Recommend(twoCards);
         Step("1", "One language model per graphics card: Thinking and Deep thinking pinned to cards of their own",
             OneModelPerCard(pinned) && pinned.Changes.Any(c => c.Kind == SetupChangeKind.MoveToGpu), Report(pinned));
+        Step("1", "The reason for one language model per card is in words: tensor-core contention",
+            pinned.Changes.Any(c => c.Why.Contains("tensor cores", StringComparison.Ordinal)),
+            pinned.Changes.Select(c => c.Why).Where(w => w.Contains("tensor cores", StringComparison.Ordinal)));
+        // Thinking's card says the context window planned from its free memory, and that a reply sends no more than before.
+        var window = plan.Notes.FirstOrDefault(n => n.StartsWith("Thinking's context window on ", StringComparison.Ordinal));
+        Step("ctx", "Thinking's card plans its context window from its free memory (32,768 tokens here), with the same input per reply",
+            window is not null && window.Contains("32,768 tokens", StringComparison.Ordinal) &&
+            window.Contains("doesn't make replies start later", StringComparison.Ordinal), window ?? "no context window note");
 
         // Rules 2 and 3: a Windows host whose voice shares its card with listening; a Linux host has a free card.
         var windows = Network(Companion("desk-1"), WindowsHost("win-box", Nvidia(12, "RTX 4070")) with
@@ -121,6 +129,9 @@ internal static class NetworkRecommendationCheck
             isolated.Target.Job(ClusterJobs.Speaking)?.HostId == "linux-box" && isolated.Target.Job(ClusterJobs.Listening)?.HostId == "win-box" &&
             isolated.Target.Machines.All(m => m.Roles.Count(r => r.Kind.StartsWith("chatterbox", StringComparison.Ordinal)) <= 1),
             Report(isolated));
+        Step("3", "The reason for the voice's own card is in words: time to first audio",
+            isolated.Changes.Any(c => c.Why.Contains("time to first audio", StringComparison.Ordinal)),
+            isolated.Changes.Select(c => c.Why).Where(w => w.Contains("time to first audio", StringComparison.Ordinal)));
 
         // Rule 4: a crowded network keeps every card within its capacity.
         var crowded = NetworkRecommender.Recommend(Network(Companion("desk-1"), Companion("desk-2"), Companion("desk-3"),

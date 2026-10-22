@@ -147,7 +147,7 @@ The review lists every part of Martlet, where it runs and why. A part can be off
 - **No computer has room for a Thinking model, and no free key is saved.** Martlet can't reply until you set one up. A free key from NVIDIA Build is enough.
 - **Smart home** isn't set up, or this PC isn't connected to Home Assistant. Home Assistant runs your home all the time, and Martlet never moves it.
 
-For Deep thinking, the review can suggest a smarter model online. Add it in **Companion › Thinking pool**. What it thinks about then goes to that service.
+For Deep thinking, the review can suggest a smarter model online. Add it in **Companion › Background thinking**. What it thinks about then goes to that service.
 
 When Martlet turns off a role on a computer, its downloads stay there, so turning it on again is quick. A role that is already downloaded starts again without a new download.
 
@@ -168,7 +168,7 @@ Select a computer on the map to open its card.
 - **What it does** has one row for each job or role of the computer, with the buttons that change it.
 - **Resources** shows what the jobs plan to use, from Martlet's estimates. A range is what the jobs usually hold, then the most they take while they work hardest. **In use now** is what the device reports.
 - **Details** shows the hardware and the Martlet version. When a computer hasn't reported them yet, choose **Check connection**. A version older than this PC's shows **Update available**; a newer one means that you should update this PC.
-- A Thinking pool model on a host's second or third graphics card is a Thinking pool member of its own. A host with a Thinking pool model joins the pool by itself, unless you keep it out in **Companion › Thinking pool**.
+- A Thinking pool model on a host's second or third graphics card is a Thinking pool member of its own. A host with a Thinking pool model joins the pool by itself, unless you keep it out in **Companion › Background thinking**.
 - Home Assistant on a host runs on the host's own network. Set it up and manage it in **Companion › Smart home**.
 - **Conversation model** shows when Thinking isn't chosen yet. Martlet needs it to answer you. Run a free model on your own computers (on a graphics card, or on the processor when there is none), or choose an online one.
 - **Connection method** sets how this PC reaches a host to install or remove roles and update it. **Through Martlet on that computer** (the default) sends the commands over the pinned, signed connection that you paired. Martlet there must be running; until then, the commands wait. Use **SSH** for a Linux computer without Martlet.
@@ -261,7 +261,7 @@ Home and the job's page say **Needs attention** when a job doesn't work. Select 
 - When nobody does **Thinking**, Martlet can't reply. When nobody does **Listening**, you can still type. When nobody does **Speaking**, replies show as text only.
 - Each problem has buttons that fix it. **Check** asks the computer again, and **Use ... instead** gives the job back to the choice you made before.
 - When you remove a role or forget a computer, Martlet first says what happens to each job. The job moves to another computer by failover, goes back to your Setup choice, or nobody does it. Then choose another place in the job's Companion page or on the **Devices** page.
-- When you remove a Thinking pool role, the pool stops running jobs on that computer. If the pool becomes empty, add another member in **Companion › Thinking pool**.
+- When you remove a Thinking pool role, the pool stops running jobs on that computer. If the pool becomes empty, add another member in **Companion › Background thinking**.
 - A Parakeet model that isn't downloaded needs to be chosen again in **Companion › Listening**, which downloads it.
 - When lifelike lip-sync isn't running on this PC, set it up in **Companion › Lip-sync**. Until then, the mouth follows the voice's loudness.
 
@@ -308,7 +308,7 @@ This line names each shared setting that this PC cannot use yet, and why. This P
 - **Ollama isn't installed, or doesn't have the model**: set up Ollama or download the model in **Companion › Thinking**.
 - **Windows voices were removed**: choose another voice for this PC in **Companion › Voice**.
 - **A job runs on a host now**: this PC switches to the shared choice when the job comes back to this PC.
-- **The Thinking pool file can't be read or saved**: open **Companion › Thinking pool** to set it up again, and check that Martlet can write to its data folder.
+- **The Thinking pool file can't be read or saved**: open **Companion › Background thinking** to set it up again, and check that Martlet can write to its data folder.
 
 ### When settings can't be read or saved
 

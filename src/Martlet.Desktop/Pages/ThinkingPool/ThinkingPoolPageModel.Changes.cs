@@ -9,7 +9,7 @@ using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
-/// <summary>The changes Companion › Thinking pool saves: thinking-pool.json (members, their rules, Runs on, Backup for slow
+/// <summary>The changes Companion › Background thinking saves: thinking-pool.json (members, their rules, Runs on, Backup for slow
 /// replies, Busy pool), the members' API keys in Windows Credential Manager, the Thinking pool role on a paired computer, and
 /// Thinking longer and Web research in the reply settings. Each change tells the owner in the status line and draws the page
 /// again; none throws.</summary>
@@ -43,7 +43,7 @@ internal sealed partial class ThinkingPoolPageModel
         var gone = old.All.FirstOrDefault(m => m.Key == key);
         // A paired computer stays out until it is ticked again; otherwise it would join again by itself at its next check.
         if (gone is { Place: DeepThinkingPlace.Host, HostId: { } hostId })
-            await SavePoolAsync(p => p.TakeOut(hostId), $"{name} left the Thinking pool and stays out; tick In the pool to add it again.");
+            await SavePoolAsync(p => p.TakeOut(hostId), $"{name} left the Thinking pool and stays out; tick it under Where it runs to add it again.");
         else await SavePoolAsync(p => p.Remove(key), $"{name} left the Thinking pool.");
         var profile = services.Settings?.Profile.Id ?? Guid.Empty;
         if (gone?.CredentialId is { } oldKey && profile != Guid.Empty &&
@@ -63,34 +63,62 @@ internal sealed partial class ThinkingPoolPageModel
     {
         if (services.Closing) return;
         var role = SelfHostSetup.DeepThinkingRoleKind(card);
-        var fit = DeepThinkingFit.Recommend(services.HardwareOf(host.HostId), services.CheckOf(host.HostId)?.Offers, card);
-        var fits = fit.TryGetValue($"choice.{DeepThinkingFit.SlotsVariable}@{DeepThinkingFit.ModelVariable}={model}", out var said) &&
-            int.TryParse(said.Value, System.Globalization.CultureInfo.InvariantCulture, out var most) ? most : 1;
-        var count = slots ?? Math.Max(1, Math.Min(fits, before));
-        var answers = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["choice." + DeepThinkingFit.ModelVariable] = model,
-            ["choice." + DeepThinkingFit.SlotsVariable] = count.ToString(System.Globalization.CultureInfo.InvariantCulture)
-        };
-        ErrorLog.Info($"Thinking pool: changing {host.HostId}'s graphics card {card} to {model} with {count} slot{(count == 1 ? "" : "s")}.");
+        var answers = RoleAnswers(host, card, model, slots, before);
+        ErrorLog.Info($"Thinking pool: changing {host.HostId}'s graphics card {card} to {model} with {answers["choice." + DeepThinkingFit.SlotsVariable]} slot(s).");
         await services.RunHostActionAsync(host, HostAction.Change(role), answers);
         // Put the row back as it is now: a run that stopped changed nothing; one that finished shows after the computer's check.
         services.RedrawIfOpen();
     }
 
-    /// <summary>Installs the Deep thinking role on a paired computer (its own run window, with the model choice) and, once it
-    /// runs, thinks there. With <paramref name="card"/> 2 to 4 it installs the Thinking pool model for that graphics card
-    /// (deep-thinking-2...), which joins as a member of its own.</summary>
-    internal async Task AddDeepRoleAsync(PairedHost host, int card = 1)
+    /// <summary>The answers for the Thinking pool role's settings window on <paramref name="host"/>'s graphics card
+    /// <paramref name="card"/>: <paramref name="model"/> and <paramref name="slots"/> jobs at once (null: what fits for the model,
+    /// at most <paramref name="before"/>).</summary>
+    private Dictionary<string, string> RoleAnswers(PairedHost host, int card, string model, int? slots, int before = int.MaxValue)
+    {
+        var fit = DeepThinkingFit.Recommend(services.HardwareOf(host.HostId), services.CheckOf(host.HostId)?.Offers, card);
+        var fits = fit.TryGetValue($"choice.{DeepThinkingFit.SlotsVariable}@{DeepThinkingFit.ModelVariable}={model}", out var said) &&
+            int.TryParse(said.Value, System.Globalization.CultureInfo.InvariantCulture, out var most) ? most : 1;
+        var count = slots ?? Math.Max(1, Math.Min(fits, before));
+        return new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["choice." + DeepThinkingFit.ModelVariable] = model,
+            ["choice." + DeepThinkingFit.SlotsVariable] = count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+    }
+
+    /// <summary>Installs the Deep thinking role on a paired computer (its own run window) and, once it runs, thinks there. With
+    /// <paramref name="model"/> the window starts with that model and the slots that fit for it; a model that would share the
+    /// graphics card with the computer's Thinking model asks first. With <paramref name="card"/> 2 to 4 it installs the Thinking
+    /// pool model for that graphics card (deep-thinking-2...), which joins as a member of its own.</summary>
+    internal async Task AddDeepRoleAsync(PairedHost host, int card = 1, string? model = null)
     {
         if (services.Closing) return;
         var kind = SelfHostSetup.DeepThinkingRoleKind(card);
         if (services.CannotHand(host.HostId, kind, "deep thinking") is { } cannot)
         {
             services.ShowStatus($"The Thinking pool role can't be set up on {host.HostId}: {cannot}");
+            services.RedrawIfOpen();
             return;
         }
-        if (await services.RunHostActionAsync(host, HostRoles.Get(kind).Add) is null || services.Closing) return;
+        Dictionary<string, string>? answers = null;
+        if (model is not null)
+        {
+            // The window asks this itself without answers; with them, ask here.
+            if (card == 1 && DeepThinkingFit.SharedCard(host.HostId, services.HardwareOf(host.HostId), services.CheckOf(host.HostId)?.Offers) is { } shared &&
+                !services.Confirm(shared + " Add the Thinking pool role there anyway?", "The Thinking pool shares a graphics card",
+                    yes: "_Add anyway", no: "_Cancel", questionId: "DeepThinkingShareQuestion"))
+            {
+                services.ShowStatus($"The Thinking pool role wasn't added on {host.HostId}.");
+                services.RedrawIfOpen();
+                return;
+            }
+            answers = RoleAnswers(host, card, model, null);
+        }
+        if (await services.RunHostActionAsync(host, HostRoles.Get(kind).Add, answers) is null || services.Closing)
+        {
+            services.RedrawIfOpen();
+            return;
+        }
         await UseDeepHostAsync(host);
     }
 
@@ -136,7 +164,7 @@ internal sealed partial class ThinkingPoolPageModel
                 .Where(m => !current.IsOff(m.Key)).ToArray();
             if (cards.Length == 0)
             {
-                services.ShowStatus($"{host.HostId} is turned off in the Thinking pool; tick On on its row to use it again.");
+                services.ShowStatus($"{host.HostId} is turned off in the Thinking pool; tick it under Where it runs to use it again.");
                 services.Redraw();
                 return;
             }
@@ -189,7 +217,7 @@ internal sealed partial class ThinkingPoolPageModel
     {
         if (!consent)
         {
-            services.ShowStatus($"Tick the box to confirm {provider.Name} for the Thinking pool, then press Add to the Thinking pool.");
+            services.ShowStatus($"Tick the box to confirm {provider.Name} for background thinking, then press Add.");
             return;
         }
         SecretLease? key = null;

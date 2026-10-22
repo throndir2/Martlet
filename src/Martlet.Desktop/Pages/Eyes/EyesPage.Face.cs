@@ -67,7 +67,7 @@ internal sealed partial class EyesPage
         if (!sight.CanSee)
         {
             var off = Warning("Measure the face is off: no model that can see pictures is set up; choose a vision-capable model in " +
-                "Companion › Thinking or Companion › Thinking pool.");
+                "Companion › Thinking or Companion › Background thinking.");
             AutomationProperties.SetAutomationId(off, "CharacterEyesNote");
             stack.Add(off);
         }

@@ -365,7 +365,7 @@ internal sealed partial class LiveConversationController
             }
             var settings = configured.ThinkLonger;
             if (!settings.On) return new(checkIn is null ? ThinkLonger.TurnedOff : BackgroundWorkTools.NotStarted("Thinking longer is off"), true);
-            // Where it thinks (Companion › Thinking pool, this PC's choice): every member that can run a think (a model of its own; a
+            // Where it thinks (Companion › Background thinking, this PC's choice): every member that can run a think (a model of its own; a
             // second model in Ollama on this PC only while both fit on the graphics card) and whose computer answers now; the
             // conversation model stands in while none answers, when that is allowed.
             var live = owner.LivePool(configured);

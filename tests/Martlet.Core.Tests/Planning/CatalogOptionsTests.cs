@@ -139,6 +139,24 @@ public sealed class CatalogOptionsTests
     }
 
     [Fact]
+    public void A_provider_lists_its_chat_models_that_call_tools_smartest_first()
+    {
+        var models = Models();
+        var list = CatalogOptions.ChatModels(models, ChatCompletionsEndpointCatalog.NvidiaBuildId);
+        Assert.Equal("acme/giant-900b-a90b-it", list[0]);
+        Assert.Contains("acme/fast-30b-a3b-it", list);
+        Assert.Equal(list.Count, list.Distinct(StringComparer.Ordinal).Count());
+        // A model Martlet found gone or without tools leaves the list.
+        var gone = new ModelAbility
+        {
+            Origin = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, ModelId = "acme/fast-30b-a3b-it", Retired = Read,
+            Source = ModelAbility.GoneAnswer, CheckedAt = Read
+        };
+        Assert.DoesNotContain("acme/fast-30b-a3b-it", CatalogOptions.ChatModels(models, ChatCompletionsEndpointCatalog.NvidiaBuildId, [gone]));
+        Assert.Empty(CatalogOptions.ChatModels(models, "no-such-provider"));
+    }
+
+    [Fact]
     public void A_model_the_catalog_scores_takes_its_smartness_instead_of_the_size_in_its_name()
     {
         var models = Models();
@@ -195,11 +213,14 @@ public sealed class CatalogOptionsTests
             Assert.Contains("a test copy", used.From, StringComparison.Ordinal);
             Assert.Equal("acme/fast-30b-a3b-it", PlanningCatalog.SuggestedModel(ChatCompletionsEndpointCatalog.NvidiaBuildId));
             Assert.Equal("acme/giant-900b-a90b-it", PlanningCatalog.SmartestModel(ChatCompletionsEndpointCatalog.NvidiaBuildId));
+            Assert.Equal(CatalogOptions.ChatModels(models, ChatCompletionsEndpointCatalog.NvidiaBuildId),
+                PlanningCatalog.ChatModels(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl));
         }
         finally
         {
             PlanningCatalog.Reset();
         }
+        Assert.Empty(PlanningCatalog.ChatModels(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl));
     }
 
     // ---------- the planners ----------
@@ -217,8 +238,8 @@ public sealed class CatalogOptionsTests
         var catalog = FootprintCatalog.FromModels(Models());
         var suggested = NetworkRecommender.Recommend(AlonePc(HostingPreference.Backup), catalog);
         Assert.Equal("acme/giant-900b-a90b-it", suggested.OnlineDeepThinking?.ModelId);
-        Assert.Contains(suggested.Notes, n => n.StartsWith("Deep thinking: NVIDIA Build: Giant", StringComparison.Ordinal) && n.Contains("Thinking pool"));
-        Assert.Contains("Companion › Thinking pool", suggested.Components.Single(c => c.Component == PlanComponent.DeepThinking).Why, StringComparison.Ordinal);
+        Assert.Contains(suggested.Notes, n => n.StartsWith("Deep thinking: NVIDIA Build: Giant", StringComparison.Ordinal) && n.Contains("Background thinking"));
+        Assert.Contains("Companion › Background thinking", suggested.Components.Single(c => c.Component == PlanComponent.DeepThinking).Why, StringComparison.Ordinal);
         // A suggestion changes no setup, so Martlet doesn't ask about a declined setup again because of it.
         Assert.Equal(NetworkRecommender.Recommend(AlonePc(HostingPreference.Backup)).Fingerprint, suggested.Fingerprint);
         // Never online, Martlet's own list (it names no model), or an online member already in the pool: no suggestion.

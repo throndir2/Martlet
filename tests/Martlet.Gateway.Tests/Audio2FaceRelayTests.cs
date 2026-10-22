@@ -117,7 +117,7 @@ public sealed class Audio2FaceRelayTests
         host.Server.Machine = GatewayMachineReport.Parse(System.Text.Encoding.UTF8.GetBytes(
             "{\"collected_at\":\"2026-09-29T18:00:00Z\",\"method\":\"docker\",\"operating_system\":\"Docker Desktop\"," +
             "\"processor_threads\":24,\"memory_gb\":31.2,\"nvidia_containers\":\"yes\",\"gpus\":[" +
-            "{\"name\":\"NVIDIA GeForce RTX 4080\",\"vendor\":\"nvidia\",\"memory_mb\":16376,\"driver\":\"566.03\"}," +
+            "{\"name\":\"NVIDIA GeForce RTX 4080\",\"vendor\":\"nvidia\",\"memory_mb\":16376,\"driver\":\"566.03\",\"uuid\":\"GPU-4080aaaa-0000\"}," +
             "{\"name\":\"AMD Radeon RX 6800\",\"vendor\":\"amd\",\"memory_mb\":16368}]," +
             "\"downloads\":[{\"role\":\"ollama\",\"model\":\"gemma4:e4b\"},{\"role\":\"chatterbox\",\"model\":\"chatterbox-turbo\"}]}"));
         var report = await connection.ReadMachineAsync();
@@ -127,6 +127,8 @@ public sealed class Audio2FaceRelayTests
         Assert.Equal("docker", report.Method);
         Assert.Equal(2, report.Gpus.Count);
         Assert.Equal("NVIDIA GeForce RTX 4080", report.BestGpu!.Name);
+        // The card's UUID, as the host's routes name their cards, so a desktop knows each route's card memory.
+        Assert.Equal(("GPU-4080aaaa-0000", (string?)null), (report.Gpus[0].Uuid, report.Gpus[1].Uuid));
         Assert.Equal(Martlet.Core.Installation.AdvisorGpu.Nvidia16, report.AdvisorGpu);
         Assert.Equal(new DateTimeOffset(2026, 9, 29, 18, 0, 0, TimeSpan.Zero), report.CollectedAt);
         Assert.Equal(version, report.MartletVersion);

@@ -77,9 +77,16 @@ then the voice, listening and lip-sync; then the optional extras):
    - it takes the inputs the job needs (from the catalog and route facts);
    - the owner's online answer allows it, and the model is not retired.
 2. **A score** puts the remaining options in order (below).
-3. **Placement** keeps today's rules: one language model per card, the voice on
-   its own card on Windows, the live jobs first, companion PCs light, and the
-   owner's choices kept.
+3. **Placement** keeps today's rules: one language model per card (two models
+   on one card share its compute, its tensor cores, so both answer slower), the
+   voice on its own card on Windows (the first spoken word, the time to first
+   audio, comes sooner), the live jobs first, companion PCs light, and the
+   owner's choices kept. Recommended setup says these reasons where it makes a
+   choice because of them.
+4. **Context window:** Thinking's model on a host's card gets the largest
+   window that fits what the card has left (32,768, 16,384 or 8,192 tokens;
+   `ContextWindowPlan`), shown as a note. Each reply still sends the same text,
+   so the window never adds latency.
 
 ### Live Thinking (the reply you hear)
 
@@ -325,7 +332,7 @@ Each stage is one pull request.
      the snapshot of 2026-10-10). When online services allow it and no host card fits a model
      one quality step smarter than live Thinking, Recommended setup suggests it
      (`NetworkRecommendation.OnlineDeepThinking`, a note and the Deep thinking
-     line); the owner adds it in Companion › Thinking pool, which prefills it.
+     line); the owner adds it in Companion › Background thinking, which prefills it.
      A suggestion changes no setup and no fingerprint. The single-PC planner
      (`PlacementEngine`, which the setup advisor uses) places it and suggests
      the free key.

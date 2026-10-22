@@ -6,7 +6,7 @@ Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Thinking and 
 
 ### Thinking longer
 
-**Companion > Thinking pool > Thinking longer** (on by default; its own
+**Companion > Background thinking > Think longer about hard questions** (on by default; its own
 `ThinkLongerOn` box turns it off) gives every reply on a route that does function calling
 Martlet's own `think_longer` (`task`, the complete instruction, and an optional
 `reason`) and `cancel_thinking` (optional `id`), while Deep thinking can run where
@@ -27,8 +27,10 @@ the set ([Check-ins](apps.md#check-ins)).
 
 ### Thinking pool
 
-**Companion > Thinking pool** is one shared set of Thinking models for
-background work ([The Thinking pool](../CONVERSATION.md#the-thinking-pool)).
+**Companion > Background thinking** says what background thinking does and where
+it runs. The machines it runs on are the Thinking pool: one shared set of
+Thinking models for background work
+([The Thinking pool](../CONVERSATION.md#the-thinking-pool)).
 `thinking_pool_status` (`dataDirectory`) reads `thinking-pool.json` (or what
 Martlet would make from the older `deep-thinking.json`, without writing it):
 each member with its slots, whether it sees pictures or hears recordings,
@@ -98,70 +100,89 @@ local model) and set these rules on each board:
 The report's `priority` section gives each job's outcome (`priorityStops`,
 `retries`, final `priority`), the order the member ran the jobs, and the
 board's `stoppedForPriority`, `raised` and `retried` counters.
-On the desktop, the page has no *Where it thinks* choice: the *Machines* card is
-the pool. Each row is one machine (one graphics card of a paired computer, a
-model in Ollama on this PC, or a cloud provider or server) with its On box
-`ThinkingPoolOn-<n>` (unticked: the machine keeps its settings and takes no
-jobs, and a paired computer's card then never joins again by itself). With no
-machine on, the pool is off: `ThinkingPoolSummary` says *The Thinking pool is
-off: no machine is on. ...*; otherwise *2 machines are on, with 3 usable slots
-in all.*, and how many are turned off. The rows of machines that are on come
-first, then the ones that are off (their line starts *Off: it takes no jobs and
-keeps its settings.*). It reads through
-`DeepThinkingNow`, `DeepThinkingParallel`, `ThinkingPoolSummary`,
-`ThinkingPoolConversation` (the conversation's own model: never in the pool, so
-no pool job waits in front of a reply), then each member's
-`ThinkingPoolMember-<n>` (*Reads text and pictures; writes text. 2 slots, set
-on diva.*, with *Can't run now*, *Offline now* or what a member that limits
-requests does, such as *NVIDIA is limiting requests; tries again in 40 s*, when
-that applies) and
-`ThinkingPoolBadges-<n>` (*Waits while you talk*, *Costs money*, *Offline*,
-*Limiting requests*; hidden when none applies), then each paired computer that isn't a member
-(`DeepThinkingHost-<host>`: *Kept out of the pool*, why it can't join, or that
-it joins at its next check), and then `ThinkingPoolGuidance`,
-`ThinkingPoolWarnings` and `ThinkingPoolLiveFloor` (which members start no new
-pool work while you talk with Martlet because they share the conversation's
-computer). Each member has the boxes `ThinkingPoolQuick-<n>` (*Quick jobs*: the
-judges and the screen and sound summaries), `ThinkingPoolLong-<n>` (*Long
-jobs*: thinking longer, research, lyrics and the other helpers) and
-`ThinkingPoolAnswers-<n>` (*Backup for slow replies*). An external member (an
-endpoint not on this PC) also has `ThinkingPoolMedia-<n>` (*May receive
-pictures and recordings*, off by default): without it, the board gives that
-member no job with a screenshot or a recording. `thinking_pool_status` shows
-each member's `external` and `mayReceiveMedia`, `canRun` counts only members
-that may receive them, and `thinking-pool-status.json` gives each member
-`mayReceiveMedia`. The `thinking_pool_check` step *pictures and recordings*
-checks the gate with the production board. Each row has its model,
-`ThinkingPoolModel-<n>`: on a paired computer's card, the models its Thinking
-pool role offers (choosing one runs the role's change there with that model, in
-a run window, and the old model works until the new one is ready); for Ollama on
-this PC, the models Ollama has and Martlet recommends (never Thinking's own
-model); for another endpoint, a text box saved on Enter or when it loses focus
-(its rules move to the new member key). A paired computer's card sets its slots
-on that computer: its `ThinkingPoolSlots-<n>` runs the role's change there. A
-host with a Thinking pool model on each of several graphics cards has one row
-per card, each with its own On box: the extra cards' rows say *Runs on diva's
-graphics card 2, as a member of its own* and have
-`DeepThinkingShare-<host>-gpu<n>` (the shared-card warning, shown only when
-that card runs the host's Thinking model too). A card of a computer in the list
-that runs no Thinking pool model yet has a row of its own:
-`DeepThinkingCard-<host>-gpu<n>` (*diva, graphics card 2: No Thinking pool model
-on this card yet. ...*) and `DeepThinkingAddCard-<host>-gpu<n>` (*Add a model*,
-which installs the `deep-thinking-<n>` role). Endpoint rows also have
-`ThinkingPoolSlots-<n>` and `ThinkingPoolRemove-<n>`. *Add a machine*, at the
-end of the card, has three sections that open and close (passive):
-`Fold-ThinkingPoolAddComputer` (*Another of your computers*, which reads through
-`DeepThinkingAutoJoin`: computers with a Thinking model join by themselves, and
-which ones are kept out), `Fold-ThinkingPoolAddLocal` (*A model in Ollama on this
-PC*) and `Fold-ThinkingPoolAddCloud` (*A cloud provider or server*; a provider
-already in the list with its own key uses that key again unless you paste a new
-one). The conversation row's
-`ThinkingPoolUseConversationModel` box (thinking longer and research run on the
-conversation model when no member takes long jobs), the On boxes, the members'
-boxes, `ThinkingPoolModel-<n>`, `ThinkingPoolSlots-<n>`, `ThinkingPoolRemove-<n>`
-and a paired computer's `DeepThinkingPool-<host>` that isn't in the list (*In the
-pool*: ticking adds a computer kept out again) save `thinking-pool.json` or
-change a computer's role, so they need `--allow-ui-effects`.
+On the desktop, the page is **Companion › Background thinking**. It has
+three parts: *What it does*, *Where it runs* and one *Advanced* section
+(`Fold-ThinkingPoolAdvanced`, closed by default). The top reads through
+`DeepThinkingNow` and `DeepThinkingParallel`.
+
+*What it does* has three switches. `ThinkLongerOn` (*Think longer about hard
+questions*) and `WebResearchOn` (*Look things up on the web*, under it) save
+the reply settings. `ThinkingPoolBackup` (*Help when a reply is slow to
+start*) saves `thinking-pool.json`. When it is turned on and no machine is
+ticked to answer, every free machine that is on (not a paid cloud provider)
+may answer. The status lines are `ThinkLongerStatus`, `WebResearchStatus`,
+`WebResearchDisclosure` and `ThinkingPoolBackupStatus`.
+
+*Where it runs* is the pool, as one list. Each machine in the pool (one
+graphics card of a paired computer, a model in Ollama on this PC, or a cloud
+provider or server) has its box `ThinkingPoolOn-<n>` and its model
+`ThinkingPoolModel-<n>`. Unticked, a machine keeps its settings and takes no
+jobs, and a paired computer's card then never joins again by itself. The rows
+of machines that are on come first. Under each row are `ThinkingPoolBadges-<n>`
+(*Waits while you talk*, *Costs money*, *Offline*, *Limiting requests*; hidden
+when none applies), `ThinkingPoolCantRun-<n>` (*Can't run now: ...*, only
+then) and `DeepThinkingShare-<host>[-gpu<n>]` (the shared-card warning, only
+then). The model list is, on a paired computer's card, the models its Thinking
+pool role offers (choosing one runs the role's change there with that model,
+in a run window, and the old model works until the new one is ready). For
+Ollama on this PC, it is the models Ollama has and Martlet recommends (never
+Thinking's own model). For a cloud provider or server, it is an editable list
+of the model catalog's chat models there that call tools, free first and then
+the smartest; a typed ID saves on Enter or when the box loses focus (its rules
+move to the new member key). A cloud provider or server also has
+`ThinkingPoolRemove-<n>`.
+
+Then each machine that Martlet knows and that isn't in the pool has a row of
+its own: `ThinkingPoolJoin-<id>` (its box, unticked), `ThinkingPoolJoinModel-<id>`
+(the model to use) and `ThinkingPoolJoinDetail-<id>` (what it runs, or why it
+can't be ticked). The `<id>` is the host ID for a paired computer that isn't a
+member (`ThinkingPoolJoin-diva`), `<host>-gpu<n>` for a graphics card of a
+member computer without a Thinking pool model (`ThinkingPoolJoin-diva-gpu2`),
+and `this-pc` for Ollama on this PC while no member uses it. Ticking a paired
+computer or a card sets up the Thinking pool role there with the chosen model
+(a run window; a model that would share the card with the computer's Thinking
+model asks first with `DeepThinkingShareQuestion`). A computer whose role or
+Ollama already runs a model joins at once (another model for its role is set up
+first). Ticking `this-pc` adds the model in Ollama on this PC. A shared-card
+warning shows as `ThinkingPoolJoinShare-<id>`. `ThinkingPoolWarnings` gives
+the likely slowdowns. *Add a cloud provider* (`Fold-ThinkingPoolAddCloud`,
+open while the pool has no machine) has `DeepThinkingProvider`,
+`DeepThinkingBaseUrl` (for another server only), `DeepThinkingKey` with
+`DeepThinkingKeyStatus` (a provider already in the list with its own key uses
+that key again unless you paste a new one), `DeepThinkingModel` (an editable
+list of the catalog's models there), `DeepThinkingConsent` and
+`DeepThinkingSaveCloud` (*Add*). Below it is `DeepThinkingAddComputer` (*Pair
+another computer*, with no paired computer) or `DeepThinkingCheckHosts`.
+
+*Advanced* has, in order: *Thinking longer* (`ThinkLongerEffort`,
+`ThinkLongerDelivery`); *Each machine* (`ThinkingPoolSummary`: *The Thinking
+pool is off: no machine is on. ...* or *2 machines are on, with 3 usable slots
+in all.*; `ThinkingPoolConversation`, the conversation's own model, never in
+the pool, with its `ThinkingPoolUseConversationModel` box; then for each
+machine its line `ThinkingPoolMember-<n>`, its boxes `ThinkingPoolQuick-<n>`
+(*Quick jobs*: the judges and the screen and sound summaries),
+`ThinkingPoolLong-<n>` (*Long jobs*: thinking longer, research, lyrics and the
+other helpers), `ThinkingPoolAnswers-<n>` (*Backup for slow replies*) and,
+for an external member, `ThinkingPoolMedia-<n>`, its `ThinkingPoolSmarts-<n>`
+and its `ThinkingPoolSlots-<n>`; then `ThinkingPoolGuidance` and
+`ThinkingPoolLiveFloor`); *Runs on*; *Backup for slow replies*
+(`ThinkingPoolBackupDelay`); *Busy pool*; and *More ways to add a machine*
+(`Fold-ThinkingPoolAddLocal`, *Another model in Ollama on this PC*, with its fit
+check, and `Fold-ThinkingPoolAddComputer`, *Another of your computers*, which
+reads through `DeepThinkingAutoJoin`). A machine line `ThinkingPoolMember-<n>`
+reads *Reads text and pictures; writes text. 2 slots, set on diva.*, with
+*Can't run now*, *Offline now* or what a member that limits requests does, such
+as *NVIDIA is limiting requests; tries again in 40 s*. An external member (an
+endpoint not on this PC) gets no job with a screenshot or a recording without
+`ThinkingPoolMedia-<n>` (*May receive pictures and recordings*, off by
+default). `thinking_pool_status` shows each member's `external` and
+`mayReceiveMedia`, `canRun` counts only members that may receive them, and
+`thinking-pool-status.json` gives each member `mayReceiveMedia`. The
+`thinking_pool_check` step *pictures and recordings* checks the gate with the
+production board. The folds are passive. Every box, model list, slot choice,
+`ThinkingPoolRemove-<n>` and `ThinkingPoolJoin-<id>` saves
+`thinking-pool.json`, the reply settings or a computer's role, so they need
+`--allow-ui-effects`.
 
 Each member also has `ThinkingPoolSmarts-<n>`, its *Smarts* (`Guessed: Smart`
 first, then `Fast`, `Standard`, `Smart`). Martlet guesses it from the model
@@ -590,7 +611,7 @@ pool, for background work. ...* or that no Thinking pool model sees) and one
 gets your pictures for screen summaries, and touch zones, the character's eyes
 and check-ins with a screenshot. Requests there may cost money.*, or why it
 gets none: off, May receive pictures and recordings off, or no quick or long
-jobs). `Pool-vision-AlsoOpen` (*Open Thinking pool*) is passive. The same
+jobs). `Pool-vision-AlsoOpen` (*Open Background thinking*) is passive. The same
 model names show in `VisionScreenSummaryStatus`, `VisionDisclosure` and
 `ThinkingSenses`, from the saved settings, so they are right before a
 conversation runs.
@@ -1394,7 +1415,7 @@ route 45 s), `savedContextTokens` (Companion › Replies › Context
 size, null when blank), `modelLimit` (what `model-limits.json` says about the
 model: `ContextTokens`, `ModelMaximum`, `Source`, `checkedAt`) and
 `modelLimitsKept`, and `context` (the production `ContextBudget`: `Tokens`,
-`source` such as `Saved`, `Default`, `ModelLimit`, `HostDefault`, `Ollama` or
+`source` such as `Saved`, `Default`, `ModelLimit`, `HostDefault`, `Planned`, `Ollama` or
 `OllamaAssumed`, `ReplyTokens`, `InputTokens`, `ModelTokens` and `described`,
 the words the Replies page shows), and `look` (how much room a screen glance
 or camera look has: `personaTokens` and `pictureTokens` estimated as the
@@ -1404,6 +1425,19 @@ older host takes 16 KiB),
 `leavesOut` (what a look goes without when it doesn't fit, in order) and a
 `problem` when the picture and the persona alone don't fit, so vision stops;
 see [When a look is too long for Thinking](../SCREEN_COMMENTARY.md#when-a-look-is-too-long-for-thinking)).
+Its `hostWindow` shows a paired host's conversation window
+([ContextWindowPlan](../RESOURCE_FOOTPRINTS.md)): `saved` (for a Thinking route
+on a host: `plannedTokens` and `planned`, the window planned from its graphics
+card in `model-limits.json`; `loadedTokens`, the window its Ollama has loaded
+now from `model-memory.json`; `windowTokens`, `inputTokensPerReply` and
+`source`), `before` (the old 8,192-token window: `inputTokensPerReply` 6,144,
+`ReplyTokens` 4,096, `exchangesSent`, `estimatedTokens` and
+`textAndReplyFit` false, because 6,144 + 4,096 is more than 8,192) and
+`cards`, the production plan and budget on fixture cards (NOT real hardware):
+Gemma 4 12B on an RTX 3090 (32,768 tokens), on an RTX 3080 (8,192) and Gemma 4
+E4B beside a 4 GB voice on an RTX 3060 (32,768), each with `Why`, `extraGb`,
+`textAndReplyFit` and the same `inputTokensPerReply`, `exchangesSent` and
+`estimatedTokens` as `before`, so a bigger window never makes a reply send more.
 Its `probe` rehearses the production model
 limit check against fixture servers on 127.0.0.1 shaped like OpenRouter (the
 smaller of `context_length` and the top provider's), vLLM, Groq and llama.cpp
@@ -1435,10 +1469,13 @@ tokens, M of them (P %) from the model's prompt cache.* lines
 glances and *Remembering*/*Learning names*) and in the `help` (tooltip) of the talk
 window's `LiveContext`. On Companion › Replies,
 `RepliesContextStatus` reads the size in use and where it comes from and what
-Martlet knows of the model's own limit; `RepliesMaxReplyTokensRange` and
+Martlet knows of the model's own limit (for a paired host: the window planned
+from its graphics card, the window its Ollama has loaded now and how much each
+reply sends); `RepliesMaxReplyTokensRange` and
 `RepliesContextTokensRange` read each setting's allowed range and blank value as
 the page shows them for the Thinking route (*16-32768 tokens, blank = 4096*, and
-*2048-262144 tokens on a host, blank = 8192* for a paired host); `RepliesCheckContext` (*Check model
+*2048-262144 tokens on a host, blank = the window planned from its graphics card
+(8,192-32,768), each reply sending about 6,144* for a paired host); `RepliesCheckContext` (*Check model
 limit*) asks the Thinking model's server (loading the model in Ollama on this
 PC first), so it needs `--allow-ui-effects`. Choosing a Chat Completions model
 on Companion › Thinking checks it the same way, and *Test model* and the talk

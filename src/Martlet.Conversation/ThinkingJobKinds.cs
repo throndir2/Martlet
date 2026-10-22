@@ -67,7 +67,7 @@ public sealed record HelperJobKindRow(HelperJobKind Kind, string Key, ThinkingPr
 
 /// <summary>Everything about one <see cref="ThinkingJobKind"/>. <paramref name="Key"/> is its saved key: thinking-pool.json's Runs
 /// on choices, status files, logs and automation IDs (ThinkingPoolRunsOn-&lt;key&gt;) use it, so it never changes without a
-/// migration. <paramref name="Label"/> names all the work the kind controls (Companion › Thinking pool › Runs on);
+/// migration. <paramref name="Label"/> names all the work the kind controls (Companion › Background thinking › Advanced › Runs on);
 /// <paramref name="TypeName"/> is its short name on the Thinking requests page. <paramref name="Fast"/> kinds (the judges and the
 /// summaries) may take the last free slot of the pool. <paramref name="Needs"/> is the most its jobs ask of a member: each job asks
 /// for text, plus vision with a picture, audio with a recording and tools with tool calls. <paramref name="Helpers"/> are the

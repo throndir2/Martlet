@@ -261,7 +261,7 @@ public partial class MainWindow
                     changed = !c.Custom && checkInSettings.Choice(c.Id) is { } choice && choice != new CheckInChoice(choice.On, choice.EveryMinutes),
                     needs = c.Needs.ToString(), jobKind = ThinkingJobKinds.Name(c.JobKind),
                     canRun = member is not null && conversation!.ThinkingPool.CanRun(c.JobKind, c.Needs, c.RunsOn),
-                    // Its own Runs on (null: the check-in kind's, on Companion › Thinking pool) and the member it would go to first.
+                    // Its own Runs on (null: the check-in kind's, on Companion › Background thinking) and the member it would go to first.
                     runsOn = c.RunsOn is { } where ? new { mode = where.Name, members = where.Members } : null,
                     firstMember = member is null ? null : conversation!.ThinkingPool.Find(c.JobKind, c.Needs, c.RunsOn)?.Name,
                     screenshot = c.Screenshot, recording = c.Recording.ToString(),

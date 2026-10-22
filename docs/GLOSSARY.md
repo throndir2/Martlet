@@ -97,7 +97,7 @@ in `helper-jobs.json` (an older Martlet wrote `action_naming`). On the Thinking
 pool, each helper job runs as one job kind. All keys in this table are kept
 names.
 
-| Job kind | Key | Label on Companion › Thinking pool › Runs on | Priority | Quick or long | Helper jobs that run as this kind (key) |
+| Job kind | Key | Label on Companion › Background thinking › Advanced › Runs on | Priority | Quick or long | Helper jobs that run as this kind (key) |
 | --- | --- | --- | --- | --- | --- |
 | `BargeInJudge` | `barge-in-judge` | Did you interrupt (judge) | 70 | quick | |
 | `EndOfTurnJudge` | `end-of-turn-judge` | Are you done talking (judge) | 60 | quick | |
@@ -138,8 +138,12 @@ see [Thinking job kinds](DECISION_MAP.md#thinking-job-kinds-keys-labels-and-prio
 | One job that a member runs at the same time as others | slot | slot | |
 
 `DeepThinking` in code (`DeepThinkingSettings`, `MainWindow.DeepThinking.cs`,
-`CompanionTab.DeepThinking`) is the old name of the Thinking pool. Its UI name
-is *Thinking pool*. The desktop class that holds the pool's job board is
+`CompanionTab.DeepThinking`) is the old name of the Thinking pool. The page's
+UI name is *Background thinking* (`ThinkingPoolPage`): it says what Martlet
+does in the background (thinking longer, web research, help when a reply is
+slow) and where it runs. *Thinking pool* is the UI name of the machines it runs
+on, the list *Where it runs*. Do not use *Thinking pool* as the page's name,
+and do not use *Deep thinking* in UI text. The desktop class that holds the pool's job board is
 `DesktopThinkingPool` (`src\Martlet.Desktop\DesktopThinkingPool.cs`). Its name
 is different from the domain file `src\Martlet.Conversation\ThinkingPool.cs`,
 which has the pool's rules (`ThinkingJobBoard`).

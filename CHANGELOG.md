@@ -14,6 +14,15 @@ Each release's section here is also its notes on GitHub.
 - The director: when you say something, a Thinking pool member does the work behind it while Martlet answers, with every tool and the skills it needs, and tells Martlet what it found. Martlet's reply has almost no tools now, so it starts sooner and small models get far less to read. It replaces Act on what was said, and keeps your on or off. ([#PR2](https://github.com/throndir2/Martlet/pull/PR2))
 - Pages Martlet looks up on the web stay in a *Looked up on the web* guide, so it can find them later without the web. ([#PR2](https://github.com/throndir2/Martlet/pull/PR2))
 
+### Changed
+
+- On a paired host, Thinking's model now loads a larger context window when its graphics card has room (up to 32,768 tokens, planned from the card's free memory), so a long reply, hidden thinking or a picture no longer pushes your character's persona and rules out of the model's memory. Each reply still sends the same amount of text, so replies start as soon as before. Recommended setup and Companion › Replies show the window planned for the card and the window loaded now, and Recommended setup now says why each language model and the voice get a card of their own. ([#1133](https://github.com/throndir2/Martlet/pull/1133))
+- The Thinking pool page is now **Background thinking** and is much simpler: three switches say what Martlet does in the background (think longer, look things up, help when a reply is slow), and one list of your computers, graphics cards, this PC and cloud providers has a box and a model picker for each. Adding a cloud provider is just provider, key and model from a list. Everything else is in one closed **Advanced** section. ([#1132](https://github.com/throndir2/Martlet/pull/1132))
+
+### Fixed
+
+- Thinking pool jobs, Backup thinking and the hearing test on a host's conversation model no longer make its Ollama load the model again with another context window, which delayed the next reply by seconds. ([#1133](https://github.com/throndir2/Martlet/pull/1133))
+
 ## [0.91.0] - 2026-10-21
 
 ### Added

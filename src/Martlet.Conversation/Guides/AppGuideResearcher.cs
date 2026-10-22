@@ -81,7 +81,7 @@ public sealed class AppGuideResearcher : IDisposable
     {
         if (!guides.On) return "app guides are off";
         if (guides.Library.Apps.FirstOrDefault(a => a.Key == key) is not { BuiltAt: not null }) return "there's no guide about it yet";
-        if (!thinker.CanThink) return "no Thinking pool member can take research now (Companion › Deep thinking › Thinking pool)";
+        if (!thinker.CanThink) return "no Thinking pool member can take research now (Companion › Background thinking › Where it runs)";
         return null;
     }
 

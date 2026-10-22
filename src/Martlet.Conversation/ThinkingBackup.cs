@@ -5,7 +5,7 @@ using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
-/// <summary>Backup Thinking for one reply (Companion › Thinking pool › Backup Thinking; docs/CONVERSATION.md): when the reply's
+/// <summary>Backup Thinking for one reply (Companion › Background thinking › Backup Thinking; docs/CONVERSATION.md): when the reply's
 /// first Thinking request has no first words <see cref="Delay"/> after it started, the same request also goes to a Thinking pool
 /// member the owner allowed to answer for the conversation. Whichever stream has words first gives the reply, and the other is
 /// stopped at once. This is a hedged request (Dean and Barroso, "The Tail at Scale", Communications of the ACM 56(2), 2013).

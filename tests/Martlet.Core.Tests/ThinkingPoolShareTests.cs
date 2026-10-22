@@ -217,7 +217,7 @@ public sealed class ThinkingPoolShareTests : IDisposable
         await imouto.Node.SyncAsync([], true, Start, CancellationToken.None);
         await lumine.Node.SyncAsync([imouto.Node.Document], true, Start, CancellationToken.None);
 
-        // On IMOUTO the owner adds two NVIDIA Build models with one key, as Companion › Thinking pool does.
+        // On IMOUTO the owner adds two NVIDIA Build models with one key, as Companion › Background thinking does.
         var id = Guid.NewGuid();
         using (var lease = new SecretLease(NvidiaKey)) imouto.Vault.Write(Endpoint(Nvidia, "x").Binding(profile, id), lease);
         Assert.True(new ThinkingPoolSettings { Members = [Endpoint(Nvidia, "nvidia/nemotron-ultra", id), Endpoint(Nvidia, "meta/llama-4", id)] }

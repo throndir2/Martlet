@@ -942,11 +942,11 @@ check. With `live: true` it also asks Ollama on this PC (the saved local Thinkin
 model, or `model`) two made-up turns with the saved persona: `live.turns`
 (`outcome`, `reply`, `ms`). Loopback only; reads no credentials.
 
-On the Companion › Thinking pool page, each machine's `ThinkingPoolOn-<n>` box
-(*diva's Thinking pool (qwen3:8b): On*, ticked or not) and each paired computer's
-`DeepThinkingPool-<host>` box that isn't in the list (*diva in the Thinking
-pool*) read; changing one saves `thinking-pool.json`, so it needs
-`--allow-ui-effects`.
+On the Companion › Background thinking page, each machine's `ThinkingPoolOn-<n>` box
+(*diva's Thinking pool (qwen3:8b): On*, ticked or not) and each machine that
+isn't in the pool yet, `ThinkingPoolJoin-<id>` (*diva: use for background
+thinking*, unticked), read; changing one saves `thinking-pool.json` or sets up
+the Thinking pool role, so it needs `--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](../CONVERSATION.md#reminders)
 from the `shared-settings.json` of the account signed in on a data directory

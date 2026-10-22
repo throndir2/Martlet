@@ -144,7 +144,7 @@ helper jobs in [MEMORY.md](MEMORY.md).
 ## Thinking job kinds: keys, labels and priorities
 
 **What it decides:** the job kinds of the Thinking pool, the key of each kind
-in saved files and logs, its label on Companion › Thinking pool, its priority,
+in saved files and logs, its label on Companion › Background thinking, its priority,
 whether it is quick, what it needs, what the live floor does to it, and which
 helper jobs run as which kind.
 
@@ -152,7 +152,7 @@ helper jobs run as which kind.
 (`src\Martlet.Conversation\ThinkingJobKinds.cs`), with the enums
 `ThinkingJobKind`, `ThinkingPriority` and `HelperJobKind`. These read it:
 `ThinkingJobKinds.Name`, `Priority` and `IsFast`; `LiveFloorRules.Stops` and
-`ServesTheTurn`; the Runs on card (`RunsOnCard`,
+`ServesTheTurn`; Runs on under Advanced (`RunsOnSection`,
 `src\Martlet.Desktop\Pages\ThinkingPool\ThinkingPoolPage.BusyPool.cs`);
 `ThinkingRequestWords.Kind`; `HelperJobs.Name` and `PriorityOf`; and
 `ThinkingPoolHelpers.Kind` and `Priority`. To add a kind, add its enum value
@@ -437,6 +437,29 @@ jobs; `ResearchWatcher` (`src\Martlet.Conversation\Research\ResearchWatcher.cs`)
 
 **Docs:** [Answer, look up or research](CONVERSATION.md#answer-look-up-or-research),
 [Deep research](DEEP_RESEARCH.md#levels-the-watcher-and-the-source-check).
+
+## The context window a host's conversation model loads
+
+**What it decides:** how many tokens of context (Ollama's `num_ctx`) a paired
+host's conversation model loads, the same for every request this PC sends it,
+and how much text each reply sends inside it.
+
+**Owner:** `ContextWindowPlan` (`src\Martlet.Core\Planning`) for the window that
+fits a card (32,768, 16,384 or 8,192 tokens with 1.0 GB of headroom);
+`HostContextWindow` (`src\Martlet.Desktop`) for which card the route runs on,
+what else is on it, the saved size and the window sent (`HostTextClient` and
+the hearing test); `ContextBudget.For` (`src\Martlet.Core\Settings`) for what a
+reply sends (`PlannedInputTokens` without a saved size). The relay's window for
+a request without one is `OllamaRelayWorker` (the last window it loaded).
+
+**Shows it:** Companion › Replies (`RepliesContextStatus`), Recommended setup's
+notes (`RecommendedSetupNote-<n>`), the desktop log (*Context window of ... on
+the paired host: ...*).
+
+**MCP:** `context_check` (`hostWindow`), `network_recommendation_check` (`ctx`).
+
+**Docs:** [Resource footprints](RESOURCE_FOOTPRINTS.md),
+[Context size](CONVERSATION.md).
 
 ## Which host runs an OpenAI-compatible request, and how it ranks
 

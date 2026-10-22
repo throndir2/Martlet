@@ -127,7 +127,7 @@ Right-click her and open **Eyes**, or use **Companion › Eyes › Where the cha
 
 While vision watches your screen (**Companion › Vision › Glances at your screen**), Martlet can also decide where she looks. Until vision watches, she keeps her usual gaze.
 
-**Measure the face** on **Companion › Eyes** takes a picture of the character and asks a model that can see pictures where her eyes and cheeks are, so emotes and the blush sit in the right places. It needs a vision-capable model in **Companion › Thinking** or **Companion › Thinking pool**. **Forget** drops the measurement, and the eyes and blush use the model's own data or an estimate again.
+**Measure the face** on **Companion › Eyes** takes a picture of the character and asks a model that can see pictures where her eyes and cheeks are, so emotes and the blush sit in the right places. It needs a vision-capable model in **Companion › Thinking** or **Companion › Background thinking**. **Forget** drops the measurement, and the eyes and blush use the model's own data or an estimate again.
 
 ## Touch zones
 

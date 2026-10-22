@@ -25,7 +25,7 @@ public sealed record CheckInChoice(bool On, int EveryMinutes)
     /// <summary>The tool sets it may call (<see cref="CheckInToolSets"/> IDs); null: the built-in default. Compared by value.</summary>
     public IReadOnlyList<string>? ToolSets { get => toolSets; init => toolSets = value is null ? null : new(value); }
     private readonly CheckInToolSetIds? toolSets;
-    /// <summary>Where it runs in the Thinking pool (Runs on); null: as the check-in kind runs (Companion › Thinking pool).</summary>
+    /// <summary>Where it runs in the Thinking pool (Runs on); null: as the check-in kind runs (Companion › Background thinking).</summary>
     public ThinkingRunsOn? RunsOn { get; init; }
 }
 
@@ -68,7 +68,7 @@ public sealed record CustomCheckIn
     /// <summary>The tool sets it may call (<see cref="CheckInToolSets"/> IDs); empty: none. Compared by value.</summary>
     public IReadOnlyList<string> ToolSets { get => toolSets; init => toolSets = value is null ? CheckInToolSetIds.Empty : new(value); }
     private readonly CheckInToolSetIds toolSets = CheckInToolSetIds.Empty;
-    /// <summary>Where it runs in the Thinking pool (Runs on); null: as the check-in kind runs (Companion › Thinking pool).</summary>
+    /// <summary>Where it runs in the Thinking pool (Runs on); null: as the check-in kind runs (Companion › Background thinking).</summary>
     public ThinkingRunsOn? RunsOn { get; init; }
 }
 
