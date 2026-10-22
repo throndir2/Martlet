@@ -71,6 +71,15 @@ public static class PlanningCatalog
             ChatCompletionsEndpointCatalog.ById(providerId)?.DefaultModelId;
     }
 
+    /// <summary>The chat models on <paramref name="providerOrBaseUrl"/> that call tools, free first, then the smartest
+    /// (<see cref="CatalogOptions.ChatModels"/>); empty when the catalog isn't loaded or doesn't know the provider.</summary>
+    public static IReadOnlyList<string> ChatModels(string providerOrBaseUrl)
+    {
+        var held = current;
+        return held.Options.Models is { } models && ModelCatalog.ProviderOf(providerOrBaseUrl) is { } provider
+            ? CatalogOptions.ChatModels(models, provider, held.Tested) : [];
+    }
+
     /// <summary>Plans with Martlet's own list again (tests).</summary>
     public static void Reset() => current = new(FootprintCatalog.Default, null, [], "");
 

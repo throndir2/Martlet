@@ -5,14 +5,14 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
-/// <summary>How smart a Thinking pool member's model is (Companion › Thinking pool): <see cref="Fast"/> (a small model, about 4B
+/// <summary>How smart a Thinking pool member's model is (Companion › Background thinking): <see cref="Fast"/> (a small model, about 4B
 /// parameters or less), <see cref="Standard"/> or <see cref="Smart"/> (a large model, about 26B or more, or a big cloud model).
 /// Martlet guesses it from the model name (<see cref="ThinkingSmartsGuess"/>); the owner can change it for each member
 /// (<see cref="ThinkingPoolSettings.Smarts"/>). A job's <see cref="ThinkingRunsOn"/> uses it.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ThinkingSmarts>))]
 public enum ThinkingSmarts { Fast = 0, Standard = 1, Smart = 2 }
 
-/// <summary>Where a kind of Thinking pool job runs (Companion › Thinking pool, Runs on; and on each check-in card):
+/// <summary>Where a kind of Thinking pool job runs (Companion › Background thinking, Runs on; and on each check-in card):
 /// <see cref="Any"/> (any member that takes it, the one that shares least with the conversation first),
 /// <see cref="PreferSmart"/> (the smartest free member; when none of the smartest comes free within a short wait, a less smart
 /// one), <see cref="SmartOnly"/> (only <see cref="ThinkingSmarts.Smart"/> members; without one the job gets "no member" and its

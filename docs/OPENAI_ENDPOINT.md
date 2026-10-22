@@ -92,7 +92,7 @@ with a free slot now comes first.
   decides: at most 4.5 billion is Fast, 26 billion or more is Smart. A name
   without a count uses the model family. For example, `gemma4:e4b` is Fast,
   `qwen3:8b` is Standard and `gemma4:27b` is Smart. A rating that you choose
-  on the Thinking pool page doesn't change these names, because the hosts
+  on the Background thinking page doesn't change these names, because the hosts
   use only the model name.
 - `GET /v1/models` lists a name (first) only when at least one model of your
   network fits it. Its entry has `martlet_models`, the real models it can run

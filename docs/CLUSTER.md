@@ -73,7 +73,7 @@ are the exception: they are always shared, so Martlet learns everyone's voice
 - The plan holds no secrets or conversation data: host IDs, HTTPS origins,
   model names, flags and stamps only. JSON, snake case, schema 1, at most
   16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.- **Background work across computers** is the speaking computer's own choice,
-  not a job in the plan. Companion › Thinking pool may think on several paired
+  not a job in the plan. Companion › Background thinking may think on several paired
   computers at once (each one with a Thinking model joins by itself: its
   Thinking pool role, or its Ollama when that doesn't do this PC's Thinking;
   unticking *In the Thinking pool* keeps one out; `thinking-pool.json` on that
@@ -254,7 +254,7 @@ the job is left out; a computer kept for one companion PC keeps that. A list
 another computer already shared is kept. A list with nothing in it is not
 made, so a new computer never shares an empty list over another computer's
 choices. Deep thinking keeps its own places
-(Companion › Thinking pool), and its *Use* and *Keep a computer for one
+(Companion › Background thinking), and its *Use* and *Keep a computer for one
 companion PC* choices stay on Devices › Sharing work.
 
 For the four computers in the example (machines 1 and 3 companions with
@@ -413,7 +413,7 @@ own:
   needs at least that many NVIDIA cards (`min_gpus`), and `martlet-host`
   pins it to a card that no other Thinking model uses (`CUDA_VISIBLE_DEVICES`).
   Martlet offers *Thinking pool (card 2)* only on a host that reports two or
-  more NVIDIA cards. On Companion › Thinking pool, the host's first row has
+  more NVIDIA cards. On Companion › Background thinking, the host's first row has
   *Add a model on card 2*.
 - The host's gateway gives each card's route its own slots, its cards (`gpus`)
   and the `pool` lane. A live turn stops pool work only on the card it uses.
@@ -570,8 +570,8 @@ NVIDIA Build and its old key.
 | --- | --- | --- |
 | `thinking`, `listening`, `speaking` | The route a job uses when no paired host does it: provider (OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, Ollama on the computer itself, Windows speech, Parakeet), model, voice and **the API key** | Host routes and pairings (the plan above); a local whisper package |
 | `thinking-fallback` | The *If Thinking fails* endpoint, model and its own key (or none) | |
-| `thinking-pool` | Companion › Thinking pool's cloud providers and servers on your network (for example NVIDIA Build or OpenRouter models): each one's address, model, order, on or off, slots, Quick jobs, Long jobs, pictures and recordings, Backup for slow replies, Smarts and **its API key** (the distinct keys travel together as one secret). A key this PC already holds for the same address is used again; a member removed elsewhere is removed here with its key | Paired computers in the pool (each PC's own pairing; they join by themselves) and models in Ollama on this PC; Runs on |
-| `thinking-pool-choices` | Companion › Thinking pool's pool-wide choices: Backup for slow replies (Backup Thinking) and its wait, Busy pool (higher priority first, more important after stops, tries again) and Use the conversation's model when the pool is empty. It is a separate setting, so a choice changed on one PC never replaces the cloud models of another | Runs on (it can name this PC's own models) and the machines' own boxes |
+| `thinking-pool` | Companion › Background thinking's cloud providers and servers on your network (for example NVIDIA Build or OpenRouter models): each one's address, model, order, on or off, slots, Quick jobs, Long jobs, pictures and recordings, Backup for slow replies, Smarts and **its API key** (the distinct keys travel together as one secret). A key this PC already holds for the same address is used again; a member removed elsewhere is removed here with its key | Paired computers in the pool (each PC's own pairing; they join by themselves) and models in Ollama on this PC; Runs on |
+| `thinking-pool-choices` | Companion › Background thinking's pool-wide choices: Backup for slow replies (Backup Thinking) and its wait, Busy pool (higher priority first, more important after stops, tries again) and Use the conversation's model when the pool is empty. It is a separate setting, so a choice changed on one PC never replaces the cloud models of another | Runs on (it can name this PC's own models) and the machines' own boxes |
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
 | `memory-brief` | The [memory brief](MEMORY.md#the-memory-brief) (`memory-brief.json`): its text, on or off, whether Martlet or the owner wrote it and the facts it was written from, so every computer sends the same one and none writes it again for facts that didn't change | |

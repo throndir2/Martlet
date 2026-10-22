@@ -98,9 +98,9 @@ internal sealed class TouchZonesPageModel
                 (true, $"Your image model, {decision.Name} (Companion › Vision), finds the zones: pictures go to it, not to the Thinking model.", null),
             SenseTaker.ThinkingModel => (true, advice, null),
             _ => (false, advice, thinking is null
-                ? "Detect zones is off: no model that can see pictures is set up; set up a vision-capable model in Companion › Thinking or Companion › Thinking pool."
+                ? "Detect zones is off: no model that can see pictures is set up; set up a vision-capable model in Companion › Thinking or Companion › Background thinking."
                 : "Detect zones is off: the Thinking model is text-only and no Thinking pool member can see pictures; " +
-                  "choose a vision-capable model in Companion › Thinking or Companion › Thinking pool.")
+                  "choose a vision-capable model in Companion › Thinking or Companion › Background thinking.")
         };
     }
 }

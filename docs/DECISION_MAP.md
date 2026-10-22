@@ -144,7 +144,7 @@ helper jobs in [MEMORY.md](MEMORY.md).
 ## Thinking job kinds: keys, labels and priorities
 
 **What it decides:** the job kinds of the Thinking pool, the key of each kind
-in saved files and logs, its label on Companion › Thinking pool, its priority,
+in saved files and logs, its label on Companion › Background thinking, its priority,
 whether it is quick, what it needs, what the live floor does to it, and which
 helper jobs run as which kind.
 
@@ -152,7 +152,7 @@ helper jobs run as which kind.
 (`src\Martlet.Conversation\ThinkingJobKinds.cs`), with the enums
 `ThinkingJobKind`, `ThinkingPriority` and `HelperJobKind`. These read it:
 `ThinkingJobKinds.Name`, `Priority` and `IsFast`; `LiveFloorRules.Stops` and
-`ServesTheTurn`; the Runs on card (`RunsOnCard`,
+`ServesTheTurn`; Runs on under Advanced (`RunsOnSection`,
 `src\Martlet.Desktop\Pages\ThinkingPool\ThinkingPoolPage.BusyPool.cs`);
 `ThinkingRequestWords.Kind`; `HelperJobs.Name` and `PriorityOf`; and
 `ThinkingPoolHelpers.Kind` and `Priority`. To add a kind, add its enum value

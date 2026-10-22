@@ -7,7 +7,7 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-// Backup Thinking (Companion › Thinking pool › Backup Thinking; docs/CONVERSATION.md): a reply to the user whose Thinking request
+// Backup Thinking (Companion › Background thinking › Backup Thinking; docs/CONVERSATION.md): a reply to the user whose Thinking request
 // has no first words after a delay also asks a pool member the owner allowed to answer for the conversation, and the stream with
 // words first gives the reply (ConversationTurn's race). The member is chosen when the delay passes
 // (ThinkingBackupMembers.Choose). While its stream is read it is live work: its computer joins the live floor's resources (pool
@@ -26,7 +26,7 @@ internal sealed partial class LiveConversationController
     /// <summary>How fast the conversation's Thinking model began its recent replies (Backup Thinking's automatic delay).</summary>
     internal FirstWordTimes FirstWords => firstWords;
 
-    /// <summary>Backup Thinking's delay now: the fixed one chosen on Companion › Thinking pool, else the automatic one.</summary>
+    /// <summary>Backup Thinking's delay now: the fixed one chosen on Companion › Background thinking, else the automatic one.</summary>
     internal TimeSpan BackupDelay => firstWords.DelayFor(Volatile.Read(ref thinkingPool).BackupDelayMs);
 
     /// <summary>The Thinking pool settings the conversation uses now (thinking-pool.json); tests set them directly.</summary>
@@ -217,7 +217,7 @@ internal sealed partial class LiveConversationController
         firstWords.Add(first - asked);
     }
 
-    /// <summary>Companion › Thinking pool's Backup Thinking line (MCP reads it as ThinkingPoolBackupStatus).</summary>
+    /// <summary>Companion › Background thinking's Backup Thinking line (MCP reads it as ThinkingPoolBackupStatus).</summary>
     internal static string BackupLine(ThinkingPoolSettings pool, IReadOnlyList<string> answering, TimeSpan? automatic, int replies)
     {
         if (!pool.BackupThinking) return "Off: each reply waits for the conversation's own Thinking model.";

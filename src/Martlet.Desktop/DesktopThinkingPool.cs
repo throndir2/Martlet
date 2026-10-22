@@ -8,7 +8,7 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 /// <summary>The Thinking pool in the desktop: the job board (<see cref="ThinkingJobBoard"/>) over the pool's members
-/// (Companion › Thinking pool, thinking-pool.json), sharing its slots with the conversation's background jobs (think_longer and
+/// (Companion › Background thinking, thinking-pool.json), sharing its slots with the conversation's background jobs (think_longer and
 /// research). Get it from <see cref="LiveConversationController.ThinkingPool"/>. Post a job with <see cref="RunAsync"/>; ask
 /// <see cref="CanRun"/> first to choose a fallback without posting. Pool jobs never use the conversation's own Thinking route.
 /// The pool's rules are in Martlet.Conversation's ThinkingPool.cs (docs/DECISION_MAP.md, Thinking pool job routing).</summary>
@@ -53,16 +53,16 @@ internal sealed partial class LiveConversationController
     /// <summary>The Thinking pool: post background model jobs here (<see cref="DesktopThinkingPool.RunAsync"/>).</summary>
     internal DesktopThinkingPool ThinkingPool => pool ??= NewThinkingPool();
 
-    /// <summary>What the pool does now, or null before any job or status made it (Companion › Thinking pool's Busy pool line).</summary>
+    /// <summary>What the pool does now, or null before any job or status made it (Companion › Background thinking's Busy pool line).</summary>
     internal ThinkingPoolStatus? PoolStatusNow() => Volatile.Read(ref pool)?.Status();
 
     private DesktopThinkingPool NewThinkingPool()
     {
         var board = new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock)
         {
-            // Companion › Thinking pool's priority and retry choices, read on each job and each try.
+            // Companion › Background thinking's priority and retry choices, read on each job and each try.
             Policy = () => ThinkingPoolPolicy.From(Volatile.Read(ref thinkingPool)),
-            // Runs on, by kind (Companion › Thinking pool), read on each job.
+            // Runs on, by kind (Companion › Background thinking), read on each job.
             RunsOn = kind => Volatile.Read(ref thinkingPool).RunsOn(ThinkingJobKinds.Name(kind))
         };
         board.Rested += PoolMemberRested;
@@ -111,7 +111,7 @@ internal sealed partial class LiveConversationController
     }
 
     /// <summary>What a think, a research job or a song's lyrics may run on, as Runs on for <paramref name="kind"/> says
-    /// (Companion › Thinking pool): the places it may use, whether its work takes the smartest free one first (Prefer smart) and,
+    /// (Companion › Background thinking): the places it may use, whether its work takes the smartest free one first (Prefer smart) and,
     /// when no member may take it, why.</summary>
     private (IReadOnlyList<BackgroundPlace> Places, bool SmartFirst, string? Why) LongRunsOn(IReadOnlyList<BackgroundPlace> places, ThinkingJobKind kind)
     {
@@ -404,7 +404,7 @@ internal sealed partial class LiveConversationController
                 tools = m.Can.HasFlag(ThinkingCapability.Tools),
                 // Whether its computer answers now (HostPresence), and since when it doesn't.
                 online = m.Online, offlineSince = HostOf(m.Id) is { } host ? HostPresence.OfflineSince(host) : null,
-                // The owner's Quick jobs and Long jobs boxes on Companion › Thinking pool.
+                // The owner's Quick jobs and Long jobs boxes on Companion › Background thinking.
                 quickJobs = settings.TakesQuickJobs(m.Id), longJobs = settings.TakesLongJobs(m.Id),
                 // Whether it may receive pictures and recordings (an external member only when the owner ticked it).
                 mayReceiveMedia = m.Media,
@@ -429,7 +429,7 @@ internal sealed partial class LiveConversationController
             // The live floor: its level, jobs waiting only for the conversation (held), and jobs it stopped this turn and in all.
             floor = status.Floor, waitingForConversation = status.Held, stoppedThisTurn = status.StoppedNow, stopped = status.Stopped,
             sharesLive = status.SharesLive,
-            // The line's rules (Companion › Thinking pool) and, since the pool started, jobs stopped for higher-priority work,
+            // The line's rules (Companion › Background thinking) and, since the pool started, jobs stopped for higher-priority work,
             // priority raises after stops and retries after a failure.
             priority = new
             {

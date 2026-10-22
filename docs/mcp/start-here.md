@@ -299,7 +299,7 @@ observe them:
   file path with `[path]` in the text it returns (`AutomationPolicy.Redact`).
 - **One line for each ID:** write each entry as
   `new("<ID>", "<page>", "<what it does or shows>")`, for example
-  `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Thinking pool.")`.
+  `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Background thinking.")`.
   Say why it is safe ("saves nothing", "never the key"). Name controls that you
   leave out on purpose in a comment line next to it
   (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
