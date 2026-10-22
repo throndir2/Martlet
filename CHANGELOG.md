@@ -11,8 +11,8 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Companion › Skills: instructions Martlet uses only when it needs them. A reply gets the rules for its tools only while it has those tools, and you can pin skills every reply must follow or add your own. The tools, thinking longer, web research, singing and app guide prompts are skills now, and your edits to them move along. ([#1131](https://github.com/throndir2/Martlet/pull/1131))
-- The director: when you say something, a Thinking pool member does the work behind it while Martlet answers, with every tool and the skills it needs, and tells Martlet what it found. Martlet's reply has almost no tools now, so it starts sooner and small models get far less to read. It replaces Act on what was said, and keeps your on or off. ([#PR2](https://github.com/throndir2/Martlet/pull/PR2))
-- Pages Martlet looks up on the web stay in a *Looked up on the web* guide, so it can find them later without the web. ([#PR2](https://github.com/throndir2/Martlet/pull/PR2))
+- The director: when you say something, a Thinking pool member does the work behind it while Martlet answers, with every tool and the skills it needs, and tells Martlet what it found. Martlet's reply has almost no tools now, so it starts sooner and small models get far less to read. It replaces Act on what was said, and keeps your on or off. ([#1135](https://github.com/throndir2/Martlet/pull/1135))
+- Pages Martlet looks up on the web stay in a *Looked up on the web* guide, so it can find them later without the web. ([#1135](https://github.com/throndir2/Martlet/pull/1135))
 
 ### Changed
 
