@@ -9,11 +9,10 @@ public sealed class PromptBudgetTests
 {
     // Every prompt a spoken reply can carry at once, with every feature on (tools, research, guides, singing, voice tags, the
     // character, always listening, PC sound, a picture, adult content, chattiness, memory and lore), without the persona's
-    // own text and the tag lists.
+    // own text and the tag lists. (Things done after the reply is left out: a reply offered every tool has none handed off.)
     private static readonly string[] EverythingOnReply =
     [
-        PromptCatalog.Persona, PromptCatalog.Tools, PromptCatalog.ThinkLonger, PromptCatalog.HandedOffTools, PromptCatalog.WebResearch,
-        PromptCatalog.AppGuides, PromptCatalog.Singing, PromptCatalog.VoiceTags, PromptCatalog.CharacterActions,
+        PromptCatalog.Persona, PromptCatalog.VoiceTags, PromptCatalog.CharacterActions,
         PromptCatalog.CharacterGaze, PromptCatalog.Listening, PromptCatalog.PcAudio, PromptCatalog.Moment, PromptCatalog.AdultContent,
         PromptCatalog.ChattinessDecides, PromptCatalog.SeenWithMessage, PromptCatalog.SeenTag, PromptCatalog.PersonalPrivate,
         PromptCatalog.Notes, PromptCatalog.Voices, PromptCatalog.MemoryRecall, PromptCatalog.MemoryPeople, PromptCatalog.MemoryBrief,
@@ -31,8 +30,17 @@ public sealed class PromptBudgetTests
     [Fact]
     public void AReplyWithEveryFeatureOnCarriesAtMostTwoThousandTokensOfBuiltInPrompts()
     {
-        var reply = EverythingOnReply.Sum(id => BoundedTextInput.TextTokens(PromptCatalog.Default(id)));
+        // With the skills that explain tools (they go with a reply offered their tools) and the pinned ones.
+        var reply = EverythingOnReply.Sum(id => BoundedTextInput.TextTokens(PromptCatalog.Default(id))) +
+            SkillCatalog.All.Sum(s => BoundedTextInput.TextTokens(s.Body));
         Assert.True(reply <= 2_000, $"A reply with every feature on: about {reply:N0} tokens of built-in prompts.");
+    }
+
+    [Fact]
+    public void NoBuiltInSkillIsLong()
+    {
+        var longest = SkillCatalog.All.MaxBy(s => BoundedTextInput.TextTokens(s.Body))!;
+        Assert.True(BoundedTextInput.TextTokens(longest.Body) <= 350, $"{longest.Key}: about {BoundedTextInput.TextTokens(longest.Body)} tokens.");
     }
 
     [Fact]

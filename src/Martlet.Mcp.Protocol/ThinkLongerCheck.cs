@@ -283,7 +283,7 @@ internal static partial class ThinkLongerCheck
         await using var replies = ConversationRuntime.Create(new NoCredentials());
         await using var thinking = ConversationRuntime.Create(new NoCredentials());
         var permissions = new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl));
-        var instructions = string.Join("\n\n", Persona, PromptSettings.Fill(null, PromptCatalog.Tools), ThinkLonger.Instructions(settings, null));
+        var instructions = string.Join("\n\n", Persona, SkillSettings.Fill(null, SkillCatalog.UsingTools), ThinkLonger.Instructions(settings, null));
         TextHistoryMessage[] history = [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey, you're back!")];
         var input = new BoundedTextInput(Asked, instructions, history, tools: ThinkLonger.Definitions(settings));
         var clock = Stopwatch.StartNew();

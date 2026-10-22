@@ -143,7 +143,7 @@ public static class ThinkLonger
 
     /// <summary>The prompt added to a reply's instructions while think_longer is offered.</summary>
     public static string? Instructions(ThinkLongerSettings settings, PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.ThinkLonger);
+        SkillSettings.Guidance(prompts, SkillCatalog.ThinkingLonger);
 
     /// <summary>The task and reason a call passed, or what was wrong with it, in words for the model.</summary>
     public static (string? Task, string? Reason, string? Problem) Parse(string argumentsJson)

@@ -137,7 +137,7 @@ public static class WebResearch
 
     /// <summary>The prompt added to a reply's instructions while research is offered: when to answer from what Martlet knows,
     /// when to look something up quickly and when to research it.</summary>
-    public static string? Instructions(PromptSettings? prompts) => PromptSettings.Fill(prompts, PromptCatalog.WebResearch);
+    public static string? Instructions(PromptSettings? prompts) => SkillSettings.Guidance(prompts, SkillCatalog.WebResearch);
 
     public static (ResearchArguments? Arguments, string? Problem) Parse(string argumentsJson)
     {

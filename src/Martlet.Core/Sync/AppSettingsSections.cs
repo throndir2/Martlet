@@ -70,7 +70,7 @@ public sealed record SharedRoute
 public sealed class AppSettingsSections
 {
     public const string Thinking = "thinking", Listening = "listening", Speaking = "speaking", ThinkingFallback = "thinking-fallback",
-        Companion = "companion", Replies = "replies", Prompts = "prompts", Memory = "memory", Lorebooks = "lorebooks",
+        Companion = "companion", Replies = "replies", Prompts = "prompts", Skills = "skills", Memory = "memory", Lorebooks = "lorebooks",
         ThinkingPool = SharedThinkingPool.Key, ThinkingPoolChoices = SharedThinkingPoolChoices.Key;
 
     internal static readonly JsonSerializerOptions Json = CreateJson();
@@ -109,6 +109,7 @@ public sealed class AppSettingsSections
             new Section(Companion, "Personality", ReadCompanionAsync, ApplyCompanionAsync, () => Write(CompanionSettings.Create())),
             new Section(Replies, "Replies", ReadRepliesAsync, ApplyRepliesAsync, () => "null"),
             new Section(Prompts, "Prompts", ReadPromptsAsync, ApplyPromptsAsync, () => "null"),
+            new Section(Skills, "Skills", ReadSkillsAsync, ApplySkillsAsync, () => "null"),
             new Section(Memory, "Memory", ReadMemoryAsync, ApplyMemoryAsync, () => Write(new SharedMemory { Enabled = true })),
             .. lorebooks is null ? Array.Empty<ISharedSection>() : [new Section(Lorebooks, "Lorebooks", ReadLorebooksAsync, ApplyLorebooksAsync)]
         ];
@@ -549,9 +550,28 @@ public sealed class AppSettingsSections
     private async Task<SharedApply> ApplyPromptsAsync(SharedSetting setting, string? secret, CancellationToken token)
     {
         var prompts = setting.Value == "null" ? null : ReadContract<PromptSettings>(setting.Value);
-        if (prompts is { IsDefault: true }) prompts = null;
         var (settings, revision, problem) = await EditAsync(token).ConfigureAwait(false);
-        return settings is null ? SharedApply.Waiting(problem!) : await SaveAsync(settings with { Prompts = prompts }, revision, token).ConfigureAwait(false);
+        if (settings is null) return SharedApply.Waiting(problem!);
+        // An older computer can still send edits of prompts that are skills now: they move to the skills here.
+        var moved = AppSettings.MoveSkillPrompts(settings with { Prompts = prompts });
+        return await SaveAsync(moved with { Prompts = moved.Prompts is { IsDefault: true } ? null : moved.Prompts }, revision, token)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<SharedLocal?> ReadSkillsAsync(CancellationToken token)
+    {
+        var result = await LoadAsync(token).ConfigureAwait(false);
+        if (result.Settings is not { } settings) return null;
+        return settings.Skills is not { IsDefault: false } skills
+            ? new("null", null, true, SettingsTime())
+            : new(Write(skills), null, false, SettingsTime());
+    }
+
+    private async Task<SharedApply> ApplySkillsAsync(SharedSetting setting, string? secret, CancellationToken token)
+    {
+        var skills = setting.Value == "null" ? null : SkillSettings.Normalize(ReadContract<SkillSettings>(setting.Value).Skills);
+        var (settings, revision, problem) = await EditAsync(token).ConfigureAwait(false);
+        return settings is null ? SharedApply.Waiting(problem!) : await SaveAsync(settings with { Skills = skills }, revision, token).ConfigureAwait(false);
     }
 
     private sealed record SharedMemory
