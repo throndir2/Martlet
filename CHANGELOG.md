@@ -14,7 +14,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
-- The Thinking pool page is now **Background thinking** and is much simpler: three switches say what Martlet does in the background (think longer, look things up, help when a reply is slow), and one list of your computers, graphics cards, this PC and cloud providers has a box and a model picker for each. Adding a cloud provider is just provider, key and model from a list. Everything else is in one closed **Advanced** section.
+- The Thinking pool page is now **Background thinking** and is much simpler: three switches say what Martlet does in the background (think longer, look things up, help when a reply is slow), and one list of your computers, graphics cards, this PC and cloud providers has a box and a model picker for each. Adding a cloud provider is just provider, key and model from a list. Everything else is in one closed **Advanced** section. ([#1132](https://github.com/throndir2/Martlet/pull/1132))
 
 ## [0.91.0] - 2026-10-21
 
