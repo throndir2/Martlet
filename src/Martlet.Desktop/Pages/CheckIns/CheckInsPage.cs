@@ -33,7 +33,7 @@ internal sealed partial class CheckInsPage(ICheckInsPageServices services)
         AutomationProperties.SetAutomationId(last, "CheckInsLast");
         AutomationProperties.SetLiveSetting(last, AutomationLiveSetting.Polite);
         page.Children.Add(Card(HelpTip.After(Heading("Now"), "check-ins", CheckInsPageModel.About, "CheckInsAbout", wiki: "Thinking#check-ins"), now, last,
-            Row(PageButton("Open Thinking pool", services.OpenThinkingPool, link: true, id: "CheckInsOpenPool"))));
+            Row(PageButton("Open Background thinking", services.OpenThinkingPool, link: true, id: "CheckInsOpenPool"))));
         var lines = new List<Action>();
         // Edits to the built-in check-ins' prompts and to your own check-ins save on their own, a moment after typing stops.
         var promptBoxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);

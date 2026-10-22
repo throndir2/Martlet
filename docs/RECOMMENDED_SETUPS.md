@@ -496,7 +496,7 @@ that every host role has a catalog option.
 | 7 | Reading | Reads the small text on the screen while Martlet watches | The processor: Windows OCR inside Martlet, or RapidOCR or PP-OCRv5 mobile in the Reading role; PP-OCRv5 server on an NVIDIA graphics card | `ocr` | Optional | Yes | Companion › Reading |
 | 8 | Hearing | The audio model: hears how you say things | Thinking's own model (nothing more), a graphics card (Ollama on this PC), or online (NVIDIA Build's Nemotron 3 Nano Omni) | None (Ollama) | Optional | Yes | Companion › Hearing |
 | 9 | People | Recognizes who is talking (pyannote and WeSpeaker voiceprints) | The processor inside Martlet (about 0.16 GB, 4 threads for 0.16 s per utterance), or the Voice recognition role on a host's NVIDIA card or processor, which the recommended setup installs when a host answers, with this PC's processor as the fallback | `voice-recognition` | Optional, on by default | Yes | Companion › People |
-| 10 | Deep thinking | The Thinking pool: thinks longer, web research, screen and sound summaries, judges, helper jobs, check-ins | A graphics card, or online | `deep-thinking` | Optional | Yes | Companion › Thinking pool |
+| 10 | Deep thinking | The Thinking pool: thinks longer, web research, screen and sound summaries, judges, helper jobs, check-ins | A graphics card, or online | `deep-thinking` | Optional | Yes | Companion › Background thinking |
 | 11 | Smart home | Home Assistant, the hub that controls your devices | The processor of a Linux computer with Docker Engine, always on, or your own hub | `home-assistant` | Optional | Yes | Companion › Smart home |
 | 12 | Singing | Sings songs on request | A large NVIDIA card | `singing` | Optional | Yes | Companion › Singing |
 | 13 | Picture making | Draws pictures on request | A large NVIDIA card (ComfyUI with Z-Image Turbo), or online (NVIDIA Build's FLUX, OpenRouter) | `pictures` | Optional | Yes | Companion › Picture making |
@@ -508,7 +508,7 @@ small work inside Martlet that the footprints count as always on):
 | Feature | What it uses | Needed or optional | Can be off | Set up in |
 | --- | --- | --- | --- | --- |
 | Screen commentary, camera looks | Vision (and Reading); summaries on the Thinking pool | Optional | Yes | Companion › Vision |
-| Web research | DuckDuckGo's search page online (no key), then Thinking or the Thinking pool | Optional, on by default | Yes | Companion › Thinking pool › Web research |
+| Web research | DuckDuckGo's search page online (no key), then Thinking or the Thinking pool | Optional, on by default | Yes | Companion › Background thinking › Web research |
 | Tools: MCP servers and the terminal | Programs you add, on this PC or online; the terminal runs PowerShell on this PC | Optional, the terminal off by default | Yes | Companion › Tools |
 | Discord, Messaging (Telegram, WhatsApp) | The network, then Thinking, the voice and the other parts | Optional | Yes | Companion › Discord, Companion › Messaging |
 | Memory, lorebooks | Words matched on this PC's processor; away from the reply, also an embedding model in Ollama on the processor when it is downloaded | Memory on by default; lorebooks optional | Yes | Companion › Memory, Companion › Lorebook |

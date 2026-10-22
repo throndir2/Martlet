@@ -388,12 +388,44 @@ public sealed class HelperJobsTests
         };
         var empty = new Martlet.Core.Settings.ThinkingPoolSettings();
         Assert.Equal("The Thinking pool is off: no machine is on, so thinking longer and research use the conversation model meanwhile; " +
-            "add a machine below.", ThinkingPoolPageModel.PoolSummary(empty, 0));
+            "tick a machine under Where it runs.", ThinkingPoolPageModel.PoolSummary(empty, 0));
         var off = empty.Add(local).TurnOff(local.Key);
         Assert.Equal("The Thinking pool is off: no machine is on and 1 machine is turned off, and the conversation model isn't used either, " +
-            "so Martlet doesn't think in the background; tick On to use one again.",
+            "so Martlet doesn't think in the background; tick one to use it again.",
             ThinkingPoolPageModel.PoolSummary(off with { UseConversationModelWhenEmpty = false }, 0));
         Assert.Equal("1 machine is on, with 2 usable slots in all.", ThinkingPoolPageModel.PoolSummary(off.TurnOn(local.Key), 2));
+    }
+
+    [Fact]
+    public void Help_when_a_reply_is_slow_picks_the_free_machines_when_none_is_ticked()
+    {
+        var local = new Martlet.Core.Settings.DeepThinkingSettings
+        {
+            Place = Martlet.Core.Settings.DeepThinkingPlace.Endpoint, Origin = MainWindow.LocalOllamaBaseUrl, ModelId = "gemma4:e4b"
+        };
+        var paid = new Martlet.Core.Settings.DeepThinkingSettings
+        {
+            Place = Martlet.Core.Settings.DeepThinkingPlace.Endpoint, Origin = "https://api.openai.com/v1", ModelId = "gpt-5-mini"
+        };
+        var off = new Martlet.Core.Settings.DeepThinkingSettings
+        {
+            Place = Martlet.Core.Settings.DeepThinkingPlace.Endpoint, Origin = MainWindow.LocalOllamaBaseUrl, ModelId = "qwen3:8b"
+        };
+        var pool = new Martlet.Core.Settings.ThinkingPoolSettings().Add(local).Add(paid).Add(off).TurnOff(off.Key);
+        Assert.True(Martlet.Conversation.ThinkingBackupMembers.Paid(paid));
+
+        var on = ThinkingPoolPageModel.WithBackup(pool, true);
+        Assert.True(on.BackupThinking);
+        Assert.Equal([local.Key], on.AnswersForConversation);
+        Assert.Equal("Help when a reply is slow is on: a slow reply also asks " + local.Describe() + ".", ThinkingPoolPageModel.BackupDone(on));
+
+        // A machine the owner chose stays the only one, and turning it off keeps the choice for next time.
+        var chosen = pool.WithAnswers(paid.Key, true);
+        Assert.Equal([paid.Key], ThinkingPoolPageModel.WithBackup(chosen, true).AnswersForConversation);
+        var stopped = ThinkingPoolPageModel.WithBackup(on, false);
+        Assert.False(stopped.BackupThinking);
+        Assert.Equal([local.Key], stopped.AnswersForConversation);
+        Assert.Equal("Help when a reply is slow is off.", ThinkingPoolPageModel.BackupDone(stopped));
     }
 
     [Fact]

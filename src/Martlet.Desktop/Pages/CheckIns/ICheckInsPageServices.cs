@@ -69,7 +69,7 @@ internal interface ICheckInsPageServices
     /// <summary>Makes the live conversation read thinking-pool.json once, so the Now line knows the pool's members.</summary>
     void ReadThinkingPoolOnce();
 
-    /// <summary>Opens Companion › Thinking pool.</summary>
+    /// <summary>Opens Companion › Background thinking.</summary>
     void OpenThinkingPool();
 
     /// <summary>Notes why each check-in waits now, unless one runs; nothing runs.</summary>

@@ -98,7 +98,7 @@ public partial class MainWindow
         var status = conversation.ThinkingPool.Status();
         var offline = status.Members.Count(m => !m.Online);
         ThinkingRequestsPool.Text = status.Members.Count == 0
-            ? "The Thinking pool has no member, so requests use their own fallbacks; add members in Companion › Thinking pool."
+            ? "The Thinking pool has no member, so requests use their own fallbacks; add members in Companion › Background thinking."
             : $"Thinking pool: {status.Free} of {status.Slots} slot{(status.Slots == 1 ? "" : "s")} free on " +
               $"{status.Members.Count - offline} member{(status.Members.Count - offline == 1 ? "" : "s")}" +
               (offline > 0 ? $" ({offline} offline)" : "") + (status.KeepsFastSlot ? "; one stays free for quick jobs" : "") +

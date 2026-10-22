@@ -12,6 +12,10 @@ Each release's section here is also its notes on GitHub.
 
 - Companion › Skills: instructions Martlet uses only when it needs them. A reply gets the rules for its tools only while it has those tools, and you can pin skills every reply must follow or add your own. The tools, thinking longer, web research, singing and app guide prompts are skills now, and your edits to them move along. ([#1131](https://github.com/throndir2/Martlet/pull/1131))
 
+### Changed
+
+- The Thinking pool page is now **Background thinking** and is much simpler: three switches say what Martlet does in the background (think longer, look things up, help when a reply is slow), and one list of your computers, graphics cards, this PC and cloud providers has a box and a model picker for each. Adding a cloud provider is just provider, key and model from a list. Everything else is in one closed **Advanced** section.
+
 ## [0.91.0] - 2026-10-21
 
 ### Added

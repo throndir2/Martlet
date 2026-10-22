@@ -161,7 +161,7 @@ model. Nothing was measured on a real host.
 
 All backends sit behind one seam, `IWebSearchProvider.SearchAsync(query, count,
 token) -> [{title, url, snippet, content?}]`. The owner turns each on under
-Companion › Thinking pool › *Web research*, and research sends every query to
+Companion › Background thinking › *Web research*, and research sends every query to
 every enabled backend. Keys go in Windows Credential Manager, like other provider
 keys.
 

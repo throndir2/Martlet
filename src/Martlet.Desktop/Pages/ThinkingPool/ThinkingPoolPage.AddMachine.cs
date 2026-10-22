@@ -9,12 +9,12 @@ using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Thinking pool › Add a machine: another of your computers, a model in Ollama on this PC, or a cloud provider
-/// or server. What each form adds shows in the machine list, on.</summary>
+/// <summary>Companion › Background thinking's add forms: Add a cloud provider (in Where it runs), and under Advanced another model
+/// in Ollama on this PC and another of your computers. What each form adds shows in Where it runs, ticked.</summary>
 internal sealed partial class ThinkingPoolPage
 {
-    /// <summary>Another of your computers (Add a machine): a paired computer with a Thinking model joins the list by itself, Add a
-    /// computer or Check computers, and what goes there.</summary>
+    /// <summary>Another of your computers (Advanced): a paired computer with a Thinking model joins the list by itself, and what
+    /// goes there. Each paired computer is in Where it runs with its own box.</summary>
     private List<UIElement> DeepComputersPanel(ThinkingPoolPageModel model)
     {
         var stack = new List<UIElement>();
@@ -24,18 +24,16 @@ internal sealed partial class ThinkingPoolPage
         stack.Add(automatic);
         if (model.Hosts.Count == 0)
         {
-            var none = Note("No computer is paired yet: add one on Devices, then add the Thinking pool role there.", new Thickness(0, 0, 0, 4));
+            var none = Note("No computer is paired yet: pair one on Devices, and it shows in Where it runs.", new Thickness(0, 0, 0, 4));
             AutomationProperties.SetAutomationId(none, "DeepThinkingHosts");
             stack.Add(none);
         }
-        stack.Add(Row(model.Hosts.Count == 0 ? PageButton("Add a computer", () => services.RunNodeAction(NodeAction.AddComputer), primary: true, id: "DeepThinkingAddComputer")
-            : PageButton("Check computers", () => services.RunNodeAction(NodeAction.CheckHost), id: "DeepThinkingCheckHosts")));
         stack.Add(HelpTip.Explain("A job's text goes to the machine that runs it, and Thinking, the voice and listening keep working here " +
             "at full speed. For a think, the text is the conversation so far that fits in 16 KiB and the task; a paired computer gets " +
             "it through its paired, pinned connection. The Thinking pool role is an Ollama of its own, so it works even on the " +
             "computer that does Thinking (they share its graphics card, and replies may start later); without it, a computer that " +
-            "also does Thinking for the conversation can't join. Adding the role asks which model it runs and how many slots; " +
-            "Change model switches them later. A computer's model can only work as long as its Martlet allows: update it to this " +
+            "also does Thinking for the conversation can't join. Ticking a computer in Where it runs sets up the role with the " +
+            "model chosen there; its model list changes it later. A computer's model can only work as long as its Martlet allows: update it to this " +
             "version for jobs over a minute.", new Thickness(0, 8, 0, 0), "ThinkingPoolRole", "the Thinking pool role",
             wiki: "Thinking#add-a-machine"));
         return stack;
@@ -95,23 +93,29 @@ internal sealed partial class ThinkingPoolPage
             Row(PageButton("Add to the Thinking pool", () =>
                 {
                     var id = modelBox.Text.Trim();
-                    try { ChatCompletionsSetup.ModelId(id); }
-                    catch (ContractException error) { services.ShowStatus(error.Message); return; }
-                    if (beside is not null && OllamaSideBySide.Same(id, beside))
-                    {
-                        services.ShowStatus($"{id} is Thinking's own model, which can't think something over while it answers you; choose another model.");
-                        return;
-                    }
-                    if (sharedText.Length > 0 && !services.Confirm(sharedText.TrimEnd('.') + "; use it anyway?",
-                            "The Thinking pool shares a graphics card", yes: "_Use anyway", no: "_Cancel", questionId: "DeepThinkingShareQuestion"))
-                        return;
-                    model.AddLocalAsync(id).Forget();
+                    if (CanAddLocal(model, id)) model.AddLocalAsync(id).Forget();
                 }, primary: true, id: "DeepThinkingUseLocal"),
                 PageButton("Check Ollama", () =>
                 {
                     localFitModel = null;
                     services.CheckOllamaAsync().Forget();
                 }, id: "DeepThinkingCheckOllama"))];
+    }
+
+    /// <summary>Whether <paramref name="id"/> may join the pool from Ollama on this PC: a valid model ID that isn't Thinking's own
+    /// model, and, when it would share the graphics card with Thinking's, the owner says so. Says why not in the status line.</summary>
+    private bool CanAddLocal(ThinkingPoolPageModel model, string id)
+    {
+        try { ChatCompletionsSetup.ModelId(id); }
+        catch (ContractException error) { services.ShowStatus(error.Message); return false; }
+        if (model.LocalBeside is { } beside && OllamaSideBySide.Same(id, beside))
+        {
+            services.ShowStatus($"{id} is Thinking's own model, which can't think something over while it answers you; choose another model.");
+            return false;
+        }
+        var sharedText = model.LocalShare;
+        return sharedText.Length == 0 || services.Confirm(sharedText.TrimEnd('.') + "; use it anyway?",
+            "The Thinking pool shares a graphics card", yes: "_Use anyway", no: "_Cancel", questionId: "DeepThinkingShareQuestion");
     }
 
     /// <summary>Checks whether <paramref name="deep"/> fits beside Thinking's <paramref name="thinking"/> in Ollama on this PC
@@ -139,7 +143,8 @@ internal sealed partial class ThinkingPoolPage
         AutomationProperties.SetAutomationId(baseUrl, "DeepThinkingBaseUrl");
         InputHint.SetText(baseUrl, "https://llm.example.com/v1");
         var baseUrlPanel = new StackPanel { Children = { new Label { Content = "API base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) }, baseUrl } };
-        var modelId = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
+        var modelId = new ComboBox { IsEditable = true, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
+            ToolTip = "The models Martlet knows at this provider, free and smartest first. Type another model ID if you like." };
         AutomationProperties.SetName(modelId, "Thinking pool model ID");
         AutomationProperties.SetAutomationId(modelId, "DeepThinkingModel");
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
@@ -157,7 +162,11 @@ internal sealed partial class ThinkingPoolPage
         {
             var p = Selected();
             baseUrlPanel.Visibility = p == MainWindow.CustomCloud ? Visibility.Visible : Visibility.Collapsed;
-            if (!keepModel) modelId.Text = p.DefaultModel ?? "";
+            if (!keepModel)
+            {
+                modelId.ItemsSource = p.BaseUrl is { Length: > 0 } url ? ThinkingPoolPageModel.CloudModels(url, p.DefaultModel) : Array.Empty<string>();
+                modelId.Text = p.DefaultModel ?? "";
+            }
             InputHint.SetText(modelId, p.DefaultModel ?? "gemma4:e4b");
             keyStatus.Text = model.KeyStatus(p, Url());
             InputHint.SetText(key, p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? "Paste your NVIDIA Build key (nvapi-…)"
@@ -170,7 +179,12 @@ internal sealed partial class ThinkingPoolPage
         Refresh(keepModel: false);
         provider.SelectionChanged += (_, _) => { services.MarkEdited(); Refresh(keepModel: false); };
         baseUrl.TextChanged += (_, _) => { if (!baseUrl.IsKeyboardFocusWithin) return; services.MarkEdited(); consent.IsChecked = false; };
-        modelId.TextChanged += (_, _) => { if (!modelId.IsKeyboardFocusWithin) return; services.MarkEdited(); consent.IsChecked = false; };
+        modelId.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) =>
+        {
+            if (!modelId.IsKeyboardFocusWithin) return;
+            services.MarkEdited();
+            consent.IsChecked = false;
+        }));
         key.PasswordChanged += (_, _) => services.MarkEdited();
         SecretLease? TakeTypedKey()
         {
@@ -178,12 +192,12 @@ internal sealed partial class ThinkingPoolPage
             return entered.Length > 0 ? TakeKey(key) : null;
         }
         return [
-            Note("A strong reasoning model (for example on OpenRouter) thinks while your Thinking model keeps talking, even one on this " +
-                "PC: they never wait for each other.", new Thickness(0, 0, 0, 8)),
+            Note("Choose the provider, paste your API key and choose the model. A strong reasoning model (for example on OpenRouter) " +
+                "thinks while your Thinking model keeps talking: they never wait for each other.", new Thickness(0, 0, 0, 8)),
             new Label { Content = "_Provider", Target = provider, Padding = new Thickness(0, 0, 0, 4) }, provider, baseUrlPanel,
-            new Label { Content = "_Model ID", Target = modelId, Padding = new Thickness(0, 8, 0, 4) }, modelId,
-            new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) }, key, keyStatus, consent,
-            Row(PageButton("Add to the Thinking pool", () => model.SaveDeepCloudAsync(Selected(), Url(), modelId.Text.Trim(), TakeTypedKey,
+            new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) }, key, keyStatus,
+            new Label { Content = "_Model", Target = modelId, Padding = new Thickness(0, 8, 0, 4) }, modelId, consent,
+            Row(PageButton("Add", () => model.SaveDeepCloudAsync(Selected(), Url(), modelId.Text.Trim(), TakeTypedKey,
                 consent.IsChecked == true, model.Pool.All, model.Route).Forget(), primary: true, id: "DeepThinkingSaveCloud"))];
     }
 }

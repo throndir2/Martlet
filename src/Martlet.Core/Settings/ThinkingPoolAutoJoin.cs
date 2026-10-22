@@ -182,7 +182,7 @@ public static class ThinkingPoolAutoJoin
         var why = joined.Length > 1 && joined.Length == changes.Count && mine.Length == 0
             ? $"{id} joined the Thinking pool by itself with {joined.Length} graphics cards (" +
               string.Join("; ", joined.Select(m => $"card {m.Card}: {m.ModelId}, {SlotText(m)}")) +
-              "); untick it in Companion › Thinking pool to keep it out."
+              "); untick it in Companion › Background thinking to keep it out."
             : string.Join(" ", changes.Select(c => Describe(c.Change, c.Member)));
         return new(next, changes[0].Change, changes[0].Member, why) { Changes = changes };
     }
@@ -190,7 +190,7 @@ public static class ThinkingPoolAutoJoin
     private static string SlotText(DeepThinkingSettings member) => $"{member.ThinksAtOnce} slot{(member.ThinksAtOnce == 1 ? "" : "s")}";
 
     /// <summary>The owner's line for a change: "diva joined the Thinking pool by itself (its Thinking pool role, qwen3:8b, 2
-    /// slots); untick it in Companion › Thinking pool to keep it out."</summary>
+    /// slots); untick it in Companion › Background thinking to keep it out."</summary>
     public static string Describe(ThinkingPoolHostChange change, DeepThinkingSettings member)
     {
         ArgumentNullException.ThrowIfNull(member);
@@ -202,7 +202,7 @@ public static class ThinkingPoolAutoJoin
                 $"by itself ({member.ModelId}, {slots}), as a member of its own beside its other cards.",
             ThinkingPoolHostChange.Joined => $"{member.HostId} joined the Thinking pool by itself " +
                 $"({(member.OnHostRole ? role : "its Ollama")}, {member.ModelId}, {slots}); " +
-                "untick it in Companion › Thinking pool to keep it out.",
+                "untick it in Companion › Background thinking to keep it out.",
             ThinkingPoolHostChange.MovedToRole => $"{member.HostId} now works for the Thinking pool on {role} " +
                 $"({member.ModelId}, {slots}) instead of its Ollama.",
             ThinkingPoolHostChange.SlotsChanged => $"{member.HostId}'s {(member.Card > 1 ? $"Thinking pool model on graphics card {member.Card}" : "Thinking pool role")} now takes {slots} in the Thinking pool.",

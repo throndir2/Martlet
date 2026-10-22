@@ -88,7 +88,7 @@ internal static class CompanionPages
     internal static string TabTitle(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Thinking",
-        CompanionTab.DeepThinking => "Thinking pool",
+        CompanionTab.DeepThinking => "Background thinking",
         CompanionTab.Singing => "Singing",
         CompanionTab.Voice => "Voice",
         CompanionTab.Listening => "Listening",
@@ -162,7 +162,7 @@ internal static class CompanionPages
     internal static string TabIntro(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Martlet needs Thinking to answer you: choose where it thinks and which model it uses.",
-        CompanionTab.DeepThinking => Extra(section, "Other models work out hard tasks and background jobs, ideally on another computer, so Thinking keeps talking at full speed."),
+        CompanionTab.DeepThinking => Extra(section, "Martlet thinks over hard questions and looks things up while you keep talking. Tick the computers and models it may use."),
         CompanionTab.Singing => Extra(section, "Martlet sings songs you ask for, in the voice it speaks with, on an NVIDIA graphics card."),
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",

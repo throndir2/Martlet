@@ -6,7 +6,7 @@ using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Thinking pool's decisions and settings, without WPF. The page makes one each time it draws: it reads
+/// <summary>Companion › Background thinking's decisions and settings, without WPF. The page makes one each time it draws: it reads
 /// thinking-pool.json, the reply settings and the paired computers once, and says what each line of the page shows. The changes
 /// the page saves are in ThinkingPoolPageModel.Changes.cs. <see cref="ThinkingPoolPage"/> draws it, and
 /// <see cref="IThinkingPoolPageServices"/> is all it reads and changes in the app.</summary>
@@ -88,7 +88,7 @@ internal sealed partial class ThinkingPoolPageModel
     internal string NowText => DeepThinkingNow(LongJobs, Route, LongPlan, On);
 
     /// <summary>The Now card's second line (DeepThinkingParallel): why thinking longer can or can't run now.</summary>
-    internal string WhyText => On ? LongPlan.Why : "Thinking longer is off; turn it on under Thinking longer below.";
+    internal string WhyText => On ? LongPlan.Why : "Thinking longer is off; tick Think longer about hard questions below to turn it on.";
 
     /// <summary>Whether <see cref="WhyText"/> is a warning.</summary>
     internal bool WhyIsWarning => On && !LongPlan.Available;
@@ -99,10 +99,10 @@ internal sealed partial class ThinkingPoolPageModel
     {
         if (!on) return "Off: Martlet answers everything right away and never thinks in the background.";
         var where = pool.Members.Count > 0 ? pool.Places.DescribeAll()
-            : !pool.UseConversationModelWhenEmpty ? "no member"
-            : route is null ? "the conversation model (not set up yet)" : $"the conversation model ({route.ModelId}), until a machine in the pool takes long jobs";
-        return plan.Available ? $"The Thinking pool thinks on {where}, in parallel with the conversation."
-            : $"On, but the pool can't think on {where}, so Martlet doesn't offer to think things over; add a machine below, or tick Long jobs on one.";
+            : !pool.UseConversationModelWhenEmpty ? "no machine"
+            : route is null ? "the conversation model (not set up yet)" : $"the conversation model ({route.ModelId}), until you tick a machine below";
+        return plan.Available ? $"Martlet thinks in the background on {where}, alongside the conversation."
+            : $"On, but Martlet can't think in the background on {where}, so it doesn't offer to think things over; tick a machine under Where it runs.";
     }
 
     // ---------- the machine list ----------
@@ -120,7 +120,7 @@ internal sealed partial class ThinkingPoolPageModel
                 (off == 0 ? "" : $" and {off} machine{(off == 1 ? " is" : "s are")} turned off") +
                 (pool.UseConversationModelWhenEmpty ? ", so thinking longer and research use the conversation model meanwhile"
                     : ", and the conversation model isn't used either, so Martlet doesn't think in the background") +
-                (off == 0 ? "; add a machine below." : "; tick On to use one again.");
+                (off == 0 ? "; tick a machine under Where it runs." : "; tick one to use it again.");
         var on = pool.Members.Count;
         return $"{on} machine{(on == 1 ? " is" : "s are")} on, with {slots} usable slot{(slots == 1 ? "" : "s")} in all" +
             (off == 0 ? "." : $"; {off} {(off == 1 ? "is" : "are")} turned off.");
@@ -142,7 +142,8 @@ internal sealed partial class ThinkingPoolPageModel
     /// <param name="Badges">What may slow it or cost money (ThinkingPoolBadges-n).</param>
     /// <param name="SharedCard">The warning that it shares a graphics card with this PC's Thinking, or null.</param>
     internal sealed record MemberLine(DeepThinkingSettings Member, int Index, string Key, string Name, bool On, string? HostId, int Card,
-        string Suffix, PairedHost? Host, HostCheck? Check, bool Paid, int Slots, string Detail, string[] Badges, string? SharedCard);
+        string Suffix, PairedHost? Host, HostCheck? Check, bool Paid, int Slots, string Detail, string[] Badges, string? SharedCard,
+        string? CantRun = null);
 
     /// <summary>The machine at <paramref name="i"/> in the list (on, then off).</summary>
     internal MemberLine Member(int i)
@@ -181,7 +182,8 @@ internal sealed partial class ThinkingPoolPageModel
             .. cooling is not null ? ["Limiting requests"] : Array.Empty<string>()];
         // One graphics card for each Thinking model: a pool model on the card of this computer's Thinking shares it.
         var shared = hostId is not null && check?.Reachable == true ? DeepThinkingFit.SharedCard(member, services.HardwareOf(hostId), check) : null;
-        return new(member, i, key, name, on, hostId, card, suffix, host, check, paid, slots, detail, badges, shared);
+        var cantRun = on && PoolPlan.Find(key) is { Plan.Available: false } stop ? "Can't run now: " + stop.Plan.Why.TrimEnd('.') + "." : null;
+        return new(member, i, key, name, on, hostId, card, suffix, host, check, paid, slots, detail, badges, shared, cantRun);
     }
 
     /// <summary>A graphics card of a paired computer in the list that runs no Thinking pool model yet.</summary>
@@ -205,7 +207,7 @@ internal sealed partial class ThinkingPoolPageModel
                     : services.CannotHand(hostId, kind, "deep thinking");
                 var title = $"{hostId}, graphics card {card}";
                 var detail = "No Thinking pool model on this card yet" + (cannot is null
-                    ? "; add one and it joins the pool as a machine of its own." : $": {cannot}");
+                    ? "; tick it to set up the chosen model there, as a machine of its own." : $": {cannot}");
                 yield return new(host, hostId, card, title, detail, cannot);
             }
         }
@@ -217,7 +219,7 @@ internal sealed partial class ThinkingPoolPageModel
     /// <summary>A paired computer that isn't in the pool, as its row shows it.</summary>
     /// <param name="Own">The model its Thinking pool role runs, or null without the role.</param>
     /// <param name="Usable">Whether it has a Thinking model the pool can use.</param>
-    /// <param name="Detail">Its line (DeepThinkingHost-name): what it offers and why it isn't in.</param>
+    /// <param name="Detail">Its line (ThinkingPoolJoinDetail-name): what it offers and why it isn't in.</param>
     /// <param name="SharedCard">The warning that its Thinking pool model shares a graphics card, or null.</param>
     internal sealed record ComputerLine(PairedHost Host, HostCheck? Check, string? Own, bool Usable, string Detail, string? SharedCard);
 
@@ -236,12 +238,12 @@ internal sealed partial class ThinkingPoolPageModel
         string Joins(string offer) => rule is null or { Changed: true } ? $"{offer}; it joins the pool by itself at its next check." : $"{offer}; {rule.Why}";
         var runs = own is not null ? $" (its Thinking pool role runs {own})" : ollama is not null ? $" (Ollama runs {ollama})" : "";
         var detail = Pool.Left(host.HostId)
-            ? $"Kept out of the pool because you unticked it{runs}; tick In the pool to add it again."
+            ? $"Kept out of the pool because you unticked it{runs}; tick it to add it again."
             : own is not null ? Joins($"Its Thinking pool role runs {own}")
-            : ollama is not null && thinksThere ? $"Its Ollama ({ollama}) does Thinking for the conversation; add the Thinking pool role " +
-                "there to join the pool beside it."
+            : ollama is not null && thinksThere ? $"Its Ollama ({ollama}) does Thinking for the conversation; tick it to set up a " +
+                "Thinking pool model there beside it."
             : ollama is not null ? Joins($"Ollama runs {ollama}")
-            : check?.Reachable == true ? "Add the Thinking pool role there to join the pool."
+            : check?.Reachable == true ? "Tick it to set up the chosen model there (a run window shows the progress)."
             : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
         var shared = check?.Reachable == true ? DeepThinkingFit.SharedCard(host.HostId, services.HardwareOf(host.HostId), check.Offers) : null;
         return new(host, check, own, usable, detail, shared);
@@ -260,7 +262,7 @@ internal sealed partial class ThinkingPoolPageModel
     internal string LiveFloor => LiveFloorLine(Pool, Places.Length,
         [.. Places.Where(Resources.Shares).Select(p => p.Name).Distinct(StringComparer.Ordinal)]);
 
-    /// <summary>Companion › Thinking pool's live floor line (MCP reads it as ThinkingPoolLiveFloor): which members wait while you
+    /// <summary>Companion › Background thinking's live floor line (MCP reads it as ThinkingPoolLiveFloor): which members wait while you
     /// talk with Martlet because they share the conversation's computer or graphics card (<paramref name="sharing"/>, by name),
     /// or that none does. Empty with no member and no conversation model in its place.</summary>
     internal static string LiveFloorLine(ThinkingPoolSettings pool, int members, IReadOnlyList<string> sharing)
@@ -356,7 +358,7 @@ internal sealed partial class ThinkingPoolPageModel
     /// <summary>Busy pool's status line (ThinkingPoolPriorityStatus).</summary>
     internal string PriorityStatus => PriorityLine(Pool, services.PoolStatusNow());
 
-    /// <summary>Companion › Thinking pool's line of requests: whether higher-priority requests may stop lower ones, after how many
+    /// <summary>Companion › Background thinking's line of requests: whether higher-priority requests may stop lower ones, after how many
     /// stops a stopped request's priority goes up, and how many times a failed request is tried again; with
     /// <paramref name="status"/>, when the pool runs, how many requests were stopped, raised and tried again since Martlet started.</summary>
     internal static string PriorityLine(ThinkingPoolSettings pool, ThinkingPoolStatus? status)
@@ -402,7 +404,7 @@ internal sealed partial class ThinkingPoolPageModel
     internal (string Text, bool Problem) WebResearchStatus()
     {
         var settings = ThinkLongerChoices;
-        if (!settings.On) return ("Off, because thinking longer is off; turn it on under Thinking longer above to use web research.", false);
+        if (!settings.On) return ("Off, because thinking longer is off; tick Think longer about hard questions above to use web research.", false);
         if (!settings.WebResearchOn) return ("Off: Martlet never searches the web or reads web pages.", false);
         var (thinking, problem) = ThinkLongerStatus(settings);
         if (problem)

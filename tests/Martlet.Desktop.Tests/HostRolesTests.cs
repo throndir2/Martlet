@@ -387,14 +387,14 @@ public sealed class HostRolesTests
 
         var a = Host("gpu-a", null);
         Assert.Contains(a.Roles, r => r.Chip == "Thinking pool" &&
-            r.Detail == "Ready (qwen3-8b); it joins the Thinking pool by itself unless you keep it out in Companion > Thinking pool.");
+            r.Detail == "Ready (qwen3-8b); it joins the Thinking pool by itself unless you keep it out in Companion > Background thinking.");
         Assert.Contains(a.Commands, c => c.Action == NodeAction.Companion && c.Argument == nameof(CompanionTab.DeepThinking) &&
             c.Label == "Show the Thinking pool" && c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
         // A computer the owner keeps out says so, and its command opens the page where it is ticked again.
         var kept = NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, checks, Hosts: hosts,
             ThinkingPoolLeft: ["gpu-a"])).Single(n => n.Id == "host:gpu-a");
         Assert.Contains(kept.Roles, r => r.Chip == "Thinking pool" &&
-            r.Detail == "Ready (qwen3-8b), but you keep it out of the Thinking pool; tick it in Companion > Thinking pool to add it again.");
+            r.Detail == "Ready (qwen3-8b), but you keep it out of the Thinking pool; tick it in Companion > Background thinking to add it again.");
         Assert.Contains(kept.Commands, c => c.Action == NodeAction.Companion && c.Label == "Add it to the Thinking pool");
         Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/deep-thinking");
         Assert.DoesNotContain(a.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-a/deep-thinking");

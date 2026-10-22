@@ -43,7 +43,7 @@ audio model was NOT RUN; see [Checks](#checks).
 | Thinking, the text model | Companion › Thinking | Writes every reply, remark and report. Takes pictures and recordings itself when its route is set to. |
 | Voice (text-to-speech) | Companion › Voice | Says the reply. |
 | If Thinking fails | Companion › Thinking | Answers when Thinking fails before it says anything. Gets text and pictures, never recordings. |
-| Thinking pool | Companion › Thinking pool | Background jobs: thinking longer, research, screen and sound summaries, judges and helpers. |
+| Thinking pool | Companion › Background thinking | Background jobs: thinking longer, research, screen and sound summaries, judges and helpers. |
 | Image model | Companion › Vision | Takes pictures when it isn't the text model. New. |
 | Audio model | Companion › Hearing | Takes recordings when it isn't the text model. New. |
 

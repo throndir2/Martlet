@@ -206,7 +206,7 @@ public static class ThinkLonger
     };
 
     public const string TurnedOff =
-        "Not started: the user turned Deep thinking off (Companion › Deep thinking). Answer as well as you can right away instead.";
+        "Not started: the user turned Thinking longer off (Companion › Background thinking). Answer as well as you can right away instead.";
 
     /// <summary>What the model is told when Deep thinking can't run where it is set to think (<see cref="DeepThinkingPlan"/>).</summary>
     public static string Unavailable(string why) =>

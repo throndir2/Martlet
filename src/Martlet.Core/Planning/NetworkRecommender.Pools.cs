@@ -282,7 +282,7 @@ public static partial class NetworkRecommender
         /// the smartest free hosted model the model catalog names (NVIDIA Build's) is suggested for the Thinking pool. A few
         /// seconds don't matter in the background. Only a hosted option with a model counts (the catalog's; Martlet's own list
         /// names none), and none while the Thinking pool already has an online member. It is a suggestion: the owner adds it
-        /// in Companion › Thinking pool, so it changes no setup.</summary>
+        /// in Companion › Background thinking, so it changes no setup.</summary>
         private ComponentOption? OnlineDeepThinking(NetworkSetup target)
         {
             const PlanComponent part = PlanComponent.DeepThinking;
@@ -299,7 +299,7 @@ public static partial class NetworkRecommender
 
         /// <summary>The note for <see cref="OnlineDeepThinking"/>'s suggestion.</summary>
         private string OnlineDeepNote(ComponentOption deep) =>
-            $"Deep thinking: {deep.DisplayName} is free and smarter than Thinking's model; add it in Companion › Thinking pool" +
+            $"Deep thinking: {deep.DisplayName} is free and smarter than Thinking's model; add it in Companion › Background thinking" +
             (request.ConfiguredProviders.Contains(deep.ProviderId ?? "", StringComparer.OrdinalIgnoreCase)
                 ? " with the key you saved" : " with a free key from its website") +
             " (what it thinks about goes to that service).";

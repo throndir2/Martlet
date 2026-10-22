@@ -134,7 +134,7 @@ public partial class MainWindow
         var planned = SharingPlanned(job);
         var places = SharingPlaces(job);
         var detail = deep
-            ? "The Thinking pool works on the computers that joined it in Companion › Thinking pool; untick one here to keep every companion PC's pool jobs off it."
+            ? "The Thinking pool works on the computers that joined it in Companion › Background thinking; untick one here to keep every companion PC's pool jobs off it."
             : job == WorkSharingJobs.Thinking
                 ? "Off by default, because another computer's model has no prompt cache for your conversation and answers later; while off, " +
                   "a reply waits for its own computer."
