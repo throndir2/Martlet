@@ -202,6 +202,19 @@ public static partial class CatalogOptions
             .ThenByDescending(r => Smartness(models, r).Rank ?? -1).ThenBy(r => r.ModelId, StringComparer.Ordinal).FirstOrDefault();
     }
 
+    /// <summary>The chat models on <paramref name="provider"/> that call tools, for a model list (Companion › Background thinking's
+    /// Add a cloud provider): free first, then the smartest, at most <paramref name="most"/>. Empty when the catalog has none.</summary>
+    public static IReadOnlyList<string> ChatModels(ModelCatalog models, string provider, IReadOnlyList<Settings.ModelAbility>? tested = null, int most = 30)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+        return [.. models.Routes.Where(r => string.Equals(r.Provider, provider, StringComparison.OrdinalIgnoreCase) && !Retired(r, tested) &&
+                !r.Deprecated && models.Model(r.ModelKey)?.Fact(CatalogFacts.OutputText).Yes == true && Chat(r.ModelId) &&
+                Says(models, r, CatalogFacts.Tools, tested) == true)
+            .OrderByDescending(r => r.Free == true).ThenByDescending(r => Smartness(models, r).Tier)
+            .ThenByDescending(r => Smartness(models, r).Rank ?? -1).ThenBy(r => r.ModelId, StringComparer.Ordinal)
+            .Select(r => r.ModelId).Distinct(StringComparer.Ordinal).Take(most)];
+    }
+
     /// <summary>A free route on <paramref name="provider"/> that hears (Hearing's audio model), the fastest known first.</summary>
     public static CatalogRoute? SuggestedHearing(ModelCatalog models, string provider, IReadOnlyList<Settings.ModelAbility>? tested = null)
     {

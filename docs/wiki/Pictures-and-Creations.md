@@ -111,7 +111,7 @@ call tools.
 Martlet looks things up on the web in the background and tells you what she
 found.
 
-Turn it on or off on **Companion › Thinking pool › Web research**, with **Let
+Turn it on or off on **Companion › Background thinking › Web research**, with **Let
 Martlet search the web and read pages to look things up**. It is on by default.
 It needs **Thinking longer** on and a Thinking model that can call tools.
 

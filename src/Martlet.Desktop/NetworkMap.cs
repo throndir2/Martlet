@@ -557,8 +557,8 @@ internal static class NetworkMap
                         : companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
                         ? $"Thinks things over in the background for this PC ({model})."
                         : inputs.ThinkingPoolLeft?.Contains(paired.HostId) == true
-                        ? $"Ready ({model}), but you keep it out of the Thinking pool; tick it in Companion > Thinking pool to add it again."
-                        : $"Ready ({model}); it joins the Thinking pool by itself unless you keep it out in Companion > Thinking pool.",
+                        ? $"Ready ({model}), but you keep it out of the Thinking pool; tick it in Companion > Background thinking to add it again."
+                        : $"Ready ({model}); it joins the Thinking pool by itself unless you keep it out in Companion > Background thinking.",
                         DeviceComponent.Standby(role.Kind)));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&

@@ -332,7 +332,7 @@ Each stage is one pull request.
      the snapshot of 2026-10-10). When online services allow it and no host card fits a model
      one quality step smarter than live Thinking, Recommended setup suggests it
      (`NetworkRecommendation.OnlineDeepThinking`, a note and the Deep thinking
-     line); the owner adds it in Companion › Thinking pool, which prefills it.
+     line); the owner adds it in Companion › Background thinking, which prefills it.
      A suggestion changes no setup and no fingerprint. The single-PC planner
      (`PlacementEngine`, which the setup advisor uses) places it and suggests
      the free key.

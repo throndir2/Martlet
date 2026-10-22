@@ -8,9 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Companion › Skills: instructions Martlet uses only when it needs them. A reply gets the rules for its tools only while it has those tools, and you can pin skills every reply must follow or add your own. The tools, thinking longer, web research, singing and app guide prompts are skills now, and your edits to them move along. ([#1131](https://github.com/throndir2/Martlet/pull/1131))
+
 ### Changed
 
 - On a paired host, Thinking's model now loads a larger context window when its graphics card has room (up to 32,768 tokens, planned from the card's free memory), so a long reply, hidden thinking or a picture no longer pushes your character's persona and rules out of the model's memory. Each reply still sends the same amount of text, so replies start as soon as before. Recommended setup and Companion › Replies show the window planned for the card and the window loaded now, and Recommended setup now says why each language model and the voice get a card of their own. ([#1133](https://github.com/throndir2/Martlet/pull/1133))
+- The Thinking pool page is now **Background thinking** and is much simpler: three switches say what Martlet does in the background (think longer, look things up, help when a reply is slow), and one list of your computers, graphics cards, this PC and cloud providers has a box and a model picker for each. Adding a cloud provider is just provider, key and model from a list. Everything else is in one closed **Advanced** section. ([#1132](https://github.com/throndir2/Martlet/pull/1132))
 
 ### Fixed
 

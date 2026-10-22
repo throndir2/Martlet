@@ -340,6 +340,35 @@ example dialogue has `Owner:` lines on purpose. The Thinking trace says
 `spoken_reply_check` with a `reply` that has prompt text shows the cut
 (`promptText`).
 
+## Skills
+
+A **skill** is a named set of instructions that is not in every request
+(Companion › Skills). It has a key, a name, one line that says when it helps,
+its text and a *Pinned* box. Small models answer better with less in their
+instructions, so Martlet sends a skill only when a reply needs it:
+
+- **Pinned skills** close every reply's instructions, before *Keep the
+  conversation going* (`PromptSettings.ReplyClosing`). The built-in *Look into
+  it* skill is pinned: when something needs a tool, a look-up or more thought,
+  the reply says briefly that it will do it, and never guesses.
+- **A skill that explains tools** goes with a reply only while that reply is
+  offered one of its tools, where its prompt was before: *Using tools* (any
+  tool), *Thinking longer* (`think_longer`), *Web research* (`research`),
+  *Songs* (`sing_song`, `play_song`, `stop_singing`) and *App guides*
+  (`read_up_on`, `search_guide`, `skip_guide`). A pinned one is sent once, in
+  the closing.
+- **Your own skills** are added with *Add a skill*. A pinned one goes with
+  every reply.
+
+These five skills were prompts on Companion › Prompts before Martlet 0.92. An
+edit of one of those prompts moves to its skill when settings.json is read,
+also when an older computer sends it (`AppSettings.MoveSkillPrompts`), unless
+the skill is already edited. Skills are settings.json's `skills` section and
+the same on every computer of the account (the shared `skills` key). They
+come from saved settings only, so the start of every request stays the same
+for prompt caches. MCP's `skills_status` shows every skill and the pinned
+text every reply gets ([MCP › Settings](mcp/settings.md)).
+
 ## Context board
 
 The context board is where background sources keep their newest short note
@@ -560,7 +589,7 @@ prompts is **NOT RUN**.
 
 ## The Thinking pool
 
-The **Thinking pool** (Companion › Thinking pool, `thinking-pool.json` in the
+The **Thinking pool** (Companion › Background thinking, `thinking-pool.json` in the
 data folder) is one shared set of Thinking models for background work. Its
 cloud providers and servers on your network (an NVIDIA Build or OpenRouter
 model, for example), with their API keys and their choices, are the same on all
@@ -605,7 +634,7 @@ once, 1 to 8):
   role too. Martlet writes `thinking-pool.json` only when something changes,
   never over a file it can't read, and says it once in the status line and
   the desktop log (*diva joined the Thinking pool by itself (its Thinking pool
-  role, qwen3:8b, 2 slots). Untick it in Companion › Thinking pool to keep it
+  role, qwen3:8b, 2 slots). Untick it in Companion › Background thinking to keep it
   out.*). A member whose computer stops answering stays a member; its line
   says *In the pool, offline now* and its slots come back when it answers
   (see *Computers that go offline* below).
@@ -936,7 +965,7 @@ MCP's `thinking_pool_status` reads it with the settings and plan, and
 
 ### Backup Thinking: a hedged request
 
-**Backup Thinking** (Companion › Thinking pool › *Backup Thinking*,
+**Backup Thinking** (Companion › Background thinking › *Backup Thinking*,
 `ThinkingPoolBackup`, off by default) helps when the conversation's Thinking
 model is slow to start a reply because it is busy, loading or far away. It is
 a *hedged request* (Dean and Barroso, "The Tail at Scale", Communications of
@@ -1131,7 +1160,7 @@ string? note = rules.Period.Describe();             // "held 2 pool jobs, stoppe
 ## Thinking longer and background work
 
 Replies answer right away (Thinking steps are Off by default). **Thinking
-longer** (Companion › Thinking pool; on by default, and *Let Martlet think
+longer** (Companion › Background thinking; on by default, and *Let Martlet think
 things over in the background* (`ThinkLongerOn`) turns it off on all your computers) lets Martlet decide, sparingly, that a
 task needs real thought and hand it to **Deep thinking**, which works it out in
 the background while Thinking keeps talking with you: parallel thinking, so it
@@ -1180,7 +1209,7 @@ spoken. Its message continues a reply's request (Companion › Prompts ›
 *Thinking longer: the task*); the picture or recording the message went with
 isn't sent again.
 
-**Where it thinks** (the machine list on Companion › Thinking pool,
+**Where it thinks** (the machine list on Companion › Background thinking,
 `thinking-pool.json` in the data folder; its cloud providers and servers are
 the same on all your computers, see [The Thinking pool](#the-thinking-pool)). A think runs on a pool
 member ticked for *Long jobs*:
@@ -1491,7 +1520,7 @@ pool's last free slot when the pool has two or more.
 ### The research tool and its job
 
 **On by default, with its own switch.** Searching sends the search words to a
-third party, so it is a switch of its own on Companion › Thinking pool › *Web research*
+third party, so it is a switch of its own on Companion › Background thinking › *Web research*
 (`WebResearchOn`, saved with the reply settings as `ThinkLonger.WebResearch`,
 so all your computers share it, like Deep thinking's Off). It is on by default,
 so asking Martlet to look something up works at once; turning it off saves
@@ -3092,7 +3121,7 @@ voice pipeline never waits for a whole reply:
   own voice and kept in `quick-sounds\`; a paid cloud voice makes them only on
   the owner's click. Details and measurements:
   [Voice latency](VOICE_LATENCY.md#quick-sounds-while-martlet-thinks).
-- **Backup Thinking.** Off by default (Companion › Thinking pool). When the
+- **Backup Thinking.** Off by default (Companion › Background thinking). When the
   reply's Thinking request has no first words after a wait (automatic: the
   95th percentile of recent replies, at least 900 ms), the same request also
   goes to a pool member the owner allowed to answer for the conversation, and

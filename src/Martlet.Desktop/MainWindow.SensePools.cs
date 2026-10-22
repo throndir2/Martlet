@@ -120,7 +120,7 @@ public partial class MainWindow
     }
 
     /// <summary>Under the list: the Thinking pool's models that get the pictures (or recordings) too (<see cref="SensePoolUsers"/>),
-    /// each with where it runs and what it gets them for or why it gets none, and Open Thinking pool. So the page names every model
+    /// each with where it runs and what it gets them for or why it gets none, and Open Background thinking. So the page names every model
     /// that gets them, cloud providers and servers in the Thinking pool included.</summary>
     private IEnumerable<UIElement> SensePoolAlso(SenseKind kind, SetupRoute? thinking, ModelAbilities abilities)
     {
@@ -146,7 +146,7 @@ public partial class MainWindow
             row.Children.Add(NetworkRowText($"{id}-{i}", user.Name, line));
             elements.Add(row);
         }
-        elements.Add(Row(PageButton("Open Thinking pool", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: id + "Open")));
+        elements.Add(Row(PageButton("Open Background thinking", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: id + "Open")));
         return elements;
     }
 

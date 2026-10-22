@@ -27,6 +27,8 @@ internal static class SettingsConfiguration
             "while every value is the model's default."),
         ("prompts", true, "Edits to Martlet's internal prompts (Companion › Prompts). Absent while every prompt is built in. Use " +
             "martlet_call with prompts_status to see each prompt's id and text."),
+        ("skills", true, "Edits of the built-in skills and your own skills (Companion › Skills): skills is a list of key, name, " +
+            "use_when, body and pinned. Absent while every skill is built in. Use martlet_call with skills_status to see every skill."),
         ("memory", true, "Memory on or off and where memories are kept (Companion › Memory)."),
         ("setup", false, "Where Martlet thinks, listens and speaks (routes, models, destinations and your consent to them). Change it " +
             "in Martlet: Companion › Thinking, Listening and Voice."),
@@ -127,11 +129,14 @@ internal static class SettingsConfiguration
             candidate = JsonSerializer.Deserialize<AppSettings>(bytes, SchemaOptions) ?? throw new ArgumentException("settings.json can't be empty.");
         }
         catch (JsonException error) { throw new ArgumentException("Martlet can't use that value: " + error.Message); }
-        // Optional parts are saved as absent while everything in them is the default, as Martlet's pages save them.
+        // Optional parts are saved as absent while everything in them is the default, as Martlet's pages save them. An edit of a
+        // prompt that is a skill now moves to its skill.
+        candidate = AppSettings.MoveSkillPrompts(candidate);
         candidate = candidate with
         {
             Generation = candidate.Generation is { IsDefault: true } ? null : candidate.Generation,
-            Prompts = candidate.Prompts is { IsDefault: true } ? null : candidate.Prompts
+            Prompts = candidate.Prompts is { IsDefault: true } ? null : candidate.Prompts,
+            Skills = candidate.Skills is null ? null : SkillSettings.Normalize(candidate.Skills.Skills)
         };
         var next = FreshRevisions(prior, candidate);
         var save = await store.SaveAsync(next, loaded.Revision, token);

@@ -102,6 +102,16 @@ internal sealed partial class McpServer
             id = new { type = "string", maxLength = 64 }
         },
             async (arguments, cancellation) => await PromptsStatusAsync(arguments, cancellation)),
+        Tool("skills_status", "Read Companion > Skills from a data directory's settings.json (docs/CONVERSATION.md#skills): every skill " +
+            "(key, name, use-when line, whether it is built in, pinned, edited, the user's own or emptied, the reply tools it explains, " +
+            "its estimated tokens), which skills every reply gets (the pinned ones, in the closing of its instructions, with that text " +
+            "exactly as the desktop sends it) and which prompts became skills. A skill that explains tools goes in a reply only while " +
+            "the reply is offered one of them. With key, also returns that skill's text. Read-only.", new
+        {
+            dataDirectory = new { type = "string" },
+            key = new { type = "string", maxLength = 40 }
+        },
+            async (arguments, cancellation) => await SkillsStatusAsync(arguments, cancellation)),
         Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
             "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
             "whether vision (on by default) and hearing the PC are on (replies are told about Martlet decides only while one is), " +
@@ -388,6 +398,45 @@ internal sealed partial class McpServer
         };
     }
 
+    /// <summary>Companion › Skills as saved in a data directory's settings.json: each skill's state, what every reply gets, and one
+    /// skill's text on request.</summary>
+    private static async Task<object> SkillsStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var key = OptionalString(arguments, "key");
+        var loaded = await new Martlet.Core.Settings.SettingsStore(DataDirectory(arguments)).LoadAsync(cancellation);
+        var saved = loaded.Settings?.Skills;
+        var all = Martlet.Core.Settings.SkillSettings.All(saved);
+        if (key is not null && all.All(s => s.Key != key)) throw new ArgumentException($"Unknown skill '{key}'.");
+        var prompts = Martlet.Core.Settings.PromptSettings.ForPersonal(loaded.Settings?.Prompts, loaded.Settings?.Generation, saved);
+        var list = all.Select(s => new
+        {
+            key = s.Key, name = s.Name, useWhen = s.UseWhen, builtIn = s.BuiltIn, pinned = s.Pinned, tools = s.Tools,
+            state = string.IsNullOrWhiteSpace(s.Body) ? "empty" : !s.BuiltIn ? "own" : saved?.Skills.Any(e => e.Key == s.Key) == true ? "edited" : "builtin",
+            tokens = string.IsNullOrWhiteSpace(s.Body) ? 0 : Martlet.Providers.BoundedTextInput.TextTokens(s.Body)
+        }).ToArray();
+        var pinnedText = Martlet.Core.Settings.SkillSettings.Pinned(prompts, Martlet.Conversation.StayQuiet.Marker);
+        return new
+        {
+            state = loaded.State switch
+            {
+                Martlet.Core.Settings.SettingsLoadState.Loaded => "loaded",
+                Martlet.Core.Settings.SettingsLoadState.FirstRun => "none",
+                _ => "unreadable"
+            },
+            problem = loaded.Error?.Summary, total = list.Length, own = list.Count(s => !s.builtIn),
+            edited = list.Count(s => s.state == "edited"), skills = list,
+            everyReply = new
+            {
+                pinned = list.Where(s => s.pinned && s.state != "empty").Select(s => s.key).ToArray(),
+                text = pinnedText,
+                tokens = pinnedText is null ? 0 : Martlet.Providers.BoundedTextInput.TextTokens(pinnedText)
+            },
+            movedPrompts = Martlet.Core.Settings.SkillCatalog.MovedPrompts,
+            skill = key is null ? null : all.First(s => s.Key == key) is var one
+                ? new { key = one.Key, name = one.Name, useWhen = one.UseWhen, body = one.Body, pinned = one.Pinned, tools = one.Tools } : null
+        };
+    }
+
     /// <summary>Companion › Prompts as saved in a data directory's settings.json: each prompt's state, and one prompt's
     /// effective text on request.</summary>
     private static async Task<object> PromptsStatusAsync(JsonElement arguments, CancellationToken cancellation)
@@ -397,6 +446,8 @@ internal sealed partial class McpServer
         var loaded = await new Martlet.Core.Settings.SettingsStore(DataDirectory(arguments)).LoadAsync(cancellation);
         var prompts = loaded.Settings?.Prompts;
         var generation = loaded.Settings?.Generation;
+        // What a reply reads: the prompts with the skills (the pinned ones close a reply's instructions).
+        var replyPrompts = Martlet.Core.Settings.PromptSettings.ForPersonal(prompts, generation, loaded.Settings?.Skills);
         var state = loaded.State switch
         {
             Martlet.Core.Settings.SettingsLoadState.Loaded => "loaded",
@@ -429,8 +480,8 @@ internal sealed partial class McpServer
                 on = Martlet.Core.Settings.GenerationSettings.StartsShort(generation),
                 chosen = generation?.ShortFirstSentence is not null,
                 prompt = Of(Martlet.Core.Settings.PromptCatalog.ShortFirstSentence),
-                spokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, true, Martlet.Conversation.StayQuiet.Marker),
-                unspokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, false, Martlet.Conversation.StayQuiet.Marker)
+                spokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(replyPrompts, generation, true, Martlet.Conversation.StayQuiet.Marker),
+                unspokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(replyPrompts, generation, false, Martlet.Conversation.StayQuiet.Marker)
             },
             // Companion › Replies › Adult content (off by default) and the instructions it adds after the One moment prompt of
             // every reply and remark (never in a Discord call), exactly as the desktop sends them; null while it is off.

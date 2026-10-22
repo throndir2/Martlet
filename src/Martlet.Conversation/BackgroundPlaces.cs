@@ -37,14 +37,14 @@ public sealed record BackgroundPlace(string Id, string Name, int Rank = 0)
     public IReadOnlyList<string> Gpus { get; init; } = [];
 
     /// <summary>Whether it takes quick jobs: the judges and the screen and sound summaries (<see cref="ThinkingJobKinds.IsFast"/>).
-    /// The owner's Quick jobs box on Companion › Thinking pool; on unless unticked.</summary>
+    /// The owner's Quick jobs box on Companion › Background thinking; on unless unticked.</summary>
     public bool QuickJobs { get; init; } = true;
 
     /// <summary>Whether it takes long jobs: every other kind (thinking longer, research, a song's lyrics, touch zones, remembering,
-    /// naming and check-ins). The owner's Long jobs box on Companion › Thinking pool; on unless unticked.</summary>
+    /// naming and check-ins). The owner's Long jobs box on Companion › Background thinking; on unless unticked.</summary>
     public bool LongJobs { get; init; } = true;
 
-    /// <summary>How smart a Thinking pool member's model is (the owner's choice on Companion › Thinking pool, else Martlet's guess
+    /// <summary>How smart a Thinking pool member's model is (the owner's choice on Companion › Background thinking, else Martlet's guess
     /// from the model name); Standard when not known. A job's Runs on (<see cref="ThinkingRunsOn"/>) uses it.</summary>
     public ThinkingSmarts Smarts { get; init; } = ThinkingSmarts.Standard;
 
@@ -53,7 +53,7 @@ public sealed record BackgroundPlace(string Id, string Name, int Rank = 0)
     public bool Takes(ThinkingJobKind kind) => ThinkingJobKinds.IsFast(kind) ? QuickJobs : LongJobs;
 
     /// <summary>Whether it may receive pictures and recordings (jobs with an image or audio). Off only for an external member
-    /// (an endpoint not on this PC) whose May receive pictures and recordings box on Companion › Thinking pool is unticked.</summary>
+    /// (an endpoint not on this PC) whose May receive pictures and recordings box on Companion › Background thinking is unticked.</summary>
     public bool Media { get; init; } = true;
 
     /// <summary>Whether the owner lets it receive a job that needs <paramref name="needs"/>: any text job, and a job with a

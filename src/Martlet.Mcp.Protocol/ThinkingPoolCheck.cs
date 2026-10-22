@@ -8,7 +8,7 @@ using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
-/// <summary>thinking_pool_status and thinking_pool_check: Companion › Thinking pool. The status reads a data directory's pool
+/// <summary>thinking_pool_status and thinking_pool_check: Companion › Background thinking. The status reads a data directory's pool
 /// (thinking-pool.json, or what Martlet would make from deep-thinking.json, without writing it), each member's slots and what it
 /// can do, the plan (whether each member can run and why), the likely-slowdown warnings and guidance, and the desktop's
 /// thinking-pool-status.json (running and waiting jobs by kind, never a job's text). The check rehearses the production job board
@@ -366,7 +366,7 @@ internal static partial class ThinkingPoolCheck
                 $"{text.Outcome}; {asked} requests in all; resting {string.Join(", ", resting.Select(r => $"{r.Name} for {ThinkingJobResult.Describe(r.Needs)} until {r.Until:HH:mm:ss}"))}");
         }
 
-        // 11. Quick jobs and Long jobs (the owner's boxes for each machine on Companion › Thinking pool): a judge passes over a
+        // 11. Quick jobs and Long jobs (the owner's boxes for each machine on Companion › Background thinking): a judge passes over a
         // member kept from quick jobs, a long job passes over a member kept from long jobs, and a long job on a member that takes
         // no quick jobs keeps no slot free (that member's slots were never the quick jobs' slots).
         {
@@ -733,7 +733,7 @@ internal static partial class ThinkingPoolCheck
                 $"{moved.Outcome} on {moved.Member}; {string.Join("; ", cooling.Select(c => c.Describe(DateTimeOffset.UtcNow)))}");
         }
 
-        // 18. Smarts and Runs on (Companion › Thinking pool, and each check-in card): Martlet guesses each member's smarts from its
+        // 18. Smarts and Runs on (Companion › Background thinking, and each check-in card): Martlet guesses each member's smarts from its
         // model name; Prefer smart takes the smartest free member, and a less smart one after its short wait; Smart only gets no
         // member without a Smart one; These members uses only the chosen ones; Any member keeps today's choice.
         {

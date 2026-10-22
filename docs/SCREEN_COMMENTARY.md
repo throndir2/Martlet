@@ -244,7 +244,7 @@ also keeps a short **screen summary over time**:
    only while vision is on, Martlet watches, and an image model of its own
    describes pictures or the Thinking pool has a
    member that sees other than the conversation's own model (Companion ›
-   Thinking pool); otherwise the
+   Background thinking); otherwise the
    card says why and what to do. Each summary is one more request with a
    picture, which may cost more. Stopping watching, pausing, locking Windows
    or turning it off lets every kept picture go and takes the note off the

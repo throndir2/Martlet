@@ -42,6 +42,14 @@ internal static class DeepThinkingFit
         return others;
     }
 
+    /// <summary>The Thinking pool model the role suggests for a computer with <paramref name="hardware"/>: the largest of
+    /// <see cref="SuggestedByVram"/> that fits its best NVIDIA graphics card.</summary>
+    internal static string Suggested(HostHardware? hardware)
+    {
+        var gpu = hardware?.BestGpu is { IsNvidia: true } best && hardware.NvidiaContainers != "no" ? best : null;
+        return SuggestedByVram.LastOrDefault(s => (gpu?.MemoryMb ?? 0) >= s.MiB).Model ?? Models[0];
+    }
+
     /// <summary>The recommendations for the role's settings window: <c>choice.OLLAMA_NUM_PARALLEL</c> for the model it runs now
     /// (else the one the host suggests for its card), and <c>choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=model</c> for each model it
     /// offers (and Automatic), which the window shows under the model chosen.</summary>
@@ -57,7 +65,7 @@ internal static class DeepThinkingFit
             var (slots, why) = DeepThinkingSlots.Fit(model, ListeningAdvisor.OllamaModelGb(model), cardGb, others);
             return (slots.ToString(System.Globalization.CultureInfo.InvariantCulture), why);
         }
-        var suggested = SuggestedByVram.LastOrDefault(s => (gpu?.MemoryMb ?? 0) >= s.MiB).Model ?? Models[0];
+        var suggested = Suggested(hardware);
         var now = offers?.GetValueOrDefault(Martlet.Core.Settings.SelfHostSetup.DeepThinkingRoleKind(card)) is { } alias ? Tag(alias) : null;
         var result = new Dictionary<string, (string, string)>(StringComparer.Ordinal) { ["choice." + SlotsVariable] = For(now ?? suggested) };
         foreach (var model in Models) result[$"choice.{SlotsVariable}@{ModelVariable}={model}"] = For(model);

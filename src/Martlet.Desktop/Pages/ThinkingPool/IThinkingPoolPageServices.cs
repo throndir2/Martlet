@@ -4,7 +4,7 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Everything Companion › Thinking pool (<see cref="ThinkingPoolPage"/> and <see cref="ThinkingPoolPageModel"/>) reads and
+/// <summary>Everything Companion › Background thinking (<see cref="ThinkingPoolPage"/> and <see cref="ThinkingPoolPageModel"/>) reads and
 /// changes in the app. MainWindow gives it to the page when it makes the page (MainWindow.ThinkingPool.cs); the page uses
 /// nothing else of MainWindow. It has no WPF types, so the page model can use it too.</summary>
 internal interface IThinkingPoolPageServices

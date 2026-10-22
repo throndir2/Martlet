@@ -144,7 +144,7 @@ helper jobs in [MEMORY.md](MEMORY.md).
 ## Thinking job kinds: keys, labels and priorities
 
 **What it decides:** the job kinds of the Thinking pool, the key of each kind
-in saved files and logs, its label on Companion › Thinking pool, its priority,
+in saved files and logs, its label on Companion › Background thinking, its priority,
 whether it is quick, what it needs, what the live floor does to it, and which
 helper jobs run as which kind.
 
@@ -152,7 +152,7 @@ helper jobs run as which kind.
 (`src\Martlet.Conversation\ThinkingJobKinds.cs`), with the enums
 `ThinkingJobKind`, `ThinkingPriority` and `HelperJobKind`. These read it:
 `ThinkingJobKinds.Name`, `Priority` and `IsFast`; `LiveFloorRules.Stops` and
-`ServesTheTurn`; the Runs on card (`RunsOnCard`,
+`ServesTheTurn`; Runs on under Advanced (`RunsOnSection`,
 `src\Martlet.Desktop\Pages\ThinkingPool\ThinkingPoolPage.BusyPool.cs`);
 `ThinkingRequestWords.Kind`; `HelperJobs.Name` and `PriorityOf`; and
 `ThinkingPoolHelpers.Kind` and `Priority`. To add a kind, add its enum value
@@ -377,14 +377,33 @@ role image copies it beside its host (build context `workers`, `workers\<engine>
 
 **Docs:** [Host roles](../deploy/host/README.md).
 
+## Which skills a reply gets
+
+**What it decides:** which skills (named instruction packs, Companion › Skills) a reply carries: the pinned ones in the
+closing of every reply's instructions, and a skill that explains tools only while the reply is offered one of its tools
+(once, never twice when it is pinned too); the built-in skills and their texts; which prompt edits move to skills.
+
+**Owner:** `SkillCatalog` (built-in skills and the prompts that became skills) and `SkillSettings` (`All`, `Pinned`,
+`Guidance`, `WithMovedPrompts`), both in `src\Martlet.Core\Settings\`. `PromptSettings.ReplyClosing` puts the pinned
+skills first in the closing; the tool code (`ThinkLonger.Instructions`, `WebResearch.Instructions`,
+`SongTools.Instructions`, `AppGuideTools.Instructions`, the *Tools prompt* part of `LiveConversationConfiguration.Request`)
+reads `SkillSettings.Guidance`. `AppSettings.MoveSkillPrompts` moves old prompt edits on read and on sync.
+
+**Tests:** `SkillSettingsTests`, `PromptSettingsTests`, `PromptBudgetTests` (Martlet.Core.Tests).
+
+**MCP:** `skills_status`; `prompts_status` (`shortFirstSentence.spokenClosing`); the Skills page's `SkillsNow` and
+`SkillState-<key>`.
+
+**Docs:** [Skills](CONVERSATION.md#skills).
+
 ## How much Martlet looks a question up (answer, look up or research)
 
 **What it decides:** when a reply answers from what Martlet knows, searches a guide or report, does a quick look-up, or
 starts full or deep research; each depth's budget and job kind; when the answer counts as found early; and how a
 report's sources are checked after it is ready.
 
-**Owner:** the *Web research* prompt (`PromptCatalog.DefaultWebResearchInstructions`,
-`src\Martlet.Core\Settings\PromptCatalog.Texts.cs`) for when to use each level; `WebResearch` (`Depth`, `BudgetFor`,
+**Owner:** the *Web research* skill (`PromptCatalog.DefaultWebResearchInstructions`, the built-in text of
+`SkillCatalog.WebResearch`, `src\Martlet.Core\Settings\SkillCatalog.cs`) for when to use each level; `WebResearch` (`Depth`, `BudgetFor`,
 `KindFor`, `LookupKind`, `FindingKind`, `src\Martlet.Conversation\Research\WebResearch.cs`) for the depths, budgets and
 jobs; `ResearchWatcher` (`src\Martlet.Conversation\Research\ResearchWatcher.cs`) for what counts as found;
 `SourceCheck` (`src\Martlet.Conversation\Research\SourceCheck.cs`) for the source check. The desktop's

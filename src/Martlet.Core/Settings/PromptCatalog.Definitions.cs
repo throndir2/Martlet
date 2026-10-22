@@ -80,13 +80,6 @@ public static partial class PromptCatalog
             "such as (voice: sighs, sounds tired). Empty it to send nothing.",
             DefaultHeardVoiceNoteInstructions,
             ["when", "voice"]),
-        new(Tools, ConversationGroup, "Tools", "Added when a reply is offered tools: MCP servers', Martlet's own (think_longer, and " +
-            "search_conversations when Companion › Memory lets Martlet search past conversations) and the terminal (Companion › Tools).",
-            DefaultToolInstructions, []),
-        new(ThinkLonger, ConversationGroup, "Thinking longer",
-            "Added to every reply offered think_longer (Companion › Replies › Thinking longer, on by default, on a Thinking route " +
-            "that does function calling), after the tools prompt. It stays the same from reply to reply while the setting is on.",
-            DefaultThinkLongerInstructions, []),
         new(HandedOffTools, ConversationGroup, "Things done after the reply",
             "Added to every reply while Companion › Check-ins › Act on what was said (or another check-in that runs after each " +
             "reply) takes over some of the reply's tools, because a Thinking pool member that calls tools does that work right " +
@@ -151,11 +144,6 @@ public static partial class PromptCatalog
             "explicit content with an adult character and says how to take touches on intimate parts. It stays the same from " +
             "reply to reply.",
             DefaultAdultContentInstructions, []),
-        new(Singing, ConversationGroup, "Singing",
-            "Added to every reply offered sing_song, play_song and stop_singing (while singing is set up in Companion › Voice › " +
-            "Singing and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from " +
-            "reply to reply. {silent} is the word the model answers to stay quiet.",
-            DefaultSingingInstructions, ["silent"]),
         new(SingingTags, ConversationGroup, "Singing without tools",
             "Added to every reply while singing is set up in Companion › Voice › Singing and the Thinking route does no function " +
             "calling (a model on one of your computers, or a model that refused tools). The reply writes [sing: ...], " +
@@ -163,11 +151,6 @@ public static partial class PromptCatalog
             "from reply to reply. {silent} is the word the model answers to stay quiet. Empty it and Martlet doesn't sing on " +
             "such a route.",
             DefaultSingingTagsInstructions, ["silent"]),
-        new(WebResearch, ConversationGroup, "Web research",
-            "Added to every reply offered research (while Companion › Deep thinking › Web research is on, with Thinking longer, " +
-            "and Deep thinking can think), after the Thinking longer prompt: when to answer from what Martlet knows, when to " +
-            "search a guide or report, when to look one fact up quickly and when to research. It stays the same from reply to reply.",
-            DefaultWebResearchInstructions, []),
         new(ResearchFound, ConversationGroup, "Web research: found it early",
             "The message of the reply Martlet starts on its own when full or deep research already found what you wanted while it " +
             "goes on for the report. {findings} says which research, what you wanted, what was found and from which pages.",
@@ -175,11 +158,6 @@ public static partial class PromptCatalog
         new(ResearchFoundNotes, ConversationGroup, "Web research: found it early, with your message",
             "The same in the notes of your message, when you talk before Martlet told you. {findings} is as above.",
             DefaultResearchFoundNotesInstructions, ["findings"]),
-        new(AppGuides, ConversationGroup, "App guides",
-            "Added to every reply offered read_up_on, search_guide, skip_guide and update_guide_brief (while Companion › App guides " +
-            "is on and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from reply " +
-            "to reply.",
-            DefaultAppGuidesInstructions, []),
         new(AppGuideNotes, ConversationGroup, "App guide, with your message",
             "Opens the sections of a guide that go in the notes of your message while you ask about a game or app Martlet read " +
             "up on (it is in front, or you name it), and only when they match well. {app} is the app's name. Empty it to send " +

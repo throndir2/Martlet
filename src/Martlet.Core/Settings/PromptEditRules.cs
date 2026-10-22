@@ -41,12 +41,23 @@ internal static class PromptEditRules
         "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks" or "check_in_call" or "after_reply";
 
     /// <summary><paramref name="edits"/> as this Martlet reads them: without edits of retired prompts and without the {style}
-    /// lines of an old Persona edit. Edits that need neither are returned as they are.</summary>
-    public static IReadOnlyDictionary<string, string> Upgrade(IReadOnlyDictionary<string, string> edits) =>
-        edits is not null && (edits.Keys.Any(Retired) || StyleLines(edits))
+    /// lines of an old Persona edit. Edits of prompts that became skills (<see cref="SkillCatalog.MovedPrompts"/>) leave too and
+    /// come back in <paramref name="moved"/>. Edits that need none of this are returned as they are.</summary>
+    public static IReadOnlyDictionary<string, string> Upgrade(IReadOnlyDictionary<string, string> edits,
+        out IReadOnlyDictionary<string, string>? moved)
+    {
+        moved = null;
+        if (edits is null) return edits!;
+        if (edits.Keys.Any(SkillCatalog.MovedPrompts.ContainsKey))
+        {
+            moved = edits.Where(e => SkillCatalog.MovedPrompts.ContainsKey(e.Key)).ToDictionary(e => e.Key, e => e.Value, StringComparer.Ordinal);
+            edits = edits.Where(e => !SkillCatalog.MovedPrompts.ContainsKey(e.Key)).ToDictionary(e => e.Key, e => e.Value, StringComparer.Ordinal);
+        }
+        return edits.Keys.Any(Retired) || StyleLines(edits)
             ? edits.Where(e => !Retired(e.Key)).ToDictionary(e => e.Key,
                 e => e.Key == PromptCatalog.Persona ? WithoutStyleLines(e.Value) : e.Value, StringComparer.Ordinal)
-            : edits!;
+            : edits;
+    }
 
     // A Persona prompt edited in an older Martlet can still have the {style} line it had then ("Dominant style for this reply:
     // {style}"). There are no response styles now, so those lines are dropped instead of sent as written.
