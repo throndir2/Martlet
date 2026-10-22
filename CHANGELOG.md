@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-10-22
+
 ### Added
 
 - Home has a **Get started** card with the three steps to a working companion: set up where Martlet runs, choose who it is (personality, look and voice), then talk. Each step ticks itself when it's done, and the card goes away once all three are. ([#1137](https://github.com/throndir2/Martlet/pull/1137))
