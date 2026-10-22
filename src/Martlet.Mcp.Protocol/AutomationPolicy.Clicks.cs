@@ -26,8 +26,17 @@ internal static partial class AutomationPolicy
         new("NavCompanion", "Navigation rail", "Only opens the Companion page."),
         new("NavConversations", "Navigation rail", "Only opens the Conversations page."),
         new("NavCreations", "Navigation rail", "Only opens the Creations page."),
-        new("NavDiagnostics", "Navigation rail", "Only opens the Diagnostics page."),
+        new("NavDiagnostics", "Navigation rail", "Only opens the Diagnostics page (shown with Show advanced settings on, or while it is open)."),
         new("NavSettings", "Navigation rail", "Only opens the Settings page."),
+        new("CompanionShowAdvanced", "Companion side list", "Show advanced settings (N more pages) / Hide advanced settings: only shows or hides the advanced pages in the side list and the rail (Thinking requests, Diagnostics). It saves only that choice (advanced-settings.json, each person's), so MCP can reach every page."),
+        new("Step-GetStartedServers-RecommendedSetup", "Home › Get started", "Recommended setup: the same as HomeRecommendedSetup."),
+        new("Step-GetStartedServers-AddComputer", "Home › Get started", "Add a computer: only opens the Add a computer wizard."),
+        new("Step-GetStartedCharacter-Profiles", "Home › Get started", "Choose a character: only opens Companion › Profiles."),
+        new("Step-GetStartedCharacter-Find", "Home › Get started", "Find a character: only opens the Find a character window."),
+        new("Step-GetStartedCharacter-Look", "Home › Get started", "Look: only opens Companion › Character."),
+        new("Step-GetStartedCharacter-Voice", "Home › Get started", "Voice: only opens Companion › Voice."),
+        new("Step-GetStartedTalk-Talk", "Home › Get started", "Start talking: only opens the talk window, like OpenLiveConversation."),
+        // Needs --allow-ui-effects: Step-GetStartedTalk-Listen (it starts listening to the microphone, like HomeListen).
         new("TourSkip", "Welcome wizard", "Skip for now: closes the welcome wizard and keeps the device role (companion PC when no role is chosen yet)."),
         new("TourBegin", "Welcome wizard", "Let's begin: only moves from the greeting to the first step."),
         new("TourBack", "Welcome wizard", "Back: only moves back one step."),
@@ -48,6 +57,8 @@ internal static partial class AutomationPolicy
         new("WizardQualitySmarter", "Welcome wizard", "An answer to the quality question: only changes the selection in the wizard; nothing saves until Show my setup."),
         // Needs --allow-ui-effects: Show my setup (WizardQuestionsNext, saves recommendation-preferences.json), choosing a network (saves the device role) and Join (asks the other computer).
         // Needs --allow-ui-effects: Use these suggestions and Skip the key (set up and install), Save key (stores a key) and Open build.nvidia.com (opens the browser).
+        new("WizardCharacterMake", "Welcome wizard", "Make my own: only shows the form (name, who it is, look and voice); nothing saves until Use this character."),
+        // Needs --allow-ui-effects: the character step's cards (WizardCharacterKeep, WizardCharacterProfile-<n>), Use this character (WizardCharacterSave) and Import a character card (WizardCharacterImport): they save a character and then set it all up; Choose later (WizardCharacterSkip) sets it all up.
         new("OpenPeople", "Companion › Listening", "Open People: only opens Companion › People."),
         new("OpenPrompts", "Companion › Personality", "Edit prompts: only opens Companion › Prompts."),
         new("DeviceFactsSection", "Devices", "Hardware and details (or Details) of the selected device: only expands or collapses the facts."),
@@ -204,7 +215,7 @@ internal static partial class AutomationPolicy
         new("HostRunHide", "Run window", "Hide: only hides the run window while its task keeps running (closes it once the task has finished); stops, sends and saves nothing."),
         new("TasksClear", "Background tasks", "Clear finished: only drops finished tasks' kept output from the list; stops, sends and saves nothing."),
         // Needs --allow-ui-effects: Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>): they ask first, then stop the task.
-        new("NavThinkingRequests", "Navigation rail", "Only opens the Thinking requests page."),
+        new("NavThinkingRequests", "Navigation rail", "Only opens the Thinking requests page (shown with Show advanced settings on, or while it is open)."),
         new("ThinkingRequestsFilter-all", "Thinking requests", "All: only filters the list."),
         new("ThinkingRequestsFilter-active", "Thinking requests", "Waiting or running: only filters the list."),
         new("ThinkingRequestsFilter-problems", "Thinking requests", "With problems: only filters the list."),

@@ -26,7 +26,7 @@ public sealed class CompanionPagesTests
         Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Lip-sync" }, groups[CompanionGroup.HowItWorks].Select(CompanionPages.TabTitle));
         // The Optional extras follow the priority list: vision, reading, hearing, the Thinking pool, smart home, singing, pictures,
         // then motion, which the list doesn't rank.
-        Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Thinking pool", "Smart home", "Singing", "Picture making", "Motion" },
+        Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Background thinking", "Smart home", "Singing", "Picture making", "Motion" },
             groups[CompanionGroup.Extras].Select(CompanionPages.TabTitle));
         Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional: ", CompanionPages.TabIntro(tab)));
         // The page shows one sentence: the intro without what Off means (issue #995).
@@ -36,6 +36,30 @@ public sealed class CompanionPagesTests
         // The side list holds every page once, each group together.
         Assert.Equal(Enum.GetValues<CompanionTab>().Length, CompanionPages.SideListOrder().Distinct().Count());
     }
+
+    [Fact]
+    public void WithoutAdvancedSettingsTheSideListShowsOnlyTheMainFlow()
+    {
+        var shown = CompanionPages.SideListOrder(showAdvanced: false);
+        Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Profiles", "Personality", "Memory", "Character", "Replies" },
+            shown.Select(CompanionPages.TabTitle));
+        // Optional extras has no essential page, so its group doesn't show.
+        Assert.DoesNotContain(shown, tab => CompanionPages.GroupOf(tab) == CompanionGroup.Extras);
+        Assert.Equal(Enum.GetValues<CompanionTab>().Length, CompanionPages.SideListOrder(showAdvanced: true).Count);
+        // A page a shortcut opened shows too, in its group's place.
+        var opened = CompanionPages.SideListOrder(showAdvanced: false, CompanionTab.Prompts);
+        Assert.Contains(CompanionTab.Prompts, opened);
+        Assert.Equal(shown.Count + 1, opened.Count);
+        Assert.True(CompanionPages.IsAdvanced(CompanionTab.DeepThinking));
+        Assert.True(CompanionPages.IsAdvanced(CompanionTab.Prompts));
+        Assert.False(CompanionPages.IsAdvanced(CompanionTab.Thinking));
+    }
+
+    [Theory]
+    [InlineData("Personality", "Write who Martlet is")]
+    [InlineData("Replies", "Choose how long Martlet's replies are")]
+    public void IntrosSayWhatThePageDoesInPlainWords(string tab, string start) =>
+        Assert.StartsWith(start, CompanionPages.TabIntro(Enum.Parse<CompanionTab>(tab)));
 
     [Theory]
     [InlineData(Martlet.Core.Planning.PlanComponent.Thinking, "Thinking")]

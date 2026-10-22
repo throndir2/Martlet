@@ -100,6 +100,7 @@ public partial class MainWindow
         hostProbeTimer.Start();
         SharedSteps.Changed += SharedStepsChanged;
         HostRunWindow.RunsChanged += ShowHostRuns;
+        LoadAdvanced();
         ApplyRole();
         RenderHome();
         // A Windows user who hasn't chosen yet gets the welcome tour, unless another Windows user made this PC a host PC.

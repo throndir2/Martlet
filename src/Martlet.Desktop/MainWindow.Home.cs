@@ -222,7 +222,7 @@ public partial class MainWindow
                     IsEnabled = command.Enabled };
                 if (command.Primary && ReferenceEquals(step, current)) button.SetResourceReference(StyleProperty, "PrimaryButton");
                 AutomationProperties.SetName(button, $"{command.Label}: {step.Title}");
-                AutomationProperties.SetAutomationId(button, $"Step-{step.Id}-{actions.Children.Count}");
+                AutomationProperties.SetAutomationId(button, $"Step-{step.Id}-{command.Id ?? actions.Children.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
                 var run = command.Run;
                 button.Click += (_, _) => run();
                 actions.Children.Add(button);

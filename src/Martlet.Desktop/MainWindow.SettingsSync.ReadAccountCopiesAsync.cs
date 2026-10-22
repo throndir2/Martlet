@@ -281,6 +281,7 @@ public partial class MainWindow
             ActionText.Text = settingsLastChange;
         }
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
+        if (applied.Any(a => a.Key == AdvancedSettingsFile.SharedKey)) LoadAdvanced();
         if (applied.Any(a => a.Key is AppSettingsSections.ThinkingPool or AppSettingsSections.ThinkingPoolChoices)) conversation?.ReloadThinkingPool();
         await FollowSectionsAsync(applied.Select(a => a.Key).ToHashSet(StringComparer.Ordinal));
         await RefreshHomeAsync(SettingsChangeSource.RemoteSync);

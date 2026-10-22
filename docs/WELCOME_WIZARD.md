@@ -66,8 +66,9 @@ flowchart TD
     R --> L[Here's what fits this PC<br/>per-part resource bars]
     L -->|Use these suggestions| K{Thinking on NVIDIA Build<br/>and no key yet?}
     K -->|yes| G[Get your free NVIDIA key<br/>steps, paste, consent]
-    K -->|no| A
-    G -->|Save key / Skip| A[One confirmation<br/>installs, downloads, lip-sync]
+    K -->|no| C
+    G -->|Save key / Skip| C[Who should Martlet be?<br/>your characters, Martlet,<br/>make my own, import a card]
+    C -->|a character / Choose later| A[One confirmation<br/>installs, downloads, lip-sync]
     A --> Home
 ```
 
@@ -131,8 +132,19 @@ flowchart TD
    copy the `nvapi-` key, paste it, tick the consent and *Save key*. The key is
    saved the same way as Companion › Thinking › *A cloud provider* (Windows
    Credential Manager, route consent) with the catalog's NVIDIA Build model.
-   *Skip the key* sets up everything else; Home then asks for Thinking.
-6. **Apply.** *Use these suggestions* (or saving the key) closes the wizard on
+   *Skip the key* moves on without it; Home then asks for Thinking.
+6. **Who should Martlet be?** The owner's main flow is: set up where Martlet
+   runs, choose who it is, then talk. This step is the second part: its
+   personality, look and voice. It shows one card for each character profile
+   you have (after joining a network, the ones your other computers share),
+   then *Martlet* (what Martlet uses now, saved as a profile), *Make my own*
+   (a name, *Who is it?* in a few words, a look from your looks or the built-in
+   one, and a voice from your voices; *Use this character* makes the
+   personality and its profile and uses it, as *Find a character* does) and
+   *Import a character card* (the Personality window's import, then a profile
+   for the imported personality). *Choose later* leaves it to Home's *Get
+   started* card. Every choice goes on to the next step.
+7. **Apply.** *Use these suggestions* (or saving the key, then the character step) closes the wizard on
    Home and asks the one *Set it all up for me* confirmation, which now also
    names lip-sync and whether Thinking is online. It sets up what the plan puts
    on this PC (Ollama and the model, the voice engine,
@@ -170,6 +182,10 @@ saves the answers); step 4 `WizardPlanSummary`,
 `WizardPlanItem-Thinking|Voice|Listening|LipSync`, `WizardJoinSuggestion-<n>`,
 `WizardPlanTotals`, `WizardAccept`, `TourAdvisor`, `TourSetup`; step 5
 `WizardKeyIntro`, `WizardKeySteps`, `WizardKeyOpen`, `WizardKey`,
-`WizardKeyConsent`, `WizardKeyStatus`, `WizardKeySave`, `WizardKeySkip`. See
+`WizardKeyConsent`, `WizardKeyStatus`, `WizardKeySave`, `WizardKeySkip`; step 6
+`WizardCharacterProfile-<n>`, `WizardCharacterKeep`, `WizardCharacterMake`,
+`WizardCharacterName`, `WizardCharacterPersonality`, `WizardCharacterLook`,
+`WizardCharacterVoice`, `WizardCharacterSave`, `WizardCharacterImport`,
+`WizardCharacterStatus`, `WizardCharacterSkip`. See
 [MCP](MCP.md) for which need `--allow-ui-effects`. A fresh disposable data
 directory (`scripts\Invoke-MartletMcp.ps1 -Desktop`) starts on the wizard.

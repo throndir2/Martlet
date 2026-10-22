@@ -605,6 +605,7 @@ NVIDIA Build and its old key.
 | `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 | `reminders.<device ID>` | One per computer, written only by that computer: the [reminders](CONVERSATION.md#reminders) set on it and what it did about anyone's (offered to say one, took it, said it, canceled it), so any companion PC can list, cancel and say them and the one used most recently says a due one once. Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 | `conversation-history` | Companion › Memory › Conversation history: whether Martlet keeps a record of your conversations and may search it on its own (`conversation-history.json`) | |
+| `advanced-settings` | Settings › *What Martlet shows* › **Show advanced settings** (`advanced-settings.json`): whether every page shows or only the essential ones, so each person sees the same pages on every computer | |
 | `meaning-search` | Companion › Memory › [Finding by meaning](SEARCH.md#finding-by-meaning): on or off and which embedding model in Ollama (`meaning-search.json`). A computer without that model says why and finds by words until it has it | The vectors themselves (each computer makes its own) and whether the model is downloaded in this PC's Ollama |
 
 Conversations are shared too: each person's [record of conversations](MEMORY.md#one-record-on-every-computer)
@@ -638,7 +639,7 @@ into the household's and each person's. The household keeps `thinking`,
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
-`touch-temperament`, `character-reaction-changes`, `check-ins`, `memory-brief`, `conversation-history` and their own `reminders.<device ID>` entries. A person's
+`touch-temperament`, `character-reaction-changes`, `check-ins`, `memory-brief`, `conversation-history`, `advanced-settings` and their own `reminders.<device ID>` entries. A person's
 settings go only to the computers where that person is signed in, and switching
 person on a computer gives Martlet that person's settings. A computer on an
 older Martlet keeps the owner's settings in step through this document, as

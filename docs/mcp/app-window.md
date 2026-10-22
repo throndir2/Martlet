@@ -333,7 +333,8 @@ its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 `--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavShare`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavThinkingRequests`, `NavDiagnostics` or `NavSettings` first (for example
-`NavCompanion` before `CompanionTab-Listening`). Many pages keep their longer
+`NavCompanion` before `CompanionTab-Listening`). `NavThinkingRequests` and `NavDiagnostics` show only with
+*Show advanced settings* on (or while open); see [Essentials and advanced pages](#essentials-and-advanced-pages). Many pages keep their longer
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`; Listening, Voice, People,
 Singing, *Microphone and speakers* and *Voice ID* have, for example, `Help-ListeningRecognizer`,
 `Help-VoicesAbout`, `Help-ElevenLabsConsent`, `Help-PeopleRecognize`, `Help-SingingAbout`,
@@ -1152,6 +1153,37 @@ the notification-area menu's `TrayTalk`, `TrayStartListening`,
 `TrayCharacterProfiles`. UI Automation doesn't report WPF's shortcuts, so
 `ui_snapshot` can't show them; `AccessKeysTests` in `Martlet.Desktop.Tests`
 checks the Alt rule.
+
+### Essentials and advanced pages
+
+With **Show advanced settings** off (the default, each person's choice, shared with
+their other computers in `advanced-settings.json`), the rail hides
+`NavThinkingRequests` and `NavDiagnostics`, and Companion's side list shows only the
+essential pages: `CompanionTab-Thinking`, `CompanionTab-Listening`,
+`CompanionTab-Voice`, `CompanionTab-Profiles`, `CompanionTab-Personality`,
+`CompanionTab-Memory`, `CompanionTab-Character` and `CompanionTab-Replies`. Its last
+item, `CompanionShowAdvanced` (*Show advanced settings (N more pages)* or *Hide
+advanced settings*, its value), shows or hides the others; Settings › *What Martlet
+shows* has the same choice as the check box `SettingsShowAdvanced`. Both are safe
+without `--allow-ui-effects` (`ui_click` and `ui_toggle`): they save only that
+choice. A shortcut (a Home fix, a Health tile, the Devices map) still opens a hidden
+page, and the page shows in the list while it is open. `ui_click` on a hidden
+page's `CompanionTab-<Page>`, `NavThinkingRequests` or `NavDiagnostics` fails with a
+hint to click `CompanionShowAdvanced` first.
+
+Home's **Get started** card (`HomeGetStarted`, hidden once all three steps are done)
+has three numbered steps: `StepState-GetStartedServers` (*Set up where Martlet runs*,
+done when Thinking, Listening and Voice are set up and nothing stops replies),
+`StepState-GetStartedCharacter` (*Choose who Martlet is*, done when a character
+profile exists) and `StepState-GetStartedTalk` (*Talk with Martlet*, done after a
+conversation). Each has `StepDetail-<step>` and its buttons
+`Step-<step>-<button>`: `Step-GetStartedServers-RecommendedSetup` and
+`-AddComputer`; `Step-GetStartedCharacter-Profiles`, `-Find` (only once Thinking
+works), `-Look` and `-Voice`; `Step-GetStartedTalk-Talk` and `-Listen` (it starts
+listening, so it needs `--allow-ui-effects`). `HomeGetStartedSummary` says how many
+are done.
+
+### The Companion side list
 
 Companion's side list starts with *How it works*, the jobs Martlet needs in
 priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,

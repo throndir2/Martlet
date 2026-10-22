@@ -46,7 +46,16 @@ obvious next step at every stage, and a living map of the user's computers.
    starting programs (*Save and start* for MCP servers), adding or updating a
    remembered fact (*Add fact*), and removing a key Martlet kept from before
    (*Remove*, after a confirmation).
-8. **One short sentence, the rest behind a *?*.** A UI text has at most one
+8. **The main flow first, the rest on request.** A regular user needs three
+   steps: set up where Martlet runs, choose who it is (personality, look and
+   voice), then talk. Home's *Get started* card and the welcome wizard follow
+   these steps. **Show advanced settings** (Settings › *What Martlet shows*,
+   and the last link of Companion's side list) is off by default: the rail
+   then hides *Thinking requests* and *Diagnostics*, and Companion shows only
+   its essential pages (see [Essentials and advanced](#essentials-and-advanced)).
+   It is each person's choice, shared with their other computers
+   (`advanced-settings.json`). The left rail stays; Martlet has no radial menu.
+9. **One short sentence, the rest behind a *?*.** A UI text has at most one
    short sentence of explanation. The longer explanation goes behind a *?*
    help mark, and the full instructions go to the wiki (see
    [Help marks and the wiki](#help-marks-and-the-wiki)).
@@ -140,6 +149,9 @@ reasons:
    the setup advisor and *I'll choose myself* opens Companion › *Thinking*.
 6. **Get your free NVIDIA key** (only when Thinking goes online): numbered
    steps, *Open build.nvidia.com*, the key box and its consent.
+7. **Who should Martlet be?** The characters you have, *Martlet* itself,
+   *Make my own* (name, who it is, look and voice) and *Import a character
+   card*. Each makes or uses a character profile; *Choose later* skips it.
 
 Accepting closes the wizard on Home and asks the one *Set it all up for me*
 confirmation before anything is downloaded or installed, then sets up what the
@@ -203,6 +215,15 @@ holds nothing. On a companion PC that also runs a host service, the card says
 that the host service keeps running for your other computers. Home reads
 Ollama's loaded models (`/api/ps`, loopback only) every 5 seconds while it
 shows, never while Martlet replies or hears you.
+
+Under the hero, until all three steps are done, **Get started** shows the main
+flow as numbered steps, each ticked from what Martlet knows (`GetStarted` in
+`Pages\Home`): 1. *Set up where Martlet runs* (done when Thinking, Listening
+and Voice are set up and nothing stops replies; *Recommended setup*, *Add a
+computer*), 2. *Choose who Martlet is* (done when a character profile exists;
+*Choose a character*, *Find a character* once Thinking works, *Look*, *Voice*)
+and 3. *Talk with Martlet* (done after a conversation; *Start talking*, *Start
+listening*).
 
 Below the card, **Needs attention** (*All good* when nothing does) lists every
 item with what it means and its fixes, most serious first:
@@ -613,6 +634,22 @@ window ends it unless Martlet is listening or watching, which only hides it.
     *Messaging* (Now, then On or Off for each app, then each app's setup).
     *People* (in *Who it is*) has Now, then recognizing voices or Off, then
     the voices.
+
+  <a id="essentials-and-advanced"></a>**Essentials and advanced.** With Show
+  advanced settings off, the side list shows only the pages a regular user
+  needs (`CompanionPages.Essentials`): *Thinking*, *Listening* and *Voice* (How
+  it works), *Profiles*, *Personality* and *Memory* (Who it is), *Character*
+  (How it looks) and *Replies* (What it does). Every other page, also a page
+  added later, is advanced: *Lip-sync*, all of *Optional extras*, *Prompts*, *Skills*,
+  *Lorebook*, *App guides*, *People*, *Speech bubbles*, *Emotes and motions*,
+  *Eyes*, *Touch*, *Check-ins*, *Tools*, *Discord* and *Messaging*. The groups
+  keep their order, and a group with no page shown is hidden. The list ends
+  with *Show advanced settings (N more pages)* or *Hide advanced settings*. A
+  shortcut still opens a hidden page, which then shows in the list while it
+  is open. On the essential pages, settings most people never change are in
+  closed sections (`Fold`): Thinking's backup model, *Keys from before*, the
+  Chatterbox style, echo and the finer listening settings, and the reply
+  numbers.
 
   A page gets its own entry only if it has its own **Where it runs** choice,
   its own consent or data destination, or its own list to edit; anything else

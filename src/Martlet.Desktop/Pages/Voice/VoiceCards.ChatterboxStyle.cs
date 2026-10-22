@@ -84,7 +84,8 @@ internal sealed partial class VoiceCards
             return heading;
         }
 
-        return Card(Heading("Chatterbox Original style"),
+        // Rarely changed: the style's numbers are folded away under what is saved now.
+        return Card(Heading("Chatterbox Original style"), Fold.Create("Style settings", "VoiceStyle", false,
             HelpTip.Explain("Martlet says each sentence in the General style, and a sentence the reply starts with [expressive] in the " +
                 "Expressive style, so the conversation decides when to sound animated. Exaggeration is how much emotion (0.5 is " +
                 "neutral; very high values can be unstable). CFG weight is how closely it follows your voice sample; lower is " +
@@ -100,8 +101,7 @@ internal sealed partial class VoiceCards
                 style.ExpressiveExaggeration, true, (s, v) => s with { ExpressiveExaggeration = v }),
             Setting("ExpressiveCfgWeight", "Expressive CFG weight: lower is slower and more deliberate", style.ExpressiveCfgWeight, false,
                 (s, v) => s with { ExpressiveCfgWeight = v }),
-            state,
-            Row(reset));
+            Row(reset)), state);
     }
 
     /// <summary>What the style card says is saved, in one sentence: "Saved on this PC (general: exaggeration 0.5, ...)."</summary>
