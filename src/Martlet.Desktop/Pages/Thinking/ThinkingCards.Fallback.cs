@@ -36,14 +36,16 @@ internal sealed partial class ThinkingCards
             .Prepend(off)
             .ToList();
 
-        return Card(
-            Heading("If Thinking fails"),
+        // Most people never need a backup model, so the choice is folded away under the line that says what it is now. Add your
+        // key for it opens the fold.
+        var fold = Fold.Create("Choose a backup model", "ThinkingFallback", false,
             HelpTip.Explain("If Thinking fails before it says anything, Martlet asks this model instead. Screen and camera glances use " +
                 "it too, so choose a model that sees images.", new Thickness(0, 0, 0, 8), "FallbackAbout", "the Thinking fallback",
                 wiki: "Thinking#when-thinking-fails-or-is-slow"),
-            now,
             // Off and the recommended provider; Show N more lists the others.
             services.OptionPickerBody("Fallback", options, rows: 2));
+        if (services.FreeKeyForFallback) fold.IsExpanded = true;
+        return Card(Heading("If Thinking fails"), now, fold);
     }
 
     /// <summary>The fields of fallback provider <paramref name="p"/>: its address (a custom server), model, key, the consent box

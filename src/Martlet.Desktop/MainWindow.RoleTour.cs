@@ -78,7 +78,7 @@ public partial class MainWindow
         // A host PC doesn't talk, so it has no conversations of its own to show, and its companions' Thinking requests show on
         // the companion PCs that send them.
         NavConversations.Visibility = host || conversationHistory is null ? Visibility.Collapsed : Visibility.Visible;
-        NavThinkingRequests.Visibility = host ? Visibility.Collapsed : Visibility.Visible;
+        RailAdvanced();
         ShowMode();
         UseCompanionButton.IsEnabled = host;
         UseHostButton.IsEnabled = !host;
@@ -134,10 +134,10 @@ public partial class MainWindow
     private void ReplayTour_Click(object sender, RoutedEventArgs e) => ShowTour(TourWelcome);
 
     // The welcome wizard (MainWindow.Welcome.cs). A host stops after the network step. The key step shows only when Thinking
-    // goes online. The wizard installs nothing until its suggestions are accepted and confirmed.
+    // goes online. The character step (MainWindow.Welcome.Character.cs) comes last. The wizard installs nothing until its suggestions are accepted and confirmed.
     private StackPanel[] TourPanels => Role == DeviceRole.Host && deviceRole is not null ? [TourWelcome, TourNetwork]
-        : welcomeNeedsKey ? [TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan, TourKey]
-        : [TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan];
+        : welcomeNeedsKey ? [TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan, TourKey, TourCharacter]
+        : [TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan, TourCharacter];
 
     private void ShowTour(StackPanel panel)
     {
@@ -148,7 +148,7 @@ public partial class MainWindow
         var panels = TourPanels;
         var step = Math.Max(0, Array.IndexOf(panels, panel));
         tourStep = step;
-        foreach (var candidate in new[] { TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan, TourKey })
+        foreach (var candidate in new[] { TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan, TourKey, TourCharacter })
             candidate.Visibility = ReferenceEquals(candidate, panel) ? Visibility.Visible : Visibility.Collapsed;
         TourBackButton.Visibility = step > 0 ? Visibility.Visible : Visibility.Hidden;
         TourDots.Children.Clear();

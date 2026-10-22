@@ -100,4 +100,17 @@ public sealed class AutomationPolicyTests
     [InlineData("Help-CheckInsAbout-Card", true)]
     [InlineData("Help-CheckInsAbout-Wiki", true)]
     public void OnlyStatusTextIsReturned(string id, bool safe) => Assert.Equal(safe, AutomationPolicy.IsSafeValue(id));
+
+    [Fact]
+    public void McpReachesEveryPageAndGetStartedWithoutUiEffects()
+    {
+        Assert.True(AutomationPolicy.IsSafeClick("CompanionShowAdvanced"));
+        Assert.True(AutomationPolicy.IsSafeClick("Step-GetStartedCharacter-Profiles"));
+        Assert.True(AutomationPolicy.IsSafeClick("WizardCharacterMake"));
+        Assert.False(AutomationPolicy.IsSafeClick("Step-GetStartedTalk-Listen"));
+        Assert.False(AutomationPolicy.IsSafeClick("WizardCharacterSave"));
+        Assert.Contains("CompanionShowAdvanced", DesktopAutomation.HiddenHint("CompanionTab-Prompts"));
+        Assert.Contains("CompanionShowAdvanced", DesktopAutomation.HiddenHint("NavDiagnostics"));
+        Assert.Equal("", DesktopAutomation.HiddenHint("NavHome"));
+    }
 }

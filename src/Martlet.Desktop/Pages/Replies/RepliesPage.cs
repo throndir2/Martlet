@@ -135,11 +135,11 @@ internal sealed class RepliesPage(IRepliesPageServices services)
             services.MarkEdited();
             autoSave.SaveNowAsync().Forget();
         }, id: "RepliesDefaults");
+        // The numbers most people leave as they are folded away; Now above says what they are.
         page.Children.Add(Card(Heading("Reply settings"),
             Note("Leave a field blank to use the model default; changes save as you type and apply when you reload an open conversation.",
                 new Thickness(0, 0, 0, 4)),
-            grid,
-            Row(defaults)));
+            Fold.Create("Change reply settings", "RepliesMore", false, grid, Row(defaults))));
     }
 
     private static ComboBox Choices(double width, IEnumerable<string> names, int selected, string id, string range, string help)

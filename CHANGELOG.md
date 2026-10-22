@@ -8,6 +8,16 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Home has a **Get started** card with the three steps to a working companion: set up where Martlet runs, choose who it is (personality, look and voice), then talk. Each step ticks itself when it's done, and the card goes away once all three are. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- The welcome wizard now asks **Who should Martlet be?**: keep Martlet, pick a character you already have, make your own with a name, a few words about who it is, a look and a voice, or import a character card. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
+### Changed
+
+- Martlet shows less at first: Companion lists the 8 pages most people need, and **Show advanced settings** (in Settings, or at the bottom of Companion's list) brings back the other 21, Thinking requests and Diagnostics. Your choice follows you to your other computers. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Page intros say what each page does in plain words, and settings most people never change (Thinking's backup model, old keys, voice style, echo, the finer listening settings and the reply numbers) are tucked into sections you can open. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.91.0] - 2026-10-21
 
 ### Added

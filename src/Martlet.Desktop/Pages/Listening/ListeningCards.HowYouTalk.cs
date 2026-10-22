@@ -60,6 +60,9 @@ internal sealed partial class ListeningCards
                 "ends it, and locking Windows pauses it.", new Thickness(0, 8, 0, 0), "TalkListensAgain", "always listening",
                 wiki: "Talking-to-Martlet#ways-to-talk"));
 
+            // The fine controls of always listening (turn judging, early replies, word check, talking over Martlet) are folded
+            // away: their recommended values suit most people.
+            var details = children.Count;
             var judgeTurns = new CheckBox { Content = "Judge when I finish talking (recommended)", IsChecked = prefs.JudgeTurns, Margin = new Thickness(0, 16, 0, 4) };
             AutomationProperties.SetAutomationId(judgeTurns, "TalkJudgeTurns");
             judgeTurns.Checked += (_, _) => { if (!Talk.JudgeTurns) SaveTalk(Talk with { JudgeTurns = true }, render: true); };
@@ -143,6 +146,9 @@ internal sealed partial class ListeningCards
                 wiki: "Talking-to-Martlet#talking-over-martlet");
             AutomationProperties.SetAutomationId(bargeInStyleAbout, "TalkBargeInBehaviorAbout");
             children.Add(bargeInStyleAbout);
+            var fine = children.GetRange(details, children.Count - details);
+            children.RemoveRange(details, fine.Count);
+            children.Add(Fold.Create("More listening settings", "TalkDetails", false, [.. fine]));
         }
 
         var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };

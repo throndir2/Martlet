@@ -200,12 +200,20 @@ public partial class MainWindow
 
     private readonly Dictionary<CompanionTab, RadioButton> companionNav = [];
     private bool selectingNav;
+    private string? companionNavShape;
 
-    /// <summary>The side list, built once: each group's title, then its pages. Choosing a page opens it.</summary>
-    private void BuildCompanionNav()
+    /// <summary>The side list: each group's title, then its pages, then the Show advanced settings link. With Show advanced
+    /// settings off it lists only the essentials (<see cref="CompanionPages.Essentials"/>) and the advanced page a shortcut opened.
+    /// It is built again only when what it lists changes. Choosing a page opens it.</summary>
+    private void BuildCompanionNav(CompanionTab? open = null)
     {
-        if (companionNav.Count > 0) return;
-        foreach (var group in SideListOrder().GroupBy(GroupOf).OrderBy(g => g.Key))
+        var tabs = SideListOrder(showAdvanced, open);
+        var shape = showAdvanced + ":" + string.Join(",", tabs);
+        if (shape == companionNavShape) return;
+        companionNavShape = shape;
+        companionNav.Clear();
+        CompanionNav.Children.Clear();
+        foreach (var group in tabs.GroupBy(GroupOf).OrderBy(g => g.Key))
         {
             var title = new TextBlock { Text = GroupTitle(group.Key).ToUpperInvariant(), Margin = new Thickness(12, companionNav.Count == 0 ? 0 : 18, 0, 4) };
             title.SetResourceReference(StyleProperty, "Eyebrow");
@@ -224,6 +232,19 @@ public partial class MainWindow
                 CompanionNav.Children.Add(item);
             }
         }
+        var hidden = Enum.GetValues<CompanionTab>().Length - tabs.Count;
+        var toggle = new Button
+        {
+            Content = showAdvanced ? "Hide advanced settings" : $"Show advanced settings ({hidden} more pages)",
+            Margin = new Thickness(12, 18, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
+            ToolTip = showAdvanced ? "Show only the pages most people need" : "Show every page, such as Prompts, Tools, Vision and Discord"
+        };
+        toggle.SetResourceReference(StyleProperty, "LinkButton");
+        AutomationProperties.SetAutomationId(toggle, "CompanionShowAdvanced");
+        AutomationProperties.SetName(toggle, showAdvanced ? "Hide advanced settings" : "Show advanced settings");
+        AutomationProperties.SetHelpText(toggle, showAdvanced ? "Every page shows." : $"{hidden} advanced pages are hidden.");
+        toggle.Click += (_, _) => SetShowAdvanced(!showAdvanced);
+        CompanionNav.Children.Add(toggle);
     }
 
     private void RenderTab()
@@ -232,7 +253,7 @@ public partial class MainWindow
         if (tabAutoSave is { Pending: true } pending) pending.SaveNowAsync().Forget();
         tabAutoSave = null;
         tabEdited = false;
-        BuildCompanionNav();
+        BuildCompanionNav(section);
         selectingNav = true;
         try { companionNav[section].IsChecked = true; }
         finally { selectingNav = false; }

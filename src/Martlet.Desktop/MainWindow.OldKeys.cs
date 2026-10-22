@@ -66,7 +66,9 @@ public partial class MainWindow
                 if (--left == 0 && card is not null) card.Visibility = Visibility.Collapsed;
             }
         }
-        card = Card([.. stack]);
+        // Rarely needed, so the list is folded away under its heading.
+        card = Card(Heading("Keys from before"), Fold.Create($"{keys.Count} key{(keys.Count == 1 ? "" : "s")} Martlet kept", "OldKeys-" + role, false,
+            [.. stack.Skip(1)]));
         return card;
     }
 

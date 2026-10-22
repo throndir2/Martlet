@@ -263,6 +263,18 @@
                             </Grid>
                         </Border>
 
+                        <!-- Get started (MainWindow.GetStarted.cs): the main flow in three steps (where Martlet runs, who it is, talk),
+                             each with its state and buttons. It hides once all three are done. -->
+                        <Border x:Name="GetStartedCard" Style="{DynamicResource CardStyle}" Visibility="Collapsed"
+                                AutomationProperties.AutomationId="HomeGetStarted" AutomationProperties.Name="Get started">
+                            <StackPanel>
+                                <TextBlock Text="Get started" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"/>
+                                <TextBlock x:Name="GetStartedSummary" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="HomeGetStartedSummary" AutomationProperties.LiveSetting="Polite"/>
+                                <StackPanel x:Name="GetStartedPanel" AutomationProperties.Name="Get started steps"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- Martlet on this PC (MainWindow.FreeUp.cs): what Martlet holds on this PC now (the models Ollama here has
                              loaded, with their memory, Parakeet, the character, the conversation) and Free up this PC, which ends the
                              conversation, hides the character and unloads the models. Martlet then rests until you talk again. -->
@@ -1100,6 +1112,18 @@
                 <StackPanel Margin="36,30,36,24" MaxWidth="1000">
                     <TextBlock Text="Settings" Style="{DynamicResource PageTitle}" Margin="0,0,0,18"/>
 
+                    <!-- What Martlet shows (MainWindow.Advanced.cs): Show advanced settings, each person's, shared with their other computers -->
+                    <Border Style="{DynamicResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="What Martlet shows" Style="{DynamicResource SectionHeading}"/>
+                            <CheckBox x:Name="ShowAdvancedChoice" Content="Show _advanced settings" Checked="ShowAdvancedChoice_Changed"
+                                      Unchecked="ShowAdvancedChoice_Changed" Margin="0,4,0,0"
+                                      AutomationProperties.AutomationId="SettingsShowAdvanced" AutomationProperties.Name="Show advanced settings"/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="Off shows only the pages most people need. On also shows Prompts, Tools, Vision, Discord, Diagnostics and the other advanced pages."/>
+                        </StackPanel>
+                    </Border>
+
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Appearance" Style="{DynamicResource SectionHeading}"/>
@@ -1554,6 +1578,51 @@
                                     Padding="24,12" Margin="0,14,0,0" Click="WizardKeySave_Click" AutomationProperties.AutomationId="WizardKeySave"/>
                             <Button Style="{DynamicResource LinkButton}" Content="Skip the key: set up the rest now" HorizontalAlignment="Center" Margin="0,10,0,0"
                                     Click="WizardKeySkip_Click" AutomationProperties.AutomationId="WizardKeySkip"/>
+                        </StackPanel>
+
+                        <!-- Step 6 (companion PCs): who Martlet is, its personality, look and voice (MainWindow.Welcome.Character.cs).
+                             The cards for the characters you have and for Martlet itself are built in code. -->
+                        <StackPanel x:Name="TourCharacter" Visibility="Collapsed">
+                            <TextBlock Text="Who should Martlet be?" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"
+                                       Text="Pick a character or make your own: its personality, its look and its voice. You can change it later in Companion › Profiles."/>
+                            <StackPanel x:Name="WizardCharacterList"/>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE710;" Margin="0,0,0,4" Click="WizardCharacterMake_Click"
+                                    AutomationProperties.AutomationId="WizardCharacterMake">
+                                <StackPanel>
+                                    <TextBlock Text="Make my own" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                               Text="Give it a name, say who it is in a few words, and pick its look and voice."/>
+                                </StackPanel>
+                            </Button>
+                            <Border x:Name="WizardCharacterForm" Visibility="Collapsed" Background="{DynamicResource SoftBrush}" CornerRadius="16"
+                                    Padding="18,14" Margin="0,10,0,0" AutomationProperties.AutomationId="WizardCharacterForm">
+                                <StackPanel>
+                                    <Label Content="_Name" Target="{Binding ElementName=WizardCharacterName}" Padding="0,0,0,4"/>
+                                    <TextBox x:Name="WizardCharacterName" MaxLength="64" AutomationProperties.AutomationId="WizardCharacterName"
+                                             AutomationProperties.Name="Character name" presentation:InputHint.Text="Mira"/>
+                                    <Label Content="_Who is it?" Target="{Binding ElementName=WizardCharacterPersonality}" Padding="0,12,0,4"/>
+                                    <TextBox x:Name="WizardCharacterPersonality" MaxLength="8192" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90"
+                                             VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="WizardCharacterPersonality"
+                                             AutomationProperties.Name="Who the character is"
+                                             presentation:InputHint.Text="A cheerful gamer friend who teases me a little and loves cozy games."/>
+                                    <Label Content="_Look" Target="{Binding ElementName=WizardCharacterLook}" Padding="0,12,0,4"/>
+                                    <ComboBox x:Name="WizardCharacterLook" MinHeight="30" AutomationProperties.AutomationId="WizardCharacterLook"
+                                              AutomationProperties.Name="Look"/>
+                                    <Label Content="_Voice" Target="{Binding ElementName=WizardCharacterVoice}" Padding="0,12,0,4"/>
+                                    <ComboBox x:Name="WizardCharacterVoice" MinHeight="30" AutomationProperties.AutomationId="WizardCharacterVoice"
+                                              AutomationProperties.Name="Voice"/>
+                                    <Button x:Name="WizardCharacterSaveButton" Style="{DynamicResource PrimaryButton}" Content="Use this character"
+                                            HorizontalAlignment="Stretch" Padding="24,10" Margin="0,16,0,0" Click="WizardCharacterSave_Click"
+                                            AutomationProperties.AutomationId="WizardCharacterSave"/>
+                                </StackPanel>
+                            </Border>
+                            <Button Style="{DynamicResource LinkButton}" Content="Import a character card (PNG, JSON or CHARX)" HorizontalAlignment="Left"
+                                    Margin="0,14,0,0" Click="WizardCharacterImport_Click" AutomationProperties.AutomationId="WizardCharacterImport"/>
+                            <TextBlock x:Name="WizardCharacterStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="WizardCharacterStatus"/>
+                            <Button Style="{DynamicResource LinkButton}" Content="Choose later" HorizontalAlignment="Center" Margin="0,10,0,0"
+                                    Click="WizardCharacterSkip_Click" AutomationProperties.AutomationId="WizardCharacterSkip"/>
                         </StackPanel>
 
                         <Grid Margin="0,26,0,0">

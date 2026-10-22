@@ -26,7 +26,7 @@ public partial class MainWindow
             ShowWelcomeKey();
             return;
         }
-        ApplyWelcomeAsync().Forget();
+        ShowWelcomeCharacter();
     }
 
     // ---------- step 5: a free NVIDIA Build key ----------
@@ -93,7 +93,7 @@ public partial class MainWindow
             }
             ErrorLog.Info("Welcome: Thinking uses NVIDIA Build with the key saved in Windows Credential Manager.");
             welcomeNeedsKey = false;
-            await ApplyWelcomeAsync();
+            ShowWelcomeCharacter();
         }
         finally { if (!closing) WizardKeySaveButton.IsEnabled = true; }
     }
@@ -101,7 +101,7 @@ public partial class MainWindow
     private void WizardKeySkip_Click(object sender, RoutedEventArgs e)
     {
         welcomeNeedsKey = false;
-        ApplyWelcomeAsync().Forget();
+        ShowWelcomeCharacter();
     }
 
     // ---------- step 6: apply ----------

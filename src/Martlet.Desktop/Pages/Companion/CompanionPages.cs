@@ -76,6 +76,24 @@ internal static class CompanionPages
             .Select(t => t.tab)
     ];
 
+    /// <summary>The pages a regular user needs, in the main flow's order: where Martlet runs (Thinking, Listening, Voice), who it
+    /// is (Profiles, Personality, Memory), how it looks (Character) and how it answers (Replies). Every other page is advanced and
+    /// shows only with Show advanced settings on (<see cref="Martlet.Core.Settings.AdvancedSettingsFile"/>), also a page added
+    /// later.</summary>
+    internal static readonly IReadOnlySet<CompanionTab> Essentials = new HashSet<CompanionTab>
+    {
+        CompanionTab.Thinking, CompanionTab.Listening, CompanionTab.Voice, CompanionTab.Profiles, CompanionTab.Personality,
+        CompanionTab.Memory, CompanionTab.Character, CompanionTab.Replies
+    };
+
+    /// <summary>Whether a page shows only with Show advanced settings on.</summary>
+    internal static bool IsAdvanced(CompanionTab section) => !Essentials.Contains(section);
+
+    /// <summary>The side list's pages with Show advanced settings on (every page) or off (the essentials), plus
+    /// <paramref name="open"/> when a shortcut opened an advanced page, so the page that shows is always in the list.</summary>
+    internal static IReadOnlyList<CompanionTab> SideListOrder(bool showAdvanced, CompanionTab? open = null) =>
+        [.. SideListOrder().Where(tab => showAdvanced || !IsAdvanced(tab) || tab == open)];
+
     internal static string GroupTitle(CompanionGroup group) => group switch
     {
         CompanionGroup.HowItWorks => "How it works",
@@ -162,26 +180,26 @@ internal static class CompanionPages
         CompanionTab.Thinking => "Martlet needs Thinking to answer you: choose where it thinks and which model it uses.",
         CompanionTab.DeepThinking => Extra(section, "Other models work out hard tasks and background jobs, ideally on another computer, so Thinking keeps talking at full speed."),
         CompanionTab.Singing => Extra(section, "Martlet sings songs you ask for, in the voice it speaks with, on an NVIDIA graphics card."),
-        CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
-        CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
+        CompanionTab.Voice => "Choose Martlet's voice and where its speech is made.",
+        CompanionTab.Listening => "Choose how Martlet hears you: the microphone, how you talk and what turns your speech into words.",
         CompanionTab.Vision => Extra(section, "Martlet looks at your screen or a camera once you press Start watching, with the model you choose."),
         CompanionTab.Reading => Extra(section, "While Martlet watches your screen, it reads the text on it: with Windows OCR on this PC or Martlet's Reading role."),
         CompanionTab.Hearing => Extra(section, "A model hears how you say things (your tone, laughter, sighs and the sounds around you), not only your words."),
-        CompanionTab.LipSync => "Choose what moves the character's mouth.",
-        CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
-        CompanionTab.Character => "Choose Martlet's character, and its size and position on your desktop.",
+        CompanionTab.LipSync => "Choose what moves the character's mouth while Martlet speaks.",
+        CompanionTab.Profiles => "Pick who Martlet is: each profile sets its personality, look and voice together.",
+        CompanionTab.Character => "Choose the animated character that shows Martlet on your desktop, and its size and place.",
         CompanionTab.SpeechBubbles => "Show Martlet's spoken words in a bubble beside the character, or as subtitles.",
         CompanionTab.Emotes => "Choose the emotes and motions that Martlet's replies can play on the character, and make combos of them.",
         CompanionTab.Eyes => "Choose where the character looks.",
         CompanionTab.Touch => "Choose what the character does when you click or stroke it: its touch zones, and how it feels about each touch.",
-        CompanionTab.Personality => "Edit Martlet's personas.",
+        CompanionTab.Personality => "Write who Martlet is: its name, how it talks and what it cares about.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model; your edited text is used instead of the built-in one.",
-        CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
+        CompanionTab.Lorebook => "Add facts about your world that Martlet reads when their keywords come up in the conversation.",
         CompanionTab.AppGuides => "Martlet reads up on the games and apps you use (their fan wikis and help pages) and answers your questions about them from what it read.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
         CompanionTab.People => "Teach Martlet whose voices it hears and the names they use.",
-        CompanionTab.Replies => "Control reply length and creativity.",
-        CompanionTab.CheckIns => "Every few minutes the Thinking pool checks what Martlet left on and said, and reminds it of what it forgot: small models forget a lot.",
+        CompanionTab.Replies => "Choose how long Martlet's replies are and how much they vary.",
+        CompanionTab.CheckIns => "Every few minutes, a second model checks what Martlet said and left on, and reminds it of what it forgot. Small models forget a lot.",
         CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
         CompanionTab.Pictures => Extra(section, "Martlet draws pictures when you ask: on your own graphics card or with a cloud provider."),
         CompanionTab.Motion => Extra(section, "Martlet makes new whole-body motions for VRM characters while you talk, on a computer with a 24 GB NVIDIA graphics card."),

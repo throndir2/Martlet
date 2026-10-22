@@ -386,8 +386,9 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
         element.Current.HasKeyboardFocus && element.Current.FrameworkId != "Win32";
 
     /// <summary>Checkboxes that only change what a window shows (nothing is saved or sent), so ui_toggle turns them without
-    /// --allow-ui-effects. The Memory window's Show replaced facts lists the facts kept as history too.</summary>
-    private static readonly HashSet<string> SafeToggles = new(StringComparer.Ordinal) { "MemoryShowHistory" };
+    /// --allow-ui-effects. The Memory window's Show replaced facts lists the facts kept as history too. Settings › Show advanced
+    /// settings shows or hides the advanced pages; it saves only that choice, so MCP can reach every page.</summary>
+    private static readonly HashSet<string> SafeToggles = new(StringComparer.Ordinal) { "MemoryShowHistory", "SettingsShowAdvanced" };
 
     internal object Toggle(string id)
     {
@@ -513,10 +514,17 @@ internal sealed partial class DesktopAutomation(bool allowEffects)
         return matches.Length switch
         {
             1 => matches[0],
-            0 => throw new ArgumentException($"Control '{id}' was not found. Refresh the UI snapshot."),
+            0 => throw new ArgumentException($"Control '{id}' was not found. Refresh the UI snapshot." + HiddenHint(id)),
             _ => throw new ArgumentException($"Control '{id}' is ambiguous across open windows; name the window.")
         };
     }
+
+    /// <summary>For a page that Show advanced settings hides (a Companion page or a rail item), how to show it.</summary>
+    internal static string HiddenHint(string id) =>
+        id.StartsWith("CompanionTab-", StringComparison.Ordinal) || id is "NavDiagnostics" or "NavThinkingRequests"
+            ? " Advanced pages show only with Show advanced settings on: ui_click CompanionShowAdvanced (on the Companion page) or " +
+              "ui_toggle SettingsShowAdvanced (on the Settings page) first."
+            : "";
 
     private AutomationElement[] ConnectedWindows()
     {

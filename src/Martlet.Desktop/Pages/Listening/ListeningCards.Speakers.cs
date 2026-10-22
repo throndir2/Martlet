@@ -19,10 +19,11 @@ internal sealed partial class ListeningCards
         var (text, problem) = MainWindow.EchoStatus(Talk.ReduceEcho, services.EchoReport);
         var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "TalkReduceEchoStatus");
-        return Card(Heading("Speakers and echo"), reduce, status,
+        // On by default and rarely changed: the switch is folded away under the line that says how it works now.
+        return Card(Heading("Speakers and echo"), status, Fold.Create("Echo settings", "ListeningEcho", false, reduce,
             HelpTip.Explain("Martlet removes what this PC plays from the microphone, so it works without headphones and keeps listening " +
                 "while it speaks. That sound stays on this PC and is never saved or sent.", new Thickness(0, 0, 0, 0), "EchoCancel",
-                "hearing this PC", wiki: "Talking-to-Martlet#speakers-and-echo"));
+                "hearing this PC", wiki: "Talking-to-Martlet#speakers-and-echo")));
     }
 
     /// <summary>Companion › Listening › Hear what this PC plays (off by default): while always listening runs, Martlet also hears

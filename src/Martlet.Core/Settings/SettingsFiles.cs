@@ -99,6 +99,7 @@ public static class SettingsFiles
         new("check-ins.json", SettingsFileScope.Account, SettingScopes.CheckIns, "Martlet.Conversation.CheckInSettings",
             "It runs commands as you on this PC, so it is allowed at that PC"),
         new(MemoryBriefFile.FileName, SettingsFileScope.Account, MemoryBriefFile.SharedKey, "Martlet.Core.Settings.MemoryBriefFile"),
+        new(AdvancedSettingsFile.FileName, SettingsFileScope.Account, AdvancedSettingsFile.SharedKey, "Martlet.Core.Settings.AdvancedSettingsFile"),
         new("voice-id.json", SettingsFileScope.Account, SettingScopes.VoiceId, "Martlet.Desktop.VoiceIdentity"),
         new("avatar.json", SettingsFileScope.Account, SettingScopes.Character, "Martlet.Avatar.Hosting.AvatarProfileStore"),
         new("character-reaction-changes.json", SettingsFileScope.Account, SettingScopes.CharacterReactionChanges,

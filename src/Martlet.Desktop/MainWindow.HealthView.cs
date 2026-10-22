@@ -23,6 +23,7 @@ public partial class MainWindow
         if (closing || Role != DeviceRole.Companion) return;
         FollowLocalServices();
         var (issues, tiles) = BuildHealth();
+        RenderGetStarted(issues);
         var signature = string.Join("\n", issues.Select(i => $"{i.Id}|{i.Level}|{i.Title}|{i.Detail}|{string.Join(",", i.Fixes.Select(f => f.Label))}")) +
             "\n--\n" + string.Join("\n", tiles.Select(t => $"{t.Id}|{t.Health}|{t.Status}"));
         if (!force && signature == healthSignature) return;

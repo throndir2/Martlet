@@ -57,6 +57,8 @@ public partial class MainWindow
         }
         if (ReferenceEquals(page, DiagnosticsPage)) EnterDiagnostics();
         else LeaveDiagnostics();
+        // A hidden advanced item shows while open, and hides again once another page opens.
+        RailAdvanced();
     }
 
     private void Navigate(RadioButton item)

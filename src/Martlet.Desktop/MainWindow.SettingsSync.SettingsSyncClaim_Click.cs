@@ -140,6 +140,8 @@ public partial class MainWindow
         // The memory brief travels with each person's settings, so every computer sends the same one; a brief taken from another
         // computer (or another person's, on a switch) goes with messages at once.
         yield return MemoryBriefFile.Section(directory, () => conversation?.MemoryBrief?.Followed());
+        // Show advanced settings: each person's, so the same pages show on every computer they use (AfterSettingsAppliedAsync).
+        yield return AdvancedSettingsFile.Section(directory);
         // Finding by meaning (on or off, and which embedding model) is the household's choice, the same on every computer; each
         // computer makes its own vectors.
         yield return MeaningSearchFile.Section(directory, () => conversation?.Meaning?.Reload());
