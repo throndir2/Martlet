@@ -31,7 +31,7 @@ public sealed class ThinkingJobKindsTests
     {
         // thinking-pool.json (Runs on), the status files and the automation IDs (ThinkingPoolRunsOn-<key>) keep these keys: a
         // change needs a migration of the saved files.
-        Assert.Equal(["barge-in-judge", "end-of-turn-judge", "digest", "think-longer", "touch-zones", "memory", "naming", "research", "check-in"],
+        Assert.Equal(["barge-in-judge", "end-of-turn-judge", "digest", "think-longer", "touch-zones", "memory", "naming", "research", "check-in", "director"],
             ThinkingJobKinds.All.Select(ThinkingJobKinds.Name));
         Assert.All(ThinkingJobKinds.All, kind => Assert.Equal(kind, ThinkingJobKinds.Parse(ThinkingJobKinds.Name(kind))));
         Assert.Null(ThinkingJobKinds.Parse("touch_zones"));
@@ -48,11 +48,12 @@ public sealed class ThinkingJobKindsTests
             ThinkingJobKinds.All.Where(ThinkingJobKinds.IsFast));
         Assert.Equal(
             [ThinkingPriority.BargeInJudge, ThinkingPriority.EndOfTurnJudge, ThinkingPriority.Digest, ThinkingPriority.ThinkLonger,
-                ThinkingPriority.TouchZones, ThinkingPriority.Helper, ThinkingPriority.Helper, ThinkingPriority.Research, ThinkingPriority.Helper],
+                ThinkingPriority.TouchZones, ThinkingPriority.Helper, ThinkingPriority.Helper, ThinkingPriority.Research, ThinkingPriority.Helper,
+                ThinkingPriority.Director],
             ThinkingJobKinds.All.Select(ThinkingJobKinds.Priority));
         Assert.Equal([ThinkingJobKind.BargeInJudge, ThinkingJobKind.EndOfTurnJudge], ThinkingJobKinds.All.Where(LiveFloorRules.ServesTheTurn));
         Assert.Equal([ThinkingJobKind.Digest, ThinkingJobKind.ThinkLonger, ThinkingJobKind.Memory, ThinkingJobKind.Naming,
-            ThinkingJobKind.Research, ThinkingJobKind.CheckIn], ThinkingJobKinds.All.Where(LiveFloorRules.Stops));
+            ThinkingJobKind.Research, ThinkingJobKind.CheckIn, ThinkingJobKind.Director], ThinkingJobKinds.All.Where(LiveFloorRules.Stops));
         Assert.Equal(ThinkingPriority.Research, ThinkingJobKinds.Helper(HelperJobKind.MemoryBrief).Helper.Priority);
         Assert.Equal(ThinkingPriority.Helper, ThinkingJobKinds.Helper(HelperJobKind.Eyes).Helper.Priority);
         Assert.Equal([HelperJobKind.TouchZones, HelperJobKind.CharacterWriting],

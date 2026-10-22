@@ -22,6 +22,27 @@ public sealed class AppGuideServiceTests : IDisposable
     private AppGuideService Service(IGuideBuilder? builder = null) => new(new FileAppGuideStore(directory), builder ?? new FixtureBuilder());
 
     [Fact]
+    public async Task PagesALookUpReadStayInTheLookedUpGuideNewestFirst()
+    {
+        using var guides = Service();
+        await guides.LoadAsync();
+        var first = new GuidePage("https://example.com/ore", "Iron Ore", Page, 400);
+        Assert.Null(await guides.KeepLookedUpAsync([first]));
+        var entry = Assert.Single(guides.Library.Apps, a => a.Key == AppGuideService.LookedUpKey);
+        Assert.Equal((AppGuideService.LookedUpName, 1), (entry.Name, entry.Pages));
+        var hits = guides.Search(AppGuideService.LookedUpKey, "where can I mine iron ore", 2)!;
+        Assert.Contains("Ember Mines", hits[0].Chunk.Text);
+
+        // A page read again replaces its sections; a new page goes first.
+        var weather = new GuidePage("https://example.com/oslo", "Oslo weather", "# Oslo\nIt is 4 degrees and raining in Oslo today.", 100);
+        Assert.Null(await guides.KeepLookedUpAsync([weather, first]));
+        var guide = (await new FileAppGuideStore(directory).LoadGuideAsync(AppGuideService.LookedUpKey, default))!;
+        Assert.Equal("https://example.com/oslo", guide.Chunks[0].Url);
+        Assert.Equal(2, guide.Sources.Count);
+        Assert.Equal(guide.Chunks.Count, guide.Chunks.Distinct().Count());
+        Assert.Equal("no page had text", await guides.KeepLookedUpAsync([new GuidePage("https://example.com/x", "x", "", 0)]));
+    }
+    [Fact]
     public void ProgramNamesMatchTheirAppIgnoringCaseAndPunctuation()
     {
         var library = new AppGuideLibrary

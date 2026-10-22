@@ -27,13 +27,13 @@ internal static partial class CheckInsCheck
             var (read, state) = CheckInSettings.Read(folder);
             var all = CheckIns.All(read);
             var refused = false;
-            try { new CheckInSettings().With(custom with { Triggers = (CheckInTriggers)64 }).Validate(); }
+            try { new CheckInSettings().With(custom with { Triggers = (CheckInTriggers)128 }).Validate(); }
             catch (Martlet.Core.Contracts.ContractException) { refused = true; }
             step("triggers: saved and read back", wrote && state == "loaded" && all.Single(c => c.Id == "c4").Triggers == custom.Triggers &&
                 all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
                 CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
                     : c.Id == CheckIns.Reactions ? CheckIns.ByTouches
-                    : c.Id is CheckIns.Actions or CheckIns.Ahead or CheckIns.Callbacks ? CheckInTriggers.ExchangeEnded
+                    : c.Id == CheckIns.Director ? CheckInTriggers.UserTurn : c.Id is CheckIns.Ahead or CheckIns.Callbacks ? CheckInTriggers.ExchangeEnded
                     : c.Id == CheckIns.Aside ? CheckInTriggers.Spoke : CheckInTriggers.None)) && refused,
                 new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
         }
@@ -109,50 +109,56 @@ internal static partial class CheckInsCheck
             new { waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), jobKind = job is null ? null : ThinkingJobKinds.Name(job.Kind) });
     }
 
-    /// <summary>10b. Act on what was said (NOT AI): an ended exchange fires it (two that end while it waits count both), it waits
-    /// longer than touches, it reads every exchange since it last ran, its default tool sets are the sets that take over reply
-    /// tools, and the reply hands those tools off only while it is on and the configured pool has a member that calls tools.</summary>
+    /// <summary>10b. The director (NOT AI): the user's turn fires it with no cooldown, it waits as long as an exchange, it runs as
+    /// its own pool kind, it reads what the user just said, the exchanges since it last ran and the skill index, its default tool
+    /// sets are next-reply, skills, knowledge and the sets that take over reply tools, and the reply hands those tools off only
+    /// while it is on and the configured pool has a member that takes director jobs and calls tools.</summary>
     private static void AfterExchange(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
     {
-        var actions = CheckIns.All(null).Single(c => c.Id == CheckIns.Actions);
-        var first = CheckIns.ExchangeTrigger(now.AddSeconds(-30));
-        var second = CheckIns.ExchangeTrigger(now, first);
-        var expectedSets = CheckInToolSets.All.Where(s => s.Replaces.Count > 0).Select(s => s.Id).ToArray();
-        step("after each exchange: the built-in check-in and its trigger", actions is { On: true, Outcome: CheckInOutcome.Tools, EveryMinutes: 1,
-                Triggers: CheckInTriggers.ExchangeEnded, Facts: CheckInFacts.Latest | CheckInFacts.Work } &&
-            actions.Conditions == CheckInConditions.SomethingNew && actions.ToolSets.SequenceEqual(expectedSets) &&
-            first.What == "1 exchange" && second.What == "2 exchanges" && CheckIns.Age(second) == CheckIns.ExchangeAge &&
-            CheckIns.Fires(actions, first with { At = now.AddMinutes(-5) }, now) && !CheckIns.Fires(actions, first with { At = now.AddMinutes(-11) }, now) &&
-            !CheckIns.Fires(actions, new(CheckInTriggers.TouchesEnded, now, "1 touch"), now) &&
-            CheckIns.TriggerWords(CheckInTriggers.ExchangeEnded) == "a reply to end",
-            new { sets = actions.ToolSets, first = first.What, second = second.What, ageMinutes = CheckIns.ExchangeAge.TotalMinutes });
+        var director = CheckIns.All(null).Single(c => c.Id == CheckIns.Director);
+        var turn = CheckIns.TurnTrigger(now.AddSeconds(-2));
+        var exchange = CheckIns.ExchangeTrigger(now.AddSeconds(-30));
+        var expectedSets = CheckInToolSets.All.Where(s => s.Replaces.Count > 0 || s.Id is CheckInToolSets.NextReplyId or SkillTools.SetId or
+            KnowledgeTools.SetId or PeopleTools.SetId).Select(s => s.Id).ToArray();
+        var justRan = new CheckInRun(now.AddSeconds(-5), facts.Exchanged, "called 1 tool", true);
+        step("director: the built-in check-in, its trigger and its pool kind", director is { On: true, Outcome: CheckInOutcome.Tools,
+                Triggers: CheckInTriggers.UserTurn, JobKind: ThinkingJobKind.Director } &&
+            director.Facts == (CheckInFacts.Asked | CheckInFacts.Latest | CheckInFacts.Work | CheckInFacts.Skills) &&
+            director.ToolSets.SequenceEqual(expectedSets) && CheckIns.Age(turn) == CheckIns.ExchangeAge &&
+            CheckIns.Fires(director, turn, now) && !CheckIns.Fires(director, exchange, now) &&
+            CheckInSchedule.Wait(director, facts, justRan, fired: turn) is null &&
+            CheckIns.TriggerWords(CheckInTriggers.UserTurn) == "you to say or type something to Martlet" &&
+            CheckIns.All(null).All(c => c.Id != CheckIns.Actions) && LiveFloorRules.Stops(ThinkingJobKind.Director),
+            new { sets = director.ToolSets, kind = ThinkingJobKinds.Name(director.JobKind), ageMinutes = CheckIns.ExchangeAge.TotalMinutes });
 
-        // It reads the exchanges since it last ran (2 of the 4 here), or the newest one before its first run.
-        var since = CheckInPrompts.Latest(facts with { Since = 2 });
-        var newest = CheckInPrompts.Latest(facts);
-        var message = CheckInPrompts.Message(actions, facts with { Since = 3 }, null) ?? "";
-        step("after each exchange: it reads what was said since it last ran", since.StartsWith("The latest 2 exchanges", StringComparison.Ordinal) &&
-            since.Contains("Okay, back to work now.", StringComparison.Ordinal) && !since.Contains("check the oven", StringComparison.Ordinal) &&
-            newest.StartsWith("The latest exchange:", StringComparison.Ordinal) && newest.Contains("This bug is driving me crazy", StringComparison.Ordinal) &&
-            message.Contains("This bug is driving me crazy", StringComparison.Ordinal) && message.Contains("FIXTURE plan for the trip", StringComparison.Ordinal) &&
-            message.Contains("Use your tools for what needs doing", StringComparison.Ordinal) && !message.Contains("{exchange}", StringComparison.Ordinal),
-            new { since, newest });
+        // It reads what the user just said, the exchanges since it last ran and the skill index (never the pinned skills).
+        var index = Director.SkillIndex(null) ?? "";
+        var message = CheckInPrompts.Message(director, facts with { Since = 3, Asked = "FIXTURE what's on my calendar tomorrow?", Skills = index }, null) ?? "";
+        var job = CheckInPrompts.Prepare(director, facts with { Asked = "FIXTURE hi", Skills = index }, null);
+        step("director: what it reads", message.Contains("The user just said: FIXTURE what's on my calendar tomorrow?", StringComparison.Ordinal) &&
+            message.Contains("This bug is driving me crazy", StringComparison.Ordinal) && message.Contains("web-research: ", StringComparison.Ordinal) &&
+            !index.Contains(SkillCatalog.LookIntoIt, StringComparison.Ordinal) && !message.Contains("{skills}", StringComparison.Ordinal) &&
+            message.Contains("Use your tools for what needs doing", StringComparison.Ordinal) && job?.Kind == ThinkingJobKind.Director &&
+            Director.Load(null, SkillCatalog.Songs, "Mira", "pass").Output.StartsWith("Loaded the skill songs.", StringComparison.Ordinal),
+            new { skillIndex = index.Split('\n'), jobKind = job is null ? null : ThinkingJobKinds.Name(job.Kind), messageCharacters = message.Length });
 
-        // Which reply tools it takes over: the sets' Replaces, only while it is on and the configured pool calls tools.
+        // Which reply tools it takes over: the sets' Replaces, only while it is on and the configured pool has a member that takes
+        // director jobs and calls tools (a member for check-ins only is not enough).
         var replaced = CheckInToolSets.All.Where(s => s.Replaces.Count > 0).SelectMany(s => s.Replaces).Distinct(StringComparer.Ordinal).ToArray();
         var handed = CheckIns.HandOffs(null, null, poolCallsTools: true);
         var noPool = CheckIns.HandOffs(null, null, poolCallsTools: false);
-        var off = CheckIns.HandOffs(new CheckInSettings().With(CheckIns.Actions, false, 1), null, poolCallsTools: true);
+        var checkInsOnly = CheckIns.HandOffs(null, null, kind => kind == ThinkingJobKind.CheckIn);
+        var off = CheckIns.HandOffs(new CheckInSettings().With(CheckIns.Director, false, 1), null, poolCallsTools: true);
         var asked = false;
-        var lazy = CheckIns.HandOffs(new CheckInSettings().With(CheckIns.Actions, false, 1), null, () => asked = true);
-        var guidance = CheckIns.HandOffGuidance([new("fixture_tool", CheckIns.Actions, actions.Name, "fixture-set", "Reminders")], null) ?? "";
-        step("after each exchange: the reply hands tools off", handed.Select(h => h.Tool).SequenceEqual(replaced) &&
-            handed.All(h => h.CheckInId == CheckIns.Actions) && noPool.Count == 0 && off.Count == 0 && lazy.Count == 0 && !asked &&
-            guidance.Contains("right after your reply: Reminders.", StringComparison.Ordinal) &&
-            CheckIns.HandOffGuidance([], null) is null,
-            new { handedOff = handed.Select(h => $"{h.Tool} ({h.SetId})"), guidance });
+        var lazy = CheckIns.HandOffs(new CheckInSettings().With(CheckIns.Director, false, 1), null, () => asked = true);
+        var moved = CheckIns.All(new CheckInSettings { BuiltIn = new Dictionary<string, CheckInChoice> { [CheckIns.Actions] = new(false, 1) } })
+            .Single(c => c.Id == CheckIns.Director).On;
+        var guidance = CheckIns.HandOffGuidance([new("fixture_tool", CheckIns.Director, director.Name, "fixture-set", "Reminders")], null) ?? "";
+        step("director: the reply hands tools off", handed.Select(h => h.Tool).SequenceEqual(replaced) && replaced.Contains(PcTools.ServersName) &&
+            handed.All(h => h.CheckInId == CheckIns.Director) && noPool.Count == 0 && checkInsOnly.Count == 0 && off.Count == 0 && lazy.Count == 0 &&
+            !asked && !moved && guidance.Contains("while you answer: Reminders.", StringComparison.Ordinal) && CheckIns.HandOffGuidance([], null) is null,
+            new { handedOff = handed.Select(h => $"{h.Tool} ({h.SetId})"), guidance, actionsOffMovesToDirector = !moved });
     }
-
     // The built-in check-ins that wait for a signal and are off until the owner turns them on.
     private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Others;
 

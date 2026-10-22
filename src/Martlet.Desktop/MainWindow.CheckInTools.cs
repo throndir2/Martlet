@@ -34,6 +34,17 @@ public partial class MainWindow
                 ? live.CheckInMemoryAsync(call, context.CheckInName, token) : new(new ConversationToolResult("Memory: off.\nMemory is off.", true));
         // Background work only while Thinking longer is on and Deep thinking can think.
         if (conversation?.OffersBackgroundWork == true) handlers[BackgroundWorkTools.SetId] = BackgroundWorkToolAsync;
+        // The director's sets (docs/CONVERSATION.md#the-director): skills and knowledge everywhere a conversation runs, past
+        // conversations while Martlet may search them, the App guides tools while they are on, and this PC's own tools.
+        handlers[SkillTools.SetId] = (call, context, token) => new(Director.Load(homeSettings?.Skills, CheckInToolSets.Argument(call, "key"),
+            homeSettings?.Companion?.ActivePersona?.Name ?? "Martlet", StayQuiet.Marker));
+        if (conversation is { } live)
+        {
+            handlers[KnowledgeTools.SetId] = (call, context, token) => live.SearchKnowledgeAsync(call, token);
+            if (live.SearchesPastConversations) handlers[PastConversationTools.SetId] = (call, context, token) => live.DirectorSearchConversationsAsync(call, token);
+            if (live.RunsGuideTools) handlers[GuideToolSet.SetId] = (call, context, token) => live.DirectorGuideToolAsync(call, token);
+            if (live.HasPcTools) handlers[PcTools.SetId] = (call, context, token) => live.DirectorPcToolAsync(call, token);
+        }
         // The voice list (Companion › People) on a PC that keeps one (a data folder), whether recognition is on or off.
         if (localVoices.Available) handlers[PeopleTools.SetId] = PeopleToolAsync;
         return handlers;

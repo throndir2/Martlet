@@ -12,7 +12,7 @@ public sealed class ReplyHandOffTests
         (new(name, "FIXTURE tool.", """{"type":"object","properties":{},"additionalProperties":false}"""),
             (_, _) => ValueTask.FromResult(new ConversationToolResult("done")));
 
-    private static CheckInHandOff Hand(string tool) => new(tool, CheckIns.Actions, "Act on what was said", "fixture", "Fixture");
+    private static CheckInHandOff Hand(string tool) => new(tool, CheckIns.Director, "The director", "fixture", "Fixture");
 
     [Fact]
     public void HandedOffToolsLeaveTheReplyAndTheGuidanceIsAddedAfterTheSetsOwn()

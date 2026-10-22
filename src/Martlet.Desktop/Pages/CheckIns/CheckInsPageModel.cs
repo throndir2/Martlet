@@ -46,7 +46,7 @@ internal sealed partial class CheckInsPageModel(ICheckInsPageServices services)
         var pool = services.Pool!;
         if (pool.Find(ThinkingJobKind.CheckIn) is not { } member)
             return $"{count}, but they wait: the Thinking pool has no member that can take them, so add one on Thinking pool.";
-        var unable = All.Where(c => c.On && !pool.CanRun(ThinkingJobKind.CheckIn, c.Needs, c.RunsOn)).ToArray();
+        var unable = All.Where(c => c.On && !pool.CanRun(c.JobKind, c.Needs, c.RunsOn)).ToArray();
         return $"{count} and run{(on == 1 ? "s" : "")} on the Thinking pool ({member.Name}{(member.Model is { } model ? ", " + model : "")} " +
             "first), never on the conversation's own Thinking model" + (unable.Length == 0 ? ""
                 : $"; {string.Join(", ", unable.Select(c => c.Name))} {(unable.Length == 1 ? "waits" : "wait")} for a member that can take " +

@@ -133,6 +133,8 @@ internal sealed partial class LiveConversationController
         return await OnPlaceAsync("Web research", job, configured, pool, thinkingModel, async guard =>
         {
             var found = await run.RunAsync(job, arguments, guard).ConfigureAwait(false);
+            // What it read stays in the Looked up guide, so later turns find it without the web.
+            KeepLookedUp(run.Read, job.Id);
             if (arguments.Depth == ResearchDepth.Quick)
                 return (found.Answer ?? (found.Report is { } notes ? WebResearch.Unsettled(notes) : null)) is { } answer
                     ? BackgroundJobOutcome.Done(WebResearch.Answered(answer))

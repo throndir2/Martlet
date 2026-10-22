@@ -81,9 +81,9 @@ public static partial class PromptCatalog
             DefaultHeardVoiceNoteInstructions,
             ["when", "voice"]),
         new(HandedOffTools, ConversationGroup, "Things done after the reply",
-            "Added to every reply while Companion › Check-ins › Act on what was said (or another check-in that runs after each " +
-            "reply) takes over some of the reply's tools, because a Thinking pool member that calls tools does that work right " +
-            "after the reply. {things} names what it does, such as reminders. It stays the same from reply to reply while those " +
+            "Added to every reply while Companion › Check-ins › The director (or another check-in that starts on your turn or " +
+            "after each reply) takes over some of the reply's tools, because a Thinking pool member that calls tools does that " +
+            "work beside the reply. {things} names what it does, such as reminders. It stays the same from reply to reply while those " +
             "settings stay. Empty it to send nothing.",
             DefaultHandedOffToolsInstructions, ["things"]),
         new(BackgroundDone, ConversationGroup, "Background work finished",
@@ -496,11 +496,12 @@ public static partial class PromptCatalog
             "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
             "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
             DefaultCheckInOthersInstructions, ["name", "people"]),
-        new(CheckInActions, CheckInGroup, "Check-in: act on what was said",
-            "What Act on what was said checks right after each reply. {exchange} is the latest exchange (what the user said and " +
-            "the reply), or every exchange since it last ran, and {work} the reminders set and the background work started or " +
-            "finished. It changes nothing itself: the tools of the sets it may use do (such as reminders).",
-            DefaultCheckInActionsInstructions, ["name", "exchange", "work"]),
+        new(CheckInDirector, CheckInGroup, "The director",
+            "What the director gets when you say something to Martlet, while Martlet answers without tools. {asked} is what you " +
+            "just said, {exchange} the exchanges since it last ran, {work} the reminders set and the background work, and {skills} " +
+            "the skills it may load (key: when it helps; the pinned ones are left out). It changes nothing itself: the tools of " +
+            "the sets it may use do, and remind_next_reply and bring_up give Martlet what it found.",
+            DefaultCheckInDirectorInstructions, ["name", "asked", "exchange", "work", "skills"]),
         new(CheckInMemory, CheckInGroup, "Check-in: memory care",
             "What Memory care checks, every hour while something new was said. {exchange} is what was said since it last ran and " +
             "{activity} what the user seems to be doing on this PC (a game, an app). It changes nothing itself: the Memory tools " +

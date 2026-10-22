@@ -523,6 +523,24 @@ digests on (they give the clues) and a Thinking pool member. It costs nothing
 when the pool members are local. On a paid cloud pool member it is bounded by
 the limits above.
 
+### Looked up on the web
+
+The pages a quick look-up or web research reads (the `research` tool, also
+when [the director](CONVERSATION.md#the-director) calls it) stay in one guide
+of their own, **Looked up on the web** (key `looked-up`,
+`AppGuideService.KeepLookedUpAsync`), while App guides are on. Later turns
+find them without the web: the director's `search_knowledge` and
+`search_guide` search it like any guide.
+
+- The newest pages come first. A page read again replaces its earlier
+  sections, and past 400 sections (`MaximumLookedUpSections`) the oldest go.
+- It is kept in the background after the research ends; nothing waits for
+  it, and the reply's own notes get nothing new from it.
+- It shows on Companion › App guides like the other guides, and you can
+  delete it there.
+- The log says *App guides: kept the 4 pages research-2 read in the Looked up
+  guide.* (counts only, never a link or what was read).
+
 ## On the desktop
 
 - **The library** (`AppGuideService`) keeps `<data folder>\guides\library.json`

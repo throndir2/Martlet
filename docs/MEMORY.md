@@ -556,7 +556,7 @@ up a fact and leaves a fact as it is when it can't tell. Its prompt is
 Memory tools on this PC it doesn't ask the pool.
 
 When you correct Martlet in a conversation (*that's for Minecraft, not
-Terraria!*), **Act on what was said** does the same right after the reply: it
+Terraria!*), **the director** does the same while Martlet answers: it
 finds every fact with those words and corrects each one or keeps it for the
 right game, in as many steps as it takes.
 

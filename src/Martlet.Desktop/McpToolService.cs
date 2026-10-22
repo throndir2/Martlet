@@ -375,17 +375,36 @@ internal sealed class McpToolService : IAsyncDisposable
     /// one reply. It never waits: a server that is still starting (or stopped) offers the tools it listed last in this session,
     /// so the list, and the start of every request, stays the same while servers come and go (a call to it waits for it to start,
     /// or says it isn't running). A server whose tools were never listed yet offers none until they are.</summary>
-    internal DesktopToolset? Prepare(BuiltInTools? builtIns = null)
+    /// <param name="pcTools">False while the director has the PC's tools (docs/CONVERSATION.md#the-director): only Home
+    /// Assistant's own server is offered (its tools act at once and ask first for locks in the reply's turn), never the
+    /// terminal.</param>
+    internal DesktopToolset? Prepare(BuiltInTools? builtIns = null, bool pcTools = true)
+    {
+        var shell = pcTools && Terminal is { Enabled: true } on ? on : null;
+        IReadOnlyList<McpServerStatus> offered = [];
+        if (HasEnabledServers)
+        {
+            EnsureStarted();
+            offered = pcTools ? Offered() : [.. Offered().Where(s => s.Name == SmartHome.ServerName)];
+        }
+        else if (shell is null && builtIns is null) return null;
+        if (!pcTools && offered.Count == 0 && builtIns is null) return null;
+        return DesktopToolset.Build(this, offered, shell, builtIns);
+    }
+
+    /// <summary>The tools of this PC the director may call (list_pc_tools, call_pc_tool): every enabled MCP server's tools and the
+    /// terminal while it is on, without Home Assistant's (the reply keeps them) and without Martlet's own; null when there are
+    /// none.</summary>
+    internal DesktopToolset? PcTools()
     {
         var shell = Terminal is { Enabled: true } on ? on : null;
         IReadOnlyList<McpServerStatus> offered = [];
         if (HasEnabledServers)
         {
             EnsureStarted();
-            offered = Offered();
+            offered = [.. Offered().Where(s => s.Name != SmartHome.ServerName)];
         }
-        else if (shell is null && builtIns is null) return null;
-        return DesktopToolset.Build(this, offered, shell, builtIns);
+        return offered.Count == 0 && shell is null ? null : DesktopToolset.Build(this, offered, shell);
     }
 
     // The enabled servers in mcp.json's order (then managed ones), each with its tools now when it is ready, else the tools it
