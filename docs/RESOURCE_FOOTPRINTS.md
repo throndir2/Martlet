@@ -39,9 +39,18 @@ string names what else is estimated.
 - **Disk** is download plus install: model files plus the host role's Docker
   image (images share base layers, so several roles on one host take less
   than the sum).
-- **Context.** Thinking runs at Martlet's 8,192-token context
+- **Context.** Thinking's footprint is at 8,192 tokens
   (`GenerationSettings.DefaultHostContextTokens`); its VRAM includes that KV
-  cache, so `ContextGb` is 0. Deep thinking gets 32,768 tokens a think
+  cache, so `ContextGb` is 0. On a paired host, Martlet plans a larger window
+  from what the card has left (`ContextWindowPlan`): the largest of 32,768,
+  16,384 and 8,192 tokens that fits beside the model, the other roles on the
+  card, the 0.8 GB reserve and 1.0 GB more headroom, never above the model's
+  own limit. The extra memory is the Deep thinking `ContextGb` scaled to the
+  window (Gemma 4 12B: about 0.7 GB at 32,768), or a large guess for a model
+  the catalog doesn't know. The window is room only: each reply still sends at
+  most 6,144 estimated tokens unless a context size is saved
+  (`ContextBudget.PlannedInputTokens`), so replies start as soon. Deep
+  thinking gets 32,768 tokens a think
   (`DeepThinkingContextTokens`); its `ContextGb` is the extra cache and buffers
   for one think beyond 8,192 tokens.
 - The planner also keeps 0.8 GB of every card for Windows and the desktop

@@ -17,7 +17,10 @@ public enum ContextSource
     /// <summary>The context Ollama on this PC gives the model (its own context length setting).</summary>
     Ollama,
     /// <summary>Ollama on this PC, before Martlet has seen what it gives the model; its smallest default is assumed.</summary>
-    OllamaAssumed
+    OllamaAssumed,
+    /// <summary>A paired host's window, planned from its graphics card's free memory (<see cref="Planning.ContextWindowPlan"/>);
+    /// each reply still sends at most <see cref="ContextBudget.PlannedInputTokens"/>.</summary>
+    Planned
 }
 
 /// <summary>How much a reply request may hold: the persona, lore, memory, the conversation so far and the message, plus room
@@ -36,11 +39,21 @@ public sealed record ContextBudget(int Tokens, int ReplyTokens, ContextSource So
     public const int MinimumInputTokens = 6_144;
 
     /// <summary>The estimated tokens left for the request's text (persona, lore, memory, conversation, message) after the reply's
-    /// room; tool descriptions and results have their own room on top.</summary>
-    public int InputTokens => Math.Max(Tokens - ReplyTokens, MinimumInputTokens);
+    /// room; tool descriptions and results have their own room on top. A paired host's planned window keeps it at
+    /// <see cref="PlannedInputTokens"/> (<see cref="InputLimit"/>).</summary>
+    public int InputTokens => InputLimit ?? Math.Max(Tokens - ReplyTokens, MinimumInputTokens);
+
+    /// <summary>The input bound when it isn't the window less the reply: a paired host whose window is planned from its card.</summary>
+    public int? InputLimit { get; init; }
+
+    /// <summary>The most text a reply sends to a paired host when no context size is saved: the same as with the host's old
+    /// 8,192-token window, so a bigger planned window is room (for the reply, hidden thinking, a picture and a recording) and
+    /// never makes a reply read more before its first word.</summary>
+    public const int PlannedInputTokens = MinimumInputTokens;
 
     /// <summary>The context of a Thinking route of <paramref name="routeType"/> at <paramref name="chatBaseUrl"/>, from the saved
-    /// <paramref name="settings"/> and the model's known limit (<paramref name="modelTokens"/>, null when unknown).</summary>
+    /// <paramref name="settings"/> and the model's known limit (<paramref name="modelTokens"/>, null when unknown; for a paired
+    /// host, the window Martlet planned from its card).</summary>
     public static ContextBudget For(SetupRouteType? routeType, string? chatBaseUrl, GenerationSettings? settings, int? modelTokens)
     {
         var saved = settings?.ContextTokens;
@@ -49,11 +62,24 @@ public sealed record ContextBudget(int Tokens, int ReplyTokens, ContextSource So
         int reply;
         if (routeType == SetupRouteType.GatewayOllama)
         {
-            tokens = Math.Min(saved ?? GenerationSettings.DefaultHostContextTokens, GenerationSettings.MaximumHostContextTokens);
-            source = saved is null ? ContextSource.HostDefault : ContextSource.Saved;
+            // The host loads one window for every request: the planned one, or the saved size when that is larger. The saved
+            // size alone decides how much each reply sends; without one, a reply sends what it sent with the old 8,192 window.
+            var planned = Math.Clamp(modelTokens ?? GenerationSettings.DefaultHostContextTokens,
+                GenerationSettings.DefaultHostContextTokens, GenerationSettings.MaximumHostContextTokens);
             reply = GenerationSupport.ReplyTokens(routeType, settings);
+            if (saved is { } size)
+            {
+                var sent = Math.Min(size, GenerationSettings.MaximumHostContextTokens);
+                var savedReply = Math.Min(reply, sent / 2);
+                return new(Math.Max(sent, planned), savedReply, ContextSource.Saved, modelTokens)
+                {
+                    InputLimit = Math.Max(sent - savedReply, MinimumInputTokens)
+                };
+            }
+            return new(planned, Math.Min(reply, planned / 2), modelTokens is null ? ContextSource.HostDefault : ContextSource.Planned,
+                modelTokens) { InputLimit = PlannedInputTokens };
         }
-        else if (IsLocalOllama(routeType, chatBaseUrl))
+        if (IsLocalOllama(routeType, chatBaseUrl))
         {
             var window = modelTokens ?? AssumedLocalOllamaTokens;
             tokens = saved is { } size && size < window ? size : window;
@@ -122,8 +148,9 @@ public sealed record ContextBudget(int Tokens, int ReplyTokens, ContextSource So
         ContextSource.Saved => "your setting",
         ContextSource.Default => "Martlet's default",
         ContextSource.ModelLimit => "the model's limit",
-        ContextSource.HostDefault => "the host's default",
+        ContextSource.HostDefault => "Martlet's usual window, until it plans one from the host's graphics card",
         ContextSource.Ollama => "Ollama's context length setting",
+        ContextSource.Planned => "planned from the graphics card's free memory",
         _ => "Ollama's smallest default, until Martlet checks the model"
     }})";
 }

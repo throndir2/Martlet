@@ -179,6 +179,8 @@ internal sealed class LiveConversationConfiguration
                 MaxRequestTime = LocalOllamaTextLimits.MaxRequestTime
             };
         Context = ContextBudget.For(thinking, Generation, limits);
+        // A paired host's conversation model loads at least the saved size for every request this PC sends it (HostContextWindow).
+        HostContextWindow.UseSaved(Generation?.ContextTokens);
         // Every route takes the whole conversation that fits the context size. A paired host's gateway takes no tools and at
         // most OllamaInputBytes of text (an older host takes less, and HostTextClient leaves out what it can't take); every
         // other route takes the tools' own room on top.

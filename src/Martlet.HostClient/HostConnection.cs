@@ -689,7 +689,7 @@ public sealed partial class HostConnection : IDisposable
                 element.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
             var gpus = machine.GetProperty("gpus").EnumerateArray().Take(16)
                 .Select(gpu => new HostGpu(Text(gpu, "name") ?? "GPU", Text(gpu, "vendor") ?? "other", Integer(gpu, "memory_mb"), Text(gpu, "driver"),
-                    Number(gpu, "power_limit_w"), Number(gpu, "power_default_w"), Flag(gpu, "persistence")))
+                    Number(gpu, "power_limit_w"), Number(gpu, "power_default_w"), Flag(gpu, "persistence")) { Uuid = Text(gpu, "uuid") })
                 .ToArray();
             return (new HostHardware(pairing.HostId, pairing.Origin, machine.GetProperty("collected_at").GetDateTimeOffset(),
                 clock.GetUtcNow(), Text(machine, "method") ?? "unknown", Text(machine, "operating_system") ?? "Unknown",

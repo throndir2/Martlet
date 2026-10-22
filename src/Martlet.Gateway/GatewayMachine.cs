@@ -15,6 +15,8 @@ public sealed record GatewayMachineGpu
     public double? PowerLimitW { get; init; }
     public double? PowerDefaultW { get; init; }
     public bool? Persistence { get; init; }
+    /// <summary>NVIDIA only: the card's UUID (GPU-...), as gpus.json and the routes name it; absent on older hosts.</summary>
+    public string? Uuid { get; init; }
 }
 
 /// <summary>A model a host's Ollama has loaded now, as its <c>/api/ps</c> says (the host's machine report, <c>loaded_models</c>):
@@ -139,7 +141,7 @@ public sealed record GatewayMachineReport
         ProcessorThreads is null or (> 0 and <= 4096) &&
         MemoryGb is null or (> 0 and <= 65_536) &&
         Gpus is { Count: <= 16 } &&
-        Gpus.All(gpu => gpu is not null && Text(gpu.Name, required: true) && Text(gpu.Driver) &&
+        Gpus.All(gpu => gpu is not null && Text(gpu.Name, required: true) && Text(gpu.Driver) && Text(gpu.Uuid) &&
             gpu.Vendor is "nvidia" or "amd" or "intel" or "apple" or "other" &&
             gpu.MemoryMb is null or (> 0 and <= 1_048_576) &&
             gpu.PowerLimitW is null or (> 0 and <= 10_000) && gpu.PowerDefaultW is null or (> 0 and <= 10_000)) &&

@@ -108,6 +108,11 @@ public sealed class CapabilityStatusTests
         Assert.NotNull(report);
         Assert.Empty(report!.Features!);
         Assert.Equal(12282, Assert.Single(report.Gpus).MemoryMb);
+        Assert.Null(report.Gpus[0].Uuid);
+        // A newer martlet-host adds each card's UUID, as gpus.json and the routes name it.
+        var withUuid = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("\"power_default_w\":200.00}",
+            "\"power_default_w\":200.00,\"uuid\":\"GPU-0a1b2c3d-1111-2222-3333-444455556666\"}", StringComparison.Ordinal)));
+        Assert.Equal("GPU-0a1b2c3d-1111-2222-3333-444455556666", Assert.Single(withUuid!.Gpus).Uuid);
 
         // What martlet-host wrote before it stopped turning no features into one blank one: the report was ignored.
         Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("\"features\":[]", "\"features\":[\"\"]",

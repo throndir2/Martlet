@@ -8,6 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- On a paired host, Thinking's model now loads a larger context window when its graphics card has room (up to 32,768 tokens, planned from the card's free memory), so a long reply, hidden thinking or a picture no longer pushes your character's persona and rules out of the model's memory. Each reply still sends the same amount of text, so replies start as soon as before. Recommended setup and Companion › Replies show the window planned for the card and the window loaded now, and Recommended setup now says why each language model and the voice get a card of their own. ([#PR](https://github.com/throndir2/Martlet/pulls))
+
+### Fixed
+
+- Thinking pool jobs, Backup thinking and the hearing test on a host's conversation model no longer make its Ollama load the model again with another context window, which delayed the next reply by seconds. ([#PR](https://github.com/throndir2/Martlet/pulls))
+
 ## [0.91.0] - 2026-10-21
 
 ### Added
