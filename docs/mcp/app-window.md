@@ -1160,7 +1160,7 @@ With **Show advanced settings** off (the default, each person's choice, shared w
 their other computers in `advanced-settings.json`), the rail hides
 `NavThinkingRequests` and `NavDiagnostics`, and Companion's side list shows only the
 essential pages: `CompanionTab-Thinking`, `CompanionTab-Listening`,
-`CompanionTab-Voice`, `CompanionTab-Profiles`, `CompanionTab-Personality`,
+`CompanionTab-Voice`, `CompanionTab-DeepThinking` (*Background thinking*), `CompanionTab-Profiles`, `CompanionTab-Personality`,
 `CompanionTab-Memory`, `CompanionTab-Character` and `CompanionTab-Replies`. Its last
 item, `CompanionShowAdvanced` (*Show advanced settings (N more pages)* or *Hide
 advanced settings*, its value), shows or hides the others; Settings › *What Martlet
