@@ -507,6 +507,8 @@ public sealed class WebResearchRun(IWebSearch search, IWebFetch fetch,
     public int Searches => queries.Count;
     public int Steps { get; private set; }
     public int Pages => pages.Count;
+    /// <summary>The pages read, in the order they were read (to keep them in the Looked up guide once the run ends).</summary>
+    public IReadOnlyList<WebPage> Read => [.. pages];
     public long Bytes { get; private set; }
     /// <summary>Pages that couldn't be read (blocked, too slow, not a page...).</summary>
     public int Failures => failed.Count;

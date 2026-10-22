@@ -28,7 +28,9 @@ public static class CheckInSchedule
         var triggered = !now && checkIn.Triggers != CheckInTriggers.None;
         if (triggered && !Fires(checkIn, fired, state.Now)) return "it waits for " + TriggerWords(checkIn.Triggers);
         var pace = Pace(checkIn, last, state.Exchanged);
-        if (!now && last is not null && state.Now - last.At < pace)
+        // The user's turn has no cooldown: each thing the user says gets its run (the director).
+        var everyTurn = triggered && fired!.Fired.HasFlag(CheckInTriggers.UserTurn);
+        if (!now && !everyTurn && last is not null && state.Now - last.At < pace)
             return "next in " + Reminders.Span(last.At + pace - state.Now);
         if (!now && state.Away is { } away && away > Idle) return $"nobody used this PC for {Reminders.Span(Idle)}";
         if (string.IsNullOrWhiteSpace(Template(checkIn, prompts))) return "its prompt is empty";

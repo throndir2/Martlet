@@ -77,7 +77,9 @@ public static class CheckInToolSets
     };
 
     /// <summary>Every set, in the order the card shows them. The static sets above come first, so they exist when this list is made.</summary>
-    public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set, DiscordCheckInTools.Set, MemoryToolSet.Set, CreationsCheckIn.Set, BackgroundWorkTools.Set, PeopleTools.Set];
+    public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set, DiscordCheckInTools.Set,
+        MemoryToolSet.Set, CreationsCheckIn.Set, BackgroundWorkTools.Set, PastConversationTools.Set, GuideToolSet.Set, PcTools.Set,
+        PeopleTools.Set, SkillTools.Set, KnowledgeTools.Set];
 
     public static CheckInToolSet? Find(string? id) => id is null ? null : All.FirstOrDefault(s => s.Id == id);
 

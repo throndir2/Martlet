@@ -92,12 +92,15 @@ public sealed record CheckInSettings
     public int SchemaVersion { get; init; } = 1;
 
     /// <summary>The built-in check-ins the owner changed, by ID. Choices for a retired check-in (<see cref="CheckIns.Retired"/>)
-    /// are dropped as they are read.</summary>
+    /// are dropped as they are read; Act on what was said's on or off first moves to the director, which replaced it.</summary>
     public IReadOnlyDictionary<string, CheckInChoice> BuiltIn
     {
         get => builtIn;
         init => builtIn = value is null ? new Dictionary<string, CheckInChoice>()
-            : value.Keys.Any(CheckIns.Retired) ? value.Where(e => !CheckIns.Retired(e.Key)).ToDictionary(e => e.Key, e => e.Value, StringComparer.Ordinal)
+            : value.Keys.Any(CheckIns.Retired) ? value.Where(e => !CheckIns.Retired(e.Key))
+                .Concat(value.TryGetValue(CheckIns.Actions, out var actions) && !value.ContainsKey(CheckIns.Director)
+                    ? [new KeyValuePair<string, CheckInChoice>(CheckIns.Director, new(actions.On, 1))] : [])
+                .ToDictionary(e => e.Key, e => e.Value, StringComparer.Ordinal)
             : value;
     }
     private readonly IReadOnlyDictionary<string, CheckInChoice> builtIn = new Dictionary<string, CheckInChoice>();

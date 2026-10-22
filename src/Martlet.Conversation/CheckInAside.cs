@@ -65,8 +65,9 @@ public static partial class CheckIns
     public static TimeSpan HeardWindow => PeopleWindow;
 
     /// <summary>Built-in check-ins an older Martlet had, whose saved choices are dropped: On a call (<c>call</c>), whose job
-    /// (keep quiet during a call on this PC) Talking to someone else does, also for calls Martlet can't see.</summary>
-    public static bool Retired(string id) => id is "call";
+    /// (keep quiet during a call on this PC) Talking to someone else does, also for calls Martlet can't see; and Act on what was
+    /// said (<c>actions</c>), which the director replaced (its on or off moves to it first, <see cref="CheckInSettings.BuiltIn"/>).</summary>
+    public static bool Retired(string id) => id is "call" or Actions;
 
     /// <summary>What always listening heard lately (<see cref="CheckInFacts.Heard"/>), as the check reads it: each thing the user
     /// said in the last <see cref="HeardWindow"/>, oldest first, with when, who spoke, the other voices and this PC's sound with

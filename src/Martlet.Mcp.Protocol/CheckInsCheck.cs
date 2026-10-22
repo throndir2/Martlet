@@ -217,7 +217,7 @@ internal static partial class CheckInsCheck
             [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin.",
             [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome.",
             [CheckIns.Ahead] = "PLAN: FIXTURE: They'll probably say the bug is fixed; I'll cheer, then tease them about how long it took.",
-            [CheckIns.Actions] = "OK",
+            [CheckIns.Director] = "OK",
             [CheckIns.MemoryCare] = "FIXTURE: Added (in Minecraft) to 2 facts about the castle.",
             [CheckIns.Lull] = "SAY: FIXTURE: So did that \"one more try\" ever end?",
             [CheckIns.Callbacks] = "CALLBACK: quote - FIXTURE they said \"one more try\" about the boss\nCALLBACK: open - FIXTURE a bug drives them crazy"

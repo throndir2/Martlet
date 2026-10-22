@@ -165,6 +165,28 @@ The keys are in the [glossary](GLOSSARY.md#thinking-pool-job-keys).
 **MCP:** `thinking_pool_status` (`kinds`: the table; `jobs` by kind),
 `thinking_pool_check` (step *kinds*), `helper_jobs_status`.
 
+## Which work the director takes off the reply
+
+**What it decides:** when the director runs (on the user's turn, every time), what it reads (the user's words, the
+exchanges since it last ran, the work, the skill index), which tool sets it has, which reply tools it takes over and
+which stay on the reply (`cancel_thinking`, `stop_singing`, `body_motion`, Home Assistant's own tools), and that it never
+runs on the conversation's own model.
+
+**Owner:** the built-in check-in `CheckIns.Director` and `CheckIns.DirectorSets` (`src\Martlet.Conversation\CheckIns.cs`),
+`CheckIns.HandOffs` for what is handed off (per job kind), `Director` and the director's tool sets (`SkillTools`,
+`KnowledgeTools`, `PastConversationTools`, `GuideToolSet`, `PcTools` in `src\Martlet.Conversation\DirectorTools.cs`).
+The desktop only applies them: `ConversationTools.BuiltIns` and `McpToolService.Prepare` (what stays on the reply),
+`LiveConversationController.UserTurnStarted` (when it fires), `MainWindow.CheckInUserTurn` and the turn lane of
+`FollowCheckInsAsync`, and the handlers in `MainWindow.CheckInTools.cs` and `LiveConversationController.Director.cs`.
+
+**Tests:** `CheckInsTests` (`CheckInsTests.Director.cs`), `ThinkingJobKindsTests`, `AppGuideServiceTests`
+(Martlet.Conversation.Tests); `ReplyHandOffTests` (Martlet.Desktop.Tests).
+
+**MCP:** `check_ins_check` (steps *director: ...*), `check_ins_status` (`jobKind`, `runningTurn`, the director's last run
+and its tools), the director's card on Companion › Check-ins, `ThinkingPoolRunsOn-director`.
+
+**Docs:** [The director](CONVERSATION.md#the-director).
+
 ## Pool summary text
 
 **What it decides:** the sentence above a pool list that says what the list

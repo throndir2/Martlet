@@ -5,7 +5,7 @@ namespace Martlet.Conversation;
 /// keeps free, what it needs, what the live floor does to it and the helper jobs it covers. <see cref="CheckIn"/> is one of
 /// Martlet's check-ins (<see cref="CheckIns"/>): a short question about what lingers, at the helpers' priority. To add a kind,
 /// add the value here and its row in <see cref="ThinkingJobKinds.Rows"/>.</summary>
-public enum ThinkingJobKind { BargeInJudge, EndOfTurnJudge, Digest, ThinkLonger, TouchZones, Memory, Naming, Research, CheckIn }
+public enum ThinkingJobKind { BargeInJudge, EndOfTurnJudge, Digest, ThinkLonger, TouchZones, Memory, Naming, Research, CheckIn, Director }
 
 /// <summary>Which job a free slot takes first: the highest value first, then the oldest.</summary>
 public enum ThinkingPriority
@@ -14,6 +14,8 @@ public enum ThinkingPriority
     Helper = 20,
     TouchZones = 35,
     ThinkLonger = 40,
+    /// <summary>The director: tools and skills for what the user just said, while the reply is spoken (docs/CONVERSATION.md#the-director).</summary>
+    Director = 45,
     Digest = 50,
     EndOfTurnJudge = 60,
     BargeInJudge = 70
@@ -83,6 +85,10 @@ public static class ThinkingJobKinds
     [
         new(ThinkingJobKind.ThinkLonger, "think-longer", "Thinking longer and a song's lyrics", "Think longer",
             ThinkingPriority.ThinkLonger, Fast: false, Text, ThinkingJobWhileLive.Stops, []),
+        // The director (docs/CONVERSATION.md#the-director): the work behind what the user just said, with tools and skills, while
+        // the reply is spoken. Never on the conversation's own model; it waits while you talk on a member that shares its hardware.
+        new(ThinkingJobKind.Director, "director", "The director: tools and skills while you talk", "Director",
+            ThinkingPriority.Director, Fast: false, Text | ThinkingCapability.Tools, ThinkingJobWhileLive.Stops, []),
         new(ThinkingJobKind.Research, "research", "Web research and app guide research", "Research",
             ThinkingPriority.Research, Fast: false, Text, ThinkingJobWhileLive.Stops, []),
         new(ThinkingJobKind.CheckIn, "check-in", "Check-ins", "Check-in",

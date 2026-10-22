@@ -85,7 +85,12 @@ public enum CheckInFacts
     Heard = 16384,
     /// <summary>The conversation's callback list: open topics, running jokes, the user's own words and facts worth bringing back
     /// later, each with when it came up (<see cref="CheckInState.Callbacks"/>).</summary>
-    Callbacks = 32768
+    Callbacks = 32768,
+    /// <summary>What the user just said to Martlet, whose reply is being made now (<see cref="CheckInState.Asked"/>).</summary>
+    Asked = 65536,
+    /// <summary>The skills Martlet may load, each with its key and when it helps; the pinned ones are left out, because every
+    /// reply has them (<see cref="CheckInState.Skills"/>).</summary>
+    Skills = 131072
 }
 
 /// <summary>When a check-in runs: each condition chosen must hold, or it waits and says why on its card.</summary>
@@ -183,6 +188,9 @@ public sealed partial record CheckIn(string Id, string Name, string Does, CheckI
     public CheckInTriggers Triggers { get; init; }
     /// <summary>Where it runs in the Thinking pool (Runs on, on its card); null: as the check-in kind runs.</summary>
     public ThinkingRunsOn? RunsOn { get; init; }
+    /// <summary>The Thinking pool job kind its runs are: <see cref="ThinkingJobKind.CheckIn"/>, or
+    /// <see cref="ThinkingJobKind.Director"/> for the director (its own priority and Runs on choice).</summary>
+    public ThinkingJobKind JobKind { get; init; } = ThinkingJobKind.CheckIn;
 }
 
 /// <summary>One reply tool a check-in takes over (<see cref="CheckIns.HandOffs"/>): the tool, the check-in that does it after
@@ -254,6 +262,10 @@ public sealed partial record CheckInState
     /// <summary>Companion › Replies › Adult content is on: {adult} fills with Check-in: adult content on, else with its off
     /// line.</summary>
     public bool Adult { get; init; }
+    /// <summary>What the user just said to Martlet (the director's {asked}), or null.</summary>
+    public string? Asked { get; init; }
+    /// <summary>The skill index (<see cref="Director.SkillIndex"/>): one line for each skill that isn't pinned, or null.</summary>
+    public string? Skills { get; init; }
 
     /// <summary>The character's name for the check: the personality's, or Martlet.</summary>
     public string Who => string.IsNullOrWhiteSpace(Name) ? "Martlet" : Name.Trim();
@@ -301,8 +313,13 @@ public static partial class CheckIns
 {
     public const string Emotes = "emotes", Gaze = "gaze", Promises = "promises", Character = "character", Repeats = "repeats",
         Reactions = "reactions";
-    /// <summary>Act on what was said: after each exchange, a pool member calls the tools for what the user asked for or Martlet
-    /// promised, so the reply model needs fewer tools (<see cref="CheckInToolSet.Replaces"/>, <see cref="HandOffs"/>).</summary>
+    /// <summary>The director (docs/CONVERSATION.md#the-director): when the user says something, a Thinking pool member reads it
+    /// while the reply is spoken, loads the skills it needs and does the work with every tool (<see cref="DirectorSets"/>), so
+    /// the reply needs no tools and stays quick (<see cref="CheckInToolSet.Replaces"/>, <see cref="HandOffs"/>). It replaces Act
+    /// on what was said (<c>actions</c>), whose saved on or off moves to it.</summary>
+    public const string Director = "director";
+    /// <summary>The check-in the director replaced: its saved choice is dropped as it is read, after its on or off moves to the
+    /// director (<see cref="CheckInSettings.BuiltIn"/>).</summary>
     public const string Actions = "actions";
     /// <summary>How many exchanges <see cref="CheckInFacts.Latest"/> shows at most.</summary>
     public const int MaximumLatest = 6;
@@ -378,7 +395,7 @@ public static partial class CheckIns
     /// Staying in character every 15); How I react on, after your touches (at most every 5 minutes); Unanswered question and
     /// Quiet moments on; Welcome back and Someone else is here off until the owner turns them on; Talking to someone else on, right after always
     /// listening hears the user, at most once a minute; Describe touches on, started by touches at
-    /// most once a minute; Think ahead, Act on what was said and Callback list on, after each reply, at most once a minute. Each is only data (a
+    /// most once a minute; Think ahead and Callback list on, after each reply, at most once a minute; the director on, on each of your turns. Each is only data (a
     /// prompt, facts, conditions, triggers, tool sets and an outcome) that the owner can
     /// change on its card or copy as their own.</summary>
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
@@ -475,13 +492,14 @@ public static partial class CheckIns
             PromptId = PromptCatalog.CheckInAhead, Facts = CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Callbacks,
             Conditions = CheckInConditions.Talked | CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded
         },
-        new(Actions, "Act on what was said", "Right after each reply, reads what you said and what Martlet answered, and does " +
-            "what you asked for or Martlet promised with its tools (such as setting a reminder), so Martlet's reply can stay " +
-            "short and quick. While it's on and a Thinking pool member calls tools, the reply leaves those tools to it.",
-            CheckInOutcome.Tools, true, 1)
+        new(Director, "The director", "When you say something to Martlet, a Thinking pool member reads it while Martlet " +
+            "answers, loads the skills it needs and does the work with every tool Martlet has (reminders, songs, pictures, memory, " +
+            "web look-ups, app guides, your PC's tools). It tells Martlet's next reply what it found, or has Martlet say it as soon " +
+            "as it's free. While it's on and a Thinking pool member that takes its jobs calls tools, the reply leaves those tools " +
+            "to it, so the reply stays short and quick. No reply waits for it.", CheckInOutcome.Tools, true, 1)
         {
-            PromptId = PromptCatalog.CheckInActions, Facts = CheckInFacts.Latest | CheckInFacts.Work,
-            Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded, ToolSets = ActionSets
+            PromptId = PromptCatalog.CheckInDirector, Facts = CheckInFacts.Asked | CheckInFacts.Latest | CheckInFacts.Work | CheckInFacts.Skills,
+            Triggers = CheckInTriggers.UserTurn, ToolSets = DirectorSets, JobKind = ThinkingJobKind.Director
         },
         new(Callbacks, "Callback list", "Right after each reply, keeps a short list of what's worth bringing back later: what " +
             "you're in the middle of, running jokes, things you said in your own words, each with when it came up. Think ahead " +
@@ -502,17 +520,26 @@ public static partial class CheckIns
         }
     ];
 
-    /// <summary>The tool sets Act on what was said uses by default: every set that takes over reply tools
-    /// (<see cref="CheckInToolSet.Replaces"/> not empty), in the order of <see cref="CheckInToolSets.All"/>. Computed, so a new
-    /// set that replaces reply tools joins it without a change here.</summary>
-    public static IReadOnlyList<string> ActionSets => [.. CheckInToolSets.All.Where(s => s.Replaces.Count > 0).Select(s => s.Id)];
+    /// <summary>The tool sets the director uses by default: Martlet's next words, every set that takes over reply tools
+    /// (<see cref="CheckInToolSet.Replaces"/> not empty), the People look-ups, skills and knowledge, in the order of
+    /// <see cref="CheckInToolSets.All"/> (the card's order). Computed, so a new set that replaces reply tools joins it without a
+    /// change here.</summary>
+    public static IReadOnlyList<string> DirectorSets =>
+    [
+        .. CheckInToolSets.All.Where(s => s.Replaces.Count > 0 || s.Id is CheckInToolSets.NextReplyId or SkillTools.SetId or
+            KnowledgeTools.SetId or PeopleTools.SetId).Select(s => s.Id)
+    ];
 
-    /// <summary>Whether <paramref name="checkIn"/> runs after exchanges and takes over reply tools: an
-    /// <see cref="CheckInTriggers.ExchangeEnded"/> trigger and at least one set that replaces reply tools.</summary>
+    /// <summary>The tool sets Act on what was said used: now the director's (<see cref="DirectorSets"/>).</summary>
+    public static IReadOnlyList<string> ActionSets => DirectorSets;
+
+    /// <summary>Whether <paramref name="checkIn"/> does the reply's work and takes over reply tools: it starts after exchanges or on
+    /// the user's turn (<see cref="CheckInTriggers.ExchangeEnded"/>, <see cref="CheckInTriggers.UserTurn"/>) and ticks at least
+    /// one set that replaces reply tools.</summary>
     public static bool ActsAfterExchanges(CheckIn checkIn)
     {
         ArgumentNullException.ThrowIfNull(checkIn);
-        return checkIn.Triggers.HasFlag(CheckInTriggers.ExchangeEnded) &&
+        return (checkIn.Triggers & (CheckInTriggers.ExchangeEnded | CheckInTriggers.UserTurn)) != 0 &&
             checkIn.ToolSets.Any(id => CheckInToolSets.Find(id) is { Replaces.Count: > 0 });
     }
 
@@ -529,17 +556,30 @@ public static partial class CheckIns
     public static IReadOnlyList<CheckInHandOff> HandOffs(CheckInSettings? settings, PromptSettings? prompts, Func<bool> poolCallsTools)
     {
         ArgumentNullException.ThrowIfNull(poolCallsTools);
+        return HandOffs(settings, prompts, _ => poolCallsTools());
+    }
+
+    /// <summary><see cref="HandOffs(CheckInSettings?, PromptSettings?, bool)"/> that asks <paramref name="poolCallsTools"/>, for
+    /// each job kind a check-in that would take over a reply tool runs as (the director's own, or check-ins'), whether the
+    /// configured pool has a member that takes that kind and calls tools.</summary>
+    public static IReadOnlyList<CheckInHandOff> HandOffs(CheckInSettings? settings, PromptSettings? prompts, Func<ThinkingJobKind, bool> poolCallsTools)
+    {
+        ArgumentNullException.ThrowIfNull(poolCallsTools);
         var handed = new List<CheckInHandOff>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var calls = new Dictionary<ThinkingJobKind, bool>();
         foreach (var checkIn in All(settings))
         {
             if (!checkIn.On || !ActsAfterExchanges(checkIn) || string.IsNullOrWhiteSpace(Template(checkIn, prompts))) continue;
+            if (!checkIn.ToolSets.Any(id => CheckInToolSets.Find(id) is { Replaces.Count: > 0 })) continue;
+            if (!calls.TryGetValue(checkIn.JobKind, out var can)) calls[checkIn.JobKind] = can = poolCallsTools(checkIn.JobKind);
+            if (!can) continue;
             foreach (var id in checkIn.ToolSets)
                 if (CheckInToolSets.Find(id) is { } set)
                     foreach (var tool in set.Replaces)
                         if (seen.Add(tool)) handed.Add(new(tool, checkIn.Id, checkIn.Name, set.Id, set.Name));
         }
-        return handed.Count > 0 && poolCallsTools() ? handed : [];
+        return handed;
     }
 
     /// <summary>What the reply's instructions say about the tools handed off (Every reply › Things done after the reply): the

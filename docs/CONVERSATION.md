@@ -889,6 +889,7 @@ a changed key needs a migration of the saved files.
 | `BargeInJudge` | `barge-in-judge` | 70 | yes | starts | |
 | `EndOfTurnJudge` | `end-of-turn-judge` | 60 | yes | starts | |
 | `Digest` (screen or sound) | `digest` | 50 | yes | stops | |
+| `Director` | `director` | 45 | no | stops | |
 | `ThinkLonger` | `think-longer` | 40 | no | stops | |
 | `TouchZones` | `touch-zones` | 35 | no | waits | `touch-zones`, `eyes` (at 20), `character-writing` |
 | `Memory` | `memory` | 20 (`Helper`) | no | stops | `memory`, `memory-upkeep`, `memory-brief` (at 10) |
@@ -2060,7 +2061,7 @@ built-in check-in can be recreated, and changed, as your own.
 | Someone else is here | Who is here, its personality; the People tools | Someone else spoke |
 | Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
 | Think ahead | Its personality, the conversation, the callback list | You talked lately, something new was said; it starts when a reply ends ([below](#think-ahead)) |
-| Act on what was said | The latest exchange (or every exchange since it last ran), reminders and background work | Something new was said; it starts when a reply ends ([below](#act-on-what-was-said)) |
+| The director | What you just said, the exchanges since it last ran, reminders and background work, the skill index; every tool | It starts when you say or type something to Martlet, every time ([below](#the-director)) |
 | Callback list | The latest exchange (or every exchange since it last ran), the callback list | Something new was said; it starts when a reply ends ([below](#callback-list)) |
 | Memory care | What was said since it last ran, what you are doing; the Memory tools | Something new was said, at most once an hour |
 
@@ -2119,7 +2120,7 @@ check-in waits:
 **Triggers.** A check-in can also start when something happens, not only on its pace. Tick
 one or more boxes under *It starts when* on its card (`CheckInTriggers`, saved
 as `Triggers` in `check-ins.json`; of the built-in check-ins, Describe
-touches, How I react and Act on what was said have them). The touch triggers
+touches, How I react, Think ahead, Callback list, Talking to someone else and the director have them). The touch triggers
 come from the touches on the desktop character, and one comes from the
 conversation:
 
@@ -2131,6 +2132,7 @@ conversation:
 | You keep coming back to one place (`KeepsComingBack`) | they touched a place touched 5 or more times in the last 10 minutes (the touch ledger's `TouchHabit`, *They keep coming back to ...*) |
 | A reply ends (`ExchangeEnded`) | a reply ended and its exchange is in the conversation: after its voice played (or, for what went [straight to Thinking](#straight-to-thinking), once its words are in the conversation). Never for a `[pass]` or a reply that failed or was stopped |
 | You say something (`Spoke`) | always listening heard you say something and its exchange is in the conversation, whether Martlet answered or stayed quiet (`[pass]`). Never for typed words, push-to-talk, what only this PC played or what Martlet starts on its own |
+| You say or type something to Martlet (`UserTurn`) | the reply to your own words (typed or spoken) started, so a check-in it starts works while the reply is spoken and gets your words (`{asked}`). It has no cooldown. Never for what only this PC played, a glance, a report or what Martlet starts on its own. [The director](#the-director) starts this way |
 
 Moving, zooming, locking or hiding the character never fires a trigger. A
 check-in with triggers runs this way:
@@ -2203,7 +2205,7 @@ plans what to say next, true to its personality, and no reply waits for it.
 
 1. A reply ends (*A reply ends*, `ExchangeEnded`), and Think ahead starts on
    a Thinking pool member, at most once a minute (its *Every*). It runs
-   before Act on what was said, because its thoughts are worth something only
+   before Callback list, because its thoughts are worth something only
    until you answer.
 2. The member gets Companion › Prompts › *Check-in: think ahead*: the
    personality, the end of the conversation and the [callback
@@ -2250,8 +2252,7 @@ remembers what you said an hour ago. A small model sees only the end of the
 conversation; the list keeps older things within its reach.
 
 1. A reply ends, and Callback list starts on a Thinking pool member at most
-   once a minute, after Think ahead and Act on what was said, so neither
-   waits for it.
+   once a minute, after Think ahead, so it doesn't wait for it.
 2. The member gets Companion › Prompts › *Check-in: callback list*: the list
    now, each item with when it came up (`- 9:37 PM (40 min ago): open - stuck
    on the final boss`), and what was said since it last ran. It writes the
@@ -2568,12 +2569,12 @@ does and its tools. Martlet offers:
 | Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. Takes over the reply's `reminders`; the reply then gets the read-only `list_reminders` ([Reminders](#reminders)). |
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
 | Discord calls and camera (`discord`) | `call_on_discord`, `set_camera_background` | Call a Discord friend you asked for, or change Martlet's webcam background in your Discord call ([Discord](DISCORD.md)). Offered only while Martlet can call someone or is in your Discord calls. Replaces the reply's tools of the same names. |
-| Memory (`memory`) | `memory_overview`, `memory_find`, `memory_history`, `memory_remember`, `memory_update`, `memory_update_many`, `memory_note`, `memory_merge`, `memory_outdated`, `memory_forget` | Look over memory (counts only), find and page through facts, see a fact's earlier versions, remember, correct one or up to 25 facts or keep them for one game (`where`), add one note to up to 50 facts, merge duplicates, keep a replaced fact as history, give facts to someone else and forget facts ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. Act on what was said and Memory care tick it. |
+| Memory (`memory`) | `memory_overview`, `memory_find`, `memory_history`, `memory_remember`, `memory_update`, `memory_update_many`, `memory_note`, `memory_merge`, `memory_outdated`, `memory_forget` | Look over memory (counts only), find and page through facts, see a fact's earlier versions, remember, correct one or up to 25 facts or keep them for one game (`where`), add one note to up to 50 facts, merge duplicates, keep a replaced fact as history, give facts to someone else and forget facts ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. The director and Memory care tick it. |
 | Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Picture making](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
 | Background work (`background-work`) | `think_longer`, `research` | Start a background think or web research on the last exchange, which Martlet brings up when done. Takes over the reply's `think_longer` and `research` ([Thinking longer](#thinking-longer-and-background-work)). Offered only while Thinking longer is on and Deep thinking can think. |
 | People (`people`) | `people_list`, `people_lately` | Look up the people in the voice list (Companion › People): each voice's names (the one used first, typed or learned), whether it is you or linked to someone's account, how often and when it was last heard, and who spoke lately. Read-only; never voiceprints, clips or audio ([People tools](VOICES.md#people-tools)). Takes over no reply tool. Optional: a check-in gets them only when a member that calls tools can take it, and runs without them otherwise. Offered on a PC with a data folder. Talking to someone else and Someone else is here tick it. |
 
-A set can also take over reply tools (`CheckInToolSet.Replaces`): see [Act on what was said](#act-on-what-was-said).
+A set can also take over reply tools (`CheckInToolSet.Replaces`): see [The director](#the-director).
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). An optional set
@@ -2634,53 +2635,86 @@ The card, the settings check (an unknown set or the same set twice is refused),
 the status and MCP pick up the new set by themselves.
 
 <a id="act-on-what-was-said"></a>
-### Act on what was said: the reply's work after the reply
+<a id="the-director"></a>
+### The director: the reply's work beside the reply
 
-A small conversation model replies faster and better with fewer tools. The
-built-in **Act on what was said** check-in (`actions`, on, every 1 minute at
-most) takes work off the live reply. Right after each reply, a Thinking pool
-member reads what you said and what Martlet answered and calls the tools for
-what you asked for or Martlet promised. The reply only says, briefly, that it
-will do it.
+A small conversation model replies faster and better with fewer tools and
+fewer rules. The built-in **director** check-in (`director`, on) does the
+work while the reply is spoken. When you say or type something to Martlet, a
+Thinking pool member reads it, loads the [skills](#skills) it needs and calls
+the tools for what you asked. The reply has no tools for that work: it only
+says, briefly, that it will do it or look into it (the pinned *Look into it*
+skill). The director replaced **Act on what was said** (`actions`), which ran
+after each reply; an `actions` on or off you saved moves to the director.
 
-- **When it runs.** It starts when a reply ends (`ExchangeEnded`) and something
-  new was said. It gets the latest exchange, or every exchange since it last
-  ran (`{exchange}`), and the reminders and background work (`{work}`). Its
-  prompt is *Check-in: act on what was said* (`check_in_actions`).
-- **It never slows a reply.** It runs only after the reply's voice played, on
-  the Thinking pool, never on the conversation's own route. The live floor
-  still holds it while the live turn uses shared hardware, so the time to
-  Martlet's first word and the conversation's prompt cache stay the same.
-- **Its tools.** By default it ticks every set whose `CheckInToolSet.Replaces`
-  is not empty (`CheckIns.ActionSets`, computed, so a new set joins it with no
-  change here). A set's `Replaces` names the reply tools it takes over.
+- **When it runs.** It starts as soon as the reply to your own words starts
+  (`CheckInTriggers.UserTurn`, fired by `LiveConversationController.UserTurnStarted`),
+  every time: the user's turn has no cooldown. Never for what only this PC
+  played, a glance, a report or what Martlet says on its own. It runs in a
+  lane of its own (`MainWindow.FollowCheckInsAsync`, `turn`), so it never waits
+  behind other check-ins.
+- **What it reads.** What you just said (`{asked}`), the exchanges since it
+  last ran (`{exchange}`), the reminders and background work (`{work}`) and
+  the skill index (`{skills}`, `Director.SkillIndex`: each skill that isn't
+  pinned, with its key and when it helps). Its prompt is *The director*
+  (`check_in_director`).
+- **Its tools.** Martlet's next words (`remind_next_reply`, `bring_up`), every
+  set that takes over reply tools (reminders, memory, songs and pictures,
+  background work, Discord, past conversations, App guides and the **PC
+  tools**: `list_pc_tools` and `call_pc_tool` for the MCP servers and the
+  terminal of this PC, with the same approvals as before), People, **Skills**
+  (`load_skill`) and **Knowledge** (`search_knowledge`: the app guides with the
+  pages Martlet looked up on the web, memory and lorebooks, with no model call
+  and no web request; [App guides](APP_GUIDES.md#looked-up-on-the-web)). It
+  works in steps until it is done, as every check-in with tools does.
+- **What it gives back.** What the next reply should know or say goes on the
+  context board with `remind_next_reply` (once, with the next message); what
+  you wait for now, Martlet says on its own with `bring_up` as soon as it is
+  free. The director never speaks itself.
+- **Its own pool kind.** Its jobs are `ThinkingJobKind.Director` (key
+  `director`, priority 45, between thinking longer and the summaries), with
+  their own Runs on choice on Companion › Thinking pool. Like every pool job,
+  it never runs on the conversation's own model, so it never takes the
+  conversation out of a local model's prompt cache. On a member that shares
+  the conversation's hardware the live floor holds it while you talk and the
+  reply runs (`stops`).
+- **It never slows a reply.** The event fires after the reply's request was
+  sent, and the main window starts the run on its own thread.
 - **Which reply tools are handed off.** A reply tool is not offered to the reply
   while both are true (`CheckIns.HandOffs`,
   `LiveConversationController.HandedOffReplyTools`):
-  1. A check-in that is on, starts when a reply ends and has a prompt ticks a
-     set whose `Replaces` names that tool.
-  2. The **configured** Thinking pool has a member that takes check-ins and
-     calls tools (an OpenAI-compatible endpoint; a paired computer's gateway
-     has no function calling), whether its computer answers now or not.
+  1. A check-in that is on, starts on your turn (or when a reply ends) and has a
+     prompt ticks a set whose `Replaces` names that tool.
+  2. The **configured** Thinking pool has a member that takes that check-in's
+     job kind (the director's own) and calls tools (an OpenAI-compatible
+     endpoint; a paired computer's gateway has no function calling), whether
+     its computer answers now or not.
 
   Both come from saved settings only, so the start of every request stays the
-  same while computers come and go. Otherwise the reply keeps its tools as
-  before. Tools whose result the reply needs (`search_conversations`, finding
-  memories, listing reminders, `list_creations`) and instant controls
-  (`stop_singing`, `cancel_thinking`) stay on the reply.
+  same while computers come and go. While the director has the tools, the reply
+  keeps only what must act at once: `cancel_thinking`, `stop_singing`,
+  `body_motion` and Home Assistant's own tools (device control is instant and
+  the reply's turn asks first for locks). Not even the look-ups
+  (`find_memories`, `list_reminders`, `list_creations`): the director brings
+  their answers. Without a member that takes director jobs and calls tools
+  (one model on one PC, for example) the director doesn't take anything, and
+  the reply keeps its tools and the skills that explain them as before.
 - **What the reply is told.** The *Things done after the reply* prompt
-  (`handed_off_tools`, Every reply) names what happens after the reply and
-  tells the reply to say only, briefly, that it will do it. It goes after the
-  tools prompt, or in the instructions when no tool is left to offer.
+  (`handed_off_tools`, Every reply) names what happens on its own and tells
+  the reply to say only, briefly, that it will do it.
 - **A broken promise is said.** When a run fails, finds no pool member, a
-  tool call fails, or an exchange waits 10 minutes without a run, the talk
+  tool call fails, or a turn waits 10 minutes without a run, the talk
   window says *Couldn't do what was asked after the reply: ...* once (the same
   problem again stays in the log until a run works), and the next reply gets a
   reminder to tell you.
-- **What you see.** `check-ins-status.json` has `afterExchange`: whether the
-  configured pool calls tools (`poolCallsTools`), the tools handed off with
-  their check-in and set (`handedOff`), why (`why`) and the last problem
-  (`lastProblem`).
+- **What you see.** The director's card on Companion › Check-ins and
+  `check-ins-status.json` (`jobKind` `director`, `runningTurn`, its last run's
+  tools, each with the first line of its answer). `afterExchange` has whether
+  the configured pool calls tools, the tools handed off with their check-in and
+  set, why and the last problem. Each reply logs *Reply prompt: about N tokens of instructions and 3 tools
+  (about M tokens of definitions); the director has the other tools.* MCP's `check_ins_check` rehearses it
+  (`director: ...` steps).
+
 ### How I react
 
 The character can change how it reacts to your touches, as itself. If it gets

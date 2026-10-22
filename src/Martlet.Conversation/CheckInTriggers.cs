@@ -31,7 +31,11 @@ public enum CheckInTriggers
     ExchangeEnded = 16,
     /// <summary>Always listening heard the user say something and its exchange is in the conversation, whether Martlet answered
     /// it or stayed quiet ([pass]). Never for typed words, what only this PC played or what Martlet starts on its own.</summary>
-    Spoke = 32
+    Spoke = 32,
+    /// <summary>The user said or typed something to Martlet and the reply to it started: never what only this PC played, a
+    /// glance or what Martlet starts on its own. It fires before the reply ends, so a check-in it starts (the director) works while
+    /// the reply is spoken; it has no cooldown, and it gets the user's words (<see cref="CheckInFacts.Asked"/>).</summary>
+    UserTurn = 64
 }
 
 /// <summary>Triggers that fired (<see cref="Fired"/>, one flag or more), when, and what happened in a few words with counts only
@@ -100,7 +104,7 @@ public static partial class CheckIns
         CheckInTriggers.StrokeAcrossZones | CheckInTriggers.KeepsComingBack;
 
     /// <summary>Every trigger Martlet offers.</summary>
-    public const CheckInTriggers AllTriggers = ByTouches | CheckInTriggers.ExchangeEnded | CheckInTriggers.Spoke;
+    public const CheckInTriggers AllTriggers = ByTouches | CheckInTriggers.ExchangeEnded | CheckInTriggers.Spoke | CheckInTriggers.UserTurn;
 
     /// <summary>How many zones a stroke crosses to fire <see cref="CheckInTriggers.StrokeAcrossZones"/>.</summary>
     public const int StrokeZones = 3;
@@ -119,7 +123,7 @@ public static partial class CheckIns
     public static TimeSpan Age(CheckInTrigger fired)
     {
         ArgumentNullException.ThrowIfNull(fired);
-        return fired.Fired.HasFlag(CheckInTriggers.ExchangeEnded) ? ExchangeAge : TriggerAge;
+        return fired.Fired.HasFlag(CheckInTriggers.ExchangeEnded) || fired.Fired.HasFlag(CheckInTriggers.UserTurn) ? ExchangeAge : TriggerAge;
     }
 
     /// <summary>The trigger an ended exchange fires at <paramref name="now"/>. With <paramref name="kept"/> (an exchange trigger
@@ -133,6 +137,9 @@ public static partial class CheckIns
         return new(CheckInTriggers.ExchangeEnded, now, count == 1 ? "1 exchange" : $"{count} exchanges");
     }
 
+    /// <summary>The trigger the reply to the user's own words fires at <paramref name="now"/>, as it starts; never the words.</summary>
+    public static CheckInTrigger TurnTrigger(DateTimeOffset now) => new(CheckInTriggers.UserTurn, now, "you said something to Martlet");
+
     /// <summary>The trigger always listening fires at <paramref name="now"/> when it heard the user say something: whether Martlet
     /// <paramref name="answered"/> it or stayed quiet, never the words.</summary>
     public static CheckInTrigger SpokeTrigger(DateTimeOffset now, bool answered) =>
@@ -145,7 +152,8 @@ public static partial class CheckIns
         (CheckInTriggers.StrokeAcrossZones, $"a stroke across {StrokeZones} zones"),
         (CheckInTriggers.KeepsComingBack, "you to keep coming back to one place"),
         (CheckInTriggers.ExchangeEnded, "a reply to end"),
-        (CheckInTriggers.Spoke, "you to say something")
+        (CheckInTriggers.Spoke, "you to say something"),
+        (CheckInTriggers.UserTurn, "you to say or type something to Martlet")
     ];
 
     /// <summary>The triggers in words, for "it waits for ...": "your touches to end or an intimate touch".</summary>

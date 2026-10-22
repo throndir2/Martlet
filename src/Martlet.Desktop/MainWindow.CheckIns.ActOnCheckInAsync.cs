@@ -121,7 +121,11 @@ public partial class MainWindow
             HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh),
             Adult = GenerationSettings.Adult(homeSettings?.Generation),
             Heard = conversation?.RecentHeard(now) ?? [],
-            Aside = checkInAside is { } holding && holding.HoldsAt(now) ? holding : null
+            Aside = checkInAside is { } holding && holding.HoldsAt(now) ? holding : null,
+            // What the user just said, for the director (private: it goes only to a pool member with the check), and the skill
+            // index it may load from.
+            Asked = checkInAsked,
+            Skills = Director.SkillIndex(homeSettings?.Skills)
         });
     }
 
@@ -142,7 +146,7 @@ public partial class MainWindow
     private async Task CheckInNowAsync(string id)
     {
         if (CheckIns.All(checkInSettings).FirstOrDefault(c => c.Id == id) is not { } checkIn) return;
-        if (checkInRunning is not null || checkInTriggeredRunning == id)
+        if (checkInRunning is not null || checkInTriggeredRunning == id || checkInTurnRunning == id)
         {
             ActionText.Text = "Another check-in runs now, so try again in a moment.";
             return;
@@ -233,6 +237,7 @@ public partial class MainWindow
             role = Role.ToString(),
             running = checkInRunning,
             runningTriggered = checkInTriggeredRunning,
+            runningTurn = checkInTurnRunning,
             touches = new
             {
                 settling = checkInTouches.Waiting, settleMs = (long)TouchDebounce.Quiet.TotalMilliseconds,
@@ -254,10 +259,11 @@ public partial class MainWindow
                     id = c.Id, name = c.Name, custom = c.Custom, on = c.On, everyMinutes = c.EveryMinutes, outcome = c.Outcome.ToString(),
                     facts = c.Facts.ToString(), conditions = c.Conditions.ToString(), prompt = c.PromptId,
                     changed = !c.Custom && checkInSettings.Choice(c.Id) is { } choice && choice != new CheckInChoice(choice.On, choice.EveryMinutes),
-                    needs = c.Needs.ToString(), canRun = member is not null && conversation!.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs, c.RunsOn),
+                    needs = c.Needs.ToString(), jobKind = ThinkingJobKinds.Name(c.JobKind),
+                    canRun = member is not null && conversation!.ThinkingPool.CanRun(c.JobKind, c.Needs, c.RunsOn),
                     // Its own Runs on (null: the check-in kind's, on Companion › Thinking pool) and the member it would go to first.
                     runsOn = c.RunsOn is { } where ? new { mode = where.Name, members = where.Members } : null,
-                    firstMember = member is null ? null : conversation!.ThinkingPool.Find(ThinkingJobKind.CheckIn, c.Needs, c.RunsOn)?.Name,
+                    firstMember = member is null ? null : conversation!.ThinkingPool.Find(c.JobKind, c.Needs, c.RunsOn)?.Name,
                     screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds, script = c.RunsScript,
                     toolSets = c.ToolSets,

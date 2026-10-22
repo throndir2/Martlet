@@ -86,8 +86,9 @@ internal sealed partial class LiveConversationController
                 (owner.tools.HasTools || builtIns is not null) && configured.SupportsTools && !owner.tools.IsUnsupported(configured.ToolModelKey()))
             {
                 operation.Publish(new("tools.preparing"));
-                // Never waits: servers still starting offer the tools they listed last (McpToolService.Prepare).
-                toolset = owner.tools.Prepare(builtIns);
+                // Never waits: servers still starting offer the tools they listed last (McpToolService.Prepare). While the director
+                // has the PC's tools, only Home Assistant's own stay on the reply.
+                toolset = owner.tools.Prepare(builtIns, pcTools: !owner.HandedOffReplyTools(configured).Contains(PcTools.ServersName));
                 operation.Authorization.Check(worker);
                 operation.Toolset = toolset;
                 operation.LatencyTimeline?.Mark("tools");

@@ -102,6 +102,7 @@ names.
 | `BargeInJudge` | `barge-in-judge` | Did you interrupt (judge) | 70 | quick | |
 | `EndOfTurnJudge` | `end-of-turn-judge` | Are you done talking (judge) | 60 | quick | |
 | `Digest` | `digest` | Screen and sound summaries | 50 | quick | |
+| `Director` | `director` | The director: tools and skills while you talk | 45 | long | |
 | `ThinkLonger` | `think-longer` | Thinking longer and a song's lyrics | 40 | long | |
 | `TouchZones` | `touch-zones` | Touch zones, measuring the eyes and writing a character's personality | 35 | long | `TouchZones` (`touch-zones`), `Eyes` (`eyes`, at priority 20), `CharacterWriting` (`character-writing`) |
 | `Memory` | `memory` | Remembering, learning names, tidying memory and the memory brief | 20 | long | `Memory` (`memory`), `MemoryUpkeep` (`memory-upkeep`), `MemoryBrief` (`memory-brief`, at priority 10) |
@@ -175,6 +176,8 @@ See [Memories for a game](MEMORY.md#memories-for-a-game).
 | A named set of instructions that is not in every request: a key, a name, when it helps, its text | skill (`Skill`, `SkillCatalog`, `SkillSettings`; settings.json section and shared key `skills`) | skill (Companion › Skills) | "prompt" (a prompt is one of Martlet's built-in messages on Companion › Prompts), "tool" |
 | A skill every reply gets, in the closing of its instructions | pinned skill (`Skill.Pinned`, `SkillSettings.Pinned`) | pinned | "always-on prompt" |
 | One of Martlet's built-in instructions, editable by the user | prompt (`PromptCatalog`, `PromptSettings`) | prompt (Companion › Prompts) | "skill" |
+| The Thinking pool request that does the work behind what the user just said, with every tool and skill, while the reply is spoken | director (`CheckIns.Director`, check-in ID `director`, `ThinkingJobKind.Director`, job key `director`, trigger `CheckInTriggers.UserTurn`) | The director (Companion › Check-ins) | "planner", "background agent", "Act on what was said" (the check-in it replaced; its saved ID `actions` is retired) |
+| What Martlet already keeps on this PC that the director can search with no model call: app guides (with the *Looked up on the web* guide), memory and lorebooks | knowledge (`KnowledgeTools`, `search_knowledge`) | (none) | "RAG" in UI text |
 
 See [Skills](CONVERSATION.md#skills).
 

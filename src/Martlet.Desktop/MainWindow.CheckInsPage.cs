@@ -25,7 +25,8 @@ public partial class MainWindow : ICheckInsPageServices
     CheckInRunState ICheckInsPageServices.RunState(string id)
     {
         var counts = checkInCounts.GetValueOrDefault(id);
-        return new(checkInRunning == id || checkInTriggeredRunning == id, checkInTriggeredRunning == id, checkInWaits.GetValueOrDefault(id),
+        return new(checkInRunning == id || checkInTriggeredRunning == id || checkInTurnRunning == id,
+            checkInTriggeredRunning == id || checkInTurnRunning == id, checkInWaits.GetValueOrDefault(id),
             checkInFired.GetValueOrDefault(id), checkInRuns.GetValueOrDefault(id), counts.Runs, counts.Acted);
     }
     (string Name, CheckInRun Run)? ICheckInsPageServices.LastRun => checkInLast;

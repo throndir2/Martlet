@@ -22,26 +22,38 @@ internal sealed partial class LiveConversationController
     /// run); null where they don't run, so the reply keeps every tool.</summary>
     internal CheckInSettings? CheckInChoices { get; set; }
 
-    /// <summary>Whether the configured Thinking pool has a member that takes check-ins and calls tools, whether its computer
-    /// answers now or not (saved settings only). Kept until the pool or the configuration changes, so a reply doesn't read the
-    /// pool's files again.</summary>
-    internal bool PoolCallsTools()
+    /// <summary>Whether the configured Thinking pool has a member that takes <paramref name="kind"/> jobs (check-ins, or the
+    /// director's) and calls tools, whether its computer answers now or not (saved settings only). Kept until the pool or the
+    /// configuration changes, so a reply doesn't read the pool's files again.</summary>
+    internal bool PoolCallsTools(ThinkingJobKind kind = ThinkingJobKind.CheckIn)
     {
         var pool = Volatile.Read(ref thinkingPool);
         var configuration = Configuration;
-        if (poolCallsTools is { } known && ReferenceEquals(known.Pool, pool) && ReferenceEquals(known.Configuration, configuration))
-            return known.Calls;
-        var calls = ThinkingPool.Board.Members.Any(m => m.Takes(ThinkingJobKind.CheckIn) && m.Can.HasFlag(ThinkingCapability.Tools));
-        poolCallsTools = (pool, configuration, calls);
+        if (poolCallsTools is { } known && ReferenceEquals(known.Pool, pool) && ReferenceEquals(known.Configuration, configuration) &&
+            known.Calls.TryGetValue(kind, out var calls))
+            return calls;
+        var all = poolCallsTools is { } same && ReferenceEquals(same.Pool, pool) && ReferenceEquals(same.Configuration, configuration)
+            ? new Dictionary<ThinkingJobKind, bool>(same.Calls) : [];
+        all[kind] = calls = ThinkingPool.Board.Members.Any(m => m.Takes(kind) && m.Can.HasFlag(ThinkingCapability.Tools));
+        poolCallsTools = (pool, configuration, all);
         return calls;
     }
 
-    private (object Pool, object? Configuration, bool Calls)? poolCallsTools;
+    private (object Pool, object? Configuration, IReadOnlyDictionary<ThinkingJobKind, bool> Calls)? poolCallsTools;
 
     /// <summary>The reply tools handed off now, each with its check-in and set (<see cref="CheckIns.HandOffs"/>); empty while
     /// check-ins don't run here or no configured pool member calls tools.</summary>
     internal IReadOnlyList<CheckInHandOff> HandOffs(LiveConversationConfiguration configured) =>
         CheckInChoices is { } choices ? CheckIns.HandOffs(choices, configured.Prompts, PoolCallsTools) : [];
+
+    /// <summary>Whether the director takes the reply's tools over now (it is on and a configured pool member that takes its jobs
+    /// calls tools): the reply then keeps only what must act at once (docs/CONVERSATION.md#the-director).</summary>
+    internal bool DirectorTakesTools(IReadOnlyList<CheckInHandOff> handed) => handed.Any(h => h.CheckInId == CheckIns.Director);
+
+    /// <summary>Raised (off the UI thread) when the reply to the user's own words (typed or spoken) started, with those words:
+    /// the main window fires the <see cref="CheckInTriggers.UserTurn"/> check-ins (the director) with it. Never for what only this
+    /// PC played, a glance, a report or what Martlet says on its own.</summary>
+    internal event Action<string>? UserTurnStarted;
 
     /// <summary>The names of the reply tools the check-ins take over now (<see cref="HandOffs"/>): BuiltIns doesn't offer them to
     /// the reply. From saved settings only, so the start of every request stays the same while computers come and go.</summary>

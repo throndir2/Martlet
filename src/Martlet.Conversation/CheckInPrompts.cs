@@ -25,7 +25,8 @@ public static partial class CheckInPrompts
         var steps = offered.Count > 0;
         return new()
         {
-            Kind = ThinkingJobKind.CheckIn, Label = $"Check-in: {checkIn.Name}", Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
+            Kind = checkIn.JobKind, Label = $"{(checkIn.JobKind == ThinkingJobKind.Director ? "Director" : "Check-in")}: {checkIn.Name}",
+            Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
             Needs = ThinkingCapability.Text | checkIn.Needs,
             Image = checkIn.Screenshot ? state.Screenshot : null,
             Audio = checkIn.Recording != CheckInRecording.None ? state.Recording : null,
@@ -61,7 +62,7 @@ public static partial class CheckInPrompts
         ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies),
         ("touches", CheckInFacts.Touches), ("activity", CheckInFacts.Activity), ("people", CheckInFacts.People),
         ("away", CheckInFacts.WhileAway), ("exchange", CheckInFacts.Latest), ("heard", CheckInFacts.Heard),
-        ("callbacks", CheckInFacts.Callbacks)
+        ("callbacks", CheckInFacts.Callbacks), ("asked", CheckInFacts.Asked), ("skills", CheckInFacts.Skills)
     ];
 
     /// <summary>The facts <paramref name="template"/> places itself with their placeholders.</summary>
@@ -90,7 +91,8 @@ public static partial class CheckInPrompts
             ("work", Work(state)), ("screen", Screen(state)), ("sound", Sound(state)), ("presence", Presence(state)),
             ("said", Said(state).Count > 0 ? SaidLately.Lines(Said(state), state.Now) : "(nothing)"),
             ("replies", RepliesText(state)), ("touches", Touches(state)), ("activity", Activity(state)), ("people", People(state)),
-            ("away", Away(state)), ("exchange", Latest(state)), ("heard", Heard(state)), ("callbacks", CallbackLines(state))
+            ("away", Away(state)), ("exchange", Latest(state)), ("heard", Heard(state)), ("callbacks", CallbackLines(state)),
+            ("asked", Asked(state)), ("skills", Skills(state))
         ]);
         var facts = string.Join("\n\n", new[] { Facts(checkIn.Facts & ~Placed(template), state), Gathered(checkIn, state) }
             .Where(part => part.Length > 0));
@@ -217,8 +219,16 @@ public static partial class CheckInPrompts
             parts.Add(state.Callbacks.Count == 0 ? $"{state.Who}'s callback list is empty."
                 : $"{state.Who}'s callback list (things from earlier worth bringing back), oldest first, each with when it came up:\n" +
                     CallbackList.Lines(state.Callbacks, state.Now));
+        if (facts.HasFlag(CheckInFacts.Asked)) parts.Add("What the user just said: " + Asked(state));
+        if (facts.HasFlag(CheckInFacts.Skills)) parts.Add("Skills you can load with load_skill (key: when it helps):\n" + Skills(state));
         return string.Join("\n\n", parts);
     }
+
+    /// <summary>What the user just said, as the director reads it (<see cref="CheckInFacts.Asked"/>).</summary>
+    public static string Asked(CheckInState state) => state.Asked is { Length: > 0 } words ? Clip(words.Trim(), 2_000) : "(nothing)";
+
+    /// <summary>The skill index, as the director reads it (<see cref="CheckInFacts.Skills"/>).</summary>
+    public static string Skills(CheckInState state) => state.Skills is { Length: > 0 } index ? index : "(none)";
 
     /// <summary>The callback list as {callbacks} reads it: one line for each with when it came up, or that it is empty.</summary>
     public static string CallbackLines(CheckInState state)

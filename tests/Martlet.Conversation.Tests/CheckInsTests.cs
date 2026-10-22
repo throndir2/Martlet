@@ -40,7 +40,7 @@ public sealed partial class CheckInsTests
         var defaults = CheckIns.All(null);
         Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats, CheckIns.Reactions,
             CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Lull, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Ahead,
-            CheckIns.Actions, CheckIns.Callbacks, CheckIns.MemoryCare],
+            CheckIns.Director, CheckIns.Callbacks, CheckIns.MemoryCare],
             defaults.Select(c => c.Id));
         // Welcome back and Someone else is here wait for a signal and are off until the owner turns them on.
         Assert.Equal([true, true, true, true, true, true, false, true, true, true, false, true, true, true, true, true], defaults.Select(c => c.On));
@@ -453,8 +453,8 @@ public sealed partial class CheckInsTests
         Assert.Equal("text and pictures", CheckIns.Describe(ThinkingCapability.Text | ThinkingCapability.Vision));
         Assert.Equal("text and recordings", CheckIns.Describe(ThinkingCapability.Text | ThinkingCapability.Audio));
         Assert.Equal("text, pictures and recordings", CheckIns.Describe(CheckIns.Of(Inputs()).Needs));
-        // Built-in check-ins need text only, but How I react, Act on what was said and Memory care, which call their tools.
-        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id is CheckIns.Reactions or CheckIns.Actions or CheckIns.MemoryCare ? ThinkingCapability.Text | ThinkingCapability.Tools
+        // Built-in check-ins need text only, but How I react, the director and Memory care, which call their tools.
+        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id is CheckIns.Reactions or CheckIns.Director or CheckIns.MemoryCare ? ThinkingCapability.Text | ThinkingCapability.Tools
             : ThinkingCapability.Text, c.Needs));
     }
 
@@ -968,14 +968,15 @@ public sealed partial class CheckInsTests
             .With(new CustomCheckIn { Id = "c1", Name = "Touches", Task = "Describe them.", Triggers = CheckInTriggers.TouchesEnded | CheckInTriggers.StrokeAcrossZones })
             .With(CheckIns.Gaze, new CheckInChoice(true, 5) { Triggers = CheckInTriggers.IntimateTouch });
         settings.Validate();
-        // Only Describe touches and How I react start on touches by default; Think ahead, Act on what was said and Callback list
-        // after replies.
+        // Only Describe touches and How I react start on touches by default; Think ahead and Callback list after replies, the director
+        // on your turn.
         Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
             : c.Id == CheckIns.Reactions ? CheckIns.ByTouches
-            : c.Id is CheckIns.Actions or CheckIns.Ahead or CheckIns.Callbacks ? CheckInTriggers.ExchangeEnded
+            : c.Id == CheckIns.Director ? CheckInTriggers.UserTurn
+            : c.Id is CheckIns.Ahead or CheckIns.Callbacks ? CheckInTriggers.ExchangeEnded
             : c.Id == CheckIns.Aside ? CheckInTriggers.Spoke : CheckInTriggers.None, c.Triggers));
-        Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)64 }).Validate());
-        Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)128 }).Validate());
+        Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)128 }).Validate());
+        Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)256 }).Validate());
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
         try
         {

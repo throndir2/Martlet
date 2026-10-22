@@ -38,7 +38,8 @@ internal static class PromptEditRules
     /// Talking to someone else replaced, and Remembering and learning names together, now two requests of their own); their saved
     /// edits are dropped.</summary>
     public static bool Retired(string id) => id is "character_theme" or "style" or "style_helpful" or "style_sarcastic" or
-        "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks" or "check_in_call" or "after_reply";
+        "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks" or "check_in_call" or "after_reply" or
+        "check_in_actions";
 
     /// <summary><paramref name="edits"/> as this Martlet reads them: without edits of retired prompts and without the {style}
     /// lines of an old Persona edit. Edits of prompts that became skills (<see cref="SkillCatalog.MovedPrompts"/>) leave too and
