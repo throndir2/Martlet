@@ -8,7 +8,7 @@ namespace Martlet.Desktop;
 /// TabIntro and RenderTab.</summary>
 internal enum CompanionTab
 {
-    Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Hearing, Motion, Profiles, Personality, Prompts, Lorebook,
+    Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Hearing, Motion, Profiles, Personality, Prompts, Skills, Lorebook,
     AppGuides, Memory, People, Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, SmartHome, Discord, Messaging
 }
 
@@ -55,7 +55,7 @@ internal static class CompanionPages
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.DeepThinking or CompanionTab.Singing or CompanionTab.Pictures or CompanionTab.Vision or CompanionTab.Reading or
             CompanionTab.Hearing or CompanionTab.SmartHome or CompanionTab.Motion => CompanionGroup.Extras,
-        CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.AppGuides or CompanionTab.Memory or
+        CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Skills or CompanionTab.Lorebook or CompanionTab.AppGuides or CompanionTab.Memory or
             CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Character or CompanionTab.SpeechBubbles or CompanionTab.Emotes or CompanionTab.Eyes or CompanionTab.Touch => CompanionGroup.HowItLooks,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
@@ -104,6 +104,7 @@ internal static class CompanionPages
         CompanionTab.Touch => "Touch",
         CompanionTab.Personality => "Personality",
         CompanionTab.Prompts => "Prompts",
+        CompanionTab.Skills => "Skills",
         CompanionTab.Lorebook => "Lorebook",
         CompanionTab.AppGuides => "App guides",
         CompanionTab.Memory => "Memory",
@@ -139,6 +140,7 @@ internal static class CompanionPages
         CompanionTab.Touch => "\uE815",
         CompanionTab.Personality => "\uE76E",
         CompanionTab.Prompts => "\uE943",
+        CompanionTab.Skills => "\uE82D",
         CompanionTab.Lorebook => "\uE736",
         CompanionTab.AppGuides => "\uE7FC",
         CompanionTab.Memory => "\uE8F1",
@@ -176,6 +178,7 @@ internal static class CompanionPages
         CompanionTab.Touch => "Choose what the character does when you click or stroke it: its touch zones, and how it feels about each touch.",
         CompanionTab.Personality => "Edit Martlet's personas.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model; your edited text is used instead of the built-in one.",
+        CompanionTab.Skills => "Instructions Martlet uses only when it needs them, so every reply stays short and quick: pin the ones every reply must follow, and add your own.",
         CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
         CompanionTab.AppGuides => "Martlet reads up on the games and apps you use (their fan wikis and help pages) and answers your questions about them from what it read.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",

@@ -34,6 +34,10 @@ public sealed record AppSettings : IContract
     /// <summary>Optional edits to Martlet's internal prompts (Companion › Prompts); absent while every prompt is built in.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PromptSettings? Prompts { get; init; }
+    /// <summary>Optional edits of the built-in skills and the user's own skills (Companion › Skills); absent while every skill is
+    /// built in.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SkillSettings? Skills { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
@@ -67,9 +71,12 @@ public sealed record AppSettings : IContract
             "Generation settings are saved as absent when every value is the model default.");
         Generation?.Validate();
         ThinkingFallback?.Validate();
-        ContractRules.Require(Prompts is null || !Prompts.IsDefault,
+        // A file an older Martlet saved can hold only edits of prompts that are skills now; they move on read (MoveSkillPrompts).
+        ContractRules.Require(Prompts is null || !Prompts.IsDefault || Prompts.Moved is { Count: > 0 },
             "Prompt settings are saved as absent when every prompt is built in.");
         Prompts?.Validate();
+        ContractRules.Require(Skills is null || !Skills.IsDefault, "Skill settings are saved as absent when every skill is built in.");
+        Skills?.Validate();
         if (Setup is not null)
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();
@@ -98,6 +105,19 @@ public sealed record AppSettings : IContract
             Memory = settings.SchemaVersion < MemoryOnByDefaultSchemaVersion && settings.Memory is { } memory
                 ? memory.Configure(true, memory.StoragePolicy, memory.CustomDirectory)
                 : settings.Memory ?? MemorySettings.Create()
+        };
+    }
+
+    /// <summary>Edits an older Martlet saved for prompts that are built-in skills now move to their skills (unless the skill is
+    /// already edited), and leave the prompts.</summary>
+    public static AppSettings MoveSkillPrompts(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (settings.Prompts?.Moved is not { Count: > 0 } moved) return settings;
+        return settings with
+        {
+            Prompts = settings.Prompts.IsDefault ? null : PromptSettings.Normalize(settings.Prompts.Overrides),
+            Skills = SkillSettings.WithMovedPrompts(settings.Skills, moved)
         };
     }
 

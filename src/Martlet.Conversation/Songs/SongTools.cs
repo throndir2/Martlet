@@ -54,7 +54,7 @@ public static class SongTools
 
     /// <summary>The prompt added to a reply's instructions while the song tools are offered.</summary>
     public static string? Instructions(PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.Singing, ("silent", StayQuiet.Marker));
+        SkillSettings.Guidance(prompts, SkillCatalog.Songs, ("silent", StayQuiet.Marker));
 
     /// <summary>The notes of what was heard while Martlet sings: it keeps singing and answers only when addressed.</summary>
     public static string? WhileSinging(PromptSettings? prompts, string title, string where) =>

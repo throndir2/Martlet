@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Companion › Skills: instructions Martlet uses only when it needs them. A reply gets the rules for its tools only while it has those tools, and you can pin skills every reply must follow or add your own. The tools, thinking longer, web research, singing and app guide prompts are skills now, and your edits to them move along. ([#1131](https://github.com/throndir2/Martlet/pull/1131))
+
 ## [0.91.0] - 2026-10-21
 
 ### Added

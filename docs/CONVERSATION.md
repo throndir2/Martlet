@@ -328,6 +328,35 @@ example dialogue has `Owner:` lines on purpose. The Thinking trace says
 `spoken_reply_check` with a `reply` that has prompt text shows the cut
 (`promptText`).
 
+## Skills
+
+A **skill** is a named set of instructions that is not in every request
+(Companion › Skills). It has a key, a name, one line that says when it helps,
+its text and a *Pinned* box. Small models answer better with less in their
+instructions, so Martlet sends a skill only when a reply needs it:
+
+- **Pinned skills** close every reply's instructions, before *Keep the
+  conversation going* (`PromptSettings.ReplyClosing`). The built-in *Look into
+  it* skill is pinned: when something needs a tool, a look-up or more thought,
+  the reply says briefly that it will do it, and never guesses.
+- **A skill that explains tools** goes with a reply only while that reply is
+  offered one of its tools, where its prompt was before: *Using tools* (any
+  tool), *Thinking longer* (`think_longer`), *Web research* (`research`),
+  *Songs* (`sing_song`, `play_song`, `stop_singing`) and *App guides*
+  (`read_up_on`, `search_guide`, `skip_guide`). A pinned one is sent once, in
+  the closing.
+- **Your own skills** are added with *Add a skill*. A pinned one goes with
+  every reply.
+
+These five skills were prompts on Companion › Prompts before Martlet 0.92. An
+edit of one of those prompts moves to its skill when settings.json is read,
+also when an older computer sends it (`AppSettings.MoveSkillPrompts`), unless
+the skill is already edited. Skills are settings.json's `skills` section and
+the same on every computer of the account (the shared `skills` key). They
+come from saved settings only, so the start of every request stays the same
+for prompt caches. MCP's `skills_status` shows every skill and the pinned
+text every reply gets ([MCP › Settings](mcp/settings.md)).
+
 ## Context board
 
 The context board is where background sources keep their newest short note

@@ -129,7 +129,8 @@ saved edit or the built-in text), exactly what Martlet fills in and sends.
 (on by default), `chosen` (whether a choice is saved), the prompt's `state`,
 and `spokenClosing` and `unspokenClosing`, what closes a spoken and an
 unspoken reply's instructions, built by the desktop's own
-`PromptSettings.ReplyClosing` (the short first sentence prompt, then *Reply
+`PromptSettings.ReplyClosing` (the pinned skills, *Keep the conversation
+going*, the short first sentence prompt, then *Reply
 length*; *Reply length* alone when it is off, emptied or the reply isn't
 spoken). On Companion › Replies, `RepliesShortFirstSentence` reads the chosen
 option (*On* or *Off*; choosing one with `ui_select` saves it, so it needs
@@ -170,6 +171,26 @@ settings, and `PromptsNow` then reads the new counts. The editors
 `Prompt-<id>`, their `PromptReset-<id>` buttons and `PromptsDefaults` write
 settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
 `text` empties a prompt.
+
+`skills_status` reads Companion › Skills from a data directory's
+`settings.json` (optional absolute `dataDirectory`): `state`, `total`, `own`
+and `edited` counts, and every skill (`key`, `name`, `useWhen`, `builtIn`,
+`pinned`, `tools`: the reply tools it explains, `state` `builtin`, `edited`,
+`own` or `empty`, and `tokens`). `everyReply` has the `pinned` keys, their
+`text` exactly as the closing of every reply's instructions carries it, and
+its `tokens`. `movedPrompts` maps the prompt IDs that became skills to their
+skill keys. With a `key` it also returns `skill`, that skill's text.
+`settings_set` with path `skills` and a value such as
+`{"skills":[{"key":"recipes","name":"Recipes","use_when":"...","body":"...","pinned":true}]}`
+saves edits and own skills (an edit equal to the built-in skill is dropped), and
+`settings_set` on `prompts` moves an edit of a prompt that became a skill to
+its skill. On the page, `SkillsNow` reads the counts and the pinned skills'
+names and tokens, and `SkillState-<key>` each skill's state (*Built-in skill;
+pinned: every reply gets it, about 51 tokens.*, *Your own skill; empty:
+nothing is sent.*, with *, saving.* at the end while it saves); neither
+returns a skill's text. `SkillName-<key>`, `SkillUseWhen-<key>`, `Skill-<key>`,
+`SkillPinned-<key>`, `SkillReset-<key>`, `SkillDelete-<key>` and `SkillsAdd`
+write settings, so they need `--allow-ui-effects`.
 
 `chattiness_status` reads Companion › Vision › **How often it comments** (the
 same choice as Listening › Watch along) from a data directory's

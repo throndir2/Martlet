@@ -101,7 +101,7 @@ internal static class ResearchCheck
         await using var replies = ConversationRuntime.Create(new NoCredentials());
         await using var thinking = ConversationRuntime.Create(new NoCredentials());
         var permissions = new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl + "/v1"));
-        var instructions = string.Join("\n\n", Persona, PromptSettings.Fill(null, PromptCatalog.Tools), ThinkLonger.Instructions(thinkSettings, null),
+        var instructions = string.Join("\n\n", Persona, SkillSettings.Fill(null, SkillCatalog.UsingTools), ThinkLonger.Instructions(thinkSettings, null),
             WebResearch.Instructions(null));
         var input = new BoundedTextInput(Asked, instructions, [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey!")],
             tools: [.. ThinkLonger.Definitions(thinkSettings), WebResearch.Definition]);

@@ -168,6 +168,16 @@ See [Share your language models](OPENAI_ENDPOINT.md).
 
 See [Memories for a game](MEMORY.md#memories-for-a-game).
 
+## Skills and prompts
+
+| Concept | Code name | UI name | Do not use for it |
+| --- | --- | --- | --- |
+| A named set of instructions that is not in every request: a key, a name, when it helps, its text | skill (`Skill`, `SkillCatalog`, `SkillSettings`; settings.json section and shared key `skills`) | skill (Companion › Skills) | "prompt" (a prompt is one of Martlet's built-in messages on Companion › Prompts), "tool" |
+| A skill every reply gets, in the closing of its instructions | pinned skill (`Skill.Pinned`, `SkillSettings.Pinned`) | pinned | "always-on prompt" |
+| One of Martlet's built-in instructions, editable by the user | prompt (`PromptCatalog`, `PromptSettings`) | prompt (Companion › Prompts) | "skill" |
+
+See [Skills](CONVERSATION.md#skills).
+
 ## The app's controls
 
 | Concept | Code name | UI name | Do not use for it |

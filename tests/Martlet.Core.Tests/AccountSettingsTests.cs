@@ -408,7 +408,7 @@ public sealed class AccountSettingsTests : IDisposable
         var samCopy = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Sam), "desktop-a", []).Document;
         Assert.Contains("Miko", samCopy.Find(AppSettingsSections.Companion)!.Value, StringComparison.Ordinal);
         // Every setting Sam had is in Sam's copy; Alex's copy holds what Alex starts with.
-        Assert.Equal(["companion", "lorebooks", "memory", "prompts", "replies"], samCopy.Settings.Select(s => s.Key));
+        Assert.Equal(["companion", "lorebooks", "memory", "prompts", "replies", "skills"], samCopy.Settings.Select(s => s.Key));
         Assert.Equal(alexs.ActivePersonaId.ToString(), System.Text.Json.JsonDocument.Parse(
             alex.Document.Find(AppSettingsSections.Companion)!.Value).RootElement.GetProperty("active_persona_id").GetString());
 
