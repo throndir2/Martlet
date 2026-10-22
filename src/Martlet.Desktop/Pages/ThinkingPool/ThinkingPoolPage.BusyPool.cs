@@ -6,18 +6,18 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Thinking pool's Runs on, Backup for slow replies and Busy pool cards.</summary>
+/// <summary>Companion › Background thinking › Advanced: Runs on, Backup for slow replies and Busy pool.</summary>
 internal sealed partial class ThinkingPoolPage
 {
     /// <summary>Runs on: for each kind of job (<see cref="ThinkingJobKinds.Rows"/>, by its saved key and the label that names all
     /// the work it controls), which machines in the pool may take it (Any member, Prefer smart, Smart only or These members).
     /// Each check-in can choose its own on its card.</summary>
-    private static Border RunsOnCard(ThinkingPoolPageModel model)
+    private static List<UIElement> RunsOnSection(ThinkingPoolPageModel model)
     {
         var pool = model.Pool;
         var stack = new List<UIElement>
         {
-            HelpTip.After(Heading("Runs on"), "Runs on", "Choose which machines do each kind of job. Prefer smart sends it to the smartest " +
+            HelpTip.After(SubHeading("Runs on"), "Runs on", "Choose which machines do each kind of job. Prefer smart sends it to the smartest " +
                 "free machine; when none of the smartest comes free within a short wait (30 seconds at most), a less smart one takes it. " +
                 "Thinking longer, research and lyrics take the smartest free machine at once. Smart only waits for a Smart machine; " +
                 "without one, the job uses its simple fallback. These members uses only the machines you tick. Each machine's Smarts " +
@@ -39,26 +39,15 @@ internal sealed partial class ThinkingPoolPage
             read = current;
             stack.Add(view);
         }
-        return Card([.. stack]);
+        return stack;
     }
 
-    /// <summary>Backup for slow replies (Backup Thinking, off by default): when a reply's Thinking model has no words after a short wait, the same request
-    /// also goes to a member that may answer for the conversation, and the first to start gives the reply.</summary>
-    private static Border BackupThinkingCard(ThinkingPoolPageModel model)
+    /// <summary>Backup for slow replies' wait and status (its switch, Help when a reply is slow, is under What it does): when a
+    /// reply's Thinking model has no words after this wait, the same request also goes to a member that may answer for the
+    /// conversation (each machine's Backup for slow replies box), and the first to start gives the reply.</summary>
+    private static List<UIElement> BackupSection(ThinkingPoolPageModel model)
     {
         var pool = model.Pool;
-        var on = new CheckBox
-        {
-            IsChecked = pool.BackupThinking, Margin = new Thickness(0, 0, 0, 8),
-            Content = new TextBlock { Text = "Ask a machine in the pool too when a reply is slow to start", TextWrapping = TextWrapping.Wrap }
-        };
-        AutomationProperties.SetAutomationId(on, "ThinkingPoolBackup");
-        AutomationProperties.SetName(on, "Backup for slow replies: ask a machine in the pool too when a reply is slow to start");
-        void TurnOn(bool value) => model.SavePoolAsync(p => p with { BackupThinking = value }, value
-            ? "Backup for slow replies is on: a slow reply also asks a machine ticked for it."
-            : "Backup for slow replies is off.").Forget();
-        on.Checked += (_, _) => TurnOn(true);
-        on.Unchecked += (_, _) => TurnOn(false);
         var choices = ThinkingPoolSettings.BackupDelayChoices;
         var delay = new ComboBox
         {
@@ -75,16 +64,14 @@ internal sealed partial class ThinkingPoolPage
                 ? "Backup Thinking waits an automatic time, from how fast recent replies began."
                 : $"Backup Thinking waits {value} ms for the first words.").Forget();
         };
-        var status = Note(model.BackupStatus, new Thickness(0, 8, 0, 0));
-        AutomationProperties.SetAutomationId(status, "ThinkingPoolBackupStatus");
-        return Card(Heading("Backup for slow replies"),
-            HelpTip.Explain("When a reply is slow to start, a machine in the pool can answer too. This is off by default. When it is on and the " +
-                "conversation's Thinking model has no words after a short wait, the same request also goes to a machine you ticked for it " +
-                "(Backup for slow replies, on a machine above). Whichever starts first gives the reply, and the " +
-                "other stops at once, so a slow or busy model doesn't keep you waiting. Choose machines with the same model as the " +
-                "conversation, or a similar one. A paid cloud provider is asked only when you tick it, and only for a reply already " +
-                "taken.", new Thickness(0, 0, 0, 8), "ThinkingFill", "this setting", wiki: "Thinking#backup-for-slow-replies"),
-            on, TerminalRow("Wait for first words", delay), status);
+        return [
+            SubHeading("Backup for slow replies"),
+            HelpTip.Explain("When Help when a reply is slow is on and the conversation's Thinking model has no words after a short wait, " +
+                "the same request also goes to a machine ticked for it (Backup for slow replies, under Each machine). Whichever starts " +
+                "first gives the reply, and the other stops at once, so a slow or busy model doesn't keep you waiting. Choose machines " +
+                "with the same model as the conversation, or a similar one. A paid cloud provider is asked only when you tick it, and " +
+                "only for a reply already taken.", new Thickness(0, 0, 0, 8), "ThinkingFill", "this setting", wiki: "Thinking#backup-for-slow-replies"),
+            TerminalRow("Wait for first words", delay)];
 
         static int IndexOf(IReadOnlyList<int> list, int value)
         {
@@ -93,9 +80,9 @@ internal sealed partial class ThinkingPoolPage
         }
     }
 
-    /// <summary>Companion › Thinking pool's line of requests (Busy pool): whether higher-priority requests may stop lower ones,
+    /// <summary>Companion › Background thinking › Advanced › Busy pool: whether higher-priority requests may stop lower ones,
     /// after how many stops a stopped request's priority goes up, and how many times a failed request is tried again.</summary>
-    private static Border PriorityCard(ThinkingPoolPageModel model)
+    private static List<UIElement> PrioritySection(ThinkingPoolPageModel model)
     {
         var pool = model.Pool;
         var preempt = new CheckBox
@@ -154,11 +141,11 @@ internal sealed partial class ThinkingPoolPage
 
         var status = Note(model.PriorityStatus, new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(status, "ThinkingPoolPriorityStatus");
-        return Card(Heading("Busy pool"),
+        return [SubHeading("Busy pool"),
             HelpTip.Explain("When every slot is busy, a more important request can stop a less important one to go first. The stopped request " +
                 "keeps its place at the front of its line and starts again when there's room. If it keeps getting stopped, it becomes " +
                 "more important so it finishes in the end. A request that fails can be tried again, at the importance it had.",
                 new Thickness(0, 0, 0, 8), "BusyPool", "the busy pool", wiki: "Thinking#busy-pool"),
-            preempt, TerminalRow("More important after", raise), TerminalRow("Try a failed request again", retries), status);
+            preempt, TerminalRow("More important after", raise), TerminalRow("Try a failed request again", retries), status];
     }
 }

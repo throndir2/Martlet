@@ -149,7 +149,9 @@ internal sealed class RepliesPageModel
             $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = " +
             GenerationSupport.DefaultReplyTokens(route?.RouteType),
         GenerationSetting.ContextTokens when route?.RouteType == SetupRouteType.GatewayOllama =>
-            $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumHostContextTokens} tokens on a host, blank = {GenerationSettings.DefaultHostContextTokens}",
+            $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumHostContextTokens} tokens on a host, blank = the window " +
+            $"planned from its graphics card ({GenerationSettings.DefaultHostContextTokens:N0}-{GenerationSettings.PlannedContextTokens:N0}), " +
+            $"each reply sending about {ContextBudget.PlannedInputTokens:N0}",
         GenerationSetting.ContextTokens when MainWindow.IsLocalOllama(route) =>
             $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumContextTokens} tokens, blank = Ollama's context length",
         GenerationSetting.ContextTokens =>

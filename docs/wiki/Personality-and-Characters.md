@@ -95,6 +95,10 @@ Token counts are Martlet's own estimate: about one token for every three bytes o
 
 Each of Martlet's messages in the talk window shows its token line beside **What was sent**, such as *3,412 input tokens · instructions about 1,150*: how many input tokens the Thinking model read for that message (Martlet's estimate when the model didn't say), and how much of it was Martlet's instructions. **What was sent** shows every request section by section, with the size of each.
 
+## Skills
+
+**Companion › Skills** lists instructions Martlet uses only when it needs them, so every reply stays short and quick. A pinned skill goes with every reply. A skill that explains tools goes with a reply only while that reply is offered its tools. You can edit any skill and add your own; edits save as you type and are the same on all your computers. Empty a skill's text to send nothing for it. Skills is an advanced page: turn on **Show advanced settings** (Settings › What Martlet shows) to see it.
+
 ## Replies
 
 **Companion › Replies** sets how long her replies can be and how much of the conversation she keeps in mind (**Context size**). **Thinking steps** (off by default) lets a reasoning model think step by step before it answers. See [Thinking › Reply settings](Thinking#reply-settings).

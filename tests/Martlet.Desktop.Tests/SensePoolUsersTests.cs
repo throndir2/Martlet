@@ -40,7 +40,7 @@ public sealed class SensePoolUsersTests
         Assert.Equal("A cloud provider or server in the Thinking pool; it gets your pictures for screen summaries, and touch zones, the " +
             "character's eyes and check-ins with a screenshot, and requests there may cost money.", SensePoolUsers.Line(SenseKind.Image, eyes, false));
         Assert.Contains("screen summaries when your image model can't take them", SensePoolUsers.Line(SenseKind.Image, eyes, true));
-        Assert.Equal("Your pictures also go to 1 model in the Thinking pool for background work, set on Companion › Thinking pool.",
+        Assert.Equal("Your pictures also go to 1 model in the Thinking pool for background work, set on Companion › Background thinking.",
             SensePoolUsers.Summary(SenseKind.Image, users));
     }
 

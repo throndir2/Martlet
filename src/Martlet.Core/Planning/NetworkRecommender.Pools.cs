@@ -80,7 +80,7 @@ public static partial class NetworkRecommender
                     if (!Keep(node, role, Kept, out var problem))
                         role.Leave ??= problem == Problem.NoRoom
                             ? (SetupChangeBenefit.Required, $"{CardText(node, role.Card)} has no room left for it.")
-                            : (SetupChangeBenefit.Improvement, "One language model per graphics card: its card runs Thinking's model.");
+                            : (SetupChangeBenefit.Improvement, $"One language model per graphics card: its card runs Thinking's model, and {ModelPerCardReason}.");
                 }
         }
 
@@ -262,7 +262,7 @@ public static partial class NetworkRecommender
                     var fault = Fits(node, own, role);
                     role.Benefit = fault == Problem.NoRoom ? SetupChangeBenefit.Required : SetupChangeBenefit.Improvement;
                     role.Why = fault == Problem.NoRoom ? $"{CardText(node, own)} has no room left for it."
-                        : fault == Problem.SharesModel ? "One language model per graphics card: its card runs Thinking's model."
+                        : fault == Problem.SharesModel ? $"One language model per graphics card: its card runs Thinking's model, and {ModelPerCardReason}."
                         : VoiceOnWindowsCard(node, own) ? "The voice keeps its Windows graphics card to itself."
                         : "A card no live job uses: replies never wait for a think, and thinks don't stop for replies.";
                 }
@@ -273,7 +273,7 @@ public static partial class NetworkRecommender
             role.Leave ??= problem == Problem.NoRoom
                 ? (SetupChangeBenefit.Required, $"{CardText(node, own)} has no room left for it beside the live jobs.")
                 : problem == Problem.SharesModel
-                    ? (SetupChangeBenefit.Improvement, $"One language model per graphics card: {CardText(node, own)} runs Thinking's model.")
+                    ? (SetupChangeBenefit.Improvement, $"One language model per graphics card: {CardText(node, own)} runs Thinking's model, and {ModelPerCardReason}.")
                     : (SetupChangeBenefit.Improvement, $"{node.Name} runs on Windows, so the voice keeps its graphics card to itself.");
         }
 
@@ -282,7 +282,7 @@ public static partial class NetworkRecommender
         /// the smartest free hosted model the model catalog names (NVIDIA Build's) is suggested for the Thinking pool. A few
         /// seconds don't matter in the background. Only a hosted option with a model counts (the catalog's; Martlet's own list
         /// names none), and none while the Thinking pool already has an online member. It is a suggestion: the owner adds it
-        /// in Companion › Thinking pool, so it changes no setup.</summary>
+        /// in Companion › Background thinking, so it changes no setup.</summary>
         private ComponentOption? OnlineDeepThinking(NetworkSetup target)
         {
             const PlanComponent part = PlanComponent.DeepThinking;
@@ -299,7 +299,7 @@ public static partial class NetworkRecommender
 
         /// <summary>The note for <see cref="OnlineDeepThinking"/>'s suggestion.</summary>
         private string OnlineDeepNote(ComponentOption deep) =>
-            $"Deep thinking: {deep.DisplayName} is free and smarter than Thinking's model; add it in Companion › Thinking pool" +
+            $"Deep thinking: {deep.DisplayName} is free and smarter than Thinking's model; add it in Companion › Background thinking" +
             (request.ConfiguredProviders.Contains(deep.ProviderId ?? "", StringComparer.OrdinalIgnoreCase)
                 ? " with the key you saved" : " with a free key from its website") +
             " (what it thinks about goes to that service).";

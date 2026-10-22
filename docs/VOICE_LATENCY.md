@@ -253,7 +253,7 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
 4. **Thinking steps** (Companion › Replies) turns a reasoning model's hidden
    thinking off, and is Off by default; a model that refuses Off is asked again
    with its default.
-5. **Thinking longer** (Companion › Deep thinking, on by default) gives the hard
+5. **Thinking longer** (Companion › Background thinking, on by default) gives the hard
    tasks their thinking back without making any reply wait for it: Martlet
    says it'll think it over and works on the task in a background request
    ([Thinking longer](CONVERSATION.md#thinking-longer-and-background-work)).
@@ -311,7 +311,7 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
    so it comes from the prompt cache after the first reply. Its effect on the
    *first sentence* step depends on the model and wasn't measured here (no
    Thinking model on the test PC; see the change's pull request).
-8. **Backup Thinking** (Companion › Thinking pool, off by default): a reply
+8. **Backup Thinking** (Companion › Background thinking, off by default): a reply
    whose Thinking model has no first words after a wait also asks a pool member
    the owner allowed, and the first to start gives the reply
    ([below](#backup-thinking-a-second-model-for-slow-starts)).
@@ -961,7 +961,7 @@ anything.
 
 ## Backup Thinking: a second model for slow starts
 
-**2026-10-07, opt-in, off by default.** Companion › Thinking pool › *Backup
+**2026-10-07, opt-in, off by default.** Companion › Background thinking › *Backup
 Thinking*. A Thinking model is sometimes slow to start: it is busy with another
 request, loading, or a cloud provider's queue is long. Most replies start in
 the usual time, but the slow ones are the ones you remember. Dean and Barroso

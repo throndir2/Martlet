@@ -114,7 +114,7 @@ internal sealed class VisionPageModel
                 (decision.Then is { Taker: SenseTaker.PoolMember } then ? $", and the Thinking pool does it when it can't ({then.Name})." : "."),
             SenseTaker.PoolMember => $"On: while Martlet watches, a Thinking pool model that sees ({decision.Name}) sums up what changed for your next message.",
             _ => "Off for now: no image model and no Thinking pool model that sees takes them, so choose an image model above or add " +
-                "one that sees in Companion › Thinking pool."
+                "one that sees in Companion › Background thinking."
         };
 
     /// <summary>What Martlet captures and where it goes (VisionDisclosure), for what it looks at and how chatty it is, with the

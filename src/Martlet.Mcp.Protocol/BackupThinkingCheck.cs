@@ -8,7 +8,7 @@ using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
-/// <summary>backup_thinking_check: Companion › Thinking pool › Backup Thinking. It rehearses the production race
+/// <summary>backup_thinking_check: Companion › Background thinking › Backup Thinking. It rehearses the production race
 /// (<see cref="ConversationTurn"/> with <see cref="ConversationRequest.Backup"/>) and the production member choice
 /// (<see cref="ThinkingBackupMembers.Choose"/>) on fixture turns through the production conversation runtime and Chat
 /// Completions adapter, with <see cref="ConversationRuntime.OpenTextAsync"/> for the backup: two fixture endpoints on 127.0.0.1

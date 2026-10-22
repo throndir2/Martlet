@@ -118,7 +118,7 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// service already runs or keeps downloaded (<see cref="NetworkMachine.Roles"/>, <see cref="NetworkMachine.Downloaded"/>)
     /// before a model it must download, also when its first word comes later. Off by default.</summary>
     public bool PreferHostModels { get; init; }
-    /// <summary>The Thinking pool's online members on this PC (Companion › Thinking pool's endpoints, "moonshotai/kimi-k3 on
+    /// <summary>The Thinking pool's online members on this PC (Companion › Background thinking's endpoints, "moonshotai/kimi-k3 on
     /// NVIDIA Build"): with one, the recommender suggests no hosted Deep thinking model.</summary>
     public IReadOnlyList<string> OnlineThinkingPool { get; init; } = [];
     /// <summary>Reply quality (<see cref="RecommendationPreferences.Quality"/>): a new live Thinking model is the smartest that

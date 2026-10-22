@@ -4,7 +4,7 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
-/// <summary>Companion › Thinking pool, on this PC (thinking-pool.json in the data folder). Its cloud providers and servers on
+/// <summary>Companion › Background thinking, on this PC (thinking-pool.json in the data folder). Its cloud providers and servers on
 /// your network, with their keys and choices, are the same on all your computers (<see cref="SharedThinkingPool"/>); paired
 /// computers join each PC's pool by themselves and models in Ollama on this PC stay this PC's own. The pool is one shared set of Thinking models for background work: thinking
 /// longer, research, screen and sound summaries, judges and helpers. Each member is one place (<see cref="DeepThinkingSettings"/>,
@@ -91,7 +91,7 @@ public sealed record ThinkingPoolSettings
     /// <summary>When the file was made from deep-thinking.json, else null.</summary>
     public DateTimeOffset? MigratedAt { get; init; }
 
-    /// <summary>Backup Thinking (Companion › Thinking pool): when the conversation's Thinking model has no first words after
+    /// <summary>Backup Thinking (Companion › Background thinking): when the conversation's Thinking model has no first words after
     /// <see cref="BackupDelayMs"/>, the same request also goes to a member that may answer for the conversation
     /// (<see cref="AnswersForConversation"/>), and whichever answers first gives the reply. Off by default.</summary>
     public bool BackupThinking { get; init; }
@@ -330,7 +330,7 @@ public sealed record ThinkingPoolSettings
     {
         if (Members.Count == 0 && !UseConversationModelWhenEmpty)
             return new([new DeepThinkingSpot(new(), new(false, "The Thinking pool has no member that is on; add a machine or turn one on in " +
-                "Companion › Thinking pool."), "no member")]);
+                "Companion › Background thinking."), "no member")]);
         var pool = DeepThinkingPool.For(Places, routes, sharing, device, offline);
         if (Members.Count == 0 || !UseConversationModelWhenEmpty || pool.Plan is not { Available: false, Offline: true } gone) return pool;
         // The members that would run are all offline: the conversation model stands in, as for an empty pool, until one answers.

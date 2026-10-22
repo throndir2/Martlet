@@ -88,12 +88,12 @@ internal static partial class AutomationPolicy
         new("TouchZonesZoomReset", "Companion › Touch › Touch zones", "Reset zoom: only resets the size of the picture on the zone map; saves nothing."),
         new("CharacterCombosAdd", "Companion › Emotes and motions › Combos", "Add a combo: only adds an empty row; nothing saves until the row has a tag and parts."),
         // Needs --allow-ui-effects: typing a combo's tag and parts.
-        new("RepliesOpenDeepThinking", "Companion › Replies", "Open Deep thinking: only opens that page."),
-        new("CheckInsOpenPool", "Companion › Check-ins", "Open Thinking pool: only opens Companion › Thinking pool."),
+        new("RepliesOpenDeepThinking", "Companion › Replies", "Open Background thinking: only opens that page."),
+        new("CheckInsOpenPool", "Companion › Check-ins", "Open Background thinking: only opens that page."),
         // Needs --allow-ui-effects: each check-in's On box, Every, answer choices, fact, condition, trigger, name, task and prompt boxes, CheckInReset-<id>, CheckInCopy-<id>, Add a check-in and Remove (save check-ins.json or the prompts).
         // Needs --allow-ui-effects: CheckInRun-<id> (Check now sends the check to a Thinking pool member, which may be a paid provider).
-        new("Pool-vision-AlsoOpen", "Companion › Vision", "Open Thinking pool under 'Also gets your pictures': only opens that page."),
-        new("Pool-hearing-AlsoOpen", "Companion › Hearing", "Open Thinking pool under 'Also gets your recordings': only opens that page."),
+        new("Pool-vision-AlsoOpen", "Companion › Vision", "Open Background thinking under 'Also gets your pictures': only opens that page."),
+        new("Pool-hearing-AlsoOpen", "Companion › Hearing", "Open Background thinking under 'Also gets your recordings': only opens that page."),
         // Needs --allow-ui-effects: PicturesCheck (Check asks each place in the list, a ComfyUI server or a cloud provider, whether it can draw now).
         // Needs --allow-ui-effects: Draw a test picture, Set up, Save, Load workflow file, Save key and Add.
         new("LiveToolDeny", "Talk window", "A tool call's Deny: only declines the waiting call (an MCP tool or a terminal command); runs nothing."),

@@ -41,7 +41,7 @@ public sealed record ResearchStep(string? Search, IReadOnlyList<string> Read, st
 public sealed record ResearchLimits(int Steps = 40, int Searches = 30, int Pages = 60, long Bytes = 25_000_000, int PagesFirstRead = 3,
     int PagesPerStep = 3, int NotesCharacters = 15_000, int FreshCharacters = 15_000, int ExcerptCharacters = 10_000);
 
-/// <summary>Web research as background work (Companion › Deep thinking › Web research, on by default): research(topic,
+/// <summary>Web research as background work (Companion › Background thinking › Look things up on the web, on by default): research(topic,
 /// what_to_find) starts a <see cref="KindName"/> job and returns at once; the job searches the web and reads pages with
 /// <see cref="WebAccess"/> (or another <see cref="IWebSearch"/>/<see cref="IWebFetch"/>), and asks the model where Deep
 /// thinking thinks, one bounded step at a time, to add what the new pages say to its notes and to search again, read more or
@@ -137,7 +137,7 @@ public static class WebResearch
 
     /// <summary>The prompt added to a reply's instructions while research is offered: when to answer from what Martlet knows,
     /// when to look something up quickly and when to research it.</summary>
-    public static string? Instructions(PromptSettings? prompts) => PromptSettings.Fill(prompts, PromptCatalog.WebResearch);
+    public static string? Instructions(PromptSettings? prompts) => SkillSettings.Guidance(prompts, SkillCatalog.WebResearch);
 
     public static (ResearchArguments? Arguments, string? Problem) Parse(string argumentsJson)
     {
@@ -198,7 +198,7 @@ public static class WebResearch
     };
 
     public const string TurnedOff =
-        "Not started: web research is off (Companion › Deep thinking › Web research). Answer from what you know, and say you can't look things up.";
+        "Not started: web research is off (Companion › Background thinking › Look things up on the web). Answer from what you know, and say you can't look things up.";
 
     public static string Unavailable(string why) =>
         $"Not started: Deep thinking can't run right now, so there's nothing to research with. {why} Answer from what you know instead.";

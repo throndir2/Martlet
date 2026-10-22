@@ -640,7 +640,7 @@ window ends it unless Martlet is listening or watching, which only hides it.
   needs (`CompanionPages.Essentials`): *Thinking*, *Listening* and *Voice* (How
   it works), *Profiles*, *Personality* and *Memory* (Who it is), *Character*
   (How it looks) and *Replies* (What it does). Every other page, also a page
-  added later, is advanced: *Lip-sync*, all of *Optional extras*, *Prompts*,
+  added later, is advanced: *Lip-sync*, all of *Optional extras*, *Prompts*, *Skills*,
   *Lorebook*, *App guides*, *People*, *Speech bubbles*, *Emotes and motions*,
   *Eyes*, *Touch*, *Check-ins*, *Tools*, *Discord* and *Messaging*. The groups
   keep their order, and a group with no page shown is hidden. The list ends

@@ -18,7 +18,7 @@ public static class SettingScopes
     /// <summary>The account sections, in the order a computer applies them (the custom palette before the theme).</summary>
     public static IReadOnlyList<string> AccountKeys { get; } =
     [
-        AppSettingsSections.Companion, AppSettingsSections.Replies, AppSettingsSections.Prompts, AppSettingsSections.Memory,
+        AppSettingsSections.Companion, AppSettingsSections.Replies, AppSettingsSections.Prompts, AppSettingsSections.Skills, AppSettingsSections.Memory,
         AppSettingsSections.Lorebooks, Character, Talk, SpeechDisplay, AppearanceCustom, Appearance, VoiceId, TouchTemperament,
         Martlet.Core.Settings.MemoryBriefFile.SharedKey, ConversationHistory, CharacterReactionChanges, CheckIns,
         Martlet.Core.Settings.AdvancedSettingsFile.SharedKey

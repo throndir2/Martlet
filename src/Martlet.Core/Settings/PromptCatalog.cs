@@ -22,7 +22,6 @@ public static partial class PromptCatalog
     public const string Moment = "moment";
     public const string SaidLately = "said_lately";
     public const string MomentAttention = "moment_attention";
-    public const string Tools = "tools";
     public const string VoiceTags = "voice_tags";
     public const string CharacterActions = "character_actions";
     public const string CharacterShowing = "character_showing";
@@ -80,7 +79,6 @@ public static partial class PromptCatalog
     public const string HomeBlocked = "home_blocked";
     public const string HomeDeclined = "home_declined";
     public const string HomeUnreachable = "home_unreachable";
-    public const string ThinkLonger = "think_longer";
     public const string HandedOffTools = "handed_off_tools";
     public const string BackgroundThink = "background_think";
     public const string BackgroundDone = "background_done";
@@ -94,16 +92,13 @@ public static partial class PromptCatalog
     public const string TouchedCutIn = "touched_cut_in";
     public const string CutOff = "cut_off";
     public const string AdultContent = "adult_content";
-    public const string Singing = "singing";
     public const string SingingTags = "singing_tags";
     public const string WhileSinging = "while_singing";
     public const string SongLyrics = "song_lyrics";
-    public const string WebResearch = "web_research";
     public const string ResearchStep = "research_step";
     public const string ResearchFound = "research_found";
     public const string ResearchFoundNotes = "research_found_notes";
     public const string ResearchSourceCheck = "research_source_check";
-    public const string AppGuides = "app_guides";
     public const string AppGuideNotes = "app_guide_notes";
     public const string AppGuideBrief = "app_guide_brief";
     public const string AppGuideOffer = "app_guide_offer";

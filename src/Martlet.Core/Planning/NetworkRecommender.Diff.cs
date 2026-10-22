@@ -187,7 +187,7 @@ public static partial class NetworkRecommender
         private static (SetupChangeBenefit, string) PinReason(Node node) =>
             node.Roles.Count(r => !r.Native && r.Card is not null && r.Option is { UsesGpu: true }) >= 2
                 ? (SetupChangeBenefit.Improvement, $"{node.Name} has more than one NVIDIA card: pinning each role to its own card keeps " +
-                    "language models apart and live jobs off the Thinking pool's card, so none waits for another or runs short of memory.")
+                    $"language models apart ({ModelPerCardReason}) and live jobs off the Thinking pool's card, so none waits for another or runs short of memory.")
                 : (SetupChangeBenefit.Minor, "Pinned to one card, so it keeps that card when other roles come.");
 
         private string KindName(string kind) => kind switch
@@ -243,6 +243,19 @@ public static partial class NetworkRecommender
                     if (others.Count > 0)
                         notes.Add($"{node.Name} runs on Windows, so {Label(voice.Option, voice.Kind)} shares its {GpuName(node, voice.Card!.Value)} with " +
                             $"{List(others)}; if the card's memory runs short, the voice can start late.");
+                }
+            // The context window Thinking's model loads on a host's card: planned from what the card has left after every role
+            // placed on it (ContextWindowPlan); each reply still sends the same input, so replies start as soon.
+            foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
+                foreach (var thinking in node.Roles.Where(r => r.Kind == ThinkingRole && !r.Native && r.Span is null &&
+                    r.Card is not null && r.Option is { UsesGpu: true }))
+                {
+                    var card = thinking.Card!.Value;
+                    var others = node.Roles.Where(r => r != thinking && r.On(card) && r.Gb > 0).Select(r => (Label(r.Option, r.Kind), r.Gb)).ToArray();
+                    var plan = ContextWindowPlan.Fit(thinking.Option!.ModelId ?? thinking.Model ?? "Thinking's model", thinking.Option.GpuGb, node.Spec.Gpus[card].VramGb, others,
+                        cardName: $"{node.Name}'s {GpuName(node, card)}");
+                    notes.Add($"Thinking's context window on {node.Name}'s {GpuName(node, card)}: {plan.Why}. Each reply still sends at most " +
+                        $"about {Settings.ContextBudget.PlannedInputTokens:N0} tokens, so the bigger window doesn't make replies start later.");
                 }
             foreach (var id in changes.Where(c => c.NeedsSomeoneThere).Select(c => c.MachineId).Distinct(StringComparer.Ordinal))
                 notes.Add($"{NameOf(id)} can't be changed from here: someone has to make its changes at that computer.");

@@ -57,7 +57,7 @@ internal sealed class RepliesPage(IRepliesPageServices services)
         page.Children.Add(Card(Heading("Thinking longer"),
             Note("Martlet can think a hard task through in the background while you keep talking (Thinking pool sets where and how).",
                 new Thickness(0, 0, 0, 0)),
-            Row(PageButton("Open Thinking pool", () => services.OpenCompanion(CompanionTab.DeepThinking), link: true, id: "RepliesOpenDeepThinking"))));
+            Row(PageButton("Open Background thinking", () => services.OpenCompanion(CompanionTab.DeepThinking), link: true, id: "RepliesOpenDeepThinking"))));
         thinking.SelectionChanged += (_, _) => { services.MarkEdited(); autoSave.Changed(); };
         AddRow(grid, new Label { Content = "T_hinking steps", Target = thinking, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
             thinking, RepliesPageModel.ThinkingRange, RepliesPageModel.ThinkingHelp,

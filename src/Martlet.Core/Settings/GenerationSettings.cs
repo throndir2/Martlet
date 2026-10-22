@@ -34,8 +34,12 @@ public sealed record GenerationSettings : IContract
     /// or the model's own limit when that is smaller. Most current cloud models hold far more; a larger size keeps more of a
     /// long conversation in mind but sends more tokens with every reply.</summary>
     public const int DefaultContextTokens = 100_000;
-    /// <summary>The context window a paired host's Ollama loads when it is left unset; larger windows cost GPU memory.</summary>
+    /// <summary>The smallest context window a paired host's Ollama loads when the size is left unset, and the window when the
+    /// card's memory isn't known. Martlet plans a larger one from the card's free memory (<see cref="PlannedContextTokens"/>).</summary>
     public const int DefaultHostContextTokens = 8_192;
+    /// <summary>The largest window Martlet plans from a card's free memory for a paired host's conversation model
+    /// (<see cref="Planning.ContextWindowPlan"/>): the Thinking pool's window too, so jobs on the same model never reload it.</summary>
+    public const int PlannedContextTokens = 32_768;
     public const int MinimumContextTokens = 2_048;
     public const int MaximumContextTokens = 2_000_000;
     /// <summary>The largest context window a paired host's Ollama loads (its gateway's bound); a larger saved size is capped. A

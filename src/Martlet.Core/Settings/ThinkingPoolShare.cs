@@ -5,7 +5,7 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
-/// <summary>The part of Companion › Thinking pool that is the same on all your computers (the <c>thinking-pool</c> shared
+/// <summary>The part of Companion › Background thinking that is the same on all your computers (the <c>thinking-pool</c> shared
 /// setting): the cloud providers and the servers on your network (endpoint members not on this PC, such as NVIDIA Build or
 /// OpenRouter), in order, each on or off with its slots and its choices, and their API keys. Paired computers join each PC's
 /// pool by themselves and models in Ollama on this PC are that PC's own, so they stay in each PC's thinking-pool.json.</summary>

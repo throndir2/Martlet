@@ -26,7 +26,7 @@ public sealed class CompanionPagesTests
         Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Lip-sync" }, groups[CompanionGroup.HowItWorks].Select(CompanionPages.TabTitle));
         // The Optional extras follow the priority list: vision, reading, hearing, the Thinking pool, smart home, singing, pictures,
         // then motion, which the list doesn't rank.
-        Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Thinking pool", "Smart home", "Singing", "Picture making", "Motion" },
+        Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Background thinking", "Smart home", "Singing", "Picture making", "Motion" },
             groups[CompanionGroup.Extras].Select(CompanionPages.TabTitle));
         Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional: ", CompanionPages.TabIntro(tab)));
         // The page shows one sentence: the intro without what Off means (issue #995).

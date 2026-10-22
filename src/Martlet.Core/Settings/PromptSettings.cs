@@ -13,17 +13,28 @@ public sealed partial record PromptSettings : IContract
     public const int MaximumAggregateUtf8Bytes = 49_152;
 
     private readonly IReadOnlyDictionary<string, string> overrides = null!;
+    private readonly IReadOnlyDictionary<string, string>? moved;
 
     /// <summary>The edits by prompt ID. Edits saved by an older Martlet are upgraded as they are read
-    /// (<see cref="PromptEditRules.Upgrade"/>).</summary>
+    /// (<see cref="PromptEditRules.Upgrade"/>); edits of prompts that became skills go to <see cref="Moved"/>.</summary>
     public required IReadOnlyDictionary<string, string> Overrides
     {
         get => overrides;
-        init => overrides = PromptEditRules.Upgrade(value);
+        init => overrides = PromptEditRules.Upgrade(value, out moved);
     }
+
+    /// <summary>Edits an older Martlet saved for prompts that are built-in skills now (<see cref="SkillCatalog.MovedPrompts"/>), by
+    /// prompt ID, never saved again here: <see cref="SkillSettings.WithMovedPrompts"/> moves them to their skills.</summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, string>? Moved => moved;
 
     [JsonIgnore]
     public bool IsDefault => Overrides.Count == 0;
+
+    /// <summary>The user's skills (Companion › Skills) for the requests these prompts build, never saved here: settings.json keeps
+    /// them in their own section (<see cref="AppSettings.Skills"/>). Set it with <see cref="ForPersonal"/>.</summary>
+    [JsonIgnore]
+    public SkillSettings? Skills { get; init; }
 
     /// <summary>Companion › Replies › Personal content for these prompts, never saved: <see cref="Fill"/> fills {private} with
     /// the Personal content: private prompt while it is Private, else with Personal content: shared. Set it with
@@ -31,13 +42,17 @@ public sealed partial record PromptSettings : IContract
     [JsonIgnore]
     public PersonalContent Personal { get; init; }
 
-    /// <summary><paramref name="prompts"/> as a conversation uses them with <paramref name="generation"/>'s Personal content.
-    /// Null stays null while it is Private, so unedited prompts keep their usual shape.</summary>
-    public static PromptSettings? ForPersonal(PromptSettings? prompts, GenerationSettings? generation)
+    /// <summary><paramref name="prompts"/> as a conversation uses them with <paramref name="generation"/>'s Personal content and
+    /// the user's <paramref name="skills"/>. Null stays null while it is Private and no skill is edited, so unedited prompts keep
+    /// their usual shape.</summary>
+    public static PromptSettings? ForPersonal(PromptSettings? prompts, GenerationSettings? generation, SkillSettings? skills = null)
     {
         var personal = GenerationSettings.Personal(generation);
-        if (personal == PersonalContent.Private && prompts is null) return null;
-        return (prompts ?? new PromptSettings { Overrides = new Dictionary<string, string>(StringComparer.Ordinal) }) with { Personal = personal };
+        if (personal == PersonalContent.Private && prompts is null && skills is null) return null;
+        return (prompts ?? new PromptSettings { Overrides = new Dictionary<string, string>(StringComparer.Ordinal) }) with
+        {
+            Personal = personal, Skills = skills
+        };
     }
 
     /// <summary>What {private} says with <paramref name="settings"/> (empty when the owner emptied that prompt).</summary>
@@ -82,17 +97,19 @@ public sealed partial record PromptSettings : IContract
     }
 
     /// <summary>What closes the instructions of a reply to what the user typed or said, the same text every time, so the start
-    /// of every request stays the same and prompt caches keep it: the Keep the conversation going prompt, then the Short first
+    /// of every request stays the same and prompt caches keep it: the pinned skills (Companion › Skills,
+    /// <see cref="SkillSettings.Pinned"/>), then the Keep the conversation going prompt, then the Short first
     /// sentence prompt when the reply is <paramref name="spoken"/> and Companion › Replies › Short first sentence is on
     /// (<see cref="GenerationSettings.StartsShort"/>), then the Reply length prompt last, where models weigh it most. Null when
     /// none is sent. <paramref name="silent"/> is the word the model answers to stay quiet.</summary>
     public static string? ReplyClosing(PromptSettings? settings, GenerationSettings? generation, bool spoken, string silent)
     {
+        var pinned = SkillSettings.Pinned(settings, silent);
         var moves = Fill(settings, PromptCatalog.ConversationMoves);
         var first = spoken && GenerationSettings.StartsShort(generation)
             ? Fill(settings, PromptCatalog.ShortFirstSentence, ("silent", silent)) : null;
         var length = Fill(settings, PromptCatalog.ReplyLength);
-        var parts = new[] { moves, first, length }.Where(part => part is not null).ToArray();
+        var parts = new[] { pinned, moves, first, length }.Where(part => part is not null).ToArray();
         return parts.Length == 0 ? null : string.Join("\n\n", parts);
     }
 

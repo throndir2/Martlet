@@ -160,7 +160,7 @@ internal sealed class LiveConversationConfiguration
         companionNames = new(() => Martlet.Core.Speakers.CompanionNames.From(personas?.Select(p => p.Name), personas?.Select(p => p.Text)));
         Memory = settings.Memory;
         Generation = settings.Generation;
-        Prompts = PromptSettings.ForPersonal(settings.Prompts, settings.Generation);
+        Prompts = PromptSettings.ForPersonal(settings.Prompts, settings.Generation, settings.Skills);
         Fallback = settings.ThinkingFallback is { } fallback &&
             !fallback.Same(Routes.ThinkingRoute()) ? fallback : null;
         var thinking = Routes.ThinkingRoute();
@@ -179,6 +179,8 @@ internal sealed class LiveConversationConfiguration
                 MaxRequestTime = LocalOllamaTextLimits.MaxRequestTime
             };
         Context = ContextBudget.For(thinking, Generation, limits);
+        // A paired host's conversation model loads at least the saved size for every request this PC sends it (HostContextWindow).
+        HostContextWindow.UseSaved(Generation?.ContextTokens);
         // Every route takes the whole conversation that fits the context size. A paired host's gateway takes no tools and at
         // most OllamaInputBytes of text (an older host takes less, and HostTextClient leaves out what it can't take); every
         // other route takes the tools' own room on top.
@@ -514,7 +516,7 @@ internal sealed class LiveConversationConfiguration
         if (gaze is not null && (character?.Tags.Count ?? 0) + gaze.Tags.Count > ConversationRequest.MaximumCharacterTags) gaze = null;
         IReadOnlyList<string>? characterTags = gaze is null ? character?.Tags : [.. character?.Tags ?? [], .. gaze.Tags];
         // The instructions are joined from these parts (Join's rule), and the parts are kept so this PC can show each one.
-        var instructionParts = Parts(("Persona", persona), ("Tools prompt", tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools)),
+        var instructionParts = Parts(("Persona", persona), ("Tools prompt", tools is null ? null : SkillSettings.Guidance(Prompts, SkillCatalog.UsingTools)),
             ("Tool guidance", tools?.Guidance), ("Voice sounds and tones", voice ? VoiceTagInstructions() : null),
             ("Character emotes and motions", character?.Instructions), ("Instructions for this kind of reply", extraInstructions),
             ("Where the character looks", gaze?.Instructions), ("Closing instructions", closingInstructions));

@@ -204,7 +204,9 @@ Docker host's name, or on Docker Desktop, which names its engine
 on (`linux`) and its architecture (`x64` or `arm64`), CPU and thread count,
 memory, container runtime, whether containers can use NVIDIA GPUs, the newest
 CUDA version the NVIDIA driver supports, and each GPU (name, vendor, memory,
-driver, and for NVIDIA its power limit, default limit and persistence mode). Natively it reads `nvidia-smi`, `/proc` and
+driver, and for NVIDIA its power limit, default limit, persistence mode and
+UUID, which is how `gpus.json` and the routes name the card, so a desktop knows
+the memory of the card each route runs on). Natively it reads `nvidia-smi`, `/proc` and
 sysfs (AMD GPUs with 2 GiB+ of VRAM); with Docker it asks the Docker host
 (`docker info`) and runs `nvidia-smi` in a throwaway `--gpus all` container, so
 Docker Desktop reports its WSL 2 VM's memory. The gateway serves it read-only

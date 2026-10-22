@@ -295,6 +295,7 @@ public partial class MainWindow
             case CompanionTab.Touch: TouchPage.Render(body); break;
             case CompanionTab.Personality: PersonalityPage.Render(body); break;
             case CompanionTab.Prompts: PromptsPage.Render(body); break;
+            case CompanionTab.Skills: SkillsPage.Render(body); break;
             case CompanionTab.Lorebook: LorebookPage.Render(body); break;
             case CompanionTab.AppGuides: AppGuidesPage.Render(body); break;
             case CompanionTab.Memory: MemoryPage.Render(body); break;

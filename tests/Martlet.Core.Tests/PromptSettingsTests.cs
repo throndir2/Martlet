@@ -108,32 +108,38 @@ public sealed class PromptSettingsTests
         var length = PromptSettings.Fill(null, PromptCatalog.ReplyLength)!;
         var first = PromptSettings.Fill(null, PromptCatalog.ShortFirstSentence, ("silent", "pass"))!;
         var moves = PromptSettings.Fill(null, PromptCatalog.ConversationMoves)!;
+        // The pinned skills (Look into it, built in) open the closing of every reply.
+        var pinned = SkillSettings.Pinned(null, "pass")!;
         Assert.Contains("short first sentence", first);
         Assert.EndsWith("write only [pass].", first);
         Assert.Contains("callback to something said earlier", moves);
         // On by default: a spoken reply's instructions close with Keep the conversation going, Short first sentence, then reply
         // length last.
         var spoken = PromptSettings.ReplyClosing(null, null, spoken: true, "pass");
-        Assert.Equal(moves + "\n\n" + first + "\n\n" + length, spoken);
+        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + first + "\n\n" + length, spoken);
         Assert.True(GenerationSettings.StartsShort(null));
         // The same text whatever else the reply settings say, so the start of every request stays the same.
         Assert.Equal(spoken, PromptSettings.ReplyClosing(null, new() { Temperature = 0.4, Reasoning = true }, true, "pass"));
         // A reply that isn't spoken, the setting turned off, or the prompt emptied: without the short first sentence, as before.
-        Assert.Equal(moves + "\n\n" + length, PromptSettings.ReplyClosing(null, null, spoken: false, "pass"));
-        Assert.Equal(moves + "\n\n" + length, PromptSettings.ReplyClosing(null, new() { ShortFirstSentence = false }, true, "pass"));
+        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + length, PromptSettings.ReplyClosing(null, null, spoken: false, "pass"));
+        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + length, PromptSettings.ReplyClosing(null, new() { ShortFirstSentence = false }, true, "pass"));
         var emptied = PromptSettings.Normalize(new Dictionary<string, string> { [PromptCatalog.ShortFirstSentence] = "" });
         emptied!.Validate();
-        Assert.Equal(moves + "\n\n" + length, PromptSettings.ReplyClosing(emptied, null, true, "pass"));
+        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + length, PromptSettings.ReplyClosing(emptied, null, true, "pass"));
         var noMoves = PromptSettings.Normalize(new Dictionary<string, string> { [PromptCatalog.ConversationMoves] = "" });
-        Assert.Equal(first + "\n\n" + length, PromptSettings.ReplyClosing(noMoves, null, true, "pass"));
+        Assert.Equal(pinned + "\n\n" + first + "\n\n" + length, PromptSettings.ReplyClosing(noMoves, null, true, "pass"));
         // An edit is sent as written, and the others emptied leave it closing alone.
         var edited = PromptSettings.Normalize(new Dictionary<string, string>
         {
             [PromptCatalog.ShortFirstSentence] = "Start short. Quiet is [{silent}].", [PromptCatalog.ReplyLength] = "",
             [PromptCatalog.ConversationMoves] = ""
         });
-        Assert.Equal("Start short. Quiet is [pass].", PromptSettings.ReplyClosing(edited, null, true, "pass"));
-        Assert.Null(PromptSettings.ReplyClosing(edited, new() { ShortFirstSentence = false }, true, "pass"));
+        Assert.Equal(pinned + "\n\nStart short. Quiet is [pass].", PromptSettings.ReplyClosing(edited, null, true, "pass"));
+        Assert.Equal(pinned, PromptSettings.ReplyClosing(edited, new() { ShortFirstSentence = false }, true, "pass"));
+        // With the pinned skill emptied too, nothing closes it.
+        var noSkills = PromptSettings.ForPersonal(edited, null,
+            new SkillSettings { Skills = [SkillSettings.Find(null, SkillCatalog.LookIntoIt)! with { Body = "" }] });
+        Assert.Null(PromptSettings.ReplyClosing(noSkills, new() { ShortFirstSentence = false }, true, "pass"));
     }
 
     [Fact]

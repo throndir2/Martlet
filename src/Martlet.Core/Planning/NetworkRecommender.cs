@@ -84,6 +84,10 @@ public static partial class NetworkRecommender
     /// <summary>The purpose of the Voice recognition role the recommender places for People.</summary>
     private const string PeoplePlace = "people";
     private const double Epsilon = 1e-6;
+    /// <summary>Why each language model gets a graphics card of its own, in plain words (rule 1).</summary>
+    internal const string ModelPerCardReason = "two language models on one card share its compute (its tensor cores), so both answer slower";
+    /// <summary>Why the voice keeps a card of its own, in plain words (rule 3).</summary>
+    internal const string VoiceCardReason = "the first spoken word (time to first audio) comes sooner when nothing else works on the voice's card";
 
     /// <summary>The recommended setup for <paramref name="request"/>'s computers and the changes that get there from today's, with
     /// each job's clearly better choice (<see cref="NetworkRecommendation.Suggestions"/>).</summary>

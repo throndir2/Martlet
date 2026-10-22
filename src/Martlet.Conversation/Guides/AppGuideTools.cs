@@ -90,7 +90,7 @@ public static partial class AppGuideTools
     public static IReadOnlyList<TextToolDefinition> Definitions { get; } = [ReadUpDefinition, SearchDefinition, SkipDefinition, BriefDefinition];
 
     /// <summary>The prompt added to a reply's instructions while the tools are offered (Companion › Prompts › App guides).</summary>
-    public static string? Instructions(PromptSettings? prompts) => PromptSettings.Fill(prompts, PromptCatalog.AppGuides);
+    public static string? Instructions(PromptSettings? prompts) => SkillSettings.Guidance(prompts, SkillCatalog.AppGuides);
 
     public static (ReadUpArguments? Arguments, string? Problem) ParseReadUp(string argumentsJson)
     {

@@ -56,10 +56,20 @@ internal sealed class DeepThinkTarget
             var host = new HostTextTarget(settings.HostOrigin!, settings.HostId!, settings.HostSpkiFingerprint!, settings.HostDeviceId!,
                 settings.HostCredentialId!.Value, settings.HostRoute) { Background = true, Pooled = pooled };
             var bounds = ThinkLonger.HostBounds(effort);
+            // A member on the host's conversation model gets that model's one window (HostTextClient sends it), so its input
+            // fits the window less the output instead of the Thinking pool's own 32,768 tokens.
+            var window = HostContextTokens;
+            if (settings.HostRoute == SelfHostSetup.OllamaRouteId &&
+                limits?.Find(settings.HostOrigin, settings.ModelId)?.ContextTokens is { } planned)
+            {
+                window = HostContextWindow.Window(planned, null);
+                var output = Math.Min(ThinkLonger.OutputTokens(effort), window / 2);
+                bounds = bounds with { MaxInputTokens = Math.Min(bounds.MaxInputTokens, window - output) };
+            }
             var hostLimits = LiveConversationConfiguration.ChatTextLimits with
             {
                 MaxInputBytes = bounds.MaxInputBytes, MaxHistoryMessages = bounds.MaxHistoryMessages,
-                MaxInputTokens = bounds.MaxInputTokens, MaxContextTokens = HostContextTokens
+                MaxInputTokens = bounds.MaxInputTokens, MaxContextTokens = window
             };
             return new(settings, new(SelfHostSetup.GatewayOllamaAlias, settings.ModelId!), null, host, hostLimits, bounds);
         }

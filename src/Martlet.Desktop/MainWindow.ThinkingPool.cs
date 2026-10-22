@@ -8,7 +8,7 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>What MainWindow keeps for the Thinking pool. The page itself (Companion › Thinking pool) is
+/// <summary>What MainWindow keeps for the Thinking pool. The page itself (Companion › Background thinking) is
 /// <see cref="ThinkingPoolPage"/> in Pages\ThinkingPool; MainWindow gives it its services here (<see cref="IThinkingPoolPageServices"/>,
 /// at the end of this file). Also here: a paired computer joins the pool by itself when a check sees it answer
 /// (<see cref="NoteThinkingPoolHost"/>), the Thinking pool's cloud providers, and research reports opened in the browser.</summary>
@@ -16,7 +16,7 @@ public partial class MainWindow : IThinkingPoolPageServices
 {
     private ThinkingPoolPage? thinkingPoolPage;
 
-    /// <summary>Companion › Thinking pool. One page for the window's life: it keeps its last check of a local model's fit.</summary>
+    /// <summary>Companion › Background thinking. One page for the window's life: it keeps its last check of a local model's fit.</summary>
     private ThinkingPoolPage ThinkingPoolPage => thinkingPoolPage ??= new(this);
 
     /// <summary>The Thinking pool's online providers, each with the smartest free model the model catalog names there (a few

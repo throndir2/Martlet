@@ -26,7 +26,7 @@ public sealed record ThinkingDemand(ThinkingJobKind Kind, int Priority, bool Kee
         new(kind, (int)(priority ?? ThinkingJobKinds.Priority(kind)), !ThinkingJobKinds.IsFast(kind), pool);
 }
 
-/// <summary>How the Thinking pool's line treats priority and failures (Companion › Thinking pool, from
+/// <summary>How the Thinking pool's line treats priority and failures (Companion › Background thinking, from
 /// <see cref="ThinkingPoolSettings"/>). <see cref="PreemptLowerPriority"/>: a job that finds no free slot stops a running job of
 /// lower priority; the stopped job keeps its priority and waits at the front of the line for it. After every
 /// <see cref="RaiseAfterStops"/> such stops, the stopped job's priority goes up by one. <see cref="Retries"/>: how many more
@@ -164,7 +164,7 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     public static ThinkingJobResult NoConsent(ThinkingCapability needs, IReadOnlyList<BackgroundPlace> members) =>
         new(ThinkingJobOutcome.NoMember, null, null, null,
             $"{ThinkingPoolMedia.Names(members.Select(m => m.Name))} may not receive pictures and recordings, and no other member can do " +
-            $"{Describe(needs)}. Tick May receive pictures and recordings on Companion › Thinking pool to allow it", 0);
+            $"{Describe(needs)}. Tick May receive pictures and recordings on Companion › Background thinking to allow it", 0);
 
     public static string Describe(ThinkingCapability needs) => string.Join(" and ", new[]
     {
@@ -333,7 +333,7 @@ public sealed class ThinkingJobBoard
     /// <summary>The line's rules (read on each job and each try, so a settings change takes effect at once).</summary>
     public Func<ThinkingPoolPolicy> Policy { get; set; } = () => ThinkingPoolPolicy.Off;
 
-    /// <summary>Where each kind of job runs (Companion › Thinking pool, Runs on; read on each job, so a settings change takes effect
+    /// <summary>Where each kind of job runs (Companion › Background thinking, Runs on; read on each job, so a settings change takes effect
     /// at once). A job's own <see cref="ThinkingJob.RunsOn"/> comes first. Default: any member.</summary>
     public Func<ThinkingJobKind, ThinkingRunsOn> RunsOn { get; set; } = _ => ThinkingRunsOn.Any;
 
@@ -782,7 +782,7 @@ public sealed class ThinkingJobBoard
         if (lost.Length > 0)
             notes.Add($"No member may receive {string.Join(" or ", lost)}: {ThinkingPoolMedia.Names(withheld.Select(m => m.Name))} " +
                 $"{(withheld.Select(m => m.Name).Distinct().Count() == 1 ? "is" : "are")} outside this PC and your paired computers, so jobs with " +
-                "a screenshot or a recording use their simple rules. Tick May receive pictures and recordings on Companion › Thinking pool to allow it.");
+                "a screenshot or a recording use their simple rules. Tick May receive pictures and recordings on Companion › Background thinking to allow it.");
         return notes;
     }
 

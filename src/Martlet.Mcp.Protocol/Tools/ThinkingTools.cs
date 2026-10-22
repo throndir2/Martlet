@@ -351,7 +351,9 @@ internal sealed partial class McpServer
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget), " +
             "and how much room a screen glance has (look: the persona's and the picture's estimated tokens, the room left for " +
             "Martlet's instructions, message and notes, what a look leaves out when it doesn't fit, and a problem when the picture " +
-            "and the persona alone don't fit). " +
+            "and the persona alone don't fit), and a paired host's conversation window (hostWindow: the window planned from its " +
+            "graphics card, the window loaded now and how much each reply sends, plus the production ContextWindowPlan on fixture " +
+            "cards showing a bigger window sends the same tokens per reply). " +
             "Then rehearses the production model-limit check (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like " +
             "OpenRouter, vLLM, Groq, llama.cpp and Ollama (NOT the real services; a fixture key goes only to its own base URL and " +
             "redirects aren't followed) and the production history fit of a 1,000-exchange synthetic conversation into a cloud " +
@@ -438,7 +440,7 @@ internal sealed partial class McpServer
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         },
             async (arguments, cancellation) => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation)),
-        Tool("thinking_pool_status", "Companion > Thinking pool from a data directory: thinking-pool.json (or what Martlet would make " +
+        Tool("thinking_pool_status", "Companion > Background thinking from a data directory: thinking-pool.json (or what Martlet would make " +
             "from the older deep-thinking.json, without writing it): each member (a paired computer's Thinking pool role or Ollama, " +
             "a model in Ollama on this PC or an OpenAI-compatible endpoint; never a key) with its slots, whether it sees pictures " +
             "or hears recordings, whether it can run and why, and its Quick jobs and Long jobs boxes; the machines the owner turned " +
@@ -557,7 +559,7 @@ internal sealed partial class McpServer
         },
             async (arguments, cancellation) => await AudioModelCheck.RunAsync(OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments),
                 cancellation)),
-        Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Thinking pool, a hedged request: when the " +
+        Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Background thinking, a hedged request: when the " +
             "conversation's Thinking model has no first words after the delay, the same request also goes to a pool member that " +
             "may answer for the conversation, and whichever starts first gives the reply) with the production race in " +
             "ConversationTurn, ConversationRuntime.OpenTextAsync and the production member choice (ThinkingBackupMembers) on " +

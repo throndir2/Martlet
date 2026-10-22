@@ -143,7 +143,7 @@ public static class ThinkLonger
 
     /// <summary>The prompt added to a reply's instructions while think_longer is offered.</summary>
     public static string? Instructions(ThinkLongerSettings settings, PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.ThinkLonger);
+        SkillSettings.Guidance(prompts, SkillCatalog.ThinkingLonger);
 
     /// <summary>The task and reason a call passed, or what was wrong with it, in words for the model.</summary>
     public static (string? Task, string? Reason, string? Problem) Parse(string argumentsJson)
@@ -206,7 +206,7 @@ public static class ThinkLonger
     };
 
     public const string TurnedOff =
-        "Not started: the user turned Deep thinking off (Companion › Deep thinking). Answer as well as you can right away instead.";
+        "Not started: the user turned Thinking longer off (Companion › Background thinking). Answer as well as you can right away instead.";
 
     /// <summary>What the model is told when Deep thinking can't run where it is set to think (<see cref="DeepThinkingPlan"/>).</summary>
     public static string Unavailable(string why) =>

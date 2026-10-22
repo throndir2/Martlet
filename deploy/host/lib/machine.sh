@@ -250,15 +250,18 @@ print_feature_summary() {
 }
 
 # Prints one JSON object per NVIDIA GPU from nvidia-smi CSV lines "name, memory MiB, driver, persistence, power limit W,
-# default power limit W" (the last three are what martlet-prepare's gpu-power sets).
+# default power limit W, uuid" (power is what martlet-prepare's gpu-power sets; the uuid is how gpus.json and the routes name
+# the card, so desktops know each route's card memory).
 nvidia_gpus_json() {
-  local name memory driver persistence limit standard flag
-  while IFS=, read -r name memory driver persistence limit standard; do
+  local name memory driver persistence limit standard uuid flag
+  while IFS=, read -r name memory driver persistence limit standard uuid; do
     [[ -n "${name// /}" ]] || continue
     memory="${memory// /}"; driver="${driver# }"; persistence="${persistence// /}"; limit="${limit// /}"; standard="${standard// /}"
+    uuid="${uuid// /}"; [[ "${uuid}" =~ ^GPU-[A-Za-z0-9-]{1,64}$ ]] || uuid=""
     case "${persistence}" in Enabled) flag=true ;; Disabled) flag=false ;; *) flag=null ;; esac
-    printf '{"name":%s,"vendor":"nvidia","memory_mb":%s,"driver":%s,"persistence":%s,"power_limit_w":%s,"power_default_w":%s}\n' \
-      "$(json_text "${name}")" "$(json_num "${memory%%.*}")" "$(json_opt "${driver}")" "${flag}" "$(json_num "${limit}")" "$(json_num "${standard}")"
+    printf '{"name":%s,"vendor":"nvidia","memory_mb":%s,"driver":%s,"persistence":%s,"power_limit_w":%s,"power_default_w":%s,"uuid":%s}\n' \
+      "$(json_text "${name}")" "$(json_num "${memory%%.*}")" "$(json_opt "${driver}")" "${flag}" "$(json_num "${limit}")" "$(json_num "${standard}")" \
+      "$(json_opt "${uuid}")"
   done
 }
 
@@ -318,7 +321,7 @@ downloads_json() {
 
 collect_machine() {
   local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" cuda="" arch="" gpus=() features=() line
-  local query=(--query-gpu=name,memory.total,driver_version,persistence_mode,power.limit,power.default_limit --format=csv,noheader,nounits)
+  local query=(--query-gpu=name,memory.total,driver_version,persistence_mode,power.limit,power.default_limit,uuid --format=csv,noheader,nounits)
   local cuda_pattern='CUDA Version: *[0-9]+(\.[0-9]+)+'
   cpu="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- || true)"
   if [[ "${MODE}" == docker ]]; then
