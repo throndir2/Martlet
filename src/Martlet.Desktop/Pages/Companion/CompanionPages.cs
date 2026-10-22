@@ -76,14 +76,14 @@ internal static class CompanionPages
             .Select(t => t.tab)
     ];
 
-    /// <summary>The pages a regular user needs, in the main flow's order: where Martlet runs (Thinking, Listening, Voice), who it
-    /// is (Profiles, Personality, Memory), how it looks (Character) and how it answers (Replies). Every other page is advanced and
-    /// shows only with Show advanced settings on (<see cref="Martlet.Core.Settings.AdvancedSettingsFile"/>), also a page added
-    /// later.</summary>
+    /// <summary>The pages a regular user needs, in the main flow's order: where Martlet runs (Thinking, Listening, Voice, and
+    /// Background thinking for a spare graphics card or a cloud provider), who it is (Profiles, Personality, Memory), how it looks
+    /// (Character) and how it answers (Replies). Every other page is advanced and shows only with Show advanced settings on
+    /// (<see cref="Martlet.Core.Settings.AdvancedSettingsFile"/>), also a page added later.</summary>
     internal static readonly IReadOnlySet<CompanionTab> Essentials = new HashSet<CompanionTab>
     {
-        CompanionTab.Thinking, CompanionTab.Listening, CompanionTab.Voice, CompanionTab.Profiles, CompanionTab.Personality,
-        CompanionTab.Memory, CompanionTab.Character, CompanionTab.Replies
+        CompanionTab.Thinking, CompanionTab.Listening, CompanionTab.Voice, CompanionTab.DeepThinking, CompanionTab.Profiles,
+        CompanionTab.Personality, CompanionTab.Memory, CompanionTab.Character, CompanionTab.Replies
     };
 
     /// <summary>Whether a page shows only with Show advanced settings on.</summary>

@@ -638,9 +638,10 @@ window ends it unless Martlet is listening or watching, which only hides it.
   <a id="essentials-and-advanced"></a>**Essentials and advanced.** With Show
   advanced settings off, the side list shows only the pages a regular user
   needs (`CompanionPages.Essentials`): *Thinking*, *Listening* and *Voice* (How
-  it works), *Profiles*, *Personality* and *Memory* (Who it is), *Character*
-  (How it looks) and *Replies* (What it does). Every other page, also a page
-  added later, is advanced: *Lip-sync*, all of *Optional extras*, *Prompts*, *Skills*,
+  it works), *Background thinking* (Optional extras, for a spare graphics card
+  or a cloud provider), *Profiles*, *Personality* and *Memory* (Who it is),
+  *Character* (How it looks) and *Replies* (What it does). Every other page,
+  also a page added later, is advanced: *Lip-sync*, the other *Optional extras*, *Prompts*, *Skills*,
   *Lorebook*, *App guides*, *People*, *Speech bubbles*, *Emotes and motions*,
   *Eyes*, *Touch*, *Check-ins*, *Tools*, *Discord* and *Messaging*. The groups
   keep their order, and a group with no page shown is hidden. The list ends
