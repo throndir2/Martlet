@@ -47,6 +47,7 @@ internal static class ContextCheck
                 described = budget.Describe()
             },
             look = budget is null ? null : Look(budget, thinking!, loaded.Settings?.Companion?.ActivePersona?.Text),
+            hostWindow = HostWindow(thinking, generation, limits, dataDirectory),
             probe = await ProbeAsync(cancellation),
             fit = Fit(),
             cache = await CacheAsync(cancellation)
@@ -264,6 +265,73 @@ internal static class ContextCheck
                 "said lately, then the look tags, then the character's emotes and motions (docs/SCREEN_COMMENTARY.md).",
             problem = room <= 0 ? "The picture and the persona alone don't fit: vision stops. Shorten the persona, or raise " +
                 "Companion > Replies > Context size." : null
+        };
+    }
+
+    /// <summary>A paired host's conversation window (ContextWindowPlan): for the saved Thinking route on a host, the window planned
+    /// from its graphics card (model-limits.json), the window its Ollama has loaded (model-memory.json, from the host's machine
+    /// report) and what each reply sends; then a rehearsal of the production plan and budget on fixture cards (NOT real hardware)
+    /// that shows a bigger window never makes a reply send more (the same exchanges and estimated tokens before and after).</summary>
+    private static object HostWindow(SetupRoute? thinking, GenerationSettings? generation, ModelLimits limits, string dataDirectory)
+    {
+        object? saved = null;
+        if (thinking is { RouteType: SetupRouteType.GatewayOllama })
+        {
+            var planned = limits.Find(thinking.Origin, thinking.ModelId);
+            var measured = Martlet.Core.Planning.MeasuredFirstWords.HostKey(thinking.Origin) is { } key
+                ? Martlet.Core.Planning.MeasuredModelMemory.Load(dataDirectory).Find(key, thinking.ModelId) : null;
+            var budget = ContextBudget.For(thinking, generation, limits);
+            saved = new
+            {
+                model = thinking.ModelId, plannedTokens = planned?.ContextTokens, planned = planned?.Source,
+                loadedTokens = measured?.ContextTokens, windowTokens = budget.Tokens, inputTokensPerReply = budget.InputTokens,
+                source = budget.Source.ToString()
+            };
+        }
+        var history = new List<TextHistoryMessage>();
+        for (var i = 0; i < 200; i++)
+        {
+            history.Add(new(TextHistoryRole.User, $"Exchange {i}: " + new string('u', 400)));
+            history.Add(new(TextHistoryRole.Assistant, $"Reply {i}: " + new string('a', 480)));
+        }
+        var prompt = new BoundedTextInput("And what about now?", "You are Martlet, a friendly companion. " + new string('p', 2_000));
+        (int Exchanges, int Tokens) Sent(ContextBudget budget)
+        {
+            var first = BoundedTextInput.HistoryStart(prompt, history, SelfHostSetup.OllamaInputBytes, budget.InputTokens, budget.InputTokens,
+                BoundedTextInput.HardMaxHistoryMessages) ?? history.Count;
+            return ((history.Count - first) / 2, new BoundedTextInput(prompt.UserText, prompt.Personality, history.Skip(first).ToArray()).InputTokenReservation);
+        }
+        var before = ContextBudget.For(SetupRouteType.GatewayOllama, null, null, null);
+        var sentBefore = Sent(before);
+        object Card(string name, string model, double modelGb, double cardGb, (string, double)[] others, int expected)
+        {
+            var plan = Martlet.Core.Planning.ContextWindowPlan.Fit(model, modelGb, cardGb, others, cardName: name);
+            var after = ContextBudget.For(SetupRouteType.GatewayOllama, null, null, plan.Tokens);
+            var sentAfter = Sent(after);
+            return new
+            {
+                card = name, model, plan.Tokens, extraGb = Math.Round(plan.ExtraGb, 2), plan.Why, inputTokensPerReply = after.InputTokens,
+                exchangesSent = sentAfter.Exchanges, estimatedTokens = sentAfter.Tokens,
+                // The text and the reply's room fit the window, so Ollama never cuts the start (the persona and rules) off.
+                textAndReplyFit = after.InputTokens + after.ReplyTokens <= after.Tokens,
+                ok = plan.Tokens == expected && after.InputTokens == before.InputTokens && sentAfter == sentBefore
+            };
+        }
+        var cards = new[]
+        {
+            Card("the RTX 3090 (fixture)", "gemma4:12b", 9.0, 24, [], GenerationSettings.PlannedContextTokens),
+            Card("the RTX 3080 (fixture)", "gemma4:12b", 9.0, 10, [], GenerationSettings.DefaultHostContextTokens),
+            Card("the RTX 3060 (fixture)", "gemma4:e4b", 4.9, 12, [("a 4 GB voice", 4.0)], GenerationSettings.PlannedContextTokens)
+        };
+        return new
+        {
+            saved,
+            before = new
+            {
+                before.Tokens, inputTokensPerReply = before.InputTokens, before.ReplyTokens, exchangesSent = sentBefore.Exchanges,
+                estimatedTokens = sentBefore.Tokens, textAndReplyFit = before.InputTokens + before.ReplyTokens <= before.Tokens
+            },
+            cards, ok = cards.All(Ok)
         };
     }
 

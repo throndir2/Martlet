@@ -179,15 +179,23 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The Replies page's context line: the size Martlet uses, where it comes from and what's known of the model's own.</summary>
-    internal static string ContextStatus(SetupRoute route, GenerationSettings? saved, ModelLimits limits, string place)
+    /// <summary>The Replies page's context line: the size Martlet uses, where it comes from and what's known of the model's own.
+    /// For a paired host, <paramref name="loaded"/> is the window its Ollama has loaded now (its machine report).</summary>
+    internal static string ContextStatus(SetupRoute route, GenerationSettings? saved, ModelLimits limits, string place, int? loaded = null)
     {
         var budget = ContextBudget.For(route, saved, limits);
         var found = limits.Find(route.Origin, route.ModelId);
         var model = route.ModelId;
         var uses = $"Martlet uses {budget.Describe()}";
         if (route.RouteType == SetupRouteType.GatewayOllama)
-            return $"{uses}; {place} loads it, up to {GenerationSettings.MaximumHostContextTokens:N0}.";
+        {
+            var why = found?.Source is { } source && source.StartsWith(HostContextWindow.SourcePrefix, StringComparison.Ordinal)
+                ? source[HostContextWindow.SourcePrefix.Length..] : "Martlet plans it from the host's graphics card at the next reply";
+            return $"{uses}; {place} loads this window for every request ({why})" +
+                (loaded is { } now ? $"; it has {now:N0} tokens loaded now" : "") +
+                $". Each reply sends at most about {budget.InputTokens:N0} tokens, so a bigger window doesn't make replies start later" +
+                (saved?.ContextTokens is null ? "; set a context size to send more of the conversation (each reply then reads more)." : ".");
+        }
         var most = found?.ModelMaximum is { } maximum ? $"; the model holds up to {maximum:N0}" : "";
         if (IsLocalOllama(route))
             return found?.ContextTokens is { } given

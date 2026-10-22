@@ -428,7 +428,7 @@ internal static partial class AutomationPolicy
         new("AppCurrentVersion", "Settings › App updates", "Shows the version of Martlet that runs now."),
         new("InstallAppUpdate", "Settings › App updates", "Shows the Install button's words, such as 'Install x.y.z now' or 'Restart into x.y.z'. Clicking it installs or restarts, so it needs --allow-ui-effects."),
         new("OwnHostUpdateStatus", "Settings › App updates", "Shows, when this PC runs a host service, whether it follows the app's version: current, updating, busy, stopped, not running or why not. Versions and fixed text only."),
-        new("RepliesContextStatus", "Companion › Replies", "Shows the context size replies use, where it comes from (the setting, a default, the model's limit or Ollama) and what Martlet knows of the model's limit."),
+        new("RepliesContextStatus", "Companion › Replies", "Shows the context size replies use, where it comes from (the setting, a default, the model's limit, Ollama or, on a paired host, the window planned from its graphics card and the window loaded now) and how much each reply sends."),
         // Needs --allow-ui-effects: RepliesCheckContext (Check model limit asks the Thinking model's server).
         new("RepliesMaxReplyTokensRange", "Companion › Replies", "Shows the allowed range and blank value of Max reply length, such as '16-32768 tokens, blank = 4096'."),
         new("RepliesContextTokensRange", "Companion › Replies", "Shows the allowed range and blank value of the paired host's context size."),

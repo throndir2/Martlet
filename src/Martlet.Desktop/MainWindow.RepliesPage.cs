@@ -9,7 +9,12 @@ public partial class MainWindow : IRepliesPageServices
     AppSettings? IRepliesPageServices.Settings => homeSettings;
     string IRepliesPageServices.PlaceName(SetupRoute route) => PlaceName(route);
     string IRepliesPageServices.ContextStatus(SetupRoute route, string place) =>
-        ContextStatus(route, homeSettings?.Generation, SavedModelLimits(), place);
+        ContextStatus(route, homeSettings?.Generation, SavedModelLimits(), place, LoadedWindow(route));
+
+    // The window a paired host's Ollama has loaded for the route's model now, from its last machine report (model-memory.json).
+    private int? LoadedWindow(SetupRoute route) =>
+        route.RouteType == SetupRouteType.GatewayOllama && Martlet.Core.Planning.MeasuredFirstWords.HostKey(route.Origin) is { } host
+            ? Martlet.Core.Planning.MeasuredModelMemory.Load(store?.DataDirectory).Find(host, route.ModelId)?.ContextTokens : null;
 
     void IRepliesPageServices.OpenCompanion(CompanionTab tab) => OpenCompanion(tab);
     void IRepliesPageServices.UseAutoSave(AutoSave autoSave) => tabAutoSave = autoSave;

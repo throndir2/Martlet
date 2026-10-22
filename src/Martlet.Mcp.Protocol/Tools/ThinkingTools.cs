@@ -351,7 +351,9 @@ internal sealed partial class McpServer
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget), " +
             "and how much room a screen glance has (look: the persona's and the picture's estimated tokens, the room left for " +
             "Martlet's instructions, message and notes, what a look leaves out when it doesn't fit, and a problem when the picture " +
-            "and the persona alone don't fit). " +
+            "and the persona alone don't fit), and a paired host's conversation window (hostWindow: the window planned from its " +
+            "graphics card, the window loaded now and how much each reply sends, plus the production ContextWindowPlan on fixture " +
+            "cards showing a bigger window sends the same tokens per reply). " +
             "Then rehearses the production model-limit check (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like " +
             "OpenRouter, vLLM, Groq, llama.cpp and Ollama (NOT the real services; a fixture key goes only to its own base URL and " +
             "redirects aren't followed) and the production history fit of a 1,000-exchange synthetic conversation into a cloud " +

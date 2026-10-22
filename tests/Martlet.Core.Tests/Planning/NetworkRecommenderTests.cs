@@ -73,6 +73,9 @@ public sealed class NetworkRecommenderTests
         Assert.True(recommendation.WorthAsking);
         Assert.Contains(recommendation.Changes, c => c.Kind == SetupChangeKind.AddRole && c.RoleKind == NetworkRecommender.DeepThinkingRole &&
             c.Summary.Contains("joins the Thinking pool by itself", StringComparison.Ordinal));
+        // Thinking's card says the context window planned from its free memory, and that a reply sends no more than before.
+        Assert.Contains(recommendation.Notes, n => n.StartsWith($"Thinking's context window on {thinking.HostId}'s", StringComparison.Ordinal) &&
+            n.Contains("32,768 tokens", StringComparison.Ordinal) && n.Contains("doesn't make replies start later", StringComparison.Ordinal));
     }
 
     [Fact]

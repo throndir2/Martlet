@@ -1472,10 +1472,13 @@ its detail: the change list (kind, computer, benefit, summary and why), the
 target roles, jobs, pools, Thinking pool and notes. The steps are: two
 companion PCs and two hosts with nothing set up (companion PCs run no host
 roles; Thinking gets Gemma 4 E2B on a card of its own; one more voice for the
-second companion PC; no Thinking pool change); a host with
-two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own); a
+second companion PC; no Thinking pool change; a note says the context window
+planned for Thinking's card, 32,768 tokens there, and that a reply still sends
+no more than before, `ctx`); a host with
+two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own, and
+the reason says two language models on one card share its tensor cores); a
 Windows host whose voice shares its card (the voice moves to a card of its
-own); a crowded network (no card over its capacity); Deep thinking beside the
+own, and the reason names the time to first audio); a crowded network (no card over its capacity); Deep thinking beside the
 voice (it moves to the card no live job uses); a companion PC that runs
 Singing and a Listening pool place while both hosts are gone for 155 minutes
 (needed jobs first: with no provider key, Thinking runs on its own card and the

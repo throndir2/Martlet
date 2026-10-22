@@ -156,6 +156,28 @@ public sealed class GenerationSettingsTests
     }
 
     [Fact]
+    public void A_hosts_planned_window_is_room_and_never_more_input_per_reply()
+    {
+        // Before any plan: the old 8,192-token window and 6,144 tokens of text per reply.
+        var before = ContextBudget.For(SetupRouteType.GatewayOllama, null, null, null);
+        Assert.Equal((8_192, ContextSource.HostDefault, 6_144), (before.Tokens, before.Source, before.InputTokens));
+        // Planned from the card: the window grows, each reply sends the same text, and the reply keeps its room.
+        var planned = ContextBudget.For(SetupRouteType.GatewayOllama, null, null, 32_768);
+        Assert.Equal((32_768, ContextSource.Planned), (planned.Tokens, planned.Source));
+        Assert.Equal(before.InputTokens, planned.InputTokens);
+        Assert.Equal(GenerationSettings.ChatReplyTokens, planned.ReplyTokens);
+        Assert.True(planned.InputTokens + planned.ReplyTokens <= planned.Tokens);
+        Assert.Contains("planned from the graphics card's free memory", planned.Describe(), StringComparison.Ordinal);
+        // A saved size still says how much each reply sends; the window loaded is the larger one.
+        var small = ContextBudget.For(SetupRouteType.GatewayOllama, null, new() { ContextTokens = 16_384 }, 32_768);
+        Assert.Equal((32_768, ContextSource.Saved, 16_384 - 4_096), (small.Tokens, small.Source, small.InputTokens));
+        var large = ContextBudget.For(SetupRouteType.GatewayOllama, null, new() { ContextTokens = 65_536 }, 32_768);
+        Assert.Equal((65_536, 65_536 - 4_096), (large.Tokens, large.InputTokens));
+        // A planned window below Martlet's usual one never shrinks it.
+        Assert.Equal(8_192, ContextBudget.For(SetupRouteType.GatewayOllama, null, null, 4_096).Tokens);
+    }
+
+    [Fact]
     public void Model_limits_keep_one_entry_per_model_newest_first()
     {
         var directory = Path.Combine(Path.GetTempPath(), "martlet-model-limits-" + Guid.NewGuid().ToString("N"));

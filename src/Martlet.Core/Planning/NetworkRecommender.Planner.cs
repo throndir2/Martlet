@@ -621,7 +621,7 @@ public static partial class NetworkRecommender
                         role.Why = problem switch
                         {
                             Problem.NoRoom => $"{CardText(node, own)} has no room left for it.",
-                            Problem.SharesModel => "One language model per graphics card: each gets a card of its own, so neither waits for the other.",
+                            Problem.SharesModel => $"One language model per graphics card: {ModelPerCardReason}, so each gets a card of its own.",
                             _ => $"{CardText(node, card)} keeps it apart from the voice and the conversation."
                         };
                     }

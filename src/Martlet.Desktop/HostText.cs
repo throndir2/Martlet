@@ -170,6 +170,14 @@ internal sealed class HostTextClient : IHostTextClient
         // The host takes a request for at most its route's longest job; a think (no time limit of its own) asks for that much.
         var longest = DateTimeOffset.UtcNow + route.MaximumDuration - TimeSpan.FromSeconds(5);
         if (deadline > longest) deadline = longest;
+        // Every request to the conversation model loads one window (planned from its card, or the saved size when larger), so
+        // a reply, a background request and a Thinking pool job never make Ollama load the model again with another window.
+        if (route.RouteId == SelfHostSetup.OllamaRouteId)
+        {
+            var window = HostContextWindow.For(target.HostId, target.Origin, route, routes, WorkSharingRoster.Shared.DataDirectory);
+            generation = (generation ?? new()) with { ContextTokens = window };
+            if (outputTokens >= window) outputTokens = window / 2;
+        }
         // The host's prompt cache (Ollama's) reuses a request that starts like the one before, so the instructions go first and
         // unchanged, then the conversation as it was sent, then the message with its notes, as on every other route. A host
         // older than that takes 16 KiB with the notes in its instructions: it gets that layout, and the oldest messages that
@@ -289,7 +297,13 @@ internal static class HostHearingTest
             var reply = new System.Text.StringBuilder();
             await foreach (var delta in connection.StreamChatAsync(route, ids, 1, DateTimeOffset.UtcNow.AddSeconds(90),
                 "This is a test of whether you can hear a recording. Answer with only the word you hear.", [], ModelHearingTest.Question,
-                0, 32, 4_096, null, new GenerationSettings { Reasoning = false }, token, clip.ToBase64()).ConfigureAwait(false))
+                0, 32, 4_096, null, new GenerationSettings
+                {
+                    Reasoning = false,
+                    // The window the conversation loads, so the test never makes Ollama load the model again.
+                    ContextTokens = route.RouteId == SelfHostSetup.OllamaRouteId
+                        ? HostContextWindow.For(target.HostId, target.Origin, route, routes, WorkSharingRoster.Shared.DataDirectory) : null
+                }, token, clip.ToBase64()).ConfigureAwait(false))
             {
                 reply.Append(delta);
                 if (reply.Length > 1_024) break;

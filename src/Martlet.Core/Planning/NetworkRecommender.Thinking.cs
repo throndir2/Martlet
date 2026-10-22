@@ -104,7 +104,7 @@ public static partial class NetworkRecommender
                 var why = problem switch
                 {
                     Problem.NoRoom => $"{CardText(host, role.Card)} has no room for {Label(now)} beside the more important jobs.",
-                    Problem.SharesModel => $"One language model per graphics card: {CardText(host, role.Card)} runs another.",
+                    Problem.SharesModel => $"One language model per graphics card: {CardText(host, role.Card)} runs another, and {ModelPerCardReason}.",
                     _ => $"{host.Name} runs another voice engine."
                 };
                 var benefit = problem == Problem.NoRoom ? SetupChangeBenefit.Required : SetupChangeBenefit.Improvement;
@@ -140,7 +140,7 @@ public static partial class NetworkRecommender
             }
             var why = voice
                 ? $"{node.Name} runs on Windows, where a full graphics card quietly pages into main memory and the voice can start " +
-                  $"seconds late: {CardText(slot)} gives {Plain(slot.Option)} a card of its own."
+                  $"seconds late: {CardText(slot)} gives {Plain(slot.Option)} a card of its own, and {VoiceCardReason}."
                 : $"{node.Name} runs on Windows, so the voice keeps its graphics card to itself: {Plain(slot.Option)} moves to {CardText(slot)}.";
             // A role a step has just placed keeps its own benefit when that is stronger (a missing job is Required).
             var benefit = role.Was is null && role.Benefit < SetupChangeBenefit.Improvement ? role.Benefit : SetupChangeBenefit.Improvement;

@@ -1415,7 +1415,7 @@ route 45 s), `savedContextTokens` (Companion › Replies › Context
 size, null when blank), `modelLimit` (what `model-limits.json` says about the
 model: `ContextTokens`, `ModelMaximum`, `Source`, `checkedAt`) and
 `modelLimitsKept`, and `context` (the production `ContextBudget`: `Tokens`,
-`source` such as `Saved`, `Default`, `ModelLimit`, `HostDefault`, `Ollama` or
+`source` such as `Saved`, `Default`, `ModelLimit`, `HostDefault`, `Planned`, `Ollama` or
 `OllamaAssumed`, `ReplyTokens`, `InputTokens`, `ModelTokens` and `described`,
 the words the Replies page shows), and `look` (how much room a screen glance
 or camera look has: `personaTokens` and `pictureTokens` estimated as the
@@ -1425,6 +1425,19 @@ older host takes 16 KiB),
 `leavesOut` (what a look goes without when it doesn't fit, in order) and a
 `problem` when the picture and the persona alone don't fit, so vision stops;
 see [When a look is too long for Thinking](../SCREEN_COMMENTARY.md#when-a-look-is-too-long-for-thinking)).
+Its `hostWindow` shows a paired host's conversation window
+([ContextWindowPlan](../RESOURCE_FOOTPRINTS.md)): `saved` (for a Thinking route
+on a host: `plannedTokens` and `planned`, the window planned from its graphics
+card in `model-limits.json`; `loadedTokens`, the window its Ollama has loaded
+now from `model-memory.json`; `windowTokens`, `inputTokensPerReply` and
+`source`), `before` (the old 8,192-token window: `inputTokensPerReply` 6,144,
+`ReplyTokens` 4,096, `exchangesSent`, `estimatedTokens` and
+`textAndReplyFit` false, because 6,144 + 4,096 is more than 8,192) and
+`cards`, the production plan and budget on fixture cards (NOT real hardware):
+Gemma 4 12B on an RTX 3090 (32,768 tokens), on an RTX 3080 (8,192) and Gemma 4
+E4B beside a 4 GB voice on an RTX 3060 (32,768), each with `Why`, `extraGb`,
+`textAndReplyFit` and the same `inputTokensPerReply`, `exchangesSent` and
+`estimatedTokens` as `before`, so a bigger window never makes a reply send more.
 Its `probe` rehearses the production model
 limit check against fixture servers on 127.0.0.1 shaped like OpenRouter (the
 smaller of `context_length` and the top provider's), vLLM, Groq and llama.cpp
@@ -1456,10 +1469,13 @@ tokens, M of them (P %) from the model's prompt cache.* lines
 glances and *Remembering*/*Learning names*) and in the `help` (tooltip) of the talk
 window's `LiveContext`. On Companion › Replies,
 `RepliesContextStatus` reads the size in use and where it comes from and what
-Martlet knows of the model's own limit; `RepliesMaxReplyTokensRange` and
+Martlet knows of the model's own limit (for a paired host: the window planned
+from its graphics card, the window its Ollama has loaded now and how much each
+reply sends); `RepliesMaxReplyTokensRange` and
 `RepliesContextTokensRange` read each setting's allowed range and blank value as
 the page shows them for the Thinking route (*16-32768 tokens, blank = 4096*, and
-*2048-262144 tokens on a host, blank = 8192* for a paired host); `RepliesCheckContext` (*Check model
+*2048-262144 tokens on a host, blank = the window planned from its graphics card
+(8,192-32,768), each reply sending about 6,144* for a paired host); `RepliesCheckContext` (*Check model
 limit*) asks the Thinking model's server (loading the model in Ollama on this
 PC first), so it needs `--allow-ui-effects`. Choosing a Chat Completions model
 on Companion › Thinking checks it the same way, and *Test model* and the talk

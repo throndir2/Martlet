@@ -213,8 +213,20 @@ the next conversation. Ollama on this PC can't be sent a context size through
 its OpenAI-compatible endpoint, so its context length setting (the app's
 slider or `OLLAMA_CONTEXT_LENGTH`) is the limit there, assumed to be its
 smallest default (4,096) until Martlet sees it. A paired host's Ollama loads
-the saved size, at most 262,144 (its gateway's bound; a host older than this
-version loads at most 32,768). A paired host gets the whole conversation that
+one window for every request this PC sends its conversation model (replies,
+background requests, the hearing test and Thinking pool jobs there), so it
+never loads the model again for another window: the window Martlet plans from
+the host's graphics card (up to 32,768 tokens; see
+[Resource footprints](RESOURCE_FOOTPRINTS.md)), or the saved size when that is
+larger, at most 262,144 (its gateway's bound; a host older than this
+version loads at most 32,768). Martlet finds the card from the host's machine
+report (each card's UUID, which a host of this version reports) and keeps the
+planned window in `model-limits.json`. Without a saved size a reply sends at
+most 6,144 estimated tokens, the same as with the old 8,192-token window: the
+bigger window is room for the reply, hidden thinking, a picture and a
+recording, so Ollama never cuts the start of the request (the persona and the
+rules), and a reply reads no more before its first word. A request without a
+window keeps the window the host last loaded. A paired host gets the whole conversation that
 fits the context size, like every other route (its gateway takes up to 1 MiB
 of text). A host older than this version takes 16 KiB: Martlet sends it the
 newest messages that fit, logs once that it should be updated, and says *update

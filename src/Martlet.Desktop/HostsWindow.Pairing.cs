@@ -199,6 +199,8 @@ public partial class HostsWindow
         if (report is null) return ("Hardware details aren't available yet; check the host and try again.", version);
         try { store?.Save(report); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        // The host's cards or roles may have changed: its conversation model's window is planned again at its next request.
+        HostContextWindow.Forget(report.HostId);
         RecordLoaded(report, store?.DataDirectory);
         return ("Hardware: " + DescribeHardware(report) + ".", version);
     }

@@ -80,7 +80,7 @@ public static partial class NetworkRecommender
                     if (!Keep(node, role, Kept, out var problem))
                         role.Leave ??= problem == Problem.NoRoom
                             ? (SetupChangeBenefit.Required, $"{CardText(node, role.Card)} has no room left for it.")
-                            : (SetupChangeBenefit.Improvement, "One language model per graphics card: its card runs Thinking's model.");
+                            : (SetupChangeBenefit.Improvement, $"One language model per graphics card: its card runs Thinking's model, and {ModelPerCardReason}.");
                 }
         }
 
@@ -262,7 +262,7 @@ public static partial class NetworkRecommender
                     var fault = Fits(node, own, role);
                     role.Benefit = fault == Problem.NoRoom ? SetupChangeBenefit.Required : SetupChangeBenefit.Improvement;
                     role.Why = fault == Problem.NoRoom ? $"{CardText(node, own)} has no room left for it."
-                        : fault == Problem.SharesModel ? "One language model per graphics card: its card runs Thinking's model."
+                        : fault == Problem.SharesModel ? $"One language model per graphics card: its card runs Thinking's model, and {ModelPerCardReason}."
                         : VoiceOnWindowsCard(node, own) ? "The voice keeps its Windows graphics card to itself."
                         : "A card no live job uses: replies never wait for a think, and thinks don't stop for replies.";
                 }
@@ -273,7 +273,7 @@ public static partial class NetworkRecommender
             role.Leave ??= problem == Problem.NoRoom
                 ? (SetupChangeBenefit.Required, $"{CardText(node, own)} has no room left for it beside the live jobs.")
                 : problem == Problem.SharesModel
-                    ? (SetupChangeBenefit.Improvement, $"One language model per graphics card: {CardText(node, own)} runs Thinking's model.")
+                    ? (SetupChangeBenefit.Improvement, $"One language model per graphics card: {CardText(node, own)} runs Thinking's model, and {ModelPerCardReason}.")
                     : (SetupChangeBenefit.Improvement, $"{node.Name} runs on Windows, so the voice keeps its graphics card to itself.");
         }
 
