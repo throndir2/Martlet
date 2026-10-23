@@ -21,4 +21,8 @@ internal interface ISkillsPageServices
 
     /// <summary>Draws the page again (after a skill was added or deleted and saved).</summary>
     void Refresh();
+
+    /// <summary>Opens Find skills (<see cref="SkillDirectoryWindow"/>) over the window and waits until it closes. <paramref name="add"/>
+    /// saves a skill found there; <paramref name="current"/> gives every skill the user has now.</summary>
+    void ShowSkillDirectory(Func<Skill, Task<string?>> add, Func<IReadOnlyList<Skill>> current);
 }
