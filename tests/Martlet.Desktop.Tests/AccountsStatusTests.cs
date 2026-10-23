@@ -84,6 +84,16 @@ public sealed class AccountsStatusTests
 
             File.WriteAllText(Path.Combine(data, "joined-account.json"), "{}");
             Assert.Equal(JsonValueKind.Null, (await StatusAsync(data)).GetProperty("ownerJoin").ValueKind);
+            Assert.Equal(JsonValueKind.Null, (await StatusAsync(data)).GetProperty("samePerson").ValueKind);
+
+            // Windows logins with the same name are one person: this PC's own account folds into the household's of that name.
+            var founderLogin = AccountLoginKey.ForWindows("desktop-founder", Sid);
+            var sam = Account.Create("Sam Doe", AccountRoles.Member).WithLogin(AccountLogin.For(founderLogin, null, Now));
+            AccountSession.SaveDirectory(data, AccountDirectory.Empty.Put(founder, owner, Now).Put(founder, sam, Now));
+            var same = (await StatusAsync(data)).GetProperty("samePerson");
+            Assert.Equal(sam.Key, same.GetProperty("keep").GetString());
+            Assert.Equal(session.AccountId.ToString("N"), same.GetProperty("own").GetString());
+            Assert.False(same.GetProperty("ownWritten").GetBoolean());
         }
         finally
         {

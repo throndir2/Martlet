@@ -212,6 +212,47 @@ text. The page shows what the last reply carried after a reply in this session
 `SkillPinned-<key>`, `SkillReset-<key>`, `SkillDelete-<key>` and `SkillsAdd`
 write settings, so they need `--allow-ui-effects`.
 
+**Find skills.** `SkillsFind` (*Find skills online*, needs
+`--allow-ui-effects`) opens `SkillDirectoryWindow`. It lists ClawHub
+(clawhub.ai, the skill registry of OpenClaw) at once, most popular (most
+downloads) first, and its search also finds skills.sh skills. The controls
+`SkillDirectorySearch` with `SkillDirectorySearchButton`, `SkillDirectorySort`
+(*Most popular (downloads)*, *Most installed*, *Most stars*, *Trending*,
+*Newest*, *Recently updated*, *Best match*), `SkillDirectorySource` (*ClawHub
+and skills.sh*, *ClawHub*, *skills.sh*), `SkillDirectoryDownloads` (*Any
+number*, *100 or more*, *1,000 or more*, *10,000 or more*),
+`SkillDirectoryHideFlagged` (on by default) and `SkillDirectoryMore` send a
+request to clawhub.ai. A result `SkillDirectoryResult-<source>:<owner>/<slug>`
+(for example `SkillDirectoryResult-clawhub:steipete/weather`) reads that
+skill's SKILL.md from clawhub.ai or GitHub. `SkillDirectoryPage` opens a
+browser, and `SkillDirectoryAdd` saves the skill as one of your own. All of
+them need `--allow-ui-effects`; `SkillDirectoryClose` is passive. Snapshots
+return `SkillDirectoryStatus` (for example *50 skills on ClawHub, most popular
+(downloads) first, ...*, *37 skills matching "weather", most stars first: ...*
+or *Added "Weather" to your own skills (key weather).*),
+`SkillDirectoryNoSelection`, and for the selected skill
+`SkillDirectoryDetailTitle`, `SkillDirectoryDetailFacts` (publisher,
+directory, downloads, installs, stars, last update),
+`SkillDirectoryDetailSummary`, `SkillDirectoryFlagged`, `SkillDirectoryHave`
+and `SkillDirectoryPreviewState` (its estimated tokens as a skill and whether
+it is shortened). The SKILL.md text in `SkillDirectoryPreview` is not returned.
+
+`skill_directory_search` does the same search headlessly: optional `search`,
+`sort` (`popular`, the default, `installs`, `stars`, `trending`, `newest`,
+`updated` or `best_match`), `source` (`all`, `clawhub` or `skills-sh`),
+`minimumDownloads`, `hideFlagged` (default `true`), `cursor` (the
+`nextCursor` of a list without a search) and `limit` (default 20). It returns
+`found`, `nextCursor` and each skill's `id`, `source`, `owner`, `slug`,
+`name`, `summary`, `downloads`, `installs`, `stars`, `recentInstalls`,
+`created`, `updated`, `official`, `featured`, `flagged`, `repository` (a
+skills.sh skill's GitHub `owner/repo`) and `page`. `skill_directory_add`
+(needs `--allow-changes`) adds one of them to a data directory's own skills,
+as the Add button does: give `source`, `owner` and `slug` (and `repository`
+for `skills-sh`). It returns the skill `added` (key, name, use-when line, text,
+not pinned), whether the text was `shortened` to 8,192 characters, and `from`.
+Both tools send the search words to clawhub.ai (and read SKILL.md files from
+GitHub for skills.sh) and send nothing about the user.
+
 `chattiness_status` reads Companion › Vision › **How often it comments** (the
 same choice as Listening › Watch along) from a data directory's
 `talk-preferences.json` (optional absolute `dataDirectory`, default the current

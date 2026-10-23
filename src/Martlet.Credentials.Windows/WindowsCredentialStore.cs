@@ -123,6 +123,32 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
 
     private static string SshSudoTarget(string account) => $"Martlet/v3/ssh-sudo/{account}";
 
+    // The SSH account's sign-in password, remembered only when the owner asks, so Martlet can set a reinstalled host up
+    // again by itself (docs/NETWORK.md, "When a host is reinstalled").
+    public CredentialError WriteSshLoginSecret(string account, SecretLease secret)
+    {
+        if (!SshAccount(account)) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var error = CredentialError.InvalidInput;
+        secret.Use(value => error = Map(native.Write(SshLoginTarget(account), value)));
+        return error;
+    }
+
+    public CredentialReadResult ReadSshLoginSecret(string account)
+    {
+        if (!SshAccount(account)) return new(CredentialError.InvalidInput, null);
+        if (!native.IsSupported) return new(CredentialError.UnsupportedPlatform, null);
+        var result = Map(native.Read(SshLoginTarget(account), out var secret));
+        if (result != CredentialError.None) { secret?.Dispose(); return new(result, null); }
+        return secret is null ? new(CredentialError.Unavailable, null) : new(result, secret);
+    }
+
+    public CredentialError DeleteSshLoginSecret(string account) =>
+        !SshAccount(account) ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(SshLoginTarget(account))) : CredentialError.UnsupportedPlatform;
+
+    private static string SshLoginTarget(string account) => $"Martlet/v3/ssh-login/{account}";
+
     // Home Assistant long-lived access token for the smart home connection; one per saved connection.
     public CredentialError WriteHomeAssistantToken(Guid credentialId, SecretLease secret)
     {

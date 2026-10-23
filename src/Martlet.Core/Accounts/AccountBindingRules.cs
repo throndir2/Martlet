@@ -16,6 +16,9 @@ namespace Martlet.Core.Accounts;
 /// member desktop of the roster, is bound with its own Windows login. Every desktop of a household that existed before accounts
 /// was the owner's, and a desktop the owner let join signs in to the owner's account. The proof stays valid after another
 /// desktop writes the entry, so a computer that checks the entry for the first time accepts every such binding.</item>
+/// <item>Same name: an active member desktop bound with its own Windows login, which made another account with the same name
+/// (<see cref="SamePerson"/>): Windows logins with the same name are one person, so that desktop folds its account into this
+/// one.</item>
 /// <item>Merged: "Merge another account into this one" moved it from an account that the directory shows merged into this
 /// one (the device created that account, or has an attestation for it), and the device that wrote that merge is bound to this
 /// account by one of the proofs above.</item>
@@ -26,43 +29,46 @@ public static class AccountBindingRules
     public const string Refused = "account.binding";
 
     /// <summary>Null when every device binding of <paramref name="incoming"/> is valid, else <see cref="Refused"/>.
-    /// <paramref name="mergedIntoThis"/>: the removed accounts that were merged into <paramref name="incoming"/>.</summary>
-    public static string? Refusal(Account? accepted, Account incoming, NetworkRoster roster, IReadOnlyCollection<Account>? mergedIntoThis = null)
+    /// <paramref name="related"/>: the other accounts that bear on it (<see cref="Related"/>: the removed accounts merged into
+    /// <paramref name="incoming"/> and the accounts with its name).</summary>
+    public static string? Refusal(Account? accepted, Account incoming, NetworkRoster roster, IReadOnlyCollection<Account>? related = null)
     {
         ArgumentNullException.ThrowIfNull(incoming);
         ArgumentNullException.ThrowIfNull(roster);
         if (incoming.Removed) return null;
         foreach (var device in incoming.Devices)
-            if (Proof(accepted, incoming, device, roster, mergedIntoThis) is null) return Refused;
+            if (Proof(accepted, incoming, device, roster, related) is null) return Refused;
         return null;
     }
 
     /// <summary>Why <paramref name="device"/> may act for <paramref name="account"/>: "accepted", "creator", "attestation",
-    /// "migration" or "merged"; null when it may not. A merged account counts only when the device that merged it (the writer of
-    /// its removal) has a binding of its own to <paramref name="account"/> with a direct proof, so nobody carries a device into
-    /// someone else's account by merging an account of their own into it.</summary>
+    /// "migration", "same-name" or "merged"; null when it may not. A merged account counts only when the device that merged it
+    /// (the writer of its removal) has a binding of its own to <paramref name="account"/> with a direct proof, so nobody carries a
+    /// device into someone else's account by merging an account of their own into it.</summary>
     public static string? Proof(Account? accepted, Account account, AccountDevice device, NetworkRoster roster,
-        IReadOnlyCollection<Account>? mergedIntoThis = null)
+        IReadOnlyCollection<Account>? related = null)
     {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(roster);
-        if (Direct(accepted, account, device, roster) is { } direct) return direct;
-        var merged = (mergedIntoThis ?? []).Where(m => m.Removed && m.MergedInto == account.Id &&
-            account.Device(m.UpdatedBy) is { } merger && Direct(accepted, account, merger, roster) is not null).ToArray();
+        related ??= [];
+        if (Direct(accepted, account, device, roster, related) is { } direct) return direct;
+        var merged = related.Where(m => m.Removed && m.MergedInto == account.Id &&
+            account.Device(m.UpdatedBy) is { } merger && Direct(accepted, account, merger, roster, related) is not null).ToArray();
         if (merged.Length == 0) return null;
         return merged.Any(m => m.CreatedBy == device.DeviceId) || Attested(account, device, roster, merged.Select(m => m.Id)) ? "merged" : null;
     }
 
-    private static string? Direct(Account? accepted, Account account, AccountDevice device, NetworkRoster roster)
+    private static string? Direct(Account? accepted, Account account, AccountDevice device, NetworkRoster roster, IReadOnlyCollection<Account> related)
     {
         if (accepted is not null && accepted.Id == account.Id && accepted.Device(device.DeviceId) is { } kept && kept == device) return "accepted";
         if (device.DeviceId == account.CreatedBy) return "creator";
         if (Attested(account, device, roster, [])) return "attestation";
-        if (IsHouseholdOwner(account, roster) &&
-            device.Login is { Kind: AccountLoginKinds.Windows } login && login.Provider == device.DeviceId &&
-            roster.Desktop(device.DeviceId) is { Removed: false })
-            return "migration";
+        var ownWindowsLogin = device.Login is { Kind: AccountLoginKinds.Windows } login && login.Provider == device.DeviceId &&
+            roster.Desktop(device.DeviceId) is { Removed: false };
+        if (ownWindowsLogin && IsHouseholdOwner(account, roster)) return "migration";
+        if (ownWindowsLogin && related.Any(a => a.Id != account.Id && a.CreatedBy == device.DeviceId && SamePerson.SameName(a.Name, account.Name)))
+            return SamePerson.Proof;
         return null;
     }
 
@@ -79,6 +85,15 @@ public static class AccountBindingRules
     /// <summary>The removed accounts that <paramref name="directories"/> show merged into <paramref name="id"/>.</summary>
     public static IReadOnlyList<Account> MergedInto(Guid id, params AccountDirectory[] directories) =>
         directories.SelectMany(d => d.Accounts).Where(a => a.Removed && a.MergedInto == id).DistinctBy(a => a.Id).ToArray();
+
+    /// <summary>The other accounts in <paramref name="directories"/> that bear on <paramref name="account"/>'s bindings: the
+    /// removed accounts merged into it and the accounts (live or removed) with its name (<see cref="SamePerson.SameName"/>).</summary>
+    public static IReadOnlyList<Account> Related(Account account, params AccountDirectory[] directories)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        return directories.SelectMany(d => d.Accounts).Where(a => a.Id != account.Id &&
+            (a.Removed && a.MergedInto == account.Id || SamePerson.SameName(a.Name, account.Name))).DistinctBy(a => a.Id).ToArray();
+    }
 
     private static bool Attested(Account account, AccountDevice device, NetworkRoster roster, IEnumerable<Guid> merged)
     {

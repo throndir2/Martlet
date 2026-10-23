@@ -178,7 +178,7 @@ internal static class MoveRehearsal
     /// <summary>The system clock under its own name: a paired connection made with it has its own pool of kept connections.</summary>
     private sealed class FreshPool : TimeProvider;
 
-    private sealed class LabHost : IAsyncDisposable, IGatewayAuditSink
+    internal sealed class LabHost : IAsyncDisposable, IGatewayAuditSink
     {
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
@@ -189,13 +189,13 @@ internal static class MoveRehearsal
         internal int Port { get; private set; }
 
         /// <summary>A gateway on <paramref name="at"/> whose certificate names each of <paramref name="names"/>.</summary>
-        internal static async Task<LabHost> StartAsync(string hostId, IPAddress at, IPAddress[] names)
+        internal static async Task<LabHost> StartAsync(string hostId, IPAddress at, IPAddress[] names, int? port = null)
         {
             var host = new LabHost { HostId = hostId, certificate = Certificate(names) };
             host.Identity = GatewayHostIdentity.FromCertificate(hostId, host.certificate);
             try
             {
-                host.Port = FreePort(at, names);
+                host.Port = port ?? FreePort(at, names);
                 host.Origin = $"https://{at}:{host.Port}";
                 var origin = new GatewayOrigin(host.Origin);
                 host.Server = new GatewayServer(host.Identity, origin, [], host);

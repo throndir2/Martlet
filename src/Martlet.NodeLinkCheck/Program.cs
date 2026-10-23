@@ -31,6 +31,13 @@ if (args is ["move"])
     Console.WriteLine(JsonSerializer.Serialize(moveReport));
     return moveOk ? 0 : 1;
 }
+// With "reinstall" it rehearses a host whose computer was reinstalled (ReinstallRehearsal).
+if (args is ["reinstall"])
+{
+    var (reinstallOk, reinstallReport) = await Martlet.NodeLinkCheck.ReinstallRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(reinstallReport));
+    return reinstallOk ? 0 : 1;
+}
 // With "signin-lab <data directory> [--mode owner|friend|account] [--sign-in-desktop] [--share-with-friend] [--household|--join-desktop]" it runs a live
 // sign-in lab for the desktop on that data directory (SignInLab): the desktop as the host's owner (the default) or as a friend the
 // host is shared with, or (account) household account sign-in and host attestations, headless (with --household: two hosts paired with

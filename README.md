@@ -156,13 +156,11 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.92.0
+## 🆕 What's new in 0.93.0
 
-- 🎬 **The director**: while Martlet answers you, a Background thinking model does the work behind what you said, with every tool and the skills it needs, and tells Martlet what it found. Replies carry almost no tools now, so they start sooner and small models get far less to read.
-- 📚 **Skills**: instructions Martlet uses only when it needs them. Pin the ones every reply must follow, edit any of them or add your own in Companion › Skills.
-- 🧠 **Background thinking made simple**: the old Thinking pool page now has three switches and one list of your computers, graphics cards and cloud providers, each with a box and a model picker.
-- 🧭 **Less to learn at first**: Companion shows the 9 pages most people need, Home has a three-step **Get started** card, and the welcome wizard asks who Martlet should be.
-- 📏 **Bigger context window on a roomy card**: a paired host's model uses its graphics card's free memory for a larger context window, so your character's persona and rules stay in mind, and replies start as fast as before.
+- 🔁 **Reinstall a host without the hassle**: give a Linux host a new drive and a fresh system, and Martlet checks that it is the same computer, then sets it up again by itself with the same name, pairing and roles. No removing, resetting trust or pairing codes.
+- 🔐 **Proved by the computer's own chip**: the host proves itself with its TPM security chip, at home, from outside or over Tailscale. An older computer without a TPM is recognized by its hardware, but only on your home network or over Tailscale.
+- 🗝️ **Remember the host's password**: when you set up a host over SSH, Martlet can remember its password so it can do all of this without asking you.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

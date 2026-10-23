@@ -113,9 +113,28 @@ internal sealed class SkillsPage(ISkillsPageServices services)
             var typed = Typed();
             SaveAndRefreshAsync([.. typed, new Skill { Key = NewKey(typed), Name = "New skill", UseWhen = "", Body = "" }]).Forget();
         }, id: "SkillsAdd");
+        // Find skills saves what is typed first, then each skill found there is added to the newest saved skills; the page is
+        // drawn again when the window closes.
+        async Task FindAsync()
+        {
+            await autoSave.SaveNowAsync();
+            if (autoSave.Pending) return;
+            services.ShowSkillDirectory(async skill =>
+            {
+                IReadOnlyList<Skill> skills = [.. SkillSettings.All(services.Saved), skill];
+                try { SkillSettings.Normalize(skills)?.Validate(); }
+                catch (Martlet.Core.Contracts.ContractException error) { return error.Message; }
+                while (!await services.SaveAsync(skills, s => saved = s)) await Task.Delay(200);
+                return SkillSettings.Find(services.Saved, skill.Key) is null ? "Martlet couldn't save it; see the line at the bottom of the window." : null;
+            }, () => SkillSettings.All(services.Saved));
+            services.Refresh();
+        }
+        var find = PageButton("Find skills online", () => FindAsync().Forget(), primary: true, id: "SkillsFind");
         page.Children.Add(Card(Heading("Your own skills"),
             HelpTip.Explain($"Add up to {SkillSettings.MaximumSkills} skills in all. A new skill starts empty, so it sends nothing until " +
-                "you write it.", new Thickness(0, 0, 0, 4), "SkillsOwn", "your own skills", wiki: "Personality-and-Characters#skills"),
-            Row(add)));
+                "you write it. Find skills online searches ClawHub (the skill registry of OpenClaw) and skills.sh for skills other " +
+                "people wrote, most popular first, and adds the one you choose.", new Thickness(0, 0, 0, 4), "SkillsOwn", "your own skills",
+                wiki: "Personality-and-Characters#skills"),
+            Row(find, add)));
     }
 }

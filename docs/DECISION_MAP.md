@@ -343,6 +343,30 @@ addresses).
 
 **Docs:** [When a computer gets a new address](NETWORK.md#when-a-computer-gets-a-new-address).
 
+## Whether a reinstalled host is the same computer
+
+**What it decides:** whether a host that comes back with a new TLS or SSH key
+(its computer got a new system) is the same computer, so Martlet sets it up
+again with its old host ID, pairs it and puts back its roles; and what each PC
+saves beforehand to tell (TPM keys, hardware fact hashes, roles).
+
+**Owner:** `ReinstallCheck.Decide` (`src\Martlet.Core\Hardware\ReinstallCheck.cs`),
+with the TPM keys and proofs in `Tpm2`, `HardwareKeys` and `HardwareProof`, the
+fallback in `MachineFacts` and the route rule in `RouteTrusts`
+(`src\Martlet.Core\Hardware\`). The gateway answers at `/martlet/v1/hardware`
+(`GatewayHttp.cs`); the desktop saves `HostRecognition` with the pairing and
+sets a host up again in `MainWindow.HostReinstall.cs`. Host scripts give the
+gateway the TPM (`tpm_native_access`, `tpm_docker_flags` in
+`deploy\host\lib\service.sh`).
+
+**Tests:** `HardwareIdentityTests` (Martlet.Core.Tests),
+`HardwareProofRouteTests` (Martlet.Gateway.Tests), `HostReinstallTests` and
+`HostSetupCommandsTests` (Martlet.Desktop.Tests).
+
+**MCP:** `host_reinstall_selftest`, `network_status` (`pairedHosts[].recognition`).
+
+**Docs:** [When a host is reinstalled](NETWORK.md#when-a-host-is-reinstalled).
+
 ## Which member takes a request of an ordered pool
 
 **What it decides:** for an area with an ordered list (Speaking, Listening,
@@ -413,15 +437,15 @@ feature's own code attaches its skill with `SkillSettings.Guidance` where its pr
 `LiveConversationConfiguration.Listening`, `VoiceTags.Instructions`, `SeenTags.Instructions`, `ThinkLonger.Instructions`).
 `AppSettings.MoveSkillPrompts` moves old prompt edits on read and on sync. The pages only show these:
 `PromptsPageModel.DescribeEveryReply` and `DescribeAttached`, `SkillsPageModel.SkillState`; the desktop records what a reply
-carried in `LiveConversationController.LastReplyPrompt`.
+carried in `LiveConversationController.LastReplyPrompt`. `SkillDirectoryClient` (`src\Martlet.Core\Settings\SkillDirectory.cs`)
+owns Find skills: the ClawHub and skills.sh search, its orders and filters, and how a SKILL.md becomes an own skill (`ToSkill`).
 
-**Tests:** `SkillSettingsTests`, `PromptSettingsTests`, `PromptBudgetTests` (Martlet.Core.Tests); `ReplySummaryPageTests`
-(Martlet.Desktop.Tests).
+**Tests:** `SkillSettingsTests`, `SkillDirectoryTests`, `PromptSettingsTests`, `PromptBudgetTests` (Martlet.Core.Tests);
+`ReplySummaryPageTests` (Martlet.Desktop.Tests).
 
-**MCP:** `skills_status` (`attach`, `when`); `prompts_status` (`everyReply`, `groups`, `shortFirstSentence.spokenClosing`);
-the Prompts page's `PromptsReplyAlways`, `PromptsReplyAttached` and `PromptGroupWhere-<n>`; the Skills page's `SkillsNow`
-and `SkillState-<key>`.
-
+**MCP:** `skills_status` (`attach`, `when`); `skill_directory_search`, `skill_directory_add`; `prompts_status` (`everyReply`,
+`groups`, `shortFirstSentence.spokenClosing`); the Prompts page's `PromptsReplyAlways`, `PromptsReplyAttached` and
+`PromptGroupWhere-<n>`; the Skills page's `SkillsNow`, `SkillState-<key>` and `SkillsFind` (Find skills' `SkillDirectory*` IDs).
 **Docs:** [Skills](CONVERSATION.md#skills).
 ## How much Martlet looks a question up (answer, look up or research)
 

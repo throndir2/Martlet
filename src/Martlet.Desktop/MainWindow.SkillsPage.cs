@@ -23,6 +23,11 @@ public partial class MainWindow : ISkillsPageServices
         tabEdited = false;
         RenderTab();
     }
+    void ISkillsPageServices.ShowSkillDirectory(Func<Skill, Task<string?>> add, Func<IReadOnlyList<Skill>> current)
+    {
+        if (closing) return;
+        new SkillDirectoryWindow(add, current) { Owner = this }.ShowDialog();
+    }
 
     /// <summary>The Skills page's save: validates the skills and writes them into the newest saved settings. Returns false to be
     /// tried again shortly when another window saved the settings meanwhile; a skill that can't be saved says why.</summary>

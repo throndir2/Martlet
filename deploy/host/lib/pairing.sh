@@ -85,6 +85,7 @@ UNIT
        ask "Keep the gateway running after reboot without logging in (sudo loginctl enable-linger ${USER})?"; then
       sudo loginctl enable-linger "${USER}"
     fi
+    tpm_native_access
   else
     note "The gateway container restarts with Docker (restart policy unless-stopped)."
   fi

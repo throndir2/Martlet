@@ -189,6 +189,7 @@ public partial class MainWindow
             // A PC that joined by signing in to a household account signs that account in here once it is a member.
             if (state.Roster is not null) SignInJoinedAccountAsync().Forget();
             ObserveHostReleases(result.Views);
+            CheckReinstalledHostsAsync().Forget();
             await ReadSecurityAuditsAsync(state.Roster);
             var messages = result.Events.ToList();
             IReadOnlyList<HostJoinRequest> pending = result.Joins;

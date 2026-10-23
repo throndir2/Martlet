@@ -76,6 +76,14 @@ public sealed class HostSetupCommandsTests
     }
 
     [Fact]
+    public void A_native_setup_again_after_a_reinstall_keeps_the_hosts_ID()
+    {
+        var native = HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshNative, hostId: "aihost1-host"), "setup", true);
+        Assert.EndsWith("MARTLET_HOST_ADDRESS=192.168.1.20 MARTLET_HOST_ID=aihost1-host ~/Martlet/deploy/host/martlet-host --yes setup", native);
+        Assert.DoesNotContain("MARTLET_HOST_ID", HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshNative, hostId: "aihost1-host"), "status", false));
+    }
+
+    [Fact]
     public void Ssh_methods_run_the_same_engine_unattended_through_the_in_app_runner()
     {
         var docker = HostSetupCommands.DockerShell(Target(HostSetupMethod.SshDocker), HostAction.Add(HostRoles.Audio2Face));

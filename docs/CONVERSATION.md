@@ -368,9 +368,16 @@ skill only when a reply needs it. A reply gets a skill in one of three ways:
   when (`SkillDefinition.When`). A pinned feature skill goes in the closing of
   every reply instead, and not twice.
 - **Loaded on demand.** The director loads any skill from its skill index
-  (`load_skill`). Your own skills, added with *Add a skill*, go only this way
-  unless you pin them.
+  (`load_skill`). Your own skills go only this way unless you pin them.
 
+Your own skills are added with *Add a skill*, or with *Find skills online*
+(`SkillDirectoryWindow`, `SkillDirectoryClient`). Find skills lists ClawHub
+(clawhub.ai, the skill registry of OpenClaw), most downloads first, and its
+search also finds skills.sh skills. You can sort by downloads, installs,
+stars, trending, newest, last update or best match, and filter by directory,
+downloads and skills flagged as suspicious. *Add* makes the skill's SKILL.md
+one of your own skills: its name, its description as the use-when line and its
+instructions (cut at a line to 8,192 characters) as the text, not pinned.
 Companion › Prompts keeps only the requests themselves (glances, background
 work, check-ins, the audio model) and the frames around data (the persona
 prompt, remembered facts, lore, notes, results). Its top card, **What one

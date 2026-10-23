@@ -190,6 +190,7 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
     internal static string RouteClass(string rawTarget) => rawTarget switch
     {
         "/health/live" or "/health/ready" => "health",
+        _ when rawTarget.StartsWith(Martlet.Core.Hardware.HardwareProof.Path + "?", StringComparison.Ordinal) => "health",
         "/martlet/v1/pair" => "pair",
         GatewayPairingCode.Path => "pair-code",
         Martlet.Core.Network.NetworkPairing.Path => "join",

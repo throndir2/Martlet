@@ -75,6 +75,8 @@ internal static partial class AutomationPolicy
         new("McpDirectoryClose", "MCP directory", "Close: only closes the MCP directory."),
         new("McpDirectoryOptional", "MCP directory", "Only expands or collapses the optional-settings section."),
         // Needs --allow-ui-effects: opening the MCP directory, searching and Load more (send a request to the directory), and Install (writes mcp.json and starts a server).
+        new("SkillDirectoryClose", "Find skills", "Close: only closes Find skills."),
+        // Needs --allow-ui-effects: SkillsFind (opens Find skills, which loads a page from clawhub.ai), its search, sort and filters and Load more (send a request to clawhub.ai), a SkillDirectoryResult-<id> (reads that skill's SKILL.md from clawhub.ai or GitHub), SkillDirectoryPage (opens a browser) and SkillDirectoryAdd (writes settings).
         new("LiveStop", "Talk window", "Stop (Esc): only stops work (a reply, a recording, vision, a song); starts nothing and never pauses listening."),
         new("LiveRefreshContext", "Talk window", "Refresh context: only forgets the exchanges kept in mind for the next reply; sends nothing and stops nothing."),
         new("LiveSongStop", "Talk window", "Stop singing: only ends the song playing (musically); nothing in the talk window plays a song."),

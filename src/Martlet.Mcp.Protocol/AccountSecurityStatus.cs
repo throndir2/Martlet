@@ -23,7 +23,7 @@ internal static class AccountSecurityStatus
         var locks = new AccountLockStore(dataDirectory).All();
         var accounts = directory?.Accounts.Select(account =>
         {
-            var merged = AccountBindingRules.MergedInto(account.Id, directory);
+            var merged = AccountBindingRules.Related(account, directory);
             return new
             {
                 id = account.Key,

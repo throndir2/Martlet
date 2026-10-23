@@ -5,8 +5,9 @@ namespace Martlet.Core.Accounts;
 /// <summary>What a desktop does after the owner let it join (docs/ACCOUNTS.md, "Joining with the owner's approval"): it signs in
 /// to <see cref="Owner"/>, the household's owner account, and folds <see cref="Own"/>, the owner account it made itself before it
 /// joined, into it. <see cref="OwnWritten"/>: <see cref="Own"/> is in the directory (it is merged and removed); else it is only
-/// pending on this PC (it is signed out).</summary>
-public sealed record OwnerJoinPlan(Guid Owner, Guid Own, bool OwnWritten);
+/// pending on this PC (it is signed out). <see cref="SameName"/>: <see cref="Owner"/> is the account of the same name that
+/// <see cref="Own"/> folds into (<see cref="SamePerson"/>), not necessarily the household's owner.</summary>
+public sealed record OwnerJoinPlan(Guid Owner, Guid Own, bool OwnWritten, bool SameName = false);
 
 public static class OwnerJoin
 {

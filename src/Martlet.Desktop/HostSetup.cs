@@ -139,6 +139,7 @@ internal static partial class HostSetupCommands
         bool supplied = false)
     {
         var environment = (setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "") +
+            (setup && target.HostId is { } id ? $"MARTLET_HOST_ID={id} " : "") +
             (lockWaitSeconds > 0 ? $"MARTLET_LOCK_WAIT={lockWaitSeconds} " : "");
         var verb = engine.Split(' ')[0];
         // The runner keeps stdin for martlet-host's answers, so nothing before it may read it.

@@ -30,7 +30,7 @@ Other things in the window:
 - **This PC's device ID** is how this PC shows on the host. Martlet sends it by itself when it connects.
 - **Update host** updates the host. Its pairings and jobs stay.
 - **Forget host** removes the host from this PC only. To remove this PC from the host too, revoke this PC's device ID in the host console.
-- **Reset SSH trust** forgets the SSH key that Martlet trusts for a Linux computer and its saved sudo password. Use it only after you reinstall that computer. The next connection asks you to trust the computer again.
+- **Reset SSH trust** forgets the SSH key that Martlet trusts for a Linux computer and its saved sudo password. You don't need it after a reinstall when Martlet sets the computer up again by itself (see [After you reinstall a host](#after-you-reinstall-a-host)). The next connection asks you to trust the computer again.
 
 ### Prepare a Linux computer
 
@@ -102,21 +102,21 @@ See also [Docker Desktop or WSL won't start](Troubleshooting#docker-desktop-or-w
 1. Make sure the Linux computer has an SSH server. It can be x86_64 or ARM64, with systemd (Ubuntu, Debian, Fedora, openSUSE, Arch, Raspberry Pi OS and others), or a NAS with Docker (TerraMaster, Synology, QNAP).
 2. Open **Devices › Add a computer**. Under **A Linux computer over SSH**, type `user@computer` in **SSH target**. When SSH doesn't use port 22, add the port, for example `admin@192.168.1.9:9222`.
 3. Choose **Set up over SSH**.
-4. Type the account password once. Martlet adds its own SSH key and uses only the key after that. When your own SSH key in `%USERPROFILE%\.ssh` already signs in there, Martlet uses it once instead and asks for no password. When Windows' OpenSSH already trusts the computer, Martlet doesn't ask you to trust it again.
+4. Type the account password once. Martlet adds its own SSH key and uses only the key after that. Keep **Remember it** ticked (it is on by default) so Martlet can set the computer up again by itself after you reinstall it. When your own SSH key in `%USERPROFILE%\.ssh` already signs in there, Martlet uses it once instead and asks for no password. When Windows' OpenSSH already trusts the computer, Martlet doesn't ask you to trust it again.
 5. When a step needs `sudo`, type the sudo password. Martlet can remember it in Windows Credential Manager.
 
 Martlet runs the host in Docker when the computer has it, and otherwise installs it natively. The host pairs by itself and shows on the Devices map. You never sign in to the Linux computer yourself.
 
 - On a NAS (TerraMaster, Synology, QNAP, Unraid or TrueNAS), install Docker with the NAS's own app first: **Docker Engine** in the TOS App Center, **Container Manager** in Synology's Package Center or **Container Station** in QNAP's App Center. Martlet sets up a NAS only in Docker and installs nothing into the NAS system, so a NAS update can't break the host. Without Docker, Martlet stops and tells you which app to install.
-- Martlet shows the computer's SSH key the first time and trusts only that key after. After you reinstall the computer, choose **Reset SSH trust**.
+- Martlet shows the computer's SSH key the first time and trusts only that key after. After you reinstall the computer, Martlet checks that it is the same computer and sets it up again by itself (see [After you reinstall a host](#after-you-reinstall-a-host)).
 - A computer without internet gets the files it needs from your PC. Martlet cannot send Docker images or models yet.
 - **Prepare a Linux computer** (on the map's **Add a computer** card) and **Prepare this computer** (on a host) get an Ubuntu computer ready: updates, Docker, the NVIDIA driver and container toolkit, no sleep, a virtual display, graphics card power limits, tools and Wake-on-LAN. Tick what you want and choose **Run selected**.
 - A Linux host on the map can also have **Wake it up**, **Restart it** and **Shut it down**.
 
 ### Signing in over SSH
 
-- The first time, Martlet shows the computer's SSH key fingerprint and asks you to trust it. Martlet remembers that key for every later connection and refuses to connect if it changes. After you reinstall the computer, choose **Reset SSH trust**.
-- Martlet uses the account password once, to add its own SSH key. It doesn't save the password.
+- The first time, Martlet shows the computer's SSH key fingerprint and asks you to trust it. Martlet remembers that key for every later connection and refuses to connect if it changes, except to set up a reinstalled computer that proves it is the same one.
+- Martlet uses the account password once, to add its own SSH key. It saves the password in Windows Credential Manager only while **Remember it** is ticked.
 - When your own SSH key signs in, Martlet uses it once to add its key. It doesn't copy or keep your key.
 - The sudo password goes only over the SSH connection and never shows in a log. Without it, the steps that need administrator rights stop.
 
@@ -291,6 +291,33 @@ A host PC stays awake while Martlet runs, so your other computers can reach its 
 You don't need to reserve addresses in your router. When a host's computer gets another address, the host listens there and answers on UDP 9444, and your computers find it there by themselves, check its key and keep using the same pairing. A firewall on the host must let UDP 9444 in from your home network.
 
 On a Windows host PC, Martlet moves the host service to the new address by itself. Pairings and roles stay. If Martlet can't move it, **Background tasks** says why. Then choose **Set up again** on Home.
+
+## After you reinstall a host
+
+You can give a Linux host a new drive and a fresh system, and Martlet sets it up again by itself. You don't remove it, reset trust or type a pairing code.
+
+Before you reinstall:
+
+1. Update the host (**Settings › App updates › Update hosts**). The update lets the host use the computer's TPM, a security chip that most PCs from 2016 on have.
+2. Keep Martlet open for a few minutes while the host works. Martlet saves the host's TPM key and, for a computer without a TPM, some hardware facts (only as hashes).
+
+When you install the new system:
+
+- Turn on its SSH server and use the same user name and password as before.
+- Use any Linux distribution that Martlet supports.
+
+What Martlet does:
+
+1. Martlet notices the new system within about 5 minutes.
+2. It signs in with the password you remembered. A host that was set up before this version asks you for the password once. Tick **Remember it** so you're not asked again.
+3. It checks that it is the same computer. A TPM proves it from anywhere: at home, from outside or over Tailscale. A computer without a TPM must match its hardware facts, and only on your home network or over Tailscale.
+4. It sets the host up again with the same name, pairs it and puts back its roles. A role that needs a key or token is not put back. Add it again in **Devices**.
+
+**Background tasks** shows each step, and a notice tells you the result. If the computer isn't shown to be the same one, Martlet stops and gives it nothing. To set it up by hand, choose **Reset SSH trust**, then **Set up over SSH** in **Devices › Add a computer**.
+
+A host that Martlet doesn't reach over SSH (a Windows host PC, a Mac, or a Linux host set up at its own console) isn't set up again by itself. Martlet tells you when it proved it is the same computer. Then set it up there and pair it again.
+
+The password goes to the computer before it proves itself with its TPM. Martlet sends it only to the network card it saw before at the host's address, over Tailscale, or after you trust the computer's new key, so use a password that you don't use anywhere else. Your keys, memories and settings go only to a computer that passed the check.
 
 To use your hosts from outside your home or share them with a friend, see [Sharing with Friends](Sharing-with-Friends).
 
