@@ -178,13 +178,49 @@ owner_operation() {
   return ${status}
 }
 
+# The TPM (docs/NETWORK.md, "When a host is reinstalled"): the gateway proves which computer it runs on with a key the TPM
+# makes again after an OS reinstall. The gateway container gets /dev/tpmrm0 and the device's group when that group may
+# read and write it (the host's tss group on most distributions). Prints the docker run options, or nothing.
+tpm_docker_flags() {
+  local info gid mode
+  info="$(docker run --rm --device /dev/tpmrm0 --entrypoint stat "${IMAGE}" -c '%g %a' /dev/tpmrm0 2>/dev/null)" || return 0
+  read -r gid mode <<<"${info}"
+  [[ "${gid}" =~ ^[0-9]+$ && "${gid}" != 0 && "${mode}" =~ ^[0-7]+$ ]] || return 0
+  (( (8#${mode} & 8#060) == 8#060 )) || return 0
+  printf -- '--device /dev/tpmrm0 --group-add %s' "${gid}"
+}
+
+# Lets this account (and so the gateway, a user service) use the TPM on any distribution: a udev rule gives /dev/tpmrm0 the
+# tss group, the account joins it, and an ACL lets the running service use it before its next start.
+tpm_native_access() {
+  if [[ ! -e /dev/tpmrm0 ]]; then
+    note "This computer has no TPM 2.0 that Linux shows (/dev/tpmrm0). After a reinstall, your computers recognize this host by its hardware facts."
+    return 0
+  fi
+  [[ -r /dev/tpmrm0 && -w /dev/tpmrm0 ]] && return 0
+  ask "Let this host use the computer's TPM, so your computers recognize it after you reinstall its system (adds ${USER} to the tss group)?" || return 0
+  getent group tss >/dev/null 2>&1 || sudo groupadd --system tss || { note "Couldn't make the tss group; the TPM stays unused."; return 0; }
+  printf 'KERNEL=="tpmrm[0-9]*", GROUP="tss", MODE="0660"\n' | sudo tee /etc/udev/rules.d/60-martlet-tpm.rules >/dev/null || return 0
+  sudo udevadm control --reload-rules >/dev/null 2>&1 || true
+  sudo udevadm trigger --subsystem-match=tpmrm >/dev/null 2>&1 || true
+  sudo usermod -a -G tss "${USER}" || true
+  command -v setfacl >/dev/null 2>&1 && sudo setfacl -m "u:${USER}:rw" /dev/tpmrm0 2>/dev/null || true
+  if [[ -r /dev/tpmrm0 && -w /dev/tpmrm0 ]] || id -nG "${USER}" | tr ' ' '\n' | grep -qx tss; then
+    note "This host can use the TPM (it works for the gateway now, or after the next restart)."
+  else
+    note "Couldn't give this account the TPM; after a reinstall, your computers recognize this host by its hardware facts."
+  fi
+}
+
 service_start() {
-  local round attempt
+  local round attempt tpm=()
+  [[ "${MODE}" != docker ]] || read -r -a tpm <<<"$(tpm_docker_flags)"
   for round in 1 2; do
     if [[ "${MODE}" == docker ]]; then
       # Recreated each time so an updated image takes effect; state lives in the named volumes.
       docker rm -f "${SERVICE}" >/dev/null 2>&1 || true
       docker run -d --name "${SERVICE}" --restart unless-stopped --network "container:${NET}" --user 1000:1000 \
+        ${tpm[@]+"${tpm[@]}"} \
         -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
         "${IMAGE}" serve >/dev/null
     else

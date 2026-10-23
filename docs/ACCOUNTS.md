@@ -302,7 +302,7 @@ All workstreams use these forms. Change them here first.
 | Voice link | Each voice in `voices.json` may carry `link`: `{ "account": <Account ID or absent>, "revision", "updated_by" }`, a last-writer-wins register merged apart from the rest of the voice (an absent `account` with a revision is an unlink). Martlet before links refuses unknown fields, so `GET`/`POST /martlet/v1/voices` serve and return the list without links and merge a copy without links without removing any; `GET`/`POST /martlet/v1/voices/linked` carry them. The legacy `owner` flag stays true while the voice links to the owner account. `Martlet.Core.Speakers.VoiceRoster`: `SetAccount`, `LinkedTo`, `LinkOwnerVoices`, `WithoutLinks`. Client: `ReadVoicesAsync(linked: true)`, `MergeVoicesAsync(..., linked: true)`. The voice list is the only place links live: the account directory's `voices` field is not used for them |
 | Account attestation | `AccountAttestation` in `Martlet.Core.Accounts`: a host's signed statement that an account proved itself on a device. JSON (snake case): `schema_version` 1, `network_id`, `host_id`, `account_id`, `device_id`, `login` (an `AccountLoginKey`; never `windows`), `issued_at`, `expires_at` (1 minute to 30 days; 10 minutes by default), `algorithm` (`ES256` or `PS256`), `host_key` (base64url SubjectPublicKeyInfo of the host's **TLS key**, the key the roster pins as the host's `spki`) and `signature` over `"martlet-account-attestation-v1"` and the other fields, one per line (account ID as 32 hex digits, times as Unix milliseconds). `Check(roster, at)` accepts it only for an active host of that network whose pin is the SHA-256 of `host_key`, with a good signature, within its lifetime (5 minutes of clock skew). Its text form (`AccountAttestation.ToText()`, base64url of compact JSON, at most 4,096 ASCII characters) goes in a device binding's `attestation`. See [host sign-in](#host-sign-in-for-accounts) |
 | Desktop account session | `AccountSession` in Martlet.Desktop (built by W7; see [Desktop account session](#desktop-account-session)): `AccountId`, `AccountFolder` (`<data>\accounts\<32 hex>`), `HouseholdFolder` (the data folder root), `Current` and `SignedIn` (ID, name, role, pending), `OwnerId`, `AddChangeStep(Func<AccountChange, CancellationToken, Task>)`, `StartAsync`, `SwitchToAsync`, `AddPerson`, `SignIn(attestation, roster, now)` and the `AccountChanged` event, raised only between replies after every change step ran. The session file is `accounts\session.json` (`AccountSessionState` in `Martlet.Core.Accounts`, device scope, never synced) |
-| Device binding rule | `AccountBindingRules` in `Martlet.Core.Accounts`, called by `AccountDirectory.Refusal` on desktops and hosts: a binding needs a proof (`creator`, `attestation`, `migration` or `merged`). See [the binding rule](#the-binding-rule) |
+| Device binding rule | `AccountBindingRules` in `Martlet.Core.Accounts`, called by `AccountDirectory.Refusal` on desktops and hosts: a binding needs a proof (`creator`, `attestation`, `migration`, `same-name` or `merged`). See [the binding rule](#the-binding-rule) |
 | Device unlock file | `<data>\account-locks\<32 hex>.json`, device scope, never synced, outside the account's folder (`AccountLockStore`). Plain choices (`ask_on_this_pc`, `remember`, `hello`, `has_pin`, `has_password`, `encrypt`, `failures`, `retry_after`) and a DPAPI-protected part with PBKDF2 verifiers and wrapped file keys. See [Unlock on this PC](#unlock-on-this-pc) |
 | Locked account folder | While an account with *Encrypt my files on this PC while locked* is not active on this PC, its folder holds `<name>.mlock` files. Nothing reads or writes another account's folder; a change step loads an account's files only after it became active |
 | Account merge step | `IAccountMergeStep` in Martlet.Desktop: one per kind of account data; *Merge another account into this one* runs each before it removes the merged account. See [Merging accounts](#merging-accounts) |
@@ -542,12 +542,14 @@ hosts check every device binding of an incoming entry
 | `creator` | The device made the account (`created_by`, which never changes) |
 | `attestation` | Its `attestation` checks out (`AccountAttestation.Check`) against the roster at the binding's `signed_in_at`, for that device and that account |
 | `migration` | The household's owner account (`AccountBindingRules.IsHouseholdOwner`: `OwnerAccount.IdFor`, or an `owner` account that the founding desktop made) and an active member desktop of the roster that is bound with its own Windows login. Every desktop of a household from before accounts was the owner's, and a desktop the owner let join signs in to the owner's account. The proof does not depend on which desktop wrote the entry last, so a new desktop or host accepts the bindings of all the owner's desktops |
+| `same-name` | An active member desktop of the roster, bound with its own Windows login, that made another account (live or merged) with the same name (`SamePerson.SameName`: equal after trimming, Unicode normalization and case; never the fallback name *Me*). Windows logins with the same name are one person, so that desktop folds its own account into this one ([Same name, same person](#desktop-account-session)) |
 | `merged` | It came from an account merged into this one (that account's creator, or an attestation for it), and the device that wrote the merge is bound to this account by one of the proofs above |
 
 So linking a login to an existing account, *Sign in as someone else* and
 *Continue as* always need a Prove, and nobody carries a PC into someone else's
 account by merging an account of their own into it. Limits: a member desktop
-can still bind itself to the household's owner account as a migration; a
+can still bind itself to the household's owner account as a migration, and to
+an account with the name of an account it made (`same-name`); a
 modified desktop of the network can always do harm (it signs roster entries).
 
 ### Roles on a host
@@ -756,6 +758,23 @@ button, the picker and the directory sync), `AddPersonDialog.cs` and
   removed with `merged_into`. An account that never reached the directory is
   only signed out. So the owner's settings and characters are on the new PC.
   MCP `accounts_status` shows the plan as `ownerJoin`.
+- **Same name, same person** (`SamePerson` in `Martlet.Core.Accounts`,
+  `MainWindow.OwnerJoin.cs`): each PC makes an account named after its
+  Windows display name, so one person with Martlet on several PCs got one
+  account for each PC. Windows logins with the same name are one person. When
+  an account that this PC made, signed in here with its Windows login (in the
+  directory or pending), has the same name as another account of the household
+  with a `windows` login, this PC folds it into the **keeper**: the household's
+  owner account first, then the higher role, then the account whose Windows
+  login was added first, then the lower ID. Every desktop picks the same keeper,
+  so two accounts never fold into each other. The steps are the same as when
+  joining with the owner's approval: this PC signs in to the keeper with its
+  Windows login (a `same-name` binding), switches to it between replies, moves
+  the files, memories, characters and voice links, and removes its own account
+  with `merged_into`. A pending account is never written; it is only signed
+  out. It also runs for PCs that were set up before, and also after a Prove
+  sign-in or a sign-in join. MCP `accounts_status` shows the plan as
+  `samePerson`.
 - Someone who deletes both `accounts.json` and `accounts\session.json` on a
   member desktop is migrated again as the owner; account locks (W12) close this.
 

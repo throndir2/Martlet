@@ -7,16 +7,19 @@ namespace Martlet.Desktop;
 /// <summary>Joining with the owner's approval (docs/ACCOUNTS.md, "Joining with the owner's approval"): a fresh install makes its own
 /// owner account before it joins. Once the directory sync finds the household's owner account, this PC signs in to it with its
 /// Windows login, switches to it between replies and folds its own account into it with the merge steps, so the owner's settings
-/// and characters are here. Never on a reply's path.</summary>
+/// and characters are here. Windows logins with the same name are one person (<see cref="SamePerson"/>): an account this PC
+/// made with the same name as another account of the household folds into that one the same way. Never on a reply's path.</summary>
 public partial class MainWindow
 {
     private bool ownerFoldBusy;
     private DateTimeOffset ownerFoldRetryAt;
 
-    /// <summary>The plan for this PC now, or null (<see cref="OwnerJoin.Plan"/>).</summary>
+    /// <summary>The plan for this PC now, or null (<see cref="OwnerJoin.Plan"/>, then <see cref="SamePerson.Plan"/>: Windows logins
+    /// with the same name are one person).</summary>
     private OwnerJoinPlan? OwnerJoinPlanFor(AccountDirectory directory, NetworkRoster roster) =>
         accounts is null || store is null ? null
-        : OwnerJoin.Plan(directory, accounts.State, roster, accounts.DeviceId, JoinedAccount.Load(store.DataDirectory) is not null);
+        : OwnerJoin.Plan(directory, accounts.State, roster, accounts.DeviceId, JoinedAccount.Load(store.DataDirectory) is not null)
+            ?? SamePerson.Plan(directory, accounts.State, roster, accounts.DeviceId);
 
     private async Task FoldIntoHouseholdOwnerAsync()
     {
@@ -43,17 +46,19 @@ public partial class MainWindow
             security.Locks.Delete(plan.Own);
             QueueAccountsSync();
             RenderAccount();
-            ErrorLog.Info($"Accounts: folded this PC's own account {AccountSession.Short(plan.Own)} into the household's owner account " +
+            ErrorLog.Info($"Accounts: folded this PC's own account {AccountSession.Short(plan.Own)} into {(plan.SameName ? "the account of the same name" : "the household's owner account")} " +
                 $"{AccountSession.Short(plan.Owner)} ({steps.Count} data step(s)).");
-            ActionText.Text = $"This PC now uses {owner.Name}'s account, the household owner's, so your settings and characters are here.";
+            ActionText.Text = plan.SameName
+                ? $"This PC now uses {owner.Name}'s account from your other computers (the same name, so the same person): your settings and characters are together."
+                : $"This PC now uses {owner.Name}'s account, the household owner's, so your settings and characters are here.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
             Martlet.Core.Contracts.ContractException || ClusterSync.IsHostFailure(error))
         {
             ownerFoldRetryAt = DateTimeOffset.UtcNow.AddMinutes(5);
-            ErrorLog.Warn($"Accounts: couldn't fold this PC's own account {AccountSession.Short(plan.Own)} into the household's owner account yet; " +
-                "trying again in 5 minutes", error);
+            ErrorLog.Warn($"Accounts: couldn't fold this PC's own account {AccountSession.Short(plan.Own)} into " +
+                $"{(plan.SameName ? "the account of the same name" : "the household's owner account")} yet; trying again in 5 minutes", error);
         }
         finally { ownerFoldBusy = false; }
     }

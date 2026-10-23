@@ -463,7 +463,7 @@ public static class HostTransport
         string spkiFingerprint, TimeProvider clock) =>
         ValidateCertificate(certificate, chain, errors, presented => presented == spkiFingerprint, clock);
 
-    private static bool ValidateCertificate(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors,
+    internal static bool ValidateCertificate(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors,
         Func<string, bool> accept, TimeProvider clock)
     {
         if (certificate is null || errors.HasFlag(SslPolicyErrors.RemoteCertificateNameMismatch) ||

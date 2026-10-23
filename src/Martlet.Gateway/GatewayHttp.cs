@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Martlet.Core.Hardware;
 using Martlet.Core.Logs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -131,6 +132,31 @@ internal sealed class GatewayHttpApplication : GatewayRouteHandler
 
     internal GatewaySignInService SignIn => signInRoutes.SignIn;
 
+    /// <summary>This computer's hardware keys (<see cref="HardwareKeys"/>), made once on first use; tests set their own.</summary>
+    internal Lazy<HardwareKeys> Hardware { get; set; } = new(HardwareKeys.ForThisComputer);
+
+    private readonly SemaphoreSlim hardwareGate = new(1, 1);
+    private readonly Queue<DateTimeOffset> hardwareProofs = new();
+    internal const int HardwareProofsPerMinute = 30;
+
+    /// <summary>Signs this host's ID and TLS key for anyone who asks (a desktop checking that a reinstalled host is the same
+    /// computer). The TPM is slow and shared, so this signs one proof at a time and at most 30 a minute.</summary>
+    private async Task<HardwareProofDocument> ProveHardwareAsync(string nonce, CancellationToken token)
+    {
+        await hardwareGate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var now = clock.GetUtcNow();
+            while (hardwareProofs.Count > 0 && now - hardwareProofs.Peek() > TimeSpan.FromMinutes(1)) hardwareProofs.Dequeue();
+            if (hardwareProofs.Count >= HardwareProofsPerMinute) throw new GatewayProtocolException("auth.throttled");
+            hardwareProofs.Enqueue(now);
+            var keys = Hardware.Value;
+            return await Task.Run(() => HardwareProof.Make(keys, identity.HostId, identity.SpkiFingerprint, nonce), token)
+                .ConfigureAwait(false);
+        }
+        finally { hardwareGate.Release(); }
+    }
+
     /// <summary>The host's current TLS certificate with its private key, which signs account attestations (its key is the one
     /// the roster pins). Set when the listener starts; null before.</summary>
     internal Func<System.Security.Cryptography.X509Certificates.X509Certificate2>? SigningCertificate
@@ -191,6 +217,15 @@ internal sealed class GatewayHttpApplication : GatewayRouteHandler
                     authAdmission = open ? "open" : "closed",
                     modelReadiness = "not-probed"
                 }).ConfigureAwait(false);
+                return;
+            }
+            if (context.Request.Method == HttpMethods.Get && rawTarget!.StartsWith(HardwareProof.Path + "?nonce=", StringComparison.Ordinal))
+            {
+                EnsureEmptyRequest(context.Request);
+                var nonce = rawTarget[(HardwareProof.Path.Length + 7)..];
+                GatewayRules.Require(HardwareProof.IsNonce(nonce), "request.invalid");
+                await WriteJsonAsync(context, 200, await ProveHardwareAsync(nonce, context.RequestAborted).ConfigureAwait(false),
+                    options: HardwareProof.Json).ConfigureAwait(false);
                 return;
             }
             if (context.Request.Method == HttpMethods.Post && rawTarget == "/martlet/v1/pair")

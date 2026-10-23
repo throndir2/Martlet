@@ -44,7 +44,8 @@ without the desktop: `device` (this data folder's device ID), `network`
 `windowsLoginOfThisPc`, `emailHints` (a count) and `devices` (`deviceId`,
 `thisPc`, the `login` kind, whether it carries an `attestation`, and its
 `proof` under the binding rule: `creator`, `attestation`, `migration`,
-`merged`, `none` when a host or desktop would refuse it, or `no_network`);
+`same-name`, `merged`, `none` when a host or desktop would refuse it, or
+`no_network`);
 `signedInHere`; and `locks`, per account with an unlock file in
 `account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
 `askOnThisPc`, `remember`, `encrypt`, `damaged` (the unlock file is there but
@@ -101,7 +102,13 @@ the next sync), `ignored` (network hosts forgotten here) and `removedFrom`;
 `computerNameFrom` `report`, else the name its host ID was made from,
 `host-id`: *Nahida-host* gives *Nahida*), how many outside addresses are
 kept with it and its `access` (`member` for your own hosts, `friend` for a host
-a friend shares with this PC: its engines only, never in this PC's network);
+a friend shares with this PC: its engines only, never in this PC's network),
+and its `recognition`, what this PC saved to recognize the host's computer
+after an OS reinstall ([NETWORK](../NETWORK.md#when-a-host-is-reinstalled)):
+`tpmKeys` (the kinds, `tpm-endorsement` and `tpm-owner`, never the keys),
+`noTpmKey` (why the host has none), `hardwareFacts` (how many fact hashes),
+`roles`, `keysCheckedAt`, `factsCheckedAt`, `lastReinstall` and
+`lastReinstallAt` (null before the first check);
 and `friends`, what **Share › Friends** last read from each of your hosts
 (`friends.json`: `checkedAt`, and per host `hostId`, `read`, `problem`, each
 friend's `label`, `provider` and `computers`, and how many are `asking`), or
@@ -148,7 +155,11 @@ the household's `owner`, `householdOwner` (the household's owner account
 that every desktop can bind to: the network's own owner account or the
 founder's), `ownerJoin` (`null`, or `{owner, own, ownWritten}` while this PC,
 let in with the owner's approval, still has to sign in to the household's
-owner account and fold the account it made before it joined), and this PC's
+owner account and fold the account it made before it joined), `samePerson`
+(`null`, or `{keep, own, ownWritten}` while an account this PC made with its
+Windows login has the same name as another account of the household, `keep`,
+and still has to fold into it: Windows logins with the same name are one
+person), and this PC's
 copy of the account directory:
 `directory` (`none`, `loaded` or `unreadable`: `accounts.json`), how many
 `accounts`, `removed` and `owners`, its `revision` and each of its `entries`
@@ -353,6 +364,24 @@ moved); and a host back at its paired address is found there and the other
 address forgotten. Finds go to the lab's answer on loopback, never to the home
 network. The report's `notRun` names what needs a real network adapter (the
 gateway following a real DHCP change).
+
+`host_reinstall_selftest` (no arguments) rehearses a host whose computer was
+reinstalled ([NETWORK](../NETWORK.md#when-a-host-is-reinstalled)) with the
+production code: real gateways (`lab-reinstalled-host`, Kestrel, TLS) on
+`127.0.0.6` with a simulated TPM (`SimulatedTpm`), the desktop's real proof
+client (`HostComputerProof`, `GET /martlet/v1/hardware`) and its decision
+(`ReinstallCheck`). It runs `src\Martlet.NodeLinkCheck` (mode `reinstall`,
+`ReinstallRehearsal.cs`) and returns `{exitCode, report}`. Its steps: the
+desktop saves the host's two TPM keys over its pinned TLS key; after the
+reinstall (a new TLS key, the same chip) the pinned-key probe says
+`another key`; the same chip proves it is the same computer (`Proven`,
+verdict `Same`, on any route); another computer's chip is not trusted
+(`OtherKeys`); and a host without a TPM (`NoKeys`) is trusted by its hardware
+facts only at home or over Tailscale (`Same`), not from outside (`Unsure`),
+and never with another board ID (`NotSame`). The last step signs and checks a
+proof with this PC's own TPM; a PC without one says why in `notRun`. Not
+covered: a real reinstall of a Linux computer and the desktop setting it up
+again over SSH.
 
 `hosts_find` (`dataDirectory` optional, `seconds` 0.5 to 5, default 2) asks
 this PC's home network where Martlet hosts are, as Martlet does when a paired
