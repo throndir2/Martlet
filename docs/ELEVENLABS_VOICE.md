@@ -78,7 +78,7 @@ model by itself.
 ## Tags
 
 When ElevenLabs speaks, the Thinking model gets ElevenLabs' own tags in
-Companion › Prompts › *Voice sounds and tones* (see
+Companion › Skills › *Voice sounds and tones* (see
 [Voice tags](CONVERSATION.md#voice-tags)). The tags are the ones ElevenLabs
 documents for Eleven v3 and v4, limited to those that suit a conversation:
 

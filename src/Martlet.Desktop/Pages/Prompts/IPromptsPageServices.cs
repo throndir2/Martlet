@@ -15,6 +15,18 @@ internal interface IPromptsPageServices
     /// <summary>Tells the window that the page has edits that are not saved yet.</summary>
     void MarkEdited();
 
+    /// <summary>The saved skills (Companion › Skills), or null when every skill is built in.</summary>
+    SkillSettings? Skills { get; }
+
+    /// <summary>The active persona's name and text, for what every reply sends.</summary>
+    (string Name, string Text) Persona { get; }
+
+    /// <summary>What the last reply to you sent besides the conversation, or null before the first reply.</summary>
+    ReplyPromptRecord? LastReply { get; }
+
+    /// <summary>Opens Companion › Skills.</summary>
+    void OpenSkills();
+
     /// <summary>Saves the prompts as typed (<paramref name="texts"/>: each prompt's ID and text) into the newest saved settings and calls
     /// <paramref name="saved"/> with what was saved. False: try again shortly (another window saved the settings meanwhile).</summary>
     Task<bool> SaveAsync(IReadOnlyDictionary<string, string> texts, Action<PromptSettings?> saved);

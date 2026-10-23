@@ -141,7 +141,7 @@ internal sealed class LiveConversationConfiguration
     internal PromptSettings? Prompts { get; }
 
     /// <summary>The saved reply length prompt, or null when the user emptied it.</summary>
-    internal string? ReplyLength => PromptSettings.Fill(Prompts, PromptCatalog.ReplyLength);
+    internal string? ReplyLength => SkillSettings.Fill(Prompts, SkillCatalog.ReplyLength);
 
     /// <summary>What closes a reply's instructions: the short first sentence prompt for a <paramref name="spoken"/> reply while
     /// Companion › Replies › Short first sentence is on, then the reply length prompt. The same text every time, so prompt
@@ -610,7 +610,7 @@ internal sealed class LiveConversationConfiguration
     /// the owner emptied it.</summary>
     internal string? WhilePlaying(string? activity) =>
         Martlet.Memory.MemoryActivity.Kind(activity) == Martlet.Memory.MemoryActivity.Gaming && Martlet.Memory.MemoryActivity.Name(activity) is { } game
-            ? PromptSettings.Fill(Prompts, PromptCatalog.WhilePlaying, ("game", game)) : null;
+            ? SkillSettings.Guidance(Prompts, SkillCatalog.WhilePlaying, ("game", game)) : null;
 
     /// <summary>The named parts of <see cref="Notes"/>, in order, without the labels around them (<see cref="WrapNotes"/>); empty
     /// when nothing is new.</summary>
@@ -677,7 +677,7 @@ internal sealed class LiveConversationConfiguration
         : IsElevenLabs(tts) ? SpeechEngines.ElevenLabs
         : IsHostVoice(tts) ? SpeechEngines.ForRoute(tts.GatewaySnapshot?.RouteId) ?? SpeechEngines.ForModel(tts.ModelId) : null;
 
-    /// <summary>Tells the Thinking model exactly the speaking engine's tags in its own syntax (Companion › Prompts › Voice sounds
+    /// <summary>Tells the Thinking model exactly the speaking engine's tags in its own syntax (Companion › Skills › Voice sounds
     /// and tones), or null when the voice has no tags or the owner emptied the prompt.</summary>
     internal string? VoiceTagInstructions() => VoiceTags.Instructions(SpeakingEngine(), Prompts);
 
@@ -743,18 +743,18 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>Replies to always listening: the microphone hears the room, so the model decides whether to answer.</summary>
     internal static string? Listening(PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.Listening, ("silent", SilentReply));
+        SkillSettings.Guidance(prompts, SkillCatalog.AlwaysListening, ("silent", SilentReply));
 
     internal static string ListeningInstructions => Listening(null)!;
 
     /// <summary>One moment (Companion › Prompts): every reply and glance is told, the same way each time, that one message may bring
     /// the user's words, what this PC played, a picture and finished background work together, to answer in one reply.</summary>
     internal static string? Moment(PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.Moment, ("silent", SilentReply));
+        SkillSettings.Guidance(prompts, SkillCatalog.OneMoment, ("silent", SilentReply));
 
-    /// <summary>Companion › Prompts › Adult content while Companion › Replies › Adult content is on, else null: it follows the One
+    /// <summary>Companion › Skills › Adult content while Companion › Replies › Adult content is on, else null: it follows the One
     /// moment prompt in every reply and remark (never in a Discord call), the same each time.</summary>
-    internal string? AdultInstructions => GenerationSettings.Adult(Generation) ? PromptSettings.Fill(Prompts, PromptCatalog.AdultContent) : null;
+    internal string? AdultInstructions => GenerationSettings.Adult(Generation) ? SkillSettings.Guidance(Prompts, SkillCatalog.AdultContent) : null;
 
     /// <summary>What the Thinking model hears of <paramref name="burst"/> (<see cref="Martlet.Conversation.TouchWording.Told"/>).</summary>
     internal static string TouchWords(PromptSettings? prompts, Martlet.Conversation.TouchBurst burst) =>
@@ -767,12 +767,12 @@ internal sealed class LiveConversationConfiguration
     /// <summary>Replies whose message includes what the PC plays: those lines are never the user, and on their own they
     /// usually get [pass].</summary>
     internal static string? PcAudio(PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.PcAudio, ("marker", PcAudioMarker), ("silent", SilentReply));
+        SkillSettings.Guidance(prompts, SkillCatalog.PcSound, ("marker", PcAudioMarker), ("silent", SilentReply));
 
     /// <summary>Replies while Martlet is in the owner's own Discord call: the PC's lines are people in the call (named when
     /// known) who can hear Martlet's spoken reply.</summary>
     internal static string? DiscordCall(PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.DiscordCall, ("marker", PcAudioMarker), ("silent", SilentReply));
+        SkillSettings.Guidance(prompts, SkillCatalog.DiscordCall, ("marker", PcAudioMarker), ("silent", SilentReply));
 
     /// <summary>The text without the lines heard from what the PC plays and without what Martlet saw (<see cref="VisionHistory"/>
     /// lines; null when nothing else is left): what memory and learning names may read.</summary>
@@ -1029,7 +1029,7 @@ internal sealed class LiveConversationConfiguration
         return tags.Count == 0 ? null : tags;
     }
 
-    /// <summary>Companion › Prompts › Chattiness: Martlet decides: the levels, when to switch and the tags that switch them.</summary>
+    /// <summary>Companion › Skills › Chattiness: Martlet decides: the levels, when to switch and the tags that switch them.</summary>
     internal static string? ChattinessDecides(PromptSettings? prompts) => ChattinessTags.Instructions(prompts, SilentReply);
 
     /// <summary>The note that says the level while Martlet decides how chatty it is (Companion › Prompts › Chattiness right now).</summary>

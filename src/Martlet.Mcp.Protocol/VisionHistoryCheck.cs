@@ -6,7 +6,7 @@ using Martlet.Providers;
 namespace Martlet.Mcp;
 
 /// <summary>vision_history_check: how what Martlet sees is kept in the conversation (docs/SCREEN_COMMENTARY.md), rehearsed with
-/// the desktop's production code: Companion › Prompts › What you saw as a data directory's settings.json sends it, then sample
+/// the desktop's production code: Companion › Skills › What you saw as a data directory's settings.json sends it, then sample
 /// look replies (or the one given) through the production speech segmenter and chat stripper with the seen and chattiness tags
 /// a look is offered (what is spoken and shown, the tags found and the description kept), each kept in a production
 /// conversation buffer as the desktop keeps a look (passed looks in a row keep only the last), then a message that came with

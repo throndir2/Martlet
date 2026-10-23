@@ -216,7 +216,7 @@ what each one is.
   one motion at random when several share the cue).
 - **Replies**: while the character shows, replies are offered every emote and
   motion that is on and that the speaking voice doesn't already set off through
-  a cue (Companion › Prompts › *Character emotes and motions*), written as
+  a cue (Companion › Skills › *Character emotes and motions*), written as
   `{tag}`. The prompt asks the reply model to use them freely (usually one or
   two in a reply) and to vary them, because each one is worth showing. This
   part of the prompt is not longer than before.

@@ -77,7 +77,9 @@ The bottom of the Lorebooks window tells you if every change is saved. When a ch
 
 ## Prompts
 
-**Companion › Prompts** shows every instruction Martlet sends to the Thinking model: the persona wrapper, reply length, tools, lorebook, memory, screen looks, check-ins and more. Edit any of them, and your text is used instead of the built-in one. Each prompt shows an estimate of its size in tokens. **Use built-in text** puts one prompt back, and **Use all built-in prompts** puts all of them back. Some prompts need a fixed line format, because Martlet reads the answer.
+**Companion › Prompts** shows the requests Martlet sends to the Thinking model and the notes around what it knows: the persona wrapper, lorebook, memory, screen looks, check-ins and more. The rules a reply follows (reply length, tools, always listening and the others) are [skills](#skills). Edit any prompt, and your text is used instead of the built-in one.
+
+The top card, **What one reply sends**, says what every reply to you carries (the persona prompt, the pinned skills and One moment, with their size in tokens) and which skills your last reply also carried because their feature is on. Under each group's title, a line says when Martlet sends it: only the persona prompt goes with every reply. Each prompt shows an estimate of its size in tokens. **Use built-in text** puts one prompt back, and **Use all built-in prompts** puts all of them back. Some prompts need a fixed line format, because Martlet reads the answer.
 
 Press the **?** after a prompt's name to see when Martlet sends it and which words in braces it fills in.
 
@@ -97,7 +99,7 @@ Each of Martlet's messages in the talk window shows its token line beside **What
 
 ## Skills
 
-**Companion › Skills** lists instructions Martlet uses only when it needs them, so every reply stays short and quick. A pinned skill goes with every reply. A skill that explains tools goes with a reply only while that reply is offered its tools. You can edit any skill and add your own; edits save as you type and are the same on all your computers. Empty a skill's text to send nothing for it. Skills is an advanced page: turn on **Show advanced settings** (Settings › What Martlet shows) to see it.
+**Companion › Skills** lists instructions Martlet uses only when it needs them, so every reply stays short and quick. Each skill says how a reply gets it: **Pinned** (every reply to you), **Attached now** (your last reply carried it), **Attached when** its feature is on (such as spoken replies, or while adult content is on), or **Loaded on demand by the director**. By default Look into it, Keep the conversation going and Reply length are pinned. You can edit any skill and add your own; edits save as you type and are the same on all your computers. Empty a skill's text to send nothing for it. Skills is an advanced page: turn on **Show advanced settings** (Settings › What Martlet shows) to see it.
 
 ## Replies
 

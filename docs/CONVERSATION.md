@@ -273,7 +273,7 @@ reads the entire conversation again before every reply (on a 12B model, about
   message the request carries has it (so once a conversation), what was said
   in earlier conversations when the message refers to
   one ([Memory › Conversation history](MEMORY.md#conversation-history)), who is
-  talking when that changed, Companion › Prompts › *While you play* while a
+  talking when that changed, Companion › Skills › *While you play* while a
   game is played and no earlier message the request carries has it for that
   game ([Memories for a game](MEMORY.md#memories-for-a-game)), a smart home
   result, and the
@@ -345,30 +345,56 @@ example dialogue has `Owner:` lines on purpose. The Thinking trace says
 A **skill** is a named set of instructions that is not in every request
 (Companion › Skills). It has a key, a name, one line that says when it helps,
 its text and a *Pinned* box. Small models answer better with less in their
-instructions, so Martlet sends a skill only when a reply needs it:
+instructions, so every rule a reply follows is a skill, and Martlet sends a
+skill only when a reply needs it. A reply gets a skill in one of three ways:
 
-- **Pinned skills** close every reply's instructions, before *Keep the
-  conversation going* (`PromptSettings.ReplyClosing`). The built-in *Look into
-  it* skill is pinned: when something needs a tool, a look-up or more thought,
-  the reply says briefly that it will do it, and never guesses.
-- **A skill that explains tools** goes with a reply only while that reply is
-  offered one of its tools, where its prompt was before: *Using tools* (any
-  tool), *Thinking longer* (`think_longer`), *Web research* (`research`),
-  *Songs* (`sing_song`, `play_song`, `stop_singing`) and *App guides*
-  (`read_up_on`, `search_guide`, `skip_guide`). A pinned one is sent once, in
-  the closing.
-- **Your own skills** are added with *Add a skill*. A pinned one goes with
-  every reply.
+- **Pinned.** Every reply to you gets it, in the closing of its instructions
+  (`PromptSettings.ReplyClosing`, `SkillSettings.Pinned`). The built-in pinned
+  skills are *Look into it* (when something needs a tool, a look-up or more
+  thought, say briefly that you'll do it; never guess), *Keep the conversation
+  going* and *Reply length*, which closes the instructions last. *Short first
+  sentence* goes just before *Reply length* in a spoken reply while Companion ›
+  Replies › Short first sentence is on.
+- **Attached by a feature.** Every other built-in skill goes with a reply only
+  while its feature is on, where its prompt was before: *One moment* (every
+  reply and glance), the tool skills (*Using tools*, *Thinking longer*, *Web
+  research*, *Songs*, *App guides*, *Smart home*) while the reply is offered
+  their tools, *Things done on their own* while [the director](#the-director)
+  has the tools, *Always listening*, *What this PC plays*, *In your Discord
+  call*, the three recorded-voice skills, *Who is talking*, *Voice sounds and
+  tones*, *Character emotes and motions*, *Where you look*, *What you saw*,
+  *Pictures as words*, *Chattiness: Martlet decides*, *Adult content*, *Singing
+  without tools* and *While you play* (in the notes). Each skill's `When` says
+  when (`SkillDefinition.When`). A pinned feature skill goes in the closing of
+  every reply instead, and not twice.
+- **Loaded on demand.** The director loads any skill from its skill index
+  (`load_skill`). Your own skills, added with *Add a skill*, go only this way
+  unless you pin them.
 
-These five skills were prompts on Companion › Prompts before Martlet 0.92. An
-edit of one of those prompts moves to its skill when settings.json is read,
-also when an older computer sends it (`AppSettings.MoveSkillPrompts`), unless
-the skill is already edited. Skills are settings.json's `skills` section and
-the same on every computer of the account (the shared `skills` key). They
-come from saved settings only, so the start of every request stays the same
-for prompt caches. MCP's `skills_status` shows every skill and the pinned
-text every reply gets ([MCP › Settings](mcp/settings.md)).
+Companion › Prompts keeps only the requests themselves (glances, background
+work, check-ins, the audio model) and the frames around data (the persona
+prompt, remembered facts, lore, notes, results). Its top card, **What one
+reply sends**, says what every reply to you carries (the persona prompt, the
+pinned skills and One moment, with tokens) and which skills the last reply
+carried because their feature is on. Each group of prompts says when it is
+sent; only the persona prompt is in every reply. Companion › Skills marks each
+skill *Pinned*, *Attached now* (the last reply carried it), *Attached when ...*
+or *Loaded on demand by the director*. The desktop finds what a reply carried
+in its request, off the reply's path (`SkillSettings.In`,
+`LiveConversationController.LastReplyPrompt`), and logs *Reply prompt: about N
+tokens of instructions and K tools (...); skills: look-into-it, ...*.
 
+The rule prompts became skills in Martlet 0.92 (tools, thinking longer, web
+research, singing, app guides) and the release after it (every other reply rule). An edit of
+one of those prompts moves to its skill when settings.json is read, also when
+an older computer sends it (`AppSettings.MoveSkillPrompts`,
+`SkillCatalog.MovedPrompts`), unless the skill is already edited. Skills are
+settings.json's `skills` section and the same on every computer of the account
+(the shared `skills` key). They come from saved settings only, so the start of
+every request stays the same for prompt caches. MCP's `skills_status` shows
+every skill, how a reply gets it and the pinned text every reply gets, and
+`prompts_status` shows `everyReply` and when each group is sent ([MCP ›
+Settings](mcp/settings.md)).
 ## Context board
 
 The context board is where background sources keep their newest short note
@@ -477,7 +503,7 @@ see?"*
   neither they nor a picture are ever your words: memory, learning names and
   Home Assistant read only what you said yourself.
 
-Every reply and glance carries the same Companion › Prompts › *One moment*
+Every reply and glance carries the same Companion › Skills › *One moment*
 instruction, first among Martlet's own, so the start of every request stays
 the same and prompt caches are reused: one message can bring several of these
 at once; answer them together in one short, natural reply in character, your
@@ -554,7 +580,7 @@ conversation and answers each message like an assistant. Martlet gives it
 three kinds of help. None of them adds a request before a reply, so the time
 to Martlet's first word does not grow.
 
-1. **How to talk.** Companion › Prompts › *Keep the conversation going* is in
+1. **How to talk.** Companion › Skills › *Keep the conversation going* is in
    the instructions of every reply to your words, just before *Short first
    sentence* and *Reply length*: when you just chat, talk like a fun friend,
    not an assistant; react to your exact words first; then add one thing of
@@ -2711,8 +2737,8 @@ after each reply; an `actions` on or off you saved moves to the director.
   their answers. Without a member that takes director jobs and calls tools
   (one model on one PC, for example) the director doesn't take anything, and
   the reply keeps its tools and the skills that explain them as before.
-- **What the reply is told.** The *Things done after the reply* prompt
-  (`handed_off_tools`, Every reply) names what happens on its own and tells
+- **What the reply is told.** The *Things done on their own* skill
+  (`handed-off`) names what happens on its own and tells
   the reply to say only, briefly, that it will do it.
 - **A broken promise is said.** When a run fails, finds no pool member, a
   tool call fails, or a turn waits 10 minutes without a run, the talk
@@ -3136,7 +3162,7 @@ voice pipeline never waits for a whole reply:
   one!"*, *"Hmm, good question."*) and then go on. The voice gets a piece as
   soon as its sentence is written, so a short first sentence reaches the voice
   after a few words instead of a whole long sentence. The prompt (Companion ›
-  Prompts › *Short first sentence*) goes just before *Reply length* in the
+  Skills › *Short first sentence*) goes just before *Reply length* in the
   instructions and is the same text every time, so prompt caches keep it;
   turning it off or on changes the start of the requests once. A reply that
   isn't spoken never gets it. The rules for pieces don't change: a short first
@@ -3726,7 +3752,7 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   line of it starts with `[PC audio]`, followed by where it came from when
   Martlet can tell (`[PC audio] From a voice chat in Discord: ...`, see [Where it
   comes from](#where-it-comes-from-and-what-you-are-doing)), and Companion ›
-  Prompts › *What this PC plays* says those lines are never the user and never
+  Skills › *What this PC plays* says those lines are never the user and never
   a reason to use tools or act for the user, that they are context like
   background sound in the room, what each kind is (a creator talking to their
   viewers, characters in a show or movie, a game, other people in a voice chat,
@@ -3942,7 +3968,7 @@ in `SpeechEngines.All`, but their tags work the same way below and are
 stripped from the chat for every voice.
 
 - **Thinking prompt.** When a spoken reply's voice has tags, Companion ›
-  Prompts › *Voice sounds and tones* is added to its instructions with exactly
+  Skills › *Voice sounds and tones* is added to its instructions with exactly
   that engine's tags in two groups: its non-word sounds (written inline where
   the sound happens) and its tones of voice (written at the start of a
   sentence; each spoken piece is synthesized on its own, so a tone reaches only

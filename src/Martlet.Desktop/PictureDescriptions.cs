@@ -344,7 +344,7 @@ internal sealed partial class PictureDescriptions
 
     /// <summary>What every reply and look is told while the image model describes pictures (Companion › Prompts › Pictures as
     /// words); the same in every request. Null when the owner emptied it.</summary>
-    internal static string? Instructions(PromptSettings? prompts) => PromptSettings.Fill(prompts, PromptCatalog.SeenDescribed);
+    internal static string? Instructions(PromptSettings? prompts) => SkillSettings.Guidance(prompts, SkillCatalog.ScreenAsWords);
 
     /// <summary>A look's message with the image model's words: the glance prompt, the description, then the text read on the
     /// screen (last, so the request starts like the one before).</summary>

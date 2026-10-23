@@ -7,8 +7,8 @@ public sealed class PromptSettingsTests
     [Fact]
     public void ListeningPromptsKeepBackgroundSoundsAsContextAndAnswerSomeoneInACallWhoTalksToMartlet()
     {
-        var listening = PromptSettings.Fill(null, PromptCatalog.Listening, ("silent", "pass"))!;
-        var pc = PromptSettings.Fill(null, PromptCatalog.PcAudio, ("marker", "[PC audio]"), ("silent", "pass"))!;
+        var listening = SkillSettings.Guidance(null, SkillCatalog.AlwaysListening, ("silent", "pass"))!;
+        var pc = SkillSettings.Guidance(null, SkillCatalog.PcSound, ("marker", "[PC audio]"), ("silent", "pass"))!;
         foreach (var text in new[] { listening, pc })
         {
             Assert.DoesNotContain("even when it seems to talk to you", text, StringComparison.Ordinal);
@@ -79,7 +79,9 @@ public sealed class PromptSettingsTests
               "reply_length": "Keep it short."}}
             """;
         var settings = Martlet.Core.Contracts.ContractJson.Read<PromptSettings>(System.Text.Encoding.UTF8.GetBytes(json));
-        Assert.Equal([PromptCatalog.Persona, PromptCatalog.ReplyLength], settings.Overrides.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal([PromptCatalog.Persona], settings.Overrides.Keys.Order(StringComparer.Ordinal));
+        // Reply length is a skill now: its edit moves there.
+        Assert.Equal("Keep it short.", settings.Moved!["reply_length"]);
         Assert.Equal("Companion name: {name}\nPersona:\n{persona}", settings.Overrides[PromptCatalog.Persona]);
         Assert.Equal("Companion name: Mira\nPersona:\nKind.",
             PromptSettings.Fill(settings, PromptCatalog.Persona, ("name", "Mira"), ("persona", "Kind.")));
@@ -105,43 +107,44 @@ public sealed class PromptSettingsTests
     [Fact]
     public void ShortFirstSentenceClosesSpokenRepliesJustBeforeReplyLength()
     {
-        var length = PromptSettings.Fill(null, PromptCatalog.ReplyLength)!;
-        var first = PromptSettings.Fill(null, PromptCatalog.ShortFirstSentence, ("silent", "pass"))!;
-        var moves = PromptSettings.Fill(null, PromptCatalog.ConversationMoves)!;
-        // The pinned skills (Look into it, built in) open the closing of every reply.
-        var pinned = SkillSettings.Pinned(null, "pass")!;
+        var look = SkillSettings.Fill(null, SkillCatalog.LookIntoIt)!;
+        var moves = SkillSettings.Fill(null, SkillCatalog.KeepItGoing)!;
+        var length = SkillSettings.Fill(null, SkillCatalog.ReplyLength)!;
+        var first = SkillSettings.Guidance(null, SkillCatalog.ShortFirstSentence, ("silent", "pass"))!;
         Assert.Contains("short first sentence", first);
         Assert.EndsWith("write only [pass].", first);
         Assert.Contains("callback to something said earlier", moves);
-        // On by default: a spoken reply's instructions close with Keep the conversation going, Short first sentence, then reply
-        // length last.
+        // On by default: a spoken reply's instructions close with the pinned skills (Look into it, Keep the conversation going),
+        // then Short first sentence, then Reply length last.
         var spoken = PromptSettings.ReplyClosing(null, null, spoken: true, "pass");
-        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + first + "\n\n" + length, spoken);
+        Assert.Equal(look + "\n\n" + moves + "\n\n" + first + "\n\n" + length, spoken);
         Assert.True(GenerationSettings.StartsShort(null));
         // The same text whatever else the reply settings say, so the start of every request stays the same.
         Assert.Equal(spoken, PromptSettings.ReplyClosing(null, new() { Temperature = 0.4, Reasoning = true }, true, "pass"));
-        // A reply that isn't spoken, the setting turned off, or the prompt emptied: without the short first sentence, as before.
-        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + length, PromptSettings.ReplyClosing(null, null, spoken: false, "pass"));
-        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + length, PromptSettings.ReplyClosing(null, new() { ShortFirstSentence = false }, true, "pass"));
-        var emptied = PromptSettings.Normalize(new Dictionary<string, string> { [PromptCatalog.ShortFirstSentence] = "" });
+        // A reply that isn't spoken, the setting turned off, or the skill emptied: without the short first sentence, as before.
+        var plain = look + "\n\n" + moves + "\n\n" + length;
+        Assert.Equal(plain, PromptSettings.ReplyClosing(null, null, spoken: false, "pass"));
+        Assert.Equal(plain, PromptSettings.ReplyClosing(null, new() { ShortFirstSentence = false }, true, "pass"));
+        var emptied = SkillSettings.Edited(SkillCatalog.ShortFirstSentence, "");
         emptied!.Validate();
-        Assert.Equal(pinned + "\n\n" + moves + "\n\n" + length, PromptSettings.ReplyClosing(emptied, null, true, "pass"));
-        var noMoves = PromptSettings.Normalize(new Dictionary<string, string> { [PromptCatalog.ConversationMoves] = "" });
-        Assert.Equal(pinned + "\n\n" + first + "\n\n" + length, PromptSettings.ReplyClosing(noMoves, null, true, "pass"));
+        Assert.Equal(plain, PromptSettings.ReplyClosing(emptied, null, true, "pass"));
+        var noMoves = SkillSettings.Edited(SkillCatalog.KeepItGoing, "");
+        Assert.Equal(look + "\n\n" + first + "\n\n" + length, PromptSettings.ReplyClosing(noMoves, null, true, "pass"));
         // An edit is sent as written, and the others emptied leave it closing alone.
-        var edited = PromptSettings.Normalize(new Dictionary<string, string>
-        {
-            [PromptCatalog.ShortFirstSentence] = "Start short. Quiet is [{silent}].", [PromptCatalog.ReplyLength] = "",
-            [PromptCatalog.ConversationMoves] = ""
-        });
-        Assert.Equal(pinned + "\n\nStart short. Quiet is [pass].", PromptSettings.ReplyClosing(edited, null, true, "pass"));
-        Assert.Equal(pinned, PromptSettings.ReplyClosing(edited, new() { ShortFirstSentence = false }, true, "pass"));
-        // With the pinned skill emptied too, nothing closes it.
-        var noSkills = PromptSettings.ForPersonal(edited, null,
-            new SkillSettings { Skills = [SkillSettings.Find(null, SkillCatalog.LookIntoIt)! with { Body = "" }] });
+        var edited = SkillSettings.Edited(SkillCatalog.ShortFirstSentence, "Start short. Quiet is [{silent}].",
+            SkillSettings.Edited(SkillCatalog.ReplyLength, "", SkillSettings.Edited(SkillCatalog.KeepItGoing, "")!.Skills)!.Skills)!;
+        Assert.Equal(look + "\n\nStart short. Quiet is [pass].", PromptSettings.ReplyClosing(edited, null, true, "pass"));
+        Assert.Equal(look, PromptSettings.ReplyClosing(edited, new() { ShortFirstSentence = false }, true, "pass"));
+        // Unpinned, a skill leaves the closing; with every pinned skill emptied, nothing closes it.
+        var unpinned = PromptSettings.ForPersonal(null, null, SkillSettings.Normalize([SkillSettings.Find(null, SkillCatalog.KeepItGoing)! with { Pinned = false }]));
+        Assert.Equal(look + "\n\n" + length, PromptSettings.ReplyClosing(unpinned, null, false, "pass"));
+        Assert.Equal(moves, SkillSettings.Guidance(unpinned, SkillCatalog.KeepItGoing));
+        var noSkills = SkillSettings.Edited(SkillCatalog.LookIntoIt, "", edited.Skills);
         Assert.Null(PromptSettings.ReplyClosing(noSkills, new() { ShortFirstSentence = false }, true, "pass"));
+        // Reply length closes it even after the user's own pinned skills.
+        var own = PromptSettings.ForPersonal(null, null, new SkillSettings { Skills = [new Skill { Key = "mine", Name = "Mine", UseWhen = "", Body = "Be kind.", Pinned = true }] });
+        Assert.EndsWith("Be kind.\n\n" + length, PromptSettings.ReplyClosing(own, null, false, "pass"));
     }
-
     [Fact]
     public void ShortFirstSentenceIsOnUnlessTurnedOffAndOnlyOffIsSaved()
     {
@@ -177,11 +180,11 @@ public sealed class PromptSettingsTests
             System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(CompanionSettings.Begin(null))));
 
         // Its prompt is editable, has no placeholders, and never allows anything sexual with someone under 18.
-        var prompt = PromptCatalog.All.Single(p => p.Id == PromptCatalog.AdultContent);
+        var prompt = SkillCatalog.Find(SkillCatalog.AdultContent)!;
         Assert.Empty(prompt.Placeholders);
-        Assert.Contains("under 18", prompt.Default);
-        Assert.Contains("true to your personality", prompt.Default);
-        Assert.Equal(prompt.Default, PromptSettings.Fill(null, PromptCatalog.AdultContent));
+        Assert.Contains("under 18", prompt.Body);
+        Assert.Contains("true to your personality", prompt.Body);
+        Assert.Equal(prompt.Body, SkillSettings.Guidance(null, SkillCatalog.AdultContent));
     }
 
     [Fact]
@@ -211,8 +214,8 @@ public sealed class PromptSettingsTests
     {
         string[] ids =
         [
-            PromptCatalog.CommentaryScreen, PromptCatalog.CommentaryCamera, PromptCatalog.SeenWithMessage, PromptCatalog.SeenTag,
-            PromptCatalog.SeenDescribed, PromptCatalog.DescribePicture, PromptCatalog.ScreenDigest, PromptCatalog.GlanceAttention,
+            PromptCatalog.CommentaryScreen, PromptCatalog.CommentaryCamera, PromptCatalog.SeenWithMessage,
+            PromptCatalog.DescribePicture, PromptCatalog.ScreenDigest, PromptCatalog.GlanceAttention,
             PromptCatalog.MomentAttention
         ];
         var kept = PromptCatalog.Default(PromptCatalog.PersonalPrivate);
@@ -235,10 +238,17 @@ public sealed class PromptSettingsTests
             Assert.Equal(plain.Replace(kept, shared, StringComparison.Ordinal), PromptSettings.Fill(messages, id));
             Assert.Equal(PromptSettings.Fill(messages, id), PromptSettings.Fill(everything, id));
         }
+        // The skills with {private} follow it the same way.
+        foreach (var key in new[] { SkillCatalog.SeenTags, SkillCatalog.ScreenAsWords })
+        {
+            var plain = SkillSettings.Guidance(null, key, ("silent", "pass"))!;
+            Assert.Contains(kept, plain);
+            Assert.Equal(plain.Replace(kept, shared, StringComparison.Ordinal), SkillSettings.Guidance(messages, key, ("silent", "pass")));
+        }
         // The level is never saved with the prompts, and the owner's prompt edits are kept.
         var edited = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.PersonalShared] = "Read it all." } };
         var used = PromptSettings.ForPersonal(edited, new() { PersonalContent = PersonalContent.Messages })!;
-        Assert.Contains("Read it all.", PromptSettings.Fill(used, PromptCatalog.SeenTag, ("silent", "pass")));
+        Assert.Contains("Read it all.", SkillSettings.Guidance(used, SkillCatalog.SeenTags, ("silent", "pass")));
         Assert.DoesNotContain("Personal", System.Text.Json.JsonSerializer.Serialize(used));
         // The notification look leaves it to the instructions, so it never forbids reading what popped up.
         Assert.DoesNotContain("never the message itself", PromptCatalog.Default(PromptCatalog.GlanceAttention));
@@ -304,7 +314,7 @@ public sealed class PromptSettingsTests
 
         // The kept [seen: ...] words, chatty moods and the screen summary all point the same way.
         Assert.Contains("what the user is doing, not the UI or their setup",
-            PromptSettings.Fill(null, PromptCatalog.SeenTag, ("silent", "pass")));
+            SkillSettings.Guidance(null, SkillCatalog.SeenTags, ("silent", "pass")));
         Assert.Contains("never to the UI or their setup", PromptSettings.Fill(null, PromptCatalog.ChattinessChatty, ("silent", "pass")));
         Assert.Contains("never about the UI or their setup", PromptCatalog.DefaultChattinessDecidesInstructions);
         Assert.Contains("what the user did and what changed", PromptCatalog.Default(PromptCatalog.ScreenDigest));

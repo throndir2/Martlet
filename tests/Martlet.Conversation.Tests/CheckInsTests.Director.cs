@@ -175,6 +175,6 @@ public sealed partial class CheckInsTests
         Assert.Contains("just say you'll do it", one);
         Assert.Contains(": Reminders; Memory; Songs, pictures and creations.",
             CheckIns.HandOffGuidance([Hand("reminders", "Reminders"), Hand("manage_memories", "Memory"), Hand("x", "Memory"), Hand("sing_song", "Songs, pictures and creations")], null));
-        Assert.Null(CheckIns.HandOffGuidance([Hand("reminders", "Reminders")], new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.HandedOffTools] = "" } }));
+        Assert.Null(CheckIns.HandOffGuidance([Hand("reminders", "Reminders")], SkillSettings.Edited(SkillCatalog.HandedOff, "")));
     }
 }

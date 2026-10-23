@@ -19,6 +19,9 @@ internal interface ISkillsPageServices
     /// calls <paramref name="saved"/> with what was saved. False: try again shortly (another window saved the settings meanwhile).</summary>
     Task<bool> SaveAsync(IReadOnlyList<Skill> skills, Action<SkillSettings?> saved);
 
+    /// <summary>What the last reply to you sent besides the conversation (the skills it carried), or null before the first reply.</summary>
+    ReplyPromptRecord? LastReply { get; }
+
     /// <summary>Draws the page again (after a skill was added or deleted and saved).</summary>
     void Refresh();
 }

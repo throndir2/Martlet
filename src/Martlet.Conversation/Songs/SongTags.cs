@@ -26,7 +26,7 @@ public static class SongTags
     /// quiet. The same on every reply, so the instructions stay the same. Null when the owner emptied it (then no tag is
     /// offered).</summary>
     public static string? Instructions(PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.SingingTags, ("silent", StayQuiet.Marker));
+        SkillSettings.Guidance(prompts, SkillCatalog.SongTags, ("silent", StayQuiet.Marker));
 
     /// <summary>The song tags among <paramref name="controls"/> (a turn's control tags, as written), in order, each as the tool
     /// call it stands for. Other tags are left out.</summary>

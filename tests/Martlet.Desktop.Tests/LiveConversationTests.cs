@@ -1325,7 +1325,7 @@ public sealed class LiveConversationTests
     public async Task SpokenRepliesCloseTheirInstructionsWithAShortFirstSentenceTheSameWayEveryTurn()
     {
         await using var fixture = await LiveFixture.Create();
-        var shortFirst = PromptSettings.Fill(null, PromptCatalog.ShortFirstSentence, ("silent", LiveConversationConfiguration.SilentReply))!;
+        var shortFirst = SkillSettings.Guidance(null, SkillCatalog.ShortFirstSentence, ("silent", LiveConversationConfiguration.SilentReply))!;
         string Instructions()
         {
             using var body = JsonDocument.Parse(fixture.Llm.Body);

@@ -81,14 +81,14 @@ public sealed record GenerationSettings : IContract
     public ThinkLongerSettings? ThinkLonger { get; init; }
 
     /// <summary>Companion › Replies › Short first sentence: whether every spoken reply is asked to begin with a short first
-    /// sentence (Companion › Prompts › Short first sentence), so the voice can start sooner. Null (nothing chosen) is On, the
+    /// sentence (Companion › Skills › Short first sentence), so the voice can start sooner. Null (nothing chosen) is On, the
     /// default (<see cref="DefaultShortFirstSentence"/>); false turns it off. Never sent to a provider: it only adds the prompt
     /// to the instructions (<see cref="PromptSettings.ReplyClosing"/>).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? ShortFirstSentence { get; init; }
 
     /// <summary>Companion › Replies › Adult content (18+): whether replies and screen remarks may be sexual and explicit with an
-    /// adult character, and take touches on intimate parts that way (Companion › Prompts › Adult content). Null (nothing chosen)
+    /// adult character, and take touches on intimate parts that way (Companion › Skills › Adult content). Null (nothing chosen)
     /// is Off, the default; true turns it on. Never sent to a provider: it only adds the prompt to the instructions, and never
     /// in a Discord call.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

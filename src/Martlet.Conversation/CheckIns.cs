@@ -591,7 +591,7 @@ public static partial class CheckIns
         var names = handed.Select(h => h.SetName).Distinct(StringComparer.Ordinal).ToArray();
         if (names.Length == 0) return null;
         var things = string.Join("; ", names);
-        return PromptSettings.Fill(prompts, PromptCatalog.HandedOffTools, ("things", things));
+        return SkillSettings.Guidance(prompts, SkillCatalog.HandedOff, ("things", things));
     }
 
     /// <summary>The background job kind that brings up what a check-in said to bring up: a notice, always brought up as soon as

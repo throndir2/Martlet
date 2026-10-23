@@ -56,7 +56,7 @@ internal static class StraightVoiceCheck
             new TextModelSelection(ChatCompletionsSetup.Alias, thinking), new TextGenerationLimits { MaxOutputTokens = 120 },
             new ConversationLimits(), chat: new ChatCompletionsTarget(relay.BaseUrl, Keyless: true),
             generation: new GenerationSettings { Reasoning = false }, spokenWords: words);
-        var straightInstructions = Instructions(PromptCatalog.HeardVoiceOnly);
+        var straightInstructions = Instructions(SkillCatalog.HeardVoiceOnly);
 
         // Straight to Thinking, turn after turn, each next request carrying the conversation so far.
         var context = new ConversationContextBuffer();
@@ -99,7 +99,7 @@ internal static class StraightVoiceCheck
         var nextBody = relay.Bodies.Skip(beforeNext).FirstOrDefault() is { } body ? Describe(body) : null;
 
         // Transcribe first (today's other choice): the transcript, then both, in a conversation of its own.
-        var firstInstructions = Instructions(PromptCatalog.HeardVoice);
+        var firstInstructions = Instructions(SkillCatalog.HeardVoice);
         var firstContext = new ConversationContextBuffer();
         var transcribeFirst = new List<object>();
         var firstTotals = new List<double>();
@@ -302,7 +302,7 @@ internal static class StraightVoiceCheck
         await using var relay = Relay.Start(null, refuseAudio: true);
         await using var runtime = ConversationRuntime.Create(new NoCredentials(), new NoSpeakers());
         var words = new SpokenWords(TimeProvider.System);
-        var input = new BoundedTextInput(SpokenWords.StandIn, Instructions(PromptCatalog.HeardVoiceOnly), audio: clip.Clip);
+        var input = new BoundedTextInput(SpokenWords.StandIn, Instructions(SkillCatalog.HeardVoiceOnly), audio: clip.Clip);
         var request = new ConversationRequest(input, new TextModelSelection(ChatCompletionsSetup.Alias, FixtureModel),
             new TextGenerationLimits(), new ConversationLimits(), chat: new ChatCompletionsTarget(relay.BaseUrl, Keyless: true),
             spokenWords: token => SpokenWords.TranscriptAsync([words], token));
@@ -333,7 +333,7 @@ internal static class StraightVoiceCheck
     // recording's own prompt.
     private static string Instructions(string recording) => string.Join("\n\n", new[]
     {
-        Persona, PromptSettings.Fill(null, PromptCatalog.Listening, ("silent", StayQuiet.Marker)), PromptSettings.Fill(null, recording)
+        Persona, SkillSettings.Guidance(null, SkillCatalog.AlwaysListening, ("silent", StayQuiet.Marker)), SkillSettings.Guidance(null, recording)
     }.OfType<string>());
 
     private static double? Round(double? value) => value is { } ms ? Math.Round(ms) : null;

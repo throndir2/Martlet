@@ -40,7 +40,7 @@ public sealed record Skill : IContract
 /// shared by every computer (settings.json's <c>skills</c> section). A built-in skill that isn't listed is as built in. Absent
 /// from settings while nothing is edited. A request reads them through <see cref="PromptSettings.Skills"/>.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record SkillSettings : IContract
+public sealed partial record SkillSettings : IContract
 {
     public const int MaximumSkills = 64, MaximumKeyCharacters = 40, MaximumNameCharacters = 60, MaximumUseWhenCharacters = 200;
     public const int MaximumAggregateUtf8Bytes = 65_536;
@@ -97,23 +97,69 @@ public sealed record SkillSettings : IContract
     public static Skill? Find(SkillSettings? settings, string key) =>
         settings?.Skills.FirstOrDefault(s => s.Key == key) ?? (SkillCatalog.Find(key) is { } built ? Skill.From(built) : null);
 
-    /// <summary>The skill's text with its placeholders filled in, or null when it is empty or unknown.</summary>
-    public static string? Fill(PromptSettings? prompts, string key, params (string Name, string Value)[] values) =>
-        Find(prompts?.Skills, key) is { Body: var body } && !string.IsNullOrWhiteSpace(body) ? PromptSettings.FillText(body, values) : null;
+    /// <summary><paramref name="settings"/> with the built-in skill <paramref name="key"/>'s text set to <paramref name="body"/>
+    /// (an empty text sends nothing for it), as prompts the user reads them (<see cref="PromptSettings.ForPersonal"/>).</summary>
+    public static PromptSettings? Edited(string key, string body, SkillSettings? settings = null) =>
+        PromptSettings.ForPersonal(null, null, Normalize([.. (settings?.Skills ?? []).Where(s => s.Key != key),
+            (Find(settings, key) ?? throw new ArgumentException($"Unknown skill '{key}'.", nameof(key))) with { Body = body }]));
+
+    /// <summary>The skill's text with its placeholders filled in (and {private} with the Personal content text, as a prompt's), or
+    /// null when it is empty or unknown.</summary>
+    public static string? Fill(PromptSettings? prompts, string key, params (string Name, string Value)[] values)
+    {
+        if (Find(prompts?.Skills, key) is not { Body: var body } || string.IsNullOrWhiteSpace(body)) return null;
+        if (body.Contains("{private}", StringComparison.Ordinal) && values.All(v => v.Name != "private"))
+            values = [.. values, ("private", PromptSettings.PersonalText(prompts))];
+        return PromptSettings.FillText(body, values);
+    }
 
     /// <summary>What a reply offered the skill's tools is told: <see cref="Fill"/>, or null while the skill is pinned (every reply
     /// already gets it in its closing instructions).</summary>
     public static string? Guidance(PromptSettings? prompts, string key, params (string Name, string Value)[] values) =>
         Find(prompts?.Skills, key) is { Pinned: true } ? null : Fill(prompts, key, values);
 
-    /// <summary>The pinned skills' texts, in their order, for the closing instructions of every reply; null when none is pinned.
-    /// <paramref name="silent"/> fills {silent}. From saved settings only, so the start of every request stays the same.</summary>
-    public static string? Pinned(PromptSettings? prompts, string silent)
+    /// <summary>The pinned skills' texts for the closing of every reply's instructions, in their order, with Reply length last
+    /// where models weigh it most; <paramref name="extra"/> (a skill a feature attaches there, such as Short first sentence for a
+    /// spoken reply) goes just before Reply length. Null when there is none. <paramref name="silent"/> fills {silent}. From saved
+    /// settings only, so the start of every request stays the same.</summary>
+    public static string? Pinned(PromptSettings? prompts, string silent, string? extra = null)
     {
-        var texts = All(prompts?.Skills).Where(s => s.Pinned && !string.IsNullOrWhiteSpace(s.Body))
-            .Select(s => PromptSettings.FillText(s.Body.Trim(), ("silent", silent))).ToArray();
-        return texts.Length == 0 ? null : string.Join("\n\n", texts);
+        var all = All(prompts?.Skills);
+        string Text(Skill s) => PromptSettings.FillText(s.Body.Trim(), ("silent", silent));
+        var texts = all.Where(s => s.Pinned && s.Key != SkillCatalog.ReplyLength && !string.IsNullOrWhiteSpace(s.Body)).Select(Text).ToList();
+        if (extra is not null && Find(prompts?.Skills, extra) is { Pinned: false, Body: { } body } attached && !string.IsNullOrWhiteSpace(body))
+            texts.Add(Text(attached));
+        if (all.FirstOrDefault(s => s.Key == SkillCatalog.ReplyLength) is { Pinned: true } length && !string.IsNullOrWhiteSpace(length.Body))
+            texts.Add(Text(length));
+        return texts.Count == 0 ? null : string.Join("\n\n", texts);
     }
+
+    /// <summary>The keys of the skills whose text <paramref name="request"/> carries (its instructions and notes), in the skills'
+    /// order: each skill's own words between its placeholders must all be there. What a reply attached, for Companion › Skills
+    /// and Prompts and the desktop log.</summary>
+    public static IReadOnlyList<string> In(PromptSettings? prompts, string request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return
+        [
+            .. All(prompts?.Skills).Where(s =>
+            {
+                var words = Placeholders().Split(s.Body).Select(part => part.Trim()).Where(part => part.Length >= 12).ToArray();
+                return words.Length > 0 && words.All(part => request.Contains(part, StringComparison.Ordinal));
+            }).Select(s => s.Key)
+        ];
+    }
+
+    /// <summary>What every reply to you sends besides the conversation, from saved settings: the persona prompt filled with the
+    /// persona (<paramref name="name"/>, <paramref name="persona"/>), the One moment skill (unless pinned: then it is in the
+    /// closing) and the closing of a reply that isn't spoken (the pinned skills). Null for a part that sends nothing.</summary>
+    public static (string? Persona, string? Moment, string? Closing) EveryReply(PromptSettings? prompts, string name, string persona,
+        string silent) =>
+        (PromptSettings.Fill(prompts, PromptCatalog.Persona, ("name", name), ("persona", persona)),
+            Guidance(prompts, SkillCatalog.OneMoment, ("silent", silent)), PromptSettings.ReplyClosing(prompts, null, false, silent));
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\{[a-z_]+\}", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex Placeholders();
 
     /// <summary><paramref name="settings"/> with the prompt edits that became built-in skills (<paramref name="moved"/>, by
     /// prompt ID) as their skills' bodies, unless a skill is already edited. Null stays null when nothing moves.</summary>

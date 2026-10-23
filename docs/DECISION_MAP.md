@@ -399,25 +399,30 @@ role image copies it beside its host (build context `workers`, `workers\<engine>
 
 **Docs:** [Host roles](../deploy/host/README.md).
 
-## Which skills a reply gets
+## Which skills a reply gets, and what is a prompt
 
 **What it decides:** which skills (named instruction packs, Companion › Skills) a reply carries: the pinned ones in the
-closing of every reply's instructions, and a skill that explains tools only while the reply is offered one of its tools
-(once, never twice when it is pinned too); the built-in skills and their texts; which prompt edits move to skills.
+closing of every reply's instructions (Reply length last), and every other built-in skill only while its feature is on
+(once, never twice when it is pinned too); the built-in skills, their texts and when each is attached; which prompt edits
+move to skills; and what stays a prompt (a request itself, or the frame around data) and when each group of prompts is sent.
 
-**Owner:** `SkillCatalog` (built-in skills and the prompts that became skills) and `SkillSettings` (`All`, `Pinned`,
-`Guidance`, `WithMovedPrompts`), both in `src\Martlet.Core\Settings\`. `PromptSettings.ReplyClosing` puts the pinned
-skills first in the closing; the tool code (`ThinkLonger.Instructions`, `WebResearch.Instructions`,
-`SongTools.Instructions`, `AppGuideTools.Instructions`, the *Tools prompt* part of `LiveConversationConfiguration.Request`)
-reads `SkillSettings.Guidance`. `AppSettings.MoveSkillPrompts` moves old prompt edits on read and on sync.
+**Owner:** `SkillCatalog` (built-in skills, `When`, and `MovedPrompts`) and `SkillSettings` (`All`, `Pinned`, `Guidance`,
+`EveryReply`, `In`, `WithMovedPrompts`), both in `src\Martlet.Core\Settings\`; `PromptCatalog` (`GroupWhere`,
+`InEveryReply`) for the prompts that stay. `PromptSettings.ReplyClosing` builds the closing from the pinned skills. Each
+feature's own code attaches its skill with `SkillSettings.Guidance` where its prompt was (for example
+`LiveConversationConfiguration.Listening`, `VoiceTags.Instructions`, `SeenTags.Instructions`, `ThinkLonger.Instructions`).
+`AppSettings.MoveSkillPrompts` moves old prompt edits on read and on sync. The pages only show these:
+`PromptsPageModel.DescribeEveryReply` and `DescribeAttached`, `SkillsPageModel.SkillState`; the desktop records what a reply
+carried in `LiveConversationController.LastReplyPrompt`.
 
-**Tests:** `SkillSettingsTests`, `PromptSettingsTests`, `PromptBudgetTests` (Martlet.Core.Tests).
+**Tests:** `SkillSettingsTests`, `PromptSettingsTests`, `PromptBudgetTests` (Martlet.Core.Tests); `ReplySummaryPageTests`
+(Martlet.Desktop.Tests).
 
-**MCP:** `skills_status`; `prompts_status` (`shortFirstSentence.spokenClosing`); the Skills page's `SkillsNow` and
-`SkillState-<key>`.
+**MCP:** `skills_status` (`attach`, `when`); `prompts_status` (`everyReply`, `groups`, `shortFirstSentence.spokenClosing`);
+the Prompts page's `PromptsReplyAlways`, `PromptsReplyAttached` and `PromptGroupWhere-<n>`; the Skills page's `SkillsNow`
+and `SkillState-<key>`.
 
 **Docs:** [Skills](CONVERSATION.md#skills).
-
 ## How much Martlet looks a question up (answer, look up or research)
 
 **What it decides:** when a reply answers from what Martlet knows, searches a guide or report, does a quick look-up, or

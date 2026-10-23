@@ -117,8 +117,15 @@ returns a key or its verifier and contacts nothing.
 user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
 `total`, `edited` and `emptied` counts, and every internal prompt Martlet
 sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
-`state` `builtin`, `edited` or `empty`, `characters` and `tokens`), plus
-`tokens`, the estimate for all prompts together. Token counts are Martlet's
+`state` `builtin`, `edited` or `empty`, `inEveryReply`, `characters` and
+`tokens`), plus `tokens`, the estimate for all prompts together. `groups` says
+when Martlet sends each group (`name`, `inEveryReply`, `where`: the line under
+the group's title on the page; only *Every reply*, the persona prompt, is in every
+reply). `everyReply` is what every reply to you sends besides the conversation:
+`personaTokens` (the persona prompt with the active persona), `oneMomentTokens`,
+`pinnedTokens` (the closing of a reply that isn't spoken: the pinned skills),
+`pinned` (their keys) and `tokens` in all. The rules a reply follows are skills
+(`skills_status`). Token counts are Martlet's
 own request-size estimate (`BoundedTextInput.TextTokens`: about a token per
 three UTF-8 bytes, no message overhead; 0 for an emptied prompt), not a
 provider's count, and cover each prompt as written, before placeholders are
@@ -154,7 +161,14 @@ value `"private"`, `"messages"` or `"everything"` changes it.
 messages* or *Everything*; choosing one with `ui_select` saves it, so it needs
 `--allow-ui-effects`), and `RepliesNow` adds *Martlet may read your messages*
 (and *see private windows* with *Everything*).
-On the page, `PromptsNow` reads how many prompts are edited or emptied,
+On the page, the top card *What one reply sends* has `PromptsReplyAlways`
+(*Every reply to you sends about 299 tokens of instructions: the persona prompt
+with your persona (about 81 tokens), the pinned skills ... and One moment ...*)
+and `PromptsReplyAttached` (the skills the last reply carried because their
+feature is on, with its instructions' and tools' tokens, or *No reply yet in
+this session.*); `PromptsOpenSkills` only opens Companion › Skills. Under each
+group's title, `PromptGroupWhere-<n>` says when it is sent (*In every reply to
+you.*, *Not in a normal reply: ...*, *Never in a reply: ...*). `PromptsNow` reads how many prompts are edited or emptied,
 `PromptsTokens` the estimated tokens of all prompts together as typed
 (*All prompts together: about 3,456 tokens (each request sends only the prompts it needs).*) and
 `PromptState-<id>` each prompt's state (*Built-in text, about 52 tokens.*,
@@ -175,8 +189,10 @@ settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
 `skills_status` reads Companion › Skills from a data directory's
 `settings.json` (optional absolute `dataDirectory`): `state`, `total`, `own`
 and `edited` counts, and every skill (`key`, `name`, `useWhen`, `builtIn`,
-`pinned`, `tools`: the reply tools it explains, `state` `builtin`, `edited`,
-`own` or `empty`, and `tokens`). `everyReply` has the `pinned` keys, their
+`pinned`, `tools`: the reply tools it explains, `attach`: how a reply gets it
+(`pinned`, `feature` while its feature is on, or `director` when the director
+loads it), `when`: a built-in skill's feature in words, `state` `builtin`,
+`edited`, `own` or `empty`, and `tokens`). `everyReply` has the `pinned` keys, their
 `text` exactly as the closing of every reply's instructions carries it, and
 its `tokens`. `movedPrompts` maps the prompt IDs that became skills to their
 skill keys. With a `key` it also returns `skill`, that skill's text.
@@ -184,11 +200,15 @@ skill keys. With a `key` it also returns `skill`, that skill's text.
 `{"skills":[{"key":"recipes","name":"Recipes","use_when":"...","body":"...","pinned":true}]}`
 saves edits and own skills (an edit equal to the built-in skill is dropped), and
 `settings_set` on `prompts` moves an edit of a prompt that became a skill to
-its skill. On the page, `SkillsNow` reads the counts and the pinned skills'
-names and tokens, and `SkillState-<key>` each skill's state (*Built-in skill;
-pinned: every reply gets it, about 51 tokens.*, *Your own skill; empty:
-nothing is sent.*, with *, saving.* at the end while it saves); neither
-returns a skill's text. `SkillName-<key>`, `SkillUseWhen-<key>`, `Skill-<key>`,
+its skill. On the page, `SkillsNow` reads the counts, the pinned skills'
+names and tokens and how many skills the last reply carried, and
+`SkillState-<key>` each skill's state (*Built-in skill; Pinned: every reply to
+you gets it, about 51 tokens.*, *Built-in skill; Attached now: the last reply
+carried it, ...*, *Built-in skill; Attached when: spoken replies, while the
+voice engine has tags, ...*, *Your own skill; Loaded on demand by the director,
+...*, with *, saving.* at the end while it saves); neither returns a skill's
+text. The page shows what the last reply carried after a reply in this session
+(`SkillSettings.In` on the reply's request, off the reply's path). `SkillName-<key>`, `SkillUseWhen-<key>`, `Skill-<key>`,
 `SkillPinned-<key>`, `SkillReset-<key>`, `SkillDelete-<key>` and `SkillsAdd`
 write settings, so they need `--allow-ui-effects`.
 

@@ -8,6 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Companion › Prompts starts with **What one reply sends**: what every reply carries, with its size, and which skills the last reply added because a feature is on. Each group of prompts says when it is sent, and Companion › Skills marks each skill Pinned, Attached now, Attached when its feature is on, or Loaded on demand by the director. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
+### Changed
+
+- Every rule a reply follows is a skill now, so Companion › Prompts keeps only Martlet's requests and notes. Your edits of the moved prompts move to their skills. A reply with default settings sends about 18% fewer built-in instruction tokens. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.92.0] - 2026-10-22
 
 ### Added

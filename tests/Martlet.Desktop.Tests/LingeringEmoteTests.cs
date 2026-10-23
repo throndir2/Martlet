@@ -103,7 +103,7 @@ public sealed class LingeringEmoteTests
         Assert.Contains("Use one or two in most replies", prompt);
         Assert.DoesNotContain("need none", prompt);
         // The instructions don't grow: the old text was 459 bytes before {tags} and {example} were filled in.
-        Assert.True(System.Text.Encoding.UTF8.GetByteCount(PromptCatalog.Default(PromptCatalog.CharacterActions)) <= 459);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(SkillCatalog.Find(SkillCatalog.CharacterActions)!.Body) <= 459);
 
         // An empty When to use gives Martlet's own hint (the grey text in the box): a gesture's built-in one, or the emote's name.
         var sweat = Source("gesture:sweat");

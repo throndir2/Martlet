@@ -1862,7 +1862,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // An audio model of its own puts the user's voice into words (the audio path is Described): every reply is told
                 // what its notes are, the same way each time, and its words about how the user sounded go with this request only
                 // when they are ready now (never waited for).
-                var described = senseSession.DescribesVoice(configured) ? PromptSettings.Fill(prompts, PromptCatalog.HeardVoiceDescribed) : null;
+                var described = senseSession.DescribesVoice(configured) ? SkillSettings.Guidance(prompts, SkillCatalog.VoiceDescribed) : null;
                 heardHow = SenseSession.VoiceNow(operation, prompts);
                 // Singing on a route without function calling: the reply writes song tags in place of the song tools, told the
                 // same way every time (settings alone decide it), so the request starts the same.
@@ -1878,7 +1878,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             operation.DiscordCall ? LiveConversationConfiguration.DiscordCall(prompts)
                                 : operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
                             decides ? LiveConversationConfiguration.ChattinessDecides(prompts) : null,
-                            recording is null ? null : PromptSettings.Fill(prompts, straight ? PromptCatalog.HeardVoiceOnly : PromptCatalog.HeardVoice),
+                            recording is null ? null : SkillSettings.Guidance(prompts, straight ? SkillCatalog.HeardVoiceOnly : SkillCatalog.HeardVoice),
                             described,
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),
                             picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply),
@@ -1933,13 +1933,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 operation.Sent = request.Input;
                 // How big the reply's start is (docs/CONVERSATION.md#the-director): its instructions and its tools, by Martlet's own
                 // estimate; logged later, so the first words never wait for it.
-                if (own is not null || straight)
+                if ((own is not null || straight) && request.Parts is { } parts)
                 {
-                    var instructionTokens = request.Parts is { } parts
-                        ? Martlet.Providers.BoundedTextInput.TextTokens(string.Join("\n\n", parts.Instructions.Select(p => p.Text))) : 0;
-                    var toolTokens = (toolset?.Definitions ?? []).Sum(d => d.Utf8Bytes) / 3;
-                    ErrorLog.InfoLater($"Reply prompt: about {instructionTokens} tokens of instructions and {toolset?.Definitions.Count ?? 0} tools " +
-                        $"(about {toolTokens} tokens of definitions){(DirectorTakesTools(HandOffs(configured)) ? "; the director has the other tools" : "")}.");
+                    var director = DirectorTakesTools(HandOffs(configured));
+                    var sentTools = toolset?.Definitions ?? [];
+                    var skillPrompts = configured.Prompts;
+                    // Off the reply's path: which skills it carried, for Companion › Skills and Prompts and the log.
+                    Task.Run(() => KeepReplyPrompt(parts, sentTools, skillPrompts, director)).Forget();
                 }
                 // Exchanges this reply had to leave out are never sent again, so the next replies start the same way (a reply
                 // started early lets go of them once it is taken).

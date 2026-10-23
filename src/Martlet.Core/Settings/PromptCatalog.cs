@@ -13,24 +13,10 @@ public sealed record PromptDefinition(string Id, string Group, string Title, str
 public static partial class PromptCatalog
 {
     public const string Persona = "persona";
-    public const string ReplyLength = "reply_length";
-    public const string ConversationMoves = "conversation_moves";
-    public const string ShortFirstSentence = "short_first_sentence";
-    public const string Listening = "listening";
-    public const string PcAudio = "pc_audio";
-    public const string DiscordCall = "discord_call";
-    public const string Moment = "moment";
     public const string SaidLately = "said_lately";
     public const string MomentAttention = "moment_attention";
-    public const string VoiceTags = "voice_tags";
-    public const string CharacterActions = "character_actions";
     public const string CharacterShowing = "character_showing";
-    public const string CharacterGaze = "character_gaze";
     public const string CharacterLooking = "character_looking";
-    public const string Voices = "voices";
-    public const string HeardVoice = "heard_voice";
-    public const string HeardVoiceOnly = "heard_voice_only";
-    public const string HeardVoiceDescribed = "heard_voice_described";
     public const string HeardVoiceNote = "heard_voice_note";
     public const string VoiceDescription = "voice_description";
     public const string Lorebook = "lorebook";
@@ -38,7 +24,6 @@ public static partial class PromptCatalog
     public const string PastConversations = "past_conversations";
     public const string MemoryPeople = "memory_people";
     public const string MemoryBrief = "memory_brief";
-    public const string WhilePlaying = "while_playing";
     public const string MemoryBriefWriting = "memory_brief_writing";
     public const string Notes = "notes";
     public const string GlanceScreen = "glance_screen";
@@ -49,8 +34,6 @@ public static partial class PromptCatalog
     public const string CommentaryCamera = "commentary_camera";
     public const string SeenWithMessage = "seen_with_message";
     public const string SeenApp = "seen_app";
-    public const string SeenTag = "seen_tag";
-    public const string SeenDescribed = "seen_described";
     public const string SeenDescribedNote = "seen_described_note";
     public const string DescribePicture = "describe_picture";
     public const string ReadOnScreen = "read_on_screen";
@@ -60,7 +43,6 @@ public static partial class PromptCatalog
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
-    public const string ChattinessDecides = "chattiness_decides";
     public const string ChattinessNow = "chattiness_now";
     public const string MemoryCapture = "memory_capture";
     public const string MemoryCaptureGame = "memory_capture_game";
@@ -72,14 +54,12 @@ public static partial class PromptCatalog
     public const string HomeDone = "home_done";
     public const string HomeAnswer = "home_answer";
     public const string HomeFailed = "home_failed";
-    public const string HomeTools = "home_tools";
     public const string HomeLocksConfirm = "home_locks_confirm";
     public const string HomeLocksOff = "home_locks_off";
     public const string HomeNotRecognized = "home_not_recognized";
     public const string HomeBlocked = "home_blocked";
     public const string HomeDeclined = "home_declined";
     public const string HomeUnreachable = "home_unreachable";
-    public const string HandedOffTools = "handed_off_tools";
     public const string BackgroundThink = "background_think";
     public const string BackgroundDone = "background_done";
     public const string BackgroundDoneNotes = "background_done_notes";
@@ -91,8 +71,6 @@ public static partial class PromptCatalog
     public const string TouchedNotes = "touched_notes";
     public const string TouchedCutIn = "touched_cut_in";
     public const string CutOff = "cut_off";
-    public const string AdultContent = "adult_content";
-    public const string SingingTags = "singing_tags";
     public const string WhileSinging = "while_singing";
     public const string SongLyrics = "song_lyrics";
     public const string ResearchStep = "research_step";
@@ -130,7 +108,10 @@ public static partial class PromptCatalog
     public const string CheckInAdultOn = "check_in_adult_on";
     public const string CheckInAdultOff = "check_in_adult_off";
 
-    public const string ConversationGroup = "Every reply";
+    /// <summary>The prompt every reply to you sends (the persona wrapper). Every other rule a reply follows is a skill
+    /// (<see cref="SkillCatalog"/>); the other groups are the requests and the notes around data, sent only when they apply.</summary>
+    public const string EveryReplyGroup = "Every reply";
+    public const string ConversationGroup = "With a reply, only when it applies";
     public const string VisionGroup = "Screen and camera glances";
     public const string BackgroundGroup = "After a reply";
     public const string CheckInGroup = "Check-ins";
@@ -138,6 +119,23 @@ public static partial class PromptCatalog
     public const string AudioModelGroup = "Audio model";
 
     public static PromptDefinition? Find(string id) => ById.GetValueOrDefault(id);
+
+    /// <summary>When Martlet sends the prompts of <paramref name="group"/>, in plain words for Companion › Prompts.</summary>
+    public static string GroupWhere(string group) => group switch
+    {
+        EveryReplyGroup => "In every reply to you.",
+        ConversationGroup => "Not in a normal reply: each goes with a reply only when that reply carries it (remembered facts, " +
+            "lore, finished background work, a greeting, touches).",
+        VisionGroup => "Not in a normal reply: only screen and camera glances, and a message that comes with a picture.",
+        BackgroundGroup => "Never in a reply: requests of their own, after a reply or in the background.",
+        CheckInGroup => "Never in a reply: the check-ins' own requests (Companion › Check-ins).",
+        HomeGroup => "Not in a normal reply: only the notes of a message Home Assistant's Assist answered.",
+        AudioModelGroup => "Never in a reply: the audio model's own request.",
+        _ => ""
+    };
+
+    /// <summary>Whether every reply to you sends the prompts of <paramref name="group"/>.</summary>
+    public static bool InEveryReply(string group) => group == EveryReplyGroup;
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or

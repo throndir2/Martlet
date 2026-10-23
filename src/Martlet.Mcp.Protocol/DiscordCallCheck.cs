@@ -75,7 +75,7 @@ internal static class DiscordCallCheck
             var reply = addressed ? $"Hi {line.Speaker ?? "there"}! I wouldn't miss it." : $"[{Silent}]";
             return new { line = Marker + " " + DiscordCallLine.Format(line.Speaker, line.Text), addressed, answersAtOnce = addressed, reply };
         }).ToArray();
-        var prompt = PromptSettings.Fill(null, PromptCatalog.DiscordCall, ("marker", Marker), ("silent", Silent));
+        var prompt = SkillSettings.Guidance(null, SkillCatalog.DiscordCall, ("marker", Marker), ("silent", Silent));
 
         var audioOk = segments.Count == 2;
         var namesOk = scenes.Count == 3 && named.SequenceEqual(["Alice", "Bob", null], StringComparer.OrdinalIgnoreCase);

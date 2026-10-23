@@ -6,45 +6,11 @@ public static partial class PromptCatalog
     /// (PromptCatalog.Texts.cs) and its placeholders.</summary>
     public static IReadOnlyList<PromptDefinition> All { get; } =
     [
-        new(Persona, ConversationGroup, "Persona",
+        new(Persona, EveryReplyGroup, "Persona",
             "Wraps the selected persona's instructions at the start of every reply, screen glance and camera look. It stays the " +
             "same from message to message, so the model's prompt cache can reuse it. Leave it empty to send no persona.",
             DefaultPersonaInstructions,
             ["name", "persona"]),
-        new(ReplyLength, ConversationGroup, "Reply length",
-            "Closes the instructions of every reply to what you typed or said, after persona and the other instructions.",
-            DefaultReplyLengthInstructions, []),
-        new(ConversationMoves, ConversationGroup, "Keep the conversation going",
-            "Added to every reply to what you typed or said, just before Short first sentence and Reply length: how Martlet keeps " +
-            "a chat going (react to your words, add one thing of its own, call back to earlier things, play along with running " +
-            "jokes). It is the same from reply to reply, so the model's prompt cache keeps it. Empty it to send nothing.",
-            DefaultConversationMovesInstructions, []),
-        new(ShortFirstSentence, ConversationGroup, "Short first sentence",
-            "Added to every spoken reply just before Reply length while Companion › Replies › Short first sentence is on (the " +
-            "default). Martlet's voice says the first sentence as soon as it is written, so a short one lets it start talking " +
-            "sooner. It is the same from reply to reply, so the model's prompt cache keeps it. {silent} is the word the model " +
-            "answers to stay quiet.",
-            DefaultShortFirstSentenceInstructions, ["silent"]),
-        new(Listening, ConversationGroup, "Always listening",
-            "Added to replies to something the microphone heard. {silent} is the word the model answers to stay quiet.",
-            DefaultListeningInstructions,
-            ["silent"]),
-        new(PcAudio, ConversationGroup, "What this PC plays",
-            "Added to replies whose message includes sound playing on the PC (Companion › Listening › Hear what this PC plays). " +
-            "{marker} starts each line of it, followed by where it came from when Martlet can tell (a YouTube video in Chrome, a " +
-            "game, a voice chat in Discord); {silent} is the word the model answers to stay quiet.",
-            DefaultPcAudioInstructions,
-            ["marker", "silent"]),
-        new(DiscordCall, ConversationGroup, "In your Discord call",
-            "Replaces What this PC plays while Martlet is in your own Discord calls (Companion › Discord › Martlet in your " +
-            "Discord calls). {marker} starts each line heard from the call; {silent} is the word the model answers to stay quiet.",
-            DefaultDiscordCallInstructions,
-            ["marker", "silent"]),
-        new(Moment, ConversationGroup, "One moment",
-            "Added to every reply and every screen or camera glance, the same way each time (so the start of every request stays " +
-            "the same): one message may bring several things at once, and Martlet answers them together. {silent} is the word the " +
-            "model answers to stay quiet.",
-            DefaultMomentInstructions, ["silent"]),
         new(SaidLately, ConversationGroup, "What you said lately",
             "Goes in the notes of what Martlet says on its own while nobody waits for its answer: every screen glance and camera " +
             "look, its remarks on what this PC plays and the replies that bring up finished work, a due reminder or a check-in. " +
@@ -58,21 +24,6 @@ public static partial class PromptCatalog
             "(a notification popped up or a taskbar button flashes while it watches your whole screen). {what} says which.",
             DefaultMomentAttentionInstructions,
             ["what", "private"]),
-        new(HeardVoice, ConversationGroup, "Your recorded voice",
-            "Added to replies when your recording is sent with the transcript (Companion › Listening › Let Thinking hear my voice).",
-            DefaultHeardVoiceInstructions,
-            []),
-        new(HeardVoiceOnly, ConversationGroup, "Your recorded voice, without a transcript",
-            "Added to replies when your recording goes straight to Thinking with no transcript (Companion › Listening › When Thinking " +
-            "can hear you › Send my voice straight to Thinking). Earlier spoken messages appear as their transcripts.",
-            DefaultHeardVoiceOnlyInstructions,
-            []),
-        new(HeardVoiceDescribed, ConversationGroup, "Your voice, described by the audio model",
-            "Added to every reply while an audio model of its own describes your voice (Companion › Listening › Audio model): " +
-            "Thinking gets the transcript, never the recording, and the audio model's words about how you sounded come in a note " +
-            "(How you sounded). It is the same in every reply, so the start of every request stays the same.",
-            DefaultHeardVoiceDescribedInstructions,
-            []),
         new(HeardVoiceNote, ConversationGroup, "How you sounded",
             "Goes in the notes of one request only (never kept in the conversation) when the audio model described your voice. " +
             "{when} says which message it is about (\"saying this message\", or \"in what they said before this message\" when " +
@@ -80,12 +31,6 @@ public static partial class PromptCatalog
             "such as (voice: sighs, sounds tired). Empty it to send nothing.",
             DefaultHeardVoiceNoteInstructions,
             ["when", "voice"]),
-        new(HandedOffTools, ConversationGroup, "Things done after the reply",
-            "Added to every reply while Companion › Check-ins › The director (or another check-in that starts on your turn or " +
-            "after each reply) takes over some of the reply's tools, because a Thinking pool member that calls tools does that " +
-            "work beside the reply. {things} names what it does, such as reminders. It stays the same from reply to reply while those " +
-            "settings stay. Empty it to send nothing.",
-            DefaultHandedOffToolsInstructions, ["things"]),
         new(BackgroundDone, ConversationGroup, "Background work finished",
             "The message of the reply Martlet starts on its own as soon as it is free, once its background work (a think_longer " +
             "task) finished. It stays in the conversation like a message. {results} lists each finished job, how it ended and " +
@@ -138,19 +83,6 @@ public static partial class PromptCatalog
             "said aloud, ending with \"—\". {unsaid} is the rest of the reply that it hadn't said (its start, at most " +
             "400 characters). Empty it to send nothing.",
             DefaultCutOffInstructions, ["unsaid"]),
-        new(AdultContent, ConversationGroup, "Adult content",
-            "Added to the instructions of every reply and screen remark while Companion › Replies › Adult content is on (off by " +
-            "default; never in a Discord call, where others can hear), right after the One moment prompt. It allows sexual and " +
-            "explicit content with an adult character and says how to take touches on intimate parts. It stays the same from " +
-            "reply to reply.",
-            DefaultAdultContentInstructions, []),
-        new(SingingTags, ConversationGroup, "Singing without tools",
-            "Added to every reply while singing is set up in Companion › Voice › Singing and the Thinking route does no function " +
-            "calling (a model on one of your computers, or a model that refused tools). The reply writes [sing: ...], " +
-            "[play_song: ...] and [stop_singing] in place of the song tools; they are never shown or spoken. It stays the same " +
-            "from reply to reply. {silent} is the word the model answers to stay quiet. Empty it and Martlet doesn't sing on " +
-            "such a route.",
-            DefaultSingingTagsInstructions, ["silent"]),
         new(ResearchFound, ConversationGroup, "Web research: found it early",
             "The message of the reply Martlet starts on its own when full or deep research already found what you wanted while it " +
             "goes on for the report. {findings} says which research, what you wanted, what was found and from which pages.",
@@ -180,18 +112,6 @@ public static partial class PromptCatalog
             "Goes in the notes of what always listening heard while Martlet sings. {song} is the song's title, {where} where the " +
             "song is (\"verse line 4 of 12, 0:22 of 1:00\"), {silent} the word the model answers to stay quiet.",
             DefaultWhileSingingInstructions, ["song", "where", "silent"]),
-        new(VoiceTags, ConversationGroup, "Voice sounds and tones",
-            "Added to spoken replies when the voice engine understands tags (Chatterbox Turbo: [laugh], [sigh], [whispering]...). " +
-            "{engine} is the engine's name, {tags} lists exactly its tags in its own syntax, its non-word sounds and then its tones " +
-            "of voice, each group under a line saying where its tags go and each tag on its own line with when to use it, and " +
-            "{example} is its first tag.",
-            DefaultVoiceTagsInstructions,
-            ["engine", "tags", "example"]),
-        new(CharacterActions, ConversationGroup, "Character emotes and motions",
-            "Added to replies while the desktop character shows and has emotes or motions turned on (Companion › Emotes and " +
-            "motions). {tags} lists the ones not already set off by a voice tag, one per line with its When to use hint; {example} " +
-            "is the first.",
-            DefaultCharacterActionInstructions, ["tags", "example"]),
         new(CharacterShowing, ConversationGroup, "Character emotes showing now",
             "Added to the notes of a message while the desktop character shows lingering emotes (those set to stay on), so the " +
             "reply can turn one off or leave it. It goes with the newest message, never the instructions, so prompt caches keep " +
@@ -199,12 +119,6 @@ public static partial class PromptCatalog
             "off tag.",
             DefaultCharacterShowingInstructions,
             ["showing", "example"]),
-        new(CharacterGaze, ConversationGroup, "Where you look",
-            "Added to replies while the desktop character shows and may change where it looks (Companion › Eyes › Where the " +
-            "character looks). {usual} is what its eyes usually do (\"follow the user's mouse pointer wherever it goes\"), from " +
-            "your choice or the personality; it changes only when that changes, so prompt caches keep working. {tags} lists the " +
-            "look tags, one per line with what each does. Empty it and the character keeps its usual gaze.",
-            DefaultCharacterGazeInstructions, ["usual", "tags"]),
         new(CharacterLooking, ConversationGroup, "Where you look now",
             "Added to the notes of a message while the character's eyes do something other than their usual because a reply " +
             "changed it. It goes with the newest message, never the instructions, so prompt caches keep working. {looking} is " +
@@ -212,10 +126,6 @@ public static partial class PromptCatalog
             "ago\").",
             DefaultCharacterLookingInstructions,
             ["looking", "since"]),
-        new(Voices, ConversationGroup, "Who is talking",
-            "Introduces the recognized voices block. {label} is the block's marker; the voices follow it.",
-            DefaultVoicesInstructions,
-            ["label"]),
         new(Lorebook, ConversationGroup, "Lorebook",
             "Introduces the triggered lorebook entries; the entries follow it.",
             DefaultLorebookInstructions,
@@ -240,12 +150,6 @@ public static partial class PromptCatalog
             "from what Martlet remembers (Companion › Memory › Memory brief). It goes in the notes of the first message of each " +
             "conversation, never in the instructions, so prompt caches keep working. Empty it to send no brief.",
             DefaultMemoryBriefInstructions, []),
-        new(WhilePlaying, ConversationGroup, "While you play",
-            "Goes in the notes of a message while Martlet sees a game played on this PC, once while the conversation sent still " +
-            "carries it (again after the game changes), never in the instructions, so prompt caches keep working. Lorebook entries " +
-            "with the game's name as a keyword are added too, so a lorebook can hold what Martlet should know for one game. {game} " +
-            "is the game's name. Empty it to send nothing.",
-            DefaultWhilePlayingInstructions, ["game"]),
         new(Notes, ConversationGroup, "Notes with messages",
             "Opens the first notes in the conversation sent. Whatever changes from message to message " +
             "(new lorebook entries and remembered facts, who is talking, smart home results) goes with the message, " +
@@ -268,12 +172,6 @@ public static partial class PromptCatalog
             DefaultChattinessNormalInstructions, ["silent"]),
         new(ChattinessChatty, VisionGroup, "Chattiness: chatty", "Closes the glance instructions when vision is chatty.",
             DefaultChattinessChattyInstructions, ["silent"]),
-        new(ChattinessDecides, VisionGroup, "Chattiness: Martlet decides",
-            "Closes the glance instructions, and is added to replies to what this PC plays and to your messages while vision is on " +
-            "or Martlet hears this PC, when How often it comments is Martlet decides. It stays the same from message to message. " +
-            "{quiet}, {normal} and {chatty} are the tags a reply ends with to switch the level (at the end, so the first words " +
-            "aren't held back; never shown or spoken); {silent} is the word for staying quiet.",
-            DefaultChattinessDecidesInstructions, ["silent", "quiet", "normal", "chatty"]),
         new(ChattinessNow, VisionGroup, "Chattiness right now",
             "Goes in the notes of a message while Martlet decides how chatty it is, when the conversation's notes don't already " +
             "say the level (it starts at normal and changes when a reply switches it). {level} is quiet, normal or chatty.",
@@ -321,21 +219,6 @@ public static partial class PromptCatalog
             "aren't told which app is in front.",
             DefaultSeenAppInstructions,
             ["app", "title"]),
-        new(SeenTag, VisionGroup, "What you saw",
-            "Added to every screen glance and camera look, and to replies whose message comes with a picture, after their own " +
-            "instructions; it never changes, so the instructions stay the same. The reply ends with [seen: ...]: a few words on " +
-            "what the picture shows, never shown or spoken. Martlet keeps them in the conversation (as a [Screen] or [Camera] " +
-            "line) instead of the picture, which is never kept. {silent} is the word for staying quiet. Empty it and the " +
-            "conversation keeps only where Martlet looked.",
-            DefaultSeenTagInstructions,
-            ["silent", "private"]),
-        new(SeenDescribed, VisionGroup, "Pictures as words",
-            "Added to every reply and look while an image model of its own describes pictures for the Thinking model (Companion " +
-            "› Vision › Image model), in place of Screen with your message and What you saw. It never changes, so the model's " +
-            "prompt cache keeps it. The image model's description goes in the notes of the message it came with, or in a look's " +
-            "message (What the image model saw).",
-            DefaultSeenDescribedInstructions,
-            ["private"]),
         new(SeenDescribedNote, VisionGroup, "What the image model saw",
             "The image model's description of the newest picture: in the notes of your message (sent but not kept; the " +
             "conversation keeps a [Screen] line made from its first line instead), or in a look's message. {source} says what " +
@@ -585,8 +468,6 @@ public static partial class PromptCatalog
             DefaultHomeAnswerInstructions, ["details"]),
         new(HomeFailed, HomeGroup, "Home: couldn't do it", "Home Assistant understood but couldn't carry it out. {details} is its report.",
             DefaultHomeFailedInstructions, ["details"]),
-        new(HomeTools, HomeGroup, "Home: tools", "When replies use Home Assistant's own tools. {locks} is one of the two lines below.",
-            DefaultHomeToolsInstructions, ["locks"]),
         new(HomeLocksConfirm, HomeGroup, "Home: locks ask first", "Fills {locks} when locks, doors and similar devices are allowed.",
             DefaultHomeLocksConfirmInstructions, []),
         new(HomeLocksOff, HomeGroup, "Home: locks off", "Fills {locks} when locks, doors and similar devices are turned off.",

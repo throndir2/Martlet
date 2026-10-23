@@ -173,6 +173,11 @@ public partial class MainWindow : ThemedWindow
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
             conversation.ExchangeEnded += () => Dispatcher.BeginInvoke(CheckInExchangeEnded);
             conversation.UserTurnStarted += words => Dispatcher.BeginInvoke(() => CheckInUserTurn(words));
+            // Companion › Prompts and Skills show what the last reply carried.
+            conversation.ReplyPromptKept += () => Dispatcher.BeginInvoke(() =>
+            {
+                if (!closing && !tabEdited && openTab is CompanionTab.Prompts or CompanionTab.Skills) RenderTab();
+            });
             conversation.Spoke += answered => Dispatcher.BeginInvoke(() => CheckInSpoke(answered));
             // A reply found a model retired on its route: Home proposes the replacement at once.
             conversation.AbilityRecorded += ability => Dispatcher.BeginInvoke(() => { if (ability.Retired is not null) FollowRetiredAsync().Forget(); });

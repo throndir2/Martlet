@@ -14,6 +14,7 @@ public partial class MainWindow : ISkillsPageServices
     private SkillsPage SkillsPage => skillsPage ??= new(this);
 
     SkillSettings? ISkillsPageServices.Saved => homeSettings?.Skills;
+    ReplyPromptRecord? ISkillsPageServices.LastReply => conversation?.LastReplyPrompt;
     void ISkillsPageServices.UseAutoSave(AutoSave autoSave) => tabAutoSave = autoSave;
     void ISkillsPageServices.MarkEdited() => tabEdited = true;
     Task<bool> ISkillsPageServices.SaveAsync(IReadOnlyList<Skill> skills, Action<SkillSettings?> saved) => SaveSkillsAsync(skills, saved);

@@ -136,7 +136,7 @@ public sealed class TouchTurnTests
     public async Task AdultContentFollowsOneMomentInEveryReplyOnlyWhileItIsOn()
     {
         await using var fixture = await LiveFixture.Create();
-        var adult = PromptSettings.Fill(null, PromptCatalog.AdultContent)!;
+        var adult = SkillSettings.Guidance(null, SkillCatalog.AdultContent)!;
         var moment = LiveConversationConfiguration.Moment(null)!;
         fixture.Answer("Hi.");
         await fixture.Finish(fixture.Start("Hello."));
@@ -171,7 +171,7 @@ public sealed class TouchTurnTests
         Assert.Equal(["touches", "silent"], PromptCatalog.All.Single(p => p.Id == PromptCatalog.Touched).Placeholders);
         Assert.Contains("{silent}", PromptCatalog.All.Single(p => p.Id == PromptCatalog.Touched).Default, StringComparison.Ordinal);
         Assert.Equal(["said", "answering"], PromptCatalog.All.Single(p => p.Id == PromptCatalog.TouchedCutIn).Placeholders);
-        Assert.Empty(PromptCatalog.All.Single(p => p.Id == PromptCatalog.AdultContent).Placeholders);
+        Assert.Empty(SkillCatalog.Find(SkillCatalog.AdultContent)!.Placeholders);
         Assert.Equal("Last reply took 2 touches.", LiveConversationWindow.TurnInputsLine(false, false,
             MomentTurn.Describe(false, 0, false, null, 0, touches: 2), false));
     }

@@ -61,7 +61,7 @@ public sealed class SongTagTests
         Assert.Contains(StayQuiet.Marker, text);
         Assert.DoesNotContain("{silent}", text);
 
-        var emptied = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.SingingTags] = "" } };
+        var emptied = SkillSettings.Edited(SkillCatalog.SongTags, "");
         Assert.Null(SongTags.Instructions(emptied));
     }
 

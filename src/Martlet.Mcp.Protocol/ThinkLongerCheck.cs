@@ -203,8 +203,8 @@ internal static partial class ThinkLongerCheck
 
         // The plain reply and the combined one, as the desktop asks: the persona, then the One moment instruction first among the
         // reply's own; the combined message carries the PC's marked lines and the finished work in its notes.
-        var moment = PromptSettings.Fill(null, PromptCatalog.Moment, ("silent", StayQuiet.Marker))!;
-        var pcPrompt = PromptSettings.Fill(null, PromptCatalog.PcAudio, ("marker", "[PC audio]"), ("silent", StayQuiet.Marker))!;
+        var moment = SkillSettings.Guidance(null, SkillCatalog.OneMoment, ("silent", StayQuiet.Marker))!;
+        var pcPrompt = SkillSettings.Guidance(null, SkillCatalog.PcSound, ("marker", "[PC audio]"), ("silent", StayQuiet.Marker))!;
         var permissions = new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl));
         await using var replies = ConversationRuntime.Create(new NoCredentials());
         async Task<(ConversationSnapshot Done, string? Body)> AskAsync(BoundedTextInput input)
