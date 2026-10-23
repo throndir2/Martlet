@@ -8,15 +8,15 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- When your Windows logins on different PCs have the same name, Martlet treats them as one person: each PC merges its own account into your household's account with that name, also on PCs that you set up before, so you no longer see your name twice in the account picker. ([#1143](https://github.com/throndir2/Martlet/pull/1143))
+
 ## [0.93.0] - 2026-10-22
 
 ### Added
 
 - After you reinstall a Linux host (for example on a new drive), Martlet checks that it is the same computer and sets it up again by itself, with the same name, its pairing and its roles. You don't remove it, reset trust or type a pairing code. The computer proves itself with its TPM security chip, from home, from outside or over Tailscale. A computer without a TPM is recognized by its hardware, but only on your home network or over Tailscale. When you set up a host over SSH, you can let Martlet remember its password for this. ([#1141](https://github.com/throndir2/Martlet/pull/1141))
-
-### Changed
-
-- When your Windows logins on different PCs have the same name, Martlet treats them as one person: each PC merges its own account into your household's account with that name, also on PCs that you set up before, so you no longer see your name twice in the account picker. ([#1143](https://github.com/throndir2/Martlet/pull/1143))
 
 ## [0.92.0] - 2026-10-22
 
