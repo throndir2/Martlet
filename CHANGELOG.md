@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-10-23
+
 ### Added
 
 - Companion › Prompts starts with **What one reply sends**: what every reply carries, with its size, and which skills the last reply added because a feature is on. Each group of prompts says when it is sent, and Companion › Skills marks each skill Pinned, Attached now, Attached when its feature is on, or Loaded on demand by the director. ([#1145](https://github.com/throndir2/Martlet/pull/1145))

@@ -156,11 +156,12 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.93.0
+## 🆕 What's new in 0.94.0
 
-- 🔁 **Reinstall a host without the hassle**: give a Linux host a new drive and a fresh system, and Martlet checks that it is the same computer, then sets it up again by itself with the same name, pairing and roles. No removing, resetting trust or pairing codes.
-- 🔐 **Proved by the computer's own chip**: the host proves itself with its TPM security chip, at home, from outside or over Tailscale. An older computer without a TPM is recognized by its hardware, but only on your home network or over Tailscale.
-- 🗝️ **Remember the host's password**: when you set up a host over SSH, Martlet can remember its password so it can do all of this without asking you.
+- 📚 **Every reply rule is a skill**: the rules a reply follows are skills now, attached only while their feature is on, so a default reply sends about 18% fewer built-in instruction tokens. Your edits move with them.
+- 🔎 **See what one reply sends**: Companion › Prompts starts with what every reply carries and its size, and Companion › Skills shows which skills are pinned, attached now or loaded by the director.
+- 🌐 **Find skills online**: search the skills people share on ClawHub and skills.sh, read one and add it to your skills with one click.
+- 👥 **One you on every PC**: Windows logins with the same name on different PCs are now one person in Martlet.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
