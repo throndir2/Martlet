@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Companion › Skills › **Find skills online**: search the skills other people share on ClawHub (OpenClaw's skill registry) and skills.sh, most popular first. Sort by downloads, installs, stars, trending, newest or recently updated, filter by where it comes from, how many downloads it has and whether it's flagged as suspicious, read a skill, and add it to your own skills with one click. ([#1144](https://github.com/throndir2/Martlet/pull/1144))
+
 ### Changed
 
 - When your Windows logins on different PCs have the same name, Martlet treats them as one person: each PC merges its own account into your household's account with that name, also on PCs that you set up before, so you no longer see your name twice in the account picker. ([#1143](https://github.com/throndir2/Martlet/pull/1143))

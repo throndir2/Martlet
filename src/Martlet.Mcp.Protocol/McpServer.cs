@@ -23,7 +23,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         // The character finders (character_find_looks, character_find_on_web, a look key in character_create) go online.
         ("Characters", Expecting(CharacterTools(), error => error is Martlet.Core.Settings.CharacterCardException or
             Martlet.Avatar.Hosting.VRoidHubException or Martlet.Conversation.WebResearchException)),
-        ("Settings", SettingsTools()),
+        // skill_directory_search and skill_directory_add go online (clawhub.ai, GitHub).
+        ("Settings", Expecting(SettingsTools(), error => error is Martlet.Core.Settings.SkillDirectoryException)),
         // UI Automation fails when a window or control goes away while a tool reads or drives it.
         ("The app's window", Expecting(UiTools(), error => error is System.ComponentModel.Win32Exception or
             System.Runtime.InteropServices.COMException or System.Windows.Automation.ElementNotAvailableException)),

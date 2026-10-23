@@ -434,11 +434,13 @@ closing of every reply's instructions, and a skill that explains tools only whil
 skills first in the closing; the tool code (`ThinkLonger.Instructions`, `WebResearch.Instructions`,
 `SongTools.Instructions`, `AppGuideTools.Instructions`, the *Tools prompt* part of `LiveConversationConfiguration.Request`)
 reads `SkillSettings.Guidance`. `AppSettings.MoveSkillPrompts` moves old prompt edits on read and on sync.
+`SkillDirectoryClient` (`src\Martlet.Core\Settings\SkillDirectory.cs`) owns Find skills: the ClawHub and skills.sh search,
+its orders and filters, and how a SKILL.md becomes an own skill (`ToSkill`).
 
-**Tests:** `SkillSettingsTests`, `PromptSettingsTests`, `PromptBudgetTests` (Martlet.Core.Tests).
+**Tests:** `SkillSettingsTests`, `SkillDirectoryTests`, `PromptSettingsTests`, `PromptBudgetTests` (Martlet.Core.Tests).
 
-**MCP:** `skills_status`; `prompts_status` (`shortFirstSentence.spokenClosing`); the Skills page's `SkillsNow` and
-`SkillState-<key>`.
+**MCP:** `skills_status`; `skill_directory_search`, `skill_directory_add`; `prompts_status` (`shortFirstSentence.spokenClosing`);
+the Skills page's `SkillsNow`, `SkillState-<key>` and `SkillsFind` (Find skills' `SkillDirectory*` IDs).
 
 **Docs:** [Skills](CONVERSATION.md#skills).
 

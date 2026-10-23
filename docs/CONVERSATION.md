@@ -357,8 +357,16 @@ instructions, so Martlet sends a skill only when a reply needs it:
   *Songs* (`sing_song`, `play_song`, `stop_singing`) and *App guides*
   (`read_up_on`, `search_guide`, `skip_guide`). A pinned one is sent once, in
   the closing.
-- **Your own skills** are added with *Add a skill*. A pinned one goes with
-  every reply.
+- **Your own skills** are added with *Add a skill*, or with *Find skills
+  online* (`SkillDirectoryWindow`, `SkillDirectoryClient`). Find skills lists
+  ClawHub (clawhub.ai, the skill registry of OpenClaw), most downloads first,
+  and its search also finds skills.sh skills. You can sort by downloads,
+  installs, stars, trending, newest, last update or best match, and filter by
+  directory, downloads and skills flagged as suspicious. *Add* makes the
+  skill's SKILL.md one of your own skills: its name, its description as the
+  use-when line and its instructions (cut at a line to 8,192 characters) as
+  the text, not pinned. A pinned own skill goes with every reply. The director
+  loads an unpinned one from its skill index when it needs it.
 
 These five skills were prompts on Companion › Prompts before Martlet 0.92. An
 edit of one of those prompts moves to its skill when settings.json is read,

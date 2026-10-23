@@ -1,0 +1,68 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.SkillDirectoryWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}"
+        Title="Martlet - Find skills" Width="1080" Height="780" MinWidth="760" MinHeight="500"
+        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closed="Window_Closed"
+        AutomationProperties.AutomationId="SkillDirectoryWindow"
+        AutomationProperties.Name="Find skills: search ClawHub and skills.sh and add a skill">
+    <DockPanel Margin="24,20,24,18">
+        <TextBlock DockPanel.Dock="Top" Text="Find skills" Style="{DynamicResource SectionHeading}"/>
+        <TextBlock DockPanel.Dock="Top" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"><Run Text="Find a skill that other people wrote and add it to your own skills. Skills come from ClawHub (the skill registry of OpenClaw) and skills.sh." /><InlineUIContainer BaselineAlignment="Center"><local:HelpTip
+                   Text="What you type in the search box goes to clawhub.ai. Most of these skills were written for coding agents, so they can talk about commands, files or tools that Martlet doesn't have. Read a skill before you add it, and edit or delete it on Companion › Skills."
+                   Wiki="Personality-and-Characters#skills" Margin="6,0,0,0"
+                   AutomationProperties.AutomationId="Help-SkillDirectoryAbout" AutomationProperties.Name="About finding skills" /></InlineUIContainer></TextBlock>
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="SearchBox" Grid.Column="0" MaxLength="100" VerticalContentAlignment="Center" KeyDown="SearchBox_KeyDown"
+                     AutomationProperties.AutomationId="SkillDirectorySearch" AutomationProperties.Name="Search skills"
+                     presentation:InputHint.Text="Search skills, e.g. recipes, weather or writing"/>
+            <Button x:Name="SearchButton" Grid.Column="1" Content="_Search" Margin="10,0,0,0" Click="Search_Click"
+                    AutomationProperties.AutomationId="SkillDirectorySearchButton"/>
+        </Grid>
+        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <Label Content="_Sort by" Target="{Binding ElementName=SortChoice}" Padding="0,0,6,0" VerticalAlignment="Center"/>
+            <ComboBox x:Name="SortChoice" MinWidth="200" Margin="0,0,18,6" SelectionChanged="Filter_Changed"
+                      AutomationProperties.AutomationId="SkillDirectorySort" AutomationProperties.Name="Sort by"/>
+            <Label Content="_From" Target="{Binding ElementName=SourceChoice}" Padding="0,0,6,0" VerticalAlignment="Center"/>
+            <ComboBox x:Name="SourceChoice" MinWidth="180" Margin="0,0,18,6" SelectionChanged="Filter_Changed"
+                      AutomationProperties.AutomationId="SkillDirectorySource" AutomationProperties.Name="From"/>
+            <Label Content="_Downloads" Target="{Binding ElementName=DownloadsChoice}" Padding="0,0,6,0" VerticalAlignment="Center"/>
+            <ComboBox x:Name="DownloadsChoice" MinWidth="130" Margin="0,0,18,6" SelectionChanged="Filter_Changed"
+                      AutomationProperties.AutomationId="SkillDirectoryDownloads" AutomationProperties.Name="Downloads"/>
+            <CheckBox x:Name="HideFlagged" Content="Hide skills _flagged as suspicious" IsChecked="True" VerticalAlignment="Center" Margin="0,0,0,6"
+                      Click="Filter_Changed" AutomationProperties.AutomationId="SkillDirectoryHideFlagged"/>
+        </WrapPanel>
+        <StackPanel DockPanel.Dock="Bottom">
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,10,0,10" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="SkillDirectoryStatus"/>
+            <WrapPanel>
+                <Button Content="_Close" Click="Close_Click" IsCancel="True" Margin="0,0,0,6" AutomationProperties.AutomationId="SkillDirectoryClose"/>
+            </WrapPanel>
+        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="280"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+            <DockPanel Grid.Column="0">
+                <Button x:Name="MoreButton" DockPanel.Dock="Bottom" Content="Load _more" Margin="0,8,0,0" HorizontalAlignment="Left"
+                        Visibility="Collapsed" Click="More_Click" AutomationProperties.AutomationId="SkillDirectoryMore"/>
+                <ListBox x:Name="Results" SelectionChanged="Results_Changed" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch" VirtualizingPanel.IsVirtualizing="False"
+                         AutomationProperties.AutomationId="SkillDirectoryResults" AutomationProperties.Name="Skills found"/>
+            </DockPanel>
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          AutomationProperties.AutomationId="SkillDirectoryDetailsScroll">
+                <StackPanel x:Name="Details" Margin="0,0,8,0" AutomationProperties.AutomationId="SkillDirectoryDetails"
+                            AutomationProperties.Name="Selected skill"/>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</local:ThemedWindow>

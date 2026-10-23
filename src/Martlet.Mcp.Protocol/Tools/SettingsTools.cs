@@ -112,6 +112,38 @@ internal sealed partial class McpServer
             key = new { type = "string", maxLength = 40 }
         },
             async (arguments, cancellation) => await SkillsStatusAsync(arguments, cancellation)),
+        Tool("skill_directory_search", "Find skills other people wrote, as Companion > Skills > Find skills does: ClawHub (clawhub.ai, " +
+            "the skill registry of OpenClaw) and the skills.sh skills its search finds. Without search it lists ClawHub in sort order " +
+            "(popular = most downloads, the default; installs, stars, trending, newest, updated), and cursor (from nextCursor) gives the " +
+            "next page. With search it returns up to 100 matches, filtered and sorted here (best_match keeps the search's order). " +
+            "Filters: source (all, clawhub, skills-sh), minimumDownloads, hideFlagged (default true: hides skills flagged as " +
+            "suspicious). Each skill: id, source, owner, slug, name, summary, downloads, installs, stars, recentInstalls, created, " +
+            "updated, official, featured, flagged, repository (skills.sh) and page. Sends the search words and filters to clawhub.ai; " +
+            "changes nothing.", new
+        {
+            search = new { type = "string", maxLength = 100 },
+            sort = new { type = "string", @enum = new[] { "popular", "installs", "stars", "trending", "newest", "updated", "best_match" } },
+            source = new { type = "string", @enum = new[] { "all", "clawhub", "skills-sh" } },
+            minimumDownloads = new { type = "integer", minimum = 0 },
+            hideFlagged = new { type = "boolean" },
+            cursor = new { type = "string", maxLength = 512 },
+            limit = new { type = "integer", minimum = 1, maximum = 100 }
+        },
+            async (arguments, cancellation) => await SkillDirectorySearchAsync(arguments, cancellation)),
+        Tool("skill_directory_add", "Add a skill from the skill directory (see skill_directory_search) to a data directory's own skills " +
+            "(Companion > Skills), as Find skills' Add button does: reads its SKILL.md (from clawhub.ai, or for a skills.sh skill from " +
+            "its GitHub repository), uses its name, its description as the use-when line and its instructions as the text (cut at a " +
+            "line to 8,192 characters), not pinned, under a new key made from its slug. Give source, owner and slug as the search " +
+            "returned them (and repository for skills-sh). Returns the skill added (with its text) and whether it was shortened. " +
+            "Needs --allow-changes. " + DataDirectoryNote, new
+        {
+            source = new { type = "string", @enum = new[] { "clawhub", "skills-sh" } },
+            owner = new { type = "string", maxLength = 100 },
+            slug = new { type = "string", maxLength = 100 },
+            repository = new { type = "string", maxLength = 200 },
+            dataDirectory = new { type = "string" }
+        }, ["owner", "slug"],
+            async (arguments, cancellation) => await SkillDirectoryAddAsync(arguments, cancellation), ToolPermission.Changes),
         Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
             "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
             "whether vision (on by default) and hearing the PC are on (replies are told about Martlet decides only while one is), " +
