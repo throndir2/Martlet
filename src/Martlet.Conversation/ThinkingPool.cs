@@ -299,6 +299,8 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
 /// Thread-safe.</summary>
 public sealed class ThinkingJobBoard
 {
+    /// <summary>The wait before retrying a failed job: 5 seconds, doubled each time, up to 1 minute.</summary>
+    public static TimeSpan FailureRetryWait(int retry) => TimeSpan.FromSeconds(Math.Min(60, 5 * Math.Pow(2, Math.Clamp(retry - 1, 0, 4))));
     /// <summary>How long a job waits before it asks a member again whose computer held its graphics card for a live turn.</summary>
     public static TimeSpan HeldRetry { get; } = TimeSpan.FromSeconds(1);
     /// <summary>How long a member whose computer refused a request as invalid gets no job that needs at least what that job
@@ -515,11 +517,23 @@ public sealed class ThinkingJobBoard
         // Tries the job again at the priority it has now, on every member it may use, while the owner's retries allow it.
         bool Retry(ThinkingPoolPolicy policy)
         {
-            if (retries >= policy.Retries || stale.IsCancellationRequested || !capable.Any(member => !Rests(member, needs))) return false;
+            if (retries >= Math.Clamp(policy.Retries, 0, ThinkingPoolSettings.MaxRetries) || stale.IsCancellationRequested ||
+                !capable.Any(member => !Rests(member, needs))) return false;
             retries++;
             Interlocked.Increment(ref retried);
             tried.Clear();
             return true;
+        }
+        async Task<bool> BackoffAsync()
+        {
+            var wait = FailureRetryWait(retries);
+            request.Say($"retry {retries}: waits {Wait(wait)} after failure");
+            try
+            {
+                await Task.Delay(wait, clock, waiting.Token).ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested) { return false; }
         }
         while (true)
         {
@@ -527,7 +541,11 @@ public sealed class ThinkingJobBoard
             var left = capable.Where(member => !tried.Contains(member.Id) && !Rests(member, needs)).ToArray();
             if (left.Length == 0)
             {
-                if (Retry(policy)) continue;
+                if (Retry(policy))
+                {
+                    if (!await BackoffAsync().ConfigureAwait(false)) return Stale();
+                    continue;
+                }
                 return Ended(new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "no member could do it", attempts));
             }
             // The members left are all offline (one may have stopped answering during the last attempt): don't wait for them.
@@ -586,10 +604,13 @@ public sealed class ThinkingJobBoard
                     if (Retry(policy))
                     {
                         request.End($"ran out of time on {member.Name}; tried again");
-                        continue;
                     }
-                    return Ended(new(ThinkingJobOutcome.TimedOut, null, member.Id, member.Name,
+                    else return Ended(new(ThinkingJobOutcome.TimedOut, null, member.Id, member.Name,
                         $"it didn't finish within {Wait(job.Timeout)}", attempts));
+                    // Release the slot before waiting.
+                    lease.Dispose();
+                    if (!await BackoffAsync().ConfigureAwait(false)) return Stale();
+                    continue;
                 }
                 catch (Exception error) when (error is not OutOfMemoryException)
                 {

@@ -128,6 +128,8 @@ Its parts:
 | What a member can do | See [sense capability](#whether-a-model-sees-hears-or-calls-tools-sense-capability) |
 | Slots, the kept fast slot and the live floor | `BackgroundPlaces` and the board's `MayStartNow` and `CanRunBeside` |
 | Priority, stops for priority and retries | `ThinkingPriority`, `ThinkingPoolPolicy` |
+| Exponential waits between failure retries | `ThinkingJobBoard.FailureRetryWait` and `RunJobAsync` |
+| Stop memory tidying after its pool retries fail | `LiveConversationController.MemoryUpkeepPassAsync` and `FailMemoryUpkeep` (`src\Martlet.Desktop\LiveConversationController.MemoryUpkeep.cs`); `ThinkingPoolHelpers` keeps the final failure distinct from a busy pool |
 | The members, from the settings | `LiveConversationController.PoolMembers` in `src\Martlet.Desktop\DesktopThinkingPool.cs` |
 | The desktop's handle on the board | `DesktopThinkingPool` (`src\Martlet.Desktop\DesktopThinkingPool.cs`), from `LiveConversationController.ThinkingPool` |
 

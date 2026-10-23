@@ -642,6 +642,24 @@ internal static partial class ThinkingPoolCheck
             Check("retries: a timed-out job is tried again", slow is { Succeeded: true, Retries: 1 } && slowBoard.Status().Retried == 1,
                 $"{Json(Outcome(Task.FromResult(slow)))}");
 
+            var times = new List<TimeSpan>();
+            var elapsed = Stopwatch.StartNew();
+            var failingPlaces = new BackgroundPlaces();
+            var failing = new ThinkingJobBoard(failingPlaces, () => [Local()], (_, _, _) =>
+            {
+                times.Add(elapsed.Elapsed);
+                return Task.FromResult(ThinkingAnswer.Failed("fixture failure"));
+            }) { Policy = () => new(false, 3, Retries: 2) };
+            var exhausted = await failing.RunAsync(Labeled(ThinkingJobKind.Memory, "always fails"), cancellation);
+            Check("retries: exponential waits, then a final error without more work",
+                exhausted is { Outcome: ThinkingJobOutcome.Failed, Attempts: 3, Retries: 2 } && times.Count == 3 &&
+                times[1] - times[0] >= ThinkingJobBoard.FailureRetryWait(1) &&
+                times[2] - times[1] >= ThinkingJobBoard.FailureRetryWait(2) &&
+                failingPlaces.Leases.Count == 0 && failingPlaces.Requests.ActiveCount == 0 &&
+                failingPlaces.Requests.List().Single().State == ThinkingRequestState.Failed,
+                $"outcome {exhausted.Outcome}; attempts {exhausted.Attempts}; retry waits " +
+                $"{(times[1] - times[0]).TotalSeconds:0.00} s, {(times[2] - times[1]).TotalSeconds:0.00} s; no active request or held slot");
+
             // Stopped once for priority (RaiseAfterStops 1: up to 11), then failed: the retry runs at 11.
             var tries = 0;
             var lane = new Lane("r");
@@ -655,7 +673,7 @@ internal static partial class ThinkingPoolCheck
             var judge = raisedBoard.RunAsync(Labeled(ThinkingJobKind.BargeInJudge, "judge"), cancellation);
             await WaitAsync(() => lane.Count("r") == 2, cancellation);
             lane.ReleaseAll();
-            await WithinAsync(Task.WhenAll(r, judge), Settle, cancellation);
+            await WithinAsync(Task.WhenAll(r, judge), Settle + ThinkingJobBoard.FailureRetryWait(1), cancellation);
             Check("retries: a raised job is tried again at the priority it was left at",
                 Done(r) && r.Result is { PriorityStops: 1, Retries: 1 } && r.Result.Priority == (int)ThinkingPriority.Research + 1,
                 $"ran {string.Join(", ", lane.Ran)}; r {Json(Outcome(r))}");

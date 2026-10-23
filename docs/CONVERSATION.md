@@ -880,6 +880,9 @@ thinks and research count against the same slots:
 6. A job that failed on every member it could use, or whose attempt timed out,
    is tried again `RetriesOnFailure` times (default 1) at the priority it had
    then. A job that is stale (`DropWhenStale`) is not tried after its time.
+   Each retry waits first: 5 seconds, then 10, 20, 40 and at most 60 seconds.
+   It holds no slot during this wait. After the retry limit, the request ends
+   with an error. Cancellation and the stale deadline also stop the wait.
    `ThinkingJobResult` reports `PriorityStops`, `Retries` and the final
    `Priority`; `ThinkingPoolStatus` reports the `Policy` and the
    `StoppedForPriority`, `Raised` and `Retried` counts.

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Martlet.Conversation;
 using Martlet.Desktop;
 using Martlet.Providers;
@@ -151,6 +152,9 @@ public sealed class HelperJobsTests
 
         fail = true;
         Assert.Null(await adapter.TryRunAsync(new(HelperJobKind.Memory, "Remembering", new BoundedTextInput("a", "b")), CancellationToken.None));
+        var upkeep = await adapter.TryRunAsync(new(HelperJobKind.MemoryUpkeep, "Tidying memory", new BoundedTextInput("a", "b")), CancellationToken.None);
+        Assert.Null(upkeep!.Answer);
+        Assert.Equal("broken", upkeep.Failure);
         members.Clear();
         Assert.Null(await adapter.TryRunAsync(new(HelperJobKind.Memory, "Remembering", new BoundedTextInput("a", "b")), CancellationToken.None));
     }
@@ -200,6 +204,64 @@ public sealed class HelperJobsTests
         // Nothing is left to do: the next pass asks nothing.
         Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
         Assert.Single(pool.Jobs);
+    }
+
+    [Fact]
+    public async Task Failed_upkeep_stops_new_passes_and_marks_an_error_even_after_facts_change()
+    {
+        await using var fixture = await LiveFixture.Create(data: true);
+        await fixture.EnableMemory();
+        var revision = (await fixture.Store.LoadAsync()).Settings!.Memory!.ConfigurationRevision;
+        await fixture.Memory.SaveFactAsync(revision, "The user is vegetarian.", Martlet.Memory.MemoryRetention.UntilDeleted());
+        var calls = 0;
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [new("fixture", "Fixture")], (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult(ThinkingAnswer.Failed("broken"));
+        });
+        fixture.Controller.HelperPool = new ThinkingPoolHelpers(() => new DesktopThinkingPool(board));
+        fixture.Controller.StartMemoryUpkeep();
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        var path = Path.Combine(fixture.DirectoryPath, LiveConversationController.MemoryUpkeepFile);
+        async Task WaitForStopped()
+        {
+            for (var attempt = 0; attempt < 500; attempt++)
+            {
+                if (File.ReadAllText(path).Contains("\"stopped\": true", StringComparison.Ordinal)) return;
+                await Task.Delay(10);
+            }
+            Assert.Fail("The scheduled upkeep did not stop after its pool failure.");
+        }
+        await WaitForStopped();
+        Assert.Equal(1, calls);
+        Assert.Equal("failed: broken", Assert.Single(fixture.Controller.Helpers.Last).Outcome);
+        using var status = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.True(status.RootElement.GetProperty("stopped").GetBoolean());
+        Assert.Contains("stopped until Martlet restarts", status.RootElement.GetProperty("error").GetString());
+        Assert.Equal("failed", status.RootElement.GetProperty("last").GetProperty("outcome").GetString());
+
+        await fixture.Memory.SaveFactAsync(revision, "The user has a cat.", Martlet.Memory.MemoryRetention.UntilDeleted());
+        fixture.Controller.QueueMemoryUpkeep(TimeSpan.Zero);
+        fixture.Clock.Advance(TimeSpan.FromDays(1));
+        Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
+        Assert.Equal(1, calls);
+        Assert.Equal(0, fixture.Llm.Calls);
+    }
+
+    [Fact]
+    public async Task Busy_upkeep_can_try_later_without_marking_an_error()
+    {
+        await using var fixture = await LiveFixture.Create(data: true);
+        await fixture.EnableMemory();
+        var revision = (await fixture.Store.LoadAsync()).Settings!.Memory!.ConfigurationRevision;
+        await fixture.Memory.SaveFactAsync(revision, "The user is vegetarian.", Martlet.Memory.MemoryRetention.UntilDeleted());
+        fixture.Controller.HelperPool = new FixturePool { Text = true, Free = false };
+        Assert.Equal(TimeSpan.FromMinutes(2), await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
+        fixture.Controller.HelperPool = new FixturePool { Text = true, Answer = "WORDS 1: diet, food" };
+        Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
+        using var status = JsonDocument.Parse(File.ReadAllText(Path.Combine(fixture.DirectoryPath, LiveConversationController.MemoryUpkeepFile)));
+        Assert.False(status.RootElement.GetProperty("stopped").GetBoolean());
+        Assert.Equal("answered", status.RootElement.GetProperty("last").GetProperty("outcome").GetString());
     }
 
     private sealed class FixturePool : IHelperJobPool

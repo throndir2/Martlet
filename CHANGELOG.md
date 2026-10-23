@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- Failed Thinking requests wait longer between limited retries, and memory tidying stops with an error when those retries fail. ([#1147](https://github.com/throndir2/Martlet/pull/1147))
+
 ## [0.94.0] - 2026-10-23
 
 ### Added
