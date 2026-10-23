@@ -10,12 +10,12 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- Companion › Prompts starts with **What one reply sends**: what every reply carries, with its size, and which skills the last reply added because a feature is on. Each group of prompts says when it is sent, and Companion › Skills marks each skill Pinned, Attached now, Attached when its feature is on, or Loaded on demand by the director. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Companion › Prompts starts with **What one reply sends**: what every reply carries, with its size, and which skills the last reply added because a feature is on. Each group of prompts says when it is sent, and Companion › Skills marks each skill Pinned, Attached now, Attached when its feature is on, or Loaded on demand by the director. ([#1145](https://github.com/throndir2/Martlet/pull/1145))
 - Companion › Skills › **Find skills online**: search the skills other people share on ClawHub (OpenClaw's skill registry) and skills.sh, most popular first. Sort by downloads, installs, stars, trending, newest or recently updated, filter by where it comes from, how many downloads it has and whether it's flagged as suspicious, read a skill, and add it to your own skills with one click. ([#1144](https://github.com/throndir2/Martlet/pull/1144))
 
 ### Changed
 
-- Every rule a reply follows is a skill now, so Companion › Prompts keeps only Martlet's requests and notes. Your edits of the moved prompts move to their skills. A reply with default settings sends about 18% fewer built-in instruction tokens. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Every rule a reply follows is a skill now, so Companion › Prompts keeps only Martlet's requests and notes. Your edits of the moved prompts move to their skills. A reply with default settings sends about 18% fewer built-in instruction tokens. ([#1145](https://github.com/throndir2/Martlet/pull/1145))
 - When your Windows logins on different PCs have the same name, Martlet treats them as one person: each PC merges its own account into your household's account with that name, also on PCs that you set up before, so you no longer see your name twice in the account picker. ([#1143](https://github.com/throndir2/Martlet/pull/1143))
 
 ## [0.93.0] - 2026-10-22
