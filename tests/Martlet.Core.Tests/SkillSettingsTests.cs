@@ -52,6 +52,51 @@ public sealed class SkillSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Every_reply_rule_is_a_skill_and_prompts_are_only_requests_and_notes()
+    {
+        // The rules that were prompts are skills now; none is left on Companion › Prompts.
+        Assert.All(SkillCatalog.MovedPrompts.Keys, id => Assert.Null(PromptCatalog.Find(id)));
+        Assert.All(SkillCatalog.MovedPrompts.Values, key => Assert.NotNull(SkillCatalog.Find(key)));
+        // Only the persona prompt goes with every reply; every group says when it is sent.
+        Assert.Equal([PromptCatalog.Persona], PromptCatalog.All.Where(p => PromptCatalog.InEveryReply(p.Group)).Select(p => p.Id));
+        Assert.All(PromptCatalog.All.Select(p => p.Group).Distinct(), g => Assert.False(string.IsNullOrWhiteSpace(PromptCatalog.GroupWhere(g))));
+        Assert.All(PromptCatalog.All.Where(p => !PromptCatalog.InEveryReply(p.Group)),
+            p => Assert.Matches("^(Not in a normal reply|Never in a reply)", PromptCatalog.GroupWhere(p.Group)));
+    }
+
+    [Fact]
+    public void Edits_of_the_reply_rules_move_to_their_skills()
+    {
+        var prompts = new PromptSettings
+        {
+            Overrides = new Dictionary<string, string>
+            {
+                ["listening"] = "Answer only when named. Else [{silent}].", ["adult_content"] = "", ["check_in_note"] = "Reminder: {reminder}"
+            }
+        };
+        var moved = AppSettings.MoveSkillPrompts(AppSettings.CreateUnconfigured() with { Prompts = prompts });
+        Assert.Equal("Answer only when named. Else [pass].", SkillSettings.Guidance(PromptSettings.ForPersonal(moved.Prompts, null, moved.Skills),
+            SkillCatalog.AlwaysListening, ("silent", "pass")));
+        Assert.Null(SkillSettings.Guidance(PromptSettings.ForPersonal(moved.Prompts, null, moved.Skills), SkillCatalog.AdultContent));
+        Assert.Equal(["check_in_note"], moved.Prompts!.Overrides.Keys);
+    }
+
+    [Fact]
+    public void A_request_says_which_skills_it_carried()
+    {
+        var closing = PromptSettings.ReplyClosing(null, null, true, "pass")!;
+        var listening = SkillSettings.Guidance(null, SkillCatalog.AlwaysListening, ("silent", "pass"))!;
+        var voice = SkillSettings.Guidance(null, SkillCatalog.VoiceTags, ("engine", "Chatterbox"), ("tags", "(laughs) - a laugh"), ("example", "(laughs)"))!;
+        var request = "You are Mira.\n\n" + listening + "\n\n" + voice + "\n\n" + closing;
+        Assert.Equal([SkillCatalog.LookIntoIt, SkillCatalog.KeepItGoing, SkillCatalog.ReplyLength, SkillCatalog.ShortFirstSentence,
+            SkillCatalog.AlwaysListening, SkillCatalog.VoiceTags], SkillSettings.In(null, request));
+        Assert.Empty(SkillSettings.In(null, "Hello."));
+        // An edited skill is found by its edited words.
+        var edited = SkillSettings.Edited(SkillCatalog.AlwaysListening, "Answer only when someone says your name.");
+        Assert.Contains(SkillCatalog.AlwaysListening, SkillSettings.In(edited, "x Answer only when someone says your name. y"));
+    }
+
+    [Fact]
     public void A_skill_keeps_its_limits()
     {
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() =>
@@ -67,12 +112,12 @@ public sealed class SkillSettingsTests : IDisposable
     {
         var prompts = new PromptSettings
         {
-            Overrides = new Dictionary<string, string> { ["singing"] = "Sing only on Fridays.", ["reply_length"] = "Be brief." }
+            Overrides = new Dictionary<string, string> { ["singing"] = "Sing only on Fridays.", ["notes"] = "Be brief." }
         };
-        Assert.Equal(["reply_length"], prompts.Overrides.Keys);
+        Assert.Equal(["notes"], prompts.Overrides.Keys);
         var moved = AppSettings.MoveSkillPrompts(AppSettings.CreateUnconfigured() with { Prompts = prompts });
         Assert.Equal("Sing only on Fridays.", SkillSettings.Find(moved.Skills, SkillCatalog.Songs)!.Body);
-        Assert.Equal("Be brief.", moved.Prompts!.Overrides["reply_length"]);
+        Assert.Equal("Be brief.", moved.Prompts!.Overrides["notes"]);
         Assert.Null(moved.Prompts.Moved);
 
         // A skill already edited keeps its edit; prompts with only moved edits leave the settings.

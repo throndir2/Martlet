@@ -25,7 +25,7 @@ public static class HomeAssistantContext
 
     /// <summary>For a turn that offers Home Assistant's own tools (its MCP server) instead of the Assist step.</summary>
     public static string? ToolsOffered(bool allowSensitive, PromptSettings? prompts = null) => Wrap(prompts,
-        PromptSettings.Fill(prompts, PromptCatalog.HomeTools,
+        SkillSettings.Guidance(prompts, SkillCatalog.SmartHome,
             ("locks", PromptSettings.Text(prompts, allowSensitive ? PromptCatalog.HomeLocksConfirm : PromptCatalog.HomeLocksOff))));
 
     public static string? NotRecognized(PromptSettings? prompts = null) => Wrap(prompts, PromptSettings.Fill(prompts, PromptCatalog.HomeNotRecognized));

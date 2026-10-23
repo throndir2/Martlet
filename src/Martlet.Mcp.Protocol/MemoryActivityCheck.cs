@@ -145,9 +145,9 @@ internal static class MemoryActivityCheck
             var played = Martlet.Core.Lorebooks.LorebookScanner.Scan(lore, new("What should I do next?", [], Activity: "Palworld"), _ => 0).Included;
             Step("a lorebook entry keyed by the game played now joins in, though the words don't name it",
                 quiet == 0 && played.Count == 1 && played[0].Trigger == "Palworld (played now)", new { withoutGame = quiet, playing = played.Select(h => h.Trigger) });
-            var whilePlaying = Martlet.Core.Settings.PromptSettings.Fill(null, Martlet.Core.Settings.PromptCatalog.WhilePlaying, ("game", "Palworld"));
-            Step("the While you play prompt (Companion › Prompts) names the game played now",
-                whilePlaying?.StartsWith("The user is playing Palworld right now.", StringComparison.Ordinal) == true, new { prompt = whilePlaying });
+            var whilePlaying = Martlet.Core.Settings.SkillSettings.Guidance(null, Martlet.Core.Settings.SkillCatalog.WhilePlaying, ("game", "Palworld"));
+            Step("the While you play skill (Companion › Skills) names the game played now",
+                whilePlaying?.StartsWith("The user is playing Palworld now", StringComparison.Ordinal) == true, new { prompt = whilePlaying });
 
             Step("game names compare without regard to case or spacing, and are made from what the game watch saw",
                 MemoryActivity.Same("gaming/ELDEN RING", "gaming/Elden  ring") && MemoryActivity.Game("  Palworld \t") == Palworld &&

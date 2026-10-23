@@ -3,7 +3,7 @@ using System.Text;
 namespace Martlet.Core.Settings;
 
 /// <summary>The control tag a reply ends with to say in a few words what the picture it got shows, such as
-/// <c>[seen: a racing game, last lap]</c> (Companion › Prompts › What you saw). It is never shown or spoken
+/// <c>[seen: a racing game, last lap]</c> (Companion › Skills › What you saw). It is never shown or spoken
 /// (<see cref="VoiceTagKind.Control"/>, an open tag: <see cref="VoiceTags.OpenEnd"/>); Martlet keeps the words in the
 /// conversation in place of the picture, which is never kept, so later replies know what was seen.</summary>
 public static class SeenTags
@@ -77,9 +77,9 @@ public static class SeenTags
         return builder.ToString().Trim();
     }
 
-    /// <summary>What a look or a message with a picture is told (Companion › Prompts › What you saw); <paramref name="silent"/>
+    /// <summary>What a look or a message with a picture is told (Companion › Skills › What you saw); <paramref name="silent"/>
     /// is the word for staying quiet. The same on every request, so the instructions stay the same. Null when the owner
     /// emptied it (then no tag is offered).</summary>
     public static string? Instructions(PromptSettings? prompts, string silent) =>
-        PromptSettings.Fill(prompts, PromptCatalog.SeenTag, ("silent", silent));
+        SkillSettings.Guidance(prompts, SkillCatalog.SeenTags, ("silent", silent));
 }

@@ -151,12 +151,12 @@ public static class VoiceTags
         return found;
     }
 
-    /// <summary>What the Thinking model is told about the speaking engine's tags (Companion › Prompts › Voice sounds and
+    /// <summary>What the Thinking model is told about the speaking engine's tags (Companion › Skills › Voice sounds and
     /// tones): exactly that engine's tags in its own syntax (<see cref="Catalog"/>). Null when the engine has no tags or the
     /// owner emptied the prompt.</summary>
     public static string? Instructions(SpeechEngine? engine, PromptSettings? prompts) =>
         engine is { SupportsTags: true }
-            ? PromptSettings.Fill(prompts, PromptCatalog.VoiceTags, ("engine", engine.Name), ("tags", Catalog(engine)),
+            ? SkillSettings.Guidance(prompts, SkillCatalog.VoiceTags, ("engine", engine.Name), ("tags", Catalog(engine)),
                 ("example", engine.Tags[0].Text))
             : null;
 

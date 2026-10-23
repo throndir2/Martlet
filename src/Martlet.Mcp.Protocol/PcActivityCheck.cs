@@ -248,8 +248,8 @@ internal static class PcActivityCheck
     // The built-in prompts tell the Thinking model what each kind of line is.
     private static (bool Ok, object Report) Prompts()
     {
-        var pc = PromptSettings.Fill(null, PromptCatalog.PcAudio, ("marker", Marker), ("silent", "pass"))!;
-        var listening = PromptSettings.Fill(null, PromptCatalog.Listening, ("silent", "pass"))!;
+        var pc = SkillSettings.Guidance(null, SkillCatalog.PcSound, ("marker", Marker), ("silent", "pass"))!;
+        var listening = SkillSettings.Guidance(null, SkillCatalog.AlwaysListening, ("silent", "pass"))!;
         string[] pcNeeds = [$"{Marker} are sound from the user's PC", "never the user", "act for the user"];
         string[] listeningNeeds = ["always-on microphone", "a call", "background sounds too, is context"];
         var missing = pcNeeds.Where(text => !pc.Contains(text, StringComparison.Ordinal))

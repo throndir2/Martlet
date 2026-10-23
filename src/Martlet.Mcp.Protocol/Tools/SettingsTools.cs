@@ -443,6 +443,9 @@ internal sealed partial class McpServer
         var list = all.Select(s => new
         {
             key = s.Key, name = s.Name, useWhen = s.UseWhen, builtIn = s.BuiltIn, pinned = s.Pinned, tools = s.Tools,
+            // How a reply gets it: pinned (every reply), feature (while its feature is on, `when`) or director (loaded on demand).
+            attach = s.Pinned ? "pinned" : Martlet.Core.Settings.SkillCatalog.Find(s.Key) is not null ? "feature" : "director",
+            when = Martlet.Core.Settings.SkillCatalog.Find(s.Key)?.When,
             state = string.IsNullOrWhiteSpace(s.Body) ? "empty" : !s.BuiltIn ? "own" : saved?.Skills.Any(e => e.Key == s.Key) == true ? "edited" : "builtin",
             tokens = string.IsNullOrWhiteSpace(s.Body) ? 0 : Martlet.Providers.BoundedTextInput.TextTokens(s.Body)
         }).ToArray();
@@ -469,6 +472,20 @@ internal sealed partial class McpServer
         };
     }
 
+    private static object EveryReply(Martlet.Core.Settings.AppSettings? settings, Martlet.Core.Settings.PromptSettings? prompts)
+    {
+        var persona = settings?.Companion?.ActivePersona;
+        var (wrapped, moment, closing) = Martlet.Core.Settings.SkillSettings.EveryReply(prompts, persona?.Name ?? "Martlet", persona?.Text ?? "",
+            Martlet.Conversation.StayQuiet.Marker);
+        int Tokens(string? text) => text is null ? 0 : Martlet.Providers.BoundedTextInput.TextTokens(text);
+        return new
+        {
+            tokens = Tokens(wrapped) + Tokens(moment) + Tokens(closing), personaTokens = Tokens(wrapped), oneMomentTokens = Tokens(moment),
+            pinnedTokens = Tokens(closing),
+            pinned = Martlet.Core.Settings.SkillSettings.All(prompts?.Skills).Where(s => s.Pinned && !string.IsNullOrWhiteSpace(s.Body)).Select(s => s.Key)
+        };
+    }
+
     /// <summary>Companion › Prompts as saved in a data directory's settings.json: each prompt's state, and one prompt's
     /// effective text on request.</summary>
     private static async Task<object> PromptsStatusAsync(JsonElement arguments, CancellationToken cancellation)
@@ -488,12 +505,15 @@ internal sealed partial class McpServer
         };
         string Of(string prompt) => prompts?.Overrides.TryGetValue(prompt, out var text) != true ? "builtin"
             : string.IsNullOrWhiteSpace(text) ? "empty" : "edited";
+        string SkillOf(string key) => loaded.Settings?.Skills?.Skills.FirstOrDefault(s => s.Key == key) is not { } skill ? "builtin"
+            : string.IsNullOrWhiteSpace(skill.Body) ? "empty" : "edited";
         var list = Martlet.Core.Settings.PromptCatalog.All.Select(p =>
         {
             var text = Martlet.Core.Settings.PromptSettings.Text(prompts, p.Id);
             return new
             {
                 id = p.Id, group = p.Group, title = p.Title, placeholders = p.Placeholders, state = Of(p.Id),
+                inEveryReply = Martlet.Core.Settings.PromptCatalog.InEveryReply(p.Group),
                 characters = text.Length,
                 tokens = string.IsNullOrWhiteSpace(text) ? 0 : Martlet.Providers.BoundedTextInput.TextTokens(text)
             };
@@ -503,6 +523,14 @@ internal sealed partial class McpServer
             state, problem = loaded.Error?.Summary, total = list.Length,
             edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"),
             tokens = list.Sum(p => p.tokens), prompts = list,
+            // When Martlet sends each group (Companion › Prompts says the same under each group's title).
+            groups = list.Select(p => p.group).Distinct().Select(g => new
+            {
+                name = g, inEveryReply = Martlet.Core.Settings.PromptCatalog.InEveryReply(g), where = Martlet.Core.Settings.PromptCatalog.GroupWhere(g)
+            }),
+            // What every reply to you sends besides the conversation (Companion › Prompts › What one reply sends): the persona prompt
+            // with the active persona, One moment and the closing of a reply that isn't spoken (the pinned skills), in tokens.
+            everyReply = EveryReply(loaded.Settings, replyPrompts),
             prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) },
             // Companion › Replies › Short first sentence (on by default) and what closes a reply's instructions with it, exactly
             // as the desktop sends it (the production PromptSettings.ReplyClosing): for a spoken reply the short first sentence
@@ -511,7 +539,7 @@ internal sealed partial class McpServer
             {
                 on = Martlet.Core.Settings.GenerationSettings.StartsShort(generation),
                 chosen = generation?.ShortFirstSentence is not null,
-                prompt = Of(Martlet.Core.Settings.PromptCatalog.ShortFirstSentence),
+                skill = SkillOf(Martlet.Core.Settings.SkillCatalog.ShortFirstSentence),
                 spokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(replyPrompts, generation, true, Martlet.Conversation.StayQuiet.Marker),
                 unspokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(replyPrompts, generation, false, Martlet.Conversation.StayQuiet.Marker)
             },
@@ -520,9 +548,9 @@ internal sealed partial class McpServer
             adultContent = new
             {
                 on = Martlet.Core.Settings.GenerationSettings.Adult(generation),
-                prompt = Of(Martlet.Core.Settings.PromptCatalog.AdultContent),
+                skill = SkillOf(Martlet.Core.Settings.SkillCatalog.AdultContent),
                 instructions = Martlet.Core.Settings.GenerationSettings.Adult(generation)
-                    ? Martlet.Core.Settings.PromptSettings.Fill(prompts, Martlet.Core.Settings.PromptCatalog.AdultContent) : null
+                    ? Martlet.Core.Settings.SkillSettings.Guidance(replyPrompts, Martlet.Core.Settings.SkillCatalog.AdultContent) : null
             },
             // Companion › Replies › Personal content (Private by default): the level, the prompt that fills {private} and its
             // text, and whether screen looks see password managers and private windows, exactly as the desktop uses them.

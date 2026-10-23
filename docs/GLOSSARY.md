@@ -179,7 +179,8 @@ See [Memories for a game](MEMORY.md#memories-for-a-game).
 | --- | --- | --- | --- |
 | A named set of instructions that is not in every request: a key, a name, when it helps, its text | skill (`Skill`, `SkillCatalog`, `SkillSettings`; settings.json section and shared key `skills`) | skill (Companion › Skills) | "prompt" (a prompt is one of Martlet's built-in messages on Companion › Prompts), "tool" |
 | A skill every reply gets, in the closing of its instructions | pinned skill (`Skill.Pinned`, `SkillSettings.Pinned`) | pinned | "always-on prompt" |
-| One of Martlet's built-in instructions, editable by the user | prompt (`PromptCatalog`, `PromptSettings`) | prompt (Companion › Prompts) | "skill" |
+| One of Martlet's built-in requests, or the frame around data in a request (persona, notes, results), editable by the user. Every rule a reply follows is a skill, not a prompt | prompt (`PromptCatalog`, `PromptSettings`) | prompt (Companion › Prompts) | "skill" |
+| What every reply to you sends besides the conversation: the persona prompt, the pinned skills and One moment | `SkillSettings.EveryReply`; the last reply's record `ReplyPromptRecord` | What one reply sends (Companion › Prompts) | "system prompt" in UI text |
 | The Thinking pool request that does the work behind what the user just said, with every tool and skill, while the reply is spoken | director (`CheckIns.Director`, check-in ID `director`, `ThinkingJobKind.Director`, job key `director`, trigger `CheckInTriggers.UserTurn`) | The director (Companion › Check-ins) | "planner", "background agent", "Act on what was said" (the check-in it replaced; its saved ID `actions` is retired) |
 | What Martlet already keeps on this PC that the director can search with no model call: app guides (with the *Looked up on the web* guide), memory and lorebooks | knowledge (`KnowledgeTools`, `search_knowledge`) | (none) | "RAG" in UI text |
 

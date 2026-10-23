@@ -93,7 +93,7 @@ your setup can't.
    due, the look isn't a separate glance: it is
    [one moment](CONVERSATION.md#one-moment-everything-in-one-reply), one reply
    that takes the picture, the PC's lines and the finished work together (with
-   the reply prompts and Companion › Prompts › *One moment*), and it counts as a
+   the reply prompts and Companion › Skills › *One moment*), and it counts as a
    look for the pacer. Likewise a reply to you, to what the PC played or with
    finished work takes the look that is due along instead of looking right
    after. The talk window's `LiveTurnInputs` line says what each reply took.
@@ -114,7 +114,7 @@ Normal and keeps the level it picked until Martlet closes.
 
 - **How it is told.** While vision or hearing what this PC plays is turned on,
   every glance, every reply to what the PC plays and every reply to what you
-  type or say gets Companion › Prompts › *Chattiness: Martlet decides* (what
+  type or say gets Companion › Skills › *Chattiness: Martlet decides* (what
   the three levels mean, when to switch and how), in place of a fixed level's
   line. It is the same at every level, so the instructions, and the model's
   prompt cache, stay the same when it switches. The level itself goes in the
@@ -427,14 +427,14 @@ or on the character's right-click menu, under **Eyes** (saved on this PC as
 
 **Let the character change it** (on by default; `GazeFree`) lets replies change
 where the character looks. Every reply is told the usual gaze and five tags
-(Companion › Prompts › *Where you look*; empty it to turn this off):
+(Companion › Skills › *Where you look*; empty it to turn this off):
 `{look mouse}`, `{look near}`, `{look ahead}`, `{look window}` and
 `{look usual}`. A tag changes the gaze until a reply changes it again,
 `{look usual}` goes back, and your own new choice (or turning this off) ends
 it. The tags are never shown, spoken or kept as emotes. The instructions change
 only when the usual gaze does, so prompt caches keep working; while a reply's
 choice holds the eyes, the newest message gets a short note instead
-(Companion › Prompts › *Where you look now*, a context board note).
+(Companion › Skills › *Where you look now*, a context board note).
 
 A touch can turn the eyes to your mouse for a few seconds, whatever the gaze,
 as the persona's temperament says for that part.

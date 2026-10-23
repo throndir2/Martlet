@@ -184,10 +184,10 @@ internal static partial class CheckInsCheck
         // The reply's own prompts: keep the conversation going (stable, before Short first sentence and Reply length), callbacks
         // aren't repeats, and running jokes are remembered.
         var closing = Martlet.Core.Settings.PromptSettings.ReplyClosing(null, null, true, StayQuiet.Marker) ?? "";
-        var emptied = Martlet.Core.Settings.PromptSettings.ReplyClosing(new Martlet.Core.Settings.PromptSettings
+        var emptied = Martlet.Core.Settings.PromptSettings.ReplyClosing(Martlet.Core.Settings.PromptSettings.ForPersonal(null, null, new Martlet.Core.Settings.SkillSettings
         {
-            Overrides = new Dictionary<string, string> { [PromptCatalog.ConversationMoves] = "" }
-        }, null, true, StayQuiet.Marker) ?? "";
+            Skills = [Martlet.Core.Settings.SkillSettings.Find(null, Martlet.Core.Settings.SkillCatalog.KeepItGoing)! with { Body = "" }]
+        }), null, true, StayQuiet.Marker) ?? "";
         var repeats = CheckInPrompts.Message(CheckIns.All(null).Single(c => c.Id == CheckIns.Repeats), facts, null) ?? "";
         step("prompts keep the conversation going", closing.StartsWith(Martlet.Core.Settings.SkillCatalog.DefaultLookIntoIt + "\n\n" +
                 PromptCatalog.DefaultConversationMovesInstructions, StringComparison.Ordinal) &&

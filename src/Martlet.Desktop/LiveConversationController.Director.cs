@@ -8,6 +8,12 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
+/// <summary>What one reply to the user's own words sent besides the conversation (<see cref="LiveConversationController.LastReplyPrompt"/>):
+/// the skills it carried, by key, its instructions' estimated tokens, how many tools and their definitions' estimated tokens,
+/// whether the director had the other tools, and when.</summary>
+internal sealed record ReplyPromptRecord(IReadOnlyList<string> Skills, int InstructionTokens, int Tools, int ToolTokens, bool Director,
+    DateTimeOffset At);
+
 // The director's tools on this PC (docs/CONVERSATION.md#the-director): the tool sets it takes over from the reply, run for its
 // Thinking pool member's calls (MainWindow.CheckInTools.cs gives them to the check-in host), and what it keeps for later turns.
 internal sealed partial class LiveConversationController
@@ -20,6 +26,32 @@ internal sealed partial class LiveConversationController
 
     /// <summary>Whether this PC has tools of its own for the director (an MCP server besides Home Assistant's, or the terminal).</summary>
     internal bool HasPcTools => tools is { } service && (service.HasEnabledServers || service.Terminal is { Enabled: true });
+
+    /// <summary>What the last reply to the user's own words sent besides the conversation: the skills it carried
+    /// (<see cref="Martlet.Core.Settings.SkillSettings.In"/>), its instructions' and tools' estimated tokens and when. Null before
+    /// the first reply. Companion › Skills and Prompts show it.</summary>
+    internal ReplyPromptRecord? LastReplyPrompt => Volatile.Read(ref lastReplyPrompt);
+
+    private ReplyPromptRecord? lastReplyPrompt;
+
+    /// <summary>Raised (off the UI thread) once a reply's <see cref="LastReplyPrompt"/> is known.</summary>
+    internal event Action? ReplyPromptKept;
+
+    // Off the reply's path: what the reply carried, kept and logged.
+    private void KeepReplyPrompt(RequestParts parts, IReadOnlyList<TextToolDefinition> tools, Martlet.Core.Settings.PromptSettings? prompts,
+        bool director)
+    {
+        var instructions = string.Join("\n\n", parts.Instructions.Select(p => p.Text));
+        var all = string.Join("\n\n", parts.Instructions.Concat(parts.Notes).Concat(parts.Context).Select(p => p.Text));
+        var skills = Martlet.Core.Settings.SkillSettings.In(prompts, all);
+        var record = new ReplyPromptRecord(skills, BoundedTextInput.TextTokens(instructions), tools.Count, tools.Sum(d => d.Utf8Bytes) / 3,
+            director, clock.GetUtcNow());
+        Volatile.Write(ref lastReplyPrompt, record);
+        ErrorLog.Info($"Reply prompt: about {record.InstructionTokens} tokens of instructions and {record.Tools} tools (about " +
+            $"{record.ToolTokens} tokens of definitions){(director ? "; the director has the other tools" : "")}; skills: " +
+            $"{(skills.Count == 0 ? "none" : string.Join(", ", skills))}.");
+        ReplyPromptKept?.Invoke();
+    }
 
     /// <summary>search_conversations for the director: the same search as the reply's, in the record of earlier conversations.</summary>
     internal async ValueTask<ConversationToolResult> DirectorSearchConversationsAsync(TextToolCall call, CancellationToken token)

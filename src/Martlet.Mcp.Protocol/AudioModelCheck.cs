@@ -91,7 +91,7 @@ internal static class AudioModelCheck
             new(TextHistoryRole.User, "Can you help me plan the weekend?"), new(TextHistoryRole.Assistant, "Sure! What do you have in mind?")
         ];
         var instructions = PromptSettings.Fill(null, PromptCatalog.VoiceDescription)!;
-        var told = Persona + "\n\n" + PromptSettings.Fill(null, PromptCatalog.HeardVoiceDescribed)!;
+        var told = Persona + "\n\n" + SkillSettings.Guidance(null, SkillCatalog.VoiceDescribed)!;
         SenseJob Job() => VoiceNotes.Job(instructions, VoiceNotes.Context(history, "Martlet"), clip, shared: false);
         VoiceNote Note() => new(TimeProvider.System, TimeProvider.System.GetTimestamp(), false, Guid.Empty, model.Describe());
 

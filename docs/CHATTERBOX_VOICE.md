@@ -239,7 +239,7 @@ Martlet gives it two ways of speaking, with Resemble's suggestions as defaults:
 **General** (exaggeration 0.5, CFG weight 0.5) for every sentence, and
 **Expressive** (0.7 and 0.3, Resemble's tip for expressive or dramatic speech)
 for a sentence the reply starts with `[expressive]`. The Thinking prompt
-(Companion › Prompts › *Voice sounds and tones*) offers `[expressive]` as its
+(Companion › Skills › *Voice sounds and tones*) offers `[expressive]` as its
 only tone, so the model decides sentence by sentence when to sound animated. It
 offers no `[whispering]`: the original model can't whisper, and Martlet adds no
 whisper of its own. A `[whispering]` that still arrives (from an older desktop)
@@ -555,7 +555,7 @@ Images `martlet-chatterbox:7` to `:11` made a whisper themselves. An effect
 model. It sounded artificial, even creepy, so image `:12` removes it. `/status`
 no longer reports `whisper`, and `MARTLET_CHATTERBOX_WHISPER_DB` has no effect.
 
-The Thinking prompt (Companion › Prompts › *Voice sounds and tones*) lists both
+The Thinking prompt (Companion › Skills › *Voice sounds and tones*) lists both
 groups, each under a line saying where its tags go: a sound inline where it
 happens, a tone at the very start of the sentence it colors (each spoken piece
 is synthesized on its own, so a tone never reaches the next sentence). The

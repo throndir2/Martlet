@@ -16,13 +16,14 @@ internal sealed class SkillsPage(ISkillsPageServices services)
     internal void Render(Panel page)
     {
         var saved = services.Saved;
-        var now = Note(DescribeSkills(saved), new Thickness(0, 2, 0, 0));
+        var last = services.LastReply;
+        var now = Note(DescribeSkills(saved, last), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(now, "SkillsNow");
         page.Children.Add(Card(Heading("Now"), now));
         page.Children.Add(Card(Heading("How skills work"),
             HelpTip.Explain("A skill is a short set of instructions Martlet uses only when it needs it, so every reply stays short and " +
-                "quick. A pinned skill goes with every reply. A skill that explains tools goes with a reply only while that reply is " +
-                "offered its tools. Your own skills and any skill can be edited; edits save as you type and are the same on all your " +
+                "quick. A pinned skill goes with every reply. Every other built-in skill is attached only while its feature is on " +
+                "(each one says when), and the director loads any skill when it helps. Your own skills and any skill can be edited; edits save as you type and are the same on all your " +
                 "computers. Empty a skill's text to send nothing for it.", new Thickness(0, 0, 0, 0), "Skills", "skills",
                 wiki: "Personality-and-Characters#skills")));
 
@@ -40,7 +41,7 @@ internal sealed class SkillsPage(ISkillsPageServices services)
         var autoSave = new AutoSave(() => services.SaveAsync(Typed(), skills =>
         {
             saved = skills;
-            now.Text = DescribeSkills(skills);
+            now.Text = DescribeSkills(skills, last);
             foreach (var show in states) show();
         }));
         services.UseAutoSave(autoSave);
@@ -87,7 +88,7 @@ internal sealed class SkillsPage(ISkillsPageServices services)
             AutomationProperties.SetAutomationId(state, "SkillState-" + key);
             var editor = (skill, name, useWhen, body, pinned);
             editors.Add(editor);
-            void ShowState() => state.Text = SkillState(Typed().First(s => s.Key == key), saved);
+            void ShowState() => state.Text = SkillState(Typed().First(s => s.Key == key), saved, last?.Skills);
             ShowState();
             states.Add(ShowState);
             var title = new TextBlock { Text = skill.Name, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };

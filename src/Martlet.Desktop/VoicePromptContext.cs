@@ -25,9 +25,9 @@ internal static class VoicePromptContext
         return Preamble(heard, prompts) is { } preamble ? preamble + "\n" + block : block;
     }
 
-    /// <summary>What the voices block means (Companion › Prompts › Who is talking), for the instructions; null without voices.</summary>
+    /// <summary>What the voices block means (Companion › Skills › Who is talking), for the instructions; null without voices.</summary>
     internal static string? Preamble(HeardVoices? heard, PromptSettings? prompts = null) =>
-        heard is null || heard.Voices.Count == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.Voices, ("label", Label));
+        heard is null || heard.Voices.Count == 0 ? null : SkillSettings.Guidance(prompts, SkillCatalog.Voices, ("label", Label));
 
     /// <summary>Who is talking in this message, between <see cref="Label"/> labels; null without voices.</summary>
     internal static string? Block(HeardVoices? heard)

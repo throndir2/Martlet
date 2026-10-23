@@ -17,6 +17,19 @@ internal sealed class PromptsPage(IPromptsPageServices services)
     internal void Render(Panel page)
     {
         var saved = services.Saved;
+        // What one reply sends: the few parts every reply carries, and the skills the last reply carried because a feature is on.
+        var (name, persona) = services.Persona;
+        var always = Note(DescribeEveryReply(saved, services.Skills, name, persona), new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(always, "PromptsReplyAlways");
+        var attached = Note(DescribeAttached(services.LastReply, services.Skills), new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(attached, "PromptsReplyAttached");
+        page.Children.Add(Card(Heading("What one reply sends"), always, attached,
+            HelpTip.Explain("Each rule a reply follows is a skill: a reply gets it only while its feature is on, the director loads it " +
+                "when it needs it, and a pinned skill goes with every reply. The prompts on this page are the requests themselves and " +
+                "the notes around what Martlet knows; each group below says when Martlet sends it.", new Thickness(0, 6, 0, 0),
+                "PromptsReply", "what one reply sends", wiki: "Personality-and-Characters#skills"),
+            Row(PageButton("Open Skills", services.OpenSkills, link: true, id: "PromptsOpenSkills"))));
+
         var now = Note(DescribePrompts(saved), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(now, "PromptsNow");
         var total = Note(DescribePromptTokens(PromptCatalog.All.Select(p => PromptSettings.Text(saved, p.Id))), new Thickness(0, 4, 0, 0));
@@ -44,9 +57,12 @@ internal sealed class PromptsPage(IPromptsPageServices services)
             foreach (var show in states) show();
         }));
         services.UseAutoSave(autoSave);
+        var groupNumber = 0;
         foreach (var group in PromptCatalog.All.GroupBy(p => p.Group))
         {
-            var children = new List<UIElement> { Heading(group.Key) };
+            var where = Note(PromptCatalog.GroupWhere(group.Key), new Thickness(0, 2, 0, 0));
+            AutomationProperties.SetAutomationId(where, $"PromptGroupWhere-{++groupNumber}");
+            var children = new List<UIElement> { Heading(group.Key), where };
             foreach (var prompt in group)
             {
                 var title = new TextBlock { Text = prompt.Title, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap };

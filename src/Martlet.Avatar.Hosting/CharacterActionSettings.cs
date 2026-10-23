@@ -100,7 +100,7 @@ public sealed partial record CharacterActionCatalog(CharacterActionInventory Inv
     /// <summary>The most character tags one reply may be given (the conversation's limit).</summary>
     public const int MaximumTags = 128;
 
-    /// <summary>The reply instructions (Companion › Prompts › Character emotes and motions) and the tags they offer, or null
+    /// <summary>The reply instructions (Companion › Skills › Character emotes and motions) and the tags they offer, or null
     /// when none are offered or the owner emptied the prompt. A lingering emote's line says it stays on until its off tag
     /// (<c>{/blush}</c>), which is offered too. The owner's combos come after the emotes' lines (so those, and prompt caches, stay
     /// the same), as many as the tags a request may carry allow beside the emotes' and the look tags. <paramref name="showing"/> are the lingering emotes the character
@@ -121,7 +121,7 @@ public sealed partial record CharacterActionCatalog(CharacterActionInventory Inv
         var lines = offered.Select(e => $"{{{e.Action.Tag}}} - {CharacterActions.Hint(e.Source, e.Action)}" +
             (CharacterActions.Lingers(e.Source, e.Action) ? $" (stays on until you write {{/{e.Action.Tag}}})" : ""))
             .Concat(combos.Select(c => c.Line));
-        var text = PromptSettings.Fill(prompts, PromptCatalog.CharacterActions, ("tags", string.Join("\n", lines)), ("example", example));
+        var text = SkillSettings.Guidance(prompts, SkillCatalog.CharacterActions, ("tags", string.Join("\n", lines)), ("example", example));
         if (text is null) return null;
         var held = (showing ?? []).Select(h => (Held: h, Tag: lingering.FirstOrDefault(e => e.Source.Id == h.Source.Id).Action?.Tag))
             .Where(h => h.Tag is not null).ToArray();

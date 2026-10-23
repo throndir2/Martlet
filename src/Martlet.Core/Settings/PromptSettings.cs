@@ -98,20 +98,12 @@ public sealed partial record PromptSettings : IContract
 
     /// <summary>What closes the instructions of a reply to what the user typed or said, the same text every time, so the start
     /// of every request stays the same and prompt caches keep it: the pinned skills (Companion › Skills,
-    /// <see cref="SkillSettings.Pinned"/>), then the Keep the conversation going prompt, then the Short first
-    /// sentence prompt when the reply is <paramref name="spoken"/> and Companion › Replies › Short first sentence is on
-    /// (<see cref="GenerationSettings.StartsShort"/>), then the Reply length prompt last, where models weigh it most. Null when
+    /// <see cref="SkillSettings.Pinned"/>: Look into it and Keep the conversation going by default), then the Short first
+    /// sentence skill when the reply is <paramref name="spoken"/> and Companion › Replies › Short first sentence is on
+    /// (<see cref="GenerationSettings.StartsShort"/>), then the Reply length skill last, where models weigh it most. Null when
     /// none is sent. <paramref name="silent"/> is the word the model answers to stay quiet.</summary>
-    public static string? ReplyClosing(PromptSettings? settings, GenerationSettings? generation, bool spoken, string silent)
-    {
-        var pinned = SkillSettings.Pinned(settings, silent);
-        var moves = Fill(settings, PromptCatalog.ConversationMoves);
-        var first = spoken && GenerationSettings.StartsShort(generation)
-            ? Fill(settings, PromptCatalog.ShortFirstSentence, ("silent", silent)) : null;
-        var length = Fill(settings, PromptCatalog.ReplyLength);
-        var parts = new[] { pinned, moves, first, length }.Where(part => part is not null).ToArray();
-        return parts.Length == 0 ? null : string.Join("\n\n", parts);
-    }
+    public static string? ReplyClosing(PromptSettings? settings, GenerationSettings? generation, bool spoken, string silent) =>
+        SkillSettings.Pinned(settings, silent, spoken && GenerationSettings.StartsShort(generation) ? SkillCatalog.ShortFirstSentence : null);
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\{([a-z_]+)\}", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
     private static partial System.Text.RegularExpressions.Regex Placeholder();

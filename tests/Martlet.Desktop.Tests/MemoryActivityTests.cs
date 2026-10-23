@@ -172,7 +172,7 @@ public sealed class MemoryActivityTests
         Assert.Contains("The user is playing ELDEN RING now", Ask(history, Elden).Input.Notes);
         Assert.DoesNotContain("right now", Ask([], MemoryActivity.Gaming).Input.Notes ?? "");
 
-        var emptied = LiveConversationConfiguration.From(loaded with { Settings = loaded.Settings! with { Prompts = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.WhilePlaying] = "" } } } })!;
+        var emptied = LiveConversationConfiguration.From(loaded with { Settings = loaded.Settings! with { Skills = SkillSettings.Edited(SkillCatalog.WhilePlaying, "")!.Skills } })!;
         Assert.DoesNotContain("right now", Ask([], Palworld, emptied).Input.Notes ?? "");
         fixture.NoEffects();
     }

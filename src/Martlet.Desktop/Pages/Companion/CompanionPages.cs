@@ -195,7 +195,7 @@ internal static class CompanionPages
         CompanionTab.Eyes => "Choose where the character looks.",
         CompanionTab.Touch => "Choose what the character does when you click or stroke it: its touch zones, and how it feels about each touch.",
         CompanionTab.Personality => "Write who Martlet is: its name, how it talks and what it cares about.",
-        CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model; your edited text is used instead of the built-in one.",
+        CompanionTab.Prompts => "What one reply sends, and the requests and notes Martlet sends to the Thinking model; the rules a reply follows are skills.",
         CompanionTab.Skills => "Instructions Martlet uses only when it needs them, so every reply stays short and quick: pin the ones every reply must follow, and add your own.",
         CompanionTab.Lorebook => "Add facts about your world that Martlet reads when their keywords come up in the conversation.",
         CompanionTab.AppGuides => "Martlet reads up on the games and apps you use (their fan wikis and help pages) and answers your questions about them from what it read.",

@@ -37,13 +37,9 @@ public sealed class ChattinessTagsTests
         Assert.Contains("[pass]", told);
         Assert.DoesNotContain("{", told);
         Assert.Equal("Your chattiness right now: quiet.", ChattinessTags.Note(null, Chattiness.Quiet));
-        var edited = new PromptSettings
+        var edited = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.ChattinessNow] = "" } } with
         {
-            Overrides = new Dictionary<string, string>
-            {
-                [PromptCatalog.ChattinessDecides] = "Switch with {quiet} or {chatty}.",
-                [PromptCatalog.ChattinessNow] = ""
-            }
+            Skills = SkillSettings.Edited(SkillCatalog.ChattinessDecides, "Switch with {quiet} or {chatty}.")!.Skills
         };
         edited.Validate();
         Assert.Equal("Switch with [chattiness:quiet] or [chattiness:chatty].", ChattinessTags.Instructions(edited, "pass"));

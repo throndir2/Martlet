@@ -61,6 +61,7 @@ internal static partial class AutomationPolicy
         // Needs --allow-ui-effects: the character step's cards (WizardCharacterKeep, WizardCharacterProfile-<n>), Use this character (WizardCharacterSave) and Import a character card (WizardCharacterImport): they save a character and then set it all up; Choose later (WizardCharacterSkip) sets it all up.
         new("OpenPeople", "Companion › Listening", "Open People: only opens Companion › People."),
         new("OpenPrompts", "Companion › Personality", "Edit prompts: only opens Companion › Prompts."),
+        new("PromptsOpenSkills", "Companion › Prompts", "Open Skills: only opens Companion › Skills."),
         new("DeviceFactsSection", "Devices", "Hardware and details (or Details) of the selected device: only expands or collapses the facts."),
         new("DeviceReachSection", "Devices", "Connection method of the selected host: only expands or collapses the section."),
         new("DeviceRolesSection", "Devices", "Host roles of the selected device: only expands or collapses the section."),

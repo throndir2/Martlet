@@ -178,11 +178,11 @@ public static class CharacterGaze
         return false;
     }
 
-    /// <summary>What every reply is told while the character may change where it looks (Companion › Prompts › Where you look):
+    /// <summary>What every reply is told while the character may change where it looks (Companion › Skills › Where you look):
     /// its usual gaze and the mode tags, or null when the owner emptied that prompt. It changes only with the usual gaze, so the
     /// request still starts the same from message to message.</summary>
     public static CharacterActionPrompt? ReplyPrompt(PromptSettings? prompts, GazeMode usual) =>
-        PromptSettings.Fill(prompts, PromptCatalog.CharacterGaze, ("usual", Does(usual)),
+        SkillSettings.Guidance(prompts, SkillCatalog.CharacterGaze, ("usual", Does(usual)),
             ("tags", string.Join("\n", Modes.Select(m => $"{{look {m.Word}}} - {m.Does}").Append($"{UsualTag} - go back to your usual gaze")))) is { } text
             ? new(text, ModeTags) : null;
 

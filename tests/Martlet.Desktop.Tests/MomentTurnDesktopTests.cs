@@ -91,8 +91,9 @@ public sealed class MomentTurnDesktopTests
         Assert.Equal("Last report took the picture and 1 finished job, counted as a look.",
             LiveConversationWindow.TurnInputsLine(false, true, "the picture and 1 finished job", true));
         Assert.Equal("Last look took the picture.", LiveConversationWindow.TurnInputsLine(true, false, "the picture", false));
-        Assert.Contains("[pass]", Moment);
-        Assert.Equal(Moment, PromptSettings.Fill(null, PromptCatalog.Moment, ("silent", LiveConversationConfiguration.SilentReply)));
+        // Staying quiet is the Always listening and What this PC plays skills' rule; One moment only says to answer together.
+        Assert.DoesNotContain("[pass]", Moment);
+        Assert.Equal(Moment, SkillSettings.Guidance(null, SkillCatalog.OneMoment, ("silent", LiveConversationConfiguration.SilentReply)));
     }
 
     private static string Instructions(byte[] body)

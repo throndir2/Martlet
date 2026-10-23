@@ -12,13 +12,16 @@ public sealed class PromptBudgetTests
     // own text and the tag lists. (Things done after the reply is left out: a reply offered every tool has none handed off.)
     private static readonly string[] EverythingOnReply =
     [
-        PromptCatalog.Persona, PromptCatalog.VoiceTags, PromptCatalog.CharacterActions,
-        PromptCatalog.CharacterGaze, PromptCatalog.Listening, PromptCatalog.PcAudio, PromptCatalog.Moment, PromptCatalog.AdultContent,
-        PromptCatalog.ChattinessDecides, PromptCatalog.SeenWithMessage, PromptCatalog.SeenTag, PromptCatalog.PersonalPrivate,
-        PromptCatalog.Notes, PromptCatalog.Voices, PromptCatalog.MemoryRecall, PromptCatalog.MemoryPeople, PromptCatalog.MemoryBrief,
-        PromptCatalog.Lorebook, PromptCatalog.PastConversations, PromptCatalog.ConversationMoves, PromptCatalog.ShortFirstSentence,
-        PromptCatalog.ReplyLength, PromptCatalog.SaidLately
+        PromptCatalog.Persona, PromptCatalog.SeenWithMessage, PromptCatalog.PersonalPrivate,
+        PromptCatalog.Notes, PromptCatalog.MemoryRecall, PromptCatalog.MemoryPeople, PromptCatalog.MemoryBrief,
+        PromptCatalog.Lorebook, PromptCatalog.PastConversations, PromptCatalog.SaidLately
     ];
+
+    // The skills one reply never carries together with the others: the other forms of a recorded voice, the Discord call
+    // (instead of PC sound), singing without tools (instead of the song tools), Things done on their own (instead of the tools) and Pictures as words (instead of the picture).
+    private static readonly string[] OtherForms =
+        [SkillCatalog.HeardVoiceOnly, SkillCatalog.VoiceDescribed, SkillCatalog.DiscordCall, SkillCatalog.SongTags, SkillCatalog.HandedOff,
+            SkillCatalog.ScreenAsWords];
 
     [Fact]
     public void AllBuiltInPromptsTogetherStayUnderTenThousandTokens()
@@ -30,10 +33,22 @@ public sealed class PromptBudgetTests
     [Fact]
     public void AReplyWithEveryFeatureOnCarriesAtMostTwoThousandTokensOfBuiltInPrompts()
     {
-        // With the skills that explain tools (they go with a reply offered their tools) and the pinned ones.
+        // With every skill a feature attaches, and the pinned ones.
         var reply = EverythingOnReply.Sum(id => BoundedTextInput.TextTokens(PromptCatalog.Default(id))) +
-            SkillCatalog.All.Sum(s => BoundedTextInput.TextTokens(s.Body));
+            SkillCatalog.All.Where(s => !OtherForms.Contains(s.Key)).Sum(s => BoundedTextInput.TextTokens(s.Body));
         Assert.True(reply <= 2_000, $"A reply with every feature on: about {reply:N0} tokens of built-in prompts.");
+    }
+
+    [Fact]
+    public void AnAverageReplyCarriesOnlyThePersonaWrapperOneMomentAndThePinnedSkills()
+    {
+        // Typed, with no tools and no feature on: what every reply to you starts with, besides the persona's own text.
+        var always = BoundedTextInput.TextTokens(PromptCatalog.Default(PromptCatalog.Persona)) +
+            BoundedTextInput.TextTokens(SkillSettings.Guidance(null, SkillCatalog.OneMoment)!) +
+            BoundedTextInput.TextTokens(PromptSettings.ReplyClosing(null, null, false, "pass")!);
+        Assert.True(always <= 400, $"An average reply: about {always} tokens of built-in instructions.");
+        Assert.Equal([SkillCatalog.LookIntoIt, SkillCatalog.KeepItGoing, SkillCatalog.ReplyLength],
+            SkillSettings.All(null).Where(s => s.Pinned).Select(s => s.Key));
     }
 
     [Fact]

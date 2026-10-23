@@ -63,7 +63,7 @@ internal static class ImageModelCheck
             prompts = new
             {
                 describePicture = PromptState(prompts, PromptCatalog.DescribePicture),
-                picturesAsWords = PromptState(prompts, PromptCatalog.SeenDescribed),
+                picturesAsWords = SkillState(prompts, SkillCatalog.ScreenAsWords),
                 whatTheImageModelSaw = PromptState(prompts, PromptCatalog.SeenDescribedNote)
             },
             rehearsal = await RehearseAsync(prompts, delayMs ?? 1500, cancellation),
@@ -71,6 +71,9 @@ internal static class ImageModelCheck
             lastTurn = LastTurn(dataDirectory)
         };
     }
+
+    private static string SkillState(PromptSettings? prompts, string key) =>
+        prompts?.Skills?.Skills.FirstOrDefault(s => s.Key == key) is not { } skill ? "default" : string.IsNullOrWhiteSpace(skill.Body) ? "empty" : "edited";
 
     private static string PromptState(PromptSettings? prompts, string id) =>
         prompts?.Overrides.TryGetValue(id, out var text) != true ? "default" : string.IsNullOrWhiteSpace(text) ? "empty" : "edited";
@@ -118,7 +121,7 @@ internal static class ImageModelCheck
         var describePrompt = PromptSettings.Fill(prompts, PromptCatalog.DescribePicture) ?? PromptCatalog.DefaultDescribePictureInstructions;
 
         // 2. The reply a moment later, on the same picture: it takes the description at once, as a note; no picture goes.
-        var instructions = Join(PromptSettings.Fill(prompts, PromptCatalog.Moment, silent), PictureDescriptions.Instructions(prompts));
+        var instructions = Join(SkillSettings.Guidance(prompts, SkillCatalog.OneMoment, silent), PictureDescriptions.Instructions(prompts));
         var taken = pictures.For(gameShot with { TakenAt = now.AddSeconds(2) });
         var note = taken is null ? null : PictureDescriptions.Note(prompts, taken);
         var replyAnswer = await AskAsync(thinkingAdapter, thinking.BaseUrl, ThinkingModel, new BoundedTextInput("What do you think of this?",
@@ -154,7 +157,7 @@ internal static class ImageModelCheck
         var lookNote = reused.Description is { } chatWords ? PictureDescriptions.Note(prompts, chatWords) ?? chatWords.Text : null;
         watch.Restart();
         var lookAnswer = lookNote is null ? null : await AskAsync(thinkingAdapter, thinking.BaseUrl, ThinkingModel,
-            new BoundedTextInput(PictureDescriptions.GlanceMessage(lookPrompt, lookNote, null), Join(PromptSettings.Fill(prompts, PromptCatalog.Moment, silent),
+            new BoundedTextInput(PictureDescriptions.GlanceMessage(lookPrompt, lookNote, null), Join(SkillSettings.Guidance(prompts, SkillCatalog.OneMoment, silent),
                 lookInstructions)), image: false, cancellation);
         var lookMs = watch.ElapsedMilliseconds;
         var lookSent = Read(thinking.Bodies[^1]);

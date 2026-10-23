@@ -61,11 +61,11 @@ public static class ChattinessTags
     /// <summary>How the choice reads in Martlet: Quiet, Normal, Chatty or Martlet decides.</summary>
     public static string Label(ChattinessChoice choice) => choice == ChattinessChoice.MartletDecides ? "Martlet decides" : choice.ToString();
 
-    /// <summary>What replies and looks are told while Martlet decides (Companion › Prompts › Chattiness: Martlet decides): the
+    /// <summary>What replies and looks are told while Martlet decides (Companion › Skills › Chattiness: Martlet decides): the
     /// levels, when to switch and the tags that switch them; <paramref name="silent"/> is the word for staying quiet. Null when
     /// the owner emptied it.</summary>
     public static string? Instructions(PromptSettings? prompts, string silent) =>
-        PromptSettings.Fill(prompts, PromptCatalog.ChattinessDecides, ("silent", silent),
+        SkillSettings.Guidance(prompts, SkillCatalog.ChattinessDecides, ("silent", silent),
             ("quiet", Tag(Chattiness.Quiet)), ("normal", Tag(Chattiness.Normal)), ("chatty", Tag(Chattiness.Chatty)));
 
     /// <summary>The note that says the level while Martlet decides (Companion › Prompts › Chattiness right now), or null when the

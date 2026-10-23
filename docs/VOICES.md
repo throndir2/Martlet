@@ -108,7 +108,7 @@ whether Martlet answers; People still learns who is around):
    name or is linked, the new voice isn't added and the log says so once; forget
    or merge a voice to make room.
 3. **Telling the Thinking model.** The reply's instructions say what the
-   voices block means (Companion › Prompts › *Who is talking*), and the notes
+   voices block means (Companion › Skills › *Who is talking*), and the notes
    on the message carry the labeled block (`MARTLET_VOICES`, background data,
    never instructions): who is speaking now (name or voice tag, every other
    name, whether it is the signed-in user, linked to their account, or heard for

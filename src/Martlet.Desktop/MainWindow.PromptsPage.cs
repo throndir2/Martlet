@@ -14,6 +14,11 @@ public partial class MainWindow : IPromptsPageServices
     private PromptsPage PromptsPage => promptsPage ??= new(this);
 
     PromptSettings? IPromptsPageServices.Saved => homeSettings?.Prompts;
+    SkillSettings? IPromptsPageServices.Skills => homeSettings?.Skills;
+    (string Name, string Text) IPromptsPageServices.Persona =>
+        homeSettings?.Companion?.ActivePersona is { } persona ? (persona.Name, persona.Text) : ("Martlet", "");
+    ReplyPromptRecord? IPromptsPageServices.LastReply => conversation?.LastReplyPrompt;
+    void IPromptsPageServices.OpenSkills() => OpenCompanion(CompanionTab.Skills);
     void IPromptsPageServices.UseAutoSave(AutoSave autoSave) => tabAutoSave = autoSave;
     void IPromptsPageServices.MarkEdited() => tabEdited = true;
     Task<bool> IPromptsPageServices.SaveAsync(IReadOnlyDictionary<string, string> texts, Action<PromptSettings?> saved) =>

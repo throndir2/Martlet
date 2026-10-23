@@ -111,10 +111,10 @@ public sealed class VoiceTagTests
         Assert.DoesNotContain(VoiceTags.TonesHeading, dia);
         Assert.Null(VoiceTags.Instructions(SpeechEngines.F5, null));
         Assert.Null(VoiceTags.Instructions(null, null));
-        var edited = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.VoiceTags] = "Tags for {engine}:\n{tags}" } };
+        var edited = SkillSettings.Edited(SkillCatalog.VoiceTags, "Tags for {engine}:\n{tags}");
         Assert.Equal("Tags for Chatterbox Turbo:\n" + VoiceTags.Catalog(SpeechEngines.Chatterbox),
             VoiceTags.Instructions(SpeechEngines.Chatterbox, edited));
-        var emptied = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.VoiceTags] = "" } };
+        var emptied = SkillSettings.Edited(SkillCatalog.VoiceTags, "");
         Assert.Null(VoiceTags.Instructions(SpeechEngines.Chatterbox, emptied));
     }
 

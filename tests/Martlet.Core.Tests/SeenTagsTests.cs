@@ -38,8 +38,8 @@ public sealed class SeenTagsTests
         Assert.Contains("[seen:", text);
         Assert.Contains("[pass]", text);
         Assert.Equal(text, SeenTags.Instructions(null, "pass"));
-        Assert.Equal(PromptCatalog.VisionGroup, PromptCatalog.All.Single(p => p.Id == PromptCatalog.SeenTag).Group);
-        Assert.Null(SeenTags.Instructions(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.SeenTag] = "" } }, "pass"));
+        Assert.NotNull(SkillCatalog.Find(SkillCatalog.SeenTags));
+        Assert.Null(SeenTags.Instructions(SkillSettings.Edited(SkillCatalog.SeenTags, ""), "pass"));
         Assert.True(VoiceTags.IsOpen(SeenTags.Tag));
         Assert.False(VoiceTags.IsOpen("[chattiness:quiet]"));
     }
