@@ -71,8 +71,10 @@ internal interface IHostShellPrompts
 {
     /// <summary>First connection to a computer: show its host key fingerprint; true pins it for good.</summary>
     bool TrustHostKey(HostShellTarget target, string hostKey);
-    /// <summary>The account's password, asked once to install Martlet's key. Never stored; null cancels.</summary>
+    /// <summary>The account's password, asked once to install Martlet's key. Null cancels.</summary>
     string? LoginPassword(HostShellTarget target, bool retry);
+    /// <summary>The computer accepted <paramref name="password"/> from <see cref="LoginPassword"/>; keep it if the owner asked.</summary>
+    void LoginAccepted(HostShellTarget target, string password) { }
     /// <summary>The account's sudo password (masked); null runs without sudo rights.</summary>
     HostShellSudo? SudoPassword(HostShellTarget target, bool retry);
 }
@@ -169,6 +171,38 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
 
     /// <summary>Removes a remembered sudo password.</summary>
     internal static void ForgetSudo(HostShellTarget target) => new WindowsCredentialStore().DeleteSshSudoSecret(target.Account);
+
+    /// <summary>When set, a host key that differs from the pinned one is trusted for this instance's runs only when
+    /// <see cref="IHostShellPrompts.TrustHostKey"/> says so, and nothing is pinned (see <see cref="PinKey"/>).</summary>
+    internal bool Provisional { get; init; }
+
+    /// <summary>Pins <paramref name="key"/> for <paramref name="target"/>, replacing the key pinned before.</summary>
+    internal void PinKey(HostShellTarget target, string key) => Pin(target, key);
+
+    /// <summary>Remembers the account's sign-in password (the owner asked) in Windows Credential Manager.</summary>
+    internal static void RememberLogin(HostShellTarget target, string password)
+    {
+        var encoded = Base64Url.EncodeToString(Encoding.UTF8.GetBytes(password));
+        if (encoded.Length > SecretLease.MaximumLength) return;
+        using var lease = new SecretLease(encoded);
+        new WindowsCredentialStore().WriteSshLoginSecret(target.Account, lease);
+    }
+
+    /// <summary>The remembered sign-in password, else the remembered sudo password (usually the same), else null.</summary>
+    internal static string? RememberedLogin(HostShellTarget target)
+    {
+        var store = new WindowsCredentialStore();
+        string? password = null;
+        using (var read = store.ReadSshLoginSecret(target.Account))
+            read.Secret?.Use(value => password = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(value)));
+        if (password is not null) return password;
+        using (var read = store.ReadSshSudoSecret(target.Account))
+            read.Secret?.Use(value => password = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(value)));
+        return password;
+    }
+
+    /// <summary>Removes a remembered sign-in password.</summary>
+    internal static void ForgetLogin(HostShellTarget target) => new WindowsCredentialStore().DeleteSshLoginSecret(target.Account);
 
     /// <summary>Keeps a remembered sudo password when the computer's SSH target moved to another address.</summary>
     internal static void MoveSudo(HostShellTarget from, HostShellTarget to)
@@ -294,6 +328,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
             }
             catch (Exception error) when (error is not OperationCanceledException) { throw trust.Explain(error, target); }
             await InstallAsync(first);
+            prompts.LoginAccepted(target, password);
             break;
         }
 
@@ -341,9 +376,15 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
         {
             var key = $"{algorithm} SHA256:{fingerprint}";
             Seen = key;
-            // The key saved with the paired host decides: the computer it runs on may have another address now, one another
-            // computer had before (the key pinned for that address then is stale).
             var saved = pinned ?? shell.PinnedHostKey(target);
+            // Setting a reinstalled host up again: a new key is used for this run only. Martlet pins it only after the
+            // computer proved it is the same one (HostReinstall).
+            if (shell.Provisional)
+            {
+                if (saved == key || prompts.TrustHostKey(target, key)) return true;
+                declined = true;
+                return false;
+            }
             if (saved is not null)
             {
                 if (saved == key)

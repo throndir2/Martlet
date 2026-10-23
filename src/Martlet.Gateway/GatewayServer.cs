@@ -50,6 +50,14 @@ public sealed class GatewayServer
         set => application.Machine = value is null || value.IsValid() ? value : throw new ArgumentException("Invalid machine report.", nameof(value));
     }
 
+    /// <summary>The hardware keys this host proves which computer it is with (<see cref="Martlet.Core.Hardware.HardwareProof.Path"/>):
+    /// read from this computer's TPM on first use; a lab or test sets its own.</summary>
+    public Martlet.Core.Hardware.HardwareKeys Hardware
+    {
+        get => application.Hardware.Value;
+        set => application.Hardware = new(value ?? throw new ArgumentNullException(nameof(value)));
+    }
+
     /// <summary>Keeps this host's copy of the shared cluster plan (served at /martlet/v1/cluster) in <paramref name="storage"/>
     /// and loads the copy saved there.</summary>
     public void AttachClusterStorage(IGatewayClusterStorage storage) => application.Cluster.Attach(storage, application.StoreHealth);

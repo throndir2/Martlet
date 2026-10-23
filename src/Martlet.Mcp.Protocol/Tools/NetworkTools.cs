@@ -348,6 +348,14 @@ internal sealed partial class McpServer
             "answers for the same host ID is never used, and a host back at its paired address is found there again. Loopback only " +
             "(finds never reach the home network); writes nothing.", new { },
             async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "move")),
+        Tool("host_reinstall_selftest", "Rehearse a host whose computer was reinstalled (docs/NETWORK.md, \"When a host is " +
+            "reinstalled\") end to end with the production code: real gateways (pinned TLS) on 127.0.0.6 with a simulated TPM and a " +
+            "desktop's real proof client (GET /martlet/v1/hardware) and decision (ReinstallCheck). Checks that the desktop saves the " +
+            "host's TPM keys over its pinned TLS key; after a reinstall the pinned-key check sees another key and the same chip " +
+            "proves it is the same computer (on any route); another computer's chip is not trusted; without a TPM the hardware facts " +
+            "decide only on the home network or over Tailscale, and a different board ID is refused. Also signs and checks a proof " +
+            "with this PC's own TPM when it has one (otherwise reported in notRun). Loopback only; writes nothing.", new { },
+            async (_, cancellation) => await NodeLinkCheckAsync(cancellation, "reinstall")),
         Tool("hosts_find", "Ask this PC's home network where Martlet hosts are, as Martlet does when a paired host doesn't answer at " +
             "its saved address: one find on UDP 9444 to each private subnet's broadcast address, the limited broadcast and loopback " +
             "(never a subnet scan), answers for `seconds` (default 2, at most 5). Lists each host ID that answered and the private " +

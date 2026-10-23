@@ -87,8 +87,11 @@ internal sealed partial class SshHostShell(string? dataDirectory) : IHostShell
             return window is null ? NoHostShellPrompts.Instance : new HostShellDialogs(window);
         }
 
+        private IHostShellPrompts? asked;
+
         public bool TrustHostKey(HostShellTarget target, string hostKey) => Current().TrustHostKey(target, hostKey);
-        public string? LoginPassword(HostShellTarget target, bool retry) => Current().LoginPassword(target, retry);
+        public string? LoginPassword(HostShellTarget target, bool retry) => (asked = Current()).LoginPassword(target, retry);
+        public void LoginAccepted(HostShellTarget target, string password) => asked?.LoginAccepted(target, password);
         public HostShellSudo? SudoPassword(HostShellTarget target, bool retry) => Current().SudoPassword(target, retry);
     }
 }

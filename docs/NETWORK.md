@@ -200,6 +200,124 @@ gateway's TCP port when ufw or firewalld is active. A Docker host's firewall
 (ufw) must allow it by hand, because Docker only opens published ports.
 Phones that paired with a host's address don't look for it yet.
 
+## When a host is reinstalled
+
+A host's computer can get a new system: for example, the owner moves it to a
+new drive and installs Linux again. The new system has a new TLS key and a new
+SSH key, so your computers refuse it ("another key"). This keeps a stranger
+from taking a host's place. Martlet now recognizes the same computer and sets
+it up again by itself, with no Remove, Reset SSH trust or pairing code.
+
+**What each PC saves while the host works** (`HostRecognition`, kept with the
+pairing in `hosts.json`; the roster's format doesn't change, so older Martlet
+versions are not affected):
+
+- **TPM keys.** A TPM is a security chip on the main board (most PCs from
+  2016 on; Windows 11 needs one). Martlet asks the chip for an ECDSA P-256
+  key made from a fixed template (`Tpm2`, raw TPM 2.0 commands through
+  `/dev/tpmrm0` on any Linux, or TPM Base Services on Windows). The chip makes
+  the same key again after a reinstall, and the private key never leaves the
+  chip. Martlet uses two: one in the endorsement hierarchy (it survives even a
+  TPM clear) and one in the owner hierarchy. The desktop reads them about once
+  a day at `GET /martlet/v1/hardware?nonce=...` and saves them only when they
+  sign the TLS key it has pinned for the host.
+- **Hardware facts**, for a computer without a usable TPM (an older PC, a NAS,
+  a TPM turned off in the firmware): the board's ID and serial number, the
+  physical network cards' addresses and the NVIDIA GPUs' IDs, read over SSH
+  about once a week (`MachineFacts`). Martlet keeps only salted hashes, and
+  placeholders such as *To be filled by O.E.M.* and random network addresses
+  are left out.
+- **Roles**: the roles the host ran, to put them back.
+
+**What makes a computer the same one** (`ReinstallCheck`):
+
+1. **A TPM proof.** The host signs its host ID, its new TLS key and the
+   desktop's nonce with the saved TPM key. This proves the same chip, so it
+   counts on any route: the home network, an outside address or Tailscale.
+2. **Another computer.** A proof that doesn't verify, a different board ID, or
+   (on the home network) another network card that answers at the host's
+   address in this PC's ARP table: Martlet stops.
+3. **Without a TPM proof** (no TPM, or the TPM was reset), the hardware facts
+   must match: the same board ID, or at least two other facts. Martlet trusts
+   this only on a route the owner's own network vouches for: the home subnet
+   of one of this PC's adapters, or a Tailscale address (100.64.0.0/10) while
+   this PC is on Tailscale too. Only devices in your tailnet have one.
+4. Anything else: Martlet stops and tells you.
+
+**Setting it up again** (a Linux host Martlet reaches over SSH; desktop
+`MainWindow.HostReinstall.cs`):
+
+1. Each paired host is checked every 2 minutes. A host that answers with
+   another TLS key, or doesn't answer for 5 minutes, is checked over SSH.
+2. The same SSH key means the host is only down: Martlet does nothing. A new
+   SSH key means a reinstall. Martlet looks only when the address it dials
+   for the SSH target is on this PC's home subnet or on Tailscale. On another
+   network numbered like home (a café, a friend's house), another network card
+   answers at that address, so Martlet stops quietly. When it has no card to
+   compare, it asks you at most once a day.
+3. Before it sends a password, Martlet checks the route again from the address
+   it dials itself (never one the computer reports). On Tailscale it goes on. At
+   home, the network card that answers at that address (this PC's ARP table)
+   must be one it saved for the host; another card stops it. When it has no
+   saved card to compare, the run window asks you to trust the new SSH key and
+   shows its fingerprint. Then, in Background tasks (*Set up aihost1-host again
+   after a reinstall*), it signs in with the remembered password and trusts that
+   one new SSH key for this run only.
+4. It reads the hardware facts. If they show another computer, it stops before
+   setup.
+5. It runs `martlet-host setup` with the old host ID (`MARTLET_HOST_ID`), in
+   Docker or natively as before. A new system without Docker runs natively.
+6. It asks the new gateway for its TPM proof and decides with the rules above.
+   If the computer isn't shown to be the same one, it stops: the host is set
+   up but not paired, and it gets no jobs, keys or settings.
+7. It pairs (the pairing's TLS key must be the one the proof signed), pins the
+   new SSH key, saves the new keys and puts back each role that needs no key or
+   token. Your other computers pair with the host by themselves.
+8. It tries again at most once an hour. A tray notice and `network_status`
+   (`recognition.lastReinstall`) say what happened.
+
+**What it needs:**
+
+- **The account password.** Martlet signs in to the new system with a
+  password because its own SSH key is gone. When you set up a host over SSH,
+  keep **Remember it, so Martlet can set this computer up again by itself after
+  you reinstall it** ticked (it is on by default); the password is kept in Windows Credential Manager
+  (`Martlet/v3/ssh-login/<user>@<computer>:<port>`). A remembered sudo password
+  for the same account works too. Without either (a host set up before this
+  version), the run asks you for the password once, with the same **Remember**
+  box; if you cancel, it asks again an hour later.
+- **The new system** has an SSH server, the same user name and the same
+  password, and it is at the same address or name (or on the same home
+  network, where Martlet finds it by its address as usual).
+- **TPM access on Linux.** Setup and **Update host** give the account the
+  TPM on any distribution: a udev rule gives `/dev/tpmrm0` the `tss` group,
+  the account joins it, and an ACL (`setfacl`) lets the running service use it
+  at once. A Docker host's gateway container gets `--device /dev/tpmrm0` and
+  that group when the group may read and write it. Update your hosts before you
+  reinstall them, so your PCs save their TPM keys first.
+
+**Risks and limits:**
+
+- Martlet sends the remembered password before the computer proves itself
+  with its TPM. It sends it only to the network card it saw before at the host's
+  address on your home network, over Tailscale, or after you trusted the new
+  key. A device that copies that card's address could still catch it. It still
+  gets no jobs, keys, memories or shared settings: those go only to a computer
+  that passed the check. Don't use that password anywhere else.
+- Hardware facts aren't secret like a TPM key. Someone who read them from the
+  computer could copy them, so they count only at home or over Tailscale, and
+  a TPM proof is preferred.
+- A host that Martlet doesn't reach over SSH (set up at its own console, or a
+  Mac or Windows host PC) is recognized but not set up again: a notice says it
+  proved it is the same computer, and you set it up and pair it again there.
+- A TPM reset by a firmware update (some AMD fTPM boards) or a TPM clear
+  changes the owner key; the endorsement key and the hardware facts still
+  recognize the computer.
+
+**MCP:** `host_reinstall_selftest` rehearses all of this with real gateways
+and a simulated TPM, and `network_status` shows what each PC saved
+(`pairedHosts[].recognition`). See [network tools](mcp/network.md).
+
 ## When a host is added where your other computers can't reach
 
 Each computer learns the network from the hosts it reaches: it reads their

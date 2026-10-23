@@ -443,7 +443,7 @@ public static class HostRoutes
         catch (Exception error) when (error is SocketException or OperationCanceledException or ArgumentException) { return (null, address, error); }
     }
 
-    private static async Task<Stream> DialAsync(DnsEndPoint endpoint, CancellationToken token)
+    internal static async Task<Stream> DialAsync(DnsEndPoint endpoint, CancellationToken token)
     {
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
         try
@@ -458,7 +458,7 @@ public static class HostRoutes
         }
     }
 
-    private static DnsEndPoint Parse(string address)
+    internal static DnsEndPoint Parse(string address)
     {
         var colon = address.LastIndexOf(':');
         return new DnsEndPoint(address[..colon].Trim('[', ']'), int.Parse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture));
