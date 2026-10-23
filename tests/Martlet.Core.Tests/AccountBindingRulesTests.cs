@@ -206,4 +206,61 @@ public sealed class AccountBindingRulesTests : IDisposable
         var sam = Sam();
         Assert.Null(Refusal(sam, AccountDirectory.Empty.Put(a, sam, Now).Remove(b, sam.Id, Now.AddMinutes(1)).Accounts[0]));
     }
+
+    [Fact]
+    public void Same_name_means_the_same_person_after_case_spaces_and_unicode_form()
+    {
+        Assert.True(SamePerson.SameName("John Mathieu Soreño", " john mathieu SOREÑO "));
+        Assert.True(SamePerson.SameName("Soreño", "Soren\u0303o"));
+        Assert.False(SamePerson.SameName("Sam", "Sam B."));
+        Assert.False(SamePerson.SameName("Me", "me"));
+        Assert.False(SamePerson.SameName(null, ""));
+    }
+
+    [Fact]
+    public void A_desktop_binds_itself_to_an_account_with_the_name_of_one_it_made_and_keeps_it_after_the_merge()
+    {
+        var sam = Sam();
+        var self = AccountDevice.For("desktop-b", AccountLoginKey.ForWindows("desktop-b", SidB), Now.AddMinutes(1));
+        var own = Account.Create("sam", AccountRoles.Member).WithLogin(AccountLogin.For(AccountLoginKey.ForWindows("desktop-b", SidB), null, Now));
+        var directory = AccountDirectory.Empty.Put(a, sam, Now).Put(b, own, Now);
+        own = directory.Find(own.Id)!;
+        var bound = directory.Put(b, sam.WithDevice(self), Now.AddMinutes(1));
+        var entry = bound.Find(sam.Id)!;
+
+        Assert.Equal(SamePerson.Proof, AccountBindingRules.Proof(sam, entry, self, roster, AccountBindingRules.Related(entry, bound)));
+        Assert.Equal(0, AccountDirectory.Accept(AccountDirectory.Empty, bound, roster).Rejected);
+        // After the fold only the tombstone (its name kept) is left, and a host that sees the entry first still takes it.
+        var folded = bound.Remove(b, own.Id, Now.AddMinutes(2), mergedInto: sam.Id);
+        Assert.Equal(0, AccountDirectory.Accept(AccountDirectory.Empty, folded, roster).Rejected);
+
+        // Another name, another device's Windows login, or a desktop removed from the network: refused.
+        var other = AccountDirectory.Empty.Put(a, sam, Now).Put(b, own with { Name = "Robin" }, Now);
+        Assert.Equal(1, AccountDirectory.Accept(AccountDirectory.Empty, other.Put(b, sam.WithDevice(self), Now.AddMinutes(1)), roster).Rejected);
+        var foreign = AccountDevice.For("desktop-b", AccountLoginKey.ForWindows("desktop-a", SidA), Now.AddMinutes(1));
+        Assert.Equal(1, AccountDirectory.Accept(AccountDirectory.Empty, directory.Put(b, sam.WithDevice(foreign), Now.AddMinutes(1)), roster).Rejected);
+        var withoutB = roster.Remove(a, "desktop", "desktop-b", Now.AddMinutes(3));
+        Assert.Equal(AccountBindingRules.Refused, AccountBindingRules.Refusal(null, entry, withoutB, AccountBindingRules.Related(entry, bound)));
+    }
+
+    [Fact]
+    public void Every_desktop_picks_the_same_keeper_the_household_owner_then_the_higher_role_then_the_first_windows_login()
+    {
+        Account Made(NetworkKey by, string role, DateTimeOffset at, string sid) => Account.Create("Sam", role)
+            .WithLogin(AccountLogin.For(AccountLoginKey.ForWindows(by.DeviceId, sid), null, at));
+        var older = Made(b, AccountRoles.Member, Now.AddDays(-5), SidB);
+        var newer = Made(a, AccountRoles.Member, Now, SidA);
+        var directory = AccountDirectory.Empty.Put(b, older, Now).Put(a, newer, Now);
+        Assert.Equal(older.Id, SamePerson.Keeper(directory, "SAM", roster)!.Id);
+
+        var admin = Made(a, AccountRoles.Admin, Now.AddDays(1), SidA);
+        Assert.Equal(admin.Id, SamePerson.Keeper(directory.Put(a, admin, Now), "Sam", roster)!.Id);
+
+        var owner = OwnerAccount.Create(roster, "Sam").WithLogin(AccountLogin.For(AccountLoginKey.ForWindows("desktop-a", SidA), null, Now.AddDays(2)));
+        Assert.Equal(owner.Id, SamePerson.Keeper(directory.Put(a, admin, Now).Put(a, owner, Now), "Sam", roster)!.Id);
+
+        // An account without a Windows login is no Windows account of that name.
+        var password = Account.Create("Sam", AccountRoles.Owner).WithLogin(AccountLogin.For(Password, "sam", Now.AddDays(-9)));
+        Assert.Equal(older.Id, SamePerson.Keeper(directory.Put(b, password, Now), "Sam", roster)!.Id);
+    }
 }

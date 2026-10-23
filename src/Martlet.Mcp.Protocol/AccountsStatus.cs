@@ -42,6 +42,8 @@ internal static class AccountsStatus
         var householdOwner = directory is not null && roster is not null ? OwnerJoin.HouseholdOwner(directory, roster)?.Key : null;
         var join = directory is not null && roster is not null && session is not null && device is not null
             ? OwnerJoin.Plan(directory, session, roster, device, File.Exists(Path.Combine(dataDirectory, JoinedAccountFile))) : null;
+        var same = directory is not null && roster is not null && session is not null && device is not null
+            ? SamePerson.Plan(directory, session, roster, device) : null;
         return new
         {
             device,
@@ -53,6 +55,8 @@ internal static class AccountsStatus
             owner,
             householdOwner,
             ownerJoin = join is null ? null : new { owner = join.Owner.ToString("N"), own = join.Own.ToString("N"), ownWritten = join.OwnWritten },
+            // Windows logins with the same name are one person: the account this PC folds its own account into (docs/ACCOUNTS.md).
+            samePerson = same is null ? null : new { keep = same.Owner.ToString("N"), own = same.Own.ToString("N"), ownWritten = same.OwnWritten },
             directory = directoryState,
             accounts = directory?.Live.Count() ?? 0,
             removed = directory?.Accounts.Count(a => a.Removed) ?? 0,

@@ -309,4 +309,89 @@ public sealed class AccountSessionTests : IDisposable
         // Without the household's owner account in the directory there is nothing to join.
         Assert.Null(OwnerJoin.Plan(AccountDirectory.Empty, session.State, roster, Device, joinedBySignIn: false));
     }
+
+    [Fact]
+    public void AnOwnerAccountWithTheHouseholdOwnersNameFoldsIntoItEvenAfterAProveSignIn()
+    {
+        var (founder, key, roster, household, owner) = ApprovedJoin();
+        using var _ = founder;
+        using var __ = key;
+        var session = Open(name: "Robin");
+        var own = session.AccountId;
+        var (twoOwners, ownWritten) = AccountSession.Reconcile(AccountDirectory.Empty, session.State, roster, key, Device, Now);
+        session.Follow(twoOwners, ownWritten);
+        twoOwners = AccountDirectory.Merge(household, twoOwners);
+        // The PC also signed in to the household's owner with a Prove, so joining with the owner's approval doesn't apply.
+        var proved = session.State.Add(new AccountProof { Id = owner.Id, Login = AccountLoginKey.ForPassword("robin"), Attestation = "x", SignedInAt = Now });
+        Assert.Null(OwnerJoin.Plan(twoOwners, proved, roster, Device, joinedBySignIn: false));
+
+        Assert.Equal(new OwnerJoinPlan(owner.Id, own, true, SameName: true), SamePerson.Plan(twoOwners, proved, roster, Device));
+        Assert.Equal(new OwnerJoinPlan(owner.Id, own, true, SameName: true), SamePerson.Plan(twoOwners, session.State, roster, Device));
+        // The founder keeps its account: it is the keeper.
+        Assert.Null(SamePerson.Plan(twoOwners, AccountSessionState.For(Sid, owner.Id), roster, "desktop-founder"));
+    }
+
+    [Fact]
+    public async Task AnAccountWithTheNameOfAnotherPcsAccountSignsInToItAndFoldsIntoIt()
+    {
+        var (founder, key, roster, household, _) = ApprovedJoin();
+        using var ___ = founder;
+        using var ____ = key;
+        using var otherKey = NetworkKey.Create("desktop-other");
+        roster = roster.AddDesktop(founder, otherKey.DeviceId, "OTHER", otherKey.PublicKey, Now);
+        var otherLogin = AccountLoginKey.ForWindows("desktop-other", "S-1-5-21-1004336348-1177238915-682003330-1003");
+        household = household.Put(otherKey, Account.Create("Sam Doe", AccountRoles.Member)
+            .WithLogin(AccountLogin.For(otherLogin, null, Now.AddDays(-1))).WithDevice(AccountDevice.For("desktop-other", otherLogin, Now)), Now);
+        var sam = household.Live.Single(a => a.Name == "Sam Doe");
+        var session = Open();
+        var own = session.AccountId;
+        // This PC was set up before: its own "Sam Doe" is in the directory as a member.
+        var (setUp, written) = AccountSession.Reconcile(household, session.State, roster, key, Device, Now);
+        Assert.Equal(AccountRoles.Member, setUp.Find(own)!.Role);
+        session.Follow(setUp, written);
+        // Joining with the owner's approval doesn't apply to a member account.
+        Assert.Null(OwnerJoin.Plan(setUp, session.State, roster, Device, joinedBySignIn: false));
+
+        var plan = SamePerson.Plan(setUp, session.State, roster, Device);
+        Assert.Equal(new OwnerJoinPlan(sam.Id, own, true, SameName: true), plan);
+        Assert.Null(SamePerson.Plan(setUp, AccountSessionState.For(Sid, sam.Id), roster, "desktop-other"));
+
+        session.SignInOwner(sam.Id);
+        var (bound, boundWritten) = AccountSession.Reconcile(setUp, session.State, roster, key, Device, Now.AddMinutes(1));
+        Assert.Equal(new[] { sam.Id }, boundWritten);
+        var entry = bound.Find(sam.Id)!;
+        Assert.Equal(SamePerson.Proof, AccountBindingRules.Proof(null, entry, entry.Device(Device)!, roster, AccountBindingRules.Related(entry, bound)));
+        Assert.Equal(0, AccountDirectory.Accept(household, bound, roster).Rejected);
+
+        session.Follow(bound, boundWritten);
+        await session.SwitchToAsync(sam.Id, CancellationToken.None);
+        var folded = AccountLinks.Merge(bound, key, sam.Id, own, Now.AddMinutes(2), foldOwner: true);
+        Assert.Equal(sam.Id, folded.Find(own)!.MergedInto);
+        Assert.Equal(0, AccountDirectory.Accept(AccountDirectory.Empty, folded, roster).Rejected);
+        session.Follow(folded, []);
+        session.SignOut(own);
+        Assert.Null(SamePerson.Plan(folded, session.State, roster, Device));
+        Assert.Equal(new[] { sam.Id }, session.SignedIn.Select(a => a.Id));
+    }
+
+    [Fact]
+    public void APendingPersonWithTheNameOfAnotherPcsAccountIsNeverWritten()
+    {
+        var (founder, key, roster, household, _) = ApprovedJoin();
+        using var ___ = founder;
+        using var ____ = key;
+        var alexLogin = AccountLoginKey.ForWindows("desktop-founder", Sid);
+        household = household.Put(founder, Account.Create("Alex", AccountRoles.Member).WithLogin(AccountLogin.For(alexLogin, null, Now)), Now);
+        var alex = household.Live.Single(a => a.Name == "Alex");
+        var session = Open();
+        var added = session.AddPerson("alex", Now);
+
+        var plan = SamePerson.Plan(household, session.State, roster, Device);
+        Assert.Equal(new OwnerJoinPlan(alex.Id, added, false, SameName: true), plan);
+
+        session.SignInOwner(alex.Id);
+        var (directory, _) = AccountSession.Reconcile(household, session.State, roster, key, Device, Now.AddMinutes(1));
+        Assert.Null(directory.Find(added));
+        Assert.NotNull(directory.Find(alex.Id)!.Device(Device));
+    }
 }

@@ -189,6 +189,8 @@ Use this when one person has two accounts.
 
 The other account's characters, memories, conversations and voices move into your account. Its logins sign in to your account, and the other account goes away. You can't merge the household owner's account into another account: sign in as the owner and merge the other account into it. If the merge stops, the other account stays; try again.
 
+Martlet merges accounts with the same name by itself. Each PC makes an account with the name of its Windows login, so when your Windows logins on two PCs have the same name, Martlet knows that they are the same person. Between replies, the PC moves its own account into the household's account of that name, and you see only one account in the picker.
+
 ## Privacy notes
 
 - Accounts are kept apart, but not secret from a person with administrator rights on the PC or a host.

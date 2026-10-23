@@ -44,7 +44,8 @@ without the desktop: `device` (this data folder's device ID), `network`
 `windowsLoginOfThisPc`, `emailHints` (a count) and `devices` (`deviceId`,
 `thisPc`, the `login` kind, whether it carries an `attestation`, and its
 `proof` under the binding rule: `creator`, `attestation`, `migration`,
-`merged`, `none` when a host or desktop would refuse it, or `no_network`);
+`same-name`, `merged`, `none` when a host or desktop would refuse it, or
+`no_network`);
 `signedInHere`; and `locks`, per account with an unlock file in
 `account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
 `askOnThisPc`, `remember`, `encrypt`, `damaged` (the unlock file is there but
@@ -154,7 +155,11 @@ the household's `owner`, `householdOwner` (the household's owner account
 that every desktop can bind to: the network's own owner account or the
 founder's), `ownerJoin` (`null`, or `{owner, own, ownWritten}` while this PC,
 let in with the owner's approval, still has to sign in to the household's
-owner account and fold the account it made before it joined), and this PC's
+owner account and fold the account it made before it joined), `samePerson`
+(`null`, or `{keep, own, ownWritten}` while an account this PC made with its
+Windows login has the same name as another account of the household, `keep`,
+and still has to fold into it: Windows logins with the same name are one
+person), and this PC's
 copy of the account directory:
 `directory` (`none`, `loaded` or `unreadable`: `accounts.json`), how many
 `accounts`, `removed` and `owners`, its `revision` and each of its `entries`
