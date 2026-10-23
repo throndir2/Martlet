@@ -14,7 +14,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
-- When your Windows logins on different PCs have the same name, Martlet treats them as one person: each PC merges its own account into your household's account with that name, also on PCs that you set up before, so you no longer see your name twice in the account picker. (PR_LINK)
+- When your Windows logins on different PCs have the same name, Martlet treats them as one person: each PC merges its own account into your household's account with that name, also on PCs that you set up before, so you no longer see your name twice in the account picker. ([#1143](https://github.com/throndir2/Martlet/pull/1143))
 
 ## [0.92.0] - 2026-10-22
 
