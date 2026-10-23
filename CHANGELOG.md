@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- Companion › Skills › **Find skills online**: search the skills other people share on ClawHub (OpenClaw's skill registry) and skills.sh, most popular first. Sort by downloads, installs, stars, trending, newest or recently updated, filter by where it comes from, how many downloads it has and whether it's flagged as suspicious, read a skill, and add it to your own skills with one click.
+- Companion › Skills › **Find skills online**: search the skills other people share on ClawHub (OpenClaw's skill registry) and skills.sh, most popular first. Sort by downloads, installs, stars, trending, newest or recently updated, filter by where it comes from, how many downloads it has and whether it's flagged as suspicious, read a skill, and add it to your own skills with one click. ([#1144](https://github.com/throndir2/Martlet/pull/1144))
 
 ### Changed
 
