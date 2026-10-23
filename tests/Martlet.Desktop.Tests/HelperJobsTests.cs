@@ -220,10 +220,22 @@ public sealed class HelperJobsTests
             return Task.FromResult(ThinkingAnswer.Failed("broken"));
         });
         fixture.Controller.HelperPool = new ThinkingPoolHelpers(() => new DesktopThinkingPool(board));
-        Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
+        fixture.Controller.StartMemoryUpkeep();
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        var path = Path.Combine(fixture.DirectoryPath, LiveConversationController.MemoryUpkeepFile);
+        async Task WaitForStopped()
+        {
+            for (var attempt = 0; attempt < 500; attempt++)
+            {
+                if (File.ReadAllText(path).Contains("\"stopped\": true", StringComparison.Ordinal)) return;
+                await Task.Delay(10);
+            }
+            Assert.Fail("The scheduled upkeep did not stop after its pool failure.");
+        }
+        await WaitForStopped();
         Assert.Equal(1, calls);
         Assert.Equal("failed: broken", Assert.Single(fixture.Controller.Helpers.Last).Outcome);
-        using var status = JsonDocument.Parse(File.ReadAllText(Path.Combine(fixture.DirectoryPath, LiveConversationController.MemoryUpkeepFile)));
+        using var status = JsonDocument.Parse(File.ReadAllText(path));
         Assert.True(status.RootElement.GetProperty("stopped").GetBoolean());
         Assert.Contains("stopped until Martlet restarts", status.RootElement.GetProperty("error").GetString());
         Assert.Equal("failed", status.RootElement.GetProperty("last").GetProperty("outcome").GetString());
