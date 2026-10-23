@@ -125,6 +125,9 @@ internal sealed partial class McpServer
             return new
             {
                 state = "loaded",
+                stopped = root.TryGetProperty("stopped", out var stopped) && stopped.ValueKind == JsonValueKind.True,
+                error = root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String
+                    ? error.GetString() : null,
                 storesChecked = root.TryGetProperty("stores", out var stores) && stores.ValueKind == JsonValueKind.Object
                     ? stores.EnumerateObject().Count() : 0,
                 last = root.TryGetProperty("last", out var last) && last.ValueKind == JsonValueKind.Object

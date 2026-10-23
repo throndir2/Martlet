@@ -95,7 +95,10 @@ local model) and set these rules on each board:
   priority 10 to 11. Then a job of priority 11 no longer stops it.
 - `retries`: a job that failed or timed out is tried again at its priority.
   A job raised to 11 and then failed is tried again at 11. With `retries` 0
-  the job fails.
+  the job fails. Failure retries wait 5, 10, 20, 40, then at most 60 seconds,
+  without holding a slot. A fixture that always fails checks the first two
+  waits and a final `Failed` request after exactly three attempts.
+  `thinking_requests` shows the retry number and wait in the request's note.
 
 The report's `priority` section gives each job's outcome (`priorityStops`,
 `retries`, final `priority`), the order the member ran the jobs, and the

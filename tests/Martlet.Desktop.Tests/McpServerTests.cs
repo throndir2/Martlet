@@ -450,6 +450,23 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task MemoryStatusShowsStoppedUpkeepAndItsError()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Upkeep." + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, LiveConversationController.MemoryUpkeepFile),
+                """{"schema_version":1,"stores":{},"stopped":true,"error":"Tidying memory stopped until Martlet restarts.","last":{"outcome":"failed"}}""");
+            var result = ToolResult((await SendAsync(DataCall("memory_status", directory)))[0]).GetProperty("upkeep");
+            Assert.True(result.GetProperty("stopped").GetBoolean());
+            Assert.Equal("Tidying memory stopped until Martlet restarts.", result.GetProperty("error").GetString());
+            Assert.Equal("failed", result.GetProperty("last").GetProperty("outcome").GetString());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
     public async Task MemoryStatusCountsWhoseFactsAreWithoutTheirTextNamesOrIds()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Memory." + Guid.NewGuid().ToString("N"));

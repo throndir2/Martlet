@@ -54,6 +54,9 @@ internal sealed class ThinkingPoolHelpers(Func<DesktopThinkingPool> pool) : IHel
         if (result.Succeeded) return new(result.Model is { } model ? $"{result.Member} ({model})" : result.Member ?? "a pool member", result.Text, null);
         if (result.Outcome != ThinkingJobOutcome.NoMember)
             ErrorLog.Info($"{job.Purpose}: the Thinking pool didn't do it ({result.Outcome}: {result.Problem}).");
+        // Upkeep has no fallback. Do not turn an exhausted failure into "busy" and submit the same work forever.
+        if (job.Kind == HelperJobKind.MemoryUpkeep && result.Outcome != ThinkingJobOutcome.NoMember)
+            return new(result.Member ?? "the Thinking pool", null, result.Problem ?? result.Outcome.ToString());
         return null;
     }
 

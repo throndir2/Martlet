@@ -21,7 +21,7 @@ internal sealed partial class LiveConversationController
     private static readonly TimeSpan UpkeepWhenBusy = TimeSpan.FromMinutes(2);
     private readonly object upkeepGate = new();
     private readonly CancellationTokenSource upkeepStop = new();
-    private bool upkeepQueued, upkeepRunning, upkeepWired;
+    private bool upkeepQueued, upkeepRunning, upkeepWired, upkeepChanged, upkeepFailed;
     // Facts asked for words this session that the model gave none for (by ID and revision), so they aren't asked again.
     private readonly HashSet<(Guid, long)> upkeepAsked = [];
 
@@ -31,6 +31,8 @@ internal sealed partial class LiveConversationController
         public int SchemaVersion { get; init; } = 1;
         public Dictionary<Guid, Checked> Stores { get; init; } = [];
         public LastPass? Last { get; init; }
+        public bool Stopped { get; init; }
+        public string? Error { get; init; }
 
         public sealed record Checked(DateTimeOffset At, Guid Id);
 
@@ -55,6 +57,7 @@ internal sealed partial class LiveConversationController
             upkeepWired = true;
         }
         memory.FactsChanged += () => QueueMemoryUpkeep(UpkeepAfterChange);
+        SaveUpkeepState(LoadUpkeepState() with { Stopped = false, Error = null });
         QueueMemoryUpkeep(TimeSpan.FromMinutes(1));
     }
 
@@ -63,42 +66,57 @@ internal sealed partial class LiveConversationController
     {
         lock (upkeepGate)
         {
-            if (upkeepQueued || upkeepStop.IsCancellationRequested) return;
+            if (upkeepFailed || upkeepStop.IsCancellationRequested) return;
+            if (upkeepQueued)
+            {
+                if (upkeepRunning) upkeepChanged = true;
+                return;
+            }
             upkeepQueued = true;
         }
         RunUpkeepAsync(delay).Forget();
 
         async Task RunUpkeepAsync(TimeSpan wait)
         {
+            var released = false;
             try
             {
-                await Task.Delay(wait, upkeepStop.Token).ConfigureAwait(false);
-                lock (upkeepGate)
+                while (true)
                 {
-                    upkeepQueued = false;
-                    if (upkeepRunning) return;
-                    upkeepRunning = true;
-                }
-                try
-                {
+                    await Task.Delay(wait, clock, upkeepStop.Token).ConfigureAwait(false);
+                    lock (upkeepGate)
+                    {
+                        if (upkeepFailed) return;
+                        upkeepRunning = true;
+                        upkeepChanged = false;
+                    }
                     var next = await MemoryUpkeepPassAsync(upkeepStop.Token).ConfigureAwait(false);
-                    lock (upkeepGate) upkeepRunning = false;
-                    if (next is { } again) QueueMemoryUpkeep(again);
-                }
-                finally
-                {
-                    lock (upkeepGate) upkeepRunning = false;
+                    lock (upkeepGate)
+                    {
+                        upkeepRunning = false;
+                        if (upkeepFailed) return;
+                        next ??= upkeepChanged ? UpkeepAfterChange : null;
+                        if (next is null)
+                        {
+                            upkeepQueued = false;
+                            released = true;
+                            return;
+                        }
+                        wait = next.Value;
+                    }
                 }
             }
             catch (OperationCanceledException) { }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or MemoryException or
                 DesktopMemoryException or JsonException or InvalidOperationException)
             {
-                ErrorLog.Warn("Tidying memory failed; it tries again after the next change.", error);
+                FailMemoryUpkeep(LoadUpkeepState(), $"Tidying memory failed ({error.GetType().Name}).");
+                ErrorLog.Warn("Tidying memory stopped until Martlet restarts.", error);
             }
             finally
             {
-                lock (upkeepGate) upkeepQueued = false;
+                if (!released)
+                    lock (upkeepGate) { upkeepQueued = false; upkeepRunning = false; }
             }
         }
     }
@@ -107,6 +125,7 @@ internal sealed partial class LiveConversationController
     /// store was busy), or null when nothing is left to do.</summary>
     internal async Task<TimeSpan?> MemoryUpkeepPassAsync(CancellationToken token)
     {
+        lock (upkeepGate) if (upkeepFailed) return null;
         if (memory is null || disposed || !helpers.PoolHas(HelperCapability.Text)) return null;
         if (await memory.SpacesAsync(token).ConfigureAwait(false) is not { } set) return null;
         var loaded = await settings.LoadAsync(token).ConfigureAwait(false);
@@ -144,7 +163,9 @@ internal sealed partial class LiveConversationController
                 () => new BoundedTextInput(text, instructions), token).ConfigureAwait(false);
             if (result is not { Answer: { } answer })
             {
-                Record(state, space.Id, result is null ? "the pool was busy" : "failed", plan, null);
+                state = Record(state, space.Id, result is null ? "the pool was busy" : "failed", plan, null);
+                if (result is not null)
+                    FailMemoryUpkeep(state, "The Thinking pool could not tidy memory within its retry and time limits.");
                 return result is null ? UpkeepWhenBusy : null;
             }
             var parsed = MemoryUpkeep.Parse(answer, plan);
@@ -187,6 +208,13 @@ internal sealed partial class LiveConversationController
             SaveUpkeepState(next);
             return next;
         }
+    }
+
+    private void FailMemoryUpkeep(MemoryUpkeepState state, string error)
+    {
+        lock (upkeepGate) upkeepFailed = true;
+        SaveUpkeepState(state with { Stopped = true, Error = error + " Tidying memory stopped until Martlet restarts." });
+        ErrorLog.Warn(error + " Tidying memory stopped until Martlet restarts.");
     }
 
     private static MemoryUpkeepState Checked(MemoryUpkeepState state, Guid store, (DateTimeOffset At, Guid Id) through) =>

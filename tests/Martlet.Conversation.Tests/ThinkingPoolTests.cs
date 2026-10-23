@@ -202,6 +202,64 @@ public sealed class ThinkingPoolTests
     }
 
     [Fact]
+    public async Task Failed_jobs_back_off_exponentially_release_the_slot_and_stop_at_the_limit()
+    {
+        var clock = new RuntimeClock();
+        var places = new BackgroundPlaces(clock: clock);
+        var calls = 0;
+        BackgroundPlace member = new("host:one", "one");
+        var board = new ThinkingJobBoard(places, () => [member], (_, _, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult(ThinkingAnswer.Failed("broken"));
+        }, clock) { Policy = () => new(false, 3, Retries: 3) };
+
+        var running = board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        for (var retry = 1; retry <= 3; retry++)
+        {
+            await Until(() => places.Requests.List().Any(r => r.Note?.StartsWith($"retry {retry}:", StringComparison.Ordinal) == true));
+            Assert.Equal(retry, Volatile.Read(ref calls));
+            Assert.Empty(places.Leases);
+            Assert.False(running.IsCompleted);
+            var wait = ThinkingJobBoard.FailureRetryWait(retry);
+            clock.Advance(wait - TimeSpan.FromMilliseconds(1));
+            Assert.Equal(retry, Volatile.Read(ref calls));
+            clock.Advance(TimeSpan.FromMilliseconds(1));
+        }
+        var failed = await running.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal((ThinkingJobOutcome.Failed, 4, 3, "broken"), (failed.Outcome, failed.Attempts, failed.Retries, failed.Problem));
+        clock.Advance(TimeSpan.FromHours(1));
+        Assert.Equal(4, calls);
+        Assert.Equal(ThinkingRequestState.Failed, Assert.Single(places.Requests.List()).State);
+        Assert.Equal(TimeSpan.FromSeconds(60), ThinkingJobBoard.FailureRetryWait(10));
+    }
+
+    [Fact]
+    public async Task Retry_backoff_honors_cancellation_and_the_stale_deadline()
+    {
+        var clock = new RuntimeClock();
+        var places = new BackgroundPlaces(clock: clock);
+        var calls = 0;
+        BackgroundPlace member = new("host:one", "one");
+        var board = new ThinkingJobBoard(places, () => [member], (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult(ThinkingAnswer.Failed("broken"));
+        }, clock) { Policy = () => new(false, 3, Retries: 3) };
+        using var stop = new CancellationTokenSource();
+        var canceled = board.RunAsync(Job(ThinkingJobKind.Memory), stop.Token);
+        Assert.Equal(1, calls);
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
+        Assert.Empty(places.Leases);
+
+        var stale = board.RunAsync(Job(ThinkingJobKind.Memory, timeout: TimeSpan.FromSeconds(2), stale: true), CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(ThinkingJobOutcome.Stale, (await stale.WaitAsync(TimeSpan.FromSeconds(5))).Outcome);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
     public async Task A_failed_job_is_tried_again_up_to_the_retries_at_the_priority_it_had()
     {
         var calls = 0;

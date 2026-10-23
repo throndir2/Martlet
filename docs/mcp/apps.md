@@ -406,7 +406,10 @@ the same `state`, `facts`, `typed`, `fromConversation`, `expiring`, `replaced`,
 (`state` `none`, `loaded` or `unreadable`; `storesChecked`, how many stores
 tidying has checked for duplicates; `last`, the last pass's `at`, `space`,
 `outcome`, `listed`, `groups`, `need_words`, `retired`, `merged`, `worded` and
-`member`). `where` counts the current facts by where they matter
+`member`; `stopped`, whether tidying stopped after a failure; and `error`,
+the reason, without private text). New facts cannot restart failed tidying.
+Restarting Martlet permits another bounded attempt.
+`where` counts the current facts by where they matter
 ([Memories for a game](../MEMORY.md#memories-for-a-game)): `everywhere`,
 `anyGame` and `activities` (each game a fact is kept for, `where` such as
 *while playing Palworld*, and its `facts`).

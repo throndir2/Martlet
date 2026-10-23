@@ -607,7 +607,11 @@ so the time to the first spoken word does not change.
   the exact revisions listed. Tidying runs **only on the Thinking pool** at low
   priority, never on the conversation's own model, and touches a store only
   while no reply runs and nobody else holds it. Without a free member it waits
-  for a later pass. `memory-upkeep.json` in the data folder keeps how far each
+  for a later pass. Failed jobs use the pool's bounded exponential retries.
+  If those retries fail, tidying stops until Martlet restarts, even when facts
+  change. The failed request stays visible in Thinking requests.
+  `memory_status.upkeep` reports `stopped` and `error`.
+  `memory-upkeep.json` in the data folder keeps how far each
   store is checked for duplicates and what the last pass did (counts, times and
   the member; never a fact).
 

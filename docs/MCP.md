@@ -12,6 +12,11 @@ Martlet speaks the Model Context Protocol in both directions:
 
 ## Pages
 
+`thinking_pool_check` checks exponential retry waits and the final failed
+request. `memory_status.upkeep` shows when failed memory tidying has stopped
+and gives its error. See [Thinking and models](mcp/thinking.md) and
+[Apps, home and memory](mcp/apps.md).
+
 One page for each area of `martlet_guide` (the server's own guide, which lists the tools by these areas):
 
 | Page | What it covers |
