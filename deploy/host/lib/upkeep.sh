@@ -30,6 +30,7 @@ cmd_update() {
     rm -rf "${GW_APP}.previous"
     mv "${GW_APP}" "${GW_APP}.previous"
     mv "${GW_APP}.next" "${GW_APP}"
+    tpm_native_access
   else
     say "Updating the gateway to image ${IMAGE}"
   fi

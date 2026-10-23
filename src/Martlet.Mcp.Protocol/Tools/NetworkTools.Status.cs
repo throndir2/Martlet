@@ -194,7 +194,8 @@ internal sealed partial class McpServer
                         ? outside.GetArrayLength() : 0,
                     access = IsSharedHost(h) ? "friend" : "member",
                     // Found at another home address than its paired one (its computer got a new address); the address isn't returned.
-                    movedOnHomeNetwork = h.TryGetProperty("movedTo", out var moved) && moved.ValueKind == JsonValueKind.String
+                    movedOnHomeNetwork = h.TryGetProperty("movedTo", out var moved) && moved.ValueKind == JsonValueKind.String,
+                    recognition = Recognition(h)
                 };
             }).ToArray();
         }
@@ -202,6 +203,27 @@ internal sealed partial class McpServer
         {
             return "unreadable";
         }
+    }
+
+    /// <summary>What this PC saved to recognize a host's computer after an OS reinstall (docs/NETWORK.md, "When a host is
+    /// reinstalled"): the kinds of TPM keys (never the keys), why it has none, how many hardware facts (hashes, never shown),
+    /// its saved roles, when each was checked and the last reinstall. Null before the first check.</summary>
+    private static object? Recognition(JsonElement host)
+    {
+        if (!host.TryGetProperty("recognition", out var r) || r.ValueKind != JsonValueKind.Object) return null;
+        string? Text(string name) => r.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        JsonElement[] Items(string name) => r.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? [.. value.EnumerateArray()] : [];
+        return new
+        {
+            tpmKeys = Items("keys").Select(k => k.TryGetProperty("kind", out var kind) ? kind.GetString() : null).ToArray(),
+            noTpmKey = Text("noKey"),
+            hardwareFacts = Items("facts").Length,
+            roles = Items("roles").Select(x => x.GetString()).ToArray(),
+            keysCheckedAt = Text("keysCheckedAt"),
+            factsCheckedAt = Text("factsCheckedAt"),
+            lastReinstall = Text("lastReinstall"),
+            lastReinstallAt = Text("lastReinstallAt"),
+        };
     }
 
     /// <summary>friends.json: what Share › Friends last read from each of your hosts (people's labels, providers, how many of

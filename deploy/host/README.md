@@ -404,6 +404,14 @@ When ufw or firewalld is active it asks to let TCP 9443 (the gateway) and UDP
 9444 (the find answer) in from the private LAN. The native gateway follows its
 computer to a new home address by itself and answers desktops that look for
 it ([When a computer gets a new address](../../docs/NETWORK.md#when-a-computer-gets-a-new-address)).
+When the computer has a TPM 2.0 (`/dev/tpmrm0`) that the account can't use,
+setup and `update` ask to give it access on any distribution: a udev rule
+(`/etc/udev/rules.d/60-martlet-tpm.rules`) gives the device the `tss` group,
+the account joins it, and `setfacl` lets the running service use it at once.
+The gateway then proves which computer it runs on with a TPM key that stays
+the same after an OS reinstall ([When a host is reinstalled](../../docs/NETWORK.md#when-a-host-is-reinstalled)).
+A Docker host's gateway container gets `--device /dev/tpmrm0` and the device's
+group when that group may read and write it.
 Setup first checks for curl, CA certificates and pciutils, which a bare-metal
 minimal install may lack, and installs only the missing ones after a single `yes`.
 Missing Docker, NVIDIA driver (with `ubuntu-drivers-common`, on Ubuntu) or NVIDIA Container

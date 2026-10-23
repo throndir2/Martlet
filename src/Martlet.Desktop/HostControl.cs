@@ -39,6 +39,8 @@ internal sealed record PairedHost
     /// the one it was paired at. The paired origin stays the host's name for TLS, requests and signatures; Martlet finds the
     /// new address and checks the host's key there by itself (<see cref="HostRoutes.Moved"/>). Null at the paired address.</summary>
     public string? MovedTo { get; init; }
+    /// <summary>What this PC saved to recognize the host's computer after an OS reinstall (<see cref="HostRecognition"/>).</summary>
+    public HostRecognition? Recognition { get; init; }
 
     [JsonIgnore] public string HostId => Pairing.HostId;
     [JsonIgnore] public string Address => new Uri(Pairing.Origin).Host;
@@ -415,7 +417,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         // through its gateway.
         if (previous is not null && method == HostSetupMethod.Agent && !shared && !previous.Shared)
             host = host with { Method = previous.Method, SshTarget = previous.SshTarget, SshHostKey = previous.SshHostKey };
-        if (previous is not null && !shared) host = host with { WakeMac = previous.WakeMac };
+        if (previous is not null && !shared) host = host with { WakeMac = previous.WakeMac, Recognition = previous.Recognition };
         host = host with
         {
             // The addresses of a friend's host never become your own host's (or the other way round) under the same name.
@@ -463,6 +465,17 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, updated));
         if (host.SshTarget is { } before && updated.SshTarget is { } after && before != after)
             HostShell.MoveSudo(HostShellTarget.Parse(before), HostShellTarget.Parse(after));
+        return updated;
+    }
+
+    /// <summary>Changes what this PC saved to recognize a host's computer (<see cref="HostRecognition"/>); null when the host
+    /// is no longer paired.</summary>
+    internal PairedHost? KeepRecognition(string hostId, Func<HostRecognition, HostRecognition> change)
+    {
+        var hosts = HostRegistry.Load(dataDirectory);
+        if (hosts.FirstOrDefault(h => h.HostId == hostId) is not { } host) return null;
+        var updated = host with { Recognition = change(host.Recognition ?? new()) };
+        if (updated.Recognition != host.Recognition) HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, updated));
         return updated;
     }
 

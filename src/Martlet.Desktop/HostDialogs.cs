@@ -16,11 +16,21 @@ internal sealed class HostShellDialogs(Window owner) : IHostShellPrompts
     public string? LoginPassword(HostShellTarget target, bool retry) => owner.Dispatcher.Invoke(() =>
     {
         var dialog = new HostInputDialog("Sign in once", $"Password for {target}",
-            retry ? "That password was not accepted, so try again (Martlet doesn't save it)."
-                : "Martlet signs in once to set up SSH access and doesn't save the password.", "Sign in");
+            retry ? "That password was not accepted, so try again."
+                : "Martlet signs in once to set up SSH access. After that it uses its own SSH key.", "Sign in");
         dialog.AddSecret("password", "Password");
-        return dialog.Ask(owner)?["password"];
+        dialog.AddRemember("Remember it, so Martlet can set this computer up again by itself after you reinstall it", on: true);
+        var password = dialog.Ask(owner)?["password"];
+        rememberLogin = password is not null && dialog.Remembered;
+        return password;
     });
+
+    private bool rememberLogin;
+
+    public void LoginAccepted(HostShellTarget target, string password)
+    {
+        if (rememberLogin) HostShell.RememberLogin(target, password);
+    }
 
     public HostShellSudo? SudoPassword(HostShellTarget target, bool retry) => owner.Dispatcher.Invoke(() =>
     {
@@ -240,9 +250,9 @@ internal sealed class HostInputDialog : ThemedWindow
         fields.Children.Add(panel);
     }
 
-    internal void AddRemember(string text)
+    internal void AddRemember(string text, bool on = false)
     {
-        remember = new CheckBox { Content = text, Margin = new Thickness(0, 10, 0, 0) };
+        remember = new CheckBox { Content = text, Margin = new Thickness(0, 10, 0, 0), IsChecked = on };
         AutomationProperties.SetAutomationId(remember, "HostInputRemember");
         fields.Children.Add(remember);
     }
