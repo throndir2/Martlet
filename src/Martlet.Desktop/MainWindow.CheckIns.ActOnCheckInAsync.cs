@@ -124,7 +124,7 @@ public partial class MainWindow
             Aside = checkInAside is { } holding && holding.HoldsAt(now) ? holding : null,
             // What the user just said, for the director (private: it goes only to a pool member with the check), and the skill
             // index it may load from.
-            Asked = checkInAsked,
+            Asked = Director.Asked(checkInAsks),
             Skills = Director.SkillIndex(homeSettings?.Skills)
         });
     }
@@ -192,6 +192,17 @@ public partial class MainWindow
 
     // ---------- check-ins-status.json ----------
 
+    // Every tool set a check-in may tick, its tools and whether this PC can run them now: what the director has access to.
+    private object[] ToolSetsHere()
+    {
+        var handlers = Role == DeviceRole.Companion ? CheckInToolHandlers() : null;
+        return [.. CheckInToolSets.All.Select(s => new
+        {
+            id = s.Id, name = s.Name, here = handlers?.ContainsKey(s.Id) == true, optional = s.Optional,
+            tools = s.Tools.Select(t => t.Name).ToArray()
+        })];
+    }
+
     // Which reply tools the check-ins that run after each exchange take over, and why (never what was said).
     private object AfterExchangeStatus()
     {
@@ -238,6 +249,10 @@ public partial class MainWindow
             running = checkInRunning,
             runningTriggered = checkInTriggeredRunning,
             runningTurn = checkInTurnRunning,
+            // How many of the user's turns wait for the director's next run (never what they say).
+            asksWaiting = checkInAsks.Count,
+            // Each tool set and its tools, and whether this PC runs it now (a set without a handler isn't offered to a check-in).
+            toolSetsHere = ToolSetsHere(),
             touches = new
             {
                 settling = checkInTouches.Waiting, settleMs = (long)TouchDebounce.Quiet.TotalMilliseconds,

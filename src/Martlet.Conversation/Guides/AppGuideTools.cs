@@ -44,6 +44,17 @@ public static partial class AppGuideTools
     /// <summary>Reading up: one at a time, 4 an hour, network only (no model), "Reading up on" in the talk window.</summary>
     public static BackgroundJobKind Kind { get; } = new(KindName, 1, 4, TimeLimit, Doing: "Reading up on");
 
+    /// <summary>The kind of update_guide_brief's research (guidebrief-1...): one at a time, as many an hour as the researcher
+    /// writes briefs, "Researching for the guide on" in the talk window. Quiet: later notes bring what it found.</summary>
+    public const string BriefKindName = "guidebrief";
+    public static BackgroundJobKind BriefKind { get; } = new(BriefKindName, 1, AppGuideResearcher.BriefsPerHour, TimeLimit,
+        Doing: "Researching for the guide on") { Quiet = true };
+
+    /// <summary>The result of update_guide_brief's job (the task list's Show result): counts only.</summary>
+    public static string BriefDone(string app, GuideResearchResult result) =>
+        $"Updated the guide on {app}: {result.Sections} new section{(result.Sections == 1 ? "" : "s")}" +
+        (result.Web ? " from the web" : "") + (result.Brief ? ", and a new brief." : ".");
+
     /// <summary>The notice that Martlet started reading up on a game in front on its own: it tells the user as soon as it is free
     /// (or with what the user says next), with the App guides: reading up on a game you started prompts.</summary>
     public static BackgroundJobKind OfferKind { get; } = new(OfferKindName, 2, 6, TimeSpan.FromMinutes(1), Doing: "Noticed you started",

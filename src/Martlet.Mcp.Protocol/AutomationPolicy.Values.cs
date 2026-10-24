@@ -877,6 +877,7 @@ internal static partial class AutomationPolicy
         new("DeviceAlsoFits-", "Devices", "What else fits on the selected device, such as DeviceAlsoFits-0: Room for another Deep thinking model (Gemma 4 12B) here."),
         new("AdvisorChoice-", "Setup advisor", "A role's pick and status in the plan, such as AdvisorChoice-3: Speech-to-text: Parakeet speech recognition (Available). The plan has no personal data."),
         new("LiveJobState-", "Talk window", "A background task's status in the task list, such as LiveJobState-think-1: Checking it fits beside Thinking. Never what the task is about or what it found."),
+        new("LiveWork-", "Talk window", "A work card's line in the conversation, such as LiveWork-research-1: Research started, or Research done after 1:02. The kind of task and how far it is, never what it is about."),
         new("MessageContextSize-", "What was sent", "A section's size, such as MessageContextSize-history: 4,210 characters, about 1,100 tokens. Never the text."),
         new("LiveMessageTokens-", "Talk window", "The token line under one of Martlet's messages, such as LiveMessageTokens-2: 3,412 input tokens · instructions about 1,150 (the input tokens its Thinking requests read, Martlet's estimate when the model didn't say, and the estimated tokens of Martlet's instructions). Numbers only."),
         new("MessageContextShare-", "What was sent", "A section's share of the request in the bar at the top, such as MessageContextShare-instructions: Instructions 45%."),

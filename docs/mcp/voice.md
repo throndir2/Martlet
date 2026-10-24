@@ -1646,7 +1646,12 @@ don't return it), `LiveJobState-<id>` (*Checking it fits beside Thinking.*,
 it failed on this PC.*), `LiveJobResultToggle-<id>` (*Show result*, a passive
 click that shows `LiveJobResult-<id>`, which isn't a readable value) and
 `LiveJobCancel-<id>` (needs `--allow-ui-effects`: it stops that task, and the
-next thing you say tells Martlet). Setting `MARTLET_BACKGROUND_FIXTURE=1` before
+next thing you say tells Martlet). Each task that isn't a notice or a body motion
+also adds a work card to the conversation when it starts, and the chip blinks:
+`LiveWork-<id>` reads the kind and how far it is (*Research started*, *App guide
+research done after 1:02*, *Song stopped*, *Picture couldn't finish*), never what
+it is about, and `LiveWorkTasks-<id>` (*Show tasks*, a passive click) opens the
+task list. Setting `MARTLET_BACKGROUND_FIXTURE=1` before
 Martlet starts makes opening the talk window start one *FIXTURE - NOT AI* task
 (`fixture-1`) that works until canceled, so these can be checked without a
 model. Then the song panel

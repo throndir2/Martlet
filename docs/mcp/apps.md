@@ -1003,6 +1003,10 @@ back](../CONVERSATION.md#talking-to-someone-else) now: `holding`, the check-in
 `by`, `since`, `until` and `aboutCharacters`, never who the user talks to),
 `callbacks` (how many things the [callback list](../CONVERSATION.md#callback-list)
 keeps now, `count`, and its `maximum`, never what they are),
+`asksWaiting` (how many things you said wait for the director because it was
+still busy, at most 4; never what they are), `toolSetsHere` (every check-in tool set: its `id`, `name`,
+whether it is `here` (this PC can run it now), whether it is `optional`, and
+its `tools` by name; an audit of what check-ins can do on this PC),
 `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,

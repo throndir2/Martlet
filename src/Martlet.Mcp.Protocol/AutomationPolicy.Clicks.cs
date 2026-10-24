@@ -286,6 +286,7 @@ internal static partial class AutomationPolicy
         // Needs --allow-ui-effects: LiveJobCancel-<job> (it ends a background job, and Martlet hears that you stopped it next time you talk).
         new("CharacterProfileEdit-", "Companion › Profiles", "The Edit button of a profile, such as CharacterProfileEdit-3f2a9c1b; only opens the form. The form's Save writes."),
         new("LiveJobResultToggle-", "Talk window", "The Show result button of a finished task in the task list, such as LiveJobResultToggle-think-1; only shows or hides what the task found."),
+        new("LiveWorkTasks-", "Talk window", "The Show tasks link of a work card in the conversation, such as LiveWorkTasks-research-1; only opens the task list."),
         new("LiveMessageContext-", "Talk window", "What was sent, on one of Martlet's messages, such as LiveMessageContext-2 (the second message that kept it): only opens the What was sent window (MessageContextWindow) for that message. MCP never reads its text."),
         new("MessageContextSection-", "What was sent", "A section, such as MessageContextSection-instructions or MessageContextSection-history; only shows or hides its text."),
         // Never returned: LiveJobResult-<id> (what a task found is not a readable value).

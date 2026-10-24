@@ -186,12 +186,38 @@ public sealed class CheckInToolHost : IConversationToolHost
                     "may make. Answer now without tools.", true));
             calls++;
         }
-        if (entry.Handler is null) return Record(set, tool, new($"This check-in has no tool called {tool}.", true));
+        if (entry.Handler is null) return Record(set, tool, new(Unknown(tool, tools.Keys), true));
         ConversationToolResult result;
         try { result = await entry.Handler(call, Context, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception) { result = new("The tool failed.", true); }
         return Record(set, tool, result ?? new("The tool failed.", true));
+    }
+
+    /// <summary>The first call of <paramref name="uses"/> that broke what the run should do, or null: a failed call, except a
+    /// call of a tool the check-in doesn't have (an invented name, <see cref="Unknown"/>) when another call worked after it, so
+    /// a model that corrects the name isn't reported as failing.</summary>
+    public static CheckInToolUse? FirstBroken(IReadOnlyList<CheckInToolUse> uses)
+    {
+        ArgumentNullException.ThrowIfNull(uses);
+        for (var i = 0; i < uses.Count; i++)
+            if (uses[i].Failed && !(uses[i].Set.Length == 0 && uses.Skip(i + 1).Any(u => !u.Failed))) return uses[i];
+        return null;
+    }
+
+    /// <summary>The answer to a call of a tool this check-in doesn't have (a model can invent a name, such as update_guide for
+    /// update_guide_brief): the names that look like it, or else every name it has, so the model can call the right one.</summary>
+    public static string Unknown(string tool, IEnumerable<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        var all = names.Order(StringComparer.Ordinal).ToArray();
+        var words = (tool ?? "").ToLowerInvariant().Split('_', StringSplitOptions.RemoveEmptyEntries);
+        var like = words.Length == 0 ? [] : all.Where(n => n.StartsWith(tool!, StringComparison.OrdinalIgnoreCase) ||
+            tool!.StartsWith(n, StringComparison.OrdinalIgnoreCase) || words.Count(w => w.Length > 2 && n.Split('_').Contains(w)) >= Math.Min(2, words.Length))
+            .ToArray();
+        return $"This check-in has no tool called {tool}. " + (like.Length > 0
+            ? $"Did you mean {string.Join(" or ", like)}? Call it by that exact name."
+            : all.Length == 0 ? "It has no tools; answer without them." : $"Its tools are: {string.Join(", ", all)}.");
     }
 
     private ConversationToolResult Record(string set, string tool, ConversationToolResult result)

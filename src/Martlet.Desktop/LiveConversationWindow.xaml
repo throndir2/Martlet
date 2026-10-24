@@ -272,6 +272,29 @@
                                            AutomationProperties.AutomationId="LivePicture" AutomationProperties.Name="{Binding Text}"/>
                                 </Border>
                                 <TextBlock x:Name="NoteText" Text="{Binding Note}" Style="{DynamicResource Muted}" FontSize="12" Margin="6,4,6,0"/>
+                                <!-- A work card: Martlet started research, an app guide, a song or a picture. The line (LiveWork-<id>) says
+                                     the kind and how far it is, never what it is about; Show tasks opens the task list. -->
+                                <Border x:Name="WorkCard" Visibility="Collapsed" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource AccentBrush}"
+                                        BorderThickness="1.5" CornerRadius="12" Padding="12,9" HorizontalAlignment="Left" MinWidth="260">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding WorkGlyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20"
+                                                   Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,11,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding WorkLine}" FontWeight="SemiBold" FontSize="13" TextWrapping="Wrap"
+                                                       AutomationProperties.AutomationId="{Binding WorkId}" AutomationProperties.Name="{Binding WorkLine}"/>
+                                            <TextBlock Text="{Binding Text}" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Content="Show tasks" Style="{DynamicResource LinkButton}" FontSize="12" Padding="2,0"
+                                                Margin="12,0,0,0" VerticalAlignment="Center" Click="WorkTasks_Click"
+                                                ToolTip="Open the task list to see how it is going, see the result or stop it"
+                                                AutomationProperties.Name="Show tasks" AutomationProperties.AutomationId="{Binding WorkTasksId}"/>
+                                    </Grid>
+                                </Border>
                             </StackPanel>
                             <DataTemplate.Triggers>
                                 <DataTrigger Binding="{Binding IsUser}" Value="True">
@@ -306,6 +329,10 @@
                                     <Setter TargetName="Body" Property="FontStyle" Value="Italic"/>
                                     <Setter TargetName="Body" Property="FontSize" Value="13"/>
                                     <Setter TargetName="Body" Property="AutomationProperties.AutomationId" Value="LiveMessage-PcAudio"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsWork}" Value="True">
+                                    <Setter TargetName="Bubble" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="WorkCard" Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding HasNote}" Value="False">
                                     <Setter TargetName="NoteText" Property="Visibility" Value="Collapsed"/>
