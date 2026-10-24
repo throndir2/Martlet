@@ -103,8 +103,8 @@ public static partial class PromptCatalog
         new(AppGuideOffer, ConversationGroup, "App guides: reading up on a game you started",
             "The message of the reply Martlet starts on its own, once a session, when a game (or an app on the App guides list) " +
             "without a guide comes to the front, Read up when I start a game or app is on and Martlet started reading up on it. " +
-            "{apps} names the app.",
-            DefaultAppGuideOfferInstructions, ["apps"]),
+            "{apps} names the app. {silent} is the word the model answers to stay quiet; the prompt tells it never to.",
+            DefaultAppGuideOfferInstructions, ["apps", "silent"]),
         new(AppGuideOfferNotes, ConversationGroup, "App guides: reading up on a game you started, with your message",
             "The same in the notes of your message, when you talk before Martlet told you. {apps} names the app.",
             DefaultAppGuideOfferNotesInstructions, ["apps"]),

@@ -28,8 +28,9 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
    *Read up when I start a game or app* is on (on by default). The app is on
    the list at once, and the job *Reading up on Elden Ring* shows in the talk
    window's task list. In a conversation that runs, Martlet tells you in
-   character: *"I see you started Elden Ring. I'm reading up on it so I can
-   help."* Tell it you'd rather it didn't and it stops; it remembers that and
+   character and asks if that is okay: *"Ooh, Elden Ring! I'm reading up on it
+   so I can help, okay?"* The prompt tells the model never to stay quiet
+   (`[pass]`) about it. Tell it you'd rather it didn't and it stops; it remembers that and
    doesn't read up on that app on its own again (**Allow again** on the page
    undoes it).
 3. Or say *"read up on Stardew Valley"*, or use **Add an app** on the page:

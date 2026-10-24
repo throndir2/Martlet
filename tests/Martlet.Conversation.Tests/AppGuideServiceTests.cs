@@ -430,6 +430,11 @@ public sealed class AppGuideServiceTests : IDisposable
         // Martlet already reads up on it: the model only tells the user, and never says it's done before the guide is.
         Assert.Contains("you started reading up on it", message);
         Assert.Contains("Don't say you're done", message);
+        // It must speak: a report may pass, and Chattiness: Martlet decides tells it to pass when unasked.
+        Assert.Contains("Tell them now, on your own", message);
+        Assert.Contains($"Never answer with only [{StayQuiet.Marker}]", message);
+        Assert.DoesNotContain("{silent}", message);
+        Assert.Contains("ask if that's okay", BackgroundJobs.ReportNotes(null, [job]));
         Assert.DoesNotContain("read_up_on", message);
         Assert.Contains("skip_guide", message);
         Assert.Contains("- Elden Ring (a game)", BackgroundJobs.ReportNotes(null, [job]));

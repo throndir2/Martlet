@@ -14,6 +14,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- When you start a game, Martlet tells you again that she's reading up on it and asks if that's okay, instead of staying quiet. ([#1151](https://github.com/throndir2/Martlet/pull/1151))
 - Failed Thinking requests wait longer between limited retries, and memory tidying stops with an error when those retries fail. ([#1147](https://github.com/throndir2/Martlet/pull/1147))
 
 ## [0.94.0] - 2026-10-23
