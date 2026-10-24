@@ -156,12 +156,13 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.94.0
+## 🆕 What's new in 0.95.0
 
-- 📚 **Every reply rule is a skill**: the rules a reply follows are skills now, attached only while their feature is on, so a default reply sends about 18% fewer built-in instruction tokens. Your edits move with them.
-- 🔎 **See what one reply sends**: Companion › Prompts starts with what every reply carries and its size, and Companion › Skills shows which skills are pinned, attached now or loaded by the director.
-- 🌐 **Find skills online**: search the skills people share on ClawHub and skills.sh, read one and add it to your skills with one click.
-- 👥 **One you on every PC**: Windows logins with the same name on different PCs are now one person in Martlet.
+- 🔎 **See work as it starts**: the conversation shows progress for research, app guides, songs, pictures and longer thinking.
+- 🖥️ **Find what makes replies slow**: Diagnostics › Check your computers checks response times and model fit. Home warns about slow replies.
+- 💬 **Your next request stays in line**: Martlet keeps requests you make while it is busy with earlier work.
+- 🎮 **Hear when game research starts**: Martlet tells you when it reads up on a game and asks if that is okay.
+- 🧠 **Failed requests stop retrying**: Thinking requests use limited retries with longer waits. Memory tidying shows an error if they fail.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
