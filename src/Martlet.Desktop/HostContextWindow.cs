@@ -94,9 +94,19 @@ internal static class HostContextWindow
         var others = routes
             .Where(r => r.RouteId != route.RouteId && !r.Gpus.Contains("cpu") && Shares(route, r, card!))
             .Select(r => (Name(r), Gb(r)))
+            .Concat(OtherApps(hardware, model))
             .ToArray();
         return ContextWindowPlan.Fit(model, modelGb, card!.MemoryGb, others, cardName: "the " + card.Name);
     }
+
+    /// <summary>Graphics memory that model apps beside Martlet's own Ollama hold on the host (llama.cpp, LM Studio, vLLM or another
+    /// Ollama, from the host's served models), so the window leaves room for them. Which card they use isn't reported, so each
+    /// counts on this card; the route's own model (a Thinking pool on your own app) isn't counted twice.</summary>
+    internal static IEnumerable<(string Name, double Gb)> OtherApps(HostHardware? hardware, string model) =>
+        (hardware?.Served ?? [])
+            .Where(s => s.LoadedBytes is not null && !Martlet.Core.Planning.ThinkingSpeed.SameModel(s.Model, model))
+            .Select(s => ($"{s.AppName}'s {s.Model}", Math.Round((s.LoadedBytes is > 0 and var held ? held : s.Bytes ?? 0) / 1e9, 1)))
+            .Where(o => o.Item2 > 0);
 
     // Another route is on the same card: it names one of the route's cards, or one of them runs on every card.
     private static bool Shares(HostRoute route, HostRoute other, HostGpu card) =>

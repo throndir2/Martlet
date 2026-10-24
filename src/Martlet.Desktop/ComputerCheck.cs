@@ -77,6 +77,16 @@ internal static class ComputerCheck
                             ThinkingSpeed.DescribePlacement(model.Model, name, model.Bytes, model.GraphicsBytes));
                 }
                 else if (report is not null) Add(false, $"{name} has no model loaded now; it loads one at the next request.");
+                // Other model apps on the host (llama.cpp, LM Studio, vLLM or another Ollama) hold graphics memory Martlet's models
+                // can't use; the same model loaded in two apps holds it twice.
+                foreach (var other in (report?.Served ?? []).Where(s => s.LoadedBytes is not null))
+                {
+                    var held = other.LoadedBytes is > 0 and var bytes ? $"{bytes / 1e9:0.0} GB of graphics memory" : "graphics memory";
+                    var twice = report?.Loaded?.Any(m => ThinkingSpeed.SameModel(m.Model, other.Model)) == true;
+                    Add(true, twice
+                        ? $"{other.Model} on {name} is loaded twice: in Martlet's Ollama and in {other.AppName}, which holds {held}. Unload it in {other.AppName}, or use only one of them."
+                        : $"{other.AppName} on {name} holds {held} for {other.Model}; Martlet's models share the graphics card with it. Unload it in {other.AppName} when Martlet replies slowly.");
+                }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (HostConnectionException error) when (error.Code == "request.invalid")

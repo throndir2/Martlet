@@ -54,6 +54,27 @@ public sealed class HostContextWindowTests
     }
 
     [Fact]
+    public void Another_model_app_on_the_host_takes_its_room_first()
+    {
+        // llama.cpp beside Martlet's Ollama holds 14 GB of the 3090: the conversation model gets the usual window, not 32,768.
+        var shared = Hardware(uuids: true) with
+        {
+            Served = [new HostServedModel("llama-cpp", "llama.cpp", 8080, "/v1", "qwen3-14b", 9_000_000_000, 14_000_000_000)]
+        };
+
+        var plan = HostContextWindow.Plan(shared, Thinking, Routes, null);
+
+        Assert.Equal(GenerationSettings.DefaultHostContextTokens, plan.Tokens);
+        Assert.Contains("llama.cpp's qwen3-14b", plan.Why, StringComparison.Ordinal);
+        // A model the app serves but hasn't loaded holds nothing, and the route's own model (served by that app too) isn't counted twice.
+        Assert.Empty(HostContextWindow.OtherApps(Hardware(uuids: true) with
+        {
+            Served = [new HostServedModel("llama-cpp", "llama.cpp", 8080, "/v1", "qwen3-14b", 9_000_000_000),
+                new HostServedModel("lm-studio", "LM Studio", 1234, "/v1", "gemma4-12b", 9_000_000_000, 9_000_000_000)]
+        }, "gemma4:12b"));
+    }
+
+    [Fact]
     public void Roles_on_the_same_card_take_their_room_first()
     {
         var crowded = Hardware(uuids: true) with { Gpus = [new HostGpu("NVIDIA GeForce RTX 3060", "nvidia", 12_288, "570") { Uuid = Rtx3090 }] };

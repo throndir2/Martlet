@@ -478,7 +478,7 @@ and how much text each reply sends inside it.
 **Owner:** `ContextWindowPlan` (`src\Martlet.Core\Planning`) for the window that
 fits a card (32,768, 16,384 or 8,192 tokens with 1.0 GB of headroom);
 `HostContextWindow` (`src\Martlet.Desktop`) for which card the route runs on,
-what else is on it, the saved size and the window sent (`HostTextClient` and
+what else is on it (Martlet's other routes, and other model apps that hold graphics memory on the host, such as llama.cpp: `OtherApps`), the saved size and the window sent (`HostTextClient` and
 the hearing test); `ContextBudget.For` (`src\Martlet.Core\Settings`) for what a
 reply sends (`PlannedInputTokens` without a saved size). The relay's window for
 a request without one is `OllamaRelayWorker` (the last window it loaded).

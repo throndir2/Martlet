@@ -338,6 +338,13 @@ internal sealed class HostInputDialog : ThemedWindow
             dialog.AddChoice(choice.Key, now is null ? label : $"{label} (now: {OptionText(now)})",
                 options.Select(option => (option, OptionText(option))).ToArray(), now ?? pick?.Value ?? (automatic ? Automatic : choice.Default));
             When(choice.Key, choice.When);
+            // The model it runs now chosen again: Apply reloads it (the host unloads it first), which owners use to refresh a
+            // model that got slow. Said under the choice, so choosing it again isn't a surprise or a no-op.
+            if (now is not null && choice.Variable.EndsWith("_MODEL", StringComparison.Ordinal))
+                dialog.AddFollowingText($"HostInputReload-{choice.Variable}", choice.Key, new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [now] = SameModelNote(OptionText(now))
+                });
             // Recommendations that depend on another (non-variant) choice, "choice.VAR@OTHER=value" (Deep thinking's thinks at
             // once for each model), follow it: the text under this choice reads the one for what is chosen there now.
             if (choice.When is not null || recommended is null) return;
@@ -385,6 +392,11 @@ internal sealed class HostInputDialog : ThemedWindow
         }
         return dialog;
     }
+
+    /// <summary>The note under a model choice while it shows the model the role runs now: Apply reloads that model.</summary>
+    internal static string SameModelNote(string model) =>
+        $"{model} is the model it runs now. Apply unloads it and loads it again fresh, which can help when replies got slow. " +
+        "Nothing downloads.";
 
     /// <summary>A choice option as the dialog shows it: a Parakeet model by its name ("Parakeet TDT 110M (English)"), any other as
     /// the host names it.</summary>

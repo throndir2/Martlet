@@ -124,8 +124,9 @@ refresh_installed_role_files() {
 # model it replaced ({PREVIOUS}), for example unloading it from the graphics card's memory. Its download is kept, and a
 # step that fails only leaves the old model as it was.
 retire_previous() {
-  local role="$1" conf="$2" previous="$3" model="$4" line service step words safe='^[A-Za-z0-9 ._:/=-]+$'
-  [[ -n "${previous}" && "${previous}" != "${model}" && "${previous}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] || return 0
+  local role="$1" conf="$2" previous="$3" model="$4" same="${5:-}" line service step words safe='^[A-Za-z0-9 ._:/=-]+$'
+  # $5=same: the model is chosen again (a reload), so it is unloaded before its warm steps load it fresh.
+  [[ -n "${previous}" && ( "${previous}" != "${model}" || "${same}" == same ) && "${previous}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] || return 0
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
     service="${line%%|*}"; step="${line#*|}"; step="${step//\{PREVIOUS\}/${previous}}"
@@ -578,7 +579,18 @@ cmd_add() {
   # memory, loading the new one can fail (Ollama's gemma4:12b does when one layer doesn't fit), so a failed warm step
   # retires the previous model first and runs once more.
   local service step words section safe='^[A-Za-z0-9 ._:/=-]+$'
+  # The same model chosen again is a reload: it leaves the graphics card's memory first, so the warm step loads it fresh (a
+  # model that got slow, for example only partly on the graphics card, comes back as a new load). Owners do this to "refresh".
+  local reload=0
+  if [[ -n "${previous}" && "${previous}" == "${model}" && -n "$(conf_values "${conf}" retire)" && -n "$(conf_values "${conf}" warm)" ]]; then
+    reload=1
+  fi
   while IFS='|' read -r section line <&3; do
+    if [[ "${section}" == warm ]] && (( reload )); then
+      say "${model} is chosen again: unloading it so it loads fresh."
+      retire_previous "${role}" "${conf}" "${previous}" "${model}" same
+      reload=0
+    fi
     [[ -n "${line}" ]] || continue
     service="${line%%|*}"; step="${line#*|}"
     for key in "${!chosen[@]}"; do step="${step//\{${key}\}/${chosen[${key}]}}"; done
