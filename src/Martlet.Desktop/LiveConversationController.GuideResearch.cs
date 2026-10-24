@@ -110,7 +110,20 @@ internal sealed partial class LiveConversationController
             return new(AppGuideTools.NoGuide(app, built), false);
         }
         if (GuideResearch is not { } research) return new(AppGuideTools.BriefRefused("research isn't available on this PC"), true);
-        var refused = research.Start(entry.Key, focus);
+        // The research runs as a task of this conversation, so the talk window shows it (the task chip and a card in the history).
+        var refused = research.CantStart(entry.Key) ?? (research.Doing is not null ? "busy" : null);
+        if (refused is null)
+        {
+            var name = entry.Name;
+            var start = jobs.Start(AppGuideTools.BriefKind, AppGuideTools.Label(name), async (job, token) =>
+            {
+                job.Report(BackgroundJobState.Running, focus is null ? "Researching for a new brief" : "Researching what you asked about");
+                var done = await research.RefreshAsync(entry.Key, focus, token).ConfigureAwait(false);
+                return done.Problem is null ? BackgroundJobOutcome.Done(AppGuideTools.BriefDone(name, done))
+                    : BackgroundJobOutcome.Failed(done.Problem);
+            });
+            if (start.Job is null) refused = start.Refusal ?? "it couldn't start";
+        }
         tools?.Record(server, AppGuideTools.BriefName, refused is null ? "started" : refused == "busy" ? "busy" : "not started", "", false);
         ErrorLog.Info($"App guides: the Thinking model asked to update a brief{(focus is null ? "" : " with a focus")} " +
             $"({(refused is null ? "started" : refused == "busy" ? "busy" : "not started")}).");

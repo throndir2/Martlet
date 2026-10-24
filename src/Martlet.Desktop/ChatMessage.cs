@@ -15,14 +15,15 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-public enum ChatRole { User, Martlet, Note, PcAudio }
+public enum ChatRole { User, Martlet, Note, PcAudio, Work }
 
 /// <summary>One entry in the talk window's history: what you typed or said, Martlet's reply, what Martlet heard playing on the PC
-/// (marked, never shown as you), or a short note.</summary>
+/// (marked, never shown as you), a short note, or a work card (Martlet started research, an app guide, a song or a picture).</summary>
 public sealed class ChatMessage : INotifyPropertyChanged
 {
     private string text;
     private string note = "";
+    private string workLine = "";
 
     internal ChatMessage(ChatRole role, string text, string caption = "")
     {
@@ -35,6 +36,17 @@ public sealed class ChatMessage : INotifyPropertyChanged
     public bool IsUser => Role == ChatRole.User;
     public bool IsNote => Role == ChatRole.Note;
     public bool IsPcAudio => Role == ChatRole.PcAudio;
+    public bool IsWork => Role == ChatRole.Work;
+    /// <summary>A work card's background job ID (such as research-1): its automation IDs are LiveWork-&lt;id&gt; (the line MCP
+    /// reads) and LiveWorkTasks-&lt;id&gt; (Show tasks).</summary>
+    public string WorkJob { get; init; } = "";
+    public string WorkId => "LiveWork-" + WorkJob;
+    public string WorkTasksId => "LiveWorkTasks-" + WorkJob;
+    /// <summary>A work card's icon (Segoe Fluent Icons).</summary>
+    public string WorkGlyph { get; init; } = "";
+    /// <summary>A work card's line, such as "Research started" or "Research done after 1:02": the kind and the state only,
+    /// never what the work is about (that is <see cref="Text"/>).</summary>
+    public string WorkLine { get => workLine; set => Set(ref workLine, value); }
     public string Caption { get; }
     public string Text { get => text; set => Set(ref text, value); }
     public string Note { get => note; set { if (Set(ref note, value)) Changed(nameof(HasNote)); } }

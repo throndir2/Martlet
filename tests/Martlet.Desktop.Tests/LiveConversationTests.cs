@@ -3459,6 +3459,12 @@ public sealed class LiveConversationTests
             Assert.Equal("Background tasks: 2 running", AutomationProperties.GetName(chip));
             Assert.Equal(Visibility.Collapsed, Control<Grid>(window, "TasksPanel").Visibility);
 
+            // Each task that starts also shows as a work card in the conversation, with what it is about.
+            await Until(() => Find<TextBlock>(window, "LiveWork-" + first.Id)?.Text == "Thinking longer started");
+            Assert.Equal("Song started", Find<TextBlock>(window, "LiveWork-" + second.Id)!.Text);
+            Assert.Contains(window.Messages, message => message.IsWork && message.Text == "the trip plan");
+            Assert.Single(window.Messages, message => message.IsWork && message.WorkJob == first.Id);
+
             // The chip opens the list: one card per task with what it is about, its status and Cancel.
             Click(window, "TasksChip");
             Assert.Equal(Visibility.Visible, Control<Grid>(window, "TasksPanel").Visibility);
@@ -3470,6 +3476,7 @@ public sealed class LiveConversationTests
             // Cancel stops just that task; the list says so and the chip counts what still runs.
             Find<Button>(window, "LiveJobCancel-" + second.Id)!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => Find<TextBlock>(window, "LiveJobState-" + second.Id)?.Text == "You stopped it.");
+            await Until(() => Find<TextBlock>(window, "LiveWork-" + second.Id)?.Text == "Song stopped");
             await Until(() => Control<TextBlock>(window, "TasksText").Text == "1 running");
             Assert.Equal(Visibility.Collapsed, Find<Button>(window, "LiveJobCancel-" + second.Id)!.Visibility);
 
@@ -3483,6 +3490,7 @@ public sealed class LiveConversationTests
             finish.SetResult(BackgroundJobOutcome.Done("Take the coast road."));
             await Until(() => Control<TextBlock>(window, "TasksText").Text == "1 ready");
             Assert.Equal("Done after 0:00. Martlet brings it up when you talk next.", Find<TextBlock>(window, "LiveJobState-" + first.Id)!.Text);
+            Assert.Equal("Thinking longer done after 0:00", Find<TextBlock>(window, "LiveWork-" + first.Id)!.Text);
             Assert.Equal("Finished work comes up when you talk next.", Control<TextBlock>(window, "JobsText").Text);
             Assert.Equal(0, fixture.Llm.Calls);
             var toggle = Find<Button>(window, "LiveJobResultToggle-" + first.Id)!;
@@ -3600,6 +3608,20 @@ public sealed class LiveConversationTests
         Assert.Equal("1 running · 1 ready", LiveConversationWindow.TasksChipLine(1, 1, 1));
         Assert.Equal("1 ready", LiveConversationWindow.TasksChipLine(0, 1, 2));
         Assert.Equal("3 done", LiveConversationWindow.TasksChipLine(0, 0, 3));
+    }
+
+    [Fact]
+    public void EveryKindOfWorkMartletStartsHasItsOwnTitleAndAWorkCard()
+    {
+        Assert.Equal("Picture", LiveConversationWindow.KindTitle(Martlet.Conversation.PictureTools.Kind));
+        Assert.Equal("App guide", LiveConversationWindow.KindTitle(Martlet.Conversation.Guides.AppGuideTools.Kind));
+        Assert.Equal("App guide research", LiveConversationWindow.KindTitle(Martlet.Conversation.Guides.AppGuideTools.BriefKind));
+        Assert.Equal("\uE82D", LiveConversationWindow.KindGlyph(Martlet.Conversation.Guides.AppGuideTools.BriefKind));
+        Assert.Equal("\uEB9F", LiveConversationWindow.KindGlyph(Martlet.Conversation.PictureTools.Kind));
+        Assert.True(LiveConversationWindow.ShowsWork(Martlet.Conversation.WebResearch.Kind));
+        Assert.True(LiveConversationWindow.ShowsWork(Martlet.Conversation.Guides.AppGuideTools.BriefKind));
+        Assert.False(LiveConversationWindow.ShowsWork(Martlet.Conversation.MotionTools.Kind));
+        Assert.False(LiveConversationWindow.ShowsWork(Reminders.Kind));
     }
 
     // The element with this automation ID in the window's visual tree, or null.

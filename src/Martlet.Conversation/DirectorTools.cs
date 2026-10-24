@@ -12,6 +12,37 @@ public static class Director
     /// <summary>How long one skill's line in the index may be.</summary>
     public const int MaximumIndexLineCharacters = 240;
 
+    /// <summary>How many of the user's turns the director keeps while it is busy (the newest ones).</summary>
+    public const int MaximumWaitingAsks = 4;
+
+    /// <summary>How long one waiting turn may be in the joined text.</summary>
+    public const int MaximumAskCharacters = 450;
+
+    /// <summary>Adds the user's <paramref name="words"/> to <paramref name="waiting"/>, the turns the director hasn't read yet,
+    /// and drops the oldest past <see cref="MaximumWaitingAsks"/>. A turn the user makes while the director runs is kept for its
+    /// next run, never replaced by a newer one.</summary>
+    public static void Wait(List<string> waiting, string? words)
+    {
+        ArgumentNullException.ThrowIfNull(waiting);
+        if (string.IsNullOrWhiteSpace(words)) return;
+        waiting.Add(words.Trim());
+        if (waiting.Count > MaximumWaitingAsks) waiting.RemoveRange(0, waiting.Count - MaximumWaitingAsks);
+    }
+
+    /// <summary>What the director reads as "what the user just said" ({asked}): one turn as it is; several turns (the user spoke
+    /// again while the director was busy) oldest first, each on its own line, so a request in an earlier turn isn't lost.
+    /// Null when there is none.</summary>
+    public static string? Asked(IReadOnlyList<string> waiting)
+    {
+        ArgumentNullException.ThrowIfNull(waiting);
+        if (waiting.Count == 0) return null;
+        if (waiting.Count == 1) return waiting[0];
+        return $"{waiting.Count} things, oldest first. Each one may ask for work; do what none of the replies did yet:\n" +
+            string.Join("\n", waiting.Select(w => "- " + Clip(w.Replace('\n', ' '))));
+
+        static string Clip(string words) => words.Length <= MaximumAskCharacters ? words : words[..(MaximumAskCharacters - 3)] + "...";
+    }
+
     /// <summary>The skill index the director reads ({skills}): one line "key: when it helps" for each skill with text that isn't
     /// pinned (every reply has those), in the skills' order; null when there is none.</summary>
     public static string? SkillIndex(SkillSettings? skills)

@@ -59,7 +59,9 @@ public partial class MainWindow
     // The check-in the user's turn started that runs now (the director), in a lane of its own beside the paced and the other
     // triggered check-ins, so it never waits behind them; and the user's words it reads (never logged or saved).
     private string? checkInTurnRunning;
-    private string? checkInAsked;
+    // The user's turns the director hasn't read yet, oldest first (Director.Wait): a turn made while it runs waits for its next
+    // run, never replaced by a newer one.
+    private readonly List<string> checkInAsks = [];
     // The run of a check-in that thinks ahead (CheckInOutcome.Plan) now, stopped when another reply ends: its thoughts were about
     // the message after the exchange it read.
     private CancellationTokenSource? checkInPlanCancel;

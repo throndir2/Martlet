@@ -824,19 +824,21 @@ public sealed partial class CheckInsTests
         Assert.False(said.IsError);
         Assert.Equal(("remind_next_reply", "Be gentle."), (seen[0].Tool, seen[0].Text));
         Assert.Equal(("c4", "Tools", Now), (seen[0].Context.CheckInId, seen[0].Context.CheckInName, seen[0].Context.Now));
-        Assert.Equal(("This check-in has no tool called delete_files.", true), (unknown.Output, unknown.IsError));
+        Assert.True(unknown.IsError);
+        Assert.StartsWith("This check-in has no tool called delete_files. Its tools are: ", unknown.Output);
         Assert.Equal(("The tool failed.", true), (failed.Output, failed.IsError));
         Assert.True(over.IsError);
         Assert.StartsWith($"This check-in already made {CheckIns.MaximumToolCalls} tool calls", over.Output);
         var uses = host.Uses;
         Assert.Equal(CheckIns.MaximumToolCalls + 1, uses.Count);
         Assert.Equal(new CheckInToolUse(CheckInToolSets.NextReplyId, CheckInToolSets.RemindNextReply, new string('x', 117) + "...", false), uses[0]);
-        Assert.Equal(new CheckInToolUse("", "delete_files", "This check-in has no tool called delete_files.", true), uses[1]);
+        Assert.Equal(("", "delete_files", true), (uses[1].Set, uses[1].Tool, uses[1].Failed));
+        Assert.StartsWith("This check-in has no tool called delete_files.", uses[1].Result);
         Assert.Equal(new CheckInToolUse(CheckInToolSets.CharacterId, CheckInToolSets.LookUsual, "The tool failed.", true), uses[2]);
         Assert.DoesNotContain(uses, u => u.Result.Contains("private", StringComparison.Ordinal));
         Assert.Equal(CheckIns.MaximumToolCalls - 2, seen.Count);
         Assert.StartsWith("remind_next_reply: xxx", CheckInPrompts.ToolsText(uses));
-        Assert.Contains("; delete_files (failed): This check-in has no tool called delete_files;", CheckInPrompts.ToolsText(uses));
+        Assert.Contains("; delete_files (failed): This check-in has no tool called delete_files.", CheckInPrompts.ToolsText(uses));
     }
 
     [Fact]

@@ -2701,6 +2701,17 @@ after each reply; an `actions` on or off you saved moves to the director.
   played, a glance, a report or what Martlet says on its own. It runs in a
   lane of its own (`MainWindow.FollowCheckInsAsync`, `turn`), so it never waits
   behind other check-ins.
+- **Nothing you say is lost.** While a director run is still busy (a slow or
+  rate-limited pool member, for example), what you say next waits in a queue
+  (`Director.Wait`, at most the 4 newest, each up to 450 characters). The
+  next run reads all of them, oldest first (`Director.Asked`), and does what
+  no reply did yet.
+- **A wrong tool name gets the right one.** When a model calls a tool that the
+  check-in doesn't have (such as *update_guide*), the answer names the closest
+  real tool (*Did you mean update_guide_brief?*) or lists the tools
+  (`CheckInToolHost.Unknown`), so the next step can call it. Such a miss is not
+  reported as a broken promise when a later call worked
+  (`CheckInToolHost.FirstBroken`).
 - **What it reads.** What you just said (`{asked}`), the exchanges since it
   last ran (`{exchange}`), the reminders and background work (`{work}`) and
   the skill index (`{skills}`, `Director.SkillIndex`: each skill that isn't

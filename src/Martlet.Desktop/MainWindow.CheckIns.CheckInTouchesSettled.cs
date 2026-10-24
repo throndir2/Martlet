@@ -88,7 +88,7 @@ public partial class MainWindow
     {
         if (closing || Role != DeviceRole.Companion) return;
         if (!CheckIns.All(checkInSettings).Any(c => c.On && c.Triggers.HasFlag(CheckInTriggers.UserTurn))) return;
-        checkInAsked = words;
+        Director.Wait(checkInAsks, words);
         FireCheckIns(CheckIns.TurnTrigger(DateTimeOffset.Now));
     }
 
@@ -100,11 +100,14 @@ public partial class MainWindow
     {
         if ((turn ? checkInTurnRunning : triggered ? checkInTriggeredRunning : checkInRunning) is not null || closing) return;
         var ran = false;
+        string[] read = [];
         try
         {
             var (next, state) = LookAtCheckIns(now, triggered, turn);
             if (next is not null)
             {
+                // The turns this run reads; the ones the user makes meanwhile wait for the next run.
+                if (turn) read = [.. checkInAsks];
                 await RunCheckInAsync(next, state!, next.Id == now, triggered, turn);
                 ran = triggered;
             }
@@ -115,6 +118,7 @@ public partial class MainWindow
         }
         finally
         {
+            foreach (var words in read) checkInAsks.Remove(words);
             ShowCheckInsNow();
             WriteCheckInStatus();
         }
@@ -209,7 +213,7 @@ public partial class MainWindow
                     acted |= used.Any(u => !u.Failed);
                 }
                 // What didn't happen, for a check-in that does the reply's work after an exchange.
-                broken = used.FirstOrDefault(u => u.Failed) is { } failed ? $"{failed.Tool} failed" + (failed.Result.Length > 0 ? $": {failed.Result}" : "")
+                broken = CheckInToolHost.FirstBroken(used) is { } failed ? $"{failed.Tool} failed" + (failed.Result.Length > 0 ? $": {failed.Result}" : "")
                     : !done.Succeeded && used.Count == 0 ? result : null;
             }
         }

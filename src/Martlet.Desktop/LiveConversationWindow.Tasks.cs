@@ -81,6 +81,7 @@ public partial class LiveConversationWindow
         TasksChip.SetResourceReference(BorderBrushProperty, tasksOpen ? "AccentBrush" : "BorderBrush");
         if (ready > tasksReady && TasksDot.Visibility == Visibility.Visible) Motion.Blink(TasksDot);
         tasksReady = ready;
+        foreach (var job in shown) ShowWork(job);
 
         TasksPanel.Visibility = tasksOpen ? Visibility.Visible : Visibility.Collapsed;
         JobsText.Text = JobsLine(shown, when);
@@ -267,21 +268,74 @@ public partial class LiveConversationWindow
     {
         "think" => "Thinking longer",
         "song" => "Song",
-        "image" => "Image",
+        Martlet.Conversation.PictureTools.KindName => "Picture",
         "research" => "Research",
         Martlet.Conversation.Guides.AppGuideTools.KindName => "App guide",
+        Martlet.Conversation.Guides.AppGuideTools.BriefKindName => "App guide research",
         _ => kind.Doing
     };
 
+    /// <summary>Whether a kind of task gets a work card in the conversation when it starts: research, app guides, thinking
+    /// longer, songs, pictures and the like. Not a notice (a reminder, a greeting, something to bring up), which Martlet says
+    /// itself, and not a body motion, which only moves the character.</summary>
+    internal static bool ShowsWork(BackgroundJobKind kind) =>
+        !kind.Notice && kind.Name != Martlet.Conversation.MotionTools.KindName;
+
+    /// <summary>A work card's line (MCP reads it as LiveWork-&lt;id&gt;): the kind of task and how far it is, such as "Research
+    /// started" or "Research done after 1:02". Never what it is about.</summary>
+    internal static string WorkLine(BackgroundJob job) => KindTitle(job.Kind) + job.State switch
+    {
+        BackgroundJobState.Waiting or BackgroundJobState.Running => " started",
+        BackgroundJobState.Paused => " paused",
+        BackgroundJobState.Succeeded => $" done after {BackgroundJobs.Clockface(job.Elapsed)}",
+        BackgroundJobState.TimedOut => " ran out of time",
+        BackgroundJobState.Canceled => " stopped",
+        _ => " couldn't finish"
+    };
+
+    // The work cards in the conversation, by job ID.
+    private readonly Dictionary<string, ChatMessage> workCards = new(StringComparer.Ordinal);
+
+    /// <summary>Adds a work card to the conversation when Martlet starts a task (and makes the task chip blink), or updates its
+    /// line as the task goes on. A task that had finished before the talk window first saw it gets no card.</summary>
+    private void ShowWork(BackgroundJob job)
+    {
+        if (!ShowsWork(job.Kind)) return;
+        if (workCards.TryGetValue(job.Id, out var card))
+        {
+            card.WorkLine = WorkLine(job);
+            return;
+        }
+        if (job.Finished) return;
+        // What the task is about comes from the conversation: the card shows it, but MCP reads only its line.
+        card = new ChatMessage(ChatRole.Work, job.Label, $"{job.Kind.Doing} · {DateTime.Now:t}")
+        {
+            WorkJob = job.Id, WorkGlyph = KindGlyph(job.Kind), WorkLine = WorkLine(job)
+        };
+        workCards[job.Id] = card;
+        Messages.Add(card);
+        Motion.Blink(TasksChip);
+    }
+
+    // A work card's Show tasks: opens the task list.
+    private void WorkTasks_Click(object sender, RoutedEventArgs e)
+    {
+        if (tasksOpen) return;
+        tasksOpen = true;
+        RenderJobs();
+        Motion.Enter(TasksPanel, dy: -8, milliseconds: 180);
+    }
+
     // Segoe Fluent Icons: a light bulb for thinking, a music note for a song, a picture, a magnifier, a book for an app guide,
     // a smile for the greeting, otherwise a gear.
-    private static string KindGlyph(BackgroundJobKind kind) => kind.Name switch
+    internal static string KindGlyph(BackgroundJobKind kind) => kind.Name switch
     {
         "think" => "\uE82F",
         "song" => "\uEC4F",
-        "image" => "\uEB9F",
+        Martlet.Conversation.PictureTools.KindName => "\uEB9F",
         "research" => "\uE721",
-        Martlet.Conversation.Guides.AppGuideTools.KindName or Martlet.Conversation.Guides.AppGuideTools.OfferKindName => "\uE82D",
+        Martlet.Conversation.Guides.AppGuideTools.KindName or Martlet.Conversation.Guides.AppGuideTools.OfferKindName
+            or Martlet.Conversation.Guides.AppGuideTools.BriefKindName => "\uE82D",
         "reminder" => "\uE823",
         CheckIns.SayKindName => "\uE73E",
         Greetings.KindName => "\uE76E",
