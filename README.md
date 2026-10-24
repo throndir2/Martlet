@@ -156,13 +156,11 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.95.0
+## 🆕 What's new in 0.95.1
 
-- 🔎 **See work as it starts**: the conversation shows progress for research, app guides, songs, pictures and longer thinking.
-- 🖥️ **Find what makes replies slow**: Diagnostics › Check your computers checks response times and model fit. Home warns about slow replies.
-- 💬 **Your next request stays in line**: Martlet keeps requests you make while it is busy with earlier work.
-- 🎮 **Hear when game research starts**: Martlet tells you when it reads up on a game and asks if that is okay.
-- 🧠 **Failed requests stop retrying**: Thinking requests use limited retries with longer waits. Memory tidying shows an error if they fail.
+- 🔄 **Reload a slow model**: changing a computer's model to the one it already runs now loads it fresh.
+- 🧩 **Room for your other model apps**: Martlet leaves graphics memory for llama.cpp, LM Studio or another Ollama on the same computer.
+- 🖥️ **Check your computers names them**: Diagnostics shows which other apps hold graphics memory, and a model loaded twice.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

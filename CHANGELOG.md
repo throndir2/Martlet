@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.95.1] - 2026-10-24
+
 ### Fixed
 
 - Changing a computer's model to the model it already runs now reloads it fresh (the Change dialog says so), which helps when replies got slow; before, the slow model stayed as it was. Martlet also leaves room for other model apps on that computer, such as llama.cpp, when it plans the model's memory, and **Check your computers** names them. ([#1158](https://github.com/throndir2/Martlet/pull/1158))
