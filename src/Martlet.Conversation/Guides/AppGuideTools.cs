@@ -49,7 +49,7 @@ public static partial class AppGuideTools
     public static BackgroundJobKind OfferKind { get; } = new(OfferKindName, 2, 6, TimeSpan.FromMinutes(1), Doing: "Noticed you started",
         Notice: true)
     {
-        Wording = new(PromptCatalog.AppGuideOffer, PromptCatalog.AppGuideOfferNotes, "apps")
+        Wording = new(PromptCatalog.AppGuideOffer, PromptCatalog.AppGuideOfferNotes, "apps") { Silent = true }
     };
 
     public const string ReadUpParametersJson =

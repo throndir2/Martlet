@@ -21,7 +21,7 @@ When you start a game (or an app on your list) that she has no guide for, Martle
 
 1. She sends the game's name to DuckDuckGo to find its wiki.
 2. She reads up to 200 of the wiki's pages, the pages about that game first. On a big wiki this takes about 5 minutes and 10 MB. She skips pages about other games in the same series.
-3. She tells you in character, for example *"I see you started Elden Ring. I'm reading up on it so I can help."* She tells you again when she is done.
+3. She tells you in character and asks if that's okay, for example *"Ooh, Elden Ring! I'm reading up on it so I can help, okay?"* She tells you again when she is done.
 4. When a [Thinking pool](Thinking#thinking-pool) member can take research, she then reads up to 300 more pages. The member chooses them from the wiki's links, with what you do now in mind.
 
 You can ask about the game while she still reads. The guide grows as she reads.
