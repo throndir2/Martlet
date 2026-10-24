@@ -96,6 +96,12 @@ its thinking model is too slow. Home says **Martlet replies slowly** or
      or choose a smaller model.
    - *Writes few tokens a second*: the same causes. A model on the processor
      writes only a few words a second.
+   - *Holds ... for* another model or *is loaded twice*: another model app on
+     that computer (llama.cpp, LM Studio or a second Ollama) uses the graphics
+     card too. Unload the model in that app, or use only one app.
+   - To reload a model that got slow, open the computer on the **Devices** map,
+     choose **Change** for its model and keep the same model. **Apply** unloads
+     it and loads it fresh. Nothing downloads.
    - *Busy with other work*: check again in a moment.
    - *Isn't answering*: see [A host doesn't answer](#a-host-doesnt-answer).
 3. Click **Save logs to share** to send the result to someone who helps you.

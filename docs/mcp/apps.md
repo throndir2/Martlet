@@ -1536,6 +1536,7 @@ same dialog's `HostInputHeading` reads *Change <role> on <host>* (otherwise *Add
 `HostInput-choice.<VAR>` (and `HostInput-choice.accelerator`) starts on what the
 role runs with now, which `martlet-host describe` reports as
 `role.choice_current` and `role.accelerator_current` (a variant's own choice only while that variant runs), without *Automatic*.
+While a model choice (`HostInput-choice.<VAR>_MODEL`) shows the model the role runs now, `HostInputReload-<VAR>_MODEL` reads that Apply unloads it and loads it again fresh (the host's `add` runs its retire steps for that model before warming it); choosing another model hides it.
 On a host with two or more NVIDIA cards the dialog adds
 `HostInput-choice.gpu` (Automatic, each card by name and memory with the roles
 already on it, or All cards); one-click installs on such a host (listening,
