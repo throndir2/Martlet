@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Diagnostics › **Check your computers** finds what makes Martlet slow: how fast each of your computers answers, whether its models fit on the graphics card, and one short test reply from each thinking model. Home now warns when Martlet replies much slower than usual or a model doesn't fit on its graphics card, and the logs say when replies got slow. ([#1149](https://github.com/throndir2/Martlet/pull/1149))
+
 ### Fixed
 
 - Failed Thinking requests wait longer between limited retries, and memory tidying stops with an error when those retries fail. ([#1147](https://github.com/throndir2/Martlet/pull/1147))

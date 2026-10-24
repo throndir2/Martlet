@@ -74,6 +74,29 @@ audio.*; left out below 100 ms), and the model IDs
 (`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
 is in [Voice latency](../VOICE_LATENCY.md#measure-first-the-reply-latency-line).
 
+### Slow Thinking and Check your computers
+
+`thinking_speed_check` (optional `dataDirectory`) returns the rules of
+[When Thinking gets slow](../DIAGNOSTICS.md#when-thinking-gets-slow) (`rules`),
+each model's first-word `samples`, `recentMs`, `usualMs`, `slow`,
+`slowerThanUsual` and `warning` from `model-speed.json`, and each host model's
+`placement` (`GraphicsCard`, `Split` or `Processor`) from `model-memory.json`.
+Its `rehearsal` uses FIXTURE times, NOT a real host: a model that slows from
+about 2 s to over a minute is flagged as slower than usual, a fast and a
+recovered model aren't, a model with only slow replies is flagged as slow, a
+split model is found and a slow test reply is judged slow (`ok`). It is
+read-only and contacts nothing. `seedSlow: true` (needs `--allow-changes` and an
+explicit, disposable `dataDirectory`, never Martlet's own) instead saves a
+FIXTURE Thinking route (`http://127.0.0.1:9/v1`, `lab/slow`, NOT AI) when none
+is saved and `model-speed.json` with six fast and three slow replies, so a
+desktop started on that folder shows Home's warning.
+
+On Diagnostics, `ui_snapshot` returns `ComputerCheckStatus` and each finding
+`ComputerCheckLine-<n>` (✓ or ⚠, host and model names only). `ComputerCheckRun`
+(*Check now*) needs `--allow-ui-effects`: it sends a short test request to each
+host's Thinking models. Home shows the `thinking-slow` warning with its
+`check-computers` fix.
+
 `thinking_trace` reads the desktop log's
 [Thinking trace](../VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
 (optional absolute `dataDirectory`, default the current user's) and puts it

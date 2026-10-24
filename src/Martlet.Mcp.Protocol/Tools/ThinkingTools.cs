@@ -397,6 +397,22 @@ internal sealed partial class McpServer
             dataDirectory = new { type = "string" }
         },
             arguments => HelperJobsCheck.Status(DataDirectory(arguments))),
+        Tool("thinking_speed_check", "When Martlet calls Thinking slow (ThinkingSpeed; docs/DIAGNOSTICS.md, Check your computers), the " +
+            "rules Home's 'Martlet replies slowly' warning, Diagnostics > Check your computers and the desktop log's 'Thinking got slow' " +
+            "line use. From a data directory: each model's first-word samples (model-speed.json), recent and usual time and whether it " +
+            "is slow, and where each host's loaded models sit (model-memory.json: all on the graphics card, split with the processor, " +
+            "or on the processor). Its rehearsal (FIXTURE times, NOT a real host) checks a model that slows from about 2 s to over a " +
+            "minute is flagged, a fast one and a recovered one aren't, a split model is found and a slow test reply is judged slow (ok). " +
+            "Read-only; contacts nothing. seedSlow=true (needs --allow-changes and an explicit, disposable dataDirectory, never " +
+            "Martlet's own data folder) instead saves a FIXTURE Thinking route (http://127.0.0.1:9/v1, lab/slow, NOT AI) when none is " +
+            "saved and model-speed.json with six fast and three slow replies, so a desktop started on it shows Home's warning.", new
+        {
+            dataDirectory = new { type = "string" },
+            seedSlow = new { type = "boolean" }
+        },
+            async (arguments, cancellation) => OptionalBool(arguments, "seedSlow") == true
+                ? await ThinkingSpeedCheck.SeedAsync(OptionalString(arguments, "dataDirectory"), cancellation)
+                : ThinkingSpeedCheck.Run(DataDirectory(arguments))) with { Writes = arguments => OptionalBool(arguments, "seedSlow") == true },
         Tool("helper_jobs_check", "Rehearse the desktop's production helper-job router (HelperJobs) with a fixture Thinking pool and " +
             "fixture answers (NOT AI): memory and emote naming go to a free text member, touch zones wait for a running reply and " +
             "fall back while no member sees pictures, then go to a vision member, and memory falls back when no member is free. " +

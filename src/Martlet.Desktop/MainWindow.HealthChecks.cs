@@ -179,6 +179,11 @@ public partial class MainWindow
                 $"Last attempt: {failure.Outcome}; details are in the local log.",
                 [Open(tab, $"Check {label}"), Logs()]);
         }
+        // Thinking got slow (docs/DIAGNOSTICS.md, "Check your computers"): its newest replies against its usual time, and a
+        // host's model that isn't all on its graphics card.
+        if (llm is not null && ThinkingSlowNow(llm) is { } slow)
+            Add("thinking-slow", HealthLevel.Warning, slow.Title, slow.Detail,
+                [new("check-computers", "Check your computers", OpenComputerCheck), DiagnosticsPage(), Dismiss("thinking-slow")]);
 
         // Listening and its microphone.
         var standalone = hosts.All(h => h.HostId == localHost?.HostId);

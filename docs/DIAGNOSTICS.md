@@ -24,6 +24,47 @@ this page. *Copy shown* copies the shown lines; *Open logs folder* opens this
 PC's folder. The page refreshes every 15 seconds while open; *Refresh* reads
 again and sends nothing.
 
+### Check your computers
+
+The **Check your computers** card on Diagnostics finds what makes Martlet slow.
+Click **Check now**. Martlet checks each of your own paired hosts one after
+another (never a friend's shared host) and shows each finding as it comes, with
+⚠ for a problem:
+
+1. How long the host took to say what it runs. More than 2 s is slow.
+2. Where each loaded model sits, from the host's `/api/ps`: all on the graphics
+   card, split with the processor, or on the processor only. A split model
+   makes replies much slower. The check also keeps this in `model-memory.json`,
+   as a host check does.
+3. One short test reply from each Thinking model on the host (the conversation
+   model and the Thinking pool's). The test asks the model to count to thirty.
+   It never sends what you said. It reports the time to the first words, the
+   writing speed in tokens a second, and the model's usual first-word time.
+
+A test reply is slow when its first words take 15 s or more, when they take
+three times the usual time and at least 4 s more, or when the model writes fewer
+than 6 tokens a second. A busy host (a live reply on it) is not tested and says
+so. Every finding also goes to `desktop.log` as *Check your computers: ...*,
+problems as warnings, so a shared log shows them.
+
+### When Thinking gets slow
+
+After each reply, Martlet keeps how long the Thinking model took to its first
+words (`model-speed.json`: the last nine replies, and the model's usual time,
+which is the fastest middle of three replies in a row). Home warns
+**Martlet replies much slower than usual** when the middle of the newest three
+replies is three times the usual time and at least 4 s more. It warns
+**Martlet replies slowly** when that middle is 15 s or more, or when the host
+reported that the Thinking model isn't all on its graphics card. The warning
+has **Check your computers**, which opens Diagnostics and starts the check. The
+desktop log says *Thinking got slow: ...* once when a slowdown starts and
+*Thinking is fast again: ...* when it ends.
+
+These rules live in `ThinkingSpeed` (`src\Martlet.Core\Planning`). MCP's
+`thinking_speed_check` shows them for a data directory.
+
+### Window resources and saving logs
+
 **Window resources** lines in `desktop.log` show how many Window Manager and
 GDI objects the desktop holds, of the 10,000 of each that Windows allows one
 process. Martlet writes one a minute after it starts and then once an hour. It

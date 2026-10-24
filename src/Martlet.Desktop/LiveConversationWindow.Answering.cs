@@ -228,6 +228,15 @@ public partial class LiveConversationWindow
         if (controller.DataDirectory is not { } directory || ReplyLatency.ThinkingFirstWordMs(reply) is not { } ms ||
             configuration.Routes.ThinkingRoute() is not { Enabled: true } route) return;
         var (origin, model, at) = (route.Origin, route.ModelId, DateTimeOffset.UtcNow);
-        _ = Task.Run(() => Martlet.Core.Planning.MeasuredFirstWords.Record(directory, origin, model, ms, at));
+        _ = Task.Run(() =>
+        {
+            var before = Martlet.Core.Planning.ThinkingSpeed.Slowdown(Martlet.Core.Planning.MeasuredFirstWords.Load(directory).Find(origin, model));
+            if (!Martlet.Core.Planning.MeasuredFirstWords.Record(directory, origin, model, ms, at)) return;
+            // A slowdown is said once when it starts, and once when it is over, so a shared log shows when Thinking got slow.
+            var after = Martlet.Core.Planning.ThinkingSpeed.Slowdown(Martlet.Core.Planning.MeasuredFirstWords.Load(directory).Find(origin, model));
+            var where = route.Gateway?.HostId ?? origin;
+            if (after is not null && before is null) ErrorLog.Warn("Thinking got slow: " + after.Describe(where));
+            else if (after is null && before is not null) ErrorLog.Info($"Thinking is fast again: {model} on {where} answers as usual.");
+        });
     }
 }

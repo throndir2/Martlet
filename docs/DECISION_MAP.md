@@ -492,6 +492,27 @@ the paired host: ...*).
 **Docs:** [Resource footprints](RESOURCE_FOOTPRINTS.md),
 [Context size](CONVERSATION.md).
 
+## When Thinking counts as slow
+
+**What it decides:** when a Thinking model's replies count as slow or slower
+than usual, when a host's loaded model counts as not on its graphics card, and
+when a Check your computers test reply counts as slow.
+
+**Owner:** `ThinkingSpeed` (`src\Martlet.Core\Planning\ThinkingSpeed.cs`). The
+usual time is kept by `MeasuredFirstWords.With` (`UsualMs` in
+`model-speed.json`).
+
+**Shows it:** Home's `thinking-slow` warning (`MainWindow.HealthChecks.cs`),
+Diagnostics › Check your computers (`ComputerCheck`, `ComputerCheckStatus`,
+`ComputerCheckLine-<n>`), the desktop log (*Thinking got slow*, *Check your
+computers*).
+
+**Tests:** `ThinkingSpeedTests` (Martlet.Core.Tests).
+
+**MCP:** `thinking_speed_check`.
+
+**Docs:** [Check your computers](DIAGNOSTICS.md#check-your-computers).
+
 ## Which host runs an OpenAI-compatible request, and how it ranks
 
 **What it decides:** for a request of the [OpenAI-compatible
