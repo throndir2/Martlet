@@ -11,14 +11,14 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Diagnostics › **Check your computers** finds what makes Martlet slow: how fast each of your computers answers, whether its models fit on the graphics card, and one short test reply from each thinking model. Home now warns when Martlet replies much slower than usual or a model doesn't fit on its graphics card, and the logs say when replies got slow. ([#1149](https://github.com/throndir2/Martlet/pull/1149))
-- When Martlet starts research, reads up on an app, makes a song or a picture, or thinks longer, a card shows in the conversation and the task chip blinks, so you see that the work started and how it goes. Research for an app guide's brief now shows in the task list too. ([#1152](https://github.com/throndir2/Martlet/pull/1152))
+- When Martlet starts research, reads up on an app, makes a song or a picture, or thinks longer, a card shows in the conversation and the task chip blinks, so you see that the work started and how it goes. Research for an app guide's brief now shows in the task list too. ([#1153](https://github.com/throndir2/Martlet/pull/1153))
 
 ### Fixed
 
 - When you start a game, Martlet tells you again that she's reading up on it and asks if that's okay, instead of staying quiet. ([#1151](https://github.com/throndir2/Martlet/pull/1151))
 - Failed Thinking requests wait longer between limited retries, and memory tidying stops with an error when those retries fail. ([#1147](https://github.com/throndir2/Martlet/pull/1147))
-- Martlet no longer forgets something you asked while it was still busy with your earlier request, and a wrong tool name no longer stops the work. ([#1152](https://github.com/throndir2/Martlet/pull/1152))
-- Picture tasks show their own icon and title in the task list. ([#1152](https://github.com/throndir2/Martlet/pull/1152))
+- Martlet no longer forgets something you asked while it was still busy with your earlier request, and a wrong tool name no longer stops the work. ([#1153](https://github.com/throndir2/Martlet/pull/1153))
+- Picture tasks show their own icon and title in the task list. ([#1153](https://github.com/throndir2/Martlet/pull/1153))
 
 ## [0.94.0] - 2026-10-23
 
