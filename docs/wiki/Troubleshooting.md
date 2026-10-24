@@ -80,6 +80,27 @@ Each reply sends as much of the conversation as fits the **Context size** on **C
 3. Open **Settings › Tools › Prerequisites** and install the **WebView2 runtime** if it is missing.
 4. If the character is off screen, choose **Reset character position** on Home.
 
+## Martlet replies slowly or not at all
+
+When Martlet hears you but answers a minute later, or not before you talk again,
+its thinking model is too slow. Home says **Martlet replies slowly** or
+**Martlet replies much slower than usual** when it notices this.
+
+1. Open **Diagnostics** and click **Check now** under **Check your computers**.
+   Martlet asks each of your computers for a short test reply and where its
+   models run. It never sends what you said.
+2. Look for the lines with ⚠.
+   - *Only part of the model is on the graphics card* or *runs on the
+     processor*: something else uses that graphics card's memory, or the model
+     is too big for it. Close the other program, restart the computer's Ollama,
+     or choose a smaller model.
+   - *Writes few tokens a second*: the same causes. A model on the processor
+     writes only a few words a second.
+   - *Busy with other work*: check again in a moment.
+   - *Isn't answering*: see [A host doesn't answer](#a-host-doesnt-answer).
+3. Click **Save logs to share** to send the result to someone who helps you.
+   Each finding is also in the logs.
+
 ## Martlet doesn't hear you, or hears itself
 
 - Check that Windows lets desktop apps use the microphone. **Settings › Tools › Prerequisites** opens that Windows setting.

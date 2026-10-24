@@ -14,6 +14,11 @@ public sealed record MeasuredFirstWord
     public required IReadOnlyList<int> Samples { get; init; }
     public required DateTimeOffset MeasuredAt { get; init; }
 
+    /// <summary>The model's usual first word on this server: the fastest middle of <see cref="ThinkingSpeed.RecentCount"/> replies
+    /// in a row seen so far, or null before that many. <see cref="ThinkingSpeed.Slowdown"/> compares the newest replies with it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? UsualMs { get; init; }
+
     /// <summary>The middle of <see cref="Samples"/>: a model's first reply after it loaded (seconds late) doesn't count much.</summary>
     [JsonIgnore]
     public int Ms
@@ -62,7 +67,9 @@ public sealed record MeasuredFirstWords
         if (HostKey(host) is not { } key || model is not { Length: > 0 and <= 256 } || ms is <= 0 or > MaximumMs) return this;
         var before = Find(key, model);
         var samples = (before?.Samples ?? []).Append(ms).TakeLast(MaximumSamples).ToArray();
-        var measured = new MeasuredFirstWord { Host = key, Model = model, Samples = samples, MeasuredAt = at.ToUniversalTime() };
+        var recent = ThinkingSpeed.RecentMs(samples);
+        var usual = recent is { } now && (before?.UsualMs is not { } was || now < was) ? now : before?.UsualMs;
+        var measured = new MeasuredFirstWord { Host = key, Model = model, Samples = samples, MeasuredAt = at.ToUniversalTime(), UsualMs = usual };
         return this with
         {
             Models = [measured, .. Models.Where(m => m != before).Take(MaximumModels - 1)]
@@ -90,7 +97,7 @@ public sealed record MeasuredFirstWords
         ? name : name + ":latest";
 
     private static bool Valid(MeasuredFirstWord? m) => m is { Host.Length: > 0 and <= 2048, Model.Length: > 0 and <= 256, Samples.Count: > 0 and <= MaximumSamples } &&
-        m.Samples.All(s => s is > 0 and <= MaximumMs);
+        m.Samples.All(s => s is > 0 and <= MaximumMs) && m.UsualMs is null or > 0 and <= MaximumMs;
 
     public static MeasuredFirstWords Load(string? directory)
     {

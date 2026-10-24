@@ -535,6 +535,8 @@ internal static partial class AutomationPolicy
         new("HomeBetterSetup", "Home", "Shows 'A better setup is available' while a background check found a clearly better choice for a job. It is collapsed otherwise."),
         new("LogSummary", "Diagnostics", "Shows the summary of the log."),
         new("LogShareStatus", "Diagnostics", "Shows the status of sharing the log."),
+        new("ComputerCheckStatus", "Diagnostics › Check your computers", "Shows what the check is doing, or when it ran and how many problems it found."),
+        // Needs --allow-ui-effects: ComputerCheckRun (it sends a short test request to each host's Thinking models).
         new("LogDetail", "Diagnostics", "Shows the detail line of the log."),
         new("HostStatus", "Devices", "Shows the status of the host."),
         new("PairedHost", "Devices", "Shows the paired host."),
@@ -758,6 +760,7 @@ internal static partial class AutomationPolicy
     /// <summary>Families of generated IDs (every ID that starts with the entry) whose text ui_snapshot returns.</summary>
     internal static readonly Entry[] SafeValuePrefixes =
     [
+        new("ComputerCheckLine-", "Diagnostics › Check your computers", "One finding, such as ComputerCheckLine-0: ✓ or ⚠, then the host, its answer time, where a model sits or a test reply's speed. Host and model names only."),
         new("AccountSwitch-", "Account picker", "An account signed in on this PC, such as AccountSwitch-<32 hex>; reads its display name (Sam (in use) or Alex), and its checked state shows the one in use. Display names only."),
         // Needs --allow-ui-effects: clicking an AccountSwitch-<32 hex> account (it switches the account).
         new("SingingCloudProvider-", "Companion › Singing", "The provider chosen in a Singing cloud form, such as SingingCloudProvider-singing."),

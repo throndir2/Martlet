@@ -1037,7 +1037,8 @@
                                    Text="Activity, warnings and errors from Martlet on all your computers."/>
                     </StackPanel>
                 </DockPanel>
-                <Border Grid.Row="1" Style="{DynamicResource CardStyle}" Padding="20,14" AutomationProperties.Name="Logs from all your computers">
+                <StackPanel Grid.Row="1">
+                <Border Style="{DynamicResource CardStyle}" Padding="20,14" AutomationProperties.Name="Logs from all your computers">
                     <StackPanel>
                         <TextBlock Text="Logs from all your computers" FontWeight="SemiBold"/>
                         <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap">Every computer in your Martlet network shares its logs with the others, so each one shows them all.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="To get help, Save logs to share makes one file with everything." Wiki="Troubleshooting#get-help" AutomationProperties.AutomationId="Help-LogsAbout" AutomationProperties.Name="About logs from all your computers"/></InlineUIContainer></TextBlock>
@@ -1045,6 +1046,24 @@
                                    AutomationProperties.AutomationId="LogShareStatus" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </Border>
+                <!-- Check your computers: each host's answer time, where its models sit and a test reply (MainWindow.ComputerCheck.cs) -->
+                <Border Style="{DynamicResource CardStyle}" Padding="20,14" Margin="0,8,0,0" AutomationProperties.Name="Check your computers">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" x:Name="ComputerCheckButton" Content="Check _now" Click="ComputerCheck_Click" VerticalAlignment="Top"
+                                    AutomationProperties.AutomationId="ComputerCheckRun" AutomationProperties.Name="Check your computers now"/>
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="Check your computers" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap">Finds what makes Martlet slow: how fast each computer answers, whether its models fit on the graphics card, and one short test reply from each model.<InlineUIContainer BaselineAlignment="Center"><local:HelpTip Margin="6,0,0,0" Text="The test sends a short counting request, never what you said. Each finding also goes to the log." Wiki="Troubleshooting#martlet-replies-slowly-or-not-at-all" AutomationProperties.AutomationId="Help-ComputerCheck" AutomationProperties.Name="About Check your computers"/></InlineUIContainer></TextBlock>
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock x:Name="ComputerCheckStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="ComputerCheckStatus" AutomationProperties.LiveSetting="Polite"/>
+                        <StackPanel x:Name="ComputerCheckResults" AutomationProperties.AutomationId="ComputerCheckResults"
+                                    AutomationProperties.Name="What the check found"/>
+                    </StackPanel>
+                </Border>
+                </StackPanel>
                 <StackPanel Grid.Row="2" Margin="0,2,0,6">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,6">
