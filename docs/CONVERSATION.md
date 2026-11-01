@@ -1842,6 +1842,10 @@ request is what it always was.
 
 ### Where you are in a game
 
+Structured game state, saved playthroughs, hints and the user's preferences are
+in progress: see the [game-state plan](GAME_STATE_PLAN.md). This section
+describes the current behavior.
+
 The screen summary tells only the last seconds of the screen, and it is fresh
 for 45 seconds. So Martlet also keeps a **running note** on where you are in
 the game in front: the place, what you do, what happened lately and how far
