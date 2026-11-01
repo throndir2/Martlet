@@ -156,11 +156,11 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.95.1
+## 🆕 What's new in 0.96.0
 
-- 🔄 **Reload a slow model**: changing a computer's model to the one it already runs now loads it fresh.
-- 🧩 **Room for your other model apps**: Martlet leaves graphics memory for llama.cpp, LM Studio or another Ollama on the same computer.
-- 🖥️ **Check your computers names them**: Diagnostics shows which other apps hold graphics memory, and a model loaded twice.
+- 🗝️ **Secrets while you play**: Martlet tells you about secret rooms, hidden items, puzzle solutions and boss tips for where you are in a game, without spoiling the story.
+- 🎮 **It knows your game**: Martlet keeps track of where you are, your goal, your character, build and equipment for each playthrough, also after a restart.
+- 📝 **Your preferences**: tell Martlet *stop giving hints* or *no spoilers for Elden Ring*, and it saves that and follows it on all your computers.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
