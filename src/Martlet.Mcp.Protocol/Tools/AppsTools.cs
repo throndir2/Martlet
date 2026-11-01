@@ -431,6 +431,21 @@ internal sealed partial class McpServer
             dataDirectory = new { type = "string" }
         },
             async (arguments, cancellation) => await AppGuidesCheck.StatusAsync(DataDirectory(arguments), cancellation)),
+        Tool("game_hints_check", "Hints and secrets (docs/APP_GUIDES.md, Hints and secrets): when the place in a game changes, a " +
+            "Thinking pool member picks one secret, hidden item, puzzle solution or boss tip from the game's App guide, with your " +
+            "preferences, and Martlet says it at a quiet moment. Rehearsed with the production hint keeper (GameHints), guide " +
+            "library (AppGuideService, FileAppGuideStore) and guide search (AppGuideHintGuide) on a FIXTURE guide about a made-up " +
+            "game in a temporary folder (deleted afterwards), FIXTURE places and preferences and a FIXTURE pool member (answers made " +
+            "from the request, NOT AI; nothing is sent). Returns each step (a hint at a new place, the same topic not told again, a " +
+            "stop by a preference, no new request while it stays, a hint again when it is gone), the hints said, whether the guide " +
+            "sections, the told topics and the preference went with the request, whether the instructions stay the same, the counts " +
+            "and the limits. reply (optional) is parsed like a pool member's answer ([pass], [none], or Topic and Hint; a hint that " +
+            "says it sees the screen is refused). Live hints log \"Game hints: said a hint\" in the desktop log. Reads no " +
+            "credentials and contacts nothing.", new
+        {
+            reply = new { type = "string", maxLength = 2048 }
+        },
+            async (arguments, cancellation) => await GameHintsCheck.RunAsync(OptionalString(arguments, "reply"), cancellation)),
         Tool("conversation_history_status", "Companion > Memory > Conversation history, from a data directory: whether memory is " +
             "on, this PC's choices (conversation-history.json: keep a record of conversations, on by default; let Martlet search it " +
             "on its own, off by default), whether exchanges are recorded and recalled when a message mentions an earlier " +
