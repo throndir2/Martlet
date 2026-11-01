@@ -2035,7 +2035,10 @@ block says how many. The instructions and the tools never change for it, so
 prompt caches keep working and the first word does not wait: the owner keeps
 the list in memory and checks only the file's time. Screen and camera glances
 carry the same block, also when their other notes do not fit. Every check-in's
-facts end with the same preferences, so what it brings up follows them.
+facts end with the same preferences, so what it brings up follows them. Game
+hints read the same block for `gaming/<game>` before each hint, and a
+preference such as *stop giving hints* stops them ([Hints and
+secrets](APP_GUIDES.md#hints-and-secrets)).
 
 **Read contract for other features** (such as hints, [GAME_STATE_PLAN.md](GAME_STATE_PLAN.md)):
 

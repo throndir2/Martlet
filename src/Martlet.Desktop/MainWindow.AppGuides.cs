@@ -28,6 +28,8 @@ public partial class MainWindow
                 if (!closing && openTab == CompanionTab.AppGuides) AppGuidesPage.RenderGameState();
             });
             conversation.StartGuideResearch(appGuides, web);
+            if (conversation.Preferences is { } preferences)
+                StartGameHints(new UserPreferencesHints(preferences, () => conversation.Configuration?.Prompts));
         }
         appGuideWatch = new AppGuideWatch(appGuides);
         appGuideWatch.OfferDue += offer => Dispatcher.BeginInvoke(() => OfferAppGuide(offer));

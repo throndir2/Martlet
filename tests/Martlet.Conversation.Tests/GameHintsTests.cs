@@ -179,6 +179,29 @@ public sealed class GameHintsTests
     }
 
     [Fact]
+    public void The_hint_preferences_are_those_that_apply_while_playing_the_game()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "martlet-hint-preferences-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new Martlet.Core.Preferences.UserPreferences(root);
+            var hints = new UserPreferencesHints(store);
+            Assert.Null(hints.For("Elden Ring"));
+            store.Add("Keep replies short.", null, Martlet.Core.Preferences.UserPreferences.Typed);
+            store.Add("No spoilers for Skyrim.", Martlet.Core.Activities.ActivityScope.Game("Skyrim"), Martlet.Core.Preferences.UserPreferences.Said);
+            store.Add("Stop giving hints.", Martlet.Core.Activities.ActivityScope.Game("Elden Ring"), Martlet.Core.Preferences.UserPreferences.Said);
+            var note = hints.For("Elden Ring")!;
+            Assert.Contains("Keep replies short.", note, StringComparison.Ordinal);
+            Assert.Contains("Stop giving hints.", note, StringComparison.Ordinal);
+            Assert.DoesNotContain("Skyrim", note, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void The_answer_is_a_pass_none_or_a_topic_and_hint_and_never_a_claim_about_the_screen()
     {
         Assert.Equal(GameHints.Pass, GameHints.Parse("\"[PASS]\"")!.Value.Kind);

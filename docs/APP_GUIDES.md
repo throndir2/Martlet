@@ -543,7 +543,9 @@ here."* `GameHints` (`src\Martlet.Conversation\Guides\GameHints.cs`) owns it.
    are](#researching-where-you-are) (`AppGuideResearcher.ResearchAreaAsync`,
    which never waits for another research job).
 3. A Thinking pool member gets the game, the place, the goal, **the user's
-   preferences** that apply now (`IHintPreferences`), the hints already told
+   preferences** that apply while they play that game (`UserPreferencesHints`:
+   `UserPreferences.Note` for `gaming/<game>`, the same block replies get, see
+   [Your preferences](CONVERSATION.md#your-preferences)), the hints already told
    at that place, and the sections. Its instructions never change, so every
    request starts the same way. It answers `Topic:` and `Hint:`, `[none]`
    when the sections have nothing new, or `[pass]` when a preference forbids

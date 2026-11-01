@@ -1,20 +1,23 @@
 using System.IO;
 using Martlet.Conversation;
 using Martlet.Conversation.Guides;
+using Martlet.Core.Activities;
+using Martlet.Core.Preferences;
 
 namespace Martlet.Mcp;
 
 /// <summary>game_hints_check: hints and secrets (<see cref="GameHints"/>, docs/APP_GUIDES.md "Hints and secrets"), rehearsed with
 /// the production hint keeper, App guide library (<see cref="AppGuideService"/>, <see cref="FileAppGuideStore"/>) and guide search
 /// (<see cref="AppGuideHintGuide"/>) on a FIXTURE guide about a made-up game in a temporary folder, the production game state
-/// (<see cref="GameProgress"/>, <see cref="GameProgressPlaces"/>) updated from FIXTURE screen notes, a FIXTURE preference, and a
-/// FIXTURE Thinking pool member (answers made from the request, NOT AI; nothing is sent). It shows a hint at a
+/// (<see cref="GameProgress"/>, <see cref="GameProgressPlaces"/>) updated from FIXTURE screen notes, a FIXTURE preference in the production
+/// preferences store (<see cref="UserPreferences"/>, <see cref="UserPreferencesHints"/>), and a FIXTURE Thinking pool member
+/// (answers made from the request, NOT AI; nothing is sent). It shows a hint at a
 /// place, no repeat of the same topic, a stop by a preference (and no new request while the preference stays) and a hint again
 /// when the preference is gone. An optional <c>reply</c> is parsed the way a pool member's answer is.</summary>
 internal static class GameHintsCheck
 {
     private const string Game = "Starfall Valley (FIXTURE)";
-    private const string Stop = "- Stop giving hints unless I ask. (FIXTURE preference)";
+    private const string Stop = "Stop giving hints unless I ask. (FIXTURE preference)";
 
     internal static async Task<object> RunAsync(string? reply, CancellationToken cancellation)
     {
@@ -40,7 +43,8 @@ internal static class GameHintsCheck
             await guides.SetOnAsync(true, cancellation);
 
             var clock = new Clock();
-            var preferences = new Preferences();
+            var saved = new UserPreferences(Path.Combine(folder, "preferences"));
+            var preferences = new UserPreferencesHints(saved);
             var thinker = new FixtureThinker();
             var speaker = new Speaker();
             using var progress = new GameProgress(thinker, new ContextBoard());
@@ -61,7 +65,9 @@ internal static class GameHintsCheck
             var repeat = await hints.HintAsync(cave, cancellation);
             var toldTopicsSent = thinker.Asks.Count > 1 && thinker.Asks[1].Text.Contains("Hints already told here: Secret room behind the waterfall", StringComparison.Ordinal);
 
-            preferences.Text = Stop;
+            var other = saved.Add("No hints for Skyrim. (FIXTURE preference)", ActivityScope.Game("Skyrim"), UserPreferences.Typed);
+            var stop = saved.Add(Stop, ActivityScope.Game(Game), UserPreferences.Said);
+            var otherGameLeftOut = preferences.For(Game) is { } note && !note.Contains("Skyrim", StringComparison.Ordinal);
             await progress.UpdateAsync(Game, null, "Screen over the last 9 s: a lake under the moon, three lanterns. FIXTURE note.", cancellation);
             var lake = places.Current ?? new(Game, null, null);
             clock.Now += TimeSpan.FromMinutes(10);
@@ -71,20 +77,21 @@ internal static class GameHintsCheck
             var stillStopped = await hints.HintAsync(lake, cancellation);
             var notAskedAgain = thinker.Asks.Count == asksAfterStop;
 
-            preferences.Text = null;
+            saved.Remove(stop.Preference?.Id);
             clock.Now += TimeSpan.FromMinutes(10);
             var again = await hints.HintAsync(lake, cancellation);
             var sameStart = thinker.Asks.All(a => a.Instructions == GameHints.Instructions && a.Label == GameHints.Label);
 
             var bothPlaces = changes.Count == 2 && lake.Place == "Moonlit Lake.";
-            var ok = placeFromState && bothPlaces && first.Said && guideFound && unrelatedLeftOut && repeat.Repeat && toldTopicsSent && stopped.Passed && preferenceSent &&
+            var ok = other.Done && stop.Done && otherGameLeftOut && placeFromState && bothPlaces && first.Said && guideFound && unrelatedLeftOut && repeat.Repeat && toldTopicsSent && stopped.Passed && preferenceSent &&
                 stillStopped.Passed && notAskedAgain && again.Said && speaker.Said.Count == 2 && sameStart;
             var parsed = reply is null ? null : GameHints.Parse(reply);
             return new
             {
                 ok,
                 note = "The production hint keeper, App guide library and guide search on a FIXTURE guide about a made-up game (NOT a " +
-                    "real wiki), the production game state updated from FIXTURE screen notes, a FIXTURE preference, and a FIXTURE Thinking pool member (answers made from the request, NOT " +
+                    "real wiki), the production game state updated from FIXTURE screen notes, FIXTURE preferences in the production " +
+                    "preferences store (in the temporary folder), and a FIXTURE Thinking pool member (answers made from the request, NOT " +
                     "AI). Live, the place and goal come from the game state, the preferences from your preferences, the model work runs " +
                     "as a Research job on a Thinking pool member, and the hint is brought up in the talk window at a quiet moment.",
                 steps = new object[]
@@ -99,6 +106,7 @@ internal static class GameHintsCheck
                 unrelatedSectionsLeftOut = unrelatedLeftOut,
                 toldTopicsSent,
                 preferenceSent,
+                preferences = new { added = stop.Done, scope = ActivityScope.Game(Game), otherGameLeftOut, removed = saved.All.Count == 1 },
                 notAskedAgainWhileStopped = notAskedAgain,
                 instructionsStayTheSame = sameStart,
                 requests = thinker.Asks.Count,
@@ -136,12 +144,6 @@ internal static class GameHintsCheck
     {
         internal DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => Now;
-    }
-
-    private sealed class Preferences : IHintPreferences
-    {
-        internal string? Text { get; set; }
-        public string? For(string game) => Text;
     }
 
     private sealed class Speaker : IHintSpeaker

@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Text;
+using Martlet.Core.Activities;
+using Martlet.Core.Preferences;
+using Martlet.Core.Settings;
 
 namespace Martlet.Conversation.Guides;
 
@@ -420,6 +423,13 @@ public sealed class GameHints : IDisposable
         closing.Cancel();
         closing.Dispose();
     }
+}
+
+/// <summary>The user's preferences for hints (<see cref="UserPreferences"/>): those that apply while the user plays the game
+/// (activity <c>gaming/&lt;game&gt;</c>, so also everywhere and while gaming), as the same bounded block replies get.</summary>
+public sealed class UserPreferencesHints(UserPreferences preferences, Func<PromptSettings?>? prompts = null) : IHintPreferences
+{
+    public string? For(string game) => preferences.Note(ActivityScope.Game(game), prompts?.Invoke());
 }
 
 /// <summary>Where the user is, from the game state (<see cref="GameProgress.Read"/> and <see cref="GameProgress.PlaceOrGoalChanged"/>).
