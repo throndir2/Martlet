@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Martlet keeps track of where you are in each game, your goal, your character, build and equipment, for each playthrough. It remembers this after a restart and on your other computers, and you can correct it by telling Martlet or in Companion › App guides › Game state. ([#1161](https://github.com/throndir2/Martlet/pull/1161))
+
 ## [0.95.1] - 2026-10-24
 
 ### Fixed
