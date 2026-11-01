@@ -1916,6 +1916,17 @@ the user set a field (place).*, never the game, the screen or a value. MCP's
 `game_state_read`, `game_state_correct` and `game_state_delete` work on a data
 folder's state ([MCP](mcp/thinking.md)).
 
+### Hints while you play
+
+When the place or goal in the game changes, Martlet may tell one secret,
+hidden item, puzzle solution or boss tip for that place, from the game's App
+guide: [Hints and secrets](APP_GUIDES.md#hints-and-secrets). A Thinking pool
+member picks it as a `Research` job, with the user's preferences, so *stop
+giving hints* stops it. The talk window brings it up like a check-in's notice,
+only at a quiet moment and at most once in 4 minutes, and never twice for the
+same place and topic. Nothing is added to a reply's wait or to the start of a
+request.
+
 ## Reminders
 
 *"Remind me to do the dishes in an hour."* Every reply on a route that does

@@ -513,6 +513,25 @@ Other features read it only through `GameProgress.Read` and
 
 **Docs:** [Where you are in a game](CONVERSATION.md#where-you-are-in-a-game).
 
+## Whether, when and which game hint Martlet tells
+
+**What it decides:** whether Martlet tells a secret, hidden item, puzzle solution or boss tip for the place the player is
+at, which one, when (a quiet moment, at most once in 4 minutes) and that it is never told twice for the same place and
+topic. The user's preferences can stop or change it (the model answers `[pass]`).
+
+**Owner:** `GameHints` (`src\Martlet.Conversation\Guides\GameHints.cs`): the instructions, the guide searches, the
+repeat and timing rules and the parse (also the refusal of a hint that says it sees the screen); `AppGuideHintGuide`
+(same file) for the guide sections; `AppGuideResearcher.ResearchAreaAsync` for research within its limits. The desktop's
+`MainWindow.GameHints.cs` only wires the inputs, and `LiveConversationWindow.HintMoment` decides the quiet moment.
+
+**Shows it:** Companion › App guides (`AppGuidesHints`), the desktop log (*Game hints: said a hint in 4.2 s.*).
+
+**Tests:** `GameHintsTests` (Martlet.Conversation.Tests).
+
+**MCP:** `game_hints_check`.
+
+**Docs:** [Hints and secrets](APP_GUIDES.md#hints-and-secrets).
+
 ## The context window a host's conversation model loads
 
 **What it decides:** how many tokens of context (Ollama's `num_ctx`) a paired

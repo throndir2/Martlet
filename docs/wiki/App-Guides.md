@@ -73,6 +73,13 @@ While you play, she keeps track of where you are, your goal, what you do, your c
 - **A new save.** Say *"I started a new playthrough"*, and she keeps the new one apart from the old one.
 - **Game state card.** **Companion › App guides › Game state** shows what she knows about each game. Press **Forget** to delete a game's state.
 - **Saved and shared.** The game state is saved and goes to your other computers, so she remembers after a restart. Clear **Save the game state and share it with my other computers** to keep it only until Martlet closes.
+
+## Hints and secrets
+
+When she knows where you are in a game with a guide, she may tell you one useful thing about that place: a secret room, a hidden item, a puzzle solution or a boss tip. She says it straight out, once, when nobody is talking, and not more than once in 4 minutes. She never tells the same thing twice for the same place. She doesn't tell big story spoilers (twists, deaths, endings) on her own, but answers if you ask.
+
+Don't want hints? Tell her: *"stop giving hints"*, *"no spoilers"* or *"only give hints when I ask"*. She keeps that as your preference and follows it until you change your mind. **Companion › App guides** shows how many hints she said and how many your preferences held back.
+
 ## What is sent where
 
 - The game's name goes to DuckDuckGo. The wiki sites see the requests and this PC's internet address.
