@@ -2,6 +2,7 @@ using System.Text.Json;
 using Martlet.Conversation;
 using Martlet.Conversation.Guides;
 using Martlet.Conversation.Tests;
+using Martlet.Core.Settings;
 using Martlet.Desktop;
 using Martlet.Providers.Tests;
 
@@ -38,7 +39,8 @@ public sealed class AppGuidesDesktopTests
         var asked = fixture.Start("Where can I mine iron ore?");
         await fixture.Finish(asked);
         var tools = ToolNames(fixture.Llm.Body);
-        Assert.Equal([.. before, AppGuideTools.ReadUpName, AppGuideTools.SearchName, AppGuideTools.SkipName, AppGuideTools.BriefName], tools);
+        Assert.Equal([.. before, AppGuideTools.ReadUpName, AppGuideTools.SearchName, AppGuideTools.SkipName, AppGuideTools.BriefName,
+            GameStateTools.Name], tools);
         Assert.True(asked.GuideSections >= 1);
         var notes = Notes(fixture.Llm.Body)!;
         Assert.Contains(GuideRecall.Label, notes);
@@ -55,6 +57,33 @@ public sealed class AppGuidesDesktopTests
         Assert.DoesNotContain(GuideRecall.Label, Notes(fixture.Llm.Body) ?? "");
         Assert.Equal(instructions, Instructions(fixture.Llm.Body));
         Assert.Equal(tools, ToolNames(fixture.Llm.Body));
+    }
+
+    [Fact]
+    public async Task GameStateReadsAndCorrectsTheSavedStateOfTheGame()
+    {
+        await using var fixture = await LiveFixture.Create(tools: true, data: true);
+        using var guides = new AppGuideService(new FileAppGuideStore(Path.Combine(fixture.DirectoryPath, "guides")), new FixtureBuilder());
+        await guides.LoadAsync();
+        fixture.Controller.Guides = guides;
+        Assert.True(fixture.Controller.GameStateTool(new("call-0", GameStateTools.Name, "{\"action\":\"read\"}")).IsError);
+        using var web = new WebAccess();
+        fixture.Controller.StartGuideResearch(guides, web);
+        try
+        {
+            var changed = 0;
+            fixture.Controller.GameStateChanged += () => changed++;
+            var set = fixture.Controller.GameStateTool(new("call-1", GameStateTools.Name,
+                "{\"action\":\"correct\",\"game\":\"Skyrim\",\"field\":\"character_level\",\"value\":\"12\"}"));
+            Assert.False(set.IsError);
+            Assert.Contains("Level: 12 (the user said", set.Output);
+            var read = fixture.Controller.GameStateTool(new("call-2", GameStateTools.Name, "{\"action\":\"read\"}"));
+            Assert.StartsWith("Game: Skyrim\nPlaythrough: main", read.Output);
+            Assert.True(fixture.Controller.GameStateTool(new("call-3", GameStateTools.Name, "{\"action\":\"correct\"}")).IsError);
+            Assert.Equal(1, changed);
+            Assert.Equal("12", GameStateFile.Load(fixture.DirectoryPath).Playthroughs.Single().Facts[GameFields.CharacterLevel].Value);
+        }
+        finally { fixture.Controller.StopGuideResearch(); }
     }
 
     [Fact]

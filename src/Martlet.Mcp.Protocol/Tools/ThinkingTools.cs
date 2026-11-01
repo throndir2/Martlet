@@ -314,18 +314,50 @@ internal sealed partial class McpServer
             reply = new { type = "string", maxLength = 1024 }
         },
             async (arguments, cancellation) => await ScreenDigestCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation)),
-        Tool("game_progress_check", "Where the user is in a game (docs/CONVERSATION.md, Where you are in a game): the running note " +
-            "a Thinking pool member keeps from the screen summaries while a game is in front, rehearsed with the production note " +
-            "keeper (GameProgress) and context board and a FIXTURE pool member (canned answers, NOT AI; nothing is sent). Two " +
-            "FIXTURE screen summaries make a note and a newer note built on it, \"[same]\" keeps it, a bad answer leaves the board " +
-            "as it was. Returns each update, whether the second request carried the earlier note, whether the instructions stay " +
-            "the same, the board's sources and game note (source game, right after screen) and the limits. reply (optional) is " +
-            "cleaned like a pool member's answer and shown as the board line. Live updates log \"Game progress: updated the note\" " +
-            "in the desktop log. Reads no credentials and contacts nothing.", new
+        Tool("game_progress_check", "The game state (docs/CONVERSATION.md, Where you are in a game): where the user is in a game, " +
+            "their goal, character (name, class, level), build, equipment, recent events and progress, kept per game and playthrough " +
+            "by GameProgress from the screen summaries, rehearsed with the production keeper, context board and shared-settings " +
+            "section, a FIXTURE pool member (canned answers, NOT AI; nothing is sent) and disposable data folders. Steps: an update " +
+            "fills the fields it shows and raises the place-or-goal event, the next changes only what it shows, \"[same]\" keeps it, " +
+            "a bad answer changes nothing, the user's correction wins over the screen, the board line (source game, right after " +
+            "screen, place and goal first, within its byte limit), the saved state read again as not seen this session, a new " +
+            "playthrough, sharing with a second computer, deleting a game and saving off. reply (optional) is parsed like a pool " +
+            "member's answer. Live updates log \"Game progress: updated the state\" in the desktop log. Reads no credentials and " +
+            "contacts nothing.", new
         {
             reply = new { type = "string", maxLength = 2048 }
         },
             async (arguments, cancellation) => await GameProgressCheck.RunAsync(OptionalString(arguments, "reply"), cancellation)),
+        Tool("game_state_read", "Read the saved game state of a data folder (game-state.json; Companion > App guides > Game state): " +
+            "whether saving is on and, for each game, its playthroughs (which is current, when it changed) and their fields (place, " +
+            "goal, doing, character name, class and level, build, equipment, lately, progress) with when each was seen or set and " +
+            "whether the user set it. A running Martlet may hold newer facts in memory until its next save. " + DataDirectoryNote +
+            " Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        },
+            arguments => GameProgressCheck.Read(DataDirectory(arguments))),
+        Tool("game_state_correct", "Correct a game's state as the user would (game_state's correct and playthrough): field is one " +
+            "of place, goal, doing, character_name, character_class, character_level, build, equipment, lately, progress (or a label " +
+            "such as Where); value is its new value, empty to clear it; playthrough (optional) first chooses or starts a named " +
+            "playthrough. The user's value wins over the screen for an hour. Saved in game-state.json and shared; a running Martlet " +
+            "reads it again before its next use. Needs --allow-changes. " + DataDirectoryNote, new
+        {
+            game = new { type = "string", maxLength = 80 },
+            field = new { type = "string", maxLength = 40 },
+            value = new { type = "string", maxLength = 300 },
+            playthrough = new { type = "string", maxLength = 40 },
+            dataDirectory = new { type = "string" }
+        }, ["game"],
+            arguments => GameProgressCheck.Correct(DataDirectory(arguments), RequiredString(arguments, "game"), OptionalString(arguments, "field"),
+                OptionalString(arguments, "value"), OptionalString(arguments, "playthrough")), ToolPermission.Changes),
+        Tool("game_state_delete", "Delete everything Martlet keeps about a game (all its playthroughs) from game-state.json, and so " +
+            "from the owner's other computers. Needs --allow-changes. " + DataDirectoryNote, new
+        {
+            game = new { type = "string", maxLength = 80 },
+            dataDirectory = new { type = "string" }
+        }, ["game"],
+            arguments => GameProgressCheck.Delete(DataDirectory(arguments), RequiredString(arguments, "game")), ToolPermission.Changes),
         Tool("context_board", "The context board (where background sources such as a screen digest, the sounds this PC plays, " +
             "touches on the character and the character's lingering emotes keep their newest short note for the live " +
             "conversation), rehearsed with the production board, request layout and Chat Completions adapter against a fixture " +

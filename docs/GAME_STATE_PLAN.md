@@ -80,6 +80,13 @@ source `game`.
 playthrough and its fields, and an event when the place or goal changes.
 Part 3 uses only these.
 
+**Merged** in [#1161](https://github.com/throndir2/Martlet/pull/1161). The read
+method is `GameProgress.Read(string? game)` (null: the current game). It returns
+a `GameState` (`Game`, `Playthrough`, `UpdatedAt`, `Fields` of `GameStateField`,
+`Playthroughs`, `Place`, `Goal`) or null. The event is
+`GameProgress.PlaceOrGoalChanged` (`Action<GamePlaceChange>`). The contract
+page is [Where you are in a game](CONVERSATION.md#where-you-are-in-a-game).
+
 ## Part 3: hints and secrets
 
 Built after parts 1 and 2 are merged, on fresh `main`.

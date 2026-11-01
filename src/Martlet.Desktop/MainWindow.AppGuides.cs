@@ -23,6 +23,10 @@ public partial class MainWindow
         if (conversation is not null)
         {
             conversation.Guides = appGuides;
+            conversation.GameStateChanged += () => Dispatcher.BeginInvoke(() =>
+            {
+                if (!closing && openTab == CompanionTab.AppGuides) AppGuidesPage.RenderGameState();
+            });
             conversation.StartGuideResearch(appGuides, web);
         }
         appGuideWatch = new AppGuideWatch(appGuides);

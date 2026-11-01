@@ -65,6 +65,14 @@ While an app is in front, or when you name it, the parts of its guide that best 
 
 No reply waits for reading, the brief or these look-ups.
 
+## Where you are in a game
+
+While you play, she keeps track of where you are, your goal, what you do, your character (name, class and level), your build and equipment, what happened lately and how far you are. She learns it from the screen summary ([Vision](Vision)), and she keeps it for each game and each playthrough.
+
+- **Tell her when she's wrong.** Say *"I'm level 12 now"* or *"my character is Lydia"*. Your word wins over what she saw on the screen.
+- **A new save.** Say *"I started a new playthrough"*, and she keeps the new one apart from the old one.
+- **Game state card.** **Companion › App guides › Game state** shows what she knows about each game. Press **Forget** to delete a game's state.
+- **Saved and shared.** The game state is saved and goes to your other computers, so she remembers after a restart. Clear **Save the game state and share it with my other computers** to keep it only until Martlet closes.
 ## What is sent where
 
 - The game's name goes to DuckDuckGo. The wiki sites see the requests and this PC's internet address.

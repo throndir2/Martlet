@@ -6,7 +6,7 @@ using Martlet.Conversation.Guides;
 namespace Martlet.Desktop;
 
 /// <summary>Companion › App guides (docs/APP_GUIDES.md), the UI only: the On switch (on by default) with what leaves this PC, Read up
-/// when I start a game or app (on by default), the list of apps with their guides (Read up now or Read again, Read more, Allow
+/// when I start a game or app (on by default), the Game state card (AppGuidesPage.GameState.cs), the list of apps with their guides (Read up now or Read again, Read more, Allow
 /// again, Delete; AppGuidesPage.Apps.cs) and Add an app (AppGuidesPage.Add.cs). What each line says is in
 /// <see cref="AppGuidesPageModel"/>; what the page needs from the app is <see cref="IAppGuidesPageServices"/>. MainWindow keeps one
 /// page for the window's life: it keeps the Add an app boxes and the status lines it updates while Martlet reads up.</summary>
@@ -23,6 +23,7 @@ internal sealed partial class AppGuidesPage(IAppGuidesPageServices services)
     {
         rows.Clear();
         nowText = frontText = null;
+        gameStatePanel = null;
         if (services.Guides is not { } guides)
         {
             page.Children.Add(PageNowCard("App guides are unavailable until Martlet's data folder can be used.", null, "AppGuidesNow"));
@@ -63,6 +64,8 @@ internal sealed partial class AppGuidesPage(IAppGuidesPageServices services)
         AutomationProperties.SetLiveSetting(front, AutomationLiveSetting.Polite);
         frontText = front;
         page.Children.Add(Card(Heading("App guides"), on, disclosure, ask, askNote, front));
+
+        page.Children.Add(GameStateCard());
 
         page.Children.Add(AppsCard(guides, model));
 

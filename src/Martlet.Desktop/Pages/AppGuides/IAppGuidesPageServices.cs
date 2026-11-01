@@ -13,6 +13,9 @@ internal interface IAppGuidesPageServices
     /// <summary>The guide library, or null until Martlet's data folder can be used.</summary>
     AppGuideService? Guides { get; }
 
+    /// <summary>The game state (the Game state card), or null while App guides haven't started it.</summary>
+    GameProgress? GameProgress { get; }
+
     /// <summary>Ends when the window closes.</summary>
     CancellationToken Token { get; }
 
