@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-10-31
+
 ### Added
 
 - Martlet tells you secrets while you play: when it knows where you are in a game with a guide, it may say something like *"there's apparently a secret room behind the waterfall here"*, or a hidden item, a puzzle solution or a boss tip, once, when nobody is talking. It never repeats one for the same place, doesn't spoil the story unless you ask, and stops when you tell it *"stop giving hints"*. Companion › App guides shows what the hints did. ([#1163](https://github.com/throndir2/Martlet/pull/1163))
