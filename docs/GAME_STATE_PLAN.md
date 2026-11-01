@@ -55,7 +55,7 @@ its shared settings store (registered in `SettingsFiles`, shared by default).
 apply now (for an activity such as `gaming/<game>`) and one formatted text
 block for a request. Part 3 uses only this read method.
 
-**Merged** in [#PRNUMBER](https://github.com/throndir2/Martlet/pull/PRNUMBER).
+**Merged** in [#1162](https://github.com/throndir2/Martlet/pull/1162).
 The actual behavior is in [Your preferences](CONVERSATION.md#your-preferences).
 The read contract (`Martlet.Core.Preferences.UserPreferences`):
 
