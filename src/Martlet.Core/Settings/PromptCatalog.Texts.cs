@@ -106,6 +106,9 @@ public static partial class PromptCatalog
         "Martlet just started; this is your first moment together:\n{facts}\nAnswer what the user just said first. Then, " +
         "only if your character would, greet them briefly.";
 
+    public const string DefaultUserPreferencesInstructions =
+        "The user's standing preferences for how you behave. They asked for these: follow them now and every time until they " +
+        "change them with manage_preferences. When two disagree, the later line wins:\n{preferences}";
     public const string DefaultTouchedInstructions =
         "(Martlet's note, not from the user: the user just touched you, their desktop character, or moved you.) {touches} " +
         "React out loud the way you really would, true to your personality: a sound (a gasp, a giggle, a sigh), words, or " +

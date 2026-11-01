@@ -55,6 +55,19 @@ its shared settings store (registered in `SettingsFiles`, shared by default).
 apply now (for an activity such as `gaming/<game>`) and one formatted text
 block for a request. Part 3 uses only this read method.
 
+**Merged** in [#PRNUMBER](https://github.com/throndir2/Martlet/pull/PRNUMBER).
+The actual behavior is in [Your preferences](CONVERSATION.md#your-preferences).
+The read contract (`Martlet.Core.Preferences.UserPreferences`):
+
+- `IReadOnlyList<UserPreference> ApplyingNow(string? activity)`: the
+  preferences that apply now, everywhere first and the most specific last.
+- `string? Note(string? activity, PromptSettings? prompts)`: the one bounded
+  block for the end of a request, or null when none applies.
+- `static string? Note(IReadOnlyList<UserPreference>, PromptSettings?)` and
+  `static string Line(UserPreference)`: format a list already read.
+- `event Action? Changed`. The desktop's instance is
+  `LiveConversationController.Preferences`.
+
 ## Part 2: structured, saved game state
 
 **Owner:** `GameProgress` (`src\Martlet.Conversation\Guides\GameProgress.cs`)

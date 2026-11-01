@@ -101,6 +101,8 @@ public static class SettingsFiles
         new(MemoryBriefFile.FileName, SettingsFileScope.Account, MemoryBriefFile.SharedKey, "Martlet.Core.Settings.MemoryBriefFile"),
         new(GameStateFile.FileName, SettingsFileScope.Account, GameStateFile.SharedKey, "Martlet.Core.Settings.GameStateFile"),
         new(AdvancedSettingsFile.FileName, SettingsFileScope.Account, AdvancedSettingsFile.SharedKey, "Martlet.Core.Settings.AdvancedSettingsFile"),
+        new(Preferences.UserPreferences.FileName, SettingsFileScope.Account, Preferences.UserPreferences.SharedKey,
+            "Martlet.Core.Preferences.UserPreferences"),
         new("voice-id.json", SettingsFileScope.Account, SettingScopes.VoiceId, "Martlet.Desktop.VoiceIdentity"),
         new("avatar.json", SettingsFileScope.Account, SettingScopes.Character, "Martlet.Avatar.Hosting.AvatarProfileStore"),
         new("character-reaction-changes.json", SettingsFileScope.Account, SettingScopes.CharacterReactionChanges,

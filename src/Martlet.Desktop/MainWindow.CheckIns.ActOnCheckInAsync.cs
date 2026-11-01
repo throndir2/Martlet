@@ -125,7 +125,10 @@ public partial class MainWindow
             // What the user just said, for the director (private: it goes only to a pool member with the check), and the skill
             // index it may load from.
             Asked = Director.Asked(checkInAsks),
-            Skills = Director.SkillIndex(homeSettings?.Skills)
+            Skills = Director.SkillIndex(homeSettings?.Skills),
+            // The user's preferences that apply now, so what a check-in brings up or plans follows them.
+            Preferences = userPreferences?.ApplyingNow(conversation?.Activity() ?? CurrentActivity.Now) is { Count: > 0 } applying
+                ? string.Join("\n", applying.Select(Martlet.Core.Preferences.UserPreferences.Line)) : null
         });
     }
 

@@ -125,6 +125,54 @@ internal sealed partial class McpServer
             dataDirectory = new { type = "string" }
         },
             async (arguments, cancellation) => await MemoryWhereAsync(arguments, cancellation), ToolPermission.ChangesUnlessPreview),
+        Tool("preferences_list", "Read your preferences (Companion > Memory > Your preferences; docs/CONVERSATION.md, \"Your " +
+            "preferences\"): the rules you gave Martlet about how it behaves, such as \"stop giving hints\", from a data directory's " +
+            "user-preferences.json. Returns state (none, loaded, unreadable), the status line, every preference (id, text, where " +
+            "it applies, source: said, typed or assistant, when it was made and changed), the account setting that shares them " +
+            "with your other computers, and the limits. With where (everywhere, games or a game's name) it also gives the ids that " +
+            "apply there and the note a reply then carries at the end of its request. Read-only; contacts nothing. " + DataDirectoryNote, new
+        {
+            where = new { type = "string", maxLength = 120 },
+            dataDirectory = new { type = "string" }
+        },
+            arguments => PreferencesCheck.List(DataDirectory(arguments), OptionalString(arguments, "where"))),
+        Tool("preferences_add", "Add one of your preferences, as Companion > Memory > Your preferences does: text is the rule in " +
+            "plain words (\"No hints unless I ask\"), where is everywhere (default), games or a game's name. The same rule for the " +
+            "same place is kept once. A running Martlet uses it from its next reply, and its settings sync takes it to your other " +
+            "computers. Needs --allow-changes. " + DataDirectoryNote, new
+        {
+            text = new { type = "string", maxLength = 300 },
+            where = new { type = "string", maxLength = 120 },
+            dataDirectory = new { type = "string" }
+        }, ["text"],
+            arguments => PreferencesCheck.Add(DataDirectory(arguments), OptionalString(arguments, "text"), OptionalString(arguments, "where")),
+            ToolPermission.Changes),
+        Tool("preferences_update", "Change one of your preferences by its id (from preferences_list): its text, where it applies " +
+            "(everywhere, games or a game's name) or both. Needs --allow-changes. " + DataDirectoryNote, new
+        {
+            id = new { type = "string", maxLength = 16 },
+            text = new { type = "string", maxLength = 300 },
+            where = new { type = "string", maxLength = 120 },
+            dataDirectory = new { type = "string" }
+        }, ["id"],
+            arguments => PreferencesCheck.Update(DataDirectory(arguments), OptionalString(arguments, "id"), OptionalString(arguments, "text"),
+                OptionalString(arguments, "where")),
+            ToolPermission.Changes),
+        Tool("preferences_remove", "Remove one of your preferences by its id (from preferences_list). Needs --allow-changes. " +
+            DataDirectoryNote, new
+        {
+            id = new { type = "string", maxLength = 16 },
+            dataDirectory = new { type = "string" }
+        }, ["id"],
+            arguments => PreferencesCheck.Remove(DataDirectory(arguments), OptionalString(arguments, "id")), ToolPermission.Changes),
+        Tool("preferences_check", "Rehearse your preferences end to end with the production code on a disposable folder: the " +
+            "reply's manage_preferences tool (the same words every time) saves \"stop giving hints\" for the game played now, the " +
+            "note at the end of a request carries what applies now (everywhere first, the game's last; nothing from other games), " +
+            "the same rule is kept once, bad calls are refused, update and list work, the request's instructions stay the same with " +
+            "the note at its end, remove (\"you can give hints again\") takes it away, the list and note stay bounded, and a second " +
+            "simulated computer takes the same preferences through the production account setting and a removal there comes back. " +
+            "Returns each step and passed. No model, network or credentials; it never opens your data folder.", new { },
+            async (_, cancellation) => await PreferencesCheck.RunAsync(cancellation)),
         Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +

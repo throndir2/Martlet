@@ -1989,6 +1989,73 @@ started without the window and, with no Thinking set up, shown as a
 notification and marked said (`reminders_status`). A real model setting and
 saying one, and two real companion PCs through a real host, are **NOT RUN**.
 
+## Your preferences
+
+*"Stop giving hints."* *"No spoilers for Elden Ring."* *"Don't call me buddy."*
+A preference is your own rule for how Martlet behaves, in your own words.
+Martlet keeps it and obeys it in every later reply, screen glance and
+check-in, on all your computers, until you change it. *"You can give hints
+again"* takes it away.
+
+**The owner.** `UserPreferences` (`src\Martlet.Core\Preferences`) is the one
+owner of the list. Each preference has an ID (such as `p3f2a1c`), its text (at
+most 300 characters), where it applies, when it was made and changed, and its
+source: `said` (the reply's tool), `typed` (the app) or `assistant` (MCP).
+Where it applies uses the same values as [memories for a
+game](MEMORY.md#memories-for-a-game) (`ActivityScope`): everywhere, while gaming
+(`gaming`) or in one game (`gaming/<name>`). At most 40 are kept. The same rule
+for the same place is kept once.
+
+**The tool.** Every reply on a route that does function calling gets
+`manage_preferences` (`PreferenceTools`, in `Martlet.Conversation`): `add` with
+`text` and `where` (everywhere, `games`, `this game` or a game's name), `update`
+and `remove` by `id`, and `list`. Its name, description and schema never
+change, and it comes after the App guides tools and before `body_motion`, so
+the tools before it start every request the same as before it existed. The
+Tools log says *Martlet › manage_preferences: added*, never the rule.
+
+**Every reply follows them.** The preferences that apply now go at the end of
+the request, in the notes that are sent but never kept in the conversation
+(after the context board's notes), with the *Your preferences* prompt
+(Companion › Prompts). Everywhere comes first and the game's own come last, so
+the most specific wins when two disagree. The block is at most 1,500
+characters; when more apply, the least specific and oldest are left out and the
+block says how many. The instructions and the tools never change for it, so
+prompt caches keep working and the first word does not wait: the owner keeps
+the list in memory and checks only the file's time. Screen and camera glances
+carry the same block, also when their other notes do not fit. Every check-in's
+facts end with the same preferences, so what it brings up follows them.
+
+**Read contract for other features** (such as hints, [GAME_STATE_PLAN.md](GAME_STATE_PLAN.md)):
+
+- `UserPreferences.ApplyingNow(string? activity)` gives the preferences that
+  apply while the user does `activity` (for example `gaming/ELDEN RING`; null:
+  everywhere only), everywhere first and the most specific last.
+- `UserPreferences.Note(string? activity, PromptSettings? prompts)` gives the
+  one formatted block for a request, or null when none applies.
+  `UserPreferences.Note(IReadOnlyList<UserPreference>, PromptSettings?)` and
+  `UserPreferences.Line(UserPreference)` format a list already read.
+- `UserPreferences.Changed` is raised after a change here or from another
+  computer.
+
+The desktop's one instance is `LiveConversationController.Preferences` (made by
+`MainWindow`).
+
+**In the app.** Companion › Memory › *Your preferences* lists them with where
+each applies and who made it, with Add, Edit and Remove. It works while memory
+is off: preferences are rules, not remembered facts.
+
+**On all your computers.** The list is kept in `user-preferences.json` and
+travels as the account setting `user-preferences`
+([CLUSTER](CLUSTER.md#one-martlet-on-every-computer)): each person has their
+own, the same on every computer where they are signed in. The newest list wins
+when two computers change it at the same time.
+
+MCP: `preferences_list`, `preferences_add`, `preferences_update` and
+`preferences_remove` read and change the list of a data folder through the same
+owner, and `preferences_check` rehearses the tool, the note, the request and two
+computers ([MCP apps](mcp/apps.md#your-preferences)).
+
 ## Greeting when Martlet starts
 
 Once each time Martlet starts, it says hello on its own as soon as it is ready:

@@ -225,6 +225,59 @@ each call (`Martlet > reminders: set`), never the text; the desktop log notes
 each offer, take and reminder said by id only (`Reminders:`). See
 [Reminders](../CONVERSATION.md#reminders).
 
+### Your preferences
+
+On a PC with a data folder, every reply on a route that does function calling
+also gets Martlet's own `manage_preferences` (`action` list, add, update or
+remove; `text` and `where` for add and update; `id` for update and remove),
+after the App guides tools and before `body_motion`, always worded the same.
+*"Stop giving hints"* makes the model add a preference; *"you can give hints
+again"* removes it. *Recent tool use* lists each call (`Martlet >
+manage_preferences: added`), never the rule. The preferences that apply now go
+at the end of every reply's and glance's request. See [Your
+preferences](../CONVERSATION.md#your-preferences).
+
+`preferences_list` reads a data directory's `user-preferences.json` (optional
+absolute `dataDirectory`, default the current user's; the disposable one in
+`Invoke-MartletMcp.ps1`) through its owner, `UserPreferences`: `state` (`none`,
+`loaded` or `unreadable`), `status` (the Companion line, such as *2
+preferences: 1 everywhere, 1 for one game.*), `preferences` (each `id`, `text`,
+`where`, `activity`, `source` (`said`, `typed` or `assistant`), `createdAt` and
+`changedAt`), `sharedKey` (`user-preferences`) and its `scope` (`account`), and
+`limits` (`preferences` 40, `textCharacters` 300, `noteCharacters` 1,500).
+With `where` (everywhere, games or a game's name) it also gives `applying` (the
+IDs that apply there) and `note` (the block a reply then carries at the end of
+its request). It contacts nothing.
+
+`preferences_add` (`text`, optional `where`), `preferences_update` (`id`, and
+`text`, `where` or both) and `preferences_remove` (`id`) change the list as
+Companion › Memory › *Your preferences* does, with the source `assistant`. Each
+needs `--allow-changes`. They return `outcome` (`added`, `updated`, `removed`
+or `unchanged`), the `preference` and the new `status`. A running Martlet uses
+the change from its next reply, and its settings sync takes it to your other
+computers.
+
+`preferences_check` (no arguments) rehearses preferences with the production
+code on a disposable folder: the tool is the same every time; *stop giving
+hints* while a game is played is kept for that game; the note carries what
+applies now (everywhere first, the game's last, nothing from other games); the
+same rule is kept once; bad calls are refused; update and list work; a request
+keeps its instructions and carries the note at its end; remove takes it away;
+the list and the note stay bounded; and a second simulated computer takes the
+same preferences through the production `user-preferences` account setting, and
+a removal there comes back. `passed` is true when every step passed. No model,
+network or credentials; it never opens your data folder.
+
+On the desktop, Companion > Memory's *Your preferences* card
+(`CompanionTab-Memory`, `PreferencesCard`) shows `PreferencesStatus` (counts
+only), `PreferenceWhere` (Everywhere, While gaming or In one game) and
+`PreferenceProblem` (why a change was refused). The rows
+(`PreferenceRow-<id>`), the box `PreferenceNewText` and `PreferenceGame` are
+never readable values; `preferences_list` reads the words.
+`PreferenceEdit-<id>` (puts a preference in the box) and `PreferenceCancel` are
+safe clicks. `PreferenceAdd` (*Add* or *Save*) and `PreferenceRemove-<id>` save
+`user-preferences.json`, so they need `--allow-ui-effects`.
+
 ### Check-ins
 
 [Check-ins](../CONVERSATION.md#check-ins) aren't a tool the model calls: every few

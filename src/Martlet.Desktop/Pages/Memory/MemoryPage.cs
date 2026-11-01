@@ -4,7 +4,8 @@ using System.Windows.Controls;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Memory, the UI only: Now (memory on or off, with Manage memory), the Memory brief and Finding by meaning
+/// <summary>Companion › Memory, the UI only: Now (memory on or off, with Manage memory), Your preferences (<see cref="PreferencesCard"/>),
+/// the Memory brief and Finding by meaning
 /// cards (MainWindow makes them) and Conversation history. Its lines come from the settings and the record itself, so it has no
 /// page model; what it needs from the app is <see cref="IMemoryPageServices"/>.</summary>
 internal sealed class MemoryPage(IMemoryPageServices services)
@@ -20,6 +21,8 @@ internal sealed class MemoryPage(IMemoryPageServices services)
                 : "Martlet doesn't remember or recall anything between conversations: turn memory on in Manage memory.",
                 new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", services.OpenMemory, primary: !on, id: "OpenMemory"))));
+        // Your preferences work with memory on or off: they are rules, not remembered facts.
+        if (services.Preferences is { } preferences) page.Children.Add(new PreferencesCard(preferences, services.QueueSettingsSync).Build());
         if (services.MemoryBriefCard(on) is { } brief) page.Children.Add(brief);
         if (services.MeaningSearchCard() is { } meaning) page.Children.Add(meaning);
         if (services.History is { } record) page.Children.Add(HistoryCard(record, on));

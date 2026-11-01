@@ -154,6 +154,7 @@ public partial class MainWindow
         ConversationHistoryKey => "your conversation history choices",
         MemoryBriefFile.SharedKey => "the memory brief",
         GameStateFile.SharedKey => "the game state",
+        Martlet.Core.Preferences.UserPreferences.SharedKey => "your preferences",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",

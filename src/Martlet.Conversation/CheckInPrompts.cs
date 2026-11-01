@@ -221,6 +221,9 @@ public static partial class CheckInPrompts
                     CallbackList.Lines(state.Callbacks, state.Now));
         if (facts.HasFlag(CheckInFacts.Asked)) parts.Add("What the user just said: " + Asked(state));
         if (facts.HasFlag(CheckInFacts.Skills)) parts.Add("Skills you can load with load_skill (key: when it helps):\n" + Skills(state));
+        // The user's preferences go with every check-in's facts, so what it brings up or plans follows them.
+        if (state.Preferences is { Length: > 0 } preferences)
+            parts.Add($"The user's standing preferences for how {state.Who} behaves (follow them):\n{Clip(preferences.Trim(), 1_600)}");
         return string.Join("\n\n", parts);
     }
 

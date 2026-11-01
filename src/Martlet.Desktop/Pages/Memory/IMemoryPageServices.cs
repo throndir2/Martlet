@@ -14,6 +14,9 @@ internal interface IMemoryPageServices
     /// <summary>The record of conversations, or null when this PC has none.</summary>
     DesktopConversationHistory? History { get; }
 
+    /// <summary>Your preferences (the one owner of the list), or null without a data folder.</summary>
+    Martlet.Core.Preferences.UserPreferences? Preferences { get; }
+
     /// <summary>The Memory brief card, or null while the conversation has no memory brief.</summary>
     UIElement? MemoryBriefCard(bool memoryOn);
 

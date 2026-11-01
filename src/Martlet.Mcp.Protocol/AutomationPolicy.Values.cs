@@ -176,6 +176,10 @@ internal static partial class AutomationPolicy
         new("MemoryBriefStatus", "Companion › Memory", "Shows the Memory brief line: on or off, not written yet, written how long ago from how many memories, your own text, held back, or why it could not be written. Counts and fixed wording; never the brief."),
         new("MemoryBriefOn", "Companion › Memory", "Shows the state of the Memory brief box. Ticking the box saves memory-brief.json, so it needs --allow-ui-effects."),
         // Never returned: MemoryBriefText (the brief). Needs --allow-ui-effects: MemoryBriefText, Save my changes and Write it again (which asks a model).
+        new("PreferencesStatus", "Companion › Memory", "Shows the Your preferences line: no preferences yet, or how many there are and where they apply (everywhere, while gaming, for one game). Counts only; never a preference's words."),
+        new("PreferenceWhere", "Companion › Memory", "Shows where the preference being added or changed applies: Everywhere, While gaming or In one game. Fixed text."),
+        new("PreferenceProblem", "Companion › Memory", "Shows why a preference couldn't be added, changed or removed, such as 'Type the game's name.'. Fixed wording; never a preference's words."),
+        // Never returned: PreferenceNewText, PreferenceGame and the rows' words (preferences_list reads them). Needs --allow-ui-effects: PreferenceAdd (Add or Save) and PreferenceRemove-<id> (they change user-preferences.json).
         new("MeaningSearchStatus", "Companion › Memory", "Shows the Finding by meaning line: off, checking, not ready (no Ollama or no model), waiting, or on with how many memories and sections it can find. Counts and fixed wording; never a fact or a text."),
         new("MeaningSearchOn", "Companion › Memory", "Shows whether Finding by meaning is on."),
         new("MeaningSearchModel", "Companion › Memory", "Shows the name of the embedding model (the model that turns text into numbers for Finding by meaning)."),

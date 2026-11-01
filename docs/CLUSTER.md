@@ -576,6 +576,7 @@ NVIDIA Build and its old key.
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
 | `memory-brief` | The [memory brief](MEMORY.md#the-memory-brief) (`memory-brief.json`): its text, on or off, whether Martlet or the owner wrote it and the facts it was written from, so every computer sends the same one and none writes it again for facts that didn't change | |
 | `game-state` | The [game state](CONVERSATION.md#where-you-are-in-a-game) (`game-state.json`): for each game its playthroughs and their place, goal, character, build, equipment and progress, and whether saving is on, so every computer knows where you are in your games | |
+| `user-preferences` | [Your preferences](CONVERSATION.md#your-preferences) (`user-preferences.json`): your own rules for how Martlet behaves (such as no hints) and where each applies, so every computer obeys the same ones | |
 | `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |
@@ -640,7 +641,7 @@ into the household's and each person's. The household keeps `thinking`,
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
-`touch-temperament`, `character-reaction-changes`, `check-ins`, `memory-brief`, `game-state`, `conversation-history`, `advanced-settings` and their own `reminders.<device ID>` entries. A person's
+`touch-temperament`, `character-reaction-changes`, `check-ins`, `memory-brief`, `game-state`, `user-preferences`, `conversation-history`, `advanced-settings` and their own `reminders.<device ID>` entries. A person's
 settings go only to the computers where that person is signed in, and switching
 person on a computer gives Martlet that person's settings. A computer on an
 older Martlet keeps the owner's settings in step through this document, as

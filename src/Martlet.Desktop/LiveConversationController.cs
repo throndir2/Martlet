@@ -519,6 +519,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// fresh ones in its notes, without waiting (docs/CONVERSATION.md, Context board).</summary>
     internal ContextBoard Board { get; }
 
+    /// <summary>The user's preferences (docs/CONVERSATION.md, "Your preferences"): the reply's manage_preferences tool changes them,
+    /// and every reply and look carries those that apply now at the end of its request (<see cref="PreferencesNote"/>). Null in
+    /// tests without a data folder.</summary>
+    internal Martlet.Core.Preferences.UserPreferences? Preferences { get; }
+
+    /// <summary>The preferences that apply now, as one bounded block for the end of a request (never its start, so prompt
+    /// caches keep working), or null when none applies. The owner keeps the list in memory and checks only the file's time,
+    /// so the first word never waits for it.</summary>
+    private string? PreferencesNote(LiveConversationConfiguration configured) => Preferences?.Note(Activity(), configured.Prompts);
+
     // How long the character's note stays fresh: Martlet posts it again as it builds each request.
     private static readonly TimeSpan CharacterNoteAge = TimeSpan.FromMinutes(1);
 
@@ -909,7 +919,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null,
         DesktopConversationHistory? history = null, ConversationSinging? singing = null, ContextBoard? board = null,
         IEndOfTurnJudge? turnJudge = null, Func<SetupRoute, string?>? listeningStandIn = null,
-        PcActivityMonitor? pcActivity = null)
+        PcActivityMonitor? pcActivity = null, Martlet.Core.Preferences.UserPreferences? preferences = null)
 
     {
         replyPreparation = new(this);
@@ -926,6 +936,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         this.characterActions = characterActions;
         this.history = history;
         Board = board ?? new();
+        Preferences = preferences;
         if (echoReducer is not null) echoReducer.Reported += EchoReported;
         this.clock = clock ?? TimeProvider.System;
         this.revokeAvatar = revokeAvatar;
@@ -1467,7 +1478,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             chattiness: decides ? configured.ChattinessNote(level) : null,
                             activity: Activity(),
                             controlTags: LiveConversationConfiguration.ControlTags(decides, picture: note is null, configured.Prompts),
-                            board: without.Contains(LookNotes) ? null : Join(board.Text, lately));
+                            // The user's preferences go last, also when the look's other notes don't fit.
+                            board: Join(without.Contains(LookNotes) ? null : Join(board.Text, lately), PreferencesNote(configured)));
                         boardSent = !without.Contains(LookNotes);
                         operation.LookLeftOut = without;
                         if (without.Length > 0)
@@ -1867,6 +1879,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Singing on a route without function calling: the reply writes song tags in place of the song tools, told the
                 // same way every time (settings alone decide it), so the request starts the same.
                 var singsWithTags = conversationTools.SingsWithTags(configured);
+                // The user's preferences that apply now go last in the notes that are sent but not kept: the end of the request, so
+                // its start stays the same and prompt caches keep working (docs/CONVERSATION.md, Your preferences).
+                var preferences = PreferencesNote(configured);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
@@ -1902,7 +1917,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // when the conversation's latest [Screen] line doesn't already say them.
                         board: Join(heardHow.Note, board.Text,
                             picture?.Active(prompts, sentHistory) ?? (describedNote is null ? null : describedSeen?.Active(prompts, sentHistory)),
-                            describedNote, lately), backup: backup);
+                            describedNote, lately, preferences), backup: backup);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;

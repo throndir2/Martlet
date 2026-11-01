@@ -449,6 +449,25 @@ owns Find skills: the ClawHub and skills.sh search, its orders and filters, and 
 `groups`, `shortFirstSentence.spokenClosing`); the Prompts page's `PromptsReplyAlways`, `PromptsReplyAttached` and
 `PromptGroupWhere-<n>`; the Skills page's `SkillsNow`, `SkillState-<key>` and `SkillsFind` (Find skills' `SkillDirectory*` IDs).
 **Docs:** [Skills](CONVERSATION.md#skills).
+
+## How Martlet behaves for the user (your preferences)
+
+**What it decides:** the user's own rules for how Martlet behaves (such as *No hints unless I ask*): which are kept, where
+each applies (everywhere, while gaming, one game), which apply now, their order (everywhere first, the most specific last),
+and the one bounded block every reply, glance and check-in carries at the end of its request.
+
+**Owner:** `UserPreferences` (`src\Martlet.Core\Preferences\UserPreferences.cs`): `ApplyingNow`, `Note`, `Line`, `Add`,
+`Update`, `Remove`, the file `user-preferences.json` and its account setting `Section`. Where something applies follows
+`ActivityScope` (`src\Martlet.Core\Activities\ActivityScope.cs`), which memory's `MemoryActivity` uses too. The reply's tool
+is `PreferenceTools` (`src\Martlet.Conversation\PreferenceTools.cs`); the desktop places it in `ConversationTools.BuiltIns`
+and the block in `LiveConversationController.PreferencesNote`. Companion › Memory's `PreferencesCard` and the MCP
+`preferences_*` tools only call the owner. Other features (such as hints) read only `ApplyingNow` and `Note`.
+
+**Tests:** `UserPreferencesTests` (Martlet.Core.Tests); `PreferenceToolsTests` (Martlet.Conversation.Tests);
+`PreferencesReplyTests` (Martlet.Desktop.Tests).
+
+**MCP:** `preferences_list`, `preferences_add`, `preferences_update`, `preferences_remove`, `preferences_check`; the Memory
+page's `PreferencesStatus`. **Docs:** [Your preferences](CONVERSATION.md#your-preferences).
 ## How much Martlet looks a question up (answer, look up or research)
 
 **What it decides:** when a reply answers from what Martlet knows, searches a guide or report, does a quick look-up, or
