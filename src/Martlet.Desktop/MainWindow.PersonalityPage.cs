@@ -24,6 +24,7 @@ public partial class MainWindow : IPersonalityPageServices, IMemoryPageServices
 
     AppSettings? IMemoryPageServices.Settings => homeSettings;
     DesktopConversationHistory? IMemoryPageServices.History => conversationHistory;
+    Martlet.Core.Preferences.UserPreferences? IMemoryPageServices.Preferences => userPreferences;
     UIElement? IMemoryPageServices.MemoryBriefCard(bool memoryOn) =>
         conversation?.MemoryBrief is { } brief ? MemoryBriefCard(brief, memoryOn) : null;
     UIElement? IMemoryPageServices.MeaningSearchCard() => conversation?.Meaning is { } meaning ? MeaningSearchCard(meaning) : null;

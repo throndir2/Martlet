@@ -131,6 +131,10 @@ public partial class MainWindow : ThemedWindow
         avatar.Gaze.Personality = () => characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)?.Gaze;
         avatar.Gaze.Configure(Talk.GazeUsual, Talk.GazeFree);
         characterThemes = services.CharacterThemes;
+        // Your preferences (Companion › Memory): the one owner of the list the conversation, the page and the settings sync use.
+        // A change from anywhere (a reply's manage_preferences, the page, MCP) reaches your other computers on the next sync.
+        userPreferences = store?.DataDirectory is { } preferencesFolder ? new(preferencesFolder) : null;
+        if (userPreferences is not null) userPreferences.Changed += () => Dispatcher.BeginInvoke(() => { if (!closing) QueueSettingsSync(); });
         if (setupService is not null)
         {
             // MARTLET_SIMULATE_MICROPHONE / MARTLET_SIMULATE_SPEAKERS: fixture devices for MCP verification (never real audio).
@@ -163,7 +167,7 @@ public partial class MainWindow : ThemedWindow
                     sound: checkInPcSound),
                 pcActivity: simulated is not null ? null : new PcActivityMonitor(() => new WindowsPcActivitySource()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing,
-                board: contextBoard, turnJudge: SmartTurnJudge.Bundled(), listeningStandIn: ListeningStandIn);
+                board: contextBoard, turnJudge: SmartTurnJudge.Bundled(), listeningStandIn: ListeningStandIn, preferences: userPreferences);
             conversation.TurnDecided += () => Dispatcher.BeginInvoke(ShowTurnJudge);
             conversation.EarlyDecided += () => Dispatcher.BeginInvoke(ShowEarlyReplies);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;

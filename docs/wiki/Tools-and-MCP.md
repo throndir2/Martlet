@@ -154,6 +154,7 @@ gets only the tools for the features you set up.
 | --- | --- |
 | `think_longer`, `cancel_thinking`, `research` | Think it over, look it up or research it in the background ([Thinking](Thinking)) |
 | `manage_memories`, `search_conversations`, `reminders` | Remember and forget facts, find earlier conversations, set reminders ([Memory](Memory)) |
+| `manage_preferences` | Keep your own rules for how she behaves, such as no hints ([Your preferences](Memory#your-preferences)) |
 | `draw_picture`, `sing_song`, `play_song`, `stop_singing` | Draw pictures, and write and sing songs ([Pictures](Pictures-and-Creations), [Singing](Singing)) |
 | `list_creations`, `perform_creation` | Show or sing something she made before |
 | `body_motion` | Move a VRM character's body ([The Character](The-Character)) |

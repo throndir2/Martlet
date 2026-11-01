@@ -236,6 +236,12 @@ internal sealed partial class McpServer
             "To see or edit Martlet's internal prompts, call martlet_call with prompts_status, then settings_set under prompts.",
             "Where Martlet thinks, listens and speaks (providers, models, API keys) changes only in the app, with the owner: Companion › Thinking, Listening and Voice."
         ]),
+        new("settings", "Change how Martlet behaves (your preferences)", [
+            "Call martlet_call with preferences_list to see the owner's preferences: their own rules, such as \"No hints unless I ask\".",
+            "Call preferences_add with text (the rule in plain words) and where (everywhere, games or a game's name).",
+            "preferences_update changes one by id; preferences_remove takes one away. Each needs --allow-changes.",
+            "Martlet also saves them itself when the owner says so while talking (its manage_preferences tool)."
+        ]),
         new("app", "Use the running Martlet app", [
             "Call ui_connect (without pid it finds the Martlet running in this Windows session).",
             "Call ui_snapshot to see its controls by automation ID, their state and status text (idPrefix narrows it).",

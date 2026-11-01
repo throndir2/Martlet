@@ -15,7 +15,7 @@ internal sealed partial class LiveConversationController
 {
     /// <summary>The live conversation's own tools: the set a reply offers (<see cref="BuiltIns"/>, always the same ones in the same
     /// order while their settings stay, so the start of every request stays the same) and what each one does: think_longer and
-    /// cancel_thinking, the song tools, draw_picture, body_motion, manage_memories and find_memories, reminders,
+    /// cancel_thinking, the song tools, draw_picture, body_motion, manage_memories and find_memories, reminders, manage_preferences,
     /// search_conversations, the creations tools, call_on_discord and set_camera_background. The check-ins that take tools over
     /// after a reply run the same code. It is nested in the controller, so it reads the conversation's state through
     /// <c>owner</c>; the controller's members that other code calls forward to it.</summary>
@@ -50,7 +50,7 @@ internal sealed partial class LiveConversationController
         /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
         /// off by default), then list_creations and perform_creation while any kind of creation for the tools is registered (CreationRegistry,
         /// docs/CREATIONS.md), then manage_memories while memory is on, then reminders, call_on_discord and set_camera_background
-        /// while they apply, then the App guides tools and game_state, and body_motion last while motions are set up and the character is a VRM. Last, the tools a check-in that runs after each exchange takes over (<see cref="HandedOffReplyTools"/>)
+        /// while they apply, then the App guides tools and game_state, then manage_preferences while this PC keeps your preferences, and body_motion last while motions are set up and the character is a VRM. Last, the tools a check-in that runs after each exchange takes over (<see cref="HandedOffReplyTools"/>)
         /// are left out, and the Things done after the reply prompt says so. Null when there are none.</summary>
         internal BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
         {
@@ -161,6 +161,10 @@ internal sealed partial class LiveConversationController
             // game_state right after them while App guides are on (they keep the game state), also while the director has the guide tools.
             if (owner.OffersGuides(configured))
                 own.Add((Martlet.Conversation.Guides.GameStateTools.Definition, (call, token) => ValueTask.FromResult(owner.GameStateTool(call))));
+            // manage_preferences after them while this PC keeps the user's preferences (always, with a data folder): always the same
+            // words, so the tools before it start every request the same as before it existed.
+            if (configured.SupportsTools && owner.Preferences is not null)
+                own.Add((PreferenceTools.Definition, (call, token) => ValueTask.FromResult(ManagePreferences(call.ArgumentsJson, null))));
             // body_motion last, while motions are set up and the chosen character is a VRM (saved choices only), so switching between
             // a VRM and a Live2D character changes only the end of the tools, and nothing changes without motions.
             if (configured.SupportsTools && owner.Motions is { Offered: true })
@@ -219,6 +223,18 @@ internal sealed partial class LiveConversationController
             owner.tools?.Record("Martlet", DiscordCallTool.Name, "called", "", false);
             ErrorLog.Info("Discord: call_on_discord ran.");
             return new(result);
+        }
+
+        /// <summary>manage_preferences: lists, adds, updates or removes the user's preferences (docs/CONVERSATION.md, "Your
+        /// preferences"), for the reply or, with <paramref name="by"/>'s name, a check-in. "this game" means the game played now.
+        /// The Tools log gets the outcome, never the rule's text; the change reaches the other computers with the next sync.</summary>
+        internal ConversationToolResult ManagePreferences(string argumentsJson, string? by)
+        {
+            if (owner.Preferences is not { } preferences) return new("Preferences can't be kept on this PC.", true);
+            var outcome = PreferenceTools.Run(preferences, argumentsJson, owner.Activity());
+            owner.tools?.Record(by is null ? "Martlet" : "Check-in " + by, PreferenceTools.Name, outcome.Logged, "", outcome.Result.IsError);
+            if (outcome.Changed) ErrorLog.Info($"Preferences: {PreferenceTools.Name} {outcome.Logged}{(by is null ? "" : " by the check-in " + by)}.");
+            return outcome.Result;
         }
 
         private async ValueTask<ConversationToolResult> ReplyRemindAsync(TextToolCall call, CancellationToken token) =>

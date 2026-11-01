@@ -266,6 +266,9 @@ public sealed partial record CheckInState
     public string? Asked { get; init; }
     /// <summary>The skill index (<see cref="Director.SkillIndex"/>): one line for each skill that isn't pinned, or null.</summary>
     public string? Skills { get; init; }
+    /// <summary>The user's preferences that apply now, one "- rule" line each (<c>UserPreferences.Line</c>), or null when
+    /// there are none. Every check-in's facts end with them, so what it brings up follows them too.</summary>
+    public string? Preferences { get; init; }
 
     /// <summary>The character's name for the check: the personality's, or Martlet.</summary>
     public string Who => string.IsNullOrWhiteSpace(Name) ? "Martlet" : Name.Trim();

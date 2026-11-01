@@ -62,6 +62,12 @@ public static partial class PromptCatalog
             "Goes in the notes of your first message instead, when you talk before Martlet greeted you. {facts} lists the same " +
             "facts.",
             DefaultGreetingNotesInstructions, ["facts"]),
+        new(UserPreferences, ConversationGroup, "Your preferences",
+            "Goes at the end of every reply, screen glance and camera look while preferences apply (Companion › Memory › Your " +
+            "preferences): the rules you gave Martlet about how it behaves, such as \"stop giving hints\". {preferences} lists " +
+            "those that apply now, one to a line, everywhere first and the most specific last. It is sent with that one request " +
+            "and never kept in the conversation, so prompt caches keep working. Empty it to send nothing.",
+            DefaultUserPreferencesInstructions, ["preferences"]),
         new(Touched, ConversationGroup, "Touched",
             "The message of the short reply Martlet starts on its own when you touch or stroke the desktop character (on zones " +
             "with Martlet notices on, Companion › Touch › Touch zones) or move it around, and say nothing: about 1.2 seconds " +

@@ -52,6 +52,22 @@ On **Companion › Memory › Memory brief**:
 3. To let Martlet write it from your memories again, press **Write it again**, or clear the box and press **Save my changes**.
 4. To stop sending it, untick **Send a short profile of me with the first message of each conversation**.
 
+## Your preferences
+
+Tell Martlet how to behave, in your own words, and it keeps to it from then on: *"Stop giving hints."*, *"No spoilers for Elden Ring."*, *"Don't call me buddy."* Just say it while you talk. Martlet saves the preference itself and confirms it. Say *"You can give hints again"* to take it back.
+
+- A preference applies everywhere, while you play any game, or in one game only.
+- Every reply, screen glance and check-in follows the preferences that apply now. They go at the end of what Martlet sends, so the first word of a reply never waits for them.
+- Your preferences are the same on all your computers, and each person has their own. They work also while memory is off.
+- Change the words Martlet gets with them in **Companion › Prompts › Your preferences**.
+
+On **Companion › Memory › Your preferences**:
+
+1. Read the list. Each preference shows where it applies and whether you said it or typed it.
+2. To add one, type it in the box, choose **Everywhere**, **While gaming** or **In one game** (and the game's name), and press **Add**.
+3. To change one, press **Edit**, change it and press **Save**.
+4. To take one away, press **Remove**.
+
 ## The Memory window
 
 In the Memory window you can:

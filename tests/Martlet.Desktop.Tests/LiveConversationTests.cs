@@ -3752,13 +3752,17 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal McpToolService? ToolService { get; }
     /// <summary>The voices Martlet knows (voices.json in the fixture's folder), when the test asked for them.</summary>
     internal LocalVoices? Voices { get; }
+    /// <summary>Your preferences in the fixture's folder, when the test asked for them.</summary>
+    internal Martlet.Core.Preferences.UserPreferences? Preferences { get; }
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, VoiceIdentity? voiceIdentity = null,
         IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false,
         ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null,
-        Func<SetupRoute, string?>? listeningStandIn = null, Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false)
+        Func<SetupRoute, string?>? listeningStandIn = null, Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false,
+        bool preferences = false)
     {
         Store = new(DirectoryPath);
+        Preferences = preferences ? new(DirectoryPath) : null;
         Memory = new(Store, Clock);
         Voices = voices ? new LocalVoices(DirectoryPath, "desk-test") : null;
         History = history ? new(DirectoryPath, Clock, TimeZoneInfo.Utc) : null;
@@ -3780,7 +3784,7 @@ internal sealed class LiveFixture : IAsyncDisposable
             echoReducer: echo ? new EchoReducer(Capture, new QuietSpeakers(), () => new KeptMicrophone(), Clock) : null,
             localListener: localListener, turnJudge: turnJudge, listeningStandIn: listeningStandIn, pcActivity: pcActivity?.Invoke(Clock),
             // With data, the controller keeps what it finds out (model-abilities.json) and its status files in the fixture's folder.
-            dataDirectory: data ? DirectoryPath : null);
+            dataDirectory: data ? DirectoryPath : null, preferences: Preferences);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -3792,10 +3796,10 @@ internal sealed class LiveFixture : IAsyncDisposable
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
         bool history = false, bool tools = false, bool echo = false, ILocalTranscriber? localListener = null,
         IEndOfTurnJudge? turnJudge = null, Func<SetupRoute, string?>? listeningStandIn = null,
-        Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false)
+        Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false, bool preferences = false)
     {
         var fixture = new LiveFixture(output, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge,
-            listeningStandIn, pcActivity, data);
+            listeningStandIn, pcActivity, data, preferences);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };

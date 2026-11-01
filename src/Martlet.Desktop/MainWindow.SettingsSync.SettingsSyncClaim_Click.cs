@@ -142,6 +142,9 @@ public partial class MainWindow
         yield return MemoryBriefFile.Section(directory, () => conversation?.MemoryBrief?.Followed());
         // The game state (where you are in each game, your character, build and equipment) travels with each person's settings too.
         yield return GameStateFile.Section(directory, () => conversation?.GameProgress?.Followed());
+        // Your preferences (how Martlet behaves, such as no hints) travel with each person's settings, so every computer obeys
+        // the same ones; a list taken from another computer goes with the next reply at once.
+        yield return Martlet.Core.Preferences.UserPreferences.Section(directory, () => userPreferences?.Followed());
         // Show advanced settings: each person's, so the same pages show on every computer they use (AfterSettingsAppliedAsync).
         yield return AdvancedSettingsFile.Section(directory);
         // Finding by meaning (on or off, and which embedding model) is the household's choice, the same on every computer; each

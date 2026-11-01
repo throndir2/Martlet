@@ -179,6 +179,7 @@ internal static partial class AutomationPolicy
         new("MemoryExportSection", "Memory window", "Export to a file: only expands or collapses the section."),
         // Needs --allow-ui-effects: Add, Save changes and every Delete button (they change facts). MemorySearch is ui_set_text; Show replaced facts is in SafeToggles.
         new("OpenHistory", "Companion › Memory", "Open conversations: only opens the Conversations page, like NavConversations."),
+        new("PreferenceCancel", "Companion › Memory", "Cancel under Your preferences: only empties the box and stops changing a preference; saves nothing."),
         new("HistorySearchRun", "Conversations", "Search: only filters what the page lists (from memory); writes nothing."),
         new("HistoryShowAll", "Conversations", "Show all: only removes the filter from what the page lists (from memory); writes nothing."),
         new("HistoryEditMessage", "Conversations", "Edit message: only opens the editor with the selected message; nothing saves until Save edit."),
@@ -271,6 +272,7 @@ internal static partial class AutomationPolicy
         new("SpeakingHost-", "Companion › Voice › Voice engine", "A computer pill, such as SpeakingHost-gpu-pc; only shows the engines of that computer."),
         new("HealthCheck-", "Home", "A Health tile, such as HealthCheck-thinking; only opens the page where something changes."),
         new("HealthOpen-", "Home", "A passive fix on a Health item, such as HealthOpen-voice-setup-open-voice or HealthOpen-crash-dismiss; only opens the page where something changes, or hides the item."),
+        new("PreferenceEdit-", "Companion › Memory", "Edit on a preference under Your preferences, PreferenceEdit-<id>; only puts it in the box to change it. Save (PreferenceAdd) commits."),
         new("LogLevel-", "Diagnostics", "A level filter, such as LogLevel-errors; only filters the shown log lines."),
         new("LogSource-", "Diagnostics", "A source filter, such as LogSource-all; only filters the shown log lines."),
         new("LogPart-", "Diagnostics", "A part filter, such as LogPart-gateway; only filters the shown log lines."),

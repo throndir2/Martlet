@@ -168,10 +168,11 @@ See [Share your language models](OPENAI_ENDPOINT.md).
 
 | Concept | Code name | UI name | Do not use for it |
 | --- | --- | --- | --- |
-| Where a remembered fact matters: everywhere, any game, or one game | activity (`MemoryFact.Activity`, `MemoryActivity`: `gaming`, `gaming/<game>`) | Where it matters (*Everywhere*, *While gaming*, *While playing <game>*) | "scope" in UI text; "context" (that is the conversation sent) |
+| Where a remembered fact matters: everywhere, any game, or one game | activity (`MemoryFact.Activity`, `MemoryActivity`: `gaming`, `gaming/<game>`; the rules are `ActivityScope`'s) | Where it matters (*Everywhere*, *While gaming*, *While playing <game>*) | "scope" in UI text; "context" (that is the conversation sent) |
 | What the user does on this PC now, for memory | `CurrentActivity` (fed by the game watch, `GameWatch`) | the game played now | "situation" (that is where live Thinking runs) |
+| The user's own rule for how Martlet behaves (such as *No hints unless I ask*), where it applies and who made it | preference (`UserPreference`; the list's owner is `UserPreferences`; the reply's tool is `manage_preferences`) | Your preferences | "setting" (that is a choice in the app); "memory" or "fact" (that is what Martlet remembers about you) |
 
-See [Memories for a game](MEMORY.md#memories-for-a-game).
+See [Memories for a game](MEMORY.md#memories-for-a-game) and [Your preferences](CONVERSATION.md#your-preferences).
 
 ## Skills and prompts
 

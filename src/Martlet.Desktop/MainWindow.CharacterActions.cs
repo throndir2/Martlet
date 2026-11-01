@@ -31,6 +31,8 @@ public partial class MainWindow
     /// look takes the fresh ones without waiting. The character's lingering emotes are its <see cref="Martlet.Conversation.ContextBoard.Character"/>
     /// note, which the conversation posts as it builds each request.</summary>
     internal readonly Martlet.Conversation.ContextBoard contextBoard = new();
+    // Your preferences (Companion › Memory › Your preferences), or null without a data folder.
+    private readonly Martlet.Core.Preferences.UserPreferences? userPreferences;
 
     private void WireCharacterActions()
     {
