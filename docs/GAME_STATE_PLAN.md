@@ -117,7 +117,7 @@ Built after parts 1 and 2 are merged, on fresh `main`.
 - MCP: a check with a FIXTURE guide and game state shows a hint, a stop by a
   preference and no repeat.
 
-**Merged** in [#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM). The
+**Merged** in [#1163](https://github.com/throndir2/Martlet/pull/1163). The
 actual behavior is in [Hints and secrets](APP_GUIDES.md#hints-and-secrets).
 
 ## Rules for all parts
