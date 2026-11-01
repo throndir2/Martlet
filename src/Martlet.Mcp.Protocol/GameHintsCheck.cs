@@ -6,8 +6,9 @@ namespace Martlet.Mcp;
 
 /// <summary>game_hints_check: hints and secrets (<see cref="GameHints"/>, docs/APP_GUIDES.md "Hints and secrets"), rehearsed with
 /// the production hint keeper, App guide library (<see cref="AppGuideService"/>, <see cref="FileAppGuideStore"/>) and guide search
-/// (<see cref="AppGuideHintGuide"/>) on a FIXTURE guide about a made-up game in a temporary folder, FIXTURE game places and
-/// preferences, and a FIXTURE Thinking pool member (answers made from the request, NOT AI; nothing is sent). It shows a hint at a
+/// (<see cref="AppGuideHintGuide"/>) on a FIXTURE guide about a made-up game in a temporary folder, the production game state
+/// (<see cref="GameProgress"/>, <see cref="GameProgressPlaces"/>) updated from FIXTURE screen notes, a FIXTURE preference, and a
+/// FIXTURE Thinking pool member (answers made from the request, NOT AI; nothing is sent). It shows a hint at a
 /// place, no repeat of the same topic, a stop by a preference (and no new request while the preference stays) and a hint again
 /// when the preference is gone. An optional <c>reply</c> is parsed the way a pool member's answer is.</summary>
 internal static class GameHintsCheck
@@ -39,15 +40,21 @@ internal static class GameHintsCheck
             await guides.SetOnAsync(true, cancellation);
 
             var clock = new Clock();
-            var places = new Places();
             var preferences = new Preferences();
             var thinker = new FixtureThinker();
             var speaker = new Speaker();
+            using var progress = new GameProgress(thinker, new ContextBoard());
+            using var places = new GameProgressPlaces(progress);
+            var changes = new List<GamePlace>();
+            places.Changed += changes.Add;
             using var hints = new GameHints(places, preferences, new AppGuideHintGuide(guides, null), thinker, speaker, clock,
                 (time, _) => { clock.Now += time; return Task.CompletedTask; });
 
-            var cave = places.Set(new(Game, "Crystal Cave, by the waterfall", "Find the Moonstone Ring"));
-            var first = await hints.HintAsync(cave, cancellation);
+            await progress.UpdateAsync(Game, null, "Screen over the last 9 s: a cave with glowing crystals and a waterfall. FIXTURE note.", cancellation);
+            var cave = places.Current ?? new(Game, null, null);
+            var placeFromState = changes.Count == 1 && cave.Place == "Crystal Cave, by the waterfall.";
+            // The place change starts the hint in the background, as it does live.
+            var first = await EndedAsync(hints, 1, cancellation);
             var guideFound = thinker.Asks.Count > 0 && thinker.Asks[0].Text.Contains("cracked wall behind the waterfall", StringComparison.Ordinal);
             var unrelatedLeftOut = thinker.Asks.Count > 0 && !thinker.Asks[0].Text.Contains("Turnips", StringComparison.Ordinal);
             clock.Now += TimeSpan.FromMinutes(10);
@@ -55,11 +62,11 @@ internal static class GameHintsCheck
             var toldTopicsSent = thinker.Asks.Count > 1 && thinker.Asks[1].Text.Contains("Hints already told here: Secret room behind the waterfall", StringComparison.Ordinal);
 
             preferences.Text = Stop;
-            var lake = places.Set(new(Game, "Moonlit Lake", "Cross the lake"));
+            await progress.UpdateAsync(Game, null, "Screen over the last 9 s: a lake under the moon, three lanterns. FIXTURE note.", cancellation);
+            var lake = places.Current ?? new(Game, null, null);
             clock.Now += TimeSpan.FromMinutes(10);
-            var asksBefore = thinker.Asks.Count;
-            var stopped = await hints.HintAsync(lake, cancellation);
-            var preferenceSent = thinker.Asks.Count > asksBefore && thinker.Asks[^1].Text.Contains(Stop, StringComparison.Ordinal);
+            var stopped = await EndedAsync(hints, 3, cancellation);
+            var preferenceSent = thinker.Asks.Count > 2 && thinker.Asks[2].Text.Contains(Stop, StringComparison.Ordinal);
             var asksAfterStop = thinker.Asks.Count;
             var stillStopped = await hints.HintAsync(lake, cancellation);
             var notAskedAgain = thinker.Asks.Count == asksAfterStop;
@@ -69,23 +76,25 @@ internal static class GameHintsCheck
             var again = await hints.HintAsync(lake, cancellation);
             var sameStart = thinker.Asks.All(a => a.Instructions == GameHints.Instructions && a.Label == GameHints.Label);
 
-            var ok = first.Said && guideFound && unrelatedLeftOut && repeat.Repeat && toldTopicsSent && stopped.Passed && preferenceSent &&
+            var bothPlaces = changes.Count == 2 && lake.Place == "Moonlit Lake.";
+            var ok = placeFromState && bothPlaces && first.Said && guideFound && unrelatedLeftOut && repeat.Repeat && toldTopicsSent && stopped.Passed && preferenceSent &&
                 stillStopped.Passed && notAskedAgain && again.Said && speaker.Said.Count == 2 && sameStart;
             var parsed = reply is null ? null : GameHints.Parse(reply);
             return new
             {
                 ok,
                 note = "The production hint keeper, App guide library and guide search on a FIXTURE guide about a made-up game (NOT a " +
-                    "real wiki), FIXTURE places and preferences, and a FIXTURE Thinking pool member (answers made from the request, NOT " +
+                    "real wiki), the production game state updated from FIXTURE screen notes, a FIXTURE preference, and a FIXTURE Thinking pool member (answers made from the request, NOT " +
                     "AI). Live, the place and goal come from the game state, the preferences from your preferences, the model work runs " +
                     "as a Research job on a Thinking pool member, and the hint is brought up in the talk window at a quiet moment.",
                 steps = new object[]
                 {
-                    Step("a hint at a new place", first), Step("the same place again (same topic)", repeat),
-                    Step("a preference says stop", stopped), Step("the same place, the preference still there", stillStopped),
+                    Step("a new place from the game state (in the background)", first), Step("the same place again (same topic)", repeat),
+                    Step("a new place while a preference says stop (in the background)", stopped), Step("the same place, the preference still there", stillStopped),
                     Step("the preference removed", again)
                 },
                 said = speaker.Said.Select(h => new { h.Place, h.Topic, h.Text }),
+                gameState = new { placeFromState, placeChanges = changes.Count, places = changes.Select(c => new { c.Place, c.Goal }) },
                 guideSectionsFound = guideFound,
                 unrelatedSectionsLeftOut = unrelatedLeftOut,
                 toldTopicsSent,
@@ -112,20 +121,21 @@ internal static class GameHintsCheck
         }
     }
 
-    private static object Step(string step, GameHintResult result) =>
+    // Waits (at most 10 s) until <paramref name="jobs"/> hint jobs ended, and returns the last one's result.
+    private static async Task<GameHintResult> EndedAsync(GameHints hints, int jobs, CancellationToken cancellation)
+    {
+        for (var i = 0; i < 1_000 && hints.Jobs < jobs; i++) await Task.Delay(10, cancellation);
+        return hints.Jobs >= jobs && hints.Last is { } last ? last
+            : new GameHintResult(Game, null, false, false, false, null, "no hint job ended in the background", TimeSpan.Zero);
+    }
+
+    private static object Step(string step, GameHintResult? result) => result is null ? new { step } :
         new { step, result.Said, result.Passed, result.Repeat, result.Nothing, result.Topic, result.Problem };
 
     private sealed class Clock : TimeProvider
     {
         internal DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => Now;
-    }
-
-    private sealed class Places : IGamePlaceSource
-    {
-        public GamePlace? Current { get; private set; }
-        public event Action<GamePlace>? Changed { add { } remove { } }
-        internal GamePlace Set(GamePlace place) => Current = place;
     }
 
     private sealed class Preferences : IHintPreferences
@@ -155,8 +165,13 @@ internal static class GameHintsCheck
 
         public Task<(string? Text, string? Problem)> ThinkAsync(GuideThinkingAsk ask, CancellationToken cancellationToken)
         {
-            lock (asks) asks.Add(ask);
             var text = ask.Text;
+            // The game state's updates: the place and goal the FIXTURE screen notes show.
+            if (ask.Label == GameProgress.Label)
+                return Task.FromResult<(string?, string?)>((text.Contains("lake under the moon", StringComparison.Ordinal)
+                    ? "Where: Moonlit Lake.\nGoal: Cross the lake.\nDoing: Looking at three lanterns."
+                    : "Where: Crystal Cave, by the waterfall.\nGoal: Find the Moonstone Ring.\nDoing: Exploring.", null));
+            lock (asks) asks.Add(ask);
             var answer = text.Contains("Stop giving hints", StringComparison.Ordinal) ? GameHints.Pass
                 : text.Contains("Moonlit Lake puzzle", StringComparison.Ordinal)
                     ? "Topic: Lantern puzzle\nHint: Light the three lanterns left to right and the bridge comes up. FIXTURE hint."

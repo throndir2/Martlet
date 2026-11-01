@@ -120,6 +120,7 @@ public sealed class GameHints : IDisposable
     private GamePlace? pending;
     private DateTimeOffset lastSaid = DateTimeOffset.MinValue;
     private string? doing, lastProblem;
+    private GameHintResult? last;
     private int hints, passes, repeats, nothing, problems;
     private DateTimeOffset? lastAt;
     private TimeSpan? lastTook;
@@ -162,6 +163,10 @@ public sealed class GameHints : IDisposable
     /// <summary>Jobs that stopped for another reason.</summary>
     public int Problems { get { lock (gate) return problems; } }
     public string? LastProblem { get { lock (gate) return lastProblem; } }
+    /// <summary>What the last job did, or null before one ended.</summary>
+    public GameHintResult? Last { get { lock (gate) return last; } }
+    /// <summary>Jobs that ended.</summary>
+    public int Jobs { get { lock (gate) return hints + passes + repeats + nothing + problems; } }
     public DateTimeOffset? LastAt { get { lock (gate) return lastAt; } }
     public TimeSpan? LastTook { get { lock (gate) return lastTook; } }
     /// <summary>Places with hints told or a pass kept.</summary>
@@ -371,6 +376,7 @@ public sealed class GameHints : IDisposable
         lock (gate)
         {
             doing = null;
+            last = result;
             lastAt = clock.GetUtcNow();
             lastTook = result.Took;
             lastProblem = result.Problem;
@@ -414,6 +420,36 @@ public sealed class GameHints : IDisposable
         closing.Cancel();
         closing.Dispose();
     }
+}
+
+/// <summary>Where the user is, from the game state (<see cref="GameProgress.Read"/> and <see cref="GameProgress.PlaceOrGoalChanged"/>).
+/// A change without a known place is not passed on.</summary>
+public sealed class GameProgressPlaces : IGamePlaceSource, IDisposable
+{
+    private readonly GameProgress progress;
+    private Action<GamePlace>? changed;
+
+    public GameProgressPlaces(GameProgress progress)
+    {
+        this.progress = progress ?? throw new ArgumentNullException(nameof(progress));
+        progress.PlaceOrGoalChanged += OnChanged;
+    }
+
+    public GamePlace? Current => progress.Read() is { } state ? new(state.Game, state.Place, state.Goal, null, state.Playthrough) : null;
+
+    public event Action<GamePlace>? Changed
+    {
+        add => changed += value;
+        remove => changed -= value;
+    }
+
+    private void OnChanged(GamePlaceChange change)
+    {
+        if (string.IsNullOrWhiteSpace(change.Place)) return;
+        changed?.Invoke(new(change.Game, change.Place, change.Goal, null, change.Playthrough));
+    }
+
+    public void Dispose() => progress.PlaceOrGoalChanged -= OnChanged;
 }
 
 /// <summary>Guide sections from the App guides (<see cref="AppGuideService"/>) and research on a place within the current

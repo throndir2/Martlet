@@ -1412,12 +1412,15 @@ brief's text, nor area names. Read-only.
 with the production hint keeper (`GameHints`), guide library
 (`AppGuideService`, `FileAppGuideStore`) and guide search
 (`AppGuideHintGuide`) on a FIXTURE guide about a made-up game in a temporary
-folder, FIXTURE places and preferences, and a FIXTURE Thinking pool member
-(answers made from the request, NOT AI; nothing is sent). `steps`: a hint at a
-new place (`Said`), the same topic at the same place (`Repeat`), a FIXTURE
-preference *stop giving hints* (`Passed`), the same place while it stays
+folder, the production game state (`GameProgress`, `GameProgressPlaces`)
+updated from FIXTURE screen notes, a FIXTURE preference and a FIXTURE Thinking
+pool member (answers made from the request, NOT AI; nothing is sent). `steps`:
+a new place in the game state starts a hint in the background (`Said`), the
+same topic at the same place (`Repeat`), a new place while a FIXTURE preference
+*stop giving hints* is there (`Passed`), the same place while it stays
 (`Passed`, with no new request) and a hint again when it is gone. Also `said`
-(the hints with place and topic), `guideSectionsFound`,
+(the hints with place and topic), `gameState` (`placeFromState`,
+`placeChanges`, `places`), `guideSectionsFound`,
 `unrelatedSectionsLeftOut`, `toldTopicsSent`, `preferenceSent`,
 `notAskedAgainWhileStopped`, `instructionsStayTheSame`, `requests`, `counts`
 (`Hints`, `Passes`, `Repeats`, `Nothing`, `Problems`, `Places`) and `limits`.

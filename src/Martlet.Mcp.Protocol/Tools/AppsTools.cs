@@ -435,8 +435,9 @@ internal sealed partial class McpServer
             "Thinking pool member picks one secret, hidden item, puzzle solution or boss tip from the game's App guide, with your " +
             "preferences, and Martlet says it at a quiet moment. Rehearsed with the production hint keeper (GameHints), guide " +
             "library (AppGuideService, FileAppGuideStore) and guide search (AppGuideHintGuide) on a FIXTURE guide about a made-up " +
-            "game in a temporary folder (deleted afterwards), FIXTURE places and preferences and a FIXTURE pool member (answers made " +
-            "from the request, NOT AI; nothing is sent). Returns each step (a hint at a new place, the same topic not told again, a " +
+            "game in a temporary folder (deleted afterwards), the production game state (GameProgress) updated from FIXTURE screen " +
+            "notes, a FIXTURE preference and a FIXTURE pool member (answers made from the request, NOT AI; nothing is sent). Returns " +
+            "each step (a new place in the game state starts a hint in the background, the same topic not told again, a " +
             "stop by a preference, no new request while it stays, a hint again when it is gone), the hints said, whether the guide " +
             "sections, the told topics and the preference went with the request, whether the instructions stay the same, the counts " +
             "and the limits. reply (optional) is parsed like a pool member's answer ([pass], [none], or Topic and Hint; a hint that " +

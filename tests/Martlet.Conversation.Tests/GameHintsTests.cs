@@ -158,6 +158,27 @@ public sealed class GameHintsTests
     }
 
     [Fact]
+    public async Task The_game_state_gives_the_place_and_a_place_change_starts_a_hint()
+    {
+        using var progress = new GameProgress(new Thinker(["Where: Liurnia, the waterfall by the Academy gate.\nGoal: Reach the Academy.",
+            "Doing: Looking around."]), new ContextBoard());
+        using var places = new GameProgressPlaces(progress);
+        var seen = new List<GamePlace>();
+        places.Changed += seen.Add;
+        Assert.Null(places.Current);
+
+        await progress.UpdateAsync("Elden Ring", null, "Screen over the last 9 s: a waterfall near a gate.");
+        var place = Assert.Single(seen);
+        Assert.Equal(("Elden Ring", "Liurnia, the waterfall by the Academy gate.", "Reach the Academy."), (place.Game, place.Place, place.Goal));
+        Assert.Equal(place.Place, places.Current!.Place);
+        Assert.Equal(progress.Read()!.Playthrough, places.Current.Playthrough);
+
+        // Only the doing changed: no new place, no hint.
+        await progress.UpdateAsync("Elden Ring", null, "Screen over the last 9 s: the player looks around.");
+        Assert.Single(seen);
+    }
+
+    [Fact]
     public void The_answer_is_a_pass_none_or_a_topic_and_hint_and_never_a_claim_about_the_screen()
     {
         Assert.Equal(GameHints.Pass, GameHints.Parse("\"[PASS]\"")!.Value.Kind);

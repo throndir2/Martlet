@@ -533,8 +533,9 @@ useful thing about that place: a secret, a hidden item, a puzzle solution or a
 boss tip. For example: *"There's apparently a secret room behind the waterfall
 here."* `GameHints` (`src\Martlet.Conversation\Guides\GameHints.cs`) owns it.
 
-1. The game state tells that the place or the goal changed
-   (`IGamePlaceSource`). Without a known place, nothing happens.
+1. The [game state](CONVERSATION.md#where-you-are-in-a-game) tells that the
+   place or the goal changed (`GameProgress.PlaceOrGoalChanged`, through
+   `GameProgressPlaces`). Without a known place, nothing happens.
 2. Martlet searches the game's guide for secrets, hidden items, puzzles and
    boss tips at that place, and for the goal (`AppGuideHintGuide`, at most 8
    sections and 6,000 characters). With fewer than 2 sections, it researches
