@@ -54,6 +54,7 @@ public partial class MainWindow
 
     private void StopAppGuides()
     {
+        StopGameHints();
         conversation?.StopGuideResearch();
         appGuideWatch?.Dispose();
         appGuides?.Dispose();

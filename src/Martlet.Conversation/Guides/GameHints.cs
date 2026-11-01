@@ -387,6 +387,11 @@ public sealed class GameHints : IDisposable
 
     private static string Key(string game, string place) => Norm(game) + "|" + Norm(place);
 
+    /// <summary>What the conversation gets to bring up for <paramref name="hint"/>: where it is and where it comes from, so the
+    /// character says it in its own words and never claims to see it.</summary>
+    public static string Words(GameHint hint) =>
+        $"A hint for {hint.Game} at {hint.Place}, from the game's guide (not from the screen, so say where it is, not that you see it): {hint.Text}";
+
     private static string Norm(string text) =>
         string.Join(' ', new string([.. text.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : ' ')])
             .Split(' ', StringSplitOptions.RemoveEmptyEntries));

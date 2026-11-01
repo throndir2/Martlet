@@ -15,6 +15,8 @@ internal interface IAppGuidesPageServices
 
     /// <summary>The game state (the Game state card), or null while App guides haven't started it.</summary>
     GameProgress? GameProgress { get; }
+    /// <summary>Hints and secrets for the game in front, or null while they aren't running on this PC.</summary>
+    GameHints? Hints { get; }
 
     /// <summary>Ends when the window closes.</summary>
     CancellationToken Token { get; }
