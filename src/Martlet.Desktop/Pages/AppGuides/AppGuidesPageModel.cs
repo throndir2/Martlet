@@ -13,6 +13,21 @@ internal sealed class AppGuidesPageModel(AppGuideService guides)
     /// <summary>The In front line (AppGuidesFront).</summary>
     internal string FrontText => Front(guides);
 
+    /// <summary>The hints line (AppGuidesHints): on or not running here, and what the hints did.</summary>
+    internal static string HintsText(AppGuideService guides, GameHints? hints)
+    {
+        if (!guides.On) return "Hints and secrets: off while App guides are off.";
+        if (hints is null) return "Hints and secrets: not running on this PC.";
+        var text = "Hints and secrets: on; tell Martlet if you'd rather not get them";
+        var done = new List<string>();
+        if (hints.Hints > 0) done.Add($"{hints.Hints} said");
+        if (hints.Passes > 0) done.Add($"{hints.Passes} held back by your preferences");
+        if (hints.Repeats > 0) done.Add($"{hints.Repeats} not repeated");
+        if (done.Count > 0) text += " (" + string.Join(", ", done) + ")";
+        if (hints.Doing is { } doing) text += doing == "waiting" ? "; a hint waits for a quiet moment" : "; looking for a hint where you are";
+        return text + ".";
+    }
+
     /// <summary>The Now card's warning when the library couldn't be read, or null.</summary>
     internal string? LoadProblemText => guides.LoadProblem is { } unread
         ? $"Martlet couldn't read your guide library ({unread}) and didn't change it; turning App guides on starts a new one and keeps a copy of the old file."

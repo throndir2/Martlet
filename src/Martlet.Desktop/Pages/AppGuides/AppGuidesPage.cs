@@ -12,7 +12,7 @@ namespace Martlet.Desktop;
 /// page for the window's life: it keeps the Add an app boxes and the status lines it updates while Martlet reads up.</summary>
 internal sealed partial class AppGuidesPage(IAppGuidesPageServices services)
 {
-    private TextBlock? nowText, frontText;
+    private TextBlock? nowText, frontText, hintsText;
     private readonly Dictionary<string, TextBlock> rows = new(StringComparer.Ordinal);
 
     /// <summary>The library revision the page last drew its list for: other changes (reading-up progress) only update its status lines.</summary>
@@ -22,7 +22,7 @@ internal sealed partial class AppGuidesPage(IAppGuidesPageServices services)
     internal void Render(Panel page)
     {
         rows.Clear();
-        nowText = frontText = null;
+        nowText = frontText = hintsText = null;
         gameStatePanel = null;
         if (services.Guides is not { } guides)
         {
@@ -63,7 +63,14 @@ internal sealed partial class AppGuidesPage(IAppGuidesPageServices services)
         AutomationProperties.SetAutomationId(front, "AppGuidesFront");
         AutomationProperties.SetLiveSetting(front, AutomationLiveSetting.Polite);
         frontText = front;
-        page.Children.Add(Card(Heading("App guides"), on, disclosure, ask, askNote, front));
+        var hintsLine = Note(AppGuidesPageModel.HintsText(guides, services.Hints), new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(hintsLine, "AppGuidesHints");
+        hintsText = hintsLine;
+        var hintsNote = HelpTip.Explain("When Martlet knows where you are in a game with a guide, it may tell you a secret, a hidden " +
+            "item, a puzzle solution or a boss tip for that place, once, at a quiet moment. It doesn't tell big story spoilers unless " +
+            "you ask. Say \"stop giving hints\" (or \"no spoilers\", or \"only when I ask\") and it keeps that as your preference.",
+            new Thickness(24, 2, 0, 4), "AppGuidesHintsAbout", "hints and secrets", wiki: "App-Guides#hints-and-secrets");
+        page.Children.Add(Card(Heading("App guides"), on, disclosure, ask, askNote, front, hintsLine, hintsNote));
 
         page.Children.Add(GameStateCard());
 
@@ -79,6 +86,7 @@ internal sealed partial class AppGuidesPage(IAppGuidesPageServices services)
         var model = new AppGuidesPageModel(guides);
         if (nowText is not null) nowText.Text = model.NowText;
         if (frontText is not null) frontText.Text = model.FrontText;
+        if (hintsText is not null) hintsText.Text = AppGuidesPageModel.HintsText(guides, services.Hints);
         foreach (var entry in guides.Library.Apps)
             if (rows.TryGetValue(entry.Key, out var line)) line.Text = model.Status(entry);
     }

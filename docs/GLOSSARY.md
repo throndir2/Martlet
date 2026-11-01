@@ -74,6 +74,7 @@ Companion › Singing ([Singing](SINGING.md#the-two-singing-pools)).
 | A short note, about every 15 seconds, about what changed on your screen | `ScreenDigest` (`ScreenDigester`, `IScreenDigestThinker`) | screen summary (the setting is *Screen summary over time*) | Prompt key `screen_digest`; the `ScreenSummary` choice in `talk-preferences.json`; Thinking pool job key `digest`; image model lane key `screen-summary`; job label *Summary of the screen* |
 | A short note about a sound this PC plays | `SoundDigest` (`PcSoundDigest`, `ISoundJudge`) | PC sound description (the setting is *Describe PC sounds*) | Thinking pool job key `digest`; job label *Description of a sound on this PC* |
 | What Martlet knows about your game: place, goal, what you do, your character, build, equipment, recent events and progress, for each playthrough | `GameProgress` (fields: `GameFields`; read: `GameState`) | game state | Saved in `game-state.json` (shared setting `game-state`); context board source `game`; reply tool `game_state`; Thinking pool job key `research`; job label *Game progress* |
+| One secret, hidden item, puzzle solution or boss tip for the place you are at in a game, from its guide | game hint (`GameHints`, `GameHint`) | hints and secrets (*Hints and secrets* line on Companion › App guides) | Thinking pool job key `research`; job label *Game hint*; notice kind `checkin`; model answers `[pass]` and `[none]` |
 
 One Thinking pool job kind, `Digest` (key `digest`, label *Screen and sound
 summaries*), covers both.

@@ -526,6 +526,68 @@ digests on (they give the clues) and a Thinking pool member. It costs nothing
 when the pool members are local. On a paid cloud pool member it is bounded by
 the limits above.
 
+### Hints and secrets
+
+When Martlet knows where the player is in a game with a guide, it tells one
+useful thing about that place: a secret, a hidden item, a puzzle solution or a
+boss tip. For example: *"There's apparently a secret room behind the waterfall
+here."* `GameHints` (`src\Martlet.Conversation\Guides\GameHints.cs`) owns it.
+
+1. The [game state](CONVERSATION.md#where-you-are-in-a-game) tells that the
+   place or the goal changed (`GameProgress.PlaceOrGoalChanged`, through
+   `GameProgressPlaces`). Without a known place, nothing happens.
+2. Martlet searches the game's guide for secrets, hidden items, puzzles and
+   boss tips at that place, and for the goal (`AppGuideHintGuide`, at most 8
+   sections and 6,000 characters). With fewer than 2 sections, it researches
+   the place first, within the limits of [Researching where you
+   are](#researching-where-you-are) (`AppGuideResearcher.ResearchAreaAsync`,
+   which never waits for another research job).
+3. A Thinking pool member gets the game, the place, the goal, **the user's
+   preferences** that apply while they play that game (`UserPreferencesHints`:
+   `UserPreferences.Note` for `gaming/<game>`, the same block replies get, see
+   [Your preferences](CONVERSATION.md#your-preferences)), the hints already told
+   at that place, and the sections. Its instructions never change, so every
+   request starts the same way. It answers `Topic:` and `Hint:`, `[none]`
+   when the sections have nothing new, or `[pass]` when a preference forbids
+   or holds back the hint (*stop giving hints*, *only when I ask*, *no
+   spoilers*).
+4. The hint waits for a quiet moment (`IHintSpeaker.Quiet`): the talk window
+   runs, nobody talks or is about to be answered, no reply or look runs, the
+   live floor isn't Live and the conversation was quiet for 15 seconds. Hints
+   come at most once in 4 minutes. A hint that waits more than 2 minutes, or
+   whose place or preferences change while it waits, is dropped.
+5. The talk window brings it up like a check-in's notice (the *Check-in:
+   brought up* prompts). The reply says it briefly, in character, and gets the
+   user's preferences as every reply does.
+
+Rules:
+
+- **On by default.** Martlet tells the secret directly. It doesn't tell major
+  story spoilers (twists, deaths, endings) on its own, but answers when asked.
+- **Your preferences control it.** Tell Martlet *stop giving hints*, and the
+  preference stops every later hint until you change it. A place where the
+  model passed isn't asked about again until the preferences change.
+- **No repeats.** A topic told at a place is never told there again (the
+  words are compared without case and punctuation), and a place gets at most
+  3 hints. The told topics are kept in memory for the session (at most 300
+  places).
+- **Never "I can see".** The place comes from the game state, not from the
+  screen now. An answer that says it sees the screen (*on your screen*, *I can
+  see*) is refused, and the text the conversation gets says the hint is from
+  the guide.
+- **Guide text is data.** The instructions tell the model never to follow
+  instructions in the sections.
+- **No added latency.** The model work is a Research job on a Thinking pool
+  member, never on a reply's path or the conversation's own Thinking route.
+  The reply that says the hint is an ordinary notice reply.
+- **Log**: counts and times only (*Game hints: said a hint in 4.2 s.*), never
+  the game, the place, the preferences or the hint.
+
+Companion › App guides shows the **Hints and secrets** line (`AppGuidesHints`):
+off, not running on this PC, or on with how many hints were said, held back by
+your preferences and not repeated. MCP's `game_hints_check` rehearses a hint,
+a stop by a preference and no repeat on a FIXTURE guide ([MCP: apps](mcp/apps.md)).
+
 ### Looked up on the web
 
 The pages a quick look-up or web research reads (the `research` tool, also

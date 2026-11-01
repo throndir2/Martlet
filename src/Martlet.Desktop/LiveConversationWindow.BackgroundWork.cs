@@ -81,6 +81,15 @@ public partial class LiveConversationWindow
     /// <summary>Whether the reply that carried <paramref name="job"/> stayed quiet ([pass]).</summary>
     internal bool StayedQuiet(BackgroundJob job) => controller.StayedQuiet(job);
 
+    /// <summary>Whether Martlet may bring up a game hint now (docs/APP_GUIDES.md, "Hints and secrets"): the conversation runs and
+    /// isn't paused, nobody talks or is about to be answered, no reply or look runs, the live floor isn't Live and the conversation
+    /// has been quiet for <see cref="HintQuiet"/>.</summary>
+    internal bool HintMoment => !closed && Available && !Paused && !UserBusy && !operations.IsRunning && owned is null or { OwnershipReleased: true } &&
+        controller.LiveFloor.Level != LiveFloorLevel.Live && (activityAt == 0 || clock.GetElapsedTime(activityAt) >= HintQuiet);
+
+    /// <summary>How long the conversation is quiet before a game hint may come.</summary>
+    internal static TimeSpan HintQuiet => TimeSpan.FromSeconds(15);
+
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
     /// answered, no reply, look or other work owns Martlet, Martlet isn't paused or singing, and the conversation has been quiet

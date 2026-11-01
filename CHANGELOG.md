@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Martlet tells you secrets while you play: when it knows where you are in a game with a guide, it may say something like *"there's apparently a secret room behind the waterfall here"*, or a hidden item, a puzzle solution or a boss tip, once, when nobody is talking. It never repeats one for the same place, doesn't spoil the story unless you ask, and stops when you tell it *"stop giving hints"*. Companion › App guides shows what the hints did. ([#1163](https://github.com/throndir2/Martlet/pull/1163))
 - Martlet keeps your own preferences for how it behaves. Say *"stop giving hints"* or *"no spoilers for Elden Ring"* while you talk and it saves the preference and follows it from then on, on all your computers, until you say *"you can give hints again"*. See, add, change and remove them in Companion › Memory › **Your preferences**. ([#1162](https://github.com/throndir2/Martlet/pull/1162))
 - Martlet keeps track of where you are in each game, your goal, your character, build and equipment, for each playthrough. It remembers this after a restart and on your other computers, and you can correct it by telling Martlet or in Companion › App guides › Game state. ([#1161](https://github.com/throndir2/Martlet/pull/1161))
 

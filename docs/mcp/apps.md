@@ -1408,6 +1408,32 @@ its guide `file` is there, whether it has a `brief` with `briefAt` and
 found on the web, `researchedSections` and `lastAreaAt`. Never a guide's or
 brief's text, nor area names. Read-only.
 
+`game_hints_check` rehearses [hints and secrets](../APP_GUIDES.md#hints-and-secrets)
+with the production hint keeper (`GameHints`), guide library
+(`AppGuideService`, `FileAppGuideStore`) and guide search
+(`AppGuideHintGuide`) on a FIXTURE guide about a made-up game in a temporary
+folder, the production game state (`GameProgress`, `GameProgressPlaces`)
+updated from FIXTURE screen notes, FIXTURE preferences in the production
+preferences store (`UserPreferences`, read through `UserPreferencesHints`) and
+a FIXTURE Thinking
+pool member (answers made from the request, NOT AI; nothing is sent). `steps`:
+a new place in the game state starts a hint in the background (`Said`), the
+same topic at the same place (`Repeat`), a new place while a FIXTURE preference
+*stop giving hints* is there (`Passed`), the same place while it stays
+(`Passed`, with no new request) and a hint again when it is gone. Also `said`
+(the hints with place and topic), `gameState` (`placeFromState`,
+`placeChanges`, `places`), `preferences` (`added` for this game, `scope`,
+`otherGameLeftOut`: another game's preference isn't sent, `removed`),
+`guideSectionsFound`,
+`unrelatedSectionsLeftOut`, `toldTopicsSent`, `preferenceSent`,
+`notAskedAgainWhileStopped`, `instructionsStayTheSame`, `requests`, `counts`
+(`Hints`, `Passes`, `Repeats`, `Nothing`, `Problems`, `Places`) and `limits`.
+`reply` (optional) is parsed like a pool member's answer: `kind` (`[pass]`,
+`[none]` or `hint`), `topic`, `hint`, or `refused` (also when the hint says it
+sees the screen). `ok` is true when every step did what it should. The page's
+**Hints and secrets** line is the SafeValue `AppGuidesHints`. Reads no
+credentials and contacts nothing.
+
 `discord_call_check` checks [Martlet in your own Discord calls](../DISCORD.md#martlet-in-your-own-calls)
 (Companion › Discord › **Martlet in your Discord calls**; optional absolute
 `dataDirectory`, default the current user's). `saved` is the mode from

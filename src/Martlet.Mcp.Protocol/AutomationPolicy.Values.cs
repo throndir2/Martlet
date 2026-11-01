@@ -483,6 +483,7 @@ internal static partial class AutomationPolicy
         new("AppGuidesNow", "Companion › App guides", "Shows the Now line: off, or how many guides and pages and their size, and what Martlet reads up on now."),
         new("AppGuidesDisclosure", "Companion › App guides", "Shows the fixed disclosure of what leaves this PC."),
         new("AppGuidesFront", "Companion › App guides", "Shows what is in front as App guides sees it: a program's name, whether it is a game or on the list, and whether its guide is ready."),
+        new("AppGuidesHints", "Companion › App guides", "Shows the Hints and secrets line: off, not running on this PC, or on with how many hints were said, held back by the user's preferences and not repeated, and whether a hint is being looked for or waits for a quiet moment. Never a game, a place or a hint."),
         new("AppGuidesEmpty", "Companion › App guides", "Shows the empty list's line."),
         new("AppGuidesResult", "Companion › App guides", "Shows what the last action did."),
         new("AppGuidesOn", "Companion › App guides", "Shows the On box's state as checkedState. Ticking it saves library.json in the guides folder, so that needs --allow-ui-effects."),

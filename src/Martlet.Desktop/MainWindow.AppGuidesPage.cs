@@ -13,6 +13,7 @@ public partial class MainWindow : IAppGuidesPageServices
 
     AppGuideService? IAppGuidesPageServices.Guides => appGuides;
     GameProgress? IAppGuidesPageServices.GameProgress => conversation?.GameProgress;
+    GameHints? IAppGuidesPageServices.Hints => gameHints;
     CancellationToken IAppGuidesPageServices.Token => lifetime.Token;
     string? IAppGuidesPageServices.Result
     {
