@@ -168,6 +168,8 @@ public sealed class GameHintsTests
         Assert.Equal(("hint", "Hidden wall", "Hit the wall left of the altar to open a passage."), (hint.Kind, hint.Topic, hint.Hint));
         Assert.Null(GameHints.Parse("Topic: Chest\nHint: I can see a chest on your screen, open it."));
         Assert.Null(GameHints.Parse("Topic: Chest\nHint: The chest on screen has a key."));
+        Assert.Equal("A hint for Elden Ring at Liurnia, from the game's guide (not from the screen, so say where it is, not that you see it): Look behind the waterfall.",
+            GameHints.Words(new GameHint("Elden Ring", "Liurnia", "Waterfall", "Look behind the waterfall.")));
     }
 
     [Fact]
