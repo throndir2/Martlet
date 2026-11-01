@@ -26,10 +26,12 @@ internal sealed partial class LiveConversationController
         };
         Volatile.Write(ref guideResearch, research);
         Board.Changed += ScreenForGuides;
-        var progress = new GameProgress(new PoolGuideThinker(() => ThinkingPool), Board, clock) { Log = ErrorLog.Info };
+        var progress = new GameProgress(new PoolGuideThinker(() => ThinkingPool), Board, clock, dataDirectory) { Log = ErrorLog.Info };
+        progress.Changed += () => GameStateChanged?.Invoke();
         Volatile.Write(ref gameProgress, progress);
         gameProgressGuides = guides;
         Board.Changed += ScreenForGame;
+        GameStateChanged?.Invoke();
     }
 
     internal void StopGuideResearch()
@@ -44,8 +46,33 @@ internal sealed partial class LiveConversationController
     private GameProgress? gameProgress;
     private AppGuideService? gameProgressGuides;
 
-    /// <summary>The running note on where the user is in the game in front; null before <see cref="StartGuideResearch"/>.</summary>
+    /// <summary>The game state (where the user is in the game in front, their character, build and equipment); null before
+    /// <see cref="StartGuideResearch"/>.</summary>
     internal GameProgress? GameProgress => Volatile.Read(ref gameProgress);
+
+    /// <summary>Raised after the game state changed (any thread).</summary>
+    internal event Action? GameStateChanged;
+
+    /// <summary>game_state: reads the full game state, corrects one field with the user's word or chooses a playthrough, at once.</summary>
+    internal ConversationToolResult GameStateTool(TextToolCall call)
+    {
+        const string server = "Martlet";
+        var (action, game, field, value, problem) = GameStateTools.Parse(call.ArgumentsJson);
+        if (problem is not null)
+        {
+            tools?.Record(server, GameStateTools.Name, "invalid arguments", "", true);
+            return new(problem, true);
+        }
+        if (GameProgress is not { } progress) return new("The game state isn't kept on this PC now (Companion › App guides is off).", true);
+        var (state, refused) = action switch
+        {
+            GameStateTools.Correct => progress.Correct(game, field!, value),
+            GameStateTools.Playthrough => progress.UsePlaythrough(game, value!),
+            _ => (progress.Read(game), null)
+        };
+        tools?.Record(server, GameStateTools.Name, refused is null ? action! : action + ": refused", "", refused is not null);
+        return refused is null ? new(GameStateTools.Format(state, clock.GetUtcNow())) : new(refused, true);
+    }
 
     // Like ScreenForGuides: reads the screen note only when the game note wants one, and only while a game (or an app with a
     // guide) is in front. The update runs on the thread pool, as a Research job on a Thinking pool member.

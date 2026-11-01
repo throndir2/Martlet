@@ -1842,42 +1842,79 @@ request is what it always was.
 
 ### Where you are in a game
 
-Structured game state, saved playthroughs, hints and the user's preferences are
-in progress: see the [game-state plan](GAME_STATE_PLAN.md). This section
-describes the current behavior.
+Hints and the user's preferences are in progress: see the
+[game-state plan](GAME_STATE_PLAN.md). This section describes the current
+behavior of the game state.
 
 The screen summary tells only the last seconds of the screen, and it is fresh
-for 45 seconds. So Martlet also keeps a **running note** on where you are in
-the game in front: the place, what you do, what happened lately and how far
-into the game you seem (`GameProgress`,
-`src\Martlet.Conversation\Guides\GameProgress.cs`).
+for 45 seconds. So Martlet also keeps a **game state** for each game: where you
+are, your goal, what you do, your character (name, class, level), your build,
+your equipment, what happened lately and how far into the game you seem
+(`GameProgress`, `src\Martlet.Conversation\Guides\GameProgress.cs`, the one
+owner of the game state; the fields are `GameFields` in
+`src\Martlet.Core\Settings\GameStateFile.cs`).
 
 1. While a game (or an app with a guide) is in front and the screen summary
-   changes, a Thinking pool member writes the note again. It gets the game's
-   name, its [brief](APP_GUIDES.md#the-brief) when there is one, the earlier
-   note with its age and the new screen summary. This happens at most once in
-   90 seconds, as a `Research` job (the lowest priority), never on the
+   changes, a Thinking pool member updates the state. It gets the game's name,
+   its [brief](APP_GUIDES.md#the-brief) when there is one, what was noted
+   before (each line with its age, whether you said it and whether it is from
+   an earlier session) and the new screen summary. This happens at most once
+   in 90 seconds, as a `Research` job (the lowest priority), never on the
    conversation's own Thinking route and never on a reply's path.
-2. The answer is plain lines (*Where:*, *Doing:*, *Lately:*, *Progress:*),
-   at most 480 characters. *[same]* keeps the earlier note and posts it again.
-   An answer that is not a note changes nothing.
-3. The note goes on the [context board](#context-board) as source `game`,
-   right after `screen`, for 10 minutes after its last update: *Where the user
-   is in Skyrim (your running note from the screen; it may be a little out of
-   date): Where: …; Doing: …*. So replies, glances and check-ins know where you
-   are also when the newest screen summary is gone. It goes last in the
-   message and is never kept, so the start of every request stays the same.
-4. Each game keeps its own note in memory (at most 8 games), so when you go
-   back to a game, the next update starts from where you were. A note older
-   than 6 hours is not given to the model again. Nothing is saved to disk.
+2. The answer is plain lines (*Where:*, *Goal:*, *Doing:*, *Character:*,
+   *Class:*, *Level:*, *Build:*, *Equipment:*, *Lately:*, *Progress:*), only
+   for what the new summary shows. A line that is left out keeps its value: a
+   missing field means unknown, not removed. *[same]* keeps the state and posts
+   it again. An answer that is not one changes nothing.
+3. **Your word wins.** You correct the state by telling Martlet (*"I'm level
+   12 now"*), through the reply's `game_state` tool, or in the app. For one
+   hour after you set a field, a different value from the screen does not
+   replace it.
+4. **Playthroughs.** Each game keeps up to 4 playthroughs (the first is
+   `main`). *"I started a new save"* makes Martlet start or switch to a named
+   playthrough. Martlet keeps up to 24 games and forgets the oldest first.
+5. **Saved and shared.** The state is saved in `game-state.json` and travels
+   as each person's shared setting `game-state`
+   ([CLUSTER](CLUSTER.md#one-martlet-on-every-computer)), so it survives a
+   restart and is the same on your other computers. A fact read from disk is
+   marked *not seen this session* (*Where (last session): ...*) until new
+   evidence from the screen shows it. Companion › App guides › *Game state*
+   shows each game's fields, turns saving off (then no games stay on disk, and
+   this run keeps its state in memory only) and forgets a game.
+6. The state goes on the [context board](#context-board) as source `game`,
+   right after `screen`, for 10 minutes after it was last posted: *Where the
+   user is in Skyrim (your running note from the screen; it may be a little
+   out of date): Where: ...; Goal: ...; Doing: ...*. Place and goal come first,
+   and the line stays within the board's 600 bytes (fields that do not fit are
+   left out). *Doing* and *Lately* older than 6 hours are not shown or given
+   to the model again. When a game with a saved state comes to the front, its
+   line goes on the board with the next screen summary, before the update. It goes last in the message and is never
+   kept, so the start of every request stays the same.
+
+**The reply's tool.** While App guides are on and the Thinking route does
+function calling, every reply gets `game_state` after the App guides tools,
+always worded the same: `read` returns the full state (the board line is
+short), `correct` sets one field to the user's words (an empty value clears
+it) and `playthrough` starts or switches to a named playthrough. It answers at
+once from memory, with no model call.
+
+**For other features** (such as hints), `GameProgress.Read(game)` returns a
+`GameState`: the game, its current playthrough, `UpdatedAt`, its `Fields`
+(`GameStateField`: name, label, value, when, whether the user set it, whether
+it was seen this session) and the names of its playthroughs.
+`GameProgress.PlaceOrGoalChanged` raises a `GamePlaceChange` (the game,
+playthrough, new and earlier place and goal, and whether the user set them)
+when the place or the goal changes.
 
 It needs App guides on (they watch which program is in front), screen
 summaries on (Companion › Vision › *Screen summary over time*) and a Thinking
 pool member that takes research. It adds one small text request at most every
 90 seconds while you play, and nothing to a reply's wait. The desktop log says
-*Game progress: updated the note in 2.1 s (123 characters).*, never the game,
-the screen or the note. MCP's `game_progress_check` rehearses it with a
-fixture pool member ([MCP](MCP.md)).
+*Game progress: updated the state in 2.1 s (4 fields).* and *Game progress:
+the user set a field (place).*, never the game, the screen or a value. MCP's
+`game_progress_check` rehearses it with a fixture pool member, and
+`game_state_read`, `game_state_correct` and `game_state_delete` work on a data
+folder's state ([MCP](mcp/thinking.md)).
 
 ## Reminders
 

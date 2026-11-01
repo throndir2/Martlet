@@ -153,6 +153,7 @@ public partial class MainWindow
         TouchTemperamentKey => "touch temperaments",
         ConversationHistoryKey => "your conversation history choices",
         MemoryBriefFile.SharedKey => "the memory brief",
+        GameStateFile.SharedKey => "the game state",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",

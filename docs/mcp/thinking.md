@@ -1392,21 +1392,57 @@ bytes; consumed)* in the desktop log (`logs_tail`), and `LiveTurnInputs`
 counts them (*... and 2 context notes*). Loopback only; no credentials.
 
 `game_progress_check` rehearses [where you are in a
-game](../CONVERSATION.md#where-you-are-in-a-game) with the production note keeper
-(`GameProgress`) and context board and a FIXTURE Thinking pool member (canned
-answers, NOT AI; nothing is sent). Two FIXTURE screen summaries make a note
-and a newer note built on the first, a `[same]` answer keeps the note, and a
-bad answer leaves the board as it was. It returns `updates` (each step's
-`Updated`, `Kept`, `Characters` and `Problem`), `secondBuiltOnFirst`,
-`instructionsStayTheSame`, `board` (`sources`: `screen`, then `game`; `game`:
-the note's text and `maxAgeSeconds` 600; `gameAfterScreen`), `counts` and
-`limits` (`everySeconds` 90, `noteAgeSeconds` 600, `earlierNoteHours` 6,
-`maximumCharacters` 480, `maximumGames` 8, `maxOutputTokens` 200); `ok` is
-true when all of them hold. An optional `reply` is cleaned like a pool
-member's answer and shown as `reply.cleaned` and its `board` line. Live
-updates log *Game progress: updated the note in N s (N characters).* in the
-desktop log (`logs_tail` `contains` `Game progress`). It reads no credentials
-and contacts nothing.
+game](../CONVERSATION.md#where-you-are-in-a-game) (the game state) with the
+production keeper (`GameProgress`), context board and shared-settings section,
+a FIXTURE Thinking pool member (canned answers, NOT AI; nothing is sent) and
+disposable data folders. It returns `steps`, each with `step`, `passed` and
+`detail`:
+
+1. A screen summary fills the fields it shows and raises the place-or-goal
+   event (`PlaceOrGoalChanged`).
+2. The next update changes only what it shows: the goal, character and
+   equipment stay, and the request carried them.
+3. `[same]` keeps the state, and an answer that is not one changes nothing.
+4. The user's correction (`level` 12) wins over a later screen summary.
+5. The board line goes right after `screen`, place and goal first.
+6. After a restart, the saved state is read again and marked not seen this
+   session (*Where (last session): ...*).
+7. New evidence confirms a loaded fact.
+8. A new playthrough starts empty and the first one stays.
+9. The board line stays within 600 bytes and keeps place and goal.
+10. A second computer takes the same state through the shared setting
+    `game-state`.
+11. Deleting a game removes it from memory and disk.
+12. With saving off, nothing is kept on disk.
+
+It also returns `instructionsStayTheSame` and `limits` (`everySeconds` 90,
+`noteAgeSeconds` 600, `fleetingHours` 6, `userHoldMinutes` 60, `maximumGames`
+24, `playthroughsPerGame` 4, `boardBytes` 600, `maxOutputTokens` 260 and the
+`fields`); `ok` is true when all of them hold. An optional `reply` is parsed
+like a pool member's answer (`reply.fields`, `reply.same`). Live updates log
+*Game progress: updated the state in N s (N fields).* in the desktop log
+(`logs_tail` `contains` `Game progress`). It reads no credentials and contacts
+nothing.
+
+`game_state_read` reads a data folder's saved game state (`game-state.json`;
+optional absolute `dataDirectory`, default the current user's): `state`
+(`none`, `loaded` or `unreadable`), `save` and `games`, each with its `key` and
+`playthroughs` (`playthrough`, `current`, `updatedAt` and `fields` with `name`,
+`label`, `value`, `at` and `byUser`). A running Martlet can hold newer facts in
+memory until its next save. `game_state_correct` (`game`, `field`, `value`,
+optional `playthrough`) corrects one field as the user would: an empty `value`
+clears it, and `playthrough` first chooses or starts that playthrough.
+`game_state_delete` (`game`) deletes all of a game's playthroughs. Both change
+`game-state.json` through the production keeper, so they need
+`--allow-changes`; use a disposable `dataDirectory` for checks. The file
+travels to the owner's other computers, and a running Martlet reads it again
+before its next use of the state.
+
+In the app, Companion › App guides › *Game state* shows the state:
+`GameStateNow` (how many games, the game now, saved or not), `GameStateSave`
+(`checkedState`), `GameStateGame-<key>` (the game, its playthrough and when it
+changed) and `GameStateField-<key>-<field>` (one line for each field).
+`GameStateSave` and `GameStateForget-<key>` need `--allow-ui-effects`.
 
 `context_check` shows the Thinking model's [context](../CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):

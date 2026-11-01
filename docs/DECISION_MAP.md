@@ -469,6 +469,31 @@ jobs; `ResearchWatcher` (`src\Martlet.Conversation\Research\ResearchWatcher.cs`)
 **Docs:** [Answer, look up or research](CONVERSATION.md#answer-look-up-or-research),
 [Deep research](DEEP_RESEARCH.md#levels-the-watcher-and-the-source-check).
 
+## What Martlet knows about the user's game (the game state)
+
+**What it decides:** where the user is in each game and their goal, character,
+build and equipment; which fields an update may change; whether the user's
+word wins over the screen; which playthrough is current; what is saved and
+shared; and what goes on the context board.
+
+**Owner:** `GameProgress` (`src\Martlet.Conversation\Guides\GameProgress.cs`)
+is the one owner of the state and of every change to it (screen updates,
+`Correct`, `UsePlaythrough`, `Forget`, `SetSaving`). `GameStateFile`
+(`src\Martlet.Core\Settings\GameStateFile.cs`) owns `game-state.json`: its
+bounds, load, save and shared section, and `GameFields` (the field names and
+labels). The reply's `game_state` tool (`GameStateTools`), the Companion card
+(`AppGuidesPage.GameState.cs`) and the MCP tools only call `GameProgress`.
+Other features read it only through `GameProgress.Read` and
+`GameProgress.PlaceOrGoalChanged`.
+
+**Tests:** `GameProgressTests` (Martlet.Conversation.Tests);
+`GameStateShareTests` (Martlet.Core.Tests).
+
+**MCP:** `game_progress_check`, `game_state_read`, `game_state_correct`,
+`game_state_delete`; `ui_snapshot` (`GameStateNow`, `GameStateField-<key>-<field>`).
+
+**Docs:** [Where you are in a game](CONVERSATION.md#where-you-are-in-a-game).
+
 ## The context window a host's conversation model loads
 
 **What it decides:** how many tokens of context (Ollama's `num_ctx`) a paired

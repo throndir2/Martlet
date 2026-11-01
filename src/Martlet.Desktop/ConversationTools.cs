@@ -50,7 +50,7 @@ internal sealed partial class LiveConversationController
         /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
         /// off by default), then list_creations and perform_creation while any kind of creation for the tools is registered (CreationRegistry,
         /// docs/CREATIONS.md), then manage_memories while memory is on, then reminders, call_on_discord and set_camera_background
-        /// while they apply, then the App guides tools, and body_motion last while motions are set up and the character is a VRM. Last, the tools a check-in that runs after each exchange takes over (<see cref="HandedOffReplyTools"/>)
+        /// while they apply, then the App guides tools and game_state, and body_motion last while motions are set up and the character is a VRM. Last, the tools a check-in that runs after each exchange takes over (<see cref="HandedOffReplyTools"/>)
         /// are left out, and the Things done after the reply prompt says so. Null when there are none.</summary>
         internal BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
         {
@@ -158,6 +158,9 @@ internal sealed partial class LiveConversationController
             // read_up_on, search_guide and skip_guide after them while App guides are on (Companion › App guides, on by default), so
             // the tools before them start every request the same as before App guides existed. Not while the director has them.
             if (!handedOff.Contains(Martlet.Conversation.Guides.AppGuideTools.ReadUpName)) owner.AddGuideTools(own, ref guidance, operation, configured);
+            // game_state right after them while App guides are on (they keep the game state), also while the director has the guide tools.
+            if (owner.OffersGuides(configured))
+                own.Add((Martlet.Conversation.Guides.GameStateTools.Definition, (call, token) => ValueTask.FromResult(owner.GameStateTool(call))));
             // body_motion last, while motions are set up and the chosen character is a VRM (saved choices only), so switching between
             // a VRM and a Live2D character changes only the end of the tools, and nothing changes without motions.
             if (configured.SupportsTools && owner.Motions is { Offered: true })

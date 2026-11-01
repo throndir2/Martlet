@@ -514,10 +514,12 @@ Limits: at most 4 areas an hour, and the same area again only after 24 hours.
 `update_guide_brief` with a `focus` researches an area again after 1 hour. The
 log has counts and times only, never area names, questions, links or text.
 
-The conversation itself learns where the player is from a separate running
-note, the game note ([Where you are in a
-game](CONVERSATION.md#where-you-are-in-a-game)). It uses the same screen
-summaries and the brief, and goes on the context board as source `game`.
+The conversation itself learns where the player is from a separate game
+state ([Where you are in a game](CONVERSATION.md#where-you-are-in-a-game)):
+the place, goal, character, build and equipment for each playthrough. It uses
+the same screen summaries and the brief, is saved and shared with your other
+computers, and goes on the context board as source `game`. Companion › App
+guides › *Game state* shows it, turns saving off and forgets a game.
 
 Research needs App guides on, *Read up when I start a game or app* on, screen
 digests on (they give the clues) and a Thinking pool member. It costs nothing

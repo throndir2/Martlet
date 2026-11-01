@@ -483,6 +483,8 @@ internal static partial class AutomationPolicy
         new("AppGuidesResult", "Companion › App guides", "Shows what the last action did."),
         new("AppGuidesOn", "Companion › App guides", "Shows the On box's state as checkedState. Ticking it saves library.json in the guides folder, so that needs --allow-ui-effects."),
         new("AppGuidesAsk", "Companion › App guides", "Shows the state of the 'Read up when I start a game or app' box as checkedState. Ticking it saves library.json in the guides folder, so that needs --allow-ui-effects."),
+        new("GameStateNow", "Companion › App guides", "Shows the Game state card's line: how many games Martlet tracks, the game now, and whether the state is saved."),
+        new("GameStateSave", "Companion › App guides", "Shows the state of the 'Save the game state and share it with my other computers' box as checkedState. Ticking it saves game-state.json, so that needs --allow-ui-effects."),
         new("AppGuideAddName", "Companion › App guides", "Shows what is typed in the Add an app name box: an app's name. ui_type and ui_set_text type there."),
         new("AppGuideAddPrograms", "Companion › App guides", "Shows what is typed in the Add an app programs box: its program names. ui_type and ui_set_text type there."),
         new("AppGuideAddSites", "Companion › App guides", "Shows what is typed in the Add an app sites box: its wiki addresses. ui_type and ui_set_text type there."),
@@ -887,6 +889,9 @@ internal static partial class AutomationPolicy
         new("AppGuideStatus-", "Companion › App guides", "An app's line, such as AppGuideStatus-elden-ring: 42 pages, 3.1 MB, read 10 Oct 2026, 18:40., No guide yet. or Reading up now: Reading page 3. Never a guide's text."),
         // Needs --allow-ui-effects: AppGuideRead-<key>, AppGuideMore-<key> (Read more: reads more of the app's wiki), AppGuideStop-<key>, AppGuideAskAgain-<key>, AppGuideDelete-<key>, AppGuideAdd and AppGuideAddRead.
         // Typing in AppGuideAddName, AppGuideAddPrograms and AppGuideAddSites uses ui_set_text or ui_type.
+        new("GameStateGame-", "Companion › App guides", "A game's line on the Game state card, such as GameStateGame-skyrim: Skyrim · playthrough main · updated 31/10/2026 18:40."),
+        new("GameStateField-", "Companion › App guides", "A field of a game's state, such as GameStateField-skyrim-place: Where: Whiterun (seen, 31/10/2026 18:40). Game facts only (place, goal, character, build, equipment, events, progress)."),
+        // Needs --allow-ui-effects: GameStateForget-<key> (deletes the game's state from game-state.json on every computer).
         new("CheckInStatus-", "Companion › Check-ins", "A check-in's line, such as CheckInStatus-emotes: Waits: next in 3 min; last at 10:31 PM on diva (qwen3:8b): turned off {blush}; 4 runs since Martlet started, 1 acted on."),
         new("CheckInOn-", "Companion › Check-ins", "Whether the On box of a built-in or own check-in is ticked, such as CheckInOn-emotes."),
         new("CheckInEvery-", "Companion › Check-ins", "A check-in's Every choice, such as CheckInEvery-emotes."),
