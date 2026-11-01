@@ -127,6 +127,17 @@ public sealed class AppGuideResearcher : IDisposable
         finally { Release(); }
     }
 
+    /// <summary>Researches <paramref name="area"/> of <paramref name="key"/>'s app (game hints): the guide first, then the web when
+    /// the guide has little on it, within the hourly limits and not again within <see cref="AreaAgain"/>. Doesn't wait: "busy" when
+    /// another research job runs.</summary>
+    public async Task<GuideResearchResult> ResearchAreaAsync(string key, string area, CancellationToken cancellationToken = default)
+    {
+        if (disposed || !thinker.CanThink) return new(key, area, false, 0, false, "no Thinking pool member can take research now", TimeSpan.Zero);
+        if (!job.Wait(0)) return new(key, area, false, 0, false, "busy", TimeSpan.Zero);
+        try { return await AreaJobAsync(key, area, force: false, cancellationToken).ConfigureAwait(false); }
+        finally { Release(); }
+    }
+
     /// <summary>A new screen note (the context board's screen summary): looked at in the background at most once every
     /// <see cref="ScreenEvery"/>, only while App guides and Read up when I start a game or app are on, the app in front has a
     /// guide the user didn't say no to and a pool member can think, and never while another research job runs. Returns at once.</summary>
