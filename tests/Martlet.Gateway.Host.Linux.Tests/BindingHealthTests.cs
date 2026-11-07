@@ -173,6 +173,44 @@ public sealed class BindingHealthTests
             Assert.Equal("{\"status\":\"live\"}", await response.Content.ReadAsStringAsync());
     }
 
+    [Fact]
+    public async Task Dialing_the_local_listener_reaches_a_gateway_whose_published_address_does_not_answer()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        var listening = FixturePlatform.FreeOrigin();
+        // The paired origin names an address and port nothing answers on now (the computer got a new address).
+        var published = FixturePlatform.FreeOrigin();
+        await using var owner = DurableGatewayHost.Open("/srv/martlet/store", "fixture-host", listening,
+            [], new QuietAudit(), LocalGatewayDecision.Enable, HostOpenMode.Create, TimeProvider.System,
+            storageBackend: GatewayStorageBackend.LinuxServicePermissions, linuxFileSystem: fs);
+        await owner.StartAsync();
+        using (var direct = PinnedGatewayClient.Create(published, owner.Identity!))
+        using (var request = new HttpRequestMessage(HttpMethod.Get, published.CanonicalOrigin + "/health/ready"))
+            Assert.Equal("gateway.connection_failed",
+                (await Assert.ThrowsAsync<GatewayClientException>(() => direct.SendAsync(request).AsTask())).Failure.Code);
+        using (var dialed = PinnedGatewayClient.Create(published, owner.Identity!, dial: new IPEndPoint(IPAddress.Loopback, listening.Port)))
+        using (var request = new HttpRequestMessage(HttpMethod.Get, published.CanonicalOrigin + "/health/ready"))
+        using (var response = await dialed.SendAsync(request))
+            Assert.True(HostHealth.IsReady(await response.Content.ReadAsByteArrayAsync()));
+        // The pin still holds on the dialed connection: another host's key is refused.
+        using (var wrong = PinnedGatewayClient.Create(published, owner.Identity! with { SpkiFingerprint = "sha256:" + new string('b', 64) },
+            dial: new IPEndPoint(IPAddress.Loopback, listening.Port)))
+        using (var request = new HttpRequestMessage(HttpMethod.Get, published.CanonicalOrigin + "/health/ready"))
+            await Assert.ThrowsAsync<GatewayClientException>(() => wrong.SendAsync(request).AsTask());
+        await owner.CloseCleanlyAsync();
+    }
+
+    [Fact]
+    public void Health_dials_loopback_only_for_a_container_published_binding()
+    {
+        var origin = new GatewayOrigin("https://192.168.50.45:9443");
+        Assert.Equal(new IPEndPoint(IPAddress.Loopback, 9443), HostHealth.Dial(GatewayHostBinding.PublishedPrivateAddress(origin, true)));
+        Assert.Equal(new IPEndPoint(IPAddress.IPv6Loopback, 9443),
+            HostHealth.Dial(GatewayHostBinding.PublishedPrivateAddress(new GatewayOrigin("https://[fd12::3]:9443"), true)));
+        Assert.Null(HostHealth.Dial(GatewayHostBinding.ExactPrivateAddress(origin)));
+        Assert.Null(HostHealth.Dial(GatewayHostBinding.Loopback(new GatewayOrigin("https://127.0.0.1:9443"))));
+    }
+
     [Theory]
     [InlineData("{\"status\":\"live\"}")]
     [InlineData("{\"schema_version\":1,\"scope\":\"listener-auth-admission\",\"listener\":\"listening\",\"auth_admission\":\"open\",\"model_readiness\":\"ready\"}")]

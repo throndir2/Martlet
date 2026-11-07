@@ -9,7 +9,7 @@ internal static class HostHealth
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, deadline.Token);
-        using var client = PinnedGatewayClient.Create(config.Binding.Origin, approval.Identity);
+        using var client = PinnedGatewayClient.Create(config.Binding.Origin, approval.Identity, dial: Dial(config.Binding));
         using var request = new HttpRequestMessage(HttpMethod.Get,
             config.Binding.Origin.CanonicalOrigin + "/health/ready");
         using var response = await client.SendAsync(request, linked.Token);
@@ -29,6 +29,14 @@ internal static class HostHealth
         if (count > 2048) return false;
         return IsReady(buffer[..count]);
     }
+
+    /// <summary>Where the health check connects: a gateway published from a container listens on every address of its own
+    /// network, so the check uses that network's loopback. The published origin can be an address this computer no longer
+    /// has (martlet-host home keeps the paired origin when the computer gets a new address). Null: connect to the origin.</summary>
+    internal static IPEndPoint? Dial(Martlet.Gateway.Persistence.GatewayHostBinding binding) =>
+        binding.ListenAddress is null ? null
+            : new(binding.ListenAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                ? IPAddress.IPv6Loopback : IPAddress.Loopback, binding.Origin.Port);
 
     internal static bool IsReady(byte[] bytes)
     {
