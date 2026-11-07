@@ -156,10 +156,10 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.96.1
+## 🆕 What's new in 0.96.2
 
-- ⚡ **No second wait after a host restart**: the host loads the conversation model with the same context window your replies use, so the first reply doesn't wait for it to load again.
-- 🧭 **No silent promises**: when a Thinking pool member keeps limiting requests, Martlet tells you within 30 seconds that the work didn't start, instead of going quiet for minutes.
+- 🏠 **Host PCs follow a new address**: when a host PC gets a new address, its voices and models move with it, so *Warm up* no longer waits forever for a role.
+- 🩺 **Update host works after a move**: the host checks its own gateway on the computer itself, so *Update host* no longer stops with "The gateway is not healthy" after an address change.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
