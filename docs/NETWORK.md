@@ -163,6 +163,11 @@ name. Only the address that a connection dials changes.
      dashboard said *Address changed*). It runs `martlet-host home` by itself,
      hidden, in Background tasks (*Move this host to its new address*), once
      for each new address. **Set up again** stays as the fallback.
+   - A new holder doesn't take the gateway and roles with it: Docker keeps
+     them in the old holder's network. So `home` (also the one the keeper
+     starts after it moves the holder) recreates them in the new holder's
+     network. `warm` and `exposure` also recreate any that were left behind,
+     so a warm-up never waits for a role that runs in the old network.
 2. **The host answers when your computers look for it.** A native gateway, the
    Docker keeper and Martlet on a host PC answer a *find host* question on
    UDP **9444** (`HostFind`): `{"martlet":"find-host","v":1,"q":<random>}`.

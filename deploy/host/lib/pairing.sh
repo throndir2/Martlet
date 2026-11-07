@@ -157,6 +157,8 @@ cmd_exposure() {
   local status=0
   owner_operation owner-exposure --config "${GW_CONFIG}" "$@" || status=$?
   service_start
+  # Outside access can replace the network holder (docker_launch), which leaves the roles in the old one.
+  reconnect_roles
   [[ ${status} == 0 ]] || fail "Nothing was changed (see above)."
   say "Saved. The gateway serves with it now."
 }

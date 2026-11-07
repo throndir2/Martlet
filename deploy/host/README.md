@@ -335,8 +335,12 @@ How it fits together:
   On Docker Desktop (Windows, Mac) the keeper has no network, because Docker
   Desktop's host network is its own virtual machine; there Martlet on that
   computer runs **`martlet-host home`** with `MARTLET_HOST_ADDRESS=<new address>`
-  by itself, which moves only the holder's published port (a holder that
-  publishes on every address for outside access has nothing to move). A
+  by itself, which moves the holder's published port (a holder that
+  publishes on every address for outside access has nothing to move). Docker
+  keeps the gateway and roles in the replaced holder's network, so `home` then
+  recreates them in the new one; the keeper starts a `home` engine session
+  after it moves the holder, and `warm` and `exposure` also recreate any that
+  were left behind. A
   firewall on a Docker host (ufw) must let UDP 9444 in from the home network by
   hand, because Docker opens only published ports. Martlet never stops the holder itself; to
   keep this host stopped, stop `martlet-host-keeper` first. Every

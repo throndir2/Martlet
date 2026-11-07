@@ -203,8 +203,24 @@ follow_home() {
   home="$(home_address)"
   [[ -n "${home}" && "${home}" != "${current}" ]] || return 0
   note "This computer's home address is ${home} now (it was ${current}), so the gateway is published there; pairings stay."
-  ( ensure_holder "${home}" "${port}" 0 "$(stat -c %g /var/run/docker.sock)" "$(holder_front)" ) ||
+  local socket_group; socket_group="$(stat -c %g /var/run/docker.sock)"
+  if ! ( ensure_holder "${home}" "${port}" 0 "${socket_group}" "$(holder_front)" ); then
     note "Couldn't publish the gateway on ${home} yet; trying again in 10 seconds."
+    return 0
+  fi
+  # Docker keeps the gateway and roles in the replaced holder's network; a home engine session recreates them in the new one.
+  start_home_engine "${socket_group}" ||
+    note "Couldn't reconnect the gateway and roles to the new address. Run Update host in Martlet."
+}
+
+# Keeper: runs 'home' in a detached engine container in the holder's namespace, as docker_launch runs any command.
+start_home_engine() {
+  local socket_group="$1" engine_name; engine_name="martlet-host-home-$(date -u +%Y%m%d-%H%M%S)-${RANDOM}"
+  docker run -d --rm --name "${engine_name}" --log-driver none --user 1000:1000 --group-add "${socket_group}" --network "container:${NET}" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
+    -e MARTLET_ENGINE=inner -e MARTLET_ENGINE_NAME="${engine_name}" -e MARTLET_HOST_IMAGE="${IMAGE}" \
+    "${IMAGE}" home >/dev/null
 }
 
 # Docker method launcher: runs with the Docker socket (docker run -u 0 -v /var/run/docker.sock:...).
@@ -339,9 +355,12 @@ cmd_keep() {
   done
 }
 
-# Docker method, inside the network holder's namespace after the launcher moved it (docker_launch): says where it is now.
+# Docker method, inside the network holder's namespace after the launcher moved it (docker_launch): reconnects the gateway
+# and roles that the replaced holder left behind, then says where it is now.
 cmd_home() {
   [[ "${MODE}" == docker ]] || fail "home is only used by the Docker method: a native gateway follows its computer's address by itself."
+  require_setup
+  reconnect_to_holder
   note "The gateway is published on $(holder_home) (home address). Your computers find it there by themselves; pairings stay."
 }
 

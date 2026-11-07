@@ -236,7 +236,8 @@ internal sealed partial class McpServer
             "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), an engine " +
             "left in a replaced holder's namespace stops at once, any command starts a holder that failed to start after a restart, " +
             "update adds the keeper (martlet-host-keeper) once, and keep starts a holder that isn't running (with or without " +
-            "Docker's start error) and leaves a running one alone. A fixture role with two variants (like the stt role's whisper and " +
+            "Docker's start error) and leaves a running one alone, and home and warm recreate a gateway and roles left in a " +
+            "replaced holder's network (after a new home address) in the current one. A fixture role with two variants (like the stt role's whisper and " +
             "Parakeet engines) shows describe listing each variant's own choices, suggestion and GPU option with their condition, an " +
             "add keeping a variant's own choices, GPU option and prepare step, and a switch stopping the previous variant only once " +
             "the chosen one is prepared (also when a failed switch is run again). The real voice-recognition role's files show its " +
