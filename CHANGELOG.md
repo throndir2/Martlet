@@ -11,6 +11,7 @@ Each release's section here is also its notes on GitHub.
 ### Fixed
 
 - When a host PC gets a new address, its voices and models move with it, so *Warm up* no longer waits forever for a role such as chatterbox. ([#1168](https://github.com/throndir2/Martlet/pull/1168))
+- After a host PC gets a new address, *Update host* no longer stops with "The gateway is not healthy": the host checks its gateway on the computer itself instead of at the old address. ([#1169](https://github.com/throndir2/Martlet/pull/1169))
 
 ## [0.96.1] - 2026-11-06
 

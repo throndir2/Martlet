@@ -29,11 +29,15 @@ public sealed class PinnedGatewayClient : IDisposable
         };
     }
 
+    /// <param name="dial">Where to connect instead of the origin's own address (the request, its Host and the certificate check
+    /// still use the origin), or null to connect to the origin. A container's gateway checks itself on its loopback this way,
+    /// because the address it is published on can belong to a computer that has a new address now.</param>
     public static PinnedGatewayClient Create(
         GatewayOrigin origin,
         GatewayHostIdentity identity,
         TimeProvider? clock = null,
-        IGatewayCrypto? crypto = null)
+        IGatewayCrypto? crypto = null,
+        IPEndPoint? dial = null)
     {
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(identity);
@@ -61,6 +65,22 @@ public sealed class PinnedGatewayClient : IDisposable
         };
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, chain, errors) =>
             ValidateCertificate(certificate, chain, errors, identity, effectiveClock, effectiveCrypto);
+        if (dial is not null)
+            handler.ConnectCallback = async (_, token) =>
+            {
+                var socket = new System.Net.Sockets.Socket(dial.AddressFamily, System.Net.Sockets.SocketType.Stream,
+                    System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+                try
+                {
+                    await socket.ConnectAsync(dial, token).ConfigureAwait(false);
+                    return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            };
         return new(origin, handler);
     }
 
