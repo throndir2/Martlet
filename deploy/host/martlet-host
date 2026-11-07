@@ -152,7 +152,7 @@ if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
 fi
 
 case "${1:-help}" in
-  setup|add|remove|pair|console|network-reset|exposure|machine|update|warm)
+  setup|add|remove|pair|console|network-reset|exposure|machine|update|warm|home)
     JOURNAL_ON=1
     if [[ "${MODE}" == docker ]]; then JOURNAL_SESSION="${MARTLET_ENGINE_NAME:-engine} ${IMAGE}"
     else JOURNAL_SESSION="native/$$ $(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source')"; fi

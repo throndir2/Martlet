@@ -65,6 +65,12 @@ cmd_warm() {
     note "Starting the gateway..."
     systemctl --user start "${SERVICE}.service" 2>/dev/null || note "The gateway didn't start. Check: journalctl --user -u ${SERVICE}"
   fi
+  # A gateway that a replaced network holder left behind is unreachable (its published port is on the new holder).
+  if gateway_detached; then
+    note "Reconnecting the gateway to the network holder (it was left on the one this host replaced)..."
+    journal "reconnecting the gateway to the current network holder"
+    if ! ( with_gateway service_start ); then note "The gateway didn't reconnect. Run Update host in Martlet."; fi
+  fi
   local role slot count=0 warmed=() failed=()
   while IFS= read -r role <&3; do
     [[ -n "${role}" ]] || continue
@@ -107,7 +113,15 @@ warm_role() {
     if [[ "${kind}" == choice ]]; then ROLE_CHOSEN["${var}"]="${value}"; fi
   done < <(role_current "${role}")
   note "Starting ${role} (containers already running are left as they are)..."
-  if ! role_compose "${role}" up -d --no-build < /dev/null; then
+  local up=(up -d --no-build)
+  if [[ "${MODE}" == docker ]] && role_detached "${role}"; then
+    # Left in the namespace of a network holder this host replaced, where neither the gateway nor this check reaches it.
+    note "Reconnecting ${role} to the gateway network (it was left on the network an earlier change replaced)..."
+    journal "reconnecting ${role} to the current network holder"
+    ensure_role_timezone_env "${PROJECTS}/${role}"
+    up+=(--force-recreate)
+  fi
+  if ! role_compose "${role}" "${up[@]}" < /dev/null; then
     note "${role} didn't start (the output above shows why). Add it again in Martlet to repair it."
     return 1
   fi

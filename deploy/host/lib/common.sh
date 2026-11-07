@@ -71,6 +71,7 @@ change_words() {
     exposure) printf 'changing how this host is reached from outside home' ;;
     machine) printf 'collecting the hardware report' ;;
     warm) printf 'starting and warming up the roles' ;;
+    home) printf 'moving this host to its new address' ;;
     *) printf 'another martlet-host change' ;;
   esac
 }
@@ -252,7 +253,9 @@ hold_engine_locks() {
   command -v flock >/dev/null 2>&1 || { journal "flock is missing; running without the engine lock"; return 0; }
   CHANGE="$(change_words "$@")"
   case "$1" in
-    setup|update) CHANGE_SCOPE=host ;;
+    setup|update|home) CHANGE_SCOPE=host ;;
+    # With options, outside access can replace the network holder, and the roles then move to the new one.
+    exposure) if [[ $# -gt 1 ]]; then CHANGE_SCOPE=host; else CHANGE_SCOPE=gateway; fi ;;
     add) if prepares_host "${2:-}"; then CHANGE_SCOPE=host; else CHANGE_SCOPE="role:$(role_slot "${2:-}")"; fi ;;
     remove) CHANGE_SCOPE="role:$(role_slot "${2:-}")" ;;
     # Waits for a setup or update; each role's own lock is taken (or the role skipped) as warm reaches it.

@@ -292,6 +292,29 @@ gateway_current() {
   gateway health --config "${GW_CONFIG}" >/dev/null 2>&1
 }
 
+# Docker method: whether the gateway container exists but runs outside the current network holder's namespace. Docker pins
+# network_mode container:martlet-host-net to the holder's container ID, so after the holder is replaced (a new home address,
+# outside access or image) the gateway keeps running in the old namespace, where the published port no longer reaches it.
+gateway_detached() {
+  [[ "${MODE}" == docker ]] || return 1
+  local holder mode
+  holder="$(docker container inspect -f '{{.Id}}' "${NET}" 2>/dev/null)" || return 1
+  mode="$(docker container inspect -f '{{.HostConfig.NetworkMode}}' "${SERVICE}" 2>/dev/null)" || return 1
+  [[ "${mode}" != "container:${holder}" && "${mode}" != "container:${NET}" ]]
+}
+
+# Docker method: after the network holder was replaced, recreates the gateway and the installed roles that stayed in the old
+# holder's namespace (their data volumes are kept), so desktops and this host's engine reach them again.
+reconnect_to_holder() {
+  [[ "${MODE}" == docker ]] || return 0
+  if gateway_detached; then
+    note "Reconnecting the gateway to the network holder (it was left on the one this host replaced)..."
+    journal "reconnecting the gateway to the current network holder"
+    with_gateway service_start
+  fi
+  reconnect_roles
+}
+
 # Brings the gateway in line with what is on disk: renews its approval when host.json changed (CONFIG_CHANGED from
 # write_config), restarts it when anything else it opens changed, and otherwise leaves it running.
 refresh_gateway() {

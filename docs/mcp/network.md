@@ -1036,7 +1036,13 @@ runs `compose up -d --no-build` for every installed role, then the warm step of
 step is not run again), reports `fixture-cold`, whose port never answers, as
 *Not ready* and exits 1 (`warm-starts-and-warms-roles`); with `fixture-warm`'s
 role lock held by another change it leaves that role alone (*Another change is
-working on fixture-warm now*; `warm-leaves-held-role`). The real
+working on fixture-warm now*; `warm-leaves-held-role`). On a Docker method
+fixture (fake `docker` whose gateway and role still use the network namespace
+of a replaced holder, as after a new home address) `home` recreates the
+gateway with `--network container:martlet-host-net` and recreates the role
+with `compose up -d --force-recreate` (`home-reconnects-gateway-and-roles`);
+`warm` does the same before it waits for the role, and on the next run, with
+everything attached, it recreates nothing (`warm-reconnects-left-behind`). The real
 `deep-thinking-app` role's files (copied into the container) are read with a
 fake `curl` that answers as LM Studio on 127.0.0.1:1234: `describe` offers
 `APP_PORT`, `APP_PATH` and the open `APP_MODEL` choice and no GPU option

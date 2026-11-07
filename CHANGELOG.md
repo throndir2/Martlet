@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- When a host PC gets a new address, its voices and models move with it, so *Warm up* no longer waits forever for a role such as chatterbox. ([#1168](https://github.com/throndir2/Martlet/pull/1168))
+
 ## [0.96.1] - 2026-11-06
 
 ### Fixed

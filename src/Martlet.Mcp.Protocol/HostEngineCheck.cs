@@ -19,7 +19,8 @@ namespace Martlet.Mcp;
 /// own choices, GPU option and prepare step and switch only once the chosen one is prepared, and an ARM64 host refuses
 /// x86_64-only roles and runs a role's ARM64 overlay on the CPU, and warm (run when this PC becomes or starts as a host PC)
 /// starts the gateway and each installed role, runs its warm steps with its choices, reports a role that doesn't answer and
-/// leaves a role another change holds. The desktop's own reader
+/// leaves a role another change holds, and after the network holder was replaced (a new home address) home and warm recreate
+/// the gateway and roles that stayed in the old holder's namespace. The desktop's own reader
 /// (<see cref="HostEngineBusy"/>) then reads the engine's real busy line.</summary>
 internal static class HostEngineCheck
 {
@@ -100,7 +101,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 48;
+        const int expected = 50;
         if (steps.Count < expected)
         {
             passed = false;
@@ -657,6 +658,54 @@ internal static class HostEngineCheck
         calls="$(tr '\n' ';' < /tmp/warm/calls)"
         [[ $rc == 1 && "$calls" == "fixture-cold|up -d --no-build;" ]] && has /tmp/warm/out "Another change is working on fixture-warm now" && ok=1 || ok=0
         step warm-leaves-held-role "$ok" "warm while another change holds fixture-warm's lock: exit $rc; $calls $(grep -m1 -oE 'Another change is working on [^(]*' /tmp/warm/out || echo 'not skipped')"
+
+        # The Docker method after the network holder was replaced (home moved it to a new address): Docker pins network_mode
+        # container:martlet-host-net to the old holder's ID, so the gateway and roles stay in its namespace, where desktops and
+        # warm can't reach them. home recreates them in the new holder, and so does warm on a host that an older home left so.
+        # A fake docker CLI (state in /tmp/move): holder-2 is the holder now; the gateway and fixture-warm's container start in holder-1.
+        mkdir -p /tmp/move/bin /var/lib/martlet/config/roles /var/lib/martlet/config/projects/fixture-warm /var/lib/martlet/private/state /opt/martlet/gateway
+        : > /opt/martlet/gateway/Martlet.Gateway.Host.Linux.dll
+        printf 'host_id=check-host\nlan_ip=192.168.1.20\nport=9443\n' > /var/lib/martlet/config/host.env
+        printf 'services: {}\n' > /var/lib/martlet/config/projects/fixture-warm/compose.yaml
+        printf 'FW_MODEL=m2\n' > /var/lib/martlet/config/projects/fixture-warm/.env
+        printf 'kind=fixture\nmodel=m2\n' > /var/lib/martlet/config/roles/fixture-warm.role
+        cat > /tmp/move/bin/docker <<'FAKE'
+        #!/bin/bash
+        S=/tmp/move
+        case "$1" in
+          info|logs|image|volume) exit 0 ;;
+          ps) [[ "$*" == *com.docker.compose.project=martlet-fixture-warm* ]] && echo r1; exit 0 ;;
+          rm) echo "$*" >> $S/calls; exit 0 ;;
+          run) echo "$*" >> $S/calls; [[ "$*" == "run -d --name martlet-host-gateway "* ]] && printf 'container:martlet-host-net' > $S/gw; exit 0 ;;
+          compose) a="$*"; echo "compose ${a#*compose.yaml }" >> $S/calls
+            [[ "$*" == *--force-recreate* ]] && printf 'container:martlet-host-net' > $S/role; exit 0 ;;
+          container)
+            fmt="$4"; name="$5"
+            case "$fmt" in
+              *State.Running*) echo true ;;
+              *NetworkMode*) case "$name" in martlet-host-gateway) cat $S/gw ;; martlet-host-*-check) echo container:holder-2 ;; *) cat $S/role ;; esac; echo ;;
+              *martlet.home*) echo 192.168.1.20:9443 ;;
+              *.Id*) echo holder-2 ;;
+            esac
+            exit 0 ;;
+          *) exit 0 ;;
+        esac
+        FAKE
+        printf '%s\n' '#!/bin/bash' 'exit 0' > /tmp/move/bin/dotnet
+        chmod 755 /tmp/move/bin/docker /tmp/move/bin/dotnet
+        Mv() { : > /tmp/move/calls; env PATH="/tmp/move/bin:$PATH" MARTLET_HOST_MODE=docker MARTLET_ENGINE=inner MARTLET_ENGINE_NAME="martlet-host-$1-check" timeout 30 "$E" --yes "$1" </dev/null >"/tmp/move/$1.out" 2>&1; }
+        moved() { tr '\n' ';' < /tmp/move/calls | sed 's/ -v [^ ]*//g'; }
+        printf 'container:holder-1' > /tmp/move/gw; printf 'container:holder-1' > /tmp/move/role
+        Mv home; rc=$?; calls="$(moved)"
+        [[ $rc == 0 && "$calls" == *"rm -f martlet-host-gateway;"*"run -d --name martlet-host-gateway --restart unless-stopped --network container:martlet-host-net "* &&
+          "$calls" == *"compose up -d --force-recreate --no-build;"* ]] && has /tmp/move/home.out "Reconnecting fixture-warm to the gateway network" && ok=1 || ok=0
+        step home-reconnects-gateway-and-roles "$ok" "home after the holder was replaced: exit $rc; $calls"
+        printf 'container:holder-1' > /tmp/move/gw; printf 'container:holder-1' > /tmp/move/role
+        Mv warm; rc=$?; calls="$(moved)"
+        Mv warm; arc=$?; again="$(moved)"
+        [[ $rc == 0 && "$calls" == *"run -d --name martlet-host-gateway "* && "$calls" == *"compose up -d --no-build --force-recreate;compose exec -T svc warm-it m2;"* &&
+          $arc == 0 && "$again" == "compose up -d --no-build;compose exec -T svc warm-it m2;" ]] && has /tmp/move/warm.out "Running and warmed up: fixture-warm." && ok=1 || ok=0
+        step warm-reconnects-left-behind "$ok" "warm with the gateway and fixture-warm in the replaced holder: exit $rc; $calls then attached: exit $arc; $again"
 
         # The deep-thinking-app role (the real role.conf): the Thinking pool relayed to a model the owner's own app serves (FIXTURE app:
         # a fake curl answers for LM Studio on 127.0.0.1:1234). Nothing runs for it: no docker call, a record with the app's API, and
