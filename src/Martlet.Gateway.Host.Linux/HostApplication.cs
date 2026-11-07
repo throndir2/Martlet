@@ -21,6 +21,11 @@ internal sealed class NativeHostPlatform : IHostPlatform
         CancellationToken cancellation)
     {
         var relay = config.Roles.Select(RoleWorker).ToArray();
+        // The conversation model keeps the window the owner's replies use, also after a restart or a warm step (#1156).
+        if (command == "serve")
+            foreach (var ollama in relay.OfType<Martlet.Gateway.Ollama.OllamaRelayWorker>().Where(w => w.Route.DestinationId ==
+                Martlet.Gateway.Ollama.OllamaRelayWorker.DefaultDestinationId))
+                ollama.KeepWindow(Path.Combine(config.StateDirectory, "ollama-context-window"));
         var host = command switch
         {
             "init" => DurableGatewayHost.CreateNewForBinding(config.StateDirectory, config.HostId, config.Binding,

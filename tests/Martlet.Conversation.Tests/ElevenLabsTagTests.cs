@@ -50,7 +50,7 @@ public sealed class ElevenLabsTagTests
     {
         var prompt = VoiceTags.Instructions(SpeechEngines.ElevenLabs, null);
         Assert.NotNull(prompt);
-        Assert.Contains("spoken aloud by ElevenLabs", prompt);
+        Assert.Contains("ElevenLabs turns these tags", prompt);
         Assert.All(ElevenLabs, tag => Assert.Contains($"{tag.Text} - {tag.Usage}", prompt));
         Assert.DoesNotContain("[laugh] -", prompt);
         // Every ElevenLabs cue is one the character's voice emotes already follow, so the cue list doesn't grow.

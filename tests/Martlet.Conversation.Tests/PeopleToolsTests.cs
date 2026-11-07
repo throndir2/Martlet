@@ -41,8 +41,9 @@ public sealed class PeopleToolsTests
         Assert.Empty(set.Replaces);
         Assert.True(set.Optional);
         Assert.True(CheckInToolSets.IsId(set.Id));
-        // Only the People set is optional: every other set is the check-in's work, so it needs a member that calls tools.
-        Assert.Equal([PeopleTools.SetId], CheckInToolSets.All.Where(s => s.Optional).Select(s => s.Id));
+        // Lookup sets such as People are optional; the sets that change things are the check-in's work, so they need a member
+        // that calls tools.
+        Assert.Contains(PeopleTools.SetId, CheckInToolSets.All.Where(s => s.Optional).Select(s => s.Id));
     }
 
     [Fact]

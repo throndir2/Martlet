@@ -472,8 +472,9 @@ internal static partial class ThinkLongerCheck
         // finished jobs waiting to be brought up never grow past KeptWaiting.
         var breaking = new BreakingClock();
         using var faultJobs = new BackgroundJobs(breaking);
-        string? reported = null;
-        faultJobs.Faulted += (id, _) => reported = id;
+        // The job finishes as Failed just before Faulted is raised on its thread, so the check waits for the event itself (#1128).
+        var faulted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        faultJobs.Faulted += (id, _) => faulted.TrySetResult(id);
         IReadOnlyList<BackgroundPlace> one = [new("host:diva", "diva")];
         var faultKind = new BackgroundJobKind("check", 2, null, TimeSpan.FromMinutes(1));
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -485,7 +486,8 @@ internal static partial class ThinkLongerCheck
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
         breaking.Broken = true;
         var seating = faultJobs.Start(faultKind, "waits in line", Forever, one, wait: true);
-        await Until(() => seating.Job?.Finished == true);
+        await Until(() => seating.Job?.Finished == true && faulted.Task.IsCompleted);
+        var reported = faulted.Task.IsCompleted ? faulted.Task.Result : null;
         breaking.Broken = false;
         faultJobs.CancelAll();
         var startFailure = holder.Started && seating.Job is { State: BackgroundJobState.Failed } failedStart && reported == failedStart.Id;

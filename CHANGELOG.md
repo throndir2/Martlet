@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- After a host computer restarts or its model is set up again, the first reply no longer waits for the conversation model to load a second time: the host loads it with the same context window your replies use. ([#1166](https://github.com/throndir2/Martlet/pull/1166))
+- When a Thinking pool member keeps limiting requests, the director stops waiting after 30 seconds and Martlet tells you the work didn't start, instead of going quiet for minutes after promising it. ([#1166](https://github.com/throndir2/Martlet/pull/1166))
+
 ## [0.96.0] - 2026-10-31
 
 ### Added

@@ -64,6 +64,10 @@ public sealed record ThinkingJob
     /// <summary>Null: text, plus vision with an image and audio with a recording.</summary>
     public ThinkingCapability? Needs { get; init; }
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(60);
+    /// <summary>When a member's provider limited the job's requests, how long after the job started it stops waiting for a
+    /// member and ends (Stale) instead of waiting in line for its whole <see cref="Timeout"/>; null waits the whole timeout. An
+    /// attempt that already runs is never cut. The director uses it, so the user hears soon that the work didn't start (#1152).</summary>
+    public TimeSpan? GiveUpWhenLimitedAfter { get; init; }
     public bool DropWhenStale { get; init; }
     public int MaxOutputTokens { get; init; } = 1_024;
     /// <summary>Whether the member thinks step by step first: true on (slower), false off (judges), null the model's default.</summary>
@@ -495,7 +499,10 @@ public sealed class ThinkingJobBoard
         ThinkingSmarts? waitedFor = null;
         string? placed = null;
         using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
-        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
+        // Starts counting down at the first rate-limited answer (GiveUpWhenLimitedAfter); it stops the wait, not a running attempt.
+        using var giveUp = new CancellationTokenSource(System.Threading.Timeout.InfiniteTimeSpan, clock);
+        var startedAt = clock.GetUtcNow();
+        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token, giveUp.Token);
         HashSet<string> tried = new(StringComparer.Ordinal);
         Dictionary<string, int> limited = new(StringComparer.Ordinal);
         ThinkingPoolCooling? cooled = null;
@@ -510,6 +517,8 @@ public sealed class ThinkingJobBoard
             var conversation = conversationStops > 0 || rules is not null && capable.All(member => !rules.MayStart(member, job.Kind));
             return Ended(new(ThinkingJobOutcome.Stale, null, null, null,
                 conversation ? $"the conversation needed its members for more than {Wait(job.Timeout)}"
+                : cooled is not null && giveUp.IsCancellationRequested
+                    ? $"{cooled.Name} kept limiting requests, and no member came free within {Wait(job.GiveUpWhenLimitedAfter!.Value)}"
                 : cooled is not null ? $"{cooled.Name} kept limiting requests, and no member came free within {Wait(job.Timeout)}"
                 : priorityStops > 0 ? $"higher-priority work kept its members busy for more than {Wait(job.Timeout)}"
                 : $"no member came free within {Wait(job.Timeout)}", attempts));
@@ -657,6 +666,8 @@ public sealed class ThinkingJobBoard
                     problem = answer.Problem ?? $"{member.Name} is limiting requests";
                     cooled = Limits.Limited(member, answer.RetryAfter, problem);
                     Limited?.Invoke(cooled);
+                    if (job.GiveUpWhenLimitedAfter is { } giveUpAfter)
+                        giveUp.CancelAfter(giveUpAfter - (clock.GetUtcNow() - startedAt) is var remaining && remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
                     if ((limited[member.Id] = limited.GetValueOrDefault(member.Id) + 1) >= MaxLimitedAnswers)
                     {
                         problem = $"{member.Name} kept limiting requests";
