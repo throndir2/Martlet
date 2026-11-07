@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.96.1] - 2026-11-06
+
 ### Fixed
 
 - After a host computer restarts or its model is set up again, the first reply no longer waits for the conversation model to load a second time: the host loads it with the same context window your replies use. ([#1166](https://github.com/throndir2/Martlet/pull/1166))

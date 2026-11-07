@@ -156,11 +156,10 @@ other computers. See [Linux and Mac](https://github.com/throndir2/Martlet/wiki/L
 
 </details>
 
-## 🆕 What's new in 0.96.0
+## 🆕 What's new in 0.96.1
 
-- 🗝️ **Secrets while you play**: Martlet tells you about secret rooms, hidden items, puzzle solutions and boss tips for where you are in a game, without spoiling the story.
-- 🎮 **It knows your game**: Martlet keeps track of where you are, your goal, your character, build and equipment for each playthrough, also after a restart.
-- 📝 **Your preferences**: tell Martlet *stop giving hints* or *no spoilers for Elden Ring*, and it saves that and follows it on all your computers.
+- ⚡ **No second wait after a host restart**: the host loads the conversation model with the same context window your replies use, so the first reply doesn't wait for it to load again.
+- 🧭 **No silent promises**: when a Thinking pool member keeps limiting requests, Martlet tells you within 30 seconds that the work didn't start, instead of going quiet for minutes.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
