@@ -42,6 +42,30 @@ internal static partial class ThinkingPoolCheck
     {
         var watch = Stopwatch.StartNew();
         List<Step> steps = [];
+        // A board job that never ends must fail the check with the step it reached, not hang it (#1136); it takes about 35 s.
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        limit.CancelAfter(CheckLimit);
+        try { return await RunStepsAsync(steps, watch, limit.Token); }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        {
+            var reached = steps.ToArray();
+            return new
+            {
+                passed = false, elapsedMs = watch.ElapsedMilliseconds,
+                steps = reached.Select(s => new { name = s.Name, passed = s.Passed, detail = s.Detail }).Append(new
+                {
+                    name = $"the check finishes within {CheckLimit.TotalMinutes:0} minutes", passed = false,
+                    detail = $"it stopped after the step \"{reached.LastOrDefault()?.Name ?? "(none)"}\""
+                }),
+                note = "In-process rehearsal of the production job board with simulated members (NOT models)."
+            };
+        }
+    }
+
+    private static readonly TimeSpan CheckLimit = TimeSpan.FromMinutes(3);
+
+    private static async Task<object> RunStepsAsync(List<Step> steps, Stopwatch watch, CancellationToken cancellation)
+    {
         void Check(string name, bool passed, string detail) => steps.Add(new(name, passed, detail));
         static ThinkingJob Job(ThinkingJobKind kind, ThinkingCapability? needs = null, TimeSpan? timeout = null, bool stale = false) =>
             new() { Kind = kind, Instructions = "Answer in one word.", Text = "fixture", Needs = needs, Timeout = timeout ?? TimeSpan.FromSeconds(10), DropWhenStale = stale };
@@ -651,10 +675,12 @@ internal static partial class ThinkingPoolCheck
                 return Task.FromResult(ThinkingAnswer.Failed("fixture failure"));
             }) { Policy = () => new(false, 3, Retries: 2) };
             var exhausted = await failing.RunAsync(Labeled(ThinkingJobKind.Memory, "always fails"), cancellation);
+            // Real timers may fire a few milliseconds early against the stopwatch.
+            var slack = TimeSpan.FromMilliseconds(50);
             Check("retries: exponential waits, then a final error without more work",
                 exhausted is { Outcome: ThinkingJobOutcome.Failed, Attempts: 3, Retries: 2 } && times.Count == 3 &&
-                times[1] - times[0] >= ThinkingJobBoard.FailureRetryWait(1) &&
-                times[2] - times[1] >= ThinkingJobBoard.FailureRetryWait(2) &&
+                times[1] - times[0] >= ThinkingJobBoard.FailureRetryWait(1) - slack &&
+                times[2] - times[1] >= ThinkingJobBoard.FailureRetryWait(2) - slack &&
                 failingPlaces.Leases.Count == 0 && failingPlaces.Requests.ActiveCount == 0 &&
                 failingPlaces.Requests.List().Single().State == ThinkingRequestState.Failed,
                 $"outcome {exhausted.Outcome}; attempts {exhausted.Attempts}; retry waits " +

@@ -2828,6 +2828,12 @@ after each reply; an `actions` on or off you saved moves to the director.
   (`Director.Wait`, at most the 4 newest, each up to 450 characters). The
   next run reads all of them, oldest first (`Director.Asked`), and does what
   no reply did yet.
+- **A rate-limited run gives up soon.** When a pool member's provider limits
+  the director's requests, the run waits for that member or another for at
+  most 30 seconds after it started (`CheckInPrompts.DirectorLimitedWait`,
+  `ThinkingJob.GiveUpWhenLimitedAfter`), not its whole timeout. Then it ends,
+  and Martlet tells you that the work didn't start, as for any other failed
+  run. An attempt that already runs is not stopped.
 - **A wrong tool name gets the right one.** When a model calls a tool that the
   check-in doesn't have (such as *update_guide*), the answer names the closest
   real tool (*Did you mean update_guide_brief?*) or lists the tools

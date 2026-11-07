@@ -286,7 +286,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
             "retries: a raised job is tried again at the priority it was left at",
             "per GPU: a card turned off stays off while the computer's other card keeps working, and comes back with its boxes"
         })
-            Assert.True(steps[name].Passed, $"{name}: {steps[name].Detail}");
+            Assert.True(steps.TryGetValue(name, out var step) && step.Passed, $"{name}: {(steps.ContainsKey(name) ? step.Detail : result.GetRawText())}");
         var priority = result.GetProperty("priority");
         Assert.Equal(11, priority.GetProperty("raise").GetProperty("low").GetProperty("Priority").GetInt32());
         Assert.Equal(1, priority.GetProperty("retries").GetProperty("oneRetry").GetProperty("Retries").GetInt32());

@@ -262,7 +262,7 @@ public sealed partial class OllamaRelayWorker : IOllamaGatewayInferenceWorker, I
             var context = sampling.ContextTokens ?? (Volatile.Read(ref ownerContext) is > 0 and var last
                 ? last : Math.Min(payload.MaximumContextTokens, MaximumContextTokens));
             // OpenAI-compatible requests use the same context size, so they never make Ollama load the model again.
-            Volatile.Write(ref ownerContext, context);
+            if (Interlocked.Exchange(ref ownerContext, context) != context) RememberWindow(context);
             writer.WriteNumber("num_ctx", context);
             if (sampling.TopP is { } topP) writer.WriteNumber("top_p", topP);
             if (sampling.TopK is { } topK) writer.WriteNumber("top_k", topK);

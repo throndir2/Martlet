@@ -12,6 +12,8 @@ namespace Martlet.Conversation;
 /// message with the facts filled in (<see cref="Message"/>) and how each fact reads.</summary>
 public static partial class CheckInPrompts
 {
+    /// <summary>How long after it started a director run waits for a member once a provider limited it (#1152).</summary>
+    public static TimeSpan DirectorLimitedWait { get; } = TimeSpan.FromSeconds(30);
     /// <summary>The Thinking pool job for <paramref name="checkIn"/> with <paramref name="state"/> (narrowed with
     /// <see cref="Focus"/>), or null when its prompt is empty. It needs what <see cref="CheckIn.Needs"/> says and carries the
     /// screenshot and the recording gathered in the state. With <paramref name="tools"/> (its tool sets' host) the member's model
@@ -31,6 +33,8 @@ public static partial class CheckInPrompts
             Image = checkIn.Screenshot ? state.Screenshot : null,
             Audio = checkIn.Recording != CheckInRecording.None ? state.Recording : null,
             Timeout = steps ? ToolTimeout : CheckIns.Timeout, DropWhenStale = true,
+            // The reply may have promised the work: when providers limit it, the user hears soon that it didn't start (#1152).
+            GiveUpWhenLimitedAfter = checkIn.JobKind == ThinkingJobKind.Director ? DirectorLimitedWait : null,
             MaxOutputTokens = steps ? MaximumToolOutputTokens : MaximumOutputTokens, Reasoning = false,
             Tools = offered, ToolHost = steps ? tools : null, MaxToolRounds = steps ? MaximumToolRounds : 0,
             RunsOn = checkIn.RunsOn

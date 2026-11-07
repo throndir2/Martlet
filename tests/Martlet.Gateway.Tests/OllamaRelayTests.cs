@@ -458,6 +458,56 @@ public sealed class OllamaRelayTests
     }
 
     [Fact]
+    public async Task The_window_keeper_loads_the_model_again_with_the_window_replies_last_used()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-window-").FullName;
+        try
+        {
+            // Ollama has the model loaded with 8,192 tokens (the warm step's default); the last replies used 32,768.
+            await using var ollama = await FakeOllama.StartAsync(200, "{\"done\":true}");
+            var file = Path.Combine(directory, "ollama-context-window");
+            await File.WriteAllTextAsync(file, "32768");
+            await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+            worker.KeepWindow(file, TimeSpan.FromHours(1));
+            for (var i = 0; i < 100 && ollama.Requests.Count == 0; i++) await Task.Delay(50);
+            var load = Assert.Single(ollama.Requests).RootElement;
+            // A load only: no messages, so no cached conversation is touched, and the model stays loaded.
+            Assert.Equal(0, load.GetProperty("messages").GetArrayLength());
+            Assert.Equal(-1, load.GetProperty("keep_alive").GetInt32());
+            Assert.Equal(32_768, load.GetProperty("options").GetProperty("num_ctx").GetInt32());
+
+            // The same window as loaded: nothing to do.
+            await File.WriteAllTextAsync(file, "8192");
+            await using var same = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+            same.KeepWindow(file, TimeSpan.FromHours(1));
+            Assert.False(await same.KeepWindowOnceAsync(CancellationToken.None));
+            Assert.Single(ollama.Requests);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task The_window_a_reply_uses_is_kept_for_the_next_gateway_start()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-window-").FullName;
+        try
+        {
+            await using var ollama = await FakeOllama.StartAsync(200,
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"done\":true,\"done_reason\":\"stop\"}");
+            var file = Path.Combine(directory, "ollama-context-window");
+            await using var worker = new OllamaRelayWorker(ollama.Endpoint, "gemma4:12b");
+            worker.KeepWindow(file, TimeSpan.FromHours(1));
+            await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+            var (connection, route) = await ConnectAsync(host);
+            using var owned = connection;
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "Hello", 0.7, 512, 10_240, null, new() { ContextTokens = 16_384 })) { }
+            Assert.Equal("16384", await File.ReadAllTextAsync(file));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task A_request_without_a_window_keeps_the_window_the_relay_last_loaded()
     {
         await using var ollama = await FakeOllama.StartAsync(200,

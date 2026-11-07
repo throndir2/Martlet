@@ -714,6 +714,31 @@ public sealed class ThinkingPoolTests
     }
 
     [Fact]
+    public async Task A_director_job_a_provider_limits_stops_waiting_after_its_short_wait_not_its_whole_timeout()
+    {
+        var clock = new RuntimeClock();
+        var places = new BackgroundPlaces();
+        BackgroundPlace nvidia = new("endpoint:https://integrate.api.nvidia.com/v1", "NVIDIA");
+        var asked = 0;
+        var board = new ThinkingJobBoard(places, () => [nvidia], (_, _, _) =>
+        {
+            Interlocked.Increment(ref asked);
+            return Task.FromResult(ThinkingAnswer.Limited("NVIDIA is limiting requests", TimeSpan.FromMinutes(2)));
+        }, clock);
+        var job = Job(ThinkingJobKind.Director, timeout: TimeSpan.FromMinutes(5), stale: true) with
+        {
+            GiveUpWhenLimitedAfter = CheckInPrompts.DirectorLimitedWait
+        };
+        var run = board.RunAsync(job, CancellationToken.None);
+        await Until(() => Volatile.Read(ref asked) == 1 && places.WaitingKinds.Count == 1);
+        clock.Advance(CheckInPrompts.DirectorLimitedWait);
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(ThinkingJobOutcome.Stale, result.Outcome);
+        Assert.Equal("NVIDIA kept limiting requests, and no member came free within 30 s", result.Problem);
+        Assert.Equal(1, asked);
+    }
+
+    [Fact]
     public async Task A_member_that_keeps_limiting_one_jobs_requests_counts_as_failed_for_it()
     {
         var clock = new RuntimeClock();
