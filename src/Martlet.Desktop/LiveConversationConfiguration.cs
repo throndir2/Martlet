@@ -502,7 +502,7 @@ internal sealed class LiveConversationConfiguration
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
         CharacterActionPrompt? gaze = null, string? chattiness = null, IReadOnlyList<string>? controlTags = null,
         Func<CancellationToken, Task<string?>>? spokenWords = null, string? board = null, IThinkingBackup? backup = null,
-        string? activity = null)
+        string? activity = null, ThinkingFallbackPlan? fallbackPlan = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         // While a game is played: the While you play prompt, in the notes while the conversation sent doesn't carry it yet.
@@ -562,7 +562,8 @@ internal sealed class LiveConversationConfiguration
                         characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags, audio is null ? null : spokenWords)
                         {
                             Backup = backup, ElevenLabsVoice = voice ? ElevenLabsVoiceTarget() : null,
-                            Parts = new(instructionParts, noteParts, contextParts), StopAtPromptText = true
+                            Parts = new(instructionParts, noteParts, contextParts), StopAtPromptText = true,
+                            FallbackAfter = fallbackPlan?.Wait, FallbackFirst = fallbackPlan?.FallbackFirst == true
                         };
                 }
             }

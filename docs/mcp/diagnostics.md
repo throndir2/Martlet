@@ -91,6 +91,24 @@ FIXTURE Thinking route (`http://127.0.0.1:9/v1`, `lab/slow`, NOT AI) when none
 is saved and `model-speed.json` with six fast and three slow replies, so a
 desktop started on that folder shows Home's warning.
 
+### If Thinking fails: how long Martlet waits
+
+`thinking_fallback_timing` (optional `dataDirectory`) returns the `rules` of
+[If Thinking fails: how long Martlet waits](../CONVERSATION.md#if-thinking-fails-how-long-martlet-waits)
+and, for a data directory, the saved Thinking route and fallback, whether the
+timer `applies` (and `why` not), the model's `measuredSamples` from
+`model-speed.json`, the `waitMs` a new conversation starts with and the
+`plan`. Its `rehearsal` runs the production conversation runtime and Chat
+Completions adapter against two FIXTURE endpoints on 127.0.0.1 (canned words,
+NOT AI): `slow-model` (the model answers after 3 s, the fallback answers after
+the 800 ms wait), `fallback-first` (the model gets no request),
+`fallback-first-fails` (the fallback fails and the model answers) and
+`skip-rule` (two failures in a row ask the fallback first, then the model again
+after the skip). It contacts only 127.0.0.1. `seed: true` (needs
+`--allow-changes` and an explicit, disposable `dataDirectory`) instead saves a
+FIXTURE cloud Thinking route, *If Thinking fails* and three measured replies of
+1.0-1.4 s, so a later call shows a 3.6 s wait.
+
 On Diagnostics, `ui_snapshot` returns `ComputerCheckStatus` and each finding
 `ComputerCheckLine-<n>` (✓ or ⚠, host and model names only). `ComputerCheckRun`
 (*Check now*) needs `--allow-ui-effects`: it sends a short test request to each

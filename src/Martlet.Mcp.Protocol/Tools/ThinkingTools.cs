@@ -445,6 +445,23 @@ internal sealed partial class McpServer
             async (arguments, cancellation) => OptionalBool(arguments, "seedSlow") == true
                 ? await ThinkingSpeedCheck.SeedAsync(OptionalString(arguments, "dataDirectory"), cancellation)
                 : ThinkingSpeedCheck.Run(DataDirectory(arguments))) with { Writes = arguments => OptionalBool(arguments, "seedSlow") == true },
+        Tool("thinking_fallback_timing", "Companion > Thinking > If Thinking fails, timed (ThinkingFallbackTimer; docs/CONVERSATION.md, " +
+            "If Thinking fails). A cloud Thinking model with a fallback gets a first-token wait of 3 times its usual first token (2.5-10 s; " +
+            "6 s until 3 replies are known), and after it failed 2 replies in a row the next replies ask the fallback first for 2 minutes. " +
+            "From a data directory: whether this applies to the saved Thinking route, its measured first words (model-speed.json) and " +
+            "the wait a new conversation starts with. Its rehearsal (ok) runs the production conversation runtime and Chat Completions " +
+            "adapter against two FIXTURE endpoints on 127.0.0.1 (canned words, NOT AI): a slow model gives way after its short wait, a " +
+            "reply asks the fallback first, and a fallback asked first that fails gives way to the model; plus the skip rule. Read-only; " +
+            "contacts only 127.0.0.1. seed=true (needs --allow-changes and an explicit, disposable dataDirectory, never Martlet's own " +
+            "data folder) instead saves a FIXTURE cloud Thinking route (NVIDIA Build address, nvidia/fixture-nemotron), If Thinking " +
+            "fails and model-speed.json with three replies of 1.0-1.4 s, so a later call shows the plan (a 3.6 s wait).", new
+        {
+            dataDirectory = new { type = "string" },
+            seed = new { type = "boolean" }
+        },
+            async (arguments, cancellation) => OptionalBool(arguments, "seed") == true
+                ? await ThinkingFallbackCheck.SeedAsync(OptionalString(arguments, "dataDirectory"), cancellation)
+                : await ThinkingFallbackCheck.RunAsync(DataDirectory(arguments), cancellation)) with { Writes = arguments => OptionalBool(arguments, "seed") == true },
         Tool("helper_jobs_check", "Rehearse the desktop's production helper-job router (HelperJobs) with a fixture Thinking pool and " +
             "fixture answers (NOT AI): memory and emote naming go to a free text member, touch zones wait for a running reply and " +
             "fall back while no member sees pictures, then go to a vision member, and memory falls back when no member is free. " +

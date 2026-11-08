@@ -174,22 +174,23 @@ public sealed class ConversationRuntime : IAsyncDisposable
     // Input is the request's input or a continuation of it after tool calls.
     internal ITextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
         BoundedTextInput input, TextDisclosureAuthorization consent, CancellationToken caller, bool fallback = false,
-        bool withoutReasoning = false)
+        bool withoutReasoning = false, TextGenerationLimits? textLimits = null)
     {
         // A model or server that refused the Thinking steps choice is asked again with its own default.
         var generation = withoutReasoning ? GenerationSettings.WithoutReasoning(request.Generation) : request.Generation;
+        var limits = textLimits ?? request.TextLimits;
         if (fallback)
         {
             var second = request.Fallback ?? throw new InvalidOperationException("This request has no Thinking fallback.");
-            return ChatAdapter(second.Chat).Stream(context, second.Model, input, request.TextLimits, consent, caller, generation);
+            return ChatAdapter(second.Chat).Stream(context, second.Model, input, limits, consent, caller, generation);
         }
         if (request.Host is { } host)
             return new HostTextGenerationStream(HostText ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host text client."), host, context, request.Model,
-                input, request.TextLimits, consent, Clock, caller, generation);
+                input, limits, consent, Clock, caller, generation);
         if (request.Chat is not { } target)
-            return Text.Stream(context, request.Model, input, request.TextLimits, consent, caller, generation);
-        return ChatAdapter(target).Stream(context, request.Model, input, request.TextLimits, consent, caller, generation);
+            return Text.Stream(context, request.Model, input, limits, consent, caller, generation);
+        return ChatAdapter(target).Stream(context, request.Model, input, limits, consent, caller, generation);
     }
 
     private ChatCompletionsTextGenerationAdapter ChatAdapter(ChatCompletionsTarget target)

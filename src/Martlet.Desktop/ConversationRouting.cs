@@ -171,6 +171,12 @@ internal sealed class ConversationRouting
         if (terminal.FellBackAfter is not { } after || configured.Fallback is not { } fallback) return;
         var route = configured.Route(SetupRole.Llm);
         var answered = terminal.State is ConversationState.Completed or ConversationState.Refused;
+        if (after == ThinkingFallbackTimer.SkippedReason)
+        {
+            ErrorLog.Info($"{what}: asked the Thinking fallback {fallback.Origin}, model {fallback.ModelId}, first, because Thinking " +
+                $"{route.ModelId} on {route.Origin} {after}; it {(answered ? "answered" : "failed")}.");
+            return;
+        }
         ErrorLog.Warn($"{what}: Thinking failed ({after}) on {route.Origin}, model {route.ModelId}; the Thinking fallback " +
             $"{fallback.Origin}, model {fallback.ModelId}, {(answered ? "answered instead" : "failed too")}.");
     }

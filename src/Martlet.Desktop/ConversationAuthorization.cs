@@ -176,8 +176,12 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             Check(token);
             // Tool rounds, a retry without tools and one without the recording all continue this exact input.
             var continues = exactInput is not null && ReferenceEquals(action.Input.Origin, exactInput);
+            // A request to the selected model may have a shorter first-token limit (ConversationRequest.FallbackAfter); it sends
+            // nothing more and can only end sooner.
+            var limits = action.Limits == TextLimits || !fallback && action.Limits.FirstDeltaTimeout < TextLimits.FirstDeltaTimeout &&
+                action.Limits == TextLimits with { FirstDeltaTimeout = action.Limits.FirstDeltaTimeout };
             if (!ReferenceEquals(action.Input, exactInput) && !continues || action.Model != selection && !fallback ||
-                action.Limits != TextLimits || action.Budget != expected ||
+                !limits || action.Budget != expected ||
                 textRequests >= maxTextRequests || !requests.Add(action.Context.Ids.RequestId)) return null;
             textRequests++;
             if (fallback) fallbackTickets++;

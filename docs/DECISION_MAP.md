@@ -576,6 +576,26 @@ computers*).
 
 **Docs:** [Check your computers](DIAGNOSTICS.md#check-your-computers).
 
+## When a cloud Thinking model gives way to If Thinking fails
+
+**What it decides:** how long a cloud Thinking model may take to its first
+token before *If Thinking fails* answers instead, and when replies ask the
+fallback first because the model failed in the last replies.
+
+**Owner:** `ThinkingFallbackTimer` (`src\Martlet.Conversation\ThinkingFallbackTimer.cs`).
+The desktop keeps one in `LiveConversationController.FallbackTiming.cs`; the
+reply applies its plan (`ConversationRequest.FallbackAfter` and
+`FallbackFirst`) in `ConversationTurn.Generation.cs`.
+
+**Shows it:** the desktop log (*Thinking ... failed 2 replies in a row*, *asked
+the Thinking fallback ... first*) and the Thinking trace's *why* of each request.
+
+**Tests:** `ThinkingFallbackTimerTests` (Martlet.Conversation.Tests).
+
+**MCP:** `thinking_fallback_timing`.
+
+**Docs:** [If Thinking fails: how long Martlet waits](CONVERSATION.md#if-thinking-fails-how-long-martlet-waits).
+
 ## Which host runs an OpenAI-compatible request, and how it ranks
 
 **What it decides:** for a request of the [OpenAI-compatible
