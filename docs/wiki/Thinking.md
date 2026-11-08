@@ -90,7 +90,7 @@ Each model in a list shows facts. Point at a fact to see what it means.
 
 ## When Thinking fails or is slow
 
-- **If Thinking fails** on **Companion › Thinking** is an optional backup model. It answers once when the main model fails before any words arrive: an error, a rate limit or no answer in 15 seconds. A good pair is NVIDIA Build first and Google Gemini as the backup.
+- **If Thinking fails** on **Companion › Thinking** is an optional backup model. It answers when the main model fails before any words arrive: an error, a rate limit or no answer in time. For an online main model, Martlet learns how fast it usually starts and waits about three times that (2.5 to 10 seconds; 6 seconds until it knows), so a slow free model doesn't keep you waiting. When the main model fails two replies in a row, Martlet asks the backup first for two minutes, then tries the main model again. A good pair is NVIDIA Build first and Google Gemini as the backup.
   - Screen and camera looks use the backup too, so choose a model that can see images.
   - When the backup answers, your messages, the recent conversation and any screen or camera picture of that reply go to it. Its requests can cost money. You tick a box to agree before you save it.
   - A backup that is the same as Thinking adds nothing, so Martlet asks you to choose another model or provider.

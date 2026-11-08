@@ -1864,6 +1864,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var adult = operation.DiscordCall ? null : configured.AdultInstructions;
                 // Backup Thinking: once this reply's Thinking request is slow to start, a pool member may answer it instead.
                 var backup = BackupFor(operation);
+                // If Thinking fails: how long a cloud Thinking model may take to its first token, or whether to ask the fallback
+                // first because the model failed in the last replies.
+                var fallbackPlan = FallbackPlanFor(configured);
                 // What Martlet says on its own (a report, a due reminder, a remark on what this PC played) gets what it said lately
                 // last in its notes, sent with this request only. A reply to the user's words or touches never does, so its
                 // request, and the time to its first words, stay as they were.
@@ -1917,7 +1920,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // when the conversation's latest [Screen] line doesn't already say them.
                         board: Join(heardHow.Note, board.Text,
                             picture?.Active(prompts, sentHistory) ?? (describedNote is null ? null : describedSeen?.Active(prompts, sentHistory)),
-                            describedNote, lately, preferences), backup: backup);
+                            describedNote, lately, preferences), backup: backup, fallbackPlan: fallbackPlan);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -2061,6 +2064,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             routing.NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
             NoteInput(operation.Report ? "Background report" : "Reply", terminal);
             NoteFirstWords(configured, terminal);
+            NoteFallbackTiming(configured, terminal);
             if (operation.BackgroundChattiness == ChattinessChoice.MartletDecides)
                 Decide(turn, terminal, operation.Report ? "bringing up background work"
                     : operation.PcAudio && operation.UserWords is null ? "what this PC played" : "your message");

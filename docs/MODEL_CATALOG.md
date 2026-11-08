@@ -119,6 +119,7 @@ have open weights, 350 see, 62 hear, 118 take video and 463 call tools.
 | Epoch AI [all_ai_models.csv](https://epoch.ai/data/all_ai_models.csv) | No | CC-BY (From docs) | 3,626 models: parameters, open weights, dates, Hugging Face owner | Parameters and dates when others don't say |
 | LiteLLM `model_prices_and_context_window.json` | No | MIT | 4,040 rows with `supports_vision`, `supports_audio_input`, `supports_video_input` | Not useful here: no OpenRouter rows, 3 NVIDIA rerank rows, 29 Ollama rows |
 | Artificial Analysis API | Yes | Restrictive (see [How smart](#how-smart-and-how-fast)) | Scores, speed, first-token time | Not used directly |
+| OpenRouter `GET /api/v1/models/{author}/{slug}/endpoints` | Yes, for latency | OpenRouter terms | Each provider's `uptime_last_30m`; `latency_last_30m` (first-token percentiles) and `throughput_last_30m` only with a key (null without one, Verified 2026-11-07) | Not used: Martlet measures first tokens itself ([If Thinking fails](CONVERSATION.md#if-thinking-fails-how-long-martlet-waits)) |
 
 Not useful for Martlet: ollama.com itself, because its terms forbid
 *"automated means to access our services without permission"* and its

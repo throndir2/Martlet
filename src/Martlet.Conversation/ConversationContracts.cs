@@ -127,6 +127,21 @@ public sealed class ConversationRequest(
     /// to start, the same request also goes to a Thinking pool member, and whichever has words first gives the reply.</summary>
     [JsonIgnore] public IThinkingBackup? Backup { get; init; }
 
+    /// <summary>How long the selected model may take to its first token (text or hidden reasoning) before the Thinking fallback
+    /// answers instead (<see cref="ThinkingFallbackTimer"/>); null keeps <see cref="TextLimits"/>' own first-token limit. Only a
+    /// shorter wait counts, and only with a <see cref="Fallback"/>.</summary>
+    public TimeSpan? FallbackAfter { get; init; }
+
+    /// <summary>The selected model failed in the last replies: this reply asks the Thinking fallback first, and the selected
+    /// model only when the fallback fails before its first words. Only with a <see cref="Fallback"/>.</summary>
+    public bool FallbackFirst { get; init; }
+
+    /// <summary>The limits of one request to the selected model (<paramref name="fallback"/> false) or the fallback: the
+    /// selected model's first-token limit is <see cref="FallbackAfter"/> when that is shorter and there is a fallback.</summary>
+    internal TextGenerationLimits LimitsFor(bool fallback) =>
+        !fallback && Fallback is not null && FallbackAfter is { } after && after > TimeSpan.Zero && after < TextLimits.FirstDeltaTimeout
+            ? TextLimits with { FirstDeltaTimeout = after } : TextLimits;
+
     /// <summary>The owner's cloned ElevenLabs voice that speaks the reply, or null for another voice. Its audio tags
     /// ([laughs], [whispers]) stay in the text it is sent.</summary>
     [JsonIgnore] public ElevenLabsVoiceTarget? ElevenLabsVoice { get; init; }

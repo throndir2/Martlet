@@ -27,8 +27,15 @@ public sealed partial class ConversationTurn
             var input = request.Input;
             var rounds = new List<TextToolRound>();
             bool retried = false, fallback = false, audioDropped = false, imageDropped = false, reasoningDropped = false;
+            // Whether the reply already switched once between the selected model and the fallback (either way).
+            var switched = false;
             // Why the next request is sent, for the Thinking trace.
             var why = "first";
+            if (StartOnFallback())
+            {
+                fallback = true;
+                why = "the Thinking fallback first, because the Thinking model failed in the last replies";
+            }
             for (var attempt = 0; ; attempt++)
             {
                 int before;
@@ -53,13 +60,15 @@ public sealed partial class ConversationTurn
                     result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
                         attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped, hedged: attempt == 0, why: why).ConfigureAwait(false);
                 }
-                // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback.
+                // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback (or,
+                // when the fallback was asked first, the selected model).
                 catch (Exception error) when (error is ConversationException { Failure: ConversationFailure.DeadlineExceeded or
                     ConversationFailure.InvalidStream or ConversationFailure.DependencyFailed } or ContractException &&
-                    !fallback && FallBack(before, error is ConversationException failed ? failed.Failure.ToString() : nameof(ConversationFailure.InvalidStream)))
+                    !switched && Switch(fallback, before, error is ConversationException failed ? failed.Failure.ToString() : nameof(ConversationFailure.InvalidStream)))
                 {
-                    fallback = true;
-                    why = $"the Thinking fallback, after {fellBackAfter}";
+                    switched = true;
+                    fallback = !fallback;
+                    why = fallback ? $"the Thinking fallback, after {fellBackAfter}" : "the Thinking model, after the fallback failed";
                     continue;
                 }
                 if (result.End is RoundEnd.Failed or RoundEnd.Invalid)
@@ -131,12 +140,13 @@ public sealed partial class ConversationTurn
                         why = "again without the Thinking steps choice, which the model refused";
                         continue;
                     }
-                    // Nothing of this answer arrived yet, so the fallback can give it instead.
-                    if (!fallback && result.Text.Length == 0 &&
-                        FallBack(before, result.Failure?.ToString() ?? result.Issue?.ToString() ?? result.End.ToString()))
+                    // Nothing of this answer arrived yet, so the fallback (or, when it was asked first, the selected model) can give it.
+                    if (!switched && result.Text.Length == 0 &&
+                        Switch(fallback, before, result.Failure?.ToString() ?? result.Issue?.ToString() ?? result.End.ToString()))
                     {
-                        fallback = true;
-                        why = $"the Thinking fallback, after {fellBackAfter}";
+                        switched = true;
+                        fallback = !fallback;
+                        why = fallback ? $"the Thinking fallback, after {fellBackAfter}" : "the Thinking model, after the fallback failed";
                         continue;
                     }
                     Fail(result.End == RoundEnd.Failed ? ConversationFailure.ProviderFailed : ConversationFailure.InvalidStream,
@@ -240,13 +250,15 @@ public sealed partial class ConversationTurn
         bool fallback, bool withoutReasoning, bool hedged, string why)
     {
         var model = fallback ? request.Fallback!.Model : request.Model;
-        var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
+        // The selected model may have a shorter first-token limit, so a slow model gives way to the fallback sooner.
+        var limits = request.LimitsFor(fallback);
+        var window = new MonotonicWindow(Clock, limits.MaxRequestTime);
         lock (Sync) textWindow = window;
         Check(window);
         var context = new ProviderRequestContext { Ids = ids, Epoch = Epoch, Deadline = Deadline(window) };
         var budget = new OperationBudget(ids, Epoch, ProviderRole.Llm, 1, input.Utf8Bytes,
-            input.InputTokenReservation, request.TextLimits.MaxOutputTokens, 0);
-        var action = new TextAuthorizationAction(context, input, model, request.TextLimits, budget);
+            input.InputTokenReservation, limits.MaxOutputTokens, 0);
+        var action = new TextAuthorizationAction(context, input, model, limits, budget);
         var permission = await authorization.AuthorizeTextAsync(action, stop.Token).ConfigureAwait(false);
         Check(window);
         if (permission?.Authorization is not { } consent)
@@ -272,8 +284,8 @@ public sealed partial class ConversationTurn
         TextRun run;
         try
         {
-            var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback, withoutReasoning);
-            run = new(stream, TextValidator(ids, stream, input), own, own?.Token ?? stop.Token, requestedAfter);
+            var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback, withoutReasoning, limits);
+            run = new(stream, TextValidator(ids, stream, input, limits), own, own?.Token ?? stop.Token, requestedAfter);
         }
         catch
         {
@@ -388,17 +400,21 @@ public sealed partial class ConversationTurn
         }
     }
 
-    private ProviderSequenceValidator TextValidator(CorrelationIds ids, ITextGenerationStream stream, BoundedTextInput input) =>
-        new(new()
+    private ProviderSequenceValidator TextValidator(CorrelationIds ids, ITextGenerationStream stream, BoundedTextInput input,
+        TextGenerationLimits? limits = null)
+    {
+        var textLimits = limits ?? request.TextLimits;
+        return new(new()
         {
             Ids = ids, Epoch = Epoch, Capabilities = stream.Capabilities
         }, new()
         {
-            MaxIngressEvents = request.TextLimits.MaxEvents + 2,
-            MaxTextCharacters = request.TextLimits.MaxTextCharacters, MaxQueuedChunks = 1,
-            FirstEventTimeout = request.TextLimits.FirstDeltaTimeout, IdleTimeout = request.TextLimits.IdleTimeout,
-            TotalTimeout = request.TextLimits.MaxRequestTime, AllowEmptyCompletion = input.Tools.Count > 0
+            MaxIngressEvents = textLimits.MaxEvents + 2,
+            MaxTextCharacters = textLimits.MaxTextCharacters, MaxQueuedChunks = 1,
+            FirstEventTimeout = textLimits.FirstDeltaTimeout, IdleTimeout = textLimits.IdleTimeout,
+            TotalTimeout = textLimits.MaxRequestTime, AllowEmptyCompletion = input.Tools.Count > 0
         }, Clock, stop.Token);
+    }
 
     // The first request's response headers and first hidden reasoning, in the turn's own time (the stream counts from its
     // creation, just after textRequestAfter).

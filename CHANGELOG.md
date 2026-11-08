@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- With **If Thinking fails** set, a slow or failing online Thinking model (such as a free one) no longer keeps you waiting 15 seconds: Martlet learns how fast the model usually starts and asks the backup after about three times that (2.5 to 10 seconds). After two failed replies in a row, it asks the backup first for two minutes. ([#1171](https://github.com/throndir2/Martlet/pull/1171))
+
 ## [0.96.2] - 2026-11-06
 
 ### Fixed

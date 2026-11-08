@@ -9,6 +9,9 @@ namespace Martlet.Conversation;
 // recording) and the race with Backup Thinking for the first words.
 public sealed partial class ConversationTurn
 {
+    // Switches the rest of this reply: from the selected model to the fallback, or (onFallback) back from a fallback asked first.
+    private bool Switch(bool onFallback, int textBefore, string reason) => onFallback ? SwitchBack(textBefore) : FallBack(textBefore, reason);
+
     // Switches the rest of this reply to the Thinking fallback when there is one and nothing of the failed answer was said.
     private bool FallBack(int textBefore, string reason)
     {
@@ -18,6 +21,30 @@ public sealed partial class ConversationTurn
             if (invalidated || stop.IsCancellationRequested || whole.Expired || text.Length != textBefore) return false;
             textWindow = null;
             fellBackAfter = reason;
+            Emit(ConversationEventKind.State);
+            return true;
+        }
+    }
+
+    // A reply that asks the Thinking fallback first (ConversationRequest.FallbackFirst: the selected model failed in the last
+    // replies) says so from its start.
+    private bool StartOnFallback()
+    {
+        if (!request.FallbackFirst || request.Fallback is null) return false;
+        lock (Sync) fellBackAfter = ThinkingFallbackTimer.SkippedReason;
+        return true;
+    }
+
+    // The fallback a reply asked first failed before its first words: the rest of the reply asks the selected model, whose
+    // request times count from its own start.
+    private bool SwitchBack(int textBefore)
+    {
+        lock (Sync)
+        {
+            if (invalidated || stop.IsCancellationRequested || whole.Expired || text.Length != textBefore) return false;
+            textWindow = null;
+            fellBackAfter = null;
+            textRequestAfter = textResponseAfter = firstReasoningAfter = null;
             Emit(ConversationEventKind.State);
             return true;
         }

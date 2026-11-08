@@ -1000,6 +1000,40 @@ guidance and warnings; never a job's text).
 MCP's `thinking_pool_status` reads it with the settings and plan, and
 `thinking_pool_check` rehearses the board ([MCP](MCP.md)).
 
+### If Thinking fails: how long Martlet waits
+
+*If Thinking fails* (Companion › Thinking, `ThinkingFallback`) answers a reply
+when the Thinking model fails before its first words. Free cloud models are
+often slow to start or down, so Martlet does not wait the route's full
+first-token limit (15 s) for them. `ThinkingFallbackTimer` decides it:
+
+- **Where it applies.** A cloud Thinking route with *If Thinking fails* set.
+  A route on this PC or the home network keeps its own two-minute limit,
+  because the model may first load.
+- **The wait.** The model's first token (text or hidden reasoning) may take 3
+  times its usual (middle) first-token time of the last 9 replies, from 2.5 s
+  to 10 s. Until 3 replies are known, the wait is 6 s. A new conversation
+  starts with the model's times in `model-speed.json`. A reply that the
+  fallback or Backup Thinking answered does not count. Only the model's own
+  requests get this wait; the fallback keeps the route's limit.
+- **Skipping a failing model.** After 2 replies in a row where the model
+  failed before its first words (a timeout, a rate limit, an error), replies
+  ask the fallback first for 2 minutes (`ConversationRequest.FallbackFirst`).
+  When the fallback fails before its first words, the reply asks the model.
+  After the 2 minutes, the next reply asks the model again with the short
+  wait. A reply the model answers ends the skip.
+- **Why Martlet measures.** No public source gives the first-token time of
+  every provider's model. OpenRouter's endpoint list has percentiles
+  (`latency_last_30m`) only with the owner's key, NVIDIA Build gives none, and
+  Artificial Analysis needs a key and limits how its data is used. Martlet's
+  own times are of the owner's network and account, too.
+
+**Observability.** The Thinking trace gives each request's reason (*the Thinking
+fallback first, because the Thinking model failed in the last replies*), the
+desktop log says when a skip starts and ends, and MCP's
+`thinking_fallback_timing` shows the plan and rehearses it
+([MCP](mcp/diagnostics.md#if-thinking-fails-how-long-martlet-waits)).
+
 ### Backup Thinking: a hedged request
 
 **Backup Thinking** (Companion › Background thinking › *Backup Thinking*,
