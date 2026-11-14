@@ -1,5 +1,11 @@
 # App Guides
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Conversation/Guides`, `src/Martlet.Desktop/Pages/AppGuides`, `src/Martlet.Desktop/AppGuideWatch.cs`
+
 Martlet reads up on the games and apps you use: their fan wikis and help pages. Then she answers your questions from what she read. Ask *"where do I find iron ore?"* while the game is in front, or *"how do I mask a layer?"* in your photo editor.
 
 ![Companion App guides](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/companion-app-guides.png)
@@ -20,8 +26,8 @@ If Martlet can't read your guide library (for example a damaged file), it doesn'
 When you start a game (or an app on your list) that she has no guide for, Martlet reads up on it on her own, once a session:
 
 1. She sends the game's name to DuckDuckGo to find its wiki.
-2. She reads up to 200 of the wiki's pages, the pages about that game first. On a big wiki this takes about 5 minutes and 10 MB. She skips pages about other games in the same series.
-3. She tells you in character and asks if that's okay, for example *"Ooh, Elden Ring! I'm reading up on it so I can help, okay?"* She tells you again when she is done.
+2. She reads up to 200 of the wiki's pages, the pages about that game first. The first read is limited to 200 pages, 25 MB and 15 minutes. It can finish sooner. She ranks pages about that game first and tries to leave out other games in the series.
+3. She tells you in character when she is free to speak. Reading can start before that notice. Tell her no to stop it.
 4. When a [Thinking pool](Thinking#thinking-pool) member can take research, she then reads up to 300 more pages. The member chooses them from the wiki's links, with what you do now in mind.
 
 You can ask about the game while she still reads. The guide grows as she reads.
@@ -58,9 +64,9 @@ The page also says which app is in front now, as App guides sees it.
 
 ## How she uses a guide
 
-While an app is in front, or when you name it, the parts of its guide that best match your question go with your message. A message that isn't about the app gets nothing. With a Thinking model that uses tools, she can also search the guide more deeply. That search also finds parts that say the same thing in other words, with **Finding by meaning** on **Companion › Memory**.
+While an app is in front, or when you name it, the parts of its guide that best match your question go with your message. Martlet adds guide sections only when its matching rules find relevant content. With a Thinking model that uses tools, she can also search the guide more deeply. That search also finds parts that say the same thing in other words, with **Finding by meaning** on **Companion › Memory**.
 
-- **The game brief**: after each read, a Thinking pool member writes a short brief about the game: what it is, how it plays, early tips and common mistakes. She keeps it in mind when you talk about the game. Ask her to refresh it any time.
+- **The game brief**: after a read, an available Thinking pool member can write a short brief about the game: what it is, how it plays, early tips and common mistakes. She keeps it in mind when you talk about the game. Ask her to refresh it any time.
 - **Where you are**: with screen summaries on ([Vision](Vision)), she notices where you are in the game. When her guide has little about that place, she looks it up in the background on wikis, Reddit search results and the web. She does this for at most 4 places an hour.
 
 No reply waits for reading, the brief or these look-ups.
@@ -76,16 +82,18 @@ While you play, she keeps track of where you are, your goal, what you do, your c
 
 ## Hints and secrets
 
-When she knows where you are in a game with a guide, she may tell you one useful thing about that place: a secret room, a hidden item, a puzzle solution or a boss tip. She says it straight out, once, when nobody is talking, and not more than once in 4 minutes. She never tells the same thing twice for the same place. She doesn't tell big story spoilers (twists, deaths, endings) on her own, but answers if you ask.
+When she knows where you are in a game with a guide, she may tell you one useful thing about that place: a secret room, a hidden item, a puzzle solution or a boss tip. She says it straight out, once, when nobody is talking, and not more than once in 4 minutes. Martlet tracks hint topics to avoid repeats, with at most three hints for one place.
+It asks the model to avoid major story spoilers unless you ask. A model can still make a mistake.
 
-Don't want hints? Tell her: *"stop giving hints"*, *"no spoilers"* or *"only give hints when I ask"*. She keeps that as your preference and follows it until you change your mind. **Companion › App guides** shows how many hints she said and how many your preferences held back.
+Don't want hints? Tell her: *"stop giving hints"*, *"no spoilers"* or *"only give hints when I ask"*. She can save that as your preference. Check **Companion › Memory › Your preferences** to see what she saved. **Companion › App guides** shows how many hints she said and how many your preferences held back.
 
 ## What is sent where
 
 - The game's name goes to DuckDuckGo. The wiki sites see the requests and this PC's internet address.
 - Martlet obeys each site's rules for programs (`robots.txt`), reads one page at a time and pauses between pages.
 - To choose more pages, a Thinking pool member gets the game's name and the titles of the linked pages. It also gets short notes on what you do now: your screen, sounds and recent words. These notes are not kept in the guide.
-- To notice a game, Martlet looks only at the program's name and whether it fills the screen. It never reads window titles or the screen for this.
+- To notice a game, Martlet checks its program, install location, game-engine files and full-screen state.
+  This detection does not read screen content or window titles.
 - On a paid cloud pool member, the brief and the look-ups can cost money. On your own computers they cost nothing.
 
 ## Where guides are kept

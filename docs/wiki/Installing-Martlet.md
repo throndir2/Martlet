@@ -1,68 +1,40 @@
 # Installing Martlet
 
-Martlet installs for your own Windows user. You don't need administrator rights, and the installer asks no setup questions.
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `packaging/windows/Martlet.iss`, `packaging/windows/README.md`, `src/Martlet.Desktop/MainWindow.Welcome.cs`
+
+The Windows installer installs Martlet for your Windows user. It does not need administrator rights for the app installation.
 
 ## What you need
 
-| You need | |
-| --- | --- |
-| **Windows** | Windows 10 (version 2004 or later) or Windows 11, 64-bit (x64). |
-| **Windows on Arm** | Windows 11 on Arm PCs, such as Snapdragon X laptops, work through Windows' x64 emulation. Jobs that need an NVIDIA graphics card aren't available there. Windows 10 on Arm can't run Martlet. |
-| **Graphics card** | Optional. Any PC works with a cloud provider. A graphics card runs AI models on your own PC. Picture making, singing, Audio2Face and most cloned voices need an NVIDIA card. |
-| **Internet** | To download models and to use cloud services. |
-| **Cost** | Martlet is free. Cloud providers can charge for use. Martlet walks you through free keys for NVIDIA Build and Google Gemini. |
+- 64-bit x64 Windows 10 version 2004 or later, or Windows 11.
+- An internet connection to download Martlet and use online services.
+- A graphics card is optional. Some local models can run on the processor.
 
-The app runtime (.NET), its audio and speech-recognition parts and the Hiyori sample character are in the installer. You don't install them yourself.
-
-Using Linux or a Mac? See [Linux and Mac](Linux-and-Mac) for the early desktop app.
+Martlet is free to download. Some online services can charge for use.
 
 ## Download and install
 
 1. Open [the latest release](https://github.com/throndir2/Martlet/releases/latest).
 2. Download `Martlet-<version>-win-x64.exe`.
-3. Run it. If Windows says that it protected your PC, choose **More info**, then **Run anyway**.
-4. Read the license and the release notice, then install.
-5. On the last page, keep **Start Martlet and finish setting up** selected and choose **Finish**.
+3. Run the installer and read the license and release notice.
+4. Finish the installation. Select **Start Martlet and finish setting up** to open Martlet.
 
-Martlet installs to `%LOCALAPPDATA%\Programs\Martlet`. The Start menu gets **Martlet**, **Martlet prerequisites**, **Martlet Doctor** (a status check in a console window), **Read me** and **Uninstall Martlet**.
+The installer uses `%LOCALAPPDATA%\Programs\Martlet`. It adds **Martlet**, **Martlet prerequisites**, **Martlet Doctor**, and **Uninstall Martlet** to the Start menu.
 
 ## About the Windows warning
 
-The installer isn't code-signed, so Windows can warn that the publisher is unknown. This is normal for Martlet: unsigned releases are its actual, normal releases.
-
-- The release page lists the SHA-256 checksum of each download. A checksum shows that the download is complete and not damaged. It doesn't prove who published it.
-- Download Martlet only from its GitHub releases page.
-- Never turn off Windows security features to install Martlet.
+The installer is not code-signed, so Windows can show an unknown-publisher warning. Download Martlet only from its GitHub releases page. The release includes a SHA-256 checksum. The checksum does not prove who published the file.
 
 ## First start
 
-Martlet opens the welcome tour. It helps you start a new Martlet network or join yours, asks three quick questions and suggests a setup that fits this PC. Continue with [First Steps](First-Steps).
+Martlet opens the welcome tour when this Windows user has not selected a role for this computer. The tour helps you set up Martlet. See [First Steps](First-Steps).
 
-![Welcome tour](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/welcome.png)
+## Updates and removal
 
-## Optional prerequisites
+Martlet checks GitHub releases for updates. It installs an update after you agree, unless you turn on automatic installation. To remove the app, use **Uninstall Martlet** in the Start menu or Windows **Settings › Apps**.
 
-Some features need programs that Martlet doesn't put in its installer:
-
-- The **WebView2 runtime** shows the character. Windows 11 already has it.
-- **Ollama** runs a Thinking model on this PC.
-- **Windows speech** for your language. The **Test hearing** check speaks its test word with it.
-- An **NVIDIA driver** for jobs on an NVIDIA graphics card.
-- **Docker Desktop with WSL 2** runs Martlet's host service on this PC (voice engines, Whisper, Audio2Face and more).
-
-Martlet downloads each one from its publisher, and only after you choose it. Windows features ask for administrator approval separately. To check them any time, open **Settings › Tools › Prerequisites**, or **Martlet prerequisites** in the Start menu. Nothing changes until you choose an item.
-
-## Updates
-
-Martlet checks its GitHub releases for updates and installs them in the background when you agree. See [App Settings and Updates](App-Settings-and-Updates).
-
-To update by hand, exit Martlet first (**Exit Martlet** in Settings or in the notification-area menu). Then run the newer installer.
-
-## Uninstall
-
-1. Exit Martlet.
-2. Run **Uninstall Martlet** from the Start menu, or remove Martlet in Windows **Settings › Apps**.
-
-Your settings, memories and other data stay in `%LOCALAPPDATA%\Martlet`. Delete that folder too if you want to remove them.
-
-More detail: [README getting started](https://github.com/throndir2/Martlet/blob/main/README.md#-up-and-running-in-minutes), [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md), [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md).
+Some features need optional programs or model downloads. Martlet asks before it installs them. See [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md) and [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md).

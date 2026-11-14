@@ -1,7 +1,14 @@
 # Singing
 
-Martlet can write a song and sing it in the voice she speaks with, from
-**Companion › Voice › Voices**. Her lips move with the words while she sings.
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Singing`, `src/Martlet.Desktop/ConversationSinging.cs`, `workers/singing`, `deploy/host/roles/singing/role.conf`
+
+Martlet can write songs and perform them in conversation.
+With Voice match on, it uses the recording selected under **Companion › Voice › Voices**.
+With Voice match off, it keeps the music model's singer. Lip movement depends on the song timing and character.
 
 Singing is an optional extra. It needs an NVIDIA graphics card on this PC or
 on one of your computers, or a cloud provider.
@@ -27,7 +34,7 @@ next one takes the job.
 
 With nothing on in the *Voice match* list, songs keep the music model's own
 singer. With nothing on in the *Music* list, Martlet doesn't sing. Songs are
-made ahead of time, not live. A 30-second song takes about 1 to 2 minutes.
+made ahead of time, not live. The time depends on the models, hardware and queue.
 
 ### The music and voice match lists
 
@@ -63,12 +70,11 @@ page compare the choices.
 
 ## Hardware
 
-- An x86_64 computer with an NVIDIA graphics card of 6 GB or more. About 5-7 GB
-  must be free while a song is made.
-- Singing shares the card with the voice, listening and lip-sync. It uses the
-  card only while it makes a song. It frees the card after five idle minutes.
-- Spoken replies stay quick while a song is made. The song takes a little
-  longer.
+- Local Singing requires an x86_64 computer with an NVIDIA graphics card of at least 6 GB.
+  The selected models can need more memory. The larger models have their own requirements below.
+- Singing shares the card with the voice, listening and lip-sync.
+  Its worker can keep models loaded between songs. It exits after five idle minutes to release that memory.
+- Singing shares resources with spoken replies. A busy graphics card can slow either job.
 - A second computer helps when your main card is busy. One computer can write
   the music while another matches the voice.
 
@@ -111,9 +117,11 @@ page compare the choices.
   from it on your account.
 - A new provider goes last in its list. Move it up to use it sooner.
 
-Martlet has not yet run HeartMuLa, DiffRhythm, YuE, Vevo2, Seed-VC or ACE-Step
-1.5 XL on a real graphics card. It has not made a real song with a cloud
-provider yet.
+### Historical validation note
+
+The model catalog marks HeartMuLa, DiffRhythm, YuE, Vevo2 and Seed-VC as not measured.
+This audit checked their setup and worker code. It did not run graphics-card models or paid cloud requests.
+The code alone cannot confirm song quality, speed or current cloud availability.
 
 ## In conversation
 
@@ -124,7 +132,8 @@ provider yet.
   Play button: Martlet performs her songs herself.
 - She makes one song at a time, and at most four an hour.
 - A song keeps going while you talk. To stop it, say "Martlet, stop singing",
-  click **Stop singing** in the talk window, or press **Stop** or Esc. She
+  click **Stop singing** in the talk window, or press **Stop** or Esc.
+  A spoken stop needs listening to be active. She
   remembers where she stopped and can go on from there.
 - Her mouth follows the sung words, and the talk window shows the line she
   sings. **Companion › Voice › Voice volume** sets how loud she sings.
@@ -160,9 +169,9 @@ happened:
 - The voice-rights confirmation is your own statement, not legal clearance.
   Do not imitate people without permission or deceive listeners. Say that a
   song is made by AI when you share it.
-- VevoSing, Vevo2, YuE and DiffRhythm's style model are for personal,
-  non-commercial use only. Seed-VC is GPL-3.0. SoulX-Singer and ACE-Step allow
-  any use.
+- VevoSing, Vevo2, YuE and DiffRhythm's style model have non-commercial restrictions.
+  Seed-VC is GPL-3.0. SoulX-Singer uses Apache-2.0, and ACE-Step uses MIT.
+  Read each license before sharing or using songs commercially.
 - ACE-Step asks you to check that songs are original and to say that they are
   made by AI.
 - Songs are sung in a voice from your voice library. Its recording goes to the

@@ -1,5 +1,11 @@
 # Troubleshooting
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Diagnostics`, `src/Martlet.Desktop/MainWindow.HealthChecks.cs`, `src/Martlet.Core/Installation/OllamaRecovery.cs`
+
 Start on **Home**. It lists what needs attention and opens the page that fixes it. It never changes settings by itself.
 
 ## Martlet can't reply
@@ -15,7 +21,7 @@ Home says why. Common causes:
 ## The first reply is slow
 
 - **Warming up**: Home and the talk window say what still loads (the model, listening, the character) and for how long. You can type or talk at once. The reply starts when the model is ready. Then Home shows how long warming up took.
-- Ollama unloads a model after five idle minutes. Loading it again takes from about 15 seconds to a few minutes.
+- Ollama normally unloads an idle model after five minutes. Loading it again can take from about 15 seconds to a few minutes.
 - If the model thinks before it answers, set **Thinking steps** to **Off** on **Companion › Replies**. **Off** is the default.
 
 ## Ollama on this PC doesn't answer
@@ -30,7 +36,7 @@ If Martlet can't start Ollama, start Ollama from the Start menu, then choose **C
 
 ### The model loads slowly
 
-- Ollama unloads a model after five idle minutes, and loading it again can take from about 15 seconds to a few minutes. If **Test model** says *works once loaded, but loading took ...*, a reply right after a load can time out. Try again after the model finishes loading.
+- If **Test model** says *works once loaded, but loading took ...*, a reply right after a load can time out. Try again after the model finishes loading.
 - If **Test model** says *works, but starts too slowly for Martlet*, Martlet stops waiting before the first words come. Choose a smaller model.
 - If a model doesn't answer within two minutes, a game or another program probably uses the graphics card. Close it or choose a smaller model, then test again.
 
@@ -153,7 +159,5 @@ Diagnostics shows only this PC's logs until you pair a host (**Devices › Add a
 The export leaves out settings, secrets, provider answers, transcripts, audio, screenshots, history, memory, model and voice names, device and user names, paths and keys. It replaces trace, turn and journal IDs with new names for each export. Times and counts stay. This lowers what the files show, but it doesn't guarantee privacy.
 
 If the window says that troubleshooting is busy, timed out, was closed or failed, wait for the current action and try again, or choose **Retry cleanup**. If its storage is damaged, keep the folder for review. If access was denied, choose a folder that you can write to.
-
-**Settings › Tools › Troubleshooting** shows Martlet's own checks on this PC and suggestions. **Settings › Tools › Backup / restore** saves your settings to a file and restores them.
 
 More detail: [Troubleshooting](https://github.com/throndir2/Martlet/blob/main/docs/TROUBLESHOOTING.md), [Diagnostics](https://github.com/throndir2/Martlet/blob/main/docs/DIAGNOSTICS.md), [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md), [Voice latency](https://github.com/throndir2/Martlet/blob/main/docs/VOICE_LATENCY.md).

@@ -1,7 +1,14 @@
 # Tools and MCP
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Tools`, `src/Martlet.Desktop/McpToolService.cs`, `src/Martlet.Mcp.Client`, `src/Martlet.Desktop/ConversationTools.cs`
+
 Give Martlet tools, and she helps on your PC and in your smart home while you
-talk. She always asks before a tool from outside Martlet does something.
+talk. External tools ask first unless you allowed the tool or server.
+The Terminal has its own confirmation setting.
 
 Her tools come from three places:
 
@@ -13,13 +20,16 @@ Her tools come from three places:
 
 ## What you need
 
-- A Thinking model that can call tools. Use OpenAI or a Chat Completions
-  endpoint, such as Ollama or LM Studio on your PC, OpenRouter or NVIDIA Build.
+- For tools in the reply itself, use a Thinking model that can call tools through OpenAI or a Chat Completions endpoint.
+  Ollama, LM Studio, OpenRouter and NVIDIA Build are examples. Model support varies.
   **Test tools** on **Companion › Thinking** checks your model.
+- The director can run tools after an exchange through a tool-capable model in the Thinking pool.
+  The replying model does not need to call those tools itself.
 - When a model refuses tools, Martlet stops offering them to that model on this
   PC for a week.
-- Martlet uses tools only in replies to what you say or type. Screen looks,
-  camera looks and memory work never use tools.
+- External MCP tools and Terminal commands serve the conversation, including the director after an exchange.
+  Built-in background work also uses tools, such as memory updates.
+  Screen and camera capture do not by themselves grant permission to run external tools.
 
 ## MCP servers
 
@@ -41,8 +51,8 @@ What you type in the search box goes to the directory you chose.
 - A server that runs on this PC needs its runtime, such as Node.js or Python's
   `uvx`. When the runtime isn't on this PC, install it and restart Martlet
   first. The first start downloads the server, which can take a minute.
-- A server at an online address gets what your tool calls send. Martlet can't
-  yet sign in to a server through a browser (OAuth); it needs a key.
+- A server at an online address gets what your tool calls send.
+  A server that requires authentication needs a supported key or token configuration.
 - In any field you can type `${env:NAME}` to use an environment variable.
 - Installing a server again under the same name replaces it. When `mcp.json`
   has another server with that name, Martlet asks first.
@@ -57,7 +67,8 @@ Martlet saves `mcp.json` as plain text, so keep secrets in environment
 variables. **Insert example** adds a file server for your Documents folder,
 which needs Node.js.
 
-Each server has **On**, **Run without asking**, **Restart** and **Remove**.
+Servers that you added have **On**, **Run without asking** and **Remove**.
+**Restart** appears after an enabled server has a status. **Ask again** removes a tool's saved approval.
 **Remove** also forgets the secrets that Martlet kept for it.
 Servers don't start when Martlet starts. They start when you open a talk window
 or press **Start servers now**. A server that another feature adds (such as
@@ -78,7 +89,7 @@ tool, its server and the exact details it sends. Choose:
 - **Always allow**: this tool runs without asking from now on.
 - **Deny**
 
-No answer in 60 seconds means Deny. Home Assistant's tools never offer
+No answer in 60 seconds means Deny. Managed servers, including Home Assistant, never offer
 **Always allow** (see [Smart Home](Smart-Home)).
 
 **Recent tool use** on the Tools page lists each call and its result until you
@@ -147,18 +158,20 @@ The **Thinking requests** page shows each job of your
 
 ## Built-in tools
 
-Martlet's own tools need no server, and only the Terminal asks first. A reply
-gets only the tools for the features you set up.
+Martlet's own tools need no external server. Their feature rules still apply.
+A reply gets only the tools that its setup can use. The director or a check-in may take some tools after the reply.
 
 | Tools | What they do |
 | --- | --- |
 | `think_longer`, `cancel_thinking`, `research` | Think it over, look it up or research it in the background ([Thinking](Thinking)) |
-| `manage_memories`, `search_conversations`, `reminders` | Remember and forget facts, find earlier conversations, set reminders ([Memory](Memory)) |
+| `manage_memories`, `find_memories`, `search_conversations`, `reminders`, `list_reminders` | Remember and forget facts, find earlier conversations, set reminders ([Memory](Memory)) |
 | `manage_preferences` | Keep your own rules for how she behaves, such as no hints ([Your preferences](Memory#your-preferences)) |
 | `draw_picture`, `sing_song`, `play_song`, `stop_singing` | Draw pictures, and write and sing songs ([Pictures](Pictures-and-Creations), [Singing](Singing)) |
 | `list_creations`, `perform_creation` | Show or sing something she made before |
 | `body_motion` | Move a VRM character's body ([The Character](The-Character)) |
 | `read_up_on`, `search_guide`, `skip_guide` | Read up on games and apps ([App guides](App-Guides)) |
+| `game_state` | Keep game progress while App guides are on |
+| `list_pc_tools`, `call_pc_tool` | Let the director find and run this PC's MCP tools and Terminal, with the same confirmations |
 | `call_on_discord`, `set_camera_background` | Call a Discord friend, or change her camera background ([Discord](Discord)) |
 | `run_terminal_command` | Run a command, when the Terminal is on |
 
@@ -167,6 +180,11 @@ starts sooner. See [Check-ins](Thinking#check-ins).
 
 With **Allow flexible smart-home requests** on, Home Assistant's own MCP server
 also shows on the Tools page, managed by Smart home.
+
+## Planned browser sign-in
+
+Browser sign-in to external MCP servers (OAuth) is not implemented in the directory installer.
+Use a supported key or token setup instead.
 
 ## Martlet's own MCP server
 

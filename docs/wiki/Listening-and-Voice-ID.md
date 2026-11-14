@@ -1,5 +1,11 @@
 # Listening and Voice ID
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Listening`, `src/Martlet.Desktop/VoiceIdWindow.xaml.cs`, `src/Martlet.Desktop/LocalVoices.cs`, `src/Martlet.Core/Speakers`
+
 Martlet hears you through always listening or push-to-talk. Speech-to-text
 writes down what you say. Martlet can also hear *how* you say it, and it learns
 who is talking.
@@ -21,19 +27,18 @@ your computers, a graphics card or **A cloud provider**.
 **How it listens on this PC** offers three Parakeet models:
 
 - **Parakeet TDT 110M**: the fastest, English only. The default when Windows
-  is in English.
-- **Parakeet TDT 0.6B v2**: the most accurate in English. It is better in
-  noisy rooms and with a distant microphone.
+  display language is English.
+- **Parakeet TDT 0.6B v2**: Martlet's catalog recommends it for more accurate English transcription.
+  Results depend on your voice, microphone and room.
 - **Parakeet TDT 0.6B v3**: 25 European languages, found by itself. The
-  default when Windows is in another language.
+  recommended choice when Windows uses another display language. It does not support every language.
 
 With Parakeet, your speech stays on this PC and recordings are not saved. The
 **Microphone** card shows the microphone that Martlet uses. Click **Test or
-change microphone** to change it.
+change microphone** to change it. If the device is missing, the button says **Fix microphone**.
 
 A Parakeet model chosen on another of your computers doesn't download by
-itself. Download it on this PC too, in **Companion › Listening › Parakeet in
-Martlet**. A model chosen on a newer Martlet needs that newer Martlet on this
+itself. Choose and download it under **Companion › Listening › How it listens on this PC**. A model chosen on a newer Martlet needs that newer Martlet on this
 PC.
 
 Whisper on the graphics card needs a recent NVIDIA driver. When the driver is
@@ -170,8 +175,8 @@ who is talking, and it keeps the saved voices.
   voices** clears the list; recognition stays on and starts over. What Martlet
   remembers about a forgotten voice stays in **Memory** under **Forgotten
   voices**, where you can delete it.
-- The voice list has a size limit. When it is full, forget or merge some
-  voices.
+- The voice list holds up to 1,000 voices. At the limit, Martlet can forget the oldest unheard, unnamed, unlinked voice.
+  When no voice can be removed this way, forget or merge some voices yourself.
 - A guest who says only a little shows up after a few short remarks within 30
   minutes.
 - **Where it runs** lists this PC's processor and your computers that run the
@@ -190,8 +195,8 @@ into two voices. If it does, merge them.
 
 ## Voice ID
 
-Voice ID is a filter that makes Martlet answer only you. People is different:
-it recognizes everyone after speech-to-text, and it helps Memory know who said
+Voice ID filters replies to recordings that match your enrolled voiceprint. It is not a security check. People is different:
+it recognizes voices alongside speech-to-text, and it helps Memory know who said
 what.
 
 1. Open **Companion › Listening › How you talk**.
@@ -221,10 +226,10 @@ When Voice ID can't read, save or delete your voiceprint, check that Martlet
 can write to its data folder, then enroll again. When another Martlet action
 uses the microphone, stop it and try again.
 
-With it on, Martlet checks each recording on this PC before it sends it
-anywhere. Another voice, the TV or too little speech is dropped and never goes
-to speech-to-text. People still learns the other voices. **Delete voiceprint**
-removes your voiceprint.
+With it on, Martlet checks each microphone recording before speech-to-text or Thinking receives it.
+A failed match or too little speech stops that reply. People can still recognize the rejected voice.
+If People uses another computer, that recognition can send audio there before Voice ID rejects the reply.
+**Delete voiceprint** removes your voiceprint.
 
 ## Sharing with your computers
 
@@ -241,10 +246,11 @@ removes your voiceprint.
 
 - Listening starts only when you press **Start listening** or use
   push-to-talk.
-- Parakeet, Voice ID and voice recognition run on your own computers. Nothing
-  is uploaded for them.
-- Martlet keeps no audio after recognition, apart from the clips of voices you
-  haven't named. `voices.json` keeps voiceprints and names.
+- Parakeet in Martlet and Voice ID process audio on this PC.
+  Voice recognition can send microphone audio to a computer in your recognition list.
+  A remote Listening choice also sends audio to that computer or provider.
+- Recognition does not keep its input audio, apart from enabled clips of voices you have not named.
+  `voices.json` keeps voiceprints and names. Speaking voices have a separate library; see [Voices](Voices).
 - Martlet learns voices only from the microphone, never from what this PC
   plays.
 
