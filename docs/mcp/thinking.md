@@ -1,5 +1,11 @@
 # MCP: Thinking and models
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/ThinkingTools.cs`, `src/Martlet.Mcp.Protocol/ContextCheck.cs`, `src/Martlet.Mcp.Protocol/HelperJobsCheck.cs`, `src/Martlet.Mcp.Protocol/ImageModelCheck.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Thinking and models* area of `martlet_guide` (Thinking, the Thinking pool, models, vision and context). The [index](../MCP.md#pages) lists the other pages.
 
 ## Tools while you talk (MCP client)
@@ -1580,7 +1586,7 @@ back while no member can see, then go to a vision member, tidying memory
 (`memory-upkeep`) runs on a free text member and, when none is free, waits
 instead of falling back, and memory falls back
 when no member is free. It returns each step with `passed` and the status file
-it wrote. See [helper jobs](../MEMORY.md#helper-jobs-on-the-thinking-pool).
+it wrote. See [helper jobs](../MEMORY.md#automatic-recall-and-remembering).
 
 `think_longer_status` shows Companion › **Deep thinking** as replies use it(optional absolute `dataDirectory`, default the current user's): `settings`,
 `thinkLonger` (`enabled`, on by default and turned off by Thinking longer's own

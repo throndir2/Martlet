@@ -1,5 +1,11 @@
 # MCP: Other
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/OtherTools.cs`, `src/Martlet.Mcp.Protocol/GreetingCheck.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Other* area of `martlet_guide` (situations, greetings, search and other checks). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)

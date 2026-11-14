@@ -1,5 +1,11 @@
 # MCP: Computers, network and accounts
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/NetworkTools.cs`, `src/Martlet.Mcp.Protocol/Tools/NetworkTools.Labs.cs`, `src/Martlet.Mcp.Protocol/Tools/NetworkTools.Status.cs`, `src/Martlet.Mcp.Protocol/AccountsStatus.cs`, `src/Martlet.Mcp.Protocol/HouseholdSharingStatus.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Computers, network and accounts* area of `martlet_guide` (your computers, hosts, the network, accounts, sign-in and sharing). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)

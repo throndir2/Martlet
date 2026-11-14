@@ -1,5 +1,11 @@
 # MCP: Settings
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/SettingsTools.cs`, `src/Martlet.Mcp.Protocol/Tools/SettingsTools.SkillDirectory.cs`, `src/Martlet.Mcp.Protocol/SettingsConfiguration.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Settings* area of `martlet_guide` (settings, prompts, shared settings and the recommended setup). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)

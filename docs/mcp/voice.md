@@ -1,5 +1,11 @@
 # MCP: Voice and listening
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/VoiceTools.cs`, `src/Martlet.Mcp.Protocol/Tools/VoiceTools.Singing.cs`, `src/Martlet.Mcp.Protocol/Tools/VoiceTools.Speech.cs`, `src/Martlet.Mcp.Protocol/Tools/VoiceTools.Voices.cs`, `src/Martlet.Mcp.Protocol/EchoCheck.cs`, `src/Martlet.Mcp.Protocol/HearingCheck.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Voice and listening* area of `martlet_guide` (voices, listening, voice recognition, singing, echo and the talk window). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)

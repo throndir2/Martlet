@@ -1,5 +1,11 @@
 # MCP: Apps, home and memory
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/AppsTools.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Home.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.McpServers.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Memory.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordCheck.cs`, `src/Martlet.Mcp.Protocol/AppGuidesCheck.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Apps, home and memory* area of `martlet_guide` (MCP servers Martlet uses, the terminal, Discord, messaging, smart home, memory, reminders, check-ins and app guides). The [index](../MCP.md#pages) lists the other pages.
 
 ## Tools while you talk (MCP client)
@@ -397,7 +403,7 @@ fires Callback list after Think ahead:
 `desktop.callbacks.count` 2, and `CheckInStatus-lull` says Quiet moments
 *waits for 3 min of quiet*.
 
-[Talking to someone else](../CONVERSATION.md#talking-to-someone-else) is
+[Talking to someone else](../CONVERSATION.md#check-ins) is
 checked on the desktop the same way. Launch with a fixture file that holds
 `ASIDE: FIXTURE on the phone with their mom`, open `CompanionTab-CheckIns`
 and click `CheckInRun-aside`: `check_ins_status`'s `desktop.aside` says
@@ -409,7 +415,7 @@ click it again: `holding` is false and the status says *Martlet talks as usual
 again*. Its trigger box `CheckInTrigger-aside-Spoke` (*You say something*) is
 checked; that trigger needs always listening and a microphone.
 
-[Check-in triggers](../CONVERSATION.md#check-in-triggers) are driven live with
+[Check-in triggers](../CONVERSATION.md#check-ins) are driven live with
 `character_touch` and `character_stroke` (both need `--allow-ui-effects` and
 the character showing with touch zones): about 1.2 seconds after the last
 touch, `check_ins_status`'s `desktop.touches.lastFired` names the triggers
@@ -1047,14 +1053,14 @@ the desktop on a companion PC: `role`, the check-in `running` and the
 triggered one `runningTriggered`, `touches` with `settling` (touches wait to
 settle), `settleMs` and `lastFired` (`triggers`, `at` and `what` in counts
 only, such as *3 touches, an intimate one* or *2 exchanges*), `afterExchange` (the
-reply tools [the director](../CONVERSATION.md#the-director) takes over:
+reply tools [the director](../CONVERSATION.md#the-director-the-replys-work-beside-the-reply) takes over:
 `poolCallsTools`, whether the configured Thinking pool has a member that takes
 check-ins and calls tools; `handedOff`, each `tool` with its `checkIn` and `set`;
 `why` in plain words; and `lastProblem`, what the last run after an exchange
 couldn't do, or null), `aside` (whether Martlet [holds
-back](../CONVERSATION.md#talking-to-someone-else) now: `holding`, the check-in
+back](../CONVERSATION.md#check-ins) now: `holding`, the check-in
 `by`, `since`, `until` and `aboutCharacters`, never who the user talks to),
-`callbacks` (how many things the [callback list](../CONVERSATION.md#callback-list)
+`callbacks` (how many things the [callback list](../CONVERSATION.md#check-ins)
 keeps now, `count`, and its `maximum`, never what they are),
 `asksWaiting` (how many things you said wait for the director because it was
 still busy, at most 4; never what they are), `toolSetsHere` (every check-in tool set: its `id`, `name`,
@@ -1137,8 +1143,7 @@ the same, that the history outlives a reply's `Drain`, that the fact goes
 after the prompt when it is ticked but not placed, and that facts past
 `Touches` are refused. Its `detail` gives counts (`runs`, `things`,
 `intimate`, `often`), `filled` and the FIXTURE message. Three
-`triggers:` steps check [check-in triggers](../CONVERSATION.md#check-in-triggers)
-with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
+`triggers:` steps check [check-in triggers](../CONVERSATION.md#check-ins)with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
 check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, Think ahead and Callback list on `ExchangeEnded`, Talking to someone else on `Spoke` and the director on `UserTurn`),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
@@ -1148,7 +1153,7 @@ every touch; a pat alone fires only `TouchesEnded`; a zoom fires nothing) and
 after 2 minutes, at most once per its pace, never held by a busy
 conversation, still off, still waiting while nobody is at the PC, *Check now*
 with no trigger, and a paced check-in still waiting for a busy conversation).
-Three `director:` steps check [the director](../CONVERSATION.md#the-director):
+Three `director:` steps check [the director](../CONVERSATION.md#the-director-the-replys-work-beside-the-reply):
 `the built-in check-in, its trigger and its pool kind` (on, *Its tools act*,
 `UserTurn` with no cooldown, job kind `director` that stops while you talk on
 shared hardware, its tool sets are Martlet's next words, every set that
@@ -1178,7 +1183,7 @@ from `{touches}`, the personality, the `KNOW:` format and the non-explicit
 `{adult}` line (the explicit line only with Adult content on); and a fixture
 member's `KNOW:` answer goes on a production context board as
 `check-in-touches` for one request only. `think ahead` checks the built-in
-[Think ahead](../CONVERSATION.md#think-ahead) check-in the same way with FIXTURE
+[Think ahead](../CONVERSATION.md#check-ins) check-in the same way with FIXTURE
 facts and a canned answer: it is on, runs at most once a minute, thinks ahead
 for the next reply (`Plan`) and starts on `ExchangeEnded`; it waits with no
 trigger, runs on a fired trigger while you talk, waits during its cooldown and
@@ -1191,7 +1196,7 @@ nothing, a `KNOW:` line can't be read, and an emptied *Check-in: thoughts ahead
 for the next reply* prompt posts nothing. Four steps check [Keep the
 conversation going](../CONVERSATION.md#keep-the-conversation-going) with FIXTURE
 exchanges and canned answers: `callback list` (the built-in
-[Callback list](../CONVERSATION.md#callback-list) is on, runs at most once a
+[Callback list](../CONVERSATION.md#check-ins) is on, runs at most once a
 minute after each reply, reads `Latest` and `Callbacks`; its message has the
 list with when each item came up, such as *- 9:37 PM (40 min ago): open - ...*,
 what was said and the `CALLBACK:` format; a fixture member's `CALLBACK:` lines
@@ -1201,7 +1206,7 @@ came up; a list forgotten meanwhile isn't written; `KEEP` changes nothing,
 `NONE` empties it and chatter can't be read), `think ahead reads the callback
 list` (Think ahead's message has the list and asks for one move; the note
 for the next reply says to make that move), `quiet moments` (the built-in
-[Quiet moments](../CONVERSATION.md#quiet-moments) is on, every 10 minutes, at
+[Quiet moments](../CONVERSATION.md#check-ins) is on, every 10 minutes, at
 most 2 times an hour, and Unanswered question is on; it runs after 5 quiet
 minutes and waits after 1, after 45, with an empty list, with you away, once
 it picked this quiet spell up, while a question waits, on a call and at 10:17
@@ -1224,7 +1229,7 @@ and read back` (equal hours, a cap of 5 and an unknown condition refused).
 The settings step also checks that the two built-in check-ins that wait for
 a signal and are off by default (Welcome back, Someone else is here) are off,
 and that the others are on. `talking to someone else` checks [Talking to someone
-else](../CONVERSATION.md#talking-to-someone-else) with a FIXTURE one-sided phone
+else](../CONVERSATION.md#check-ins) with a FIXTURE one-sided phone
 call and a canned answer: it is on, runs at most once a minute, holds Martlet
 back (`HoldBack`) and starts on `Spoke`; it waits with no trigger and on a
 reply's end alone, runs while the reply is busy and waits during its

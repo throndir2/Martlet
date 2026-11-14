@@ -1,5 +1,11 @@
 # MCP: Diagnostics and logs
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/DiagnosticsTools.cs`, `src/Martlet.Mcp.Protocol/LatencyReport.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Diagnostics and logs* area of `martlet_guide` (Doctor, logs, latency and the Linux and macOS companion app). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)
