@@ -3,7 +3,8 @@
 **Status:** Partial
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
+**Last verified:** 2026-11-13 against b1688a8de (tool names, links and the `singing_check` argument ranges traced; other behaviour text not traced)
+**Verification boundary:** The check-result details and UI behaviour claims, in particular Local MCP control (Windows) and ElevenLabs voice, were not traced to code. Audio hardware, live engines and credentials were not tested.
 **Code:** `src/Martlet.Mcp.Protocol/Tools/VoiceTools.cs`, `src/Martlet.Mcp.Protocol/Tools/VoiceTools.Singing.cs`, `src/Martlet.Mcp.Protocol/Tools/VoiceTools.Speech.cs`, `src/Martlet.Mcp.Protocol/Tools/VoiceTools.Voices.cs`, `src/Martlet.Mcp.Protocol/EchoCheck.cs`, `src/Martlet.Mcp.Protocol/HearingCheck.cs`
 
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Voice and listening* area of `martlet_guide` (voices, listening, voice recognition, singing, echo and the talk window). The [index](../MCP.md#pages) lists the other pages.
@@ -427,7 +428,7 @@ as a cloud provider's song is finished, with its `jobId`, `seconds`, `lines`, `w
 mono 16-bit PCM WAV, 1-30 s, such as one of the owner's voice recordings) with
 its `voiceTranscript`, which the check adds to the gateway's voice list as the
 desktop adds a recorded voice and sings in instead of the starter voice, and
-`bpm` (default 90; 0 for none) and `key` (default `G major`; empty for none),
+`bpm` (default 90; 0 or 40-240) and `key` (default `G major`; empty for none),
 sent as Martlet's own model writes them (without either, the host's music
 planner runs first). It returns `{exitCode, report}` with `ok` (no failure, three
 sample-aligned tracks of the requested length and a beat grid), `stages` (each

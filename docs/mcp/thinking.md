@@ -3,9 +3,9 @@
 **Status:** Partial
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
-**Code:** `src/Martlet.Mcp.Protocol/Tools/ThinkingTools.cs`, `src/Martlet.Mcp.Protocol/ContextCheck.cs`, `src/Martlet.Mcp.Protocol/HelperJobsCheck.cs`, `src/Martlet.Mcp.Protocol/ImageModelCheck.cs`
-
+**Last verified:** 2026-11-13 against b1688a8de (tool registrations, selected argument rules, context limits, pool files, and image, audio and helper checks traced)
+**Verification boundary:** All sections were read, but most behaviour claims were not traced to code, in particular Thinking longer, Thinking pool, Thinking requests, What was sent, Image and audio models, Live floor, Reading, Picture making and Local MCP control (Windows). Real models, hardware and credentials were not tested.
+**Code:** `src/Martlet.Mcp.Protocol/Tools/ThinkingTools.cs`, `src/Martlet.Mcp.Protocol/ContextCheck.cs`, `src/Martlet.Mcp.Protocol/HelperJobsCheck.cs`, `src/Martlet.Mcp.Protocol/ImageModelCheck.cs`, `src/Martlet.Mcp.Protocol/AudioModelCheck.cs`, `src/Martlet.Mcp.Protocol/BackupThinkingCheck.cs`, `src/Martlet.Mcp.Protocol/GameProgressCheck.cs`, `src/Martlet.Mcp.Protocol/ThinkLongerCheck.Places.cs`, `src/Martlet.Mcp.Protocol/ThinkingPoolCheck.Status.cs`, `src/Martlet.Core/Cluster/Pools.cs`, `src/Martlet.Core/Settings/ThinkingPoolSettings.cs`, `src/Martlet.Core/Settings/SelfHostSetup.cs`, `src/Martlet.Conversation/ThinkLonger.cs`, `src/Martlet.Providers/TextGenerationContracts.cs`
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Thinking and models* area of `martlet_guide` (Thinking, the Thinking pool, models, vision and context). The [index](../MCP.md#pages) lists the other pages.
 
 ## Tools while you talk (MCP client)
@@ -280,7 +280,7 @@ when it isn't known yet), `inputs` (how many inputs a think or research job
 sent; 0 for a pool job) and the request's limits. The filters are:
 
 - `state`: `active` (waiting, running or paused), `done`, `problems` (ended
-  other than succeeded or canceled, or with a retry or a stop for the
+  other than succeeded or canceled, or any request with a retry or a stop for the
   conversation), or one state (`waiting`, `running`, `paused`, `succeeded`,
   `failed`, `timedout`, `stale`, `nomember`, `preempted` or `canceled`).
 - `kind`: one job kind, such as `memory` or `barge-in-judge`.
@@ -356,7 +356,7 @@ shows each member's `answersForConversation` and `paid` (a cloud provider), a
 taken, and why), and in the desktop's file `backup` (the wait used, the
 automatic wait, recent replies, its 95th percentile, the last results and
 counts; never what was said). `backup_thinking_check` (`scenario`, `delayMs`
-one of 500-3000, 900 by default) rehearses the production race in
+one of 500, 700, 900, 1200, 1500, 2000 or 3000 ms, 900 by default) rehearses the production race in
 `ConversationTurn`, `ConversationRuntime.OpenTextAsync` and the member choice
 (`ThinkingBackupMembers`) with two fixture Chat Completions endpoints on
 127.0.0.1 (canned words, NOT AI), which note when the client stopped their
@@ -518,7 +518,7 @@ once). In-process; it writes only a temporary folder.
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
 ```
 
-`image_model_check` (`dataDirectory`; optional `imageOrigin` and `imageModel`
+`image_model_check` (`dataDirectory`; optional `imageOrigin` and `imageModel`, given together
 to rehearse an image model of its own that isn't saved; optional `delayMs`,
 200 to 10,000, default 1,500) shows the image model's side
 ([Pictures: the image model](../SENSE_MODELS.md#pictures-the-image-model)).
@@ -637,7 +637,7 @@ the cloud form, `ImageModelProvider` is the provider and `ImageModelKeyStatus`
 what the key box will do (never the key, base URL or model ID typed:
 `ImageModelBaseUrl`, `ImageModelModelId` and `ImageModelKey` aren't read). The
 same IDs exist with `AudioModel` and `Pool-hearing-`. These save
-`pools-local.json` (and a key), ask a server or send a test request, so they
+`pools.json` (and a key), ask a server or send a test request, so they
 need `--allow-ui-effects`: the list's On, Up, Down, Remove and Add buttons,
 `ImageModelUseLocal`, `ImageModelPullModel`, `ImageModelCheckOllama`,
 `ImageModelSaveCloud` (*Add to the list*, with `ImageModelConsent`),
@@ -1436,7 +1436,7 @@ optional absolute `dataDirectory`, default the current user's): `state`
 `playthroughs` (`playthrough`, `current`, `updatedAt` and `fields` with `name`,
 `label`, `value`, `at` and `byUser`). A running Martlet can hold newer facts in
 memory until its next save. `game_state_correct` (`game`, `field`, `value`,
-optional `playthrough`) corrects one field as the user would: an empty `value`
+optional `playthrough`) corrects a field or selects a playthrough: an empty `value`
 clears it, and `playthrough` first chooses or starts that playthrough.
 `game_state_delete` (`game`) deletes all of a game's playthroughs. Both change
 `game-state.json` through the production keeper, so they need
@@ -1492,7 +1492,7 @@ goes only to its own base URL) and Ollama's `/api/show`, `/api/ps` and
 fits a 1,000-exchange synthetic conversation the way a reply does into a cloud
 model's default 100,000 tokens, 1,000,000 tokens on gpt-4.1, a paired host at
 its default 8,192 tokens and at its largest 262,144 (1 MiB and 4,096 messages,
-like the other routes) and Ollama on this PC at 32,768:
+while the other routes allow 8 MiB and 4,096 messages) and Ollama on this PC at 32,768:
 `exchangesSent`, `exchangesLeftOut`, `estimatedTokens` and `bytes`, `ok` when
 the newest exchanges fit and one more wouldn't. Its `cache` part rehearses the
 [request layout that lets prompt caches work](../CONVERSATION.md#prompt-caching-and-the-request-layout)
@@ -1700,7 +1700,7 @@ not downloaded, both already loaded, Thinking's already partly on the
 processor), and once the think's model has loaded
 whether Thinking's was unloaded or pushed partly off the card (`afterLoading`,
 each `stops` against `expected`). `hostFit`: a 160-message conversation
-fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
+fitted to a paired computer's gateway (1 MiB, 4,096 messages, no tools, the newest
 kept, `inputTokens` 24,576 beside 8,192 for output). `pool`: the production
 `DeepThinkingPool` of three paired computers' Deep thinking roles (diva and
 ripley do none of the conversation's jobs, imouto also speaks: `configured`

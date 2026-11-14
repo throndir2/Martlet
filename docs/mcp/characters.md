@@ -3,8 +3,10 @@
 **Status:** Partial
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
-**Code:** `src/Martlet.Mcp.Protocol/Tools/CharacterTools.cs`, `src/Martlet.Mcp.Protocol/Tools/CharacterTools.Actions.cs`, `src/Martlet.Mcp.Protocol/Tools/CharacterTools.Profiles.cs`, `src/Martlet.Mcp.Protocol/Tools/CharacterTools.Status.cs`, `src/Martlet.Mcp.Protocol/CharacterConfiguration.cs`, `src/Martlet.Mcp.Protocol/CharacterLooks.cs`
+**Last verified:** 2026-11-13 against b1688a8de (selected tool schemas and result fields for motion, kept motions, profiles, models, voices, actions, status, reaction changes and themes)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/CharacterTools.cs`, `src/Martlet.Mcp.Protocol/Tools/CharacterTools.Actions.cs`, `src/Martlet.Mcp.Protocol/Tools/CharacterTools.Profiles.cs`, `src/Martlet.Mcp.Protocol/Tools/CharacterTools.Status.cs`, `src/Martlet.Mcp.Protocol/Tools/OtherTools.cs`, `src/Martlet.Mcp.Protocol/Tools/UiTools.cs`, `src/Martlet.Mcp.Protocol/MotionCheck.cs`, `src/Martlet.Mcp.Protocol/KeptMotionsCheck.cs`, `src/Martlet.Mcp.Protocol/ReactionChangesCheck.cs`, `src/Martlet.Mcp.Protocol/CharacterThemeCheck.cs`, `src/Martlet.Mcp.Protocol/CharacterConfiguration.cs`
+
+**Verification boundary:** The motion pool, touch zones, eyes, gaze and physical checks were not traced fully. The desktop behavior, other behavioral claims and settings owners were not checked fully. Live desktop, hardware, provider and credential behavior was not verified.
 
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Characters* area of `martlet_guide` (making, changing and checking characters: personalities, looks, voices, motions and touch). The [index](../MCP.md#pages) lists the other pages.
 
@@ -65,7 +67,8 @@ and returns `ok`, `place`, `where`, `fixture`, `engine`, `model`, `frames`,
   (`status`, then `generate`).
 
 `free` unloads the model afterwards (`POST /free`, or the route's `free`).
-`saveDirectory` (absolute) writes `motion.vrma` there. An invalid prompt or
+`saveDirectory` (absolute) writes `motion.vrma` there and replaces an existing
+file. This write does not require `--allow-changes`. An invalid prompt or
 seconds is a tool error. A real motion needs an NVIDIA GPU with 24 GB or more.
 
 ### Body motions
@@ -94,8 +97,10 @@ emotes and motions with their tags and whether replies are offered them.
 Martlet's five starter motions, with the FIXTURE - NOT AI motion maker and checks
 it the way Martlet keeps and plays it: the clip checked as the VRM renderer checks
 it, kept as a motion creation in `dataDirectory` (a disposable one when left out)
-and read back, the creation tools' words unchanged and never listing it, and the
-motion listed as a VRM's motion with its reply tag (`model`, or a FIXTURE VRM). It
+and read back. A given `dataDirectory` must be disposable and needs
+`--allow-changes`. It checks that the creation tools' words do not change and
+the tools do not list the motion. It also checks the motion's VRM reply tag
+(`model`, or a FIXTURE VRM). It
 returns `ok`, each step and the motions with their ids, renderer clip names
 (`kept-<id>`) and the note the conversation gets. It never uses a motion computer;
 `motion_check` (above) does.
@@ -223,7 +228,7 @@ first 16 hex digits of its ID, as in `CharacterModelState-<key>`), `renderer`
 shows it); `copies` (folders in `character-models`), `incoming` (copies still
 arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
-`model-file-outside-list`). Character names and file paths are never returned.
+`model-file-outside-list`, or `built-in (nothing saved)` when no model is saved). Character names and file paths are never returned.
 Read-only; it contacts nothing.
 
 `character_profiles` reads the character profiles (Companion › Profiles) from a
@@ -293,7 +298,7 @@ the saved ones; when they can't be saved, `combosProblem` says why (such as *no 
 saved ones stay. With `answer`, a simulated Thinking reply such as
 `1: blush | - | stays | when shy` (the mode may be left out), `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
-the model's path; it reads and contacts nothing else.
+the model's path. It reads the model and saved settings; it contacts nothing.
 
 `character_touch_zones` rehearses Companion › Touch › [Touch zones](../AVATARS.md#touch-zones)
 with no vision request: `zones` (how many Martlet knows, which are
@@ -357,7 +362,7 @@ gets, which *Defaults* fills in), its `sounds` (the cues of its voice sounds),
 whether
 Martlet `notices` it, whether the owner `added` it, whether it is `special` to
 the character (found as special, not added) and the owner's `hint`) and,
-with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
+with `touch` (a string containing a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
 `restWholeY` where the touched point of the character was in its rest pose, now
 and framed whole, as the renderer traces it on the touched mesh, and `hair`
@@ -589,11 +594,12 @@ FIXTURE catalog of Martlet's gestures, and how many `zones` the
 category, and for each zone in use its `feeling`, what it `plays`, its `list`
 and `changedByCharacter`). `tool` (`read_touch_reactions`,
 `change_touch_feeling`, `change_zone_reactions`, `set_touch_mood` or
-`undo_touch_change`) with `arguments` (the JSON a model sends) runs one call
+`undo_touch_change`) with `arguments` (a string containing the JSON a model sends) runs one call
 as the desktop runs it, with every limit, and returns `call` (`result`,
 `failed`, `changed` and `saved`). `undo` (a change ID, or `all`) ends changes
-as the owner's **Undo** does. `save` writes the call's change or the undo into
-an explicit, disposable `dataDirectory`. `at` sets the time (ISO 8601) and
+as the owner's **Undo** does. `undo` and `save` need an explicit, disposable
+`dataDirectory`. `save` writes the call's change or the undo and needs
+`--allow-changes`. `at` sets the time (ISO 8601) and
 `checkInId` the calling check-in (`reactions`). `read` is what
 `read_touch_reactions` returns afterwards.
 
@@ -604,7 +610,7 @@ until when, and when and by which check-in it was made),
 it), and `ReactionChangesState` what the last **Undo** did. The character's
 reasons (`ReactionChangeWhy-<n>`, `ReactionChangeEndedWhy-<n>`) come from the
 conversation, so they aren't values MCP reads; `character_reaction_changes`
-shows `why` and `read` only for an explicit `dataDirectory`.
+shows `why` and `read` only for an explicit, disposable `dataDirectory`.
 `ReactionChangeUndo-<n>` and `ReactionChangesUndoAll` end changes, so they need
 `--allow-ui-effects`.
 
@@ -689,8 +695,10 @@ and `darkest` neutrals), `rules` (`light` and `dark`: `colors` by role,
 `dataDirectory`'s `character-themes.json` keeps for the model). With
 `previewDirectory` (an absolute folder) it writes `<label>-rules-light.png` and
 `<label>-rules-dark.png` (Martlet's window drawn with the real styles in each
-palette); `label` defaults to the key. It never returns the model's path,
-writes only to `previewDirectory` and contacts nothing.
+palette). `label` defaults to the key. A label has 1 to 40 ASCII letters,
+digits, hyphens or underscores. The preview write does not require
+`--allow-changes` and replaces existing files. It never returns the model's
+path, writes only to `previewDirectory` and contacts nothing.
 
 `character_status` reads Companion › Personality and Character as saved in a
 data directory (optional absolute `dataDirectory`, default the current
@@ -968,9 +976,9 @@ starts about 0.5 s after the last touch.* Moving or zooming the character never
 stops Martlet, and a touch while it still thinks waits for its next reply.
 
 `character_physical_check` runs the same summary and wording headless, with no
-desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
+desktop and no model request: `stroke` (a string containing a JSON `CharacterStroke` with its
 hit-tested samples) is summarized against the touch zones saved for `modelId`
-(or the rough zones before any were found), `changes` (a JSON array of
+(or the rough zones before any were found), `changes` (a string containing a JSON array of
 `RendererPhysical`) are worded, and both go into a touch ledger. It returns the
 stroke's zones (where zones overlap, each zone a sample was on), pace, passes, `dx` and `dy` (where it ended from where it
 began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`

@@ -3,8 +3,9 @@
 **Status:** Partial
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against b1688a8de (tool names and links checked; long behaviour text not re-checked line by line)
-**Code:** `src/Martlet.Mcp.Protocol/Tools/AppsTools.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Home.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.McpServers.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Memory.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordCheck.cs`, `src/Martlet.Mcp.Protocol/AppGuidesCheck.cs`
+**Last verified:** 2026-11-13 against b1688a8de (Apps tool schemas; memory status and mutation code; check-in, Discord, terminal and App-guide check/status code)
+**Verification boundary:** UI claims in “Tools while you talk (MCP client)” and “Local MCP control (Windows)” were not traced to desktop owners or exercised in a live desktop. Live Discord, Home Assistant, WhatsApp, paired-host and audio-device paths need services, credentials or hardware; they were not tested.
+**Code:** `src/Martlet.Mcp.Protocol/Tools/AppsTools.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Home.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.McpServers.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Memory.cs`, `src/Martlet.Mcp.Protocol/McpServer.MemoryForget.cs`, `src/Martlet.Mcp.Protocol/McpServer.MemoryWhere.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Thinking.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Tools.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Touches.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Triggers.cs`, `src/Martlet.Mcp.Protocol/DiscordCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordCallCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordCompanionCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordReplyCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordTextCheck.cs`, `src/Martlet.Mcp.Protocol/TerminalCheck.cs`, `src/Martlet.Mcp.Protocol/RemindersCheck.cs`, `src/Martlet.Mcp.Protocol/AppGuidesCheck.cs`, `src/Martlet.Mcp.Protocol/AppGuidesCheck.Research.cs`, `src/Martlet.Conversation/CheckIns.cs`, `src/Martlet.Conversation/Guides/GuideContracts.cs`, `src/Martlet.Conversation/Guides/AppGuideService.cs`, `src/Martlet.Conversation/Guides/FileAppGuideStore.cs`, `src/Martlet.Conversation/Guides/AppGuideResearcher.cs`, `src/Martlet.Conversation/Guides/AppGuideTools.cs`, `src/Martlet.Mcp.Client/McpDirectory.cs`, `src/Martlet.Desktop/MainWindow.CheckIns.cs`, `src/Martlet.Desktop/Messaging.cs`, `src/Martlet.Desktop/PictureClient.cs`
 
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Apps, home and memory* area of `martlet_guide` (MCP servers Martlet uses, the terminal, Discord, messaging, smart home, memory, reminders, check-ins and app guides). The [index](../MCP.md#pages) lists the other pages.
 
@@ -431,7 +432,7 @@ its first zones, then tap it.
 `memory_sync_status` reads [one memory on every computer](../MEMORY.md#one-memory-on-every-computer)
 from a data directory (optional absolute `dataDirectory`, default the current
 user's; the disposable one in `Invoke-MartletMcp.ps1`): `sync` as above,
-`state` (`none` before the first memory sync, else `loaded`), `syncedAt`,
+`state` (`none` before the first memory sync, `loaded` when the saved store is readable, or `unreadable` when it is not), `syncedAt`,
 `facts` (how many facts the store had at the last sync), `byComputer` (how many
 of those each computer wrote) and `forgotten` (the tombstones every computer
 agreed on). Those top-level fields are the `memory-sync.json` from before
@@ -950,10 +951,10 @@ link and a server invite; calling again reuses the channel and joins; the
 channel is removed after the call; a friend who turned calls off is refused),
 `presence` (the status and text for each Martlet state and the 20-second rate
 limit) and `avatar` (the same character is skipped, a new one waits 30 minutes,
-Update now 10). Optional `person` and `character` name the rehearsal. With
-`requestFrom` (a Discord user ID as a string) and `requestName` it also files a
+Update now 10). Optional `person` and `character` name the rehearsal; each is limited to 64 characters. With
+`requestFrom` (optional, a Discord user ID as a string of 1-20 digits) and `requestName` (optional, at most 64 characters) it also files a
 friend request into the given `dataDirectory`, as `/friend ask` would; it
-refuses without an explicit (disposable) `dataDirectory`. The desktop then lists
+requires an explicit disposable `dataDirectory` and `--allow-changes`. The desktop then lists
 it on Companion › Discord › Friends and calls (see below).
 
 Companion › Discord's **Friends and calls** card: `DiscordFriendsStatus` (*2
@@ -1089,8 +1090,8 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, `lullAfterMinutes` (3) for Quiet
 moments, `maximumCallbacks` (8), `maximumCallbackCharacters` (160) and
-`callbackWindowHours` (2) for the callback list, `maximumToolRounds` (4),
-`maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
+`callbackWindowHours` (2) for the callback list, `maximumToolRounds` (16),
+`maximumToolCalls` (64), `maximumToolResultCharacters` (120) and `toolSets`
 (each set's `id`, `name`, `does`, `tools`, `replaces`: the reply tools it
 takes over, such as `manage_memories` for `memory`, and `optional`: its tools
 only look things up, so a check-in gets them only when a member that calls tools
@@ -1143,7 +1144,7 @@ the same, that the history outlives a reply's `Drain`, that the fact goes
 after the prompt when it is ticked but not placed, and that facts past
 `Touches` are refused. Its `detail` gives counts (`runs`, `things`,
 `intimate`, `often`), `filled` and the FIXTURE message. Three
-`triggers:` steps check [check-in triggers](../CONVERSATION.md#check-ins)with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
+`triggers:` steps check [check-in triggers](../CONVERSATION.md#check-ins) with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
 check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, Think ahead and Callback list on `ExchangeEnded`, Talking to someone else on `Spoke` and the director on `UserTurn`),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
