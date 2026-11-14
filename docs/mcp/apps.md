@@ -1,5 +1,12 @@
 # MCP: Apps, home and memory
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (Apps tool schemas; memory status and mutation code; check-in, Discord, terminal and App-guide check/status code)
+**Verification boundary:** UI claims in “Tools while you talk (MCP client)” and “Local MCP control (Windows)” were not traced to desktop owners or exercised in a live desktop. Live Discord, Home Assistant, WhatsApp, paired-host and audio-device paths need services, credentials or hardware; they were not tested.
+**Code:** `src/Martlet.Mcp.Protocol/Tools/AppsTools.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Home.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.McpServers.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.Memory.cs`, `src/Martlet.Mcp.Protocol/McpServer.MemoryForget.cs`, `src/Martlet.Mcp.Protocol/McpServer.MemoryWhere.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Thinking.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Tools.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Touches.cs`, `src/Martlet.Mcp.Protocol/CheckInsCheck.Triggers.cs`, `src/Martlet.Mcp.Protocol/DiscordCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordCallCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordCompanionCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordReplyCheck.cs`, `src/Martlet.Mcp.Protocol/DiscordTextCheck.cs`, `src/Martlet.Mcp.Protocol/TerminalCheck.cs`, `src/Martlet.Mcp.Protocol/RemindersCheck.cs`, `src/Martlet.Mcp.Protocol/AppGuidesCheck.cs`, `src/Martlet.Mcp.Protocol/AppGuidesCheck.Research.cs`, `src/Martlet.Conversation/CheckIns.cs`, `src/Martlet.Conversation/Guides/GuideContracts.cs`, `src/Martlet.Conversation/Guides/AppGuideService.cs`, `src/Martlet.Conversation/Guides/FileAppGuideStore.cs`, `src/Martlet.Conversation/Guides/AppGuideResearcher.cs`, `src/Martlet.Conversation/Guides/AppGuideTools.cs`, `src/Martlet.Mcp.Client/McpDirectory.cs`, `src/Martlet.Desktop/MainWindow.CheckIns.cs`, `src/Martlet.Desktop/Messaging.cs`, `src/Martlet.Desktop/PictureClient.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Apps, home and memory* area of `martlet_guide` (MCP servers Martlet uses, the terminal, Discord, messaging, smart home, memory, reminders, check-ins and app guides). The [index](../MCP.md#pages) lists the other pages.
 
 ## Tools while you talk (MCP client)
@@ -397,7 +404,7 @@ fires Callback list after Think ahead:
 `desktop.callbacks.count` 2, and `CheckInStatus-lull` says Quiet moments
 *waits for 3 min of quiet*.
 
-[Talking to someone else](../CONVERSATION.md#talking-to-someone-else) is
+[Talking to someone else](../CONVERSATION.md#check-ins) is
 checked on the desktop the same way. Launch with a fixture file that holds
 `ASIDE: FIXTURE on the phone with their mom`, open `CompanionTab-CheckIns`
 and click `CheckInRun-aside`: `check_ins_status`'s `desktop.aside` says
@@ -409,7 +416,7 @@ click it again: `holding` is false and the status says *Martlet talks as usual
 again*. Its trigger box `CheckInTrigger-aside-Spoke` (*You say something*) is
 checked; that trigger needs always listening and a microphone.
 
-[Check-in triggers](../CONVERSATION.md#check-in-triggers) are driven live with
+[Check-in triggers](../CONVERSATION.md#check-ins) are driven live with
 `character_touch` and `character_stroke` (both need `--allow-ui-effects` and
 the character showing with touch zones): about 1.2 seconds after the last
 touch, `check_ins_status`'s `desktop.touches.lastFired` names the triggers
@@ -425,7 +432,7 @@ its first zones, then tap it.
 `memory_sync_status` reads [one memory on every computer](../MEMORY.md#one-memory-on-every-computer)
 from a data directory (optional absolute `dataDirectory`, default the current
 user's; the disposable one in `Invoke-MartletMcp.ps1`): `sync` as above,
-`state` (`none` before the first memory sync, else `loaded`), `syncedAt`,
+`state` (`none` before the first memory sync, `loaded` when the saved store is readable, or `unreadable` when it is not), `syncedAt`,
 `facts` (how many facts the store had at the last sync), `byComputer` (how many
 of those each computer wrote) and `forgotten` (the tombstones every computer
 agreed on). Those top-level fields are the `memory-sync.json` from before
@@ -944,10 +951,10 @@ link and a server invite; calling again reuses the channel and joins; the
 channel is removed after the call; a friend who turned calls off is refused),
 `presence` (the status and text for each Martlet state and the 20-second rate
 limit) and `avatar` (the same character is skipped, a new one waits 30 minutes,
-Update now 10). Optional `person` and `character` name the rehearsal. With
-`requestFrom` (a Discord user ID as a string) and `requestName` it also files a
+Update now 10). Optional `person` and `character` name the rehearsal; each is limited to 64 characters. With
+`requestFrom` (optional, a Discord user ID as a string of 1-20 digits) and `requestName` (optional, at most 64 characters) it also files a
 friend request into the given `dataDirectory`, as `/friend ask` would; it
-refuses without an explicit (disposable) `dataDirectory`. The desktop then lists
+requires an explicit disposable `dataDirectory` and `--allow-changes`. The desktop then lists
 it on Companion › Discord › Friends and calls (see below).
 
 Companion › Discord's **Friends and calls** card: `DiscordFriendsStatus` (*2
@@ -1047,14 +1054,14 @@ the desktop on a companion PC: `role`, the check-in `running` and the
 triggered one `runningTriggered`, `touches` with `settling` (touches wait to
 settle), `settleMs` and `lastFired` (`triggers`, `at` and `what` in counts
 only, such as *3 touches, an intimate one* or *2 exchanges*), `afterExchange` (the
-reply tools [the director](../CONVERSATION.md#the-director) takes over:
+reply tools [the director](../CONVERSATION.md#the-director-the-replys-work-beside-the-reply) takes over:
 `poolCallsTools`, whether the configured Thinking pool has a member that takes
 check-ins and calls tools; `handedOff`, each `tool` with its `checkIn` and `set`;
 `why` in plain words; and `lastProblem`, what the last run after an exchange
 couldn't do, or null), `aside` (whether Martlet [holds
-back](../CONVERSATION.md#talking-to-someone-else) now: `holding`, the check-in
+back](../CONVERSATION.md#check-ins) now: `holding`, the check-in
 `by`, `since`, `until` and `aboutCharacters`, never who the user talks to),
-`callbacks` (how many things the [callback list](../CONVERSATION.md#callback-list)
+`callbacks` (how many things the [callback list](../CONVERSATION.md#check-ins)
 keeps now, `count`, and its `maximum`, never what they are),
 `asksWaiting` (how many things you said wait for the director because it was
 still busy, at most 4; never what they are), `toolSetsHere` (every check-in tool set: its `id`, `name`,
@@ -1083,8 +1090,8 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, `lullAfterMinutes` (3) for Quiet
 moments, `maximumCallbacks` (8), `maximumCallbackCharacters` (160) and
-`callbackWindowHours` (2) for the callback list, `maximumToolRounds` (4),
-`maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
+`callbackWindowHours` (2) for the callback list, `maximumToolRounds` (16),
+`maximumToolCalls` (64), `maximumToolResultCharacters` (120) and `toolSets`
 (each set's `id`, `name`, `does`, `tools`, `replaces`: the reply tools it
 takes over, such as `manage_memories` for `memory`, and `optional`: its tools
 only look things up, so a check-in gets them only when a member that calls tools
@@ -1137,8 +1144,7 @@ the same, that the history outlives a reply's `Drain`, that the fact goes
 after the prompt when it is ticked but not placed, and that facts past
 `Touches` are refused. Its `detail` gives counts (`runs`, `things`,
 `intimate`, `often`), `filled` and the FIXTURE message. Three
-`triggers:` steps check [check-in triggers](../CONVERSATION.md#check-in-triggers)
-with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
+`triggers:` steps check [check-in triggers](../CONVERSATION.md#check-ins) with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
 check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, Think ahead and Callback list on `ExchangeEnded`, Talking to someone else on `Spoke` and the director on `UserTurn`),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
@@ -1148,7 +1154,7 @@ every touch; a pat alone fires only `TouchesEnded`; a zoom fires nothing) and
 after 2 minutes, at most once per its pace, never held by a busy
 conversation, still off, still waiting while nobody is at the PC, *Check now*
 with no trigger, and a paced check-in still waiting for a busy conversation).
-Three `director:` steps check [the director](../CONVERSATION.md#the-director):
+Three `director:` steps check [the director](../CONVERSATION.md#the-director-the-replys-work-beside-the-reply):
 `the built-in check-in, its trigger and its pool kind` (on, *Its tools act*,
 `UserTurn` with no cooldown, job kind `director` that stops while you talk on
 shared hardware, its tool sets are Martlet's next words, every set that
@@ -1178,7 +1184,7 @@ from `{touches}`, the personality, the `KNOW:` format and the non-explicit
 `{adult}` line (the explicit line only with Adult content on); and a fixture
 member's `KNOW:` answer goes on a production context board as
 `check-in-touches` for one request only. `think ahead` checks the built-in
-[Think ahead](../CONVERSATION.md#think-ahead) check-in the same way with FIXTURE
+[Think ahead](../CONVERSATION.md#check-ins) check-in the same way with FIXTURE
 facts and a canned answer: it is on, runs at most once a minute, thinks ahead
 for the next reply (`Plan`) and starts on `ExchangeEnded`; it waits with no
 trigger, runs on a fired trigger while you talk, waits during its cooldown and
@@ -1191,7 +1197,7 @@ nothing, a `KNOW:` line can't be read, and an emptied *Check-in: thoughts ahead
 for the next reply* prompt posts nothing. Four steps check [Keep the
 conversation going](../CONVERSATION.md#keep-the-conversation-going) with FIXTURE
 exchanges and canned answers: `callback list` (the built-in
-[Callback list](../CONVERSATION.md#callback-list) is on, runs at most once a
+[Callback list](../CONVERSATION.md#check-ins) is on, runs at most once a
 minute after each reply, reads `Latest` and `Callbacks`; its message has the
 list with when each item came up, such as *- 9:37 PM (40 min ago): open - ...*,
 what was said and the `CALLBACK:` format; a fixture member's `CALLBACK:` lines
@@ -1201,7 +1207,7 @@ came up; a list forgotten meanwhile isn't written; `KEEP` changes nothing,
 `NONE` empties it and chatter can't be read), `think ahead reads the callback
 list` (Think ahead's message has the list and asks for one move; the note
 for the next reply says to make that move), `quiet moments` (the built-in
-[Quiet moments](../CONVERSATION.md#quiet-moments) is on, every 10 minutes, at
+[Quiet moments](../CONVERSATION.md#check-ins) is on, every 10 minutes, at
 most 2 times an hour, and Unanswered question is on; it runs after 5 quiet
 minutes and waits after 1, after 45, with an empty list, with you away, once
 it picked this quiet spell up, while a question waits, on a call and at 10:17
@@ -1224,7 +1230,7 @@ and read back` (equal hours, a cap of 5 and an unknown condition refused).
 The settings step also checks that the two built-in check-ins that wait for
 a signal and are off by default (Welcome back, Someone else is here) are off,
 and that the others are on. `talking to someone else` checks [Talking to someone
-else](../CONVERSATION.md#talking-to-someone-else) with a FIXTURE one-sided phone
+else](../CONVERSATION.md#check-ins) with a FIXTURE one-sided phone
 call and a canned answer: it is on, runs at most once a minute, holds Martlet
 back (`HoldBack`) and starts on `Spoke`; it waits with no trigger and on a
 reply's end alone, runs while the reply is busy and waits during its

@@ -1,5 +1,11 @@
 # MCP: Start here
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (flags, script options, error codes and the short tool list checked in the source)
+**Code:** `src/Martlet.Mcp/Program.cs`, `src/Martlet.Mcp.Protocol/McpServer.cs`, `src/Martlet.Mcp.Protocol/McpServer.Discovery.cs`, `src/Martlet.Mcp.Protocol/Tools/StartTools.cs`, `scripts/Register-MartletMcp.ps1`, `scripts/Invoke-MartletMcp.ps1`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Start here* area of `martlet_guide` (connecting an assistant, the server, its flags, verifying changes and extending the server). The [index](../MCP.md#pages) lists the other pages.
 
 ## Use Martlet from an AI assistant
@@ -42,7 +48,7 @@ To configure a client by hand, give it the full path of `Martlet.Mcp.exe`:
 
 | Flag | What it does |
 | --- | --- |
-| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save, and `memory_forget` delete (its `preview: true` runs without the flag). It also lets the tools that write save or write: `logs_export`, `character_picture` with `outputPath`, `kept_motions_check` with a `dataDirectory`, `character_eyes` with `save` or `forget`, `character_touch_zones` and `character_reaction_changes` with `save`, and `discord_companion_check` with `requestFrom`. Without it they refuse and say how to turn it on. The FIXTURE saves also refuse Martlet's own data folder (`%LOCALAPPDATA%\Martlet`), and an output file is never on a network path or over an existing file. |
+| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete`, `settings_set`, `skill_directory_add`, `preferences_add`, `preferences_update`, `preferences_remove`, `game_state_correct` and `game_state_delete` save, and `memory_forget` and `memory_where` change memory (their `preview: true` runs without the flag). It also lets the tools that write save or write: `logs_export`, `character_picture` with `outputPath`, `kept_motions_check` with a `dataDirectory`, `character_eyes` with `save` or `forget`, `character_touch_zones` and `character_reaction_changes` with `save`, `discord_companion_check` with `requestFrom`, `thinking_speed_check` with `seedSlow` and `thinking_fallback_timing` with `seed`. [Tool permissions](permissions.md) lists each tool. Without the flag they refuse and say how to turn it on. The FIXTURE saves also refuse Martlet's own data folder (`%LOCALAPPDATA%\Martlet`), and an output file is never on a network path or over an existing file. |
 | `--allow-ui-effects` | Lets `ui_*` tools press buttons, type and toggle (see [Local MCP control](#local-mcp-control-windows)). Without it they only navigate and read. |
 | `--all-tools` | Lists every tool. Without it, `tools/list` has only the short list of the tools an assistant needs most (much smaller, and under the 128-tool limit of some clients); every tool still runs by name. `martlet_guide` says how many tools there are and how many are listed. |
 
@@ -51,9 +57,14 @@ To configure a client by hand, give it the full path of `Martlet.Mcp.exe`:
 - **Instructions** at `initialize`: what Martlet is, where to start, the tool
   groups and which flags are on. `serverInfo` has the title `Martlet` and the
   Martlet version.
-- **The short list**: `martlet_guide`, `martlet_call`, the character and
-  settings tools, `doctor_status`, `doctor_list`, `doctor_run`, `logs_tail` and
-  the `ui_*` tools that drive the window. Each has a `title` and MCP behavior
+- **The short list** (24 tools): `martlet_guide`, `martlet_call`,
+  `characters_list`, `character_find_looks`, `character_find_on_web`,
+  `character_create`, `character_update`, `character_use`, `character_delete`,
+  `settings_get`, `settings_schema`, `settings_set`, `doctor_status`,
+  `doctor_list`, `doctor_run`, `logs_tail`, and the window tools `ui_connect`,
+  `ui_snapshot`, `ui_click`, `ui_select`, `ui_set_text`, `ui_toggle`,
+  `ui_set_range` and `ui_scroll`. The other `ui_*` tools (`ui_type`,
+  `ui_move`, `ui_tray`, `ui_long_texts`) run by name. Each has a `title` and MCP behavior
   hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
 - **`martlet_guide`** (start here): what Martlet is, the server's state
   (version, flags, the data folder, whether the app runs now), the common tasks
@@ -238,7 +249,8 @@ call fails or an `until` is not met.
 ```
 
 - Each call is `{"name", "arguments"}` plus optional `waitMs` (pause after it;
-  `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
+  `ui_click`, `ui_select`, `ui_set_text`, `ui_toggle`, `ui_move` and `ui_scroll`
+  default to `-WaitMs`, 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
 - Calls whose tool takes a `martletDirectory` (the voice and listening checks)
@@ -253,11 +265,19 @@ call fails or an `until` is not met.
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
   when done. `-DesktopArguments` adds launch flags after the data directory
   (for example `'--tray'` to start in the notification area).
+- `-DesktopProcessId` connects `ui_*` tools to a desktop that is already
+  running (for example one that `-KeepDesktop` left); it cannot be used with
+  `-Desktop`.
+- `-LabCredentials` keeps pairing secrets in a folder inside the data directory
+  instead of Windows Credential Manager, and keeps finds of hosts on the home
+  network on loopback, for the lab tools such as `signin_lab` and `role_lab`.
+- `-TimeoutSeconds` (default 120) is how long the script waits for each MCP
+  response.
 - `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).
 - `-AllowChanges` passes `--allow-changes`, so `character_*` and `settings_set`
-  save, `memory_forget` deletes and the tools that write (a `save`, `forget`,
+  save (see [Tool permissions](permissions.md) for the others), `memory_forget` deletes and the tools that write (a `save`, `forget`,
   `requestFrom`, `outputPath` or `logs_export`; `kept_motions_check` with the
   disposable `dataDirectory`) write; without an explicit `dataDirectory` they
   use the disposable data directory, and `martlet_call` passes it to the tool
