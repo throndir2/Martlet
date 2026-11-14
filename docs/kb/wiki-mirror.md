@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against 6aff462a4
+**Last verified:** 2026-11-13 against 5900f68ee
 **Code:** `scripts/kb/publish_wiki.py`, `scripts/kb/test_publish_wiki.py`
 
 ## Source and output
@@ -29,6 +29,8 @@ The script builds `Home.md` and `_Sidebar.md`. It uses
 `docs/wiki/Home.md` as the home page when that file exists. It adds the
 documentation map and a list of mirrored pages. Otherwise, it uses
 `docs/README.md` as the home page.
+
+The sync check ignores line-ending differences in Markdown pages.
 
 Each publish removes root Markdown pages that are no longer in `docs/`. It
 also removes old mirrored files from the wiki's `assets/` folder.
