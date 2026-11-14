@@ -1,7 +1,13 @@
 # Smart Home
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Home`, `src/Martlet.Desktop/SmartHome.cs`, `src/Martlet.Desktop/Pages/SmartHome`
+
 Martlet works with Home Assistant. Lights, climate and more answer to her
-voice. Locks, doors, garage doors and alarms are blocked or need your click.
+voice. Martlet tries to block sensitive actions or ask for your confirmation.
 Martlet can also find, set up, back up and update Home Assistant for you, and
 install it on one of your Linux computers.
 
@@ -139,17 +145,16 @@ The **What Martlet may do** card sets which devices Martlet may control:
 
 - Status questions always work.
 - Lights, switches, climate, media, scenes and blinds run immediately.
-- Locks, doors, garage doors, gates, alarms and valves need **Allow locks,
-  doors and alarms** and a **Yes** each time. See
+- Requests identified as actions on locks, doors, garage doors, gates, alarms
+  and valves need **Allow locks, doors and alarms** and confirmation. See
   [Locks, doors and alarms](#locks-doors-and-alarms).
 
 Martlet can reach only the devices that are exposed to voice assistants in
 Home Assistant (**Settings › Voice assistants › Expose**). Keep sensitive
 devices hidden unless you need them.
 
-Screen and camera looks never control your home. Only what you say or type
-goes to Home Assistant. Use [Voice ID](Listening-and-Voice-ID) when Martlet
-should answer only you.
+Screen and camera looks never control your home. Your spoken or typed requests can go to Home Assistant. Use [Voice ID](Listening-and-Voice-ID)
+when Martlet should answer only you.
 
 ## What you can say
 
@@ -162,10 +167,6 @@ Thinking model, also models that can't call tools. Martlet then tells you, in
 her own words, what Home Assistant did. When Assist didn't understand, she
 doesn't pretend that something changed.
 
-- Only what you say or type goes to Home Assistant. Screen and camera looks
-  never control your home.
-- Martlet reaches only the devices you expose to voice assistants in Home
-  Assistant.
 - The talk window shows a **Home Assistant:** line above her reply. **Recent
   actions** on the page lists the last actions until you close Martlet.
 - Use [Voice ID](Listening-and-Voice-ID) when Martlet should answer only you.
@@ -176,8 +177,9 @@ doesn't pretend that something changed.
 Martlet did with Home Assistant. The list clears when you close Martlet.
 
 A **Safety problem** line means that Home Assistant operated a lock, door,
-garage, gate, alarm or valve without your confirmation. To block this, hide
-that device from voice assistants in Home Assistant.
+garage, gate, alarm or valve without your confirmation. Martlet checks the
+words before it sends a request, but that check can miss a sensitive action.
+Hide sensitive devices from voice assistants in Home Assistant unless you need them.
 
 ## Locks, doors and alarms
 
@@ -186,7 +188,8 @@ Status questions always work: "Is the front door locked?"
 To let Martlet operate locks, doors, garage doors, gates, alarms and valves:
 
 1. Under **What Martlet may do**, turn on **Allow locks, doors and alarms**. It
-   is off by default. When it is off, Martlet never sends such a request.
+   is off by default. When it is off, Martlet blocks requests that its check
+   identifies as sensitive. The check can miss a request.
 2. Each time, the talk window shows **Review smart home request**. Press
    **Send request** or **Don't send**. No answer in 30 seconds means no.
 

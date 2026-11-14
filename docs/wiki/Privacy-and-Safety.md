@@ -1,12 +1,18 @@
 # Privacy and Safety
 
-Martlet runs on your own computers. It asks before it captures, sends, spends or changes things.
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/LiveConversationConfiguration.cs`, `src/Martlet.Desktop/ScreenGlancer.cs`, `src/Martlet.Desktop/SmartHome.cs`
+
+Martlet runs on your own computers. Review your capture, provider and tool settings before you use it.
 
 ## When Martlet starts
 
-Starting Martlet doesn't listen, watch or send anything you say. The microphone, camera and screen stay off until you press **Start listening**, **Start watching** or your push-to-talk key.
+By default, the microphone, camera and screen stay off at startup. The startup choice below can start listening and watching. An update restart can also restore them if they were on before the restart.
 
-A few things happen without a click. None of them sends what you say:
+Some network activity can start without another click:
 
 - **Update checks** (on by default): Martlet asks GitHub for new releases. Turn them off in **Settings › App updates**.
 - **The model list**: once a day, Martlet reads public model lists, with no key, to keep its list of AI models current.
@@ -24,13 +30,13 @@ Two startup choices in **Settings › Startup and closing** are worth knowing:
 - **Your words** go to your Thinking model, and to the backup in **If Thinking fails** when it steps in.
 - **Background work** (thinking longer, research, screen and sound summaries, remembering) goes to the models in your Thinking pool. A cloud model there gets that work.
 - **Reply text** goes to the voice engine you chose.
-- **Screenshots and camera pictures** go to your Thinking model or image model, only after **Start watching** or when you add a picture to a message. They are never saved.
+- **Screenshots and camera pictures** can go to your Thinking model or image model while watching. Captured Vision images are not saved or added to Memory.
 - **Sound your PC plays** goes to your audio model, only with **Hear what this PC plays** on.
 - **Web research** sends search words to a search service and reads web pages.
 - **Tool calls** go to the tool you allowed. **Smart-home commands** go to your Home Assistant.
 - **Discord, Telegram and WhatsApp** messages go through those services.
 
-A cloud service gets your words only when you choose it. It gets pictures and recordings only when you allow it. Work never moves to the cloud silently. Cloud providers can charge for use and keep data by their own terms.
+Your Thinking pool and fallback choices can send work to a cloud provider. Review those choices and the capture permissions. Cloud providers can charge for use and keep data under their own terms.
 
 To see exactly what Martlet sent for one reply, open **What was sent** under that reply in the talk window.
 
@@ -42,9 +48,9 @@ To see exactly what Martlet sent for one reply, open **What was sent** under tha
 
 ## Personal things on your screen
 
-Martlet never looks at its own windows. By default, it also never looks at password managers or private browser windows. **Companion › Replies › Personal content** decides what Martlet may do with personal things it sees:
+Martlet masks its own windows. By default, it also masks windows it recognizes as password managers or private browsers by their titles. Check your screen before you allow a look; title matching may not recognize every private window. **Companion › Replies › Personal content** decides what Martlet may do with personal things it sees:
 
-- **Keep private** (the default): it never reads out messages, chats, emails or numbers. It says only who a message is from.
+- **Keep private** (the default): Martlet instructs the model not to read private details unless you ask. A model can still make a mistake.
 - **Read my messages**: it may read and talk about your messages, chats, emails and notifications.
 - **Everything**: it may also see password managers and private browser windows.
 
@@ -68,9 +74,9 @@ See [Sharing with Friends](Sharing-with-Friends).
 
 ## You stay in charge
 
-- Before a tool runs, Martlet shows what it wants to do: **Allow once**, **Always allow** or **Deny**.
+- A tool can ask **Allow once**, **Always allow** or **Deny**. Tools you already allowed and some managed tools can run without another question.
 - The **Terminal** is off until you turn it on. It asks before every command and never runs as administrator.
-- Locks, doors, garage doors, gates, valves and alarms are blocked, or Martlet asks every time: **Send request** or **Don't send**.
+- Martlet tries to block sensitive smart-home requests or ask before sending them. The word check can miss a request. Hide sensitive devices from Home Assistant's voice assistants unless you need them.
 
 ## Voices, songs and pictures of people
 
