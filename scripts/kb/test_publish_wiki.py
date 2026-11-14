@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from publish_wiki import apply_site, build_site, page_names, sync_plan
+from publish_wiki import apply_site, build_site, page_names, sync_plan, validate_readme_wiki_links
 
 
 class PublishWikiTests(unittest.TestCase):
@@ -14,6 +14,10 @@ class PublishWikiTests(unittest.TestCase):
         self.output = self.root / "generated"
         self.repo.mkdir()
         self.docs.mkdir()
+        (self.repo / "README.md").write_text(
+            "[Guide](https://github.com/example/project/wiki/Welcome#intro)\n",
+            encoding="utf-8",
+        )
         (self.docs / "README.md").write_text("# Docs\n\n[Guide](guides/start.md#intro)\n", encoding="utf-8")
         (self.docs / "guides").mkdir()
         (self.docs / "guides" / "start.md").write_text(
@@ -27,7 +31,7 @@ class PublishWikiTests(unittest.TestCase):
         )
         (self.docs / "guides" / "other.md").write_text("# Other\n", encoding="utf-8")
         (self.docs / "wiki").mkdir()
-        (self.docs / "wiki" / "Welcome.md").write_text("# Welcome\n", encoding="utf-8")
+        (self.docs / "wiki" / "Welcome.md").write_text("# Welcome\n\n## Intro\n", encoding="utf-8")
         (self.docs / "images").mkdir()
         (self.docs / "images" / "picture.png").write_bytes(b"image-data")
         (self.repo / "src").mkdir()
@@ -81,6 +85,42 @@ class PublishWikiTests(unittest.TestCase):
         self.assertEqual("Architecture", names["wiki/Architecture.md"])
         self.assertEqual("docs-Architecture", names["ARCHITECTURE.md"])
         self.assertEqual("_Sidebar", names["wiki/_Sidebar.md"])
+
+    def test_root_readme_links_keep_their_wiki_page_names(self):
+        names = page_names(self.docs)
+
+        self.assertEqual(
+            1,
+            validate_readme_wiki_links(
+                self.repo,
+                self.docs,
+                "https://github.com/example/project",
+                names,
+            ),
+        )
+
+        (self.repo / "README.md").write_text(
+            "[Missing](https://github.com/example/project/wiki/Removed-Page)\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(RuntimeError, "removed-page"):
+            validate_readme_wiki_links(
+                self.repo,
+                self.docs,
+                "https://github.com/example/project",
+                names,
+            )
+        (self.repo / "README.md").write_text(
+            "[Missing heading](https://github.com/example/project/wiki/Welcome#removed-heading)\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(RuntimeError, "welcome#removed-heading"):
+            validate_readme_wiki_links(
+                self.repo,
+                self.docs,
+                "https://github.com/example/project",
+                names,
+            )
 
     def test_home_keeps_wiki_welcome_and_adds_the_documentation_map(self):
         (self.docs / "wiki" / "Home.md").write_text("# Welcome\n\nStart here.\n", encoding="utf-8")
