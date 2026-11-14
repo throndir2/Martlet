@@ -373,6 +373,62 @@ def _title(text: str, fallback: str) -> str:
     return fallback.replace("-", " ")
 
 
+def _heading_anchors(text: str) -> set[str]:
+    anchors: set[str] = set()
+    fence_char = ""
+    fence_size = 0
+    for line in text.splitlines():
+        fence = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if fence:
+            marker = fence.group(1)
+            if not fence_char:
+                fence_char, fence_size = marker[0], len(marker)
+            elif marker[0] == fence_char and len(marker) >= fence_size:
+                fence_char, fence_size = "", 0
+            continue
+        if fence_char:
+            continue
+        heading = re.match(r"^\s*#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if heading:
+            slug = re.sub(r"[^\w\s-]", "", heading.group(1).lower()).replace(" ", "-")
+            anchors.add(slug)
+    return anchors
+
+
+def validate_readme_wiki_links(
+    repo_root: Path,
+    docs_root: Path,
+    repo_web_url: str,
+    names: dict[str, str],
+) -> int:
+    wiki_root = repo_web_url.rstrip("/") + "/wiki"
+    link_pattern = re.compile(
+        re.escape(wiki_root) + r"(?:/([^#)\s\"']+))?(?:#([^)\s\"']+))?"
+    )
+    links = link_pattern.findall((repo_root / "README.md").read_text(encoding="utf-8"))
+    page_sources: dict[str, list[Path]] = {}
+    for relative, name in names.items():
+        page_sources.setdefault(name.casefold(), []).append(docs_root / Path(relative))
+
+    missing: list[str] = []
+    for page, anchor in links:
+        slug = unquote(page).casefold() if page else "home"
+        sources = page_sources.get(slug, [])
+        if not sources:
+            missing.append(slug)
+            continue
+        source = next((path for path in sources if path.is_relative_to(docs_root / "wiki")), sources[0])
+        if anchor and anchor.casefold() not in {value.casefold() for value in _heading_anchors(source.read_text(encoding="utf-8"))}:
+            missing.append(f"{slug}#{anchor}")
+    missing = sorted(set(missing))
+    if missing:
+        raise RuntimeError(
+            "README.md links to wiki pages or headings that the mirror would remove: "
+            + ", ".join(missing)
+        )
+    return len(links)
+
+
 def build_site(
     docs_root: Path,
     repo_root: Path,
@@ -381,6 +437,7 @@ def build_site(
     output_root: Path,
 ) -> set[str]:
     names = page_names(docs_root)
+    validate_readme_wiki_links(repo_root, docs_root, repo_web_url, names)
     page_titles: dict[str, str] = {}
     for relative, name in names.items():
         if name in {"Home", "_Sidebar"}:
@@ -524,10 +581,17 @@ def publish(repo_root: Path, dry_run: bool, wiki_override: str | None) -> None:
         output_root = temp_root / "generated"
         output_root.mkdir()
         files = build_site(source_worktree / "docs", source_worktree, branch, repo_web_url, output_root)
+        readme_links = validate_readme_wiki_links(
+            source_worktree,
+            source_worktree / "docs",
+            repo_web_url,
+            page_names(source_worktree / "docs"),
+        )
 
         changed, stale_pages, stale_assets = sync_plan(wiki_root, output_root)
         print(f"Source: origin/{branch} at {source_commit[:12]} (detached worktree)")
         print(f"Wiki: {wiki_url}")
+        print(f"Root README wiki links verified: {readme_links}")
         print(f"Generated: {len(files)} files ({sum(name.endswith('.md') for name in files)} pages)")
         print(f"Pages to update: {len([name for name in changed if name.endswith('.md')])}")
         print(f"Pages to delete: {len(stale_pages)}")
