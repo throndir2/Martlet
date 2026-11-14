@@ -4,7 +4,7 @@
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
 **Last verified:** 2026-11-13 against fc325668d
-**Code:** `.github/mcp.json`
+**Code:** `.github/mcp.json`, `scripts/kb/check_kb.py`, `scripts/kb/test_check_kb.py`
 
 The knowledge base (KB) is the Markdown documentation in `docs/`.
 It describes the current code. The [top-level map](../README.md) gives the
@@ -96,9 +96,30 @@ or mark it Superseded and link its replacement.
 If no page needs a change, write `KB: no change needed` in the pull request
 body and give the reason.
 
-## Planned local checks and evaluation
+## Local checks
 
-The local check script will check source paths, folder indexes, and changed
-source coverage. It will not prove that every behavioral claim is correct.
+Run `python scripts\kb\check_kb.py --diff origin/main` before merging a change.
+The command checks committed branch changes, not uncommitted edits.
+It returns a failing exit code for a missing `Code` path, a missing folder
+index, or an index that does not list a page or subfolder.
+It ignores fenced examples, image folders, build output, and wiki navigation
+fragments. Extensionless links in the wiki source are valid.
+
+The diff check warns about changed non-document files without `Code` coverage.
+A named folder covers its descendants, but not a folder with a similar name.
+Deletion or rename of a named path produces a warning and a missing-path
+error if the page still names it. Warnings do not cause a failing exit code.
+Fix every error. Review warnings and update the matching page when needed.
+
+Run the disposable checker fixtures with
+`python -m unittest discover -s scripts\kb -p test_check_kb.py`.
+The script uses only the Python standard library and Git.
+There is no checked-in local hook setup. Do not install a hook in another
+developer's checkout.
+
+These checks do not prove that a behavioral claim is correct.
+
+## Planned evaluation
+
 The evaluation file will contain real repository questions and expected pages.
 Record measured retrieval results here after running the evaluation.
