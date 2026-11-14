@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against fc325668d
+**Last verified:** 2026-11-13 against c662974ea
 **Code:** `.github/mcp.json`, `scripts/kb/check_kb.py`, `scripts/kb/test_check_kb.py`
 
 The knowledge base (KB) is the Markdown documentation in `docs/`.
