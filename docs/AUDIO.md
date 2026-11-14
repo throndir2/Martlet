@@ -1,5 +1,11 @@
 # Bounded PCM playback
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/`, `src/Martlet.Audio/`, `src/Martlet.EchoCancellation/`, `src/Martlet.Desktop/`
+
 This is an opt-in playback library, not a voice app or a passed audio hardware
 gate. Doctor's audio checks use this same sink through a separate per-action
 synthetic-tone permission boundary.
@@ -7,11 +13,12 @@ synthetic-tone permission boundary.
 this same sink/tone for explicit selected-output local tests and human listening
 confirmation. The reviewed playback lifecycle is unchanged. The later
 [live conversation](CONVERSATION.md) now routes authorized
-TTS segments through this sink. The optional
+TTS segments through this sink. [Echo reduction](ECHO_CANCELLATION.md) uses a separate speaker
+loopback as a reference, not as conversation input. The optional
 [Desktop avatar integration](../src/Martlet.Avatar.Hosting/README.md) now observes
 accepted generated PCM and an independently nullable device clock; it does not
 change ordinary playback permission or error behavior. Learned VAD and loopback
-remain unwired in this conversation path.
+remain unwired as conversation input.
 Remote D02 protocols remain partial. Loading either assembly, constructing
 `PcmPlaybackSink` / `WasapiDeviceFactory`, or disposing an unused sink does
 not enumerate, activate or play an endpoint.

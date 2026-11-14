@@ -1,5 +1,11 @@
 # One Martlet on all your computers
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/`, `src/Martlet.Gateway/`, `src/Martlet.HostClient/`, `src/Martlet.Desktop/`, `deploy/host/`, `workers/`
+
 Martlet is **one app that lives on all your computers**. Install it on another
 PC and it is the same Martlet: the same companion with the same personality,
 settings, memories, people, voices and characters, the same Home Assistant and

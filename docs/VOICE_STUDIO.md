@@ -1,5 +1,13 @@
 # Multi-engine voice setup and comparison
 
+**Status:** Superseded
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Desktop/MainWindow.VoiceEngines.cs`, `src/Martlet.Desktop/MainWindow.Voices.cs`
+
+This design record is superseded by the current voice controls. See [Voices](VOICES.md) to select a speaking engine and apply or hear a saved voice.
+
 **Accepted scope, 2026-09-23:** support F5-TTS, Qwen3-TTS, Chatterbox,
 GPT-SoVITS and XTTS-v2, including user-supplied audio, comparison before
 selection, and engine-supported fine-tuning. Research precedes implementation.

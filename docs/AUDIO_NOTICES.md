@@ -1,5 +1,11 @@
 # Audio dependency inventory and notices
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Audio/`, `src/Martlet.EchoCancellation/`, `src/Martlet.Sherpa/`, `src/Martlet.Desktop/`, `Directory.Packages.props`, `packaging/windows/`
+
 Playback library development dependency inventory, not a release SBOM, project license
 grant, or clean-machine qualification. No NAudio binary is committed.
 `Martlet.Audio` lockfiles pin resolved packages/content hashes; the portable

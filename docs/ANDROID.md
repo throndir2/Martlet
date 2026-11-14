@@ -1,5 +1,10 @@
 # Android phones and tablets: what it takes, and the plan
 
+**Status:** Planned
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+
 **Plan, 2026-09-30. No Android code, build or device test exists yet;
 everything below is design and dated platform research, and every device
 result is NOT RUN.** The owner asked for Android in the same two roles as

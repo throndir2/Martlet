@@ -1,5 +1,15 @@
 # Diagnostics
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Doctor/`, `src/Martlet.Diagnostics/`, `src/Martlet.Desktop/`
+
+## Diagnose setup and local component problems
+
+Doctor runs local, read-only checks through the same probe registry used by desktop diagnostics. It can report settings, runtime, and platform findings. It does not test provider access, audio devices, or GPU readiness.
+
 ## Diagnostics page and shared logs
 
 **Diagnostics** (in the main window's navigation) shows every line Martlet's

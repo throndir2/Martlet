@@ -1,5 +1,11 @@
 # Smart home and cameras
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 29b352d47
+**Code:** `src/Martlet.Home`, `src/Martlet.Desktop`, `src/Martlet.Gateway`, `src/Martlet.HostClient`, `src/Martlet.Credentials.Windows`, `deploy/host/roles/home-assistant`
+
 **Home Assistant control delivered 2026-10-01 (SH00); the rest is dated
 research and plan. Every device result is NOT RUN.** The owner asked whether
 Martlet can support smart home technology such as Matter, which other stacks
@@ -88,12 +94,18 @@ address; plain `http` is accepted only for local-network addresses). With
 Code: `src/Martlet.Home` (endpoint rules, REST client, guard, persona
 context), `src/Martlet.Desktop/SmartHome.cs` (connection, preferences in
 `smart-home.json`, turn step, managed MCP server and its approval policy),
-`Pages\SmartHome` (the page, its model `SmartHomePageModel` and
-`ISmartHomePageServices`) and `MainWindow.SmartHome.cs` (what the page's
-buttons run). Not yet done: events, live camera requests
-("look at the front door") and native Matter (slices below). Device aliases
+`src/Martlet.Desktop/Pages/SmartHome` (the page, its model `SmartHomePageModel` and
+`ISmartHomePageServices`) and `src/Martlet.Desktop/MainWindow.SmartHome.cs` (what the page's
+buttons run).
+
+Device aliases
 defined only in Home Assistant's voice settings are not in the sensitive-name
 list; leave locks and garage doors unexposed to be safe.
+
+### Planned
+
+Events, live camera requests ("look at the front door") and native Matter are
+not implemented (slices below).
 
 ## Installing, setting up and managing Home Assistant (SH09-SH12, delivered 2026-10-02)
 
@@ -169,9 +181,9 @@ Assistant without leaving Martlet:
 Code: `src/Martlet.Home` (`HomeAssistantClient.Setup.cs`,
 `HomeAssistantClient.Admin.cs`, `HomeAssistantSocket.cs`,
 `HomeAssistantSignIn.cs`, `HomeAssistantDiscovery.cs`),
-`src/Martlet.Desktop/SmartHome.cs`, `Pages/SmartHome`, `MainWindow.SmartHome.cs`,
-`MainWindow.HomeShare.cs`, `HomeAssistantHosts.cs`, the gateway's
-`GatewayHomeAssistant.cs` and `deploy/host/roles/home-assistant`. MCP:
+`src/Martlet.Desktop/SmartHome.cs`, `src/Martlet.Desktop/Pages/SmartHome`, `src/Martlet.Desktop/MainWindow.SmartHome.cs`,
+`src/Martlet.Desktop/MainWindow.HomeShare.cs`, `src/Martlet.Desktop/HomeAssistantHosts.cs`,
+`src/Martlet.Gateway/GatewayHomeAssistant.cs` and `deploy/host/roles/home-assistant`. MCP:
 `home_assistant_probe`, `home_assistant_find`, `smart_home_status` and the
 Smart home page's status fields ([MCP](MCP.md)).
 

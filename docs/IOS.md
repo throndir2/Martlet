@@ -1,5 +1,10 @@
 # iOS and iPadOS: what it takes, and the plan
 
+**Status:** Planned
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 29b352d47
+
 **Plan, 2026-09-30. No iOS code, build or device test exists yet; everything
 below is design and dated platform research, and every device result is NOT
 RUN.** The owner asked what supporting iOS would take, in two roles, with as

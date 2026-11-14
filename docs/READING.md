@@ -1,5 +1,15 @@
 # Reading the text on your screen
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Reading/ReadingPool.cs`, `src/Martlet.Desktop/Pages/Reading/ReadingPage.cs`, `src/Martlet.Gateway.Ocr/OcrRelayWorker.cs`, `workers/ocr/host/`
+
+## How does OCR read the screen and which computers can run it?
+
+The Reading pool uses optical character recognition (OCR) to extract text from the visible screen. This PC can use Windows OCR or its Reading role; paired computers can run their own Reading role. The pool tries enabled places in order and does not keep extracted text in the conversation.
+
 Martlet can read the text on your screen while it watches your screen with you.
 This is OCR (optical character recognition). Martlet uses it together with the
 vision model. The vision model sees the whole picture. OCR reads small text

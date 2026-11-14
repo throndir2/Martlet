@@ -1,5 +1,11 @@
 # Setup, Windows credentials and local audio
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Martlet users and developers
+**Last verified:** 2026-11-13 against b1688a8de (recovery links only)
+**Code:** `src/Martlet.Core/Settings/`, `src/Martlet.Desktop/`
+
 This document tells how you set up each job (Thinking, Listening and Voice),
 how Martlet keeps API keys in Windows Credential Manager, and how the local
 microphone and speaker tests work. It also gives the settings schema and the
@@ -10,7 +16,7 @@ change it later.
 **Local configuration backup and restore** is available from the main
 window. It is recovery for the same profile only. It does not import a profile
 from another computer, repair a damaged settings file or roll back the app. See
-the [installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore)
+the [installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup-and-restore)
 and the [transaction contract](#local-configuration-recovery-transaction).
 
 [Troubleshooting](TROUBLESHOOTING.md) is available from the main window and

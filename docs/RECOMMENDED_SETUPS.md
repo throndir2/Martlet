@@ -1,6 +1,12 @@
 # Recommended setups: one machine to unlimited budget
 
-**Planning guide, 2026-09-29.** This page answers "what must run on my PC,
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Martlet users and developers
+**Last verified:** 2026-11-13 against b1688a8de (planner and input gathering only)
+**Code:** `src/Martlet.Core/Planning/`, `src/Martlet.Core/Settings/`, `src/Martlet.Core/Installation/`, `src/Martlet.Desktop/`
+
+This page answers "what must run on my PC,
 what can an API or another machine do, and how should I split the work?"
 VRAM/RAM figures are rough upstream model-size estimates for planning, **not
 Martlet measurements**; no GPU/driver/model tuple is qualified yet
@@ -8,7 +14,7 @@ Martlet measurements**; no GPU/driver/model tuple is qualified yet
 VRAM headroom and measure your own machine. Per-model numbers, with which are
 measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS.md).
 
-**Your preferences (new):** Martlet plans with your saved
+**Your preferences:** Martlet plans with your saved
 [recommendation preferences](#your-recommendation-preferences): the reply
 quality, online services, games on each companion PC, models that hear you and
 the host card share. The welcome wizard asks the first three. The models come

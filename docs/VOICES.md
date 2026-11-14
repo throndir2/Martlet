@@ -1,5 +1,15 @@
 # Recognizing people by voice, and Parakeet
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Desktop/MainWindow.VoiceEngines.cs`, `src/Martlet.Desktop/MainWindow.Voices.cs`, `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Audio/SpeakerVerifier.cs`, `src/Martlet.Sherpa/`, `src/Martlet.Gateway.Stt/`, `src/Martlet.Gateway.VoiceRecognition/`, `workers/voice-recognition/`
+
+## Select and test a voice route
+
+Choose a speaking engine under Companion › Voice › Voice engine. Select this PC or a paired computer. The picker shows whether an engine is in use, ready, or needs setup. **Check this PC** or **Check hosts** refreshes host status; it does not speak a test reply. Select **Set up and use** or **Use** to choose the route. Under **Voices**, **Play** plays a saved recording on this PC; it does not test the speaking route. **Use** applies the saved voice.
+
 Martlet can tell the people around its microphone apart, learn the names they
 go by from the conversation, and keep that list the same on every computer you
 own. It reuses AudioTranscriber's speaker recognition: sherpa-onnx with the

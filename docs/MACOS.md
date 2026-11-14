@@ -1,5 +1,11 @@
 # macOS: what it takes, and the plan
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (current companion and host status only)
+**Code:** `src/Martlet.Companion/`, `src/Martlet.Platform.MacOS/`, `src/Martlet.Gateway/`
+
 > **Superseded in part, 2026-10-06:** the Mac companion and Mac host are now
 > built in .NET (Avalonia companion shared with Linux, .NET gateway as the Mac
 > host) per [Linux and macOS desktop companion](DESKTOP_LINUX_MACOS.md). The
@@ -14,10 +20,12 @@
 > [The Mac host (DX04)](#the-mac-host-dx04). It has **not been run on a Mac**:
 > every Mac runtime result is NOT RUN.
 
-**Plan, 2026-09-30. No macOS code, build or Mac test exists yet; everything
-below is design and dated platform research, and every Mac result is NOT
-RUN.** The owner wants Macs supported in both roles, on both Apple silicon and
-older Intel Macs, as part of "make use of any old hardware a user has":
+**Historical plan, 2026-09-30:** The Swift implementation proposal below is
+superseded by the built .NET companion and host noted above. The platform
+research remains useful. No Mac runtime result has been run on a Mac.
+
+The owner wants Macs supported in both roles, on both Apple silicon and older
+Intel Macs, as part of "make use of any old hardware a user has":
 
 - **A. Mac as the companion:** the computer you talk to (and maybe game on).
   It listens, speaks, shows the character over your game, watches the screen

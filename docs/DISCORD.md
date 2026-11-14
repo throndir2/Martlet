@@ -1,5 +1,11 @@
 # Discord
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 29b352d47
+**Code:** `src/Martlet.Discord`, `src/Martlet.Desktop`
+
 Martlet can live on Discord: it hosts its own Discord bot inside the Martlet process, chats in DMs and the server
 channels you allow, joins voice channels to talk and listen, and calls the people it knows. This page records what
 Discord allows, how Martlet is built around it and the work in progress.
@@ -13,7 +19,7 @@ Discord allows, how Martlet is built around it and the work in progress.
 | Martlet starts a private call with someone | **Not a DM call.** Bots cannot start or join DM or group-DM calls. | Martlet **calls** someone by opening a private voice channel in its **home server** (a small server the owner makes for Martlet), DMing them a link and joining it. In **your own** DM and group-DM calls Martlet takes part through your PC instead ([below](#martlet-in-your-own-calls)). |
 | Invited to a group chat (group DM) | **Commands only.** Bots cannot be members of group DMs; a user-installed app's slash commands work there. | Martlet's app installs on a person's account (user install), so `/martlet` works in any DM or group DM. It cannot read the group's messages on its own. |
 | Join server voice calls, speak and listen | **Yes.** Voice is end-to-end encrypted (DAVE) for every call since March 2026; the bot library must support it. | NetCord voice (send and receive, DAVE) with `/join`, `/leave`, being dragged into a channel and following the owner. |
-| Show the character as its webcam | **No.** The bot API has no camera or Go Live video; streaming video means self-botting. | The bot's avatar and banner follow the character; posted snapshots of the model. A Discord Activity (Embedded App) showing the live character in a call is a possible later step; it needs a public HTTPS address. In your own calls the character can be your webcam through OBS ([below](#martlet-in-your-own-calls)). |
+| Show the character as its webcam | **No.** The bot API has no camera or Go Live video; streaming video means self-botting. | The bot's avatar and banner follow the character; posted snapshots of the model. In your own calls the character can be your webcam through OBS ([below](#martlet-in-your-own-calls)). |
 | Answer in server chats, configurable | **Yes.** Needs the Message Content privileged intent, which a bot under 10,000 users turns on itself in the Developer Portal. | Per server and per channel: Off, Mentions, Sometimes (Martlet decides) or Always. |
 | Create the Discord app for the user | **No API for it.** Applications are created in the Developer Portal by hand. | A guided setup with links to the portal and the exact switches, then the token goes in Windows Credential Manager and Martlet builds the invite links. |
 
@@ -136,7 +142,7 @@ returns the reply, or null to stay quiet.
 
 `DiscordCompanion` (`src\Martlet.Discord`, rules in `DiscordCompanion.cs`) holds the decisions; `DiscordService.Companion.cs`
 wires it to the bot (`NetCordCompanionTransport`) and `MainWindow.Discord.Companion.cs` to the character and the conversation.
-Companion › Discord's **Friends and calls** card is `Pages\Discord\DiscordPage.Friends.cs`. Its state is `discord-companion.json` beside `discord.json` (waiting requests,
+Companion › Discord's **Friends and calls** card is `src\Martlet.Desktop\Pages\Discord\DiscordPage.Friends.cs`. Its state is `discord-companion.json` beside `discord.json` (waiting requests,
 recent declines, call channels it made, when the picture last changed; no secrets). MCP's `discord_companion_check` rehearses
 it all against an in-memory Discord.
 
@@ -165,8 +171,12 @@ it all against an in-memory Discord.
   when the character changed, at most every 30 minutes (Update now: 10 minutes), because Discord allows few avatar changes.
   Banners: the same change sets the bot's profile banner to the whole character when it is on screen (Discord crops it). **`/selfie`** posts a picture of the whole character
   as it looks now (anyone in a server; friends in DMs and group DMs).
-- **Live camera video is impossible for a bot.** A Discord **Activity** (an Embedded App iframe in a call showing the live
-  character) is the possible later step; it needs a public HTTPS address serving the renderer.
+- **Live camera video is not available to a bot.**
+
+## Planned
+
+A Discord Activity (Embedded App) could show the live character in a call. This
+is not implemented and would need a public HTTPS address serving the renderer.
 
 ## Martlet in your own calls
 
@@ -303,7 +313,7 @@ microphone or speakers for Discord.
   utterances transcribed and replies spoken, DAVE, libdave and the last problem) and *Discord voice: ...* lines in the
   desktop log.
 
-## Workstreams
+## Implementation history
 
 1. **Foundation** (merged first): the project, NetCord, preferences, bot host, token vault, reply contract and this page.
 2. **Setup and status**: Companion › Discord page (guided setup, token, invite links, on/off, status, chat modes, people),

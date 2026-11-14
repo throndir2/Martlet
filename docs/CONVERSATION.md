@@ -1,5 +1,11 @@
 # Live conversation
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/`, `src/Martlet.Conversation/`, `src/Martlet.Audio/`, `src/Martlet.Providers/`, `src/Martlet.Desktop/`
+
 **Internal functional integration, not account/device/release qualification.**
 **Start talking** on Home opens the talk window: the conversation history, what
 you said and a message box, nothing else. It sits beside Martlet rather than
@@ -3768,7 +3774,7 @@ whether the server **retired** it. Each fact keeps its own source and date:
 A Martlet test (a test request, a refused input or an HTTP 410) outranks the
 server's metadata, and both outrank the name: metadata found later doesn't
 replace a test's answer; another test does ([Model
-catalog](MODEL_CATALOG.md#what-to-do-about-conflicts-proposed)). A model
+catalog](MODEL_CATALOG.md#what-to-do-about-conflicts-built)). A model
 Martlet found unable to call tools isn't offered them in replies or Thinking
 pool jobs, so a reply doesn't wait for a refused request first.
 

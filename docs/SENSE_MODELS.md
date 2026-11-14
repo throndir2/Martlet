@@ -1,11 +1,19 @@
 # Image and audio models: who sees, who hears, who answers
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 29b352d47
+**Code:** `src/Martlet.Core/Settings/SenseModels.cs`, `src/Martlet.Conversation/ModelSenses.cs`, `src/Martlet.Conversation/SensePool.cs`, `src/Martlet.Conversation/SenseRouting.cs`, `src/Martlet.Desktop/`, `src/Martlet.Providers/`
+
 Martlet works with three kinds of input: text, pictures and recordings. This
 page says which model takes each kind, how the words of an image or audio
 model go to the model that answers, and the rules that keep the time to
 Martlet's first word the same.
 
-Status (2026-10-08): in place. The foundation (#634) has the settings file,
+## Implementation history
+
+The 2026-10-08 implementation added the settings file,
 the routing, one job line for each model, the runner, the status file and MCP.
 The image pipeline (#640) and the audio pipeline (#637) use it, and the
 Companion cards, Test vision and the metadata checks (#644) choose the models.
@@ -348,10 +356,10 @@ screen in 1.4 s (...)` and `Picture path: described (...)` with times only.
 `image-model-status.json` counts described replies, replies that went without,
 looks and descriptions. MCP's `image_model_check` reads both and rehearses the
 pipeline against fixture endpoints ([MCP](mcp/thinking.md#image-and-audio-models)).
-Code: `PictureDescriptions.cs` (shared with MCP), `SenseSession.Pictures.cs` (with
+Code: `src/Martlet.Desktop/PictureDescriptions.cs` (shared with MCP), `src/Martlet.Desktop/SenseSession.Pictures.cs` (with
 `PictureMoment`, which decides when a picture is described ahead of time),
-`LiveConversationWindow.Pictures.cs` and `ImageModelScreenDigestThinker`
-(`PoolScreenDigestThinker.cs`). Tests: `ImageModelPipelineTests`
+`src/Martlet.Desktop/LiveConversationWindow.Pictures.cs` and `ImageModelScreenDigestThinker`
+(`src/Martlet.Desktop/PoolScreenDigestThinker.cs`). Tests: `ImageModelPipelineTests`
 (Martlet.Desktop.Tests).
 
 NOT RUN in the change that built it: a real image model and a real screen

@@ -1,5 +1,11 @@
 # Accounts and households
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Settings/SettingsFiles.cs`, `src/Martlet.Core/Sync/SettingScopes.cs`, `src/Martlet.Desktop/AccountLocks.cs`
+
 Status: **design and work plan**. The work plan below marks the workstreams
 that shipped. Each workstream updates this page and the user guides when it
 ships. This
