@@ -1,9 +1,9 @@
 # Repository knowledge base
 
 **Status:** Implemented
-**Last Updated:** 2026-11-13
+**Last Updated:** 2026-11-14
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against c662974ea
+**Last verified:** 2026-11-14 against 86e5f8c37
 **Code:** `.github/mcp.json`, `scripts/kb/check_kb.py`, `scripts/kb/test_check_kb.py`
 
 The knowledge base (KB) is the Markdown documentation in `docs/`.
@@ -119,7 +119,43 @@ developer's checkout.
 
 These checks do not prove that a behavioral claim is correct.
 
-## Planned evaluation
+## Search evaluation
 
-The evaluation file will contain real repository questions and expected pages.
-Record measured retrieval results here after running the evaluation.
+The [evaluation file](repo-kb-eval.json) contains 30 real repository questions
+and their expected documentation paths. Run
+`npx -y github:throndir2/repo-kb eval docs\kb\repo-kb-eval.json --json`.
+Keep the questions fixed when comparing documentation changes.
+
+The local hybrid evaluation on 2026-11-14 against `86e5f8c37` produced:
+
+| Measure | Result |
+| --- | --- |
+| Expected page first (hit@1) | 25/30, 83.3% |
+| Expected page in the first three (hit@3) | 30/30, 100% |
+| Expected page in the first five (hit@5) | 30/30, 100% |
+| Mean reciprocal rank | 0.911 |
+| Median search time | 20 ms |
+
+These results measure retrieval, not the truth of each page's claims.
+The root and MCP audits retain explicit limits for untraced prose and
+hardware-dependent claims. Do not treat their metadata as full qualification.
+
+## Historical discovery comparison
+
+Five past tasks were replayed with documentation from before each task.
+Documentation added by those tasks and the current audit was excluded.
+Recorded discovery contained 148 file reads and 111 repository searches.
+The replay kept all 113 source reads and replaced documentation reads
+with five KB searches and ten section reads.
+
+Keeping every original repository search gives an estimate of 239 calls,
+against 259 recorded calls: 7.7% fewer calls and 9.1% fewer output tokens.
+Replacing all repository searches gives an optimistic estimate of 128 calls:
+50.6% fewer calls and 30.1% fewer output tokens.
+
+Token estimates use four output characters per token. They are not measured
+model input or billing totals. Shell reads, later implementation, tests,
+reasoning, repeated context, and cached input are excluded.
+The optimistic result assumes that no exact-symbol searches remain.
+The conservative skill-browser replay costs slightly more than its baseline.
+Do not promise the same savings for every task.
