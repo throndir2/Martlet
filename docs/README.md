@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against 29b352d47
+**Last verified:** 2026-11-13 against 2cc87d918
 
 Search this knowledge base with `kb_search`, then read cited sections with
 `kb_read_section`. Follow their `Code` lines to the source.
