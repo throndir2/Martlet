@@ -1,9 +1,19 @@
 # Martlet's API for other apps and scripts
 
-Your own computers never need a key: Martlet on them reaches your hosts over
-paired, signed connections ([Martlet network](NETWORK.md)). Anything else
-(Home Assistant, a script, a Stream Deck plugin, a future integration) uses an
-**API key** that Martlet makes for it.
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and people who connect apps to a Martlet host
+**Last verified:** 2026-11-13 against 29b352d47
+**Code:** `src/Martlet.Core/Access/ApiKeys.cs`, `src/Martlet.Gateway/`, `src/Martlet.Gateway.Host.Linux/`, `src/Martlet.Gateway.Persistence/`, `src/Martlet.HostClient/HostApiKeys.cs`, `src/Martlet.Desktop/MainWindow.ApiKeys.cs`, `src/Martlet.Desktop/ApiKeyDialogs.cs`, `src/Martlet.Mcp.Protocol/`, `src/Martlet.NodeLinkCheck/ApiRehearsal.cs`
+
+The desktop creates and synchronizes API keys. A separate Gateway host
+executable serves the host API; the desktop itself does not open this API.
+The host executable is a candidate, not an installed service. See the
+[host executable guide](../src/Martlet.Gateway.Host.Linux/README.md).
+
+Your own computers use paired, signed connections ([Martlet network](NETWORK.md)).
+An external app uses an **API key** when it connects to a configured Gateway
+host.
 
 ## Making and revoking keys
 
@@ -11,9 +21,10 @@ paired, signed connections ([Martlet network](NETWORK.md)). Anything else
 that uses it, choose what it may do and when it expires (never, 30 days, 90
 days or a year). The key is shown **once**, with your hosts' addresses, their
 key pins and an example request; copy it into the app's secret settings.
-Martlet keeps no copy and can't show it again. **Revoke** stops it everywhere.
-Each key row shows what it may do, which computer made it, when it was last
-used and on which host, and the first characters of its ID.
+Martlet keeps no copy and can't show it again. **Revoke** sends a revocation to
+paired hosts; an offline host receives it when it syncs again.
+Each key row shows its scopes, the computer that made it, its last use on each
+host, and the first characters of its ID.
 
 A key looks like `martlet_<22-character ID>.<43-character secret>`. The fixed
 `martlet_` prefix lets secret scanners spot a leaked key.
@@ -22,15 +33,15 @@ A key looks like `martlet_<22-character ID>.<43-character secret>`. The fixed
 
 | What | Value |
 | --- | --- |
-| Address | `https://<host address>:9443`, as listed when the key was made (also on Devices) |
+| Address | The HTTPS origin shown on Devices; `:9443` is the host default |
 | Key | `Authorization: Bearer martlet_...` on every request; never in a URL |
 | Bodies | `Content-Type: application/json` (exactly, or with `; charset=utf-8`) |
-| Role (optional) | `X-Martlet-Role: voice` or `perception` picks whose routes `capabilities` and `status` describe, and which role a cancel is for (default `voice`) |
+| Role (optional) | `X-Martlet-Role: voice`, `perception` or `memory` filters role-scoped `capabilities` and `status`, and selects the role for cancel requests; the default is `voice` |
 | Errors | JSON `{code, summary, remedy, trace_id}` with a 4xx/5xx status |
 
-Hosts use their own certificate, so pin the host's **public key**. It never
-changes (the certificate renews every 90 days with the same key), and the
-create dialog shows each host's pin in curl's form:
+Pin the SHA-256 fingerprint of the host certificate's public key (SPKI).
+Gateway renewal keeps the same key; do not assume a fixed renewal interval.
+The create dialog shows each host's pin in curl's form:
 
 ```sh
 curl -k --pinnedpubkey "sha256//<pin>" \
@@ -38,10 +49,9 @@ curl -k --pinnedpubkey "sha256//<pin>" \
   https://192.168.1.20:9443/martlet/v1/version
 ```
 
-`-k` only skips the certificate authority check that a home host can't pass;
-`--pinnedpubkey` still refuses any other server. Clients that can't pin can
-skip certificate checks on a network you trust, but then anyone who can
-impersonate the host there can read the key.
+`-k` disables normal certificate validation. `--pinnedpubkey` still rejects a
+different public key, but does not check the certificate name or validity.
+Prefer a client that supports public-key pinning without disabling those checks.
 
 `GET /martlet/v1/version` answers any valid key with the host, its Martlet
 version and the key's own `api_key` (`id`, `name`, `scopes`, `expires_at`),
@@ -53,17 +63,17 @@ so an app can check its key.
 | --- | --- |
 | any key | `GET /martlet/v1/version`, `GET /martlet/v1/capabilities` |
 | `read` (See status and logs) | `GET /martlet/v1/status`, `GET /martlet/v1/machine` (hardware), `GET /martlet/v1/cluster` (who does what), `GET /martlet/v1/logs?after=N[&limit=L]`, `GET /martlet/v1/commands`, `GET /martlet/v1/commands/{id}` |
-| `voice` (Use thinking, listening, speaking and lip-sync) | `POST /martlet/v1/inference/ollama-chat`, `/f5-synthesis`, `/transcription`, `/audio2face`, and `POST /martlet/v1/inference/cancel` for its own requests |
-| `perception` (Use screen understanding) | `POST /martlet/v1/inference/perception/ocr`, `/perception/vlm` and cancel, on hosts that run them |
+| `voice` (Use thinking, listening, speaking and lip-sync) | `POST` to each route returned by `capabilities` whose `required_role` is `voice`, and `POST /martlet/v1/inference/cancel` for its own requests |
+| `perception` (Use screen understanding) | `POST` to each `perception` route returned by `capabilities`, and `POST /martlet/v1/inference/cancel` for its own requests |
 | `openai` (Use your hosts' language models) | `GET /v1/models`, `GET /v1/models/{id}`, `POST /v1/chat/completions`, `/v1/completions` and `/v1/embeddings`: the [OpenAI-compatible endpoint](OPENAI_ENDPOINT.md), on the models the hosts run themselves. With `equal-priority` too, its requests rank with your own background work instead of below all of your work |
 | `manage` (Update hosts and change their roles) | `POST /martlet/v1/commands` (`martlet.update`, `host.status`, `host.describe-role`, `host.add-role`, `host.remove-role`, `host.exposure`), `POST /martlet/v1/commands/{id}/cancel`, and reading commands |
 
 A key can **never** pair devices, read or change your Martlet network, read
 the voice list (it holds voiceprints), change who does what, upload logs, take
 a host's commands as its agent, or read or change API keys; those answer
-`key.scope` (403). Every request and response is the same as for your own
-computers; the [gateway contract](../src/Martlet.Gateway/README.md#implemented-https-surface)
-lists each body and bound.
+`key.scope` (403). The [gateway contract](../src/Martlet.Gateway/README.md#implemented-https-surface)
+lists each request body and bound. The key scope controls access; the role
+header does not add permission.
 
 | Code | Status | Meaning |
 | --- | --- | --- |
@@ -100,19 +110,21 @@ from the model the host advertises:
    `text` (or audio/face frames), then `completed`, `failed` (with `code`) or
    `canceled`.
 
-Each route runs one request at a time (`job.busy` while another runs), shared
-with your own computers: an app that keeps a route busy delays your own
-conversations on that host.
+The route's `maximum_concurrency` is in `capabilities`. Most routes allow one
+request at a time. A Deep thinking route can allow up to four. When all slots
+are in use, another request gets `job.busy`. API-key and paired-device requests
+share these slots.
 
 ### Commands
 
 ```sh
 curl -k --pinnedpubkey "sha256//<pin>" -H "Authorization: Bearer $MARTLET_API_KEY" \
-  -H "Content-Type: application/json" -d '{"kind":"martlet.update","arguments":{"version":"0.18.0"}}' \
+  -H "Content-Type: application/json" -d '{"kind":"martlet.update","arguments":{"version":"<release-version>"}}' \
   https://192.168.1.20:9443/martlet/v1/commands
 ```
 
-The answer (202) holds the command's `id`; follow it with
+Replace `<release-version>` with a release available to that host. The answer
+(202) holds the command's `id`; follow it with
 `GET /martlet/v1/commands/{id}`. It runs once Martlet runs on that host, as
 [commands between your computers](CLUSTER.md#commands-between-your-computers)
 describe; `requested_by` shows `api-key-<key ID>`.
@@ -135,17 +147,17 @@ Keys belong to your Martlet network, like the [shared who does what](CLUSTER.md)
 - Only paired computers read or change the list (`GET`/`POST
   /martlet/v1/api-keys`, signed). Each host reports when each key was last
   used there since it started.
-- At most 32 live keys and 64 entries counting revoked ones; hosts older than
-  API keys ignore them (**Update host**).
+- At most 32 non-revoked keys and 64 entries total. Expired keys still count
+  toward the 32-key limit. Update hosts to a version with API-key support.
 
 ## Security notes
 
 - Keys are bearer secrets: whoever has one can use it until you revoke it. Give
   each app its own key with only the scopes it needs, and an expiry if it is
   temporary.
-- Hosts listen on their private LAN address only. To reach them from outside
-  your home, use a VPN into your network; don't forward the port to the
-  internet.
+- The Gateway accepts loopback or private-IP origins, not public addresses.
+  To reach a private host from outside your home, use a VPN. Do not forward the
+  port to the internet.
 - The engines a `voice` key uses run on your hosts, but what the app sends
   them (text, audio) is processed there and shows in the host's logs only as
   activity, never content.
@@ -157,7 +169,7 @@ Keys belong to your Martlet network, like the [shared who does what](CLUSTER.md)
 
 | Option | Verdict |
 | --- | --- |
-| **Scoped API keys** (bearer, over TLS with a pinned host key) | Chosen: every HTTP client, Home Assistant's REST integrations, n8n and scripts can send a header; revocable per app; nothing secret stored on hosts |
+| **Scoped API keys** (bearer, over TLS with a pinned host key) | Chosen: HTTP clients and scripts can send a header; keys are revocable per app; hosts store verifiers, not usable secrets |
 | Martlet's signed requests (HMAC, what your computers use) | Kept for your computers; too much code for most integrations (canonical request, nonce, clock) |
 | OAuth 2.0 | Needs an authorization server and token refresh in every app; no benefit for keys you hand out yourself |
 | Client certificates (mutual TLS) | Strong, but few integrations can install one, and rotating or revoking them is harder for owners |
@@ -166,15 +178,17 @@ Keys belong to your Martlet network, like the [shared who does what](CLUSTER.md)
 
 | Piece | Location |
 | --- | --- |
-| Key list, format and merge rules | `Martlet.Core.Access` (`ApiKeyList`, `ApiKeyToken`, `ApiKeyScopes`) |
-| Host side | `Martlet.Gateway` `GatewayApiKeys.cs` (store, bearer checks, `/martlet/v1/api-keys`); scopes per endpoint in `GatewayHttp.cs`, `GatewayCommands.cs`, `GatewayLogs.cs`, `GatewayCluster.cs`, `GatewayInferenceHttp.cs`; `api-keys.json` on Linux hosts (`ControlApiKeyStorage`) |
-| Desktop client | `Martlet.HostClient` `HostApiKeys.cs` |
-| Desktop UI and sync | `MainWindow.ApiKeys.cs`, `ApiKeyDialogs.cs`; the **Apps and API keys** card on Share |
-| MCP | `api_keys_status` (this PC's list, never a key) and `api_selftest` (`Martlet.NodeLinkCheck api`); card IDs in [MCP](MCP.md) |
+| Key list, format and merge rules | `src/Martlet.Core/Access/ApiKeys.cs` |
+| Host routes and bearer checks | `src/Martlet.Gateway/GatewayApiKeys.cs` and `src/Martlet.Gateway/` |
+| Linux host storage | `src/Martlet.Gateway.Host.Linux/` and `src/Martlet.Gateway.Persistence/` |
+| Desktop client | `src/Martlet.HostClient/HostApiKeys.cs` |
+| Desktop UI and sync | `src/Martlet.Desktop/MainWindow.ApiKeys.cs` and `src/Martlet.Desktop/ApiKeyDialogs.cs` |
+| MCP | `api_keys_status` and `api_selftest` in `src/Martlet.Mcp.Protocol/`; the local rehearsal is in `src/Martlet.NodeLinkCheck/ApiRehearsal.cs`. See [MCP](MCP.md) for tool behavior. |
 
-## Qualification
+## Previous qualification (2026-10-02)
 
-Checked on the Windows development PC through Martlet MCP: `api_selftest`
+This evidence predates later Gateway changes. Do not treat it as current
+qualification. At that time, `api_selftest` checked
 (two real gateways on 127.0.0.1 with the real Ollama relay route over a
 fixture Ollama, NOT AI: keys made and synced through the desktop client, hosts
 keeping verifiers only, refusals without a key, with a wrong key and on every
