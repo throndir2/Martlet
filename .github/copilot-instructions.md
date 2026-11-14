@@ -1,92 +1,42 @@
 # Martlet Copilot instructions
 
-Read and follow [the repository agent instructions](../AGENTS.md) for every
-task. They are the canonical autonomous engineering, validation (tests and MCP),
-parallel ownership and serial merge policy.
+Read and follow [AGENTS.md](../AGENTS.md) and the
+[full engineering rules](../docs/kb/engineering-rules.md).
+The full rules retain the repository's existing policies. This bootstrap
+does not replace authorization boundaries, explicit holds, or merge protections.
 
-**Highest priority: work autonomously, autopilot style.** Make the decisions,
-do the work and finish it end to end without routine confirmation, plan
-approval or choice questions. Stop only for a genuine blocker or an action that
-needs explicit authorization.
+## Knowledge Base First (Required)
 
-**Validate every change before merge** ([docs/VALIDATION.md](../docs/VALIDATION.md)):
-run only the targeted tests, meaning the tests the change adds or modifies and the
-test project or suite directly covering the changed code, with
-`.\scripts\Test-Martlet.ps1 -Project <Project>.Tests -Filter '<your tests>'` (it
-runs them here or on the developer's validation hosts from
-`~\.martlet-dev\validation.json`), and make them pass. Never run the runner's
-default diff-wide selection, `-All` or merely dependent suites unless asked: many
-unrelated suites fail or hit concurrency problems, so broad runs are noise. A
-failure the change cannot cause does not block; note it in the PR. Verify
-every feature or behavior change through Martlet's own MCP server on this dev
-machine whenever possible: build it and drive the actual feature with
-`scripts\Invoke-MartletMcp.ps1` (Doctor and status tools headless, `-Desktop` for
-UI) on a disposable data directory. **Always extend the MCP server in the same
-change** so new controls, status and capabilities are reachable and observable
-(automation IDs, `SafeClicks`/`SafeValues`, new tools or Doctor probes,
-`docs/MCP.md` and its area pages in `docs/mcp/`). Run what tests do not cover the way it is used. Report anything
-this environment cannot exercise as NOT RUN with the reason, and put the
-runner's `summary.md` and the MCP results in the PR. Never claim an unrun check
-passed, and add to `tests\known-failures.txt` only tests shown failing on
-`origin/main` without your change.
+Always use KB search when you must find, search, or navigate the repository.
+Call `kb_search` on the local `repo-kb` MCP server. Open cited sections with
+`kb_read_section`. Follow their `**Code:**` lines, then read only the code
+that the task needs.
 
-**Martlet's MCP server is also for using Martlet:** to make or change a
-character, change a setting or see how Martlet is set up, start with its
-`martlet_guide` tool, then the `character_*` and `settings_*` tools
-([Use Martlet through its MCP server](../AGENTS.md#use-martlet-through-its-mcp-server)).
+Do not explore with broad grep, glob, directory listings, or file reads.
+Use them only for an exact name that the KB gave you.
+If the KB has no answer or a wrong answer, inspect the code and fix the
+page in the same pull request.
 
-**Martlet is one app on all the owner's computers:** settings, model lists,
-provider choices and their API keys are shared by default, so a new companion
-PC gets the same setup. Keep a setting on one computer only when it describes
-that computer (its devices, installs, measurements, pairings or startup).
-Details: [Martlet is one app](../AGENTS.md#martlet-is-one-app-configuration-is-shared).
+## Keep the KB true (Required)
 
-For implementation work, reuse the assigned worktree branch, commit, publish a
-PR and merge it into `main` yourself once validation passes, without routine
-approval prompts. Explicit user holds, required protections and authorization
-boundaries still apply. Never trigger
-remote validation; check workflow triggers before publication and merge, and
-confirm the merged result on `origin/main`. Releases are pre-authorized:
-agents may build and publish them through a minimal build/release workflow
-without asking.
+Changes to code, configuration, scripts, commands, or behavior also update
+the matching KB page, its `**Code:**` and `**Last verified:**` lines,
+and its folder index. New features get a page or section. Deleted features
+lose their page or become Superseded.
 
-**File issues for problems you find:** when you find a bug or other problem
-during a task and do not fix it in the same change, search the open issues,
-then file a GitHub issue (or comment on the existing one) with the steps to
-make it happen again, the evidence and the matching labels. Link it in your
-PR. Details: [File issues for problems you find](../AGENTS.md#file-issues-for-problems-you-find).
+If no page needs a change, write `KB: no change needed` in the pull request
+body and give the reason.
+Run `python scripts\kb\check_kb.py --diff origin/main` before merge.
+Fix every error and review coverage warnings.
 
-**Changelog:** every PR with a change users can notice adds a plain-language
-line with its PR link under `## [Unreleased]` in `CHANGELOG.md`. A release PR
-bumps `<Version>`, turns `Unreleased` into `## [<version>] - <date>`, refreshes
-the README's *What's new in <version>* highlights, refreshes the model catalog
-(`.\scripts\Update-ModelCatalog.ps1`) and checks
-`.\scripts\Get-ReleaseNotes.ps1 -Version <version>`; the release workflow
-publishes that section as the release notes. Full steps:
-[Changelog and release notes](../AGENTS.md#changelog-and-release-notes).
+## Repository rules and map
 
-**Clean up before you finish:** stop the processes you started, then run
-`.\scripts\Clean-Martlet.ps1` (`-WhatIf` first) to remove your checkout's
-`bin\`, `obj\`, `node_modules\` and other build output. Clean only your own
-checkout; use `-AllWorktrees` or `-Git` only when the developer asks. Never
-delete tracked files, uncommitted work or unmerged branches. Details:
-[Cleaning up disk space](../docs/CLEANUP.md).
+Work autonomously through an eligible, locally validated merge.
+Use the assigned worktree. Preserve unrelated work.
+Never use Copilot Cloud or hosted validation. Never bypass consent.
+Follow the full rules for targeted tests, Martlet MCP verification, shared
+settings, issue filing, changelog entries, releases, and checkout cleanup.
 
-Deliver actual production paths
-early and replace obsolete designs when warranted. Write responses, updates and
-developer docs in ASD-STE100 Simplified Technical English
-([rules](../AGENTS.md#write-in-simplified-technical-english)). Parallelize independent work with isolated ownership. Safety, consent and
-honest reporting remain mandatory.
-
-Never use Copilot Cloud (cloud/coding agent, cloud sessions, Copilot code
-review or any GitHub-hosted agent) and never consume GitHub Actions minutes,
-apart from dispatching `windows-release.yml` to build an actual release. All
-agent work, builds, tests and checks run locally or on the developer's own
-validation hosts.
-
-Never create GitHub CI pipelines: Actions are reserved for minimal
-build/package/release workflows (manual dispatch or tag/release triggers only;
-no PR, push or schedule triggers, hosted tests or disguised validation).
-Unsigned installers are actual, normal releases (not prototype prereleases);
-code signing is not required. Never misrepresent a GitHub digest as a
-publisher signature, and preserve user consent for downloads and installation.
+Start at [docs/README.md](../docs/README.md).
+Use the [decision map](../docs/DECISION_MAP.md) to find rule owners and the
+[page contract](../docs/kb/knowledge-base.md) to maintain current evidence.
