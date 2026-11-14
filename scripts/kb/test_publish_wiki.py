@@ -149,6 +149,20 @@ class PublishWikiTests(unittest.TestCase):
         self.assertFalse((wiki / "removed.md").exists())
         self.assertFalse((wiki / "assets" / "images" / "old.png").exists())
 
+    def test_sync_plan_ignores_markdown_line_ending_differences(self):
+        wiki = self.root / "wiki"
+        wiki.mkdir()
+        build_site(self.docs, self.repo, "main", "https://github.com/example/project", self.output)
+        apply_site(wiki, self.output)
+        for page in wiki.glob("*.md"):
+            page.write_bytes(page.read_bytes().replace(b"\n", b"\r\n"))
+
+        changed, stale_pages, stale_assets = sync_plan(wiki, self.output)
+
+        self.assertEqual([], changed)
+        self.assertEqual([], stale_pages)
+        self.assertEqual([], stale_assets)
+
 
 if __name__ == "__main__":
     unittest.main()
