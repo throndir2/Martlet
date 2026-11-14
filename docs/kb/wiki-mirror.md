@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against 271c842ac
+**Last verified:** 2026-11-13 against 6aff462a4
 **Code:** `scripts/kb/publish_wiki.py`, `scripts/kb/test_publish_wiki.py`
 
 ## Source and output
