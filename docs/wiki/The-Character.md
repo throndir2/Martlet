@@ -1,6 +1,14 @@
 # The Character
 
-Martlet can show a Live2D or VRM character on your desktop. She stands on top of your windows, also over full-screen games. She moves her lips with her voice, shows how she feels and looks where she wants.
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Character`, `src/Martlet.Desktop/Pages/TouchZones`, `src/Martlet.Desktop/CharacterFinderWindow.xaml.cs`, `src/Martlet.Avatar.Hosting`
+
+Martlet can show a Live2D or VRM character on your desktop. She can stay above your windows. She moves her lips with her voice, shows emotes and changes where she looks.
+
+A full-screen game can cover a desktop overlay. Use a windowed or borderless game if the character does not show.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/character-bubble-dark.png">
@@ -15,11 +23,13 @@ To add your own character:
 
 1. Open **Companion › Character**.
 2. Under **Your characters**, choose **Add a character...**.
-3. Choose a Live2D `.model3.json` file or a VRM `.vrm` file (VRM 0.x or 1.0).
+3. Choose a Live2D `.model3.json` file or a VRM `.vrm` file. Martlet supports a checked subset of VRM 0.x and 1.0.
 
-VTube Studio model folders work too: Martlet reads their hotkeys, expressions and idle animation. Martlet keeps its own copy of each character and copies it to your paired computers, so any of them can show it. For a Live2D model, Martlet copies only the files the model uses: the model, its textures, motions and sounds. Only add models you may use.
+VTube Studio model folders work too. Martlet reads supported hotkeys, expressions and idle animation.
 
-Your choices save on their own, and a character that shows switches at once. The character idles, follows your mouse and moves while Martlet speaks.
+Some models cannot be imported. The VRM importer rejects embedded animations and unsupported texture formats. Separate VRMA motion files are supported. Martlet keeps its own copy of each character and copies it to your paired computers, so any of them can show it. For a Live2D model, Martlet copies only the files the model uses: the model, its textures, motions and sounds. Only add models you may use.
+
+Your choices save on their own, and a character that shows switches at once. The character idles and moves while Martlet speaks. Her usual gaze uses the active persona's temperament unless you choose another gaze.
 
 **Remove** on a character deletes Martlet's copy on this PC and on your other Martlet computers. A computer that shows it at that moment keeps it until you choose another character there. Your original files are never touched.
 
@@ -43,7 +53,7 @@ To use your own VRoid Hub models, link VRoid Hub on your **Account** page or wit
 2. Download a model you may use, and unzip it if needed.
 3. Press **Add a model you downloaded...** and choose its `.vrm` file or Live2D `.model3.json`.
 
-**A voice for the character**: the window also lists pages that may have recordings of the character's voice. A character's voice belongs to its voice actor and studio, so use it only for yourself and only where their terms allow it. Download a clean clip of the character speaking (5 to 30 seconds, one voice, no music), then press **Add a voice clip you downloaded...**. Martlet speaks with it through a voice engine that copies voices (**Companion › Voice**).
+**A voice for the character**: the window also lists pages that may have recordings of the character's voice. A character's voice belongs to its voice actor and studio, so use it only for yourself and only where their terms allow it. Use a clean clip with one speaker and no music. Then press **Add a voice clip you downloaded...**. Martlet speaks with it through a voice engine that copies voices (**Companion › Voice**).
 
 ## Move, zoom and lock
 
@@ -75,7 +85,7 @@ Her mouth follows her voice. NVIDIA **Audio2Face** moves it more naturally, on t
 
 Only Martlet's generated voice goes to a computer in the list, never your microphone. Your other computers follow the same list. A computer that isn't paired on a PC is skipped there: pair it on **Devices** to use it.
 
-**Audio2Face on this PC** needs an NVIDIA graphics card with 4 GB or more. **Set up Audio2Face with Docker** installs Martlet's host service and Audio2Face with its open-source engine (no NVIDIA account), then puts this PC first in the list. Martlet installs Docker Desktop first when it is missing, and starts it when needed.
+**Audio2Face on this PC** needs a supported NVIDIA graphics card. Check the setup requirements before you install it. **Set up Audio2Face with Docker** installs Martlet's host service and Audio2Face with its open-source engine (no NVIDIA account), then puts this PC first in the list. Martlet installs Docker Desktop first when it is missing, and starts it when needed.
 
 **Your own Audio2Face service**: if you run NVIDIA's NIM or the open-source engine yourself on a companion PC, add **This PC** to the list and give the service's loopback address (such as `http://127.0.0.1:52000/`). Martlet looks for it before each sentence.
 
@@ -97,7 +107,7 @@ These settings save on their own. A mapping applies the next time the character 
 
 A reply can write a tag such as `{blush}` or `{nod}`. Martlet removes the tag from the text, and the character does it at that point in the sentence.
 
-- **Emotes**: three strengths of blush, heart eyes, star eyes, tears, sweat drops, anger veins, sparkles, steam, dizzy swirls, a sleepy Zzz and more. Martlet measures her face once with a model that sees, so emotes sit in the right places. **Measure the face again** is on **Companion › Eyes**.
+- **Emotes**: three strengths of blush, heart eyes, star eyes, tears, sweat drops, anger veins, sparkles, steam, dizzy swirls, a sleepy Zzz and more. Martlet measures her face once with a model that sees, so emotes sit in the right places. **Measure the face** is on **Companion › Eyes**.
 - **Gestures**: she winks, pouts, acts shy, giggles, flinches, leans in for a head pat, looks away, rolls her eyes and gets drowsy.
 - **Looks that stay on**: a look with **Stays on**, such as glasses or a blush, stays until a reply turns it off. Several can show at once. **Clear emotes** turns them all off.
 - **Combos** play several emotes at once: lovestruck, flustered, fuming, starstruck and more. Make your own from 2 to 6 emotes, motions and gestures.
@@ -119,7 +129,9 @@ Martlet makes motions on a computer that runs the **Motion** role. Set it up on 
 
 With no computer on, Martlet makes no new motions, but the motions it kept still play. Your other computers follow this list.
 
-The Motion role runs Tencent's HY-Motion 1.0 in Docker. The standard model needs 26 GB of graphics memory, and the computer needs about 32 GB of memory. It downloads about 20 GB once, loads when the first motion is made and frees the graphics card three minutes after the last one, so the voice and thinking get it back. Only a short English description of the movement goes to that computer, and it's free. Its license is Tencent's HY-Motion 1.0 Community License, which doesn't apply in the European Union, the United Kingdom or South Korea: don't use Motion there.
+The Motion role runs Tencent's HY-Motion 1.0 in Docker. The Lite model needs a 24 GB graphics card. The standard model needs 26 GB of graphics memory. The computer needs about 32 GB of memory. It downloads about 20 GB once. It loads when the first motion is made.
+Martlet requests a memory release three minutes after its last motion. The host also has its own idle timer. Only a short English description of the movement goes to that computer, and it's free. Its license is Tencent's HY-Motion 1.0 Community License.
+Do not use Motion in the European Union, the United Kingdom or South Korea. The license excludes those regions.
 
 ## Where the character looks
 
@@ -127,7 +139,7 @@ Right-click her and open **Eyes**, or use **Companion › Eyes › Where the cha
 
 While vision watches your screen (**Companion › Vision › Glances at your screen**), Martlet can also decide where she looks. Until vision watches, she keeps her usual gaze.
 
-**Measure the face** on **Companion › Eyes** takes a picture of the character and asks a model that can see pictures where her eyes and cheeks are, so emotes and the blush sit in the right places. It needs a vision-capable model in **Companion › Thinking** or **Companion › Background thinking**. **Forget** drops the measurement, and the eyes and blush use the model's own data or an estimate again.
+**Measure the face** on **Companion › Eyes** takes a picture of the character and asks a model that can see pictures where her eyes and cheeks are, so emotes and the blush sit in the right places. A Thinking pool member that sees is tried first. An image model on **Companion › Vision** can also do it. Thinking can take the fallback job after the reply. **Forget** drops the measurement, and the eyes and blush use the model's own data or an estimate again.
 
 ## Touch zones
 
@@ -145,7 +157,8 @@ Click, pat, hold or stroke her, and each part of her body reacts the way her per
 
 **Detect zones** needs a model that can see pictures: a vision-capable Thinking model, a Thinking pool member that can see, or an image model on **Companion › Vision**. When finding zones stops part way, the zones found until then are kept, and **Detect zones** again finds the rest. When the model doesn't answer, the zones you had before stay.
 
-Intimate zones react too while **Include intimate zones** is on (the default). With **Martlet notices** on for a zone, her next reply knows how you touched her. When you touch her without words, she answers out loud.
+Intimate zones react too while **Include intimate zones** is on (the default). With **Martlet notices** on for a zone, the next reply receives a note about your touch.
+A touch without words can start a spoken reply when conversation and voice are available.
 
 ### Start over
 
@@ -153,7 +166,7 @@ Intimate zones react too while **Include intimate zones** is on (the default). W
 
 1. Choose how much to reset:
    - **Zone reactions**: each zone's reactions, rest, **Martlet notices** and your own words go back to a fresh zone's. The zones, their boxes and names stay.
-   - **Zones**: removes this model's zones (found and added), with their boxes, names and reactions, and the pictures they were found in. Martlet then places a first guess again, with no AI and nothing sent. **Detect zones** finds them again with your Thinking model.
+   - **Zones**: removes this model's zones (found and added), with their boxes, names and reactions, and the pictures they were found in. Martlet then places a first guess again, with no AI and nothing sent. **Detect zones** finds them again with an available model that sees.
    - **Touch temperament**: forgets the active persona's temperament (decided from its personality or changed by you) and any temperament it uses instead. Martlet then decides it again from the personality. A persona without personality text uses the built-in reactions.
    - **The character's own changes**: undoes the changes the character made itself to how it reacts to touches (the **How I react** check-in), so touches play what you chose again. Your zones and temperament stay.
    - **Everything**: all of the above.
@@ -163,7 +176,8 @@ A reset of the temperament reaches your other Martlet computers too.
 
 ## Touch temperament
 
-When you save a personality, Thinking decides how the character reacts to touches on each part of her body, and where her eyes usually go. A shy character can ignore your mouse and most touches, then blush and look at you when you touch her somewhere she cares about. Edit it under **Companion › Touch › Touch temperament**: each part has a line with **Feels**, **Plays**, **Then**, **Lingers** and **Looks at mouse**. Intimate parts have a category of their own.
+When a persona first needs a touch temperament, Thinking can decide its reactions and usual gaze from the personality.
+Your existing temperament stays when you edit the personality. Use **Re-decide from personality** to replace it. A shy character can ignore your mouse and most touches, then blush and look at you when you touch her somewhere she cares about. Edit it under **Companion › Touch › Touch temperament**: each part has a line with **Feels**, **Plays**, **Then**, **Lingers** and **Looks at mouse**. Intimate parts have a category of their own.
 
 Under **Uses**, choose what a persona's touches play: its own temperament (which your Thinking model decides), the built-in reactions (each part's built-in reaction), or one of your custom temperaments.
 

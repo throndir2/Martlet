@@ -1,12 +1,18 @@
 # Vision
 
-Vision lets Martlet watch your screen or a camera with you, read the text on it and hear what your PC plays. She stays quiet most of the time and says something when it is worth a word, like a friend in the room.
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Vision`, `src/Martlet.Desktop/ScreenGlancer.cs`, `src/Martlet.Desktop/ScreenDigest.cs`, `src/Martlet.Conversation/SenseJobRouting.cs`
+
+Vision lets Martlet watch your screen or a camera with you. Reading and Listening add screen text and what your PC plays. She stays quiet most of the time and says something when it is worth a word, like a friend in the room.
 
 ![Companion Vision](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/companion-vision.png)
 
 ## Start and stop watching
 
-Vision is on by default on **Companion › Vision**, but that only allows looking. Martlet starts to look when you press **Start watching** on Home, in the talk window or from Martlet's icon in the notification area. She stops when you press **Stop watching**, Stop or Esc, or end the conversation. When you lock Windows, she stops until you unlock it.
+Vision is on by default on **Companion › Vision**, but that only allows looking. Martlet starts to look when you press **Start watching** on Home, in the talk window or from Martlet's icon in the notification area. She stops when you press **Stop watching**, Stop or Esc, or end the conversation. Watching pauses while Windows is locked. It resumes after unlock if you had started watching before the lock.
 
 ## What she looks at
 
@@ -20,7 +26,8 @@ Choose it under **What Martlet looks at**:
 
 With both screen choices, Martlet greys out her own windows, password managers and private browser windows. She skips minimized windows and protected video. **Companion › Replies › Personal content** set to **Everything** lets her also see password managers and private windows (see [Privacy](#privacy)).
 
-Full-screen games work too. Martlet uses a normal Windows screen copy and never hooks into the game, so anti-cheat has nothing to flag.
+Martlet first uses Windows Desktop Duplication to capture the screen, including full-screen games. It falls back to a Windows screen copy when needed.
+It does not hook into the game. This is not a guarantee that every game or anti-cheat system permits capture.
 
 ### Camera problems
 
@@ -36,7 +43,7 @@ Full-screen games work too. Martlet uses a normal Windows screen copy and never 
 
 ## How chatty she is
 
-**How often it comments** can be **Quiet**, **Normal**, **Chatty** or **Martlet decides**. When Martlet decides, she gets quiet when you are focused or on a call, and chattier when you invite her remarks. She never takes another look while nothing changes on your screen.
+**How often it comments** can be **Quiet**, **Normal**, **Chatty** or **Martlet decides**. When Martlet decides, she gets quiet when you are focused or on a call, and chattier when you invite her remarks. Screen changes help decide when she looks. Quiet, unchanged screens usually need fewer comments.
 
 Most looks end silently. She never interrupts you while you talk. The same choice also sets how often she reacts to what this PC plays (**Companion › Listening › Watch along**, see [Hearing what your PC plays](#hearing-what-your-pc-plays)).
 
@@ -48,14 +55,15 @@ Most looks end silently. She never interrupts you while you talk. The same choic
 - **Where you are in a game**: while you play, she keeps a short note of where you are and what happened lately. It needs [App guides](App-Guides), screen summaries and a Thinking pool member.
 - **Notifications**: with **My whole screen**, a new pop-up or a flashing taskbar button makes her look at once. She gives a heads-up only for a message, call or reminder you would want to know about.
 
-No reply waits for any of this.
+Replies do not wait for the background screen summary or game-state update.
 
 ### Screen summary over time
 
-Each reply gets only the newest picture, so she starts to speak as fast as without vision. With **Screen summary over time** on, Martlet also:
+Each reply uses the newest picture, or an available image-model description. It does not wait for the background screen summary. With **Screen summary over time** on, Martlet also:
 
-1. Keeps the last few pictures that changed, for about 25 seconds, in memory only. They are never saved.
-2. Every 15 seconds while they change, or when you start to talk, sends a small sheet of them with the text read on them. It goes to your image model, or else to a [Thinking pool](Thinking#thinking-pool) model that sees. It never goes to the model that your conversation uses.
+1. Keeps up to eight changed pictures in memory, with a 24-second window. The newest picture stays if nothing changes. Pictures are never saved.
+2. While pictures change, asks for a summary no more often than every 15 seconds. Starting to talk can request a fresh summary too.
+   The request uses a small sheet of up to six pictures and the text read from them. It goes to your image model, or else to a [Thinking pool](Thinking#thinking-pool) model that sees. It never goes to the model that your conversation uses.
 3. Adds the one or two lines that come back (*"They switched from VS Code to a boss fight"*) to your next message as a note.
 
 A reply never waits for a summary. Each summary is one more request with a picture, so it may cost more with a paid provider. The status line under the check box names the model that makes the summaries. When no model can, it says *Off for now*: choose an image model on **Companion › Vision**, or add a model that sees to the Thinking pool.
@@ -69,7 +77,8 @@ A reply never waits for a summary. Each summary is one more request with a pictu
 
 The first place in the list that is free reads. When it is busy or doesn't answer, the next one reads. With nothing on, Martlet doesn't read your screen. The Reading list stays on this PC. Press **Settings** on a place to choose how it reads.
 
-New text (a score, *Victory*, a new message) makes a look more likely, and each look gets the text that was read. Replies never wait for reading, and the text is never kept in the conversation.
+New text (a score, *Victory*, a new message) makes a look more likely, and each look gets the text that was read. Replies do not wait for reading. Raw OCR text is not saved as conversation history.
+Martlet can keep a short description of what it saw in the active conversation, marked as screen or camera information.
 
 ### How often it reads
 
@@ -91,9 +100,9 @@ Martlet's **Reading role** runs on this PC or on another of your computers. In t
 
 | Model | Runs on | Notes |
 | --- | --- | --- |
-| **PP-OCRv5 mobile** (recommended) | The processor | Never takes the graphics card from the voice or thinking. Reads a 1920 x 1080 screenshot in about 2 s and a 4K one in about 4 s. |
+| **PP-OCRv5 mobile** (recommended) | The processor | Never takes the graphics card from the voice or thinking. Reading speed depends on the computer and screenshot. |
 | **PP-OCRv5 mobile** on a graphics card | An NVIDIA graphics card (driver 580 or newer) | As accurate, in much less time, so Martlet can read more often. Shares the card with the voice and thinking. |
-| **PP-OCRv5 server** | An NVIDIA graphics card (driver 580 or newer) | The most accurate. On a processor it takes about a minute a screenshot. |
+| **PP-OCRv5 server** | An NVIDIA graphics card (driver 580 or newer) | A larger model. Use a graphics card for this choice. |
 | **RapidOCR** (PP-OCRv4) | The processor | The smallest, but it misses more small text. |
 
 What setup downloads:
@@ -112,17 +121,17 @@ On **Companion › Listening**, under **Watch along**, tick **Hear what this PC 
 
 Your **Listening** choice turns what plays into words, the same as your microphone. A cloud Listening provider gets that sound too. The words go to Thinking marked as the PC's, never as yours. On their own, they go to Thinking about every 20 seconds (45 when Martlet is quiet, 12 when she is chatty), and she mostly stays quiet about them. Martlet's own voice is left out where Windows allows it. When another output is in use too, such as a voice changer's virtual cable, she hears only the output you hear and stops hearing it while she speaks.
 
-**Describe PC sounds** also tells her about sound without words: music and its mood, game sounds, laughter, applause and alarms. About every 10 seconds while something plays, she gets one short line for her next reply. The audio model makes it when you have one (Listening › Audio model). Otherwise a Thinking pool model that hears makes it, or a small sound tagger on this PC's processor. A reply never waits for the line.
+**Describe PC sounds** also tells her about sound without words: music and its mood, game sounds, laughter, applause and alarms. About every 10 seconds while something plays, Martlet can request a short sound description for the next reply. The audio model makes it when you have one (**Companion › Hearing**). Otherwise a Thinking pool model that hears makes it, or a small sound tagger on this PC's processor. A reply never waits for the line.
 
 What your PC plays is never saved, remembered, used to learn voices or sent to Home Assistant or tools.
 
-To hear *how* you say things, see [Listening › Audio model](Listening-and-Voice-ID#audio-model).
+To hear *how* you say things, see [Listening and Voice ID](Listening-and-Voice-ID#audio-model).
 
 ## Glances at your screen
 
 **Glances at your screen** on **Companion › Vision** sets where the character's eyes go:
 
-- **Keep its usual gaze** (the default): the eyes do what **Companion › Eyes › Where the character looks** says. By default, they follow your mouse. See [The Character](The-Character#where-the-character-looks).
+- **Keep its usual gaze** (the default): the eyes do what **Companion › Eyes › Where the character looks** says. The default uses the persona's temperament. See [The Character](The-Character#where-the-character-looks).
 - **Martlet decides**: with each new screenshot, the character keeps its usual gaze or glances at something interesting on the screen. That is something that just popped up or moved, or what she is about to remark on.
 
 Martlet decides only while vision watches your active window or whole screen and the character shows. With a camera, the character keeps its usual gaze. Screenshots are compared on this PC. The Thinking model chooses only during the looks that Martlet already takes, so nothing extra is sent.
@@ -133,7 +142,7 @@ Tell Martlet that you play games on a PC (the welcome tour asks, or use **Your p
 
 ## Image models
 
-By default, the Thinking model looks at the pictures itself. Gemma 4 E2B, Martlet's default on this PC, can see. To talk with a model that only reads text, add an image model to the list on **Companion › Vision**. It can be Ollama on this PC, one of your computers, a server you run or a cloud provider. The first model in the list that is free describes each picture in words. Thinking still writes every reply, and a reply never waits for the image model.
+By default, the Thinking model looks at the pictures itself. Use the model status on the page to check whether your chosen Thinking model can see. To talk with a model that only reads text, add an image model to the list on **Companion › Vision**. It can be Ollama on this PC, one of your computers, a server you run or a cloud provider. The first model in the list that is free describes each picture in words. Thinking still writes every reply, and a reply never waits for the image model.
 
 The page lists every model that gets your pictures and what for. **Test vision** shows a model one word drawn on this PC (never your screen) and checks that it reads the word.
 
@@ -141,7 +150,8 @@ To use a second model in Ollama on this PC, Ollama must be installed. If it isn'
 
 When you choose a cloud provider, a model app or another server as the image or audio model, Martlet asks you to agree first. Pictures of your screen or camera (or recordings of your voice and of what this PC plays) and a few lines of the conversation go there, and requests to a cloud provider may cost money.
 
-If Martlet can't read its list of image and audio models (`pools-local.json`, for example from a newer Martlet or a damaged file), the text model takes pictures and recordings. A change to the list replaces the file.
+The image and audio model lists are shared between your computers. They are stored in `pools.json`.
+Older local lists migrate from `pools-local.json` when no shared list exists. A model without a usable connection or key cannot take the job.
 
 ### Test vision and Test hearing
 
@@ -154,9 +164,11 @@ If Martlet can't read its list of image and audio models (`pools-local.json`, fo
 
 ## Privacy
 
-- Screenshots stay in memory only. They are never saved, logged, remembered or put in support files.
-- Martlet's own windows are greyed out. Password managers and private browser windows are greyed out or skipped. Protected video shows black and is skipped.
-- **Companion › Replies › Personal content** decides what she may do with personal things she sees. **Keep private** (the default) never reads out your messages. **Read my messages** lets her read them. **Everything** also lets her see password managers and private windows.
+- Screenshot images stay in memory on this PC. Martlet does not save them as history or facts.
+  Short descriptions can stay in the active conversation. The selected providers have their own data policies.
+- Martlet's own windows are greyed out. Recognized password managers and private browser windows are greyed out or skipped.
+  Detection uses known window-title patterns. Close sensitive windows before watching; this filter cannot recognize every private window. Protected video shows black and is skipped.
+- **Companion › Replies › Personal content** decides what she may do with personal things she sees. **Keep private** (the default) instructs the model not to quote personal messages. **Read my messages** allows it to quote them. **Everything** also lets her see password managers and private windows.
 - Pictures go only to the models that **Companion › Vision** lists. A cloud machine in the Thinking pool gets them only when you tick **May receive pictures and recordings** for it.
 - With a camera, tell anyone in view that the camera is watching. The camera light may turn on.
 - **What Martlet sends** on **Companion › Vision** says what she looks at, how often and where the pictures go. Click its **?** for all of it.

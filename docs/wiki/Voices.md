@@ -1,5 +1,11 @@
 # Voices
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/Pages/Voice`, `src/Martlet.Desktop/F5AddVoiceDialog.cs`, `src/Martlet.Core/Voices`
+
 Pick a ready-made voice or clone one from a few seconds of audio. Martlet's
 voices can laugh, sigh, gasp and whisper. Everything about her voice is on
 **Companion › Voice**.
@@ -33,15 +39,13 @@ doesn't.
 | **Chatterbox Original** | Calm or expressive, sentence by sentence. No laughs. | NVIDIA, 6 GB+ |
 | **Chatterbox Nano** | Small. Laughs and sighs. | NVIDIA, 4 GB+, or the processor |
 | **F5-TTS** | The closest likeness to the recording. English and Chinese. | NVIDIA, 6 GB+ |
-| **XTTS-v2** | Starts speaking soonest. 17 languages. | NVIDIA, 4 GB+ |
+| **XTTS-v2** | Streams audio while generating. Supports 17 languages; the host chooses its language. | NVIDIA, 4 GB+ |
 | **GPT-SoVITS** | Anime-style voices from a 3-10 second recording. English and Japanese. | NVIDIA, 4 GB+ |
 | **Dia** | Lifelike, conversational. Many sounds, such as laughs, coughs and hums. English. | NVIDIA, 8 GB+ |
 | **ElevenLabs** (cloud) | Your cloned voice with tones: whispering, happy, sad or angry. | Your ElevenLabs key. Costs money. |
 | **OpenAI** (cloud) | Ready-made voices. No cloning. | Your OpenAI key. Costs money. |
 
-Click **Compare them** under the engine list to see the engines side by side.
-It shows what each one can copy, whether it laughs, its languages, its memory
-use and its license. The F5-TTS and XTTS-v2 models are for non-commercial use
+Choose an engine in **Voice engine** to see its abilities, languages, memory needs and license. The F5-TTS and XTTS-v2 models are for non-commercial use
 only.
 
 ### Set up an engine
@@ -206,24 +210,28 @@ Tips:
 4. Read the box and tick it.
 5. Click **Clone and use ElevenLabs**.
 
-Martlet uploads the recording only then. ElevenLabs charges your account for
-each reply. Martlet follows ElevenLabs' documentation, but nobody has tried it
-with a live ElevenLabs account yet.
+Martlet uploads the recording only then. ElevenLabs may charge your account for each spoken reply.
+When the same saved key and recording are still selected, **Use these settings** reuses the clone.
 
-ElevenLabs copies your voice and speaks replies with it in real time. It adds
-tones such as [whispers], [happy] or [sad] and sounds such as [laughs].
+Martlet sends tags such as `[whispers]`, `[happy]`, `[sad]` and `[laughs]` to ElevenLabs.
+These request tones or sounds. The result depends on the service and voice.
 
-**Eleven v4 Turbo** is the fastest model (about 100 ms, as ElevenLabs
-documents). If ElevenLabs refuses it, Martlet says so. Then choose **Eleven v3
-Conversational**.
+**Eleven v4 Turbo** is the default. **Eleven v3 Conversational** is another choice.
+If the service refuses a model, choose the other one. These are configured choices, not a live availability check.
+
+#### Historical validation note
+
+The implementation comments say that ElevenLabs delivery and tones were not measured with a live account.
+This audit checked the code, not a paid request. It does not confirm current provider availability or speed.
 
 #### What you agree to
 
 When you tick the box:
 
 - You choose ElevenLabs for Voice.
-- Martlet uploads the chosen recording to your ElevenLabs account once, to
-  clone it. The same recording again is used without another upload.
+- Martlet uploads the chosen recording to your ElevenLabs account to clone it.
+  It reuses the current clone only when the saved key and recording still match.
+  A new key or a different recording can cause another upload.
 - After that, Martlet sends only reply text to ElevenLabs, and only while it
   speaks.
 - ElevenLabs requests cost money from your ElevenLabs account.
@@ -257,12 +265,12 @@ voice** on the character's right-click menu change the same setting.
 
 ## When the voice can't speak
 
-- When no computer has room for your engine, Martlet speaks with Chatterbox
-  Nano: on a graphics card with room, or else on the processor. Your engine
-  comes back when a computer has room again.
+- **Recommended setup** can choose Chatterbox Nano when no computer has room for your preferred engine.
+  It tries a graphics card first, then the processor. A saved cloud voice can also be a fallback.
+  This is a setup choice, not a guarantee that every failed reply switches engines.
 - When no computer can run a voice, Home says so and how to fix it.
 - When the voice fails or is muted, the text still shows in the talk window and
-  the speech bubble.
+  the speech bubble, when the bubble is enabled.
 - Discord voice calls speak only with a voice engine on one of your computers.
 
 ## Consent

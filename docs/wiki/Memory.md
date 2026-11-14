@@ -1,6 +1,13 @@
 # Memory
 
-Martlet remembers what matters to you and picks up earlier conversations. Everything stays on your own computers, and it is the same on all of them.
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Memory`, `src/Martlet.Desktop/MemoryWindow.xaml.cs`, `src/Martlet.Desktop/MemoryBrief.cs`, `src/Martlet.Desktop/MeaningSearch.cs`
+
+Martlet remembers what matters to you and picks up earlier conversations. The saved facts stay on your computers. With sync on, they travel to your other signed-in computers.
+Remembering and recall can send fact text to the Thinking providers you choose.
 
 ## Turn memory on or off
 
@@ -42,7 +49,7 @@ Martlet writes a short profile of you and the people you talk about, from what i
 
 - Martlet writes the brief once it remembers at least 3 things. It writes it again when your memories change, on a Thinking pool member (or the Thinking model in the cloud, once you aren't talking), never while it answers you.
 - When a memory that the brief came from changes or goes away, Martlet doesn't send the brief until it writes it again.
-- The brief is the same on all your computers. If another computer has a newer Martlet, update Martlet on this PC to use its brief.
+- The brief is shared with your other computers. It is not sent in Discord calls. Facts kept only for a game do not enter the brief. If another computer has a newer Martlet, update Martlet on this PC to use its brief.
 - Change how it is written in **Companion › Prompts › Writing the memory brief**. When that prompt is empty, Martlet writes no brief.
 
 On **Companion › Memory › Memory brief**:
@@ -54,10 +61,10 @@ On **Companion › Memory › Memory brief**:
 
 ## Your preferences
 
-Tell Martlet how to behave, in your own words, and it keeps to it from then on: *"Stop giving hints."*, *"No spoilers for Elden Ring."*, *"Don't call me buddy."* Just say it while you talk. Martlet saves the preference itself and confirms it. Say *"You can give hints again"* to take it back.
+Tell Martlet how to behave in your own words: *"Stop giving hints."*, *"No spoilers for Elden Ring."*, *"Don't call me buddy."* Just say it while you talk. Martlet can save the preference through its tools and confirm it. Check the list to see what was saved. Say *"You can give hints again"* to take it back.
 
 - A preference applies everywhere, while you play any game, or in one game only.
-- Every reply, screen glance and check-in follows the preferences that apply now. They go at the end of what Martlet sends, so the first word of a reply never waits for them.
+- Every reply, screen glance and check-in receives the preferences that apply now. Models can still make mistakes. They go at the end of what Martlet sends, so the first word of a reply never waits for them.
 - Your preferences are the same on all your computers, and each person has their own. They work also while memory is off.
 - Change the words Martlet gets with them in **Companion › Prompts › Your preferences**.
 
@@ -79,9 +86,9 @@ In the Memory window you can:
 - **Where memory is stored**: use Martlet's folder or a folder you choose.
 - **Export to a file**: preview the export, then create it on this PC. Martlet never uploads it.
 
-You can also ask Martlet herself what she remembers, or ask her to remember, correct or forget something. Martlet keeps up to 100,000 facts. When memory is full, the talk window says so, so you can choose what to delete.
+You can also ask Martlet herself what she remembers, or ask her to remember, correct or forget something. Each memory store supports up to 100,000 facts. When memory is full, the talk window says so, so you can choose what to delete.
 
-The Memory window has no Save button. Your choices save as soon as they change. A typed folder saves when you press Enter or leave the box. Deleting facts can't be undone. **Delete everything** deletes your own memories on all your computers; the household's memories and memories shared with you stay.
+Memory settings save as soon as they change. Fact edits still need **Save changes**, and new facts need **Add fact**. A typed folder saves when you press Enter or leave the box. Deleting facts can't be undone. **Delete everything** deletes your own memories on all your computers; the household's memories and memories shared with you stay.
 
 ### Export to a file
 

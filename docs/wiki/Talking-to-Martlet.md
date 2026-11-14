@@ -1,7 +1,12 @@
 # Talking to Martlet
 
-Talk hands-free, hold a key or type. Martlet answers out loud within moments,
-waits until you have finished and lets you talk over her.
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/LiveConversationWindow.xaml.cs`, `src/Martlet.Desktop/LiveConversationController.TurnCapture.cs`, `src/Martlet.Desktop/TalkPreferences.cs`
+
+Talk hands-free, hold a key or type. Martlet can answer out loud. You can change how she waits and how you interrupt her.
 
 ![Talk window](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/talk.png)
 
@@ -22,15 +27,15 @@ With always listening, Martlet listens again after each reply, with or without
 the talk window open. **Stop listening** ends it, and locking Windows pauses it
 until you unlock Windows. When you close the talk window, Martlet keeps
 listening and watching. Stop them on Home or from the notification-area icon.
-**Pause** on that icon stops listening and looking until you resume Martlet
+**Pause Martlet** on that icon stops listening and looking until you resume Martlet
 there.
 
 A PC that you set up as a Martlet host doesn't talk, listen, watch or show the
 character. To change that, choose **Use as my companion PC** in **Settings**.
 Your companion choices come back when it is your companion PC again.
 
-One turn of talking can last up to 10 minutes. Martlet hears long speech in
-pieces cut at your pauses, so nothing you say is lost.
+One turn of talking can last up to 10 minutes. Martlet transcribes long speech in
+pieces, using pauses where possible. A failed transcription can still lose words.
 
 ## The talk window
 
@@ -69,8 +74,9 @@ pieces cut at your pauses, so nothing you say is lost.
 
 ### The Conversations page
 
-The **Conversations** page keeps every conversation that Martlet has had with
-you: in the talk window and in Telegram, Discord and WhatsApp.
+The **Conversations** page shows saved exchanges from the talk window and supported messaging channels.
+Martlet keeps them while Memory and conversation history are on.
+Change this in **Companion › Memory › Conversation history**. Screen looks and PC audio are not saved there.
 
 - With **Keep Martlet the same on all my computers** on, the record is the same
   on every computer where you are signed in.
@@ -79,58 +85,28 @@ you: in the talk window and in Telegram, Discord and WhatsApp.
   can't bring the deleted messages up again.
 - Facts that Martlet remembered from a deleted conversation stay in
   [Memory](Memory). Delete them there.
-- When you delete a message from Telegram or Discord, Martlet also deletes it
-  there when the app allows it. If you save an edit with empty text, Martlet
-  asks whether to delete the message.
+- When you delete a recorded message, you can also request deletion in Telegram or Discord.
+  This needs the messaging app to allow it. An empty edit becomes a deletion.
 - **Stop waiting** cancels changes that still wait to be made in Telegram and
   Discord. Those messages then stay there as they are, and the record here
   doesn't change.
 
 ### Messages in the talk window
 
-When something goes wrong, the talk window shows one line that says what
-happened and what to do. Most lines tell you where to fix it. The table lists
-the common ones.
-
-| The line says | What to do |
-| --- | --- |
-| Couldn't reach the provider, or the provider took too long | Check your internet connection, then try again. |
-| The provider didn't accept the API key | Paste the key again in Companion, and check that the account can use the model. |
-| The account is out of quota or credit | Check the provider's billing and usage page. |
-| The provider is limiting requests | Wait a moment, then try again. Free services, such as NVIDIA Build, do this often. |
-| The provider doesn't offer that model or voice, or has retired the model | Choose another model in **Companion › Thinking**, or another voice in **Companion › Voice**. |
-| The provider's address didn't match the one you set up | Nothing was sent. Check the provider in Companion. |
-| The model hit the max reply length | Ask for a shorter answer, or raise **Max reply length** in **Companion › Replies**. |
-| That's too long for the Thinking model | Send a shorter message, or raise **Context size** in **Companion › Replies**. With a Martlet host, update an older host on **Devices**. |
-| Your Martlet host didn't answer, or couldn't be reached | Check that the computer is on, then try again in a minute. If it keeps happening, update or set up that host again on **Devices**. |
-| Martlet couldn't use this PC's pairing with a host | Pair it again on **Devices**. |
-| Local model didn't answer in time, or couldn't run | Choose a smaller model in **Companion › Thinking**, or close programs that use a lot of memory. See [Troubleshooting](Troubleshooting#ollama-on-this-pc-doesnt-answer). |
-| Couldn't reach Ollama | Start Ollama, then try again. |
-| ElevenLabs refused the model, the voice or the key, or the account is out of credits | Choose the other ElevenLabs model, verify or clone the voice again, or paste the key again in **Companion › Voice**. Check credits on elevenlabs.io. |
-| Windows is blocking the microphone | Allow desktop apps to use the microphone in Windows Settings › Privacy. |
-| Martlet can't open the microphone | Check that it is connected and turned on. Martlet keeps trying. |
-| Martlet didn't catch any words, or transcribing took too long | Try again, or type instead. |
-| Only respond to my voice is on, but Voice ID isn't set up | Set up Voice ID, or turn the setting off, in **Companion › Listening**. |
-| Martlet can't listen yet | Check **Companion › Listening**. You can still type. |
-| Memory is off, full or can't be used | Turn it on, delete some facts or choose another folder in **Companion › Memory**. When memory was busy, Martlet tries again with the next thing you say. |
-| Martlet couldn't confirm that the microphone or speakers stopped | Restart Martlet before you talk again. |
-| Your Thinking model can't see images | Choose a model that sees, or add an image model, in **Companion › Vision**. |
-| The screen or camera is black | For a game, try borderless or windowed mode. For a camera, check the lens cover or privacy shutter. |
-| Martlet stopped vision because the picture and the persona are too long | Shorten the persona, or raise **Context size** in **Companion › Replies**. |
-| Something went wrong | Try again. **Settings › Troubleshooting** has the details. |
-
-A busy or slow provider doesn't stop watching: the look waits and Martlet looks
-again in a few minutes.
+When a reply fails, the talk window shows the problem and a suggested action.
+Check the selected provider, model, voice or microphone first.
+For more help, see [Troubleshooting](Troubleshooting).
 
 ## How Martlet takes turns
 
 These settings are in **Companion › Listening › How you talk**.
+Open **More listening settings** for the judge, early replies, word check and interrupting choices.
 
 - **She hears when you have finished.** With **Judge when I finish talking**
   on (the default), a small model on this PC (Smart Turn) listens to how you
   end each sentence after a short pause. Martlet answers sooner when you are
-  clearly done. She waits longer when you trail off, up to twice the pause, so
-  she cuts you off less. If she answers too soon, just keep talking. Your voice
+  clearly done. She waits longer when you trail off. The limit is at least 1.6 seconds
+  or twice **Reply after**, whichever is longer, up to 5 seconds. If she answers too soon, just keep talking. Your voice
   never leaves this PC for this. When the judge can't run, the pause alone
   decides until it can. Off, the pause alone decides.
 - **She starts in the pause.** With **Start replies early** on (the default),
@@ -147,7 +123,7 @@ These settings are in **Companion › Listening › How you talk**.
 - **Word check** (Relaxed, Normal or Sensitive) sets how readily a sound
   counts as words. Martlet ignores sounds that aren't words (mm, hmm, uh, a
   cough, laughter) and the words that speech-to-text often makes up from noise,
-  such as "Thank you.". **Relaxed** ignores more: Martlet needs clearer, longer
+  such as "Thank you.", when the evidence that you said them is weak. **Relaxed** ignores more: Martlet needs clearer, longer
   speech to answer you or to stop. **Sensitive** also takes single short words.
   A short answer such as "yes", "no" or "stop" works with all three, mainly
   right after Martlet asks something, and anything with Martlet's name counts.
@@ -157,8 +133,8 @@ These settings are in **Companion › Listening › How you talk**.
 
 - She speaks each reply sentence by sentence while it is written, so her voice
   starts before the whole reply is ready.
-- Each spoken reply starts with a few quick words, such as "Hmm, good
-  question." Turn this off with **Companion › Replies › Short first
+- Martlet asks the model to start spoken replies with a few quick words.
+  The model may not follow that instruction. Turn it off with **Companion › Replies › Short first
   sentence**.
 - When a reply is slow to start, she can say a quick "Mm," or "Hmm..." in her
   own voice. Turn on **Companion › Voice › Quick sounds while Martlet thinks**
@@ -167,11 +143,11 @@ These settings are in **Companion › Listening › How you talk**.
   reply may stay silent first. The sounds are made once with your voice and
   kept on this PC. With a paid cloud voice, Martlet makes them only when you
   press **Make quick sounds now** (one short request for each).
-- Long replies are said to the end.
+- Reply length depends on the model, your reply limit and whether speech succeeds.
 - **Speak Martlet's replies aloud** in **Companion › Voice** turns her voice
   on or off. **Mute voice** on the character's right-click menu does the same.
   When the voice is off or fails, the text still shows in the talk window and
-  the speech bubble.
+  the speech bubble, when the bubble is enabled.
 - **Companion › Replies › Thinking steps** is Off by default, so replies start
   sooner. A model that always thinks first uses its own default.
 
@@ -222,7 +198,8 @@ the box says how the last listen went.
 you have an audio model) sends the recording of what you say to that model, so
 it hears your tone as well as your words.
 
-- Each recording is up to 30 seconds a message. With an audio model, the model
+- Recordings of up to 30 seconds can accompany a message. Longer turns send only the transcript.
+  With an audio model, the model
   gets the last lines of the conversation too. It describes how you sound
   (tone, laughter, sighs, other voices, background sounds) in words. Thinking
   then gets the transcript and those words, never the recording.
@@ -254,7 +231,8 @@ it hears your tone as well as your words.
 - The **Talking to someone else** check-in (on by default) notices when you
   talk to someone in the room, in a call or on the phone. Martlet then holds
   back until you talk to her again. See [Check-ins](Thinking#check-ins).
-- **Voice ID** makes Martlet answer only your voice. **People** learns who is
+- **Voice ID** filters replies to voices that match your voiceprint. It is not a security check.
+  **People** learns who is
   talking. See [Listening and Voice ID](Listening-and-Voice-ID).
 
 ## Context
@@ -273,8 +251,9 @@ fail on long conversations. Reload an open conversation to use a new size.
 ## Privacy
 
 - The microphone, the camera and the screen stay off until you press a button.
-- Your words go only to the Listening and Thinking you chose. A cloud service
-  gets them only when you choose that service.
-- Martlet asks before it uses a tool or does a risky smart-home action.
+- Recordings and text follow your Listening, Thinking, Hearing and tool settings.
+  An audio model can receive recordings too. External tools receive the arguments shown in their confirmation.
+- External tools ask first unless you allowed the tool or server. Terminal has its own confirmation setting.
+  Smart-home actions follow the Smart home permissions. See [Tools and MCP](Tools-and-MCP#confirmations).
 
 More detail: [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md), [Voice latency](https://github.com/throndir2/Martlet/blob/main/docs/VOICE_LATENCY.md), [Messaging](https://github.com/throndir2/Martlet/blob/main/docs/MESSAGING.md).

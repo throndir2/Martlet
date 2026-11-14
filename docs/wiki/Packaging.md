@@ -1,53 +1,27 @@
 # Packaging
 
-Martlet ships three kinds of packages:
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `packaging/windows/Build-PublicRelease.ps1`, `packaging/linux/build-linux.sh`, `packaging/macos/build-macos.sh`, `.github/workflows/windows-release.yml`
 
-| System | Package | Built by |
+The release workflow builds the Windows installer and Linux and macOS companion packages. See [Releasing](Releasing) for the release flow.
+
+| System | Package | Build script |
 | --- | --- | --- |
-| Windows 10 (version 2004 or later) and 11, x64 | `Martlet-<version>-win-x64.exe`, an unsigned per-user Inno Setup installer | `packaging\windows\Build-PublicRelease.ps1` |
-| Linux x64 and arm64 | `Martlet-<version>-linux-<arch>.AppImage` and `martlet_<version>_<amd64 or arm64>.deb` | `packaging\linux\build-linux.sh` |
-| macOS 14 or later, Apple silicon and Intel | `Martlet-<version>-macos-arm64.dmg` and `Martlet-<version>-macos-x64.dmg` | `packaging\macos\build-macos.sh` |
+| Windows x64 | Unsigned per-user installer | `packaging/windows/Build-PublicRelease.ps1` |
+| Linux x64 and arm64 | AppImage and `.deb` | `packaging/linux/build-linux.sh` |
+| macOS arm64 and x64 | `.dmg` | `packaging/macos/build-macos.sh` |
 
-The installers are not code-signed. The Mac app is ad-hoc signed only, not Developer ID signed and not notarized. These are normal releases. Never call a package signed, and never tell users to turn off Windows or macOS security.
-
-## The release workflow
-
-`.github\workflows\windows-release.yml` (*Release (manual) - Windows, Linux and macOS*) builds all packages for a release. It has only a manual trigger (`workflow_dispatch`). It has no push, pull request, tag or schedule trigger, and it runs no tests, lint, scans or smoke checks. See [Releasing](Releasing).
+The Mac app is ad-hoc signed, not Developer ID signed or notarized. A checksum verifies file integrity; it is not a publisher signature. Do not tell users to disable operating-system security.
 
 ## Windows
 
-To build the public installer locally without an upload, run this from the repository root on Windows x64 with PowerShell 7:
+The public build script requires a new absolute output directory. Its `-Version` must match `Directory.Build.props`. It builds the payload and installer with the pinned character dependencies. Follow [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md) for the build requirements and commands.
 
-```powershell
-$sdk = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'   # the exact 10.0.401 SDK
-$run = Join-Path $PWD ("artifacts\windows-public-" + [guid]::NewGuid().ToString('N'))
-.\packaging\windows\Build-PublicRelease.ps1 -Version 0.1.0 -DotnetPath $sdk -OutputDirectory $run
-```
+## Linux and macOS
 
-It writes `package\installer\Martlet-<version>-win-x64.exe`, `installer-manifest.json` and `SHA256SUMS.txt`. The public installer has its own AppId and installs to `%LocalAppData%\Programs\Martlet` without administrator rights. User data stays in `%LocalAppData%\Martlet`.
+The Linux script publishes the companion for each selected architecture. The macOS script can include the host with `--host-project`. On systems other than macOS, it stops after building app bundles; `.dmg` creation needs macOS tools.
 
-- **Payload.** The Desktop (with its private `AvatarRenderer` runtime) and Doctor each have a complete self-contained runtime. The payload also has help, notices, a CycloneDX SBOM (software bill of materials), `manifest.json` and `SHA256SUMS.txt`. It uses no trimming, single-file packing or ReadyToRun. The SDK is not shipped.
-- **Prerequisites tool.** Each installer ships `prerequisites\Install-Prerequisites.ps1` and a **Martlet prerequisites** Start menu shortcut. The installer asks no setup questions. The app asks them, and installs optional items only after the user chooses them.
-- **Internal lane.** `Publish-Windows.ps1`, `Get-InnoSetup.ps1`, `Build-Installer.ps1`, `Test-Packaging.ps1` and `Smoke-Package.ps1` make and check a separate internal development installer. Never upload an internal build as a release.
-- **Evidence.** The manifests, checksums, provenance and SBOM detect accidental changes. They are not publisher signatures or a vulnerability check.
-
-## Linux
-
-```bash
-bash packaging/linux/build-linux.sh --version 0.1.0 --arch x64 --arch arm64 --output artifacts/linux-release
-```
-
-It needs bash, curl, sha256sum, file, dpkg-deb, python3, Node.js 20.11 or later and npm on x86_64 or aarch64 Linux (a Linux host, WSL or the .NET SDK image in Docker). Both architectures build on either one. The package is a self-contained publish of `src/Martlet.Companion`. The `.deb` installs to `/opt/martlet` with a `martlet` command, a menu entry and an icon. It depends on WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`) and libsecret. The AppImage uses the distribution's WebKitGTK 4.1, libsecret and libicu.
-
-**Character and notices (Linux and macOS).** Both scripts run `npm ci`, build the character renderer again and need the Live2D SDK download. They stop when `character/app.js` or `character/live2d/sdk/core.js` is missing. `packaging/collect-notices.py` then writes Martlet's `LICENSE`, the .NET runtime license and notices, and the complete license text of every NuGet package (from each `.deps.json`) into a notices folder. It stops when a license is missing. The folder is `/usr/share/doc/martlet` (with a `copyright` file) in the `.deb`, `usr/lib/martlet/notices` in the AppImage and `Martlet.app/Contents/Resources/notices` on macOS. Add a `packaging/licenses/<SPDX id>.txt` file when a new package has only a license expression that has no text there yet.
-
-## macOS
-
-```bash
-bash packaging/macos/build-macos.sh --version 0.1.0 --arch arm64 --arch x64 --output artifacts/macos-release \
-  --host-project src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj
-```
-
-`Martlet.app` holds the companion and, with `--host-project`, the Mac host in `Contents/Resources/host`. The script builds and checks the app bundles on any system with python3. It makes the `.dmg` files only on a Mac, because `codesign` and `hdiutil` exist only there. `--no-dmg` stops after the bundles. On first start, users choose **Open Anyway** one time in **System Settings › Privacy & Security**.
-
-More detail: [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md), [Linux and macOS installers](https://github.com/throndir2/Martlet/blob/main/docs/DESKTOP_LINUX_MACOS.md#installers-part-of-the-release-build), [Unsigned Mac builds](https://github.com/throndir2/Martlet/blob/main/docs/MACOS.md#unsigned-builds-what-the-user-sees), [Prerequisites](https://github.com/throndir2/Martlet/blob/main/docs/PREREQUISITES.md), [Releasing](Releasing).
+Both scripts require the character bundle and third-party notices. See [Linux and macOS installers](https://github.com/throndir2/Martlet/blob/main/docs/DESKTOP_LINUX_MACOS.md#installers-part-of-the-release-build) and [Unsigned Mac builds](https://github.com/throndir2/Martlet/blob/main/docs/MACOS.md#unsigned-builds-what-the-user-sees).

@@ -1,5 +1,11 @@
 # Pictures and Creations
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/Pages/Pictures`, `src/Martlet.Conversation/Pictures`, `src/Martlet.Conversation/Research`, `src/Martlet.Core/Creations`
+
 Martlet paints pictures, writes and sings songs, and researches the web, all in
 the background while you keep talking. Everything she makes is a **creation**.
 It waits for you on the **Creations** page.
@@ -24,8 +30,9 @@ a cloud provider is on, it asks first, because a picture there costs money.
 
 Each picture goes to the first place in the list that is free. When a place is
 busy, offline or missing a file, the next place draws. When all are busy, the
-picture waits in the shortest line. Each computer keeps its own list, because
-which place is free depends on where you talk. The pictures are shared.
+picture waits in the shortest line. The list and its choices are shared between your computers. Each computer skips
+places it cannot use. Cloud keys travel as secrets, not as plain setting values.
+The pictures are shared too.
 
 When you add a place, it goes to the end of the list. Press **Up** to draw
 there sooner. With nothing on, pictures are off.
@@ -46,8 +53,6 @@ installs Docker Desktop when it is missing).
   `huggingface.co/Comfy-Org/z_image_turbo` (Apache-2.0): the diffusion model,
   its Qwen3 4B text encoder and the VAE.
 - The descriptions that Martlet writes go to that computer.
-- Do not use it for anything illegal or harmful, or to show real people without
-  their consent. Say that pictures are AI-generated when you share them.
 
 If setup stops, its run window has the details. If setup finishes but Martlet
 can't see Picture making yet, wait a minute and press **Check**.
@@ -58,8 +63,8 @@ Choose **Add address** and type the address of a ComfyUI that you run. Martlet
 sends ComfyUI the workflow and the description through ComfyUI's own API, and
 fetches the picture.
 
-1. Start ComfyUI with `--listen`, so that other computers can reach it.
-   ComfyUI has no password, so do this only on your own network.
+1. Make your ComfyUI address reachable from the PC that runs Martlet.
+   Use only a network you trust. Do not expose an unprotected ComfyUI service to the internet.
 2. Open the place's **Settings** and press **Connect**. Martlet shows the
    ComfyUI version, its checkpoints and whether Z-Image Turbo is there.
 3. Choose the **Workflow** and press **Save**:
@@ -111,17 +116,17 @@ call tools.
 Martlet looks things up on the web in the background and tells you what she
 found.
 
-Turn it on or off on **Companion › Background thinking › Web research**, with **Let
-Martlet search the web and read pages to look things up**. It is on by default.
-It needs **Thinking longer** on and a Thinking model that can call tools.
+Open **Companion › Background thinking** and use **Look things up on the web**.
+It is on by default. It also needs **Think longer about hard questions** on,
+a Thinking model that can call tools and an available background-thinking place.
 
 How much she looks up depends on the question:
 
 1. She answers what she knows at once. Most questions need no search.
 2. She checks her [app guides](App-Guides) and her earlier reports.
 3. For one fact she isn't sure of, such as a price, a date or how to get
-   something in a game, she does a **quick look-up**. She tells you in a minute
-   or two.
+   something in a game, she does a **quick look-up**. It has a budget of 3 searches, 9 pages and 4 model steps, with a 10-minute time limit.
+   It can finish sooner when a page answers the question.
 4. When you ask her to look into something, she does **research**: up to 30
    searches and 60 pages, with notes as she reads. Ask for an in-depth look,
    and she reads about twice as much.
@@ -132,11 +137,12 @@ While she researches:
   report.
 - The report has numbered sources. She keeps it in Creations and offers to show
   it in your browser.
-- When the report is ready, she checks each claim against the page it cites and
-  adds a **Source check** to the report. You don't wait for it.
+- After the report is ready, a background job can check supported cited claims against their pages.
+  It adds a **Source check** when it completes. This is a model check, not proof that every claim is correct.
 - Later, ask about it again. She finds the part of the report that answers,
   with its pages.
-- One research job runs at a time, with no time limit. **Cancel** in the talk
+- One full or deep research job runs at a time, with no time limit.
+  Up to two quick look-ups can run beside it. **Cancel** in the talk
   window's **Background tasks** list stops it.
 
 The work runs on a member of your [Thinking pool](Thinking#thinking-pool) that
@@ -179,7 +185,7 @@ A creation that a newer Martlet made can be of a kind that this Martlet doesn't
 know yet. Update Martlet to use it on this PC. Until then, Martlet keeps it for
 your other computers.
 
-There is no Play button. Ask Martlet instead: "Sing the rain song again",
+The Creations page has no Play button. Ask Martlet instead: "Sing the rain song again",
 "Start from the chorus" or "Show me the fox picture."
 
 ## On all your computers

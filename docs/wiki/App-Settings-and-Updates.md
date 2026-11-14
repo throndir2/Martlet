@@ -1,5 +1,11 @@
 # App Settings and Updates
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Desktop/MainWindow.xaml`, `src/Martlet.Desktop/MainWindow.Updates.cs`, `src/Martlet.Core/Installation/AppUpdateStaging.cs`
+
 ![Settings](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/settings.png)
 
 Open **Settings** in the left rail for Martlet's own choices: its look, how it starts and closes, updates and tools. Everything about your companion is on the **Companion** page.
@@ -77,7 +83,7 @@ If Martlet can't install beside itself, it asks to install the usual way. Then i
 
 - A check or download that times out is tried again later.
 - If Martlet can't save the download, check that the disk has free space and that you can write to Martlet's data folder.
-- If the install is canceled or doesn't finish, press **Install** again.
+- If an install fails or is canceled, press **Install** again. Martlet does not automatically retry a failed install of that version.
 - When Martlet exits, a small helper switches to the new version and updates the shortcuts and Windows' list of installed apps. It writes what it did to `install.log` in the updates folder. If its last step fails, the new version runs, but Windows' list of installed apps may still show the earlier version. If the program folder is still in use, or the version installed beside Martlet is missing, the helper runs the whole installer instead.
 
 **Install updates automatically** (off by default) does all of this by itself. Martlet restarts into the update as soon as it isn't busy. It waits for a reply, for you while you talk, for a question you haven't answered and for setup work or downloads. The status line says what it waits for. After the restart, the character and listening come back if they were on.

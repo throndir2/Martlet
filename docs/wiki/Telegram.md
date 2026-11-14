@@ -1,11 +1,17 @@
 # Telegram and WhatsApp
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Messaging`, `src/Martlet.Desktop/Messaging.cs`, `src/Martlet.Desktop/Pages/Messaging`
+
 Write to Martlet from your phone. She answers Telegram and WhatsApp messages in
 the same conversation as the talk window, with the same Thinking model,
 personality and memory. Her replies come back as text.
 
-Open **Companion › Messaging**. Set an app up below, then turn it **On** under
-**Answer messages**.
+Open **Companion › Messaging**. Connect an app as described below. Connecting
+turns on answers on this PC; you can change this under **Answer messages**.
 
 ## Telegram
 
@@ -19,8 +25,8 @@ Open **Companion › Messaging**. Set an app up below, then turn it **On** under
 4. Send the code to your bot, or press **Open in Telegram**.
 
 Martlet asks Telegram for new messages itself, so you need no public address,
-open port or webhook. The token stays in Windows Credential Manager on this PC
-and goes only to Telegram.
+open port or webhook. The token is stored in Windows Credential Manager. It is also shared as a
+secret with your paired computers and sent to Telegram.
 
 If Telegram doesn't accept the token, copy it again from BotFather. Only one
 program can read a bot's messages, so use each bot with one Martlet only.
@@ -68,13 +74,14 @@ it yourself with `winget install Cloudflare.cloudflared` and try again. Martlet
 doesn't run a copy whose checks fail.
 
 Martlet accepts only messages signed with your app secret. It keeps the token
-and the secret in Windows Credential Manager and sends them only to Meta. Use a
+and the secret in Windows Credential Manager, shares them with your paired
+computers, and sends them to Meta. Use a
 Meta app for Martlet only.
 
 ## How it works
 
-- Martlet answers only the chats you paired. She ignores group chats. A stranger
-  is told once how to pair, and their message never reaches the Thinking model.
+- Martlet answers only the chats you paired. She ignores group chats. An unpaired chat can receive pairing instructions once while Martlet runs.
+  Its messages do not reach the Thinking model.
 - She answers while Martlet runs on this PC, also while Windows is locked. Then
   she uses text only: never the microphone, the screen or her voice.
 - **Also say replies aloud on this PC** speaks her replies too, but never while

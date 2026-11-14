@@ -49,6 +49,7 @@
 
 - [Developer Guide](Developer-Guide)
 - [Repository Layout](Repository-Layout)
+- [Source Projects](Source-Projects)
 - [Architecture](Architecture)
 - [Validation and Testing](Validation-and-Testing)
 - [Martlet MCP Server](Martlet-MCP-Server)

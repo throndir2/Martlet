@@ -1,5 +1,11 @@
 # Accounts and Household
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Accounts`, `src/Martlet.Desktop/AccountSession.cs`, `src/Martlet.Desktop/AccountWindow.xaml.cs`
+
 Everyone at home gets their own Martlet: their own characters, memories and settings, on every computer. The household shares the computers, the paid API keys and the voices Martlet knows.
 
 ## Signing in
@@ -189,7 +195,7 @@ Use this when one person has two accounts.
 
 The other account's characters, memories, conversations and voices move into your account. Its logins sign in to your account, and the other account goes away. You can't merge the household owner's account into another account: sign in as the owner and merge the other account into it. If the merge stops, the other account stays; try again.
 
-Martlet merges accounts with the same name by itself. Each PC makes an account with the name of its Windows login, so when your Windows logins on two PCs have the same name, Martlet knows that they are the same person. Between replies, the PC moves its own account into the household's account of that name, and you see only one account in the picker.
+Martlet can merge accounts with the same name by itself. It treats matching Windows login names as the same person, even when they belong to different people. Between replies, the PC moves its own account into the household's account of that name, and you see only one account in the picker.
 
 ## Privacy notes
 

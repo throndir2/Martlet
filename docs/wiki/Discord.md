@@ -1,5 +1,11 @@
 # Discord
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Discord`, `src/Martlet.Desktop/DiscordService.cs`, `src/Martlet.Desktop/DiscordReplyEngine.cs`
+
 Martlet can be on Discord in two ways:
 
 - **Martlet's own bot** chats in direct messages, channels and threads, joins
@@ -38,8 +44,8 @@ Discord's rules and gets accounts banned. So:
 6. Under **People on Discord**, DM the bot and choose **That's me**, or paste
    your user ID. Choose the **Home server** there too.
 
-Martlet keeps the bot token in Windows Credential Manager, never in settings
-files or logs. **Save and connect** first checks that the text looks like a bot
+Martlet keeps the bot token in Windows Credential Manager, not in the settings
+file. It shares the token as a secret with your paired computers. **Save and connect** first checks that the text looks like a bot
 token. If it doesn't, go to the **Bot** page in the Developer Portal, press
 **Reset Token** and copy the whole token. **Forget the bot** disconnects and
 removes the token, but keeps your chat modes and people. If the token may have
@@ -183,8 +189,7 @@ it may cost money. Martlet installs no camera driver.
   other people's messages only in a server where she can manage messages.
 - Discord replies never use tools, Home Assistant or your earlier
   conversations. Remembered facts go only into your own DMs with her.
-- Your conversation on the PC comes first. Discord waits, and never slows your
-  replies.
-- She never does anything sexual in a Discord call.
+- When Discord shares a local model with your PC conversation, Martlet gives
+  the PC conversation priority and can stop a Discord request.
 
 More detail: [Discord](https://github.com/throndir2/Martlet/blob/main/docs/DISCORD.md), [Messaging](https://github.com/throndir2/Martlet/blob/main/docs/MESSAGING.md), [MCP](https://github.com/throndir2/Martlet/blob/main/docs/MCP.md).

@@ -1,5 +1,11 @@
 # Personality and Characters
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Settings/CompanionSettings.cs`, `src/Martlet.Desktop/CompanionWindow.xaml.cs`, `src/Martlet.Core/Lorebooks`, `src/Martlet.Desktop/Pages/Profiles`
+
 Make Martlet your own: write her personality, import character cards and lorebooks, edit her prompts, and switch her look, voice and personality in one click.
 
 ![Companion Personality](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/companion-personality.png)
@@ -10,7 +16,8 @@ A persona says who Martlet is and how she talks. Open **Companion › Personalit
 
 The persona text is the character's part of the system prompt (the instructions the model reads first). Martlet adds its own instructions after it (reply length, tools, what it hears) and tells the model to treat your headings and rules as the character's own. You don't need a separate system prompt: see or edit Martlet's part in **Companion › Prompts › Persona**. Martlet greets you in character when it starts, and **Check-ins › Staying in character** reminds it when it drifts.
 
-You can keep up to 1,000 personas, and one persona can be up to 100,000 characters long, so big character cards fit. **Delete** asks first, because you can't undo it.
+You can keep up to 1,000 personas. Each persona can contain up to 100,000 characters.
+All persona text together has a 1,000,000-character limit, with file-size limits too. **Delete** asks first, because you can't undo it.
 
 ### Where the voice pauses
 
@@ -46,7 +53,7 @@ A PNG card carries the character's details inside the image file. A resaved, con
 
 ## Lorebooks
 
-Lorebooks work like SillyTavern World Info. Each entry has keywords. When a keyword comes up in the recent conversation, the entry's text goes to the Thinking model as a note. Always-on entries go every time.
+Lorebooks work like SillyTavern World Info. Each entry has keywords. When a keyword comes up in the recent conversation, the entry's text goes to the Thinking model as a note. Always-on entries do not need a keyword match. The reply budget and other entry rules still apply.
 
 Open **Companion › Lorebook** to turn lorebooks on or off, import one or press **Edit lorebooks**. In the editor you create, import, scope and edit lorebooks and entries. **Try it** shows which entries a message would trigger, without sending anything. Edits save on their own.
 
@@ -57,13 +64,13 @@ Open **Companion › Lorebook** to turn lorebooks on or off, import one or press
 ### Lorebook settings
 
 - **Scan depth (messages)**: how many of the latest messages Martlet searches for keywords, counting the one it answers.
-- **Budget per reply**: the most entry text that goes into one reply. Entries with a higher **Order** go first. An entry that doesn't fit is skipped, and **Try it** lists it.
+- **Budget per reply**: the most entry text that goes into one reply. Always-on entries get priority. Within each group, entries with a higher **Order** get priority for the budget. An entry that doesn't fit is skipped, and **Try it** lists it.
 - **Match other word forms**: keywords also match other forms of their words: *dragon* finds *dragons*, *Drache* finds *Drachen*. Keywords written as regular expressions don't change.
 - **More entry options** on an entry overrides these settings for that entry only. A box left unfilled uses the setting for all lorebooks.
 
 ### Try it
 
-Type a sample message, choose a persona and press **Show matches**. Martlet shows which entries would be added, and why. Nothing is sent to a model. Entries with a chance below 100% show as if they were added.
+Type a sample message, choose a persona and press **Show matches**. Martlet shows which entries would be added, and why. Nothing is sent to a model. **Try it** treats chance-based entries as if their chance check passed. Disabled entries and other matching rules still apply.
 
 ### When a lorebook can't be saved
 
@@ -79,7 +86,8 @@ The bottom of the Lorebooks window tells you if every change is saved. When a ch
 
 **Companion › Prompts** shows the requests Martlet sends to the Thinking model and the notes around what it knows: the persona wrapper, lorebook, memory, screen looks, check-ins and more. The rules a reply follows (reply length, tools, always listening and the others) are [skills](#skills). Edit any prompt, and your text is used instead of the built-in one.
 
-The top card, **What one reply sends**, says what every reply to you carries (the persona prompt, the pinned skills and One moment, with their size in tokens) and which skills your last reply also carried because their feature is on. Under each group's title, a line says when Martlet sends it: only the persona prompt goes with every reply. Each prompt shows an estimate of its size in tokens. **Use built-in text** puts one prompt back, and **Use all built-in prompts** puts all of them back. Some prompts need a fixed line format, because Martlet reads the answer.
+**What one reply sends** lists the persona prompt, pinned skills and One moment, with their estimated token sizes.
+It also lists feature skills attached to the last reply. Each group explains when Martlet sends its prompts. Each prompt shows an estimate of its size in tokens. **Use built-in text** puts one prompt back, and **Use all built-in prompts** puts all of them back. Some prompts need a fixed line format, because Martlet reads the answer.
 
 Press the **?** after a prompt's name to see when Martlet sends it and which words in braces it fills in.
 
@@ -87,13 +95,14 @@ Press the **?** after a prompt's name to see when Martlet sends it and which wor
 - **Words in braces**: Martlet fills in words such as `{name}` or `{silent}` when it sends the prompt. Keep them where you want that text. `{silent}` is the word the model answers to stay quiet.
 - **Empty prompts**: empty a prompt to send nothing for it. The page says **Empty: nothing is sent for this prompt**.
 - **Fixed line formats**: Martlet reads the answers to some prompts, such as **Remembering** (its REMEMBER, UPDATE and FORGET lines) and **Learning names**. Each check-in adds its own answer format, such as a REMIND: or SAY: line, or OK. Keep these line formats, or Martlet can't read the answer.
-- **Saving**: edits save on their own a moment after you stop typing, and apply to every new reply, glance and memory check. Reload an open conversation to use them.
+- **Saving**: edits save on their own a moment after you stop typing. Reload an open conversation to use the saved prompts.
 - **Prompt caches**: many prompts stay the same from message to message, so the model's prompt cache can reuse them and replies start sooner. Facts that change, such as the time or what the character shows now, go in the notes of the newest message instead.
 - **Notes**: some prompts go in the notes of one request only. Martlet sends them with that message and never keeps them in the conversation.
 
 ### Token counts
 
-Token counts are Martlet's own estimate: about one token for every three bytes of text. Martlet uses the same rule to keep requests within the model's limit, so the model itself may count somewhat fewer. Each count is for the prompt as written; the text filled in for words in braces adds to it when Martlet sends it. **All prompts together** adds up every prompt, but each request sends only the prompts it needs. The built-in prompts are short on purpose: all of them together are under 10,000 tokens, and a reply with every feature on sends under 2,000 tokens of them.
+Token counts are Martlet's own estimate: about one token for every three bytes of text. Martlet uses the same rule to keep requests within the model's limit. The provider's actual count can differ. Each count is for the prompt as written. Text inserted into words in braces adds to the request size. **All prompts together** adds up every prompt, but each request sends only the prompts it needs. The total changes with the prompts and features. Read **What one reply sends** for the current estimate.
+That estimate does not include every possible tool result or conversation message.
 
 Each of Martlet's messages in the talk window shows its token line beside **What was sent**, such as *3,412 input tokens · instructions about 1,150*: how many input tokens the Thinking model read for that message (Martlet's estimate when the model didn't say), and how much of it was Martlet's instructions. **What was sent** shows every request section by section, with the size of each.
 
@@ -107,7 +116,8 @@ Each of Martlet's messages in the talk window shows its token line beside **What
 
 ## Adult content (18+)
 
-**Companion › Replies › Adult content** is off by default. Turn it on only if you are 18 or older. Then an adult character can flirt, be sexual and react to your touches explicitly, always true to her personality. She never does anything sexual with a character under 18, and never in a Discord call. Many cloud models refuse such content; models you run yourself usually don't.
+**Companion › Replies › Adult content** is off by default. Turn it on only if you are 18 or older. Martlet can then include adult-content instructions for an adult character. It disables those instructions in Discord calls.
+The instructions prohibit sexual content with minors. Model behavior and provider restrictions still apply.
 
 ## Make characters with your AI assistant
 
