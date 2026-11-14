@@ -533,9 +533,18 @@ def sync_plan(wiki_root: Path, output_root: Path) -> tuple[list[str], list[str],
     changed = sorted(
         name for name, source in expected.items()
         if not (wiki_root / Path(name)).is_file()
-        or (wiki_root / Path(name)).read_bytes() != source.read_bytes()
+        or not _same_file_contents(wiki_root / Path(name), source)
     )
     return changed, stale, stale_assets
+
+
+def _same_file_contents(existing: Path, expected: Path) -> bool:
+    existing_bytes = existing.read_bytes()
+    expected_bytes = expected.read_bytes()
+    if expected.suffix.lower() == ".md":
+        existing_bytes = existing_bytes.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        expected_bytes = expected_bytes.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return existing_bytes == expected_bytes
 
 
 def apply_site(wiki_root: Path, output_root: Path) -> None:
