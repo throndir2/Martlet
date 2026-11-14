@@ -1,10 +1,19 @@
 # ElevenLabs voice: your cloned voice with tones
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (engine catalog and route selector only)
+**Code:** `src/Martlet.Core/Settings/ElevenLabsSetup.cs`, `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Providers/ElevenLabsDialogueClient.cs`, `src/Martlet.Providers/ElevenLabsVoiceCloning.cs`, `src/Martlet.Desktop/Pages/Voice/`
+
+This audit checked the engine catalog and route controls only. It did not
+repeat provider requests, upstream checks, or runtime measurements below.
+
 Martlet can speak replies with **ElevenLabs** (elevenlabs.io). ElevenLabs
 copies one of your saved voices and speaks with it in real time. It also does
 tones of voice, such as `[whispers]`, `[happy]` or `[sad]`, and sounds such as
-`[laughs]`. Martlet's self-hosted Chatterbox Turbo clones voices too, but it
-does not perform tones (see [Chatterbox voice](CHATTERBOX_VOICE.md#tags)).
+`[laughs]`. Chatterbox Turbo also supports a smaller set of sound and tone
+tags (see [Chatterbox voice](CHATTERBOX_VOICE.md#tags)).
 ElevenLabs is the only cloud service we checked whose own documentation covers
 a cloned voice and tone control in real time.
 

@@ -1,5 +1,11 @@
 # Linux and macOS desktop companion: research, decision and plan
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (DX01 source paths and status only)
+**Code:** `src/Martlet.Companion/`, `src/Martlet.Companion.Platform/`, `src/Martlet.Platform.Linux/`, `src/Martlet.Platform.MacOS/`
+
 **Plan, 2026-10-06. Built slices report their status below (DX01: see
 [Status](#status)); every Linux-desktop and Mac result is NOT RUN until a slice
 reports it.** The owner asked for:

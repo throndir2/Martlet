@@ -1,5 +1,11 @@
 # Share your language models: the OpenAI-compatible endpoint
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (request and front-door source owners; network behavior, limits, and proxy examples not rechecked)
+**Code:** `src/Martlet.Gateway/GatewayOpenAi.cs`, `src/Martlet.Gateway/GatewayFrontDoor.cs`, `src/Martlet.Gateway/GatewayInferenceOutside.cs`, `src/Martlet.Core/Access/`
+
 Every Martlet host serves an **OpenAI-compatible endpoint**: an API in the
 same form as OpenAI's, at `/v1`. People you give a key to can use the
 language models your hosts run from any app that works with the OpenAI API

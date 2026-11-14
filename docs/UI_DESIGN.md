@@ -1,5 +1,15 @@
 # Martlet desktop UI design
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Product designers and developers
+**Last verified:** 2026-11-13 against 5f40af2d9 (document scope and help-mark references only; screen and interaction claims not rechecked)
+**Code:** `src/Martlet.Desktop/HelpTip.cs`, `src/Martlet.Desktop/`
+
+This is a design reference, not a complete record of current interface behavior.
+Its implementation plan is historical, not a current work list. Use the feature
+guides for behavior that this audit has not checked.
+
 Feedback on the first screen was clear: it was overwhelming, and people could
 not tell what to do next. The old home window stacked about twenty buttons, a
 set of update checks and three diagnostic text boxes on one scrolling
@@ -961,7 +971,7 @@ Windows' high contrast still wins.
 when the `MARTLET_REDUCE_MOTION` environment variable is `1`. With it off,
 looping animations do not start and transitions complete immediately.
 
-## Implementation plan
+## Historical implementation plan (not verified)
 
 1. Shared styles in `Themes/Motion.xaml` (nav items, choice cards, chips, node
    cards, step rows, link buttons), merged by `App` and the `ThemedWindow`

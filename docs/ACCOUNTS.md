@@ -1,12 +1,12 @@
 # Accounts and households
 
-Status: **design and work plan**. The work plan below marks the workstreams
-that shipped. Each workstream updates this page and the user guides when it
-ships. This
-page is the contract that the parallel workstreams share: change a contract
-here (in the same PR) before code depends on a different one.
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Accounts/`, `src/Martlet.Core/Creations/`, `src/Martlet.Core/Installation/`, `src/Martlet.Core/Settings/SettingsFiles.cs`, `src/Martlet.Core/Settings/ThinkingPoolShare.cs`, `src/Martlet.Core/Sharing/`, `src/Martlet.Core/Sync/`, `src/Martlet.Desktop/`, `src/Martlet.Gateway/`, `src/Martlet.HostClient/`
 
-## Goal
+## Planned: account and household goal
 
 Several people use Martlet in one home. Each person has their own companion:
 their own characters, personalities and memories, so each person's character
@@ -88,7 +88,7 @@ Today's shared-settings sections:
 
 | Household | Account |
 | --- | --- |
-| `thinking`, `listening`, `speaking`, `thinking-fallback`, `character-actions`, `character-touch-zones`, `character-eyes`, `vroid-hub-looks`, `voice-recognition`, `voice-clips`, `smart-home`, `discord`, `messaging`, `pool-keys`, `pictures-workflows`, `chatterbox-style`, `recommended-setup`, `updates`, `model-abilities`, `work-sharing`, `motion`, `pools`, `pc.*`, `role.*`, `setup-run.*`, any other key (for example `sharing.*`), the voice list, speaking voices, character models, the cluster plan | `companion` (personalities and character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`, `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`, `touch-temperament`, `character-reaction-changes`, `check-ins`, `memory-brief`, `game-state`, `user-preferences`, `advanced-settings`, `reminders.*` (in each account's own document, one entry per device), creations |
+| `thinking`, `listening`, `speaking`, `thinking-fallback`, `character-actions`, `character-touch-zones`, `character-eyes`, `vroid-hub-looks`, `voice-recognition`, `voice-clips`, `smart-home`, `discord`, `messaging`, `pool-keys`, `thinking-pool`, `thinking-pool-choices`, `pictures-workflows`, `chatterbox-style`, `recommended-setup`, `updates`, `model-abilities`, `work-sharing`, `motion`, `pools`, `pc.*`, `role.*`, `setup-run.*`, any other key (for example `sharing.*`), the voice list, speaking voices, character models, the cluster plan | `companion` (personalities and character profiles), `replies`, `prompts`, `skills`, `memory`, `lorebooks`, `character`, `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`, `touch-temperament`, `conversation-history`, `character-reaction-changes`, `check-ins`, `memory-brief`, `game-state`, `user-preferences`, `advanced-settings`, `reminders.*` (in each account's own document, one entry per device) |
 
 `Martlet.Core.Sync.SettingScopes` is the list in code. See
 [Account settings](#account-settings).
@@ -131,8 +131,11 @@ Built (W6). What the PC is for is the same for every Windows user of the PC:
   another Windows user's Docker Desktop: sign in to Windows as that user to
   manage it*. The pairing with the host service stays with each device (Device
   scope).
-- **Not built yet.** Large downloaded models (Ollama models, Parakeet, voice
-  models) stay where each engine keeps them, mostly per Windows user.
+
+### Planned: PC-scoped downloaded models
+
+PC scope does not yet include downloaded Ollama, Parakeet or voice models. Each
+engine keeps its files in its current location, often per Windows user.
 
 MCP: `pc_scope` and the desktop's `DeviceRoleWhere` ([MCP](MCP.md)).
 
@@ -151,7 +154,8 @@ MCP: `pc_scope` and the desktop's `DeviceRoleWhere` ([MCP](MCP.md)).
   together keeps its memories in its own `character-<id>` space, and only that
   character reads it: your other characters don't, so each character stays its
   own individual (`MemoryAccount.Shared` stays empty).
-- Every host keeps every space. A device downloads only the spaces it may read.
+- Every host keeps up to 64 spaces. Creating another returns
+  `memories.spaces_full`. A device downloads only the spaces it may read.
 - Hosts decide from the account directory and the household's sharing entries:
   `account-<id>` only for a device where that account is signed in,
   `household` for every member device, and `character-<id>` for a device where
@@ -173,11 +177,8 @@ MCP: `pc_scope` and the desktop's `DeviceRoleWhere` ([MCP](MCP.md)).
 | Share new memories about me | New facts about this person go to `household`, which every character reads |
 
 Built by W10 ([user guide](wiki/Personality-and-Characters.md#sharing-a-character-with-your-household),
-[memories](MEMORY.md#sharing-memories)). Code: `src\Martlet.Core\Sharing\`
-(`HouseholdSharing`, `SharedCharacters`), `src\Martlet.Desktop\MainWindow.Sharing.cs`,
-`MemoryWindow.Sharing.cs`, `MemorySharing.cs`, the host rule in
-`src\Martlet.Gateway\GatewayMemorySpaceAccess.cs` and the give route in
-`GatewayMemorySpaces.cs`.
+[memories](MEMORY.md#sharing-memories)). Source code is in
+`src/Martlet.Core/Sharing/`, `src/Martlet.Desktop/` and `src/Martlet.Gateway/`.
 
 - **What an account shares** is its household entry `sharing.<account>`
   ([shared contracts](#shared-contracts)). It is the only place another person
@@ -312,10 +313,8 @@ All workstreams use these forms. Change them here first.
 
 ## Account directory
 
-Built by W2. Code: `src\Martlet.Core\Accounts\` (`Account.cs`,
-`AccountDirectory.cs`, `OwnerAccount.cs`), the host store and routes in
-`src\Martlet.Gateway\GatewayAccountDirectory.cs`, the desktop's host client in
-`src\Martlet.HostClient\HostAccounts.cs`. The MCP tool
+Built by W2. Source code is in `src/Martlet.Core/Accounts/`,
+`src/Martlet.Gateway/` and `src/Martlet.HostClient/`. The MCP tool
 `accounts_sync_selftest` rehearses it end to end ([MCP](MCP.md)).
 
 ### Entry
@@ -394,9 +393,8 @@ Friends (`access.friend`) and API keys are refused. The desktop client is
 
 ## Host sign-in for accounts
 
-Built by W4. Code: `src\Martlet.Gateway\GatewaySignIn.cs` and
-`GatewaySignInHttp.cs`, `src\Martlet.Core\Accounts\AccountAttestation.cs`, the
-desktop client in `src\Martlet.HostClient\HostSignIn.cs`. The
+Built by W4. Source code is in `src/Martlet.Gateway/`,
+`src/Martlet.Core/Accounts/` and `src/Martlet.HostClient/`. The
 user guide is [NETWORK.md](NETWORK.md#household-accounts-on-a-host); the MCP
 tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
 
@@ -430,13 +428,8 @@ tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
 
 ## Account security
 
-Built by W12. Code: `src\Martlet.Core\Accounts\AccountBindingRules.cs`,
-`src\Martlet.Gateway\GatewaySignInRoles.cs` and, in Martlet.Desktop,
-`AccountWindow` (the Account page), `AccountUnlockWindow`,
-`AccountProveWindow`, `AccountLocks.cs`, `AccountProtection.cs`,
-`AccountVault.cs`, `WindowsHello.cs`, `AccountLinks.cs`,
-`AccountSecurityService.cs`, `AccountChoiceDialog.cs` and
-`MainWindow.AccountSecurity.cs`, with small hooks in W7's `AccountSession`
+Built by W12. Source code is in `src/Martlet.Core/Accounts/`,
+`src/Martlet.Gateway/` and `src/Martlet.Desktop/`, with small hooks in W7's `AccountSession`
 (`SignIn` with a binding login, `BindWith`, `SignOut`, `UseAtStart`,
 `UseOnExit`), the account menu and `App` (Unlock at start, exit). MCP:
 `account_security_status` and the account windows' automation IDs
@@ -627,11 +620,9 @@ here):
 
 ## Account settings
 
-Built by W8. Code: `Martlet.Core.Sync` (`SettingScopes.cs`,
-`AccountWorkingCopy.cs`, `AccountSettingsSync.cs`, `SharedSettingsNode.AdoptAsync`),
-the host store and routes in `src\Martlet.Gateway\GatewayAccountSettings.cs`,
-the client in `src\Martlet.HostClient\HostAccountSettings.cs`
-and the desktop in `MainWindow.SettingsSync.cs`.
+Built by W8. Source code is in `src/Martlet.Core/Sync/`,
+`src/Martlet.Gateway/`, `src/Martlet.HostClient/` and
+`src/Martlet.Desktop/`.
 
 Each person keeps their own personalities, character profiles, replies,
 prompts, memory on or off, lorebooks, the character shown, how they talk,
@@ -659,8 +650,9 @@ sections ([Scopes](#scopes)).
   4. The desktop writes the marker.
   A setting that can't change yet (the character window is open) is recorded as
   *adopting*. It is tried again on every sync and is never recorded as the
-  incoming account's choice until the files hold it. If the step fails, the
-  files go back to the outgoing account's settings and the marker stays.
+  incoming account's choice until the files hold it. If incoming adoption
+  fails, the working-copy marker stays unchanged. When an outgoing account
+  exists, Martlet tries to restore its settings before it reports the failure.
 - **An account's copy is whole.** Every setting the files hold that the copy
   lacks is recorded, also when it is Martlet's default (with
   `SharedSettingsNode.KeptRevision`, the lowest revision, so any choice made
@@ -696,11 +688,8 @@ sections ([Scopes](#scopes)).
 
 ## Desktop account session
 
-Built by W7. Code: `src\Martlet.Desktop\AccountSession.cs` (the session, first
-start, change steps, switching, *Add a person*, Prove sign-ins and the
-directory reconcile), `src\Martlet.Desktop\MainWindow.Accounts.cs` (the account
-button, the picker and the directory sync), `AddPersonDialog.cs` and
-`src\Martlet.Core\Accounts\AccountSessionState.cs` (the session file). MCP:
+Built by W7. Source code is in `src/Martlet.Desktop/` and
+`src/Martlet.Core/Accounts/`. MCP:
 `accounts_status` and the picker's automation IDs ([MCP](MCP.md)).
 
 - **Session file** `accounts\session.json` (device scope, never synced):
@@ -780,10 +769,8 @@ button, the picker and the directory sync), `AddPersonDialog.cs` and
 
 ## Provider logins and household providers
 
-Built by W13. Code: `src\Martlet.HostClient\HouseholdSignIn.cs`
-(the household view, sending to every host, linking), the desktop's
-`SignInSettingsWindow`, `SignInJoinWindow`, `HouseholdSignInStore.cs`,
-`MainWindow.HouseholdSignIn.cs` and `JoinedAccount.cs`. The user guide is
+Built by W13. Source code is in `src/Martlet.HostClient/HouseholdSignIn.cs`
+and `src/Martlet.Desktop/`. The user guide is
 [NETWORK.md](NETWORK.md#household-sign-in-providers); the MCP tool
 `signin_lab` with `mode` `account` and `household` `true` rehearses it with the
 desktop ([MCP](MCP.md)).
@@ -859,9 +846,12 @@ Account page in the desktop, `VRoidHub.cs` in `Martlet.Avatar.Hosting`.
   on a server without pixiv's permission, so hosts never do. MCP's
   `vroid_hub_status` says whether an account is linked, never a token.
 
-## Work plan
+## Superseded: original work plan
 
-Each workstream is one session, one branch and one PR into `main`. Merges are
+This table and flowchart preserve the original implementation sequence. The
+dependencies and schedule below are historical, not current guidance.
+
+Each workstream was one session, one branch and one PR into `main`. Merges were
 serial: refresh `origin/main` and reconcile before each merge. Shared files
 (`CHANGELOG.md`, `docs/MCP.md`, `src/Martlet.Mcp.Protocol/McpServer.cs`, the
 host client in `src/Martlet.HostClient/`, route registration in
@@ -898,5 +888,5 @@ flowchart LR
   W12 --> W13
 ```
 
-W1 to W6 run in parallel now. W7 starts when W1 and W2 merge. W8, W9, W11 and
-W12 run in parallel after W7. W10 and W13 come last.
+At the time, W1 to W6 ran in parallel. W7 started when W1 and W2 merged. W8,
+W9, W11 and W12 ran in parallel after W7. W10 and W13 came last.

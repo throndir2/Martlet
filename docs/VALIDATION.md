@@ -1,6 +1,12 @@
 # Validating changes
 
-Every change is validated on the developer's own machines before it merges: its
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `scripts/Test-Martlet.ps1`, `scripts/Invoke-MartletMcp.ps1`, `scripts/Smoke-Doctor.ps1`
+
+Code and behavior changes need local checks before they merge: their
 [targeted tests](#targeted-tests-only) (the tests it adds or changes and the suite
 directly covering the changed code, nothing broader), plus the actual behavior through
 Martlet's MCP server. No remote CI runs, ever (see the
@@ -52,10 +58,11 @@ rather than evidence about the change.
   `-Project Martlet.Conversation.Tests, python:singing`.
 - Name test projects exactly, with `.Tests`. `-Project Martlet.Conversation` names
   the product project and selects every suite that depends on it.
-- Do not run `.\scripts\Test-Martlet.ps1` without `-Project`, or with `-All`: both
-  select every dependent suite (a change to `Martlet.Core` or
-  `Directory.Build.props` selects almost everything). Use them only when the owner
-  asks for a broad run.
+- Without `-Project` or `-All`, the runner selects suites affected by the
+  working-tree diff. A Markdown-only change selects no tests.
+- Do not use `-All` unless the owner asks for a broad run. It selects every
+  dependent suite; a change to `Martlet.Core` or `Directory.Build.props` selects
+  almost everything.
 - When a change alters an API other projects use, build those projects
   (`dotnet build <project>.csproj -c Release`) to catch compile breaks instead of
   running their tests.
@@ -70,23 +77,15 @@ rather than evidence about the change.
 
 | Suites | Engine | Parallelism |
 | --- | --- | --- |
-| 30 .NET test projects under `tests\` (about 6,200 tests) | xUnit 2.9 on VSTest (`Microsoft.NET.Test.Sdk`), `dotnet test` | One generated solution: MSBuild builds each project once and runs the test assemblies side by side; xUnit runs test classes in parallel inside an assembly unless it opts out (Desktop, Gateway, Gateway.Host, Gateway.Persistence and the Linux suites run serially inside) |
+| 24 .NET test projects under `tests\` | xUnit 2.9 on VSTest (`Microsoft.NET.Test.Sdk`), `dotnet test` | One generated solution: MSBuild builds each project once and runs the test assemblies side by side; xUnit runs test classes in parallel inside an assembly unless it opts out (Desktop, Gateway, Gateway.Host, Gateway.Persistence and the Linux suites run serially inside) |
 | Linux-only .NET suites (`MartletTestHosts` = `linux`) | the same, on a Linux validation host | Concurrently with everything else |
 | Python worker suites (`workers\<name>\tests`) | `unittest` | One job per worker, concurrently |
 | Avatar npm packages and node tests (`src\Martlet.Avatar.Vrm`, `src\Martlet.Avatar.Live2D`, `*.test.mjs`) | `node --test` | One job per package, concurrently |
 
-The default and `-All` selections are broad by design, which is why routine
-validation names its targeted tests instead. Measured on a 16-core Windows dev PC
-with a warm build: one leaf test project such as `Martlet.Perception.Tests` runs
-in about 15 seconds. Without `-Project`, `Martlet.Desktop` references nearly every
-library, so most library changes also select `Martlet.Desktop.Tests`, which runs
-serially and takes 4 to 8 minutes depending on what else the PC is doing; a change
-to `Martlet.Core` selects almost everything. The full run (`-All`) took 12 minutes
-on a quiet PC and 20 on a busy one. `Martlet.Desktop.Tests` was the longest suite
-that remains; the two other slow suites (`Martlet.Updates.Tests` and
-`Martlet.Launcher.Tests`) were removed with their unused libraries. Making
-`Martlet.Desktop.Tests` faster is the best way to shorten long runs (tracked in
-[#332](https://github.com/throndir2/Martlet/issues/332)).
+The default selection can be broad when code or shared build files change.
+`-All` always selects every suite. Routine validation names only the targeted
+tests instead. Run time depends on the selected suites and the computer; this
+page does not promise a fixed duration.
 
 ## How the selection works
 
@@ -117,12 +116,17 @@ why, which is how to find the test projects a change touches directly:
   covers (scripts, packaging, deploy files, workflows) is listed as **not covered
   by automated tests**: validate it by running it.
 
-Options: `-Project <name>` runs the named test projects or suites instead of the
-diff (a product project name adds what depends on it); `-Filter` passes a
-`dotnet test` filter; `-All` (only on the owner's request); `-NoHosts`
-keeps everything on this PC; `-RequireAll` fails the run when anything is NOT RUN;
-`-Retries` (default 2) sets how often a new failure is retried; `-TimeoutMinutes`
-(default 30) stops a hung job.
+Options: `-Base <ref>` sets the diff base (default `origin/main`);
+`-Project <name>` runs the named projects or suites instead of the diff (a
+product project name also selects its dependents); `-Filter` passes a
+`dotnet test` filter; `-All` selects every suite; `-NoHosts` disables configured
+validation hosts, so Linux-only suites run locally only on Linux and are otherwise
+NOT RUN; `-RequireAll` fails the run when anything is NOT RUN; `-InitProfile`
+creates the local developer profile; `-Configuration` sets the build
+configuration (default `Release`);
+`-MaxParallel` sets a positive MSBuild parallelism limit (default `0` leaves it
+to MSBuild); `-Retries` (default `2`) sets how often a new failure is retried;
+`-TimeoutMinutes` (default `30`) sets the job timeout.
 `Get-Help .\scripts\Test-Martlet.ps1 -Full` lists them all.
 
 ## Results

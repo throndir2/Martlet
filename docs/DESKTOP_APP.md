@@ -1,5 +1,11 @@
 # The desktop app: updates, notification area, exiting and appearance
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (startup, close-to-tray, and exit owners; update, account, and appearance behavior not rechecked)
+**Code:** `src/Martlet.Desktop/`, `packaging/windows/`
+
 How the Windows app itself behaves: accounts on this PC, app and host updates,
 closing to the notification area, exiting, palettes and the Martlet bird icon.
 Moved here from the README so the README can stay short.

@@ -1,5 +1,17 @@
 # Hosted Thinking: cloud models when Thinking can't run on this PC
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (source references only; dated provider, quota, reliability, and benchmark claims not rechecked)
+**Code:** `src/Martlet.Core/Planning/FootprintCatalog.Seed.cs`, `src/Martlet.Desktop/FreeKeyPrompt.cs`
+
+This page contains provider research checked on 2026-10-06. Do not treat its
+recommendation table or quotas as current support data. See the [model
+catalog](MODEL_CATALOG.md), [recommended setups](RECOMMENDED_SETUPS.md), and
+[conversation guide](CONVERSATION.md) for current catalog, setup, and route
+information.
+
 When a computer is too weak to run Thinking (Martlet's local default is Gemma 4
 E2B in Ollama), Martlet can send Thinking to a hosted model instead. This page
 says which hosted models to use, which of them can **hear** (take the user's

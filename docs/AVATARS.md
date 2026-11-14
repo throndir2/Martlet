@@ -1,5 +1,11 @@
 # Avatar guide: Live2D, VRM and speech animation
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Avatars/`, `src/Martlet.Avatar.Hosting/`, `src/Martlet.Avatar.Audio2Face/`, `src/Martlet.Avatar.Live2D/`, `src/Martlet.Avatar.Vrm/`, `src/Martlet.Avatar.RendererHost/`, `src/Martlet.Desktop/`
+
 **Default character shipped, 2026-09-28.** Official builds bundle the Live2D
 Cubism runtime and the Hiyori sample model. **Show character** on the main window
 opens her as a transparent desktop overlay: authored idle motions, eye blink,
@@ -334,8 +340,8 @@ what each one is.
   | `mouth_open` | mouth |
 
   The head part includes the body. The tables are `HOLD_PARTS` in
-  `Martlet.Avatar.Live2D`'s `lib/gestures.ts` and `VRM_HOLD_PARTS` in
-  `Martlet.Avatar.Vrm`'s `src/poses.ts`.
+  `src/Martlet.Avatar.Live2D/lib/gestures.ts` and `VRM_HOLD_PARTS` in
+  `src/Martlet.Avatar.Vrm/src/poses.ts`.
 - **The voice has the mouth**: while Martlet speaks, its voice moves the
   character's mouth, whatever the emotes showing do to the mouth. An emote that
   sets the mouth gives way to the voice, so the lips follow the words. Examples

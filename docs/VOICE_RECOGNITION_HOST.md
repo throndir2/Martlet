@@ -1,5 +1,11 @@
 # Voice recognition host role
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (engine parity, service operations, and port; numeric thresholds, hardware results, and licenses not rechecked)
+**Code:** `src/Martlet.Sherpa/SpeakerEngine.cs`, `workers/voice-recognition/host/martlet_voice_recognition_host.py`
+
 The `voice-recognition` host role recognizes who is speaking on a paired
 Martlet host. It does what Companion › People does on the companion PC's own
 processor (`src/Martlet.Sherpa/SpeakerEngine.cs`, see [Voices](VOICES.md)),

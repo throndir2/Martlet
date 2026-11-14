@@ -1,5 +1,11 @@
 # Voice activity detection
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and people using hands-free listening
+**Last verified:** 2026-11-13 against 5f40af2d9
+**Code:** `src/Martlet.Audio/EnergyVoiceActivityDetector.cs`, `src/Martlet.Audio/TalkOver.cs`, `src/Martlet.Conversation/EndOfTurn.cs`, `src/Martlet.Sherpa/SmartTurnEngine.cs`, `src/Martlet.Desktop/EndOfTurnJudge.cs`, `src/Martlet.Desktop/LiveConversationController.TurnCapture.cs`, `src/Martlet.Desktop/TalkPreferences.cs`
+
 Martlet finds where speech starts and ends with an energy detector and an
 end-of-turn judge. Both ship in the desktop app.
 
@@ -11,9 +17,10 @@ it, an end-of-turn judge (`EndOfTurnGate` in Martlet.Conversation). With
 Companion › Listening › *Judge when I finish talking* on (the default), the
 detector itself waits for the longer pause for unfinished speech
 (`EndOfTurnGate.DetectorEndSilence`, at least 1.6 s). After 260 ms of silence
-the gate asks Smart Turn v3.2 (`SmartTurnEngine` in Martlet.Sherpa, the
-bundled `turn-detection\smart-turn-v3.2-cpu.onnx`) and ends the speech early
-with `EnergyVoiceActivityDetector.EndSpeech()` when it hears a finished turn.
+the gate asks Smart Turn v3.2 when the judge is available
+(`SmartTurnEngine` in Martlet.Sherpa, the bundled
+`turn-detection\smart-turn-v3.2-cpu.onnx`). It ends the speech early with
+`EnergyVoiceActivityDetector.EndSpeech()` when Smart Turn hears a finished turn.
 At the plain pause (Reply after) the gate ends it unless the judge said the
 turn is unfinished. Off, missing or failed, the detector runs with the plain
 pause exactly as before. Smart Turn runs through the ONNX Runtime that ships

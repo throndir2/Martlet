@@ -1,9 +1,18 @@
 # Watch my screen: screen-aware commentary
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (capture limits and pacing only; request, privacy, and runtime claims not rechecked)
+**Code:** `src/Martlet.Desktop/ScreenGlancer.cs`, `src/Martlet.Desktop/ScreenCommentaryPacer.cs`
+
 Martlet can watch what you are playing or doing and, now and then, say something
 about it, like a friend in the room. It stays quiet most of the time. This page
 explains who sees the pictures, which models can, and what Martlet tells you when
 your setup can't.
+
+This audit checked capture limits and pacing in the listed source files. It did
+not check every privacy, provider-request, or runtime claim below.
 
 ## How it works
 

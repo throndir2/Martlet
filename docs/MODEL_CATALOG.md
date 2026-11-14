@@ -1,19 +1,28 @@
 # Model catalog: sources, conflicts and design
 
-This page is research for a model catalog that keeps itself up to date
-([#663](https://github.com/throndir2/Martlet/issues/663)). Today Martlet names
-models in code: the provider defaults and NVIDIA's retired models
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 29b352d47; current catalog behavior only, not the historical source survey
+**Code:** `src/Martlet.Core/Planning/Catalog/`, `src/Martlet.Providers/ModelCatalogs/`, `src/Martlet.Providers/LocalModels/`, `src/Martlet.Desktop/MainWindow.ModelCatalog.cs`, `scripts/Update-ModelCatalog.ps1`
+
+This page began as research for a model catalog that keeps itself up to date
+([#663](https://github.com/throndir2/Martlet/issues/663)). Martlet now has a
+built catalog as described below. Before it was added, Martlet named models in
+code: the provider defaults and NVIDIA's retired models
 (`ChatCompletionsEndpointCatalog`), the local models and their sizes
 (`FootprintCatalog.Seed`), the name guesses (`VisionModelCatalog`,
-`HearingModelCatalog`) and the host role choices (`deploy/host/roles/*/role.conf`).
-The goal is a catalog that knows, for each model:
+`HearingModelCatalog`) and the host role choices in `deploy/host/roles/`.
+The original design aimed for a catalog that knows, for each model:
 
 - which inputs it takes: text, image, audio and video, each one apart;
 - whether it can run locally, and how much memory it needs;
 - how smart and how fast it is;
 - anything else the sources give (context, tool calls, reasoning, license, dates).
 
-Checked on **2026-10-10**. Each fact is marked:
+The external source survey below records what was checked on **2026-10-10**.
+Its figures, source contents and terms are historical; this audit did not
+recheck them. Each fact is marked:
 
 - **Verified**: Martlet's developer fetched it from the source on that date.
 - **From docs**: read in the source's documentation or terms, not fetched as data.
@@ -25,8 +34,7 @@ Checked on **2026-10-10**. Each fact is marked:
 Martlet keeps an internal model catalog in `Martlet.Core.Planning`
 (`src\Martlet.Core\Planning\Catalog\`). Recommended setup, *Set it all up for me*,
 the option lists and the provider suggestions choose models from it
-(`FootprintCatalog.FromModels` and `PlanningCatalog`; see
-[Recommendation design](RECOMMENDATION_DESIGN.md#build-stages), stage 3).
+(`FootprintCatalog.FromModels` and `PlanningCatalog`).
 Martlet's own list (`FootprintCatalog.Seed`) stays as the offline fallback.
 
 - **Where it comes from.** A snapshot ships inside Martlet
@@ -68,11 +76,11 @@ Martlet's own list (`FootprintCatalog.Seed`) stays as the offline fallback.
   five minutes: NVIDIA's pages are slow) and writes the snapshot only when every
   source was read. Commit the changed `model-catalog.json` with the release PR.
 
-The snapshot of 2026-10-10 has 624 models and 730 routes: 458 OpenRouter, 46
+The historical snapshot of 2026-10-10 had 624 models and 730 routes: 458 OpenRouter, 46
 NVIDIA Build and 226 more from models.dev's rows for other providers. 279 models
 have open weights, 350 see, 62 hear, 118 take video and 463 call tools.
 
-## Short answers
+## Historical source survey: short answers
 
 - **Is there one catalog that already has everything?** No (Verified). Each
   source covers part of it. models.dev comes nearest for inputs and open
@@ -101,7 +109,7 @@ have open weights, 350 see, 62 hear, 118 take video and 463 call tools.
   Artificial Analysis's terms limit showing raw scores in a product (From docs).
   The LMArena ratings are CC-BY-4.0, so Martlet can show them with credit.
 
-## Sources
+## Historical source list
 
 | Source | Key | Terms | What it gives | Use it for |
 | --- | --- | --- | --- | --- |
@@ -155,7 +163,7 @@ AI, LiteLLM, llama.cpp's `multimodal.md` or NVIDIA's keyless `/v1/models`.
 models.dev's NVIDIA list is not a good substitute: 70 of its 106 rows are on
 neither of NVIDIA's current lists, including retired models (Verified).
 
-## Conflicts found
+## Historical source conflicts
 
 These were measured on 2026-10-10 (Verified).
 
@@ -265,9 +273,6 @@ Martlet already estimates memory the same way in
 
 - A mixture-of-experts (MoE) model keeps **all** its experts in memory. Its
   **active** parameters set its speed, not its memory.
-- [gguf-parser](https://github.com/gpustack/gguf-parser-go) reads a remote GGUF
-  file's header without the full download and estimates memory to about
-  100 MB (From docs). Martlet can do the same arithmetic itself.
 - When a model runs, Ollama's `/api/ps` reports the memory it really uses. Save
   that for each host and prefer it to the estimate. (Built: this PC after a
   model loads, and each paired host's `loaded_models` in its machine report;
@@ -287,9 +292,18 @@ measured Gemma 4 and Qwen3.5 numbers
 ([Resource footprints](RESOURCE_FOOTPRINTS.md#estimating-a-model-martlet-doesnt-list));
 MCP `local_model_facts` shows it all.
 
+### Historical memory estimate note
+
+[gguf-parser](https://github.com/gpustack/gguf-parser-go) reads a remote GGUF
+file's header without the full download and estimates memory to about 100 MB
+(From docs). This source note is from the 2026-10-10 survey; Martlet's own
+estimate is described above.
+
 ## How smart and how fast
 
-- **OpenRouter** carries `benchmarks.artificial_analysis` (intelligence,
+### Historical source notes (2026-10-10)
+
+- **OpenRouter** carried `benchmarks.artificial_analysis` (intelligence,
   coding and agentic indexes) on 284 models, with `hugging_face_id` to join
   them. Examples (Verified): Gemini 3.5 Flash-Lite 22.2, Gemma 4 26B A4B 16.7,
   Gemma 4 31B 14.7, Qwen3.5 9B 13.3.
@@ -299,7 +313,10 @@ MCP `local_model_facts` shows it all.
   reusing the copy in OpenRouter's list are not stated. Until that is checked, use the
   index only to rank models inside Martlet, and show words such as "smarter".
 - **LMArena** ratings are CC-BY-4.0 and can be shown with credit. Small new
-  models are often missing (no Gemma 4 E2B or Qwen3.5 4B row today).
+  models were missing from that survey (no Gemma 4 E2B or Qwen3.5 4B row).
+
+### Current catalog behavior
+
 - **When no source scores a model:** use a scored model of the same family and
   size, then active parameters and release date. Keep today's quality tier
   (`ServedModels.Tier`) as the last fallback.
@@ -317,13 +334,15 @@ MCP `local_model_facts` shows it all.
   LMArena names join by name without effort words and dates
   (`claude-opus-4-6-high` is `anthropic/claude-opus-4.6`); a model with several
   rows keeps its best rating.
-- **Speed:** no source measures the owner's own hardware. Estimate words per
-  second from the card's memory bandwidth divided by the bytes of the active
-  parameters. Then measure: the desktop log's `Reply latency` lines already
-  give real first-word times. (Built: Martlet keeps each reply's Thinking first
-  word in `model-speed.json`, and Recommended setup plans with it.)
+- **Built speed data:** Martlet keeps each reply's Thinking first word in
+  `model-speed.json`, and Recommended setup plans with it.
 
-## Checking a model when the owner adds it (Proposed)
+### Planned speed estimate
+
+No source measures the owner's own hardware. A proposed estimate uses the
+graphics card's memory bandwidth and the active parameter size.
+
+## Checking a model when the owner adds it (Planned)
 
 This extends what Martlet does today (`ModelContextProbe` and
 `model-abilities.json`). None of it runs while a reply is on its way, so it adds
@@ -370,9 +389,10 @@ measured first word of each server and model is kept in `model-speed.json`
 route past its `Expires` date counts as retired: Martlet keeps that in
 `model-abilities.json` and proposes a replacement at once (`RetiredModels`).
 
-## Next steps
+## Issue #663 implementation history
 
-These match the tasks in [#663](https://github.com/throndir2/Martlet/issues/663):
+This records the original tasks in [#663](https://github.com/throndir2/Martlet/issues/663)
+and their reported outcomes. It is not a list of current next steps:
 
 1. Add `Video`, `Tools` and `Retired` to `ModelAbility`, and read them from the
    sources `ModelContextProbe` already asks. Add NVIDIA's model pages.

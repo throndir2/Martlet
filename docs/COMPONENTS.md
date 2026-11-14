@@ -1,7 +1,17 @@
 # Components, jobs and placement (design)
 
-This note redesigns how a user chooses what Martlet uses and where each piece
-runs. It replaces the old "How Martlet thinks" Setup page, which used one
+**Status:** Superseded
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (replacement links only; design claims not rechecked)
+**Code:** `src/Martlet.Core/Planning/`, `src/Martlet.Core/Settings/`, `src/Martlet.Desktop/`
+
+This design note is superseded. Its phases, defaults, and open questions are
+historical, not current implementation guidance. See [recommended setups](RECOMMENDED_SETUPS.md)
+and [architecture](ARCHITECTURE.md) for current behavior.
+
+This note redesigned how a user chooses what Martlet uses and where each piece
+runs. It replaced the old "How Martlet thinks" Setup page, which used one
 *Configure role* dropdown (STT, LLM, TTS) above the same set of fields for
 every role. That page mixed three unrelated questions:
 
@@ -9,11 +19,11 @@ every role. That page mixed three unrelated questions:
 2. **Where does the job run?** (cloud, this PC, or a paired host)
 3. **Which hardware plays and records sound?** (microphone and speakers)
 
-Phase 1 (below) is shipped. Phase 2 shipped as the Companion tabs (*Thinking*,
-*Voice*, *Listening*, *Character*, *Memory*; see
+The original note recorded Phase 1 as shipped. It recorded Phase 2 as the
+Companion tabs (*Thinking*, *Voice*, *Listening*, *Character*, *Memory*; see
 [UI_DESIGN.md](UI_DESIGN.md#7-companion-and-settings-pages)), which combine
 placement (This PC by default, another computer, or cloud) with provider,
-model and key. The later phases are the agreed direction.
+model and key. Later phases recorded the proposed direction at that time.
 
 ## Vocabulary
 
@@ -60,7 +70,7 @@ OpenAI key serves all OpenAI jobs. The separate Credentials tab is removed: a
 key the job stops using is listed under *Keys from before* on the job's page,
 with *Remove*.
 
-## Defaults
+## Historical defaults
 
 - Every named provider has a recommended default model, prefilled when chosen
   (and the TTS default voice). Switching provider swaps a prefilled default but
@@ -81,7 +91,7 @@ voice `alloy`. They live next to their catalogs
 (`ChatCompletionsEndpointCatalog`, `OpenAi*Catalog.DefaultModelId`,
 `MainWindow.LocalChatModels`, `VisionModelCatalog.LocalRecommendations`).
 
-## Phases
+## Historical phases
 
 1. **De-overload Setup (shipped).** The Destinations tab became **Jobs**: a
    *Job to set up* picker (Thinking, Listening, Speaking) that shows only the
@@ -96,7 +106,7 @@ voice `alloy`. They live next to their catalogs
 4. **Seeing (vision)** as a fifth job using the same editor and
    `VisionModelCatalog`.
 
-## Queued to figure out
+## Open questions at the time
 
 ### Host a thinking model locally (This PC) with recommended models
 

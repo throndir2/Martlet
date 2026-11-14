@@ -1,12 +1,14 @@
 # Recommendation design: ask three questions, plan for three situations
 
-Status: **Approved, built** (2026-10-10). Stage 1, *Preferences*, stage 2,
-*Situations*, and stage 3, *the planner on the catalog* (3a, the options from the
-catalog, and 3b, feedback and locks), are done (see [Build stages](#build-stages)).
-It uses the model catalog and
-route facts in [Model catalog](MODEL_CATALOG.md)
-([#663](https://github.com/throndir2/Martlet/issues/663)). Today's rules are in
-[Recommended setups](RECOMMENDED_SETUPS.md); this page says what changes.
+**Status:** Superseded
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9; current replacement links and source owners checked; historical proposals are not current behavior.
+**Code:** Current replacements: `src/Martlet.Core/Planning/`, `src/Martlet.Core/Preferences/UserPreferences.cs`, `src/Martlet.Core/Settings/`, `src/Martlet.Core/Installation/`, `src/Martlet.Conversation/Guides/`, `src/Martlet.Desktop/`
+
+**Historical record:** This page preserves an earlier design. Its plans and
+some details do not describe current behavior. Use
+[Recommended setups](RECOMMENDED_SETUPS.md) for the current recommendation flow.
 
 ## The idea
 

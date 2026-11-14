@@ -1,5 +1,11 @@
 # Glossary: one name for each concept
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (page purpose and links only; terminology and code-name rows not rechecked)
+**Code:** See the [decision map](DECISION_MAP.md) for owners; examples include `src/Martlet.Core/`, `src/Martlet.Conversation/`, and `src/Martlet.Desktop/`.
+
 This page is for developers and coding agents. It gives each concept one name
 in code and one name in the app (the UI). When you write new code, new UI text
 or new docs, use these names. Do not add a new word for a concept that is on

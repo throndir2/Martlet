@@ -1,5 +1,15 @@
 # Reading the text on your screen
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (source flow and limits; measurements not rerun)
+**Code:** `src/Martlet.Core/Reading/`, `src/Martlet.Desktop/ScreenReading.cs`, `src/Martlet.Desktop/LiveConversationWindow.Vision.cs`, `src/Martlet.Desktop/ReadingList.cs`, `src/Martlet.Desktop/MainWindow.Reading.cs`, `src/Martlet.Desktop/Pages/Reading/`, `src/Martlet.Gateway.Ocr/OcrRelayWorker.cs`, `workers/ocr/host/`
+
+## How does OCR read the screen and which computers can run it?
+
+The Reading pool uses optical character recognition (OCR) to extract text from the visible screen. This PC can use Windows OCR or its Reading role; paired computers can run their own Reading role. The pool tries enabled places in order and does not keep extracted text in the conversation.
+
 Martlet can read the text on your screen while it watches your screen with you.
 This is OCR (optical character recognition). Martlet uses it together with the
 vision model. The vision model sees the whole picture. OCR reads small text
@@ -44,6 +54,8 @@ The Reading role is often better with game fonts. It has these models:
 
 Windows OCR read 145 of the same 192 lines. PP-OCRv5 reads Chinese, English
 and Japanese. RapidOCR reads Chinese and English.
+These times and line counts are measurements from drawn test images, not
+guarantees for other machines. This audit did not rerun them.
 The models that use a graphics card are for an NVIDIA graphics card only. The
 page disables them on a computer without one. On a processor, the server model
 is too slow for the gateway's 15 s limit. A graphics card is always optional:

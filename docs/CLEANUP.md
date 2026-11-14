@@ -1,5 +1,11 @@
 # Cleaning up disk space
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `scripts/Clean-Martlet.ps1`
+
 Martlet builds, tests and agent sessions make a large quantity of files that Git
 ignores. Each Copilot worktree (a separate checkout of a task branch) gets its
 own copy. This page tells you what Martlet makes, where, how large it gets, and
@@ -118,8 +124,10 @@ because other worktrees can use them.
    no worktree has checked out. It prints each deleted branch with its commit.
    It keeps every branch that is not merged.
 4. It removes `[branch]` config sections for branches that do not exist.
-5. It deletes `.lock` files older than one hour. A Git process that stopped
-   left them.
+5. It deletes `.lock` files older than one hour by timestamp. The script does
+   not check whether a Git process holds a lock. Do not run `-Git` while Git
+   operations use the shared repository. See
+   [the cleanup lock issue](https://github.com/throndir2/Martlet/issues/1181).
 6. `git gc` packs loose objects. It keeps unreachable objects for the default
    two weeks, so it is safe while other sessions use the repository.
 

@@ -1,5 +1,14 @@
 # Dia voice engine
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (engine catalog and route selector only)
+**Code:** `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Gateway.Dia/`, `workers/dia/`, `deploy/host/roles/dia/`
+
+This audit checked the engine catalog and route controls only. It did not
+repeat the worker, upstream artifact, GPU, or performance checks below.
+
 [Dia](https://github.com/nari-labs/dia) by Nari Labs is a self-hosted voice
 engine next to [Chatterbox Turbo](CHATTERBOX_VOICE.md) (the default),
 [F5-TTS](F5_VOICE.md), [XTTS-v2](XTTS_VOICE.md) and

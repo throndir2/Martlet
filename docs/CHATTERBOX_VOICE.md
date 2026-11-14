@@ -1,12 +1,20 @@
 # Chatterbox voice engines
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (engine catalog and route selector only)
+**Code:** `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Gateway.F5/`, `workers/chatterbox/`, `deploy/host/roles/chatterbox/`, `deploy/host/roles/chatterbox-original/`, `deploy/host/roles/chatterbox-nano/`
+
+This audit checked the engine catalog and route controls only. It did not
+repeat the worker, upstream artifact, GPU, or performance checks below.
+
 Martlet's **default** self-hosted voice engine is Chatterbox Turbo, next to
 [F5-TTS](F5_VOICE.md) and [XTTS-v2](XTTS_VOICE.md) (both stay selectable in
 Companion > Voice > Voice engine). Chatterbox Turbo (Resemble AI) copies a voice
-from the same reference recordings (Companion > Voice > Voices) and, unlike the
-others, speaks **tags**: non-word sounds such as `[laugh]` and `[sigh]` written
-inline in the reply, and the tone `[whispering]`, which the model itself
-whispers now and then (see [Tags](#tags)). Two other Chatterbox models are separate engines with their
+from the same reference recordings (Companion > Voice > Voices). It supports
+sound and tone **tags**, including `[laugh]`, `[sigh]` and `[whispering]`
+(see [Tags](#tags)). Two other Chatterbox models are separate engines with their
 own host roles: [Chatterbox Nano](#chatterbox-nano) and
 [Chatterbox Original](#chatterbox-original-general-and-expressive). Most of this
 page is about Turbo; the same service runs all three.

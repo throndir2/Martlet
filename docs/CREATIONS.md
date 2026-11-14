@@ -1,5 +1,14 @@
 # Creations
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (record shape, limits, asset media types, chunk size, and kind rules; sync and storage details not rechecked)
+**Code:** `src/Martlet.Core/Creations/`, `src/Martlet.Gateway/GatewayCreations.cs`, `src/Martlet.HostClient/HostCreations.cs`, `src/Martlet.Conversation/CreationTools.cs`
+
+The audit verified the creation model and its limits. Sync, storage paths,
+network endpoints, and user-interface details below were not rechecked.
+
 Martlet makes things: songs, pictures and a VRM character's body motions now, other kinds later. Everything it makes is a
 **creation**, kept the same on all your Martlet computers, and Martlet performs,
 shows or activates any of them itself when you ask in conversation ("sing the rain

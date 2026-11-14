@@ -1,5 +1,11 @@
 # Singing
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (pool layout and host-role options; detailed routing, setup, performance, license, and gateway claims not rechecked)
+**Code:** `src/Martlet.Desktop/Pages/Singing/SingingPage.cs`, `src/Martlet.Desktop/Pages/Singing/SingingPageModel.cs`, `workers/singing/martlet_singing/host.py`, `deploy/host/roles/singing/role.conf`
+
 Martlet can write a song and sing it in a voice from the owner's voice library (Companion > Voice > Voices). The
 **singing** host role runs the pipeline on an NVIDIA graphics card, on this PC or another of the owner's computers:
 
@@ -56,13 +62,12 @@ holds 15.9 GB (SoulX-Singer) or 20.3 GB (with VevoSing), and the image 14.7 GB. 
 (on C: by default) only grows, so leave room: each image rebuild added about 4 GB of build cache there, and a rebuild
 after `docker builder prune` downloads PyTorch again (22 minutes).
 
-## Does Singing need its own graphics card?
+## Hardware notes from the measured setup
 
-No. It shares a card with the speaking, listening and lip-sync roles. The graphics card is used only while a song is being
-made, one stage at a time: the music model with int8 weights peaks at about 5 GB, SoulX-Singer at 2.1 GB, VevoSing at
-6.8 GB. Five idle minutes later (or right after the song when system memory is short) the worker ends and frees the
-card. It needs an NVIDIA card with 6 GB or more and about 5-7 GB free while a song is made. While a song is made, it
-competes with the speaking and listening roles and with a local Thinking model.
+The default role needs an NVIDIA card with 6 GB or more. Optional models can need
+more memory; see the current choices in
+[`role.conf`](../deploy/host/roles/singing/role.conf). The measurements below are
+from one RTX 4070 setup. They are not hardware qualification results.
 
 Measured on the RTX 4070 (12 GB) beside Chatterbox, Whisper large-v3-turbo and Audio2Face:
 
@@ -96,7 +101,11 @@ role was built:
 - ACE-Step's SFT model (50 steps) sang the words much more clearly than turbo (8 steps) for a few more seconds of
   generation: the **High quality** choice.
 
-## Licences and consent
+## Historical base-stack licences and consent
+
+This table records the base stack and VevoSing terms checked for the earlier
+implementation. Current optional model choices and terms are in
+[`role.conf`](../deploy/host/roles/singing/role.conf).
 
 | Part | Source | Licence |
 | --- | --- | --- |
@@ -114,7 +123,27 @@ do not use singing to imitate people without their permission or to deceive. ACE
 originality and disclosed as AI-generated. SoulX-Singer's preprocessing bundle also carries a karaoke separator whose own
 model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither (Demucs separates instead).
 
-## How it runs
+## Current host service
+
+The `singing` host role uses port 50085 and requires an NVIDIA GPU. Its service
+supports `song`, `music`, `match`, and `separate` jobs. It provides status,
+job, input, track, and cancellation routes. The worker's `provision` command
+downloads the selected model files; `provision --fixture` sets up a deterministic
+non-AI engine for plumbing checks.
+
+The default self-hosted choices are ACE-Step 1.5 and SoulX-Singer. The role also
+offers ACE-Step 1.5 XL, HeartMuLa, DiffRhythm, and YuE for music, and VevoSing,
+Vevo2, and Seed-VC for voice matching. The choices and their setup requirements
+are in [`role.conf`](../deploy/host/roles/singing/role.conf). The worker API and
+configuration are in [`workers/singing/README.md`](../workers/singing/README.md).
+
+The desktop supports cloud members in its music and voice-match pools. It shows
+the provider's status, consent, model, and key state.
+
+## Historical host details (not rechecked)
+
+The implementation thresholds and measured behavior below describe an earlier
+worker version. Do not use them as current limits or performance guarantees.
 
 - **Host role `singing`** (`deploy/host/roles/singing`, port **50085**, NVIDIA GPU with 6 GB+). The image is built on the
   host from `workers/singing/host/Dockerfile`: `python:3.11` with hash-locked PyTorch 2.10 CUDA 12.8 and ACE-Step's own
@@ -181,6 +210,10 @@ model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither 
 
 ## Gateway
 
+The table below records an earlier gateway contract. It does not list every
+operation or model supported by the current host service. The gateway contract
+was not rechecked in this audit.
+
 `Martlet.Gateway.Singing.SongRelayWorker` relays route **`martlet.gateway.song.v1`** at `/martlet/v1/inference/song`
 (contract `martlet.song-relay` 1.0, role `voice`, model `ace-step-v15-soulx-svc` pinned to ACE-Step's revision and turbo
 weights) to the loopback service. Each request is one operation, answered with JSON text events:
@@ -199,6 +232,9 @@ no copy yet, after which the client sends it once with `reference_audio_base64`,
 No path or URL is ever accepted. Host configuration kind: `singing`.
 
 ## Desktop
+
+The pool layout and model selectors were checked. The detailed setup, migration,
+and routing claims below were not rechecked.
 
 **Companion > Singing** (an optional extra, on its own page) has the standard page order:
 
@@ -223,7 +259,7 @@ No path or URL is ever accepted. Host configuration kind: `singing`.
 4. **What Singing is**: the role's facts compared with the catalog's numbers: an NVIDIA graphics card, about 5.1 GB of
    graphics memory and up to 7.2 GB (a 6 GB+ card), the download (about 31 GB with the image), about 1 to 2 minutes for
    a 30-second song, free, the licences, and that the lyrics, the style and the voice's recording go to the computer that
-   sings; and whether Singing needs a graphics card of its own ([below](#does-singing-need-its-own-graphics-card)).
+   sings; and whether Singing needs a graphics card of its own ([historical hardware notes](#hardware-notes-from-the-measured-setup)).
 5. **Voice match models**: an option picker that compares SoulX-Singer and VevoSing (their footprint and licence);
    *in use* is the first voice match computer's model.
 
@@ -376,6 +412,8 @@ yet**: the fixture checks the plumbing only.
 - Suno and Udio: no official public API.
 
 ## Verification
+
+These are recorded verification results, not checks run during this audit.
 
 - `python -m unittest discover -s tests -t .` in `workers/singing` (with `PYTHONPATH=workers/singing`) runs the service
   with the fixture: every stage, aligned paged tracks, sections and beat grid, refusals, cancel, queue, the idle release,

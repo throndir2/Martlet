@@ -1,5 +1,14 @@
 # GPT-SoVITS voice
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (engine catalog and route selector only)
+**Code:** `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Gateway.F5/`, `workers/gpt-sovits/`, `deploy/host/roles/gpt-sovits/`
+
+This audit checked the engine catalog and route controls only. It did not
+repeat worker, upstream artifact, GPU, or performance checks below.
+
 GPT-SoVITS is Martlet's third self-hosted voice engine, next to [F5-TTS](F5_VOICE.md)
 and [XTTS-v2](XTTS_VOICE.md). It suits anime-style voices, clones a voice from a
 **3-10 second** recording with its exact transcript, and speaks each sentence as

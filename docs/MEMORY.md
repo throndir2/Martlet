@@ -1,5 +1,11 @@
 # Memory (P03a/P03b/P03c)
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users and developers
+**Last verified:** 2026-11-13 against 5f40af2d9; game-activity note and fixture environment syntax checked; other memory claims were not re-audited.
+**Code:** `src/Martlet.Memory/`, `src/Martlet.Core/Preferences/UserPreferences.cs`, `src/Martlet.Core/Settings/`, `src/Martlet.Core/Sync/`, `src/Martlet.Desktop/`, `src/Martlet.Conversation/`, `src/Martlet.Mcp.Protocol/`
+
 **Memory is ON by default.** Martlet remembers lasting things that are talked
 about and recalls them in later conversations. New profiles, v1-v5 migrated
 profiles and v4/v5 profiles whose memory was only OFF by the old default all
@@ -712,12 +718,11 @@ game. So each fact can say where it matters (`activity` in the fact):
   progress and favorites in it.
 
 **What Martlet is doing now.** While memory is on, the desktop's game watch
-(`GameWatch`, the same look at the window in front and the apps that play
-sound that [Situations](RECOMMENDATION_DESIGN.md) use) tells which game is
-played on this PC, every 3 seconds and never on a reply's path. It runs on a
+(`GameWatch`) tells which game is played on this PC, every 3 seconds and never
+on a reply's path. It runs on a
 companion PC only, and nothing it sees is recorded or sent. The game is kept in
 `CurrentActivity`; the log says when a game starts and ends, never its name.
-`MARTLET_SIMULATE_SITUATION=1,game` makes it a FIXTURE game for checks.
+`MARTLET_SIMULATE_SITUATION=game` makes it a FIXTURE game for checks.
 
 - **Recall** leaves out the facts kept for another game, and those for any
   game while no game is played. A fact for a game still comes back when your

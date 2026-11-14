@@ -1,11 +1,17 @@
 # User stories and target flows
 
+**Status:** Planned
+**Last Updated:** 2026-11-13
+**Audience:** Product designers and developers
+**Last verified:** 2026-11-13 against 5f40af2d9 (target-specification scope only; current-state claims, measurements, and click paths not rechecked)
+**Code:** Current interface owners include `src/Martlet.Desktop/` and `src/Martlet.Conversation/`; target flows here are not proof of implementation.
+
 Martlet's flows grew one feature at a time, and it shows. To change one
 thing, a user clicks a button that opens a page, then a button on that page
 that opens a window, then a console that asks them to type `yes`. This
 document is the UX specification for replacing that. It covers:
 
-1. the problems in today's UI, measured;
+1. the historical problems recorded in the UI audit;
 2. the rules every flow must follow;
 3. the target navigation (where everything lives);
 4. reusable interaction patterns;
@@ -15,12 +21,12 @@ document is the UX specification for replacing that. It covers:
 7. the minimum a user has to provide, and every default, detection and
    automatic install that covers the rest (section 11).
 
-[UI design](UI_DESIGN.md) describes what ships today. This document is the
-target. Where the two differ, this one wins for new work.
+Use current feature guides and source for built behavior. This document sets
+the target for new work and is not proof that a flow has shipped.
 
 ---
 
-## 1. Audit: what is wrong today
+## 1. Historical audit: what was wrong at the time
 
 Measured from the current code (labels quoted exactly).
 

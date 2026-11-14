@@ -1,5 +1,15 @@
 # Recognizing people by voice, and Parakeet
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9; current behavior only, not historical qualification results
+**Code:** `src/Martlet.Core/Speakers/`, `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Desktop/MainWindow.VoiceEngines.cs`, `src/Martlet.Desktop/MainWindow.Voices.cs`, `src/Martlet.Desktop/MainWindow.People.cs`, `src/Martlet.Desktop/LocalVoices.cs`, `src/Martlet.Desktop/VoiceRecognitionHosts.cs`, `src/Martlet.Desktop/VoiceClips.cs`, `src/Martlet.Sherpa/`, `src/Martlet.Gateway.Stt/`, `src/Martlet.Gateway.VoiceRecognition/`, `workers/voice-recognition/`
+
+## Select and test a voice route
+
+Choose a speaking engine under Companion › Voice › Voice engine. Select this PC or a paired computer. The picker shows whether an engine is in use, ready, or needs setup. **Check this PC** or **Check hosts** refreshes host status; it does not speak a test reply. Select **Set up and use** or **Use** to choose the route. Under **Voices**, **Play** plays a saved recording on this PC; it does not test the speaking route. **Use** applies the saved voice.
+
 Martlet can tell the people around its microphone apart, learn the names they
 go by from the conversation, and keep that list the same on every computer you
 own. It reuses AudioTranscriber's speaker recognition: sherpa-onnx with the
@@ -11,9 +21,11 @@ Voice recognition is part of Martlet and on by default: the engine and its two
 voice models ship with Martlet, so there is nothing to download, and Martlet
 starts learning who is talking from your first conversation. Turn it off on
 People at any time (your saved voices are kept). Parakeet stays optional and is
-downloaded only when you ask. Nothing is uploaded for either, and the only audio
-kept is a few clips of voices you haven't named yet (see below). Voices
-are recognized and learned only from the microphone, never from
+downloaded only when you ask. The local models do not send audio to an external
+provider. If recognition uses a paired host, the utterance is sent to that host
+in memory and is not kept there. The only audio this feature saves on disk is
+the clips of voices you have not named yet (see below). Voices are recognized
+and learned only from the microphone, never from
 [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays).
 
 A paired Martlet host can do the same work on its NVIDIA graphics card or its
@@ -186,7 +198,7 @@ Recognition waits at most 3 seconds beyond speech-to-text; a slow or failed
 recognition only means nobody is named for that message. The utterance's
 samples are a private copy that is cleared when recognition ends; the only audio
 kept is a voice's clips while you haven't named it (below). `voices.json` holds
-only voiceprints (256 numbers per sample) and names.
+voiceprints, names and voice-list metadata, not audio.
 
 ## Voices heard only a little
 
@@ -497,7 +509,10 @@ defaults. Voice ID (Companion › Listening) is a separate, bundled filter that
 discards other voices before upload, so Martlet answers only you; People still
 recognizes and learns every voice the microphone hears.
 
-## Qualification
+## Historical qualification evidence
+
+The results below record earlier local checks. This audit did not repeat them.
+They are not current performance guarantees or hardware qualification.
 
 Real native inference ran locally on Windows x64 with the pinned downloads:
 two synthetic (Windows SAPI) speakers were added as two voices, a second

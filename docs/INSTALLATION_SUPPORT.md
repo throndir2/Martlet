@@ -1,5 +1,11 @@
 # Installation and support
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Martlet users and developers
+**Last verified:** 2026-11-13 against 5f40af2d9 (voice guide link and engine catalog only; other claims not rechecked)
+**Code:** `src/Martlet.Core/Installation/`, `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/`, `packaging/windows/`, `deploy/host/`
+
 This document tells how Martlet installs, sets up, updates and gets support
 on Windows, and how it sets up and runs hosts. Most sections describe what
 Martlet does today. Some sections give the rules that host and lifecycle work
@@ -30,10 +36,9 @@ What Martlet does today:
 - **Hosts.** [`martlet-host`](../deploy/host/README.md) sets up and pairs a
   host computer and adds or removes its roles.
 
-The [Voice Studio plan](VOICE_STUDIO.md) adds more self-hosted voice engines.
-F5 voices are implemented: Companion > Voice > Voices adds recordings and
-switches between them. The other engines, training and A/B previews are
-later work.
+See [Voices](VOICES.md) and its engine guides for current voice-engine
+selection and setup. The superseded [Voice Studio design record](VOICE_STUDIO.md)
+is historical and does not describe current engine availability.
 
 Do not run privileged setup or download models when you only change this
 document. See [architecture](ARCHITECTURE.md) for contracts and privacy.
@@ -484,7 +489,7 @@ companion personas. A restore does not bring back credentials, permissions or
 readiness. It refuses missing, damaged, newer and foreign destinations, and it
 keeps the exact original file. It is not the diagnostic bundle and not the
 database, voice, host or binary lifecycle below. See the
-[recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore)
+[recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup-and-restore)
 and [the transaction contract](SETUP.md#local-configuration-recovery-transaction).
 
 Martlet has no rollback to an older version. The in-app update installs the

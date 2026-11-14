@@ -1,6 +1,12 @@
 # App guides: game and app knowledge from the web
 
-Design for **app guides**: Martlet reads up on a game or app the user runs (its
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9; detection, defaults, storage, first-read caps and tool definitions and dispatch checked; site discovery, page selection and retrieval ranking remain unchecked
+**Code:** `src/Martlet.Core/Search/`, `src/Martlet.Core/Text/SearchTerms.cs`, `src/Martlet.Conversation/Guides/`, `src/Martlet.Desktop/AppGuideWatch.cs`, `src/Martlet.Desktop/LiveConversationController.Guides.cs`, `src/Martlet.Desktop/LiveConversationController.GuideResearch.cs`, `src/Martlet.Desktop/LiveConversationWindow.AppGuides.cs`, `src/Martlet.Desktop/Pages/AppGuides/`, `src/Martlet.Desktop/MainWindow.AppGuides.cs`, `src/Martlet.Desktop/MainWindow.AppGuidesPage.cs`, `src/Martlet.Mcp.Protocol/AppGuidesCheck.cs`
+
+**App guides** let Martlet read up on a game or app the user runs (its
 fan wiki, its help pages) and keeps what it read on this PC as a searchable
 guide. When the user then asks *"hey Martlet, where do I find iron ore?"* or
 *"how do I mask a layer in Photoshop?"*, Martlet answers from that guide.
@@ -88,7 +94,7 @@ flowchart LR
 
 The first read needs no Thinking or Deep thinking model, so it never competes
 with the conversation for a graphics card. The reader is `WebGuideBuilder` and the
-files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
+files next to it in `src/Martlet.Conversation/Guides/` (`WikiDiscovery`,
 `MediaWikiReader`, `SiteCrawler`, `RobotsRules`, `GuideRun`, `HtmlOutline`).
 
 - **Start pages**: the addresses the owner gave. Martlet reads only those
@@ -186,7 +192,7 @@ A wiki can be about a whole series. The Borderlands Wiki has about 10,700
 articles about every Borderlands game, and titles such as "Sidewinder
 (Borderlands 2)" and "Legendary (Borderlands 4)" tell the games apart. Martlet
 chooses pages from their titles before it downloads them
-(`GuidePagePicker`, `src\Martlet.Conversation\Guides\GuidePagePicker.cs`).
+(`GuidePagePicker`, `src/Martlet.Conversation/Guides/GuidePagePicker.cs`).
 
 1. **The first read** uses no model. A title whose brackets name this game,
    or that holds the game's whole name ("Borderlands 4 Weapons"), comes first
@@ -531,7 +537,7 @@ the limits above.
 When Martlet knows where the player is in a game with a guide, it tells one
 useful thing about that place: a secret, a hidden item, a puzzle solution or a
 boss tip. For example: *"There's apparently a secret room behind the waterfall
-here."* `GameHints` (`src\Martlet.Conversation\Guides\GameHints.cs`) owns it.
+here."* `GameHints` (`src/Martlet.Conversation/Guides/GameHints.cs`) owns it.
 
 1. The [game state](CONVERSATION.md#where-you-are-in-a-game) tells that the
    place or the goal changed (`GameProgress.PlaceOrGoalChanged`, through
@@ -720,19 +726,19 @@ misses the cache (the first one after a start) reads them again.
 
 | Part | Where |
 | --- | --- |
-| Shared types and interfaces | `src\Martlet.Conversation\Guides\GuideContracts.cs` |
-| Search words | `src\Martlet.Core\Text\SearchTerms.cs` |
-| Search engine (index, ranker, measures) | `src\Martlet.Core\Search\` ([Search engine](SEARCH.md)) |
-| Chunker, index and reranker | `src\Martlet.Conversation\Guides\GuideChunker.cs`, `GuideIndex.cs`, `GuideQuery.cs`, `GuideReranker.cs` |
-| Store (`guides\library.json`, `<key>.guide.json`) | `src\Martlet.Conversation\Guides\FileAppGuideStore.cs` |
-| Wiki reader | `src\Martlet.Conversation\Guides\WebGuideBuilder.cs` |
-| Notes on the message | `src\Martlet.Conversation\Guides\GuideRecall.cs` |
-| Library service, tools, job kinds and texts | `src\Martlet.Conversation\Guides\AppGuideService.cs`, `AppGuideTools.cs` |
-| Detection | `src\Martlet.Desktop\AppGuideWatch.cs` |
-| Tools, job, offer and notes in the conversation | `src\Martlet.Desktop\LiveConversationController.Guides.cs`, `LiveConversationWindow.AppGuides.cs` |
-| The App guides page | `src\Martlet.Desktop\Pages\AppGuides\` (the page, its model and its services) |
-| Library, watch, reading up and Read more in the window | `src\Martlet.Desktop\MainWindow.AppGuides.cs`, `MainWindow.AppGuidesPage.cs` |
-| MCP | `src\Martlet.Mcp.Protocol\AppGuidesCheck.cs` |
+| Shared types and interfaces | `src/Martlet.Conversation/Guides/GuideContracts.cs` |
+| Search words | `src/Martlet.Core/Text/SearchTerms.cs` |
+| Search engine (index, ranker, measures) | `src/Martlet.Core/Search/` ([Search engine](SEARCH.md)) |
+| Chunker, index and reranker | `src/Martlet.Conversation/Guides/GuideChunker.cs`, `GuideIndex.cs`, `GuideQuery.cs`, `GuideReranker.cs` |
+| Store (`guides\library.json`, `<key>.guide.json`) | `src/Martlet.Conversation/Guides/FileAppGuideStore.cs` |
+| Wiki reader | `src/Martlet.Conversation/Guides/WebGuideBuilder.cs` |
+| Notes on the message | `src/Martlet.Conversation/Guides/GuideRecall.cs` |
+| Library service, tools, job kinds and texts | `src/Martlet.Conversation/Guides/AppGuideService.cs`, `AppGuideTools.cs` |
+| Detection | `src/Martlet.Desktop/AppGuideWatch.cs` |
+| Tools, job, offer and notes in the conversation | `src/Martlet.Desktop/LiveConversationController.Guides.cs`, `LiveConversationWindow.AppGuides.cs` |
+| The App guides page | `src/Martlet.Desktop/Pages/AppGuides/` (the page, its model and its services) |
+| Library, watch, reading up and Read more in the window | `src/Martlet.Desktop/MainWindow.AppGuides.cs`, `MainWindow.AppGuidesPage.cs` |
+| MCP | `src/Martlet.Mcp.Protocol/AppGuidesCheck.cs` |
 
 ## Privacy
 

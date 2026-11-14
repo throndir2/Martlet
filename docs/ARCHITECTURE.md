@@ -1,5 +1,11 @@
 # Architecture and provider contracts
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (voice reference only; broader contracts and proposals not rechecked)
+**Code:** `src/Martlet.Core/`, `src/Martlet.Desktop/`, `src/Martlet.Gateway/`, `src/Martlet.Providers/`, `deploy/host/`, `workers/`
+
 **One app, many computers.** Martlet is one application that runs on each of
 the owner's computers. Every computer runs the same desktop app with the same
 companion: who does each job ([cluster plan](CLUSTER.md#model)), the settings
@@ -13,11 +19,10 @@ a host adds capabilities to the whole app. Only per-computer facts (devices,
 screens, role, startup, installed engines, pairing and security choices) stay
 local. The sections below describe the original component contracts.
 
-The [Voice Studio expansion](VOICE_STUDIO.md) adds five planned self-hosted
-TTS adapters, isolated engine runtimes, shared source-voice/dataset ownership
-and preview-versus-active selection. VS01 implements only Core's local Voice
-Library and its Desktop preparation UI. It does not register a self-hosted
-provider or generalize the existing OpenAI/F5 authorization contracts.
+Current voice-engine selection and route behavior are documented in
+[Voices](VOICES.md) and its engine guides. The superseded [Voice Studio design
+record](VOICE_STUDIO.md) is historical only; it does not describe the current
+engine catalog or runtime behavior.
 
 **Broader proposed design.** Not all of the components and remote protocols
 below are implemented.

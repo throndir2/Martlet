@@ -1,9 +1,16 @@
 # Prerequisites: what Martlet bundles, installs for you, or needs from you
 
-**Inventory date 2026-09-29.** Covers every feature on `main`, including the
-OpenRouter / NVIDIA Build / OpenAI-compatible LLM routes and the setup advisor,
-plus features still in progress (section 3). Every prerequisite is delivered one
-of four ways:
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Martlet users and developers
+**Last verified:** 2026-11-13 against 5f40af2d9 (script options and desktop launch path only)
+**Code:** `packaging/windows/Install-Prerequisites.ps1`, `src/Martlet.Desktop/Prerequisites.cs`, `src/Martlet.Desktop/SetupAdvisorWindow.xaml.cs`, `src/Martlet.Desktop/DefaultSetup.cs`, `deploy/host/`
+
+The inventory below is dated. This audit checked script options and the
+desktop launch path only. Other prerequisite claims were not rechecked.
+
+**Inventory date 2026-09-29.** This is a dated inventory of features and
+prerequisites. It is not a current product list.
 
 | Delivery | Meaning |
 | --- | --- |
@@ -21,11 +28,12 @@ of four ways:
    features and computers; when its plan runs Ollama, Windows speech or Docker
    Desktop on this PC and one is missing, **Install on this PC** installs just
    those (Thinking's *This PC* also installs Ollama with its model). Chosen items
-   run `prerequisites\Install-Prerequisites.ps1 -NoPrompt -Install ...` hidden,
-   with its output in a Martlet run window. Nothing chosen here is final: see
+   run the packaged `prerequisites\Install-Prerequisites.ps1 -NoPrompt -Install ...`
+   script hidden (`packaging/windows/Install-Prerequisites.ps1` in source), with
+   its output in a Martlet run window. Nothing chosen here is final: see
    step 2, and change where each role runs later in Martlet (Companion, Devices).
-   A one-click quick start that reads this PC's hardware and installs the whole
-   plan is planned ([A1](USER_STORIES.md#a1-quick-start-on-a-first-pc)).
+   The [welcome tour](WELCOME_WIZARD.md) now reads this PC's hardware, shows a
+   setup suggestion, and asks for confirmation before setup.
 2. **Any time later.** Start menu > **Martlet prerequisites**, or
    **Prerequisites (check / install)** in Martlet's Settings › Tools, opens the same
    tool as an interactive checklist. It shows the status of every item and changes

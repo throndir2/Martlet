@@ -1,5 +1,14 @@
 # XTTS-v2 voice engine
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (engine catalog and route selector only)
+**Code:** `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Gateway.F5/`, `workers/xtts/`, `deploy/host/roles/xtts/`
+
+This audit checked the engine catalog and route controls only. It did not
+repeat worker, upstream artifact, GPU, or performance checks below.
+
 Martlet's second self-hosted voice engine, next to [F5-TTS](F5_VOICE.md). XTTS-v2
 copies a voice from the same reference recordings (Companion > Voice > Voices)
 and, unlike F5, **streams while it generates**: `Xtts.inference_stream` yields

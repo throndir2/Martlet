@@ -1,5 +1,11 @@
 # V01a explicit microphone capture
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/`, `src/Martlet.Audio/`, `src/Martlet.Conversation/`, `src/Martlet.Gateway.Stt/`, `src/Martlet.Desktop/`
+
 This is a **library foundation**, not by itself full V01, a live conversation feature,
 validated VAD, microphone qualification, or a passed G2 gate.
 The subsequent [local audio setup](SETUP.md#explicit-local-audio-setup)

@@ -1,11 +1,16 @@
 # Companion controls and behavior requirements
 
-**Product requirements added 2026-09-19; not implemented features.**
-Detailed controls and initial tuning values below are proposed implementation
-choices. They do not authorize listening, provider spending, model downloads,
-voice uploads, native VAD execution, or changes to the user's machines.
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9; settings versions and recovery, persona limits and file bounds, card formats and import behavior, context-buffer caps, and OpenAI model IDs checked. Lorebook rules, persona authorization timing, F5/VLM integration, automatic listening, barge-in and hardware qualification remain unchecked.
+**Code:** `src/Martlet.Audio/EnergyVoiceActivityDetector.cs`, `src/Martlet.Conversation/EndOfTurn.cs`, `src/Martlet.Core/Lorebooks/`, `src/Martlet.Core/Settings/AppSettings.cs`, `src/Martlet.Core/Settings/CompanionSettings.cs`, `src/Martlet.Core/Settings/CharacterCard.cs`, `src/Martlet.Core/Settings/SettingsRecovery.cs`, `src/Martlet.Core/Settings/SettingsStore.cs`, `src/Martlet.Core/Sync/SharedSettings.cs`, `src/Martlet.Desktop/CompanionWindow.xaml.cs`, `src/Martlet.Desktop/ConversationContextBuffer.cs`, `src/Martlet.Desktop/LorebookWindow.xaml.cs`, `src/Martlet.Providers/TextGenerationContracts.cs`, `src/Martlet.Providers/OpenAiTextGenerationCatalog.cs`
 
-## Intended experience and current gap
+Requirements under **Planned** headings are not implemented. They do not
+authorize listening, provider spending, model downloads, voice uploads, native
+VAD execution, or changes to the user's machines.
+
+## Planned experience and current gap
 
 Martlet should feel like a conversational participant: listen, retain enough
 recent context to understand what is happening, sometimes say nothing, and
@@ -31,12 +36,15 @@ do not satisfy these new end-user requirements.
 
 ## R19: Editable persona profiles
 
+### Implemented settings slice
+
 **Implemented settings slice:** Desktop now exposes **Companion personas**.
-It can create, duplicate, select and delete up to 16 named profiles; edit
-bounded persona text; and import/export UTF-8 text. Settings v3 owns this data, atomically snapshots v1/v2 on migration,
-and includes personas in same-profile configuration recovery. A v1/v2 recovery
-source preserves current v3 personas because those older snapshots contain no
-persona data. Import and export use explicit selected files; export is
+It can create, duplicate, select and delete up to 1,000 named profiles; edit
+bounded persona text; and import/export UTF-8 text. The current settings schema
+(v6) owns this data; schema v3 first added companion settings. The settings
+store snapshots the prior schema during migration. Configuration recovery
+carries forward current Companion settings when an imported snapshot has none.
+Import and export use explicit selected files; export is
 create-only and never overwrites an existing file.
 
 The follow-on V05b slice sends the fixed active persona revision only after
@@ -46,39 +54,33 @@ reservation and is never silently truncated. The subsequent bounded explicit
 context slice includes recent completed exchanges within that same budget;
 neither slice enables automatic listening, provider permission, capture or preview.
 
-Provide a **Companion** settings page with a multiline persona text editor and
-named profiles. Create, duplicate, rename, select, save and delete profiles;
-keep one active persona at a time initially, not multiple autonomous agents.
-Each profile holds the persona text, companion name/aliases
-and where its voice may pause between spoken pieces (see
-[voice latency](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)). Participation controls remain separately labeled; switching personas
-must not arm a microphone, increase capture permission or change provider routes.
+### Current settings and file bounds
 
-Support explicit UTF-8 plain-text import/export of the persona text so a user
-can edit it externally and swap files. Show the imported draft before Apply;
-do not silently watch files or execute scripts, templates or embedded commands.
-Each profile is limited to 100,000 characters; there can be up to 1,000
-personas and 1,000 character profiles, and all profile texts together are
-limited to 1,000,000 characters so every accepted profile collection remains
-persistable within the bounded (8 MiB) settings document and syncs as one
-shared setting (at most 16 MiB).
-Version and bound persisted profile data in the existing settings ownership
-and migration system; do not introduce a second competing settings store.
-Reject unreadable, malformed, oversized or unsupported files with a remedy,
-preserving the last saved profile and the user's draft.
+Martlet supports up to 1,000 personas and 1,000 character profiles. Each
+persona allows 100,000 characters; all persona text together allows 1,000,000
+characters. The settings file is limited to 8 MiB, and each shared setting
+value is limited to 16 MiB. Persona text import accepts UTF-8 files up to
+300,000 bytes. Export creates a new file and does not overwrite an existing file.
+Invalid or unreadable imports do not replace the text in the editor.
 
-### Character cards
+### Planned: Persona identity and participation boundaries
+
+Add persona aliases and keep participation controls separate from persona
+selection. Changing a persona must not arm a microphone, increase capture
+permission or change provider routes.
+
+### Implemented character cards
 
 Martlet reads the character cards SillyTavern, Chub (CharacterHub), RisuAI and
 other Tavern-compatible apps share: a PNG/APNG card image (the `ccv3` text
 chunk, else `chara`, as base64 UTF-8 JSON; image pixels are never decoded), a
 JSON card or a CHARX archive's `card.json`, in TavernAI V1, Character Card V2
 (`chara_card_v2`) or V3 (`chara_card_v3`) form. **New persona from a character
-card** adds the card as a new draft persona (also by dropping a card onto the
+card** adds the card as a new persona (also by dropping a card onto the
 Companion window, or *Import a character card* on Companion › Personality);
-**Update this persona from a character card** loads it into the selected
-persona's editor, keeping its identity and where its voice pauses. Both stay
-drafts until Save.
+Martlet uses it immediately. **Update this persona from a character card**
+loads it into the selected persona's editor and saves it, keeping its identity
+and where its voice pauses.
 
 The card's name (its V3 nickname when present) becomes the persona name, made
 unique. The persona text joins the system prompt, description, personality,
@@ -101,7 +103,7 @@ data routing, Stop, capture controls or provider budgets. Explain that the
 active persona text will be sent to the selected LLM; exclude it from ordinary
 logs/support exports. Imported profiles contain no credentials or permissions.
 
-## R20: F5 reference-voice selection and replacement
+## R20: F5 reference-voice selection and replacement (Planned)
 
 For a configured compatible F5 adapter, offer **Reference audio**, **Reference
 transcript**, **Apply voice**, and a separately authorized **Preview voice**
@@ -136,6 +138,8 @@ license or redistribution permission.
 
 ## R21: Independent LLM and VLM model selection
 
+### Implemented LLM selection
+
 V02c provides a catalog-backed **Conversation model (LLM)** choice for the named
 OpenAI adapter. The pinned `gpt-4.1-mini-2025-04-14` and
 `gpt-4.1-2025-04-14` snapshots use the existing bounded Responses wire
@@ -143,6 +147,8 @@ contract. Changing the model invalidates destination consent and the next fresh
 action binds its credential and request to that exact selection. Unsupported
 IDs leave the prior working route intact. Catalog presence remains **NOT RUN**,
 not account availability, price, quality, or live readiness.
+
+### Planned: Independent LLM and VLM settings
 
 Provide separate **Conversation model (LLM)** and **Vision model (VLM)** settings
 showing adapter, destination, actual model ID/revision, capabilities, readiness
@@ -175,6 +181,8 @@ both.
 
 ## R22: Listen first, respond selectively
 
+### Planned: Conversational listening
+
 Keep explicit typed/PTT as the default and reliable way to request an answer.
 Add an opt-in **Conversational listening** mode with visible listening,
 collecting context, waiting for a gap, responding and suppressed states.
@@ -193,7 +201,9 @@ selected model's input budget. This is not persistent memory or an audio archive
 Clear on session end, pause/lock or consent revocation; new routes require
 explicit authorization for any retained context they would receive.
 
-**Implemented explicit-turn foundation:** completed typed/PTT exchanges of the
+### Implemented explicit-turn context
+
+Completed typed/PTT exchanges of the
 open talk window are retained in memory only (at most 2,048 user/assistant
 pairs and 8 MiB UTF-8). Each fresh action's displayed authorization covers
 this context; oldest pairs are omitted until current input, persona, style and
@@ -203,6 +213,8 @@ policy-suppressed turns are not retained. Refresh context, pause, lock,
 configuration load/change and closing the conversation clear the buffer; Stop
 keeps it. This does not enable automatic capture, unsolicited replies,
 persistent memory or an observation backlog.
+
+### Planned: Observation and reply handling
 
 An observation is not a pending reply. Several utterances can inform one later
 response, but expired intents cannot be replayed and old provider permission
@@ -224,7 +236,7 @@ stays silent, and that cost/disclosure must be shown before enabling the mode.
 No background capture on launch, implicit remote-participant audio, new screen
 capture, or persistent memory follows from a persona/listening selection.
 
-## R23: VAD-driven interruption
+## R23: VAD-driven interruption (Planned)
 
 In explicitly armed and qualified barge-in mode, keep local speech detection
 active during Martlet playback. Confirmed external speech onset must stop
@@ -263,7 +275,7 @@ Settings that hold saved weights or edits to the style prompts still load.
 Martlet ignores them and does not save them again. A Persona prompt edit that
 still has the old `{style}` line loses that line.
 
-## Delivery order and acceptance
+## Planned delivery order and acceptance
 
 Preserve the installation -> configure -> PTT -> spoken reply -> reliable Stop
 priority. Next independent slices are persona/settings controls and LLM model

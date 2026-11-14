@@ -1,6 +1,15 @@
 # F5 worker and reference-voice foundation
 
-**H04a/H04b software foundation only; no model, GPU, network, or audio
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (engine catalog and route selector only)
+**Code:** `src/Martlet.F5/`, `src/Martlet.Core/Settings/SpeechEngines.cs`, `src/Martlet.Desktop/Pages/Voice/`, `src/Martlet.Gateway.F5/`, `workers/f5/`, `deploy/host/roles/f5/`
+
+This audit checked the engine catalog and route controls only. It did not
+repeat worker, upstream artifact, GPU, or performance checks below.
+
+**Historical H04a/H04b foundation slice; it has no model, GPU, network, or audio
 qualification.** `Martlet.F5` is an isolated .NET 10 library with a dedicated
 test project. Desktop and the gateway reference it, and both projects are
 listed in `Martlet.slnx`. Nothing in this slice

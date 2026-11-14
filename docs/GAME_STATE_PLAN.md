@@ -1,9 +1,12 @@
-# Plan: game state, hints and your preferences
+# Game state plan: implementation history
 
-**Status: in progress.** Three parts are built in parallel, then released
-together. This page gives the decisions and the contracts between the parts.
-When a part is merged, its contract page (linked below) describes the actual
-behavior; this page then only keeps the decisions.
+**Status:** Superseded
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Preferences/UserPreferences.cs`, `src/Martlet.Conversation/Guides/GameProgress.cs`, `src/Martlet.Conversation/Guides/GameHints.cs`, `src/Martlet.Desktop/MainWindow.GameHints.cs`
+
+This plan is complete and no longer describes current work. Use [Your preferences](CONVERSATION.md#your-preferences), [Where you are in a game](CONVERSATION.md#where-you-are-in-a-game), and [Hints and secrets](APP_GUIDES.md#hints-and-secrets) for current behavior. The sections below keep the original decisions and delivery record.
 
 ## Goal
 
@@ -131,7 +134,7 @@ actual behavior is in [Hints and secrets](APP_GUIDES.md#hints-and-secrets).
   disposable data directory. Report what could not be run as NOT RUN.
 - Add each change users can notice to `CHANGELOG.md` under `Unreleased`.
 
-## Release
+## Historical release plan
 
-When all three parts are merged, one release PR makes a new minor version
-(the changelog has *Added* entries) and the release workflow publishes it.
+This plan expected one release after all three parts merged. The three
+implementation parts are now merged; see the linked pages for current behavior.

@@ -1,5 +1,11 @@
 # OCR host role
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de
+**Code:** `src/Martlet.Core/Reading/`, `src/Martlet.Gateway.Ocr/`, `workers/ocr/host/`, `deploy/host/roles/ocr/`
+
 The `ocr` host role lets a paired Martlet desktop read text from a screen image.
 It has two engines, one at a time:
 
@@ -21,7 +27,7 @@ Install it with the normal host flow:
 martlet-host add ocr
 ```
 
-The role asks for the engine (`OCR_ENGINE`) and the model (`OCR_MODEL`). For
+The role reads the engine (`MARTLET_OCR_ENGINE`) and the model (`OCR_MODEL`). For
 `ppocrv5`, it also asks for the accelerator (`cpu` or `gpu`). Companion ›
 Reading answers these questions for you. To change the model later, choose it
 on that page and select **Switch to**, or run `martlet-host add ocr` again.

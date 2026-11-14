@@ -1,5 +1,15 @@
 # Picture making
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (settings, provider defaults, pool migration, and ordered failover; setup steps, licensing, model files, and GPU timing not rechecked)
+**Code:** `src/Martlet.Core/Pictures/PicturesSettings.cs`, `src/Martlet.Core/Pictures/PictureMakingPoolMembers.cs`, `src/Martlet.Providers/Pictures/PictureMakingPool.cs`
+
+The ordered place list is shared. Each computer keeps its own picture settings
+and provider credentials. The audit verified pool migration and routing, not all
+setup, model, cost, license, or interface details below.
+
 Martlet draws pictures when you ask ("draw me a fox curled up in the snow", "paint our cat as a knight"). It draws in the
 background while the conversation carries on, shows the picture in the talk window when it's ready (click it to open it
 full size), keeps it in **Creations** on all your Martlet computers, and shows it again later when you ask
@@ -7,9 +17,11 @@ full size), keeps it in **Creations** on all your Martlet computers, and shows i
 
 ## Where it draws
 
-Companion › Picture making › *Where it draws* is the list of places that draw, in order (the Picture making list,
-`pools.json` in the data folder). It is the same on all your computers, with each place's API key and custom workflow;
-*This PC* means each computer's own host service. The pictures themselves are shared too.
+Companion › Picture making › *Where it draws* is the shared list of places that
+draw, in order (the Picture making list, `pictures` in `pools.json`). Each
+computer keeps its own local picture settings and provider credentials. *This
+PC* means each computer's own host service. The pictures themselves are shared
+too.
 
 The page has the standard order: **Now** (where Martlet draws, with **Check** and **Draw a test picture**), then *Where
 it draws*, the shared pool list ([More than one picture computer](#more-than-one-picture-computer)). Each place in the

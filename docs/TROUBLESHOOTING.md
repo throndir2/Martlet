@@ -1,5 +1,11 @@
 # Desktop troubleshooting and local support
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Martlet users and developers
+**Last verified:** 2026-11-13 against b1688a8de (recovery links only)
+**Code:** `src/Martlet.Desktop/`, `src/Martlet.Diagnostics/`, `src/Martlet.Core/Settings/`, `deploy/host/`
+
 ## Crashes and unexpected errors (error log)
 
 Martlet always keeps a small local error log; it is never uploaded.
@@ -287,7 +293,7 @@ home network*. When it doesn't:
    older than this feature.
 5. Run MCP `hosts_find` to see which hosts answer and from where.
 
-## Local configuration backup / restore
+## Local configuration backup and restore
 
 **Configuration backups are NOT support bundles.** The support ZIP described
 below contains a deliberately lossy, redacted projection and cannot restore

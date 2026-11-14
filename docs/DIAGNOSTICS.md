@@ -1,5 +1,15 @@
 # Diagnostics
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (Doctor registry and CLI only; logs and desktop claims not rechecked)
+**Code:** `src/Martlet.Doctor/`, `src/Martlet.Diagnostics/`, `src/Martlet.Desktop/`
+
+## Diagnose setup and local component problems
+
+Doctor runs local, read-only checks through the same probe registry used by desktop diagnostics. It can report settings, runtime, and platform findings. It does not test provider access, audio devices, or GPU readiness.
+
 ## Diagnostics page and shared logs
 
 **Diagnostics** (in the main window's navigation) shows every line Martlet's
@@ -265,7 +275,7 @@ fixtures, never live readiness.
 | `pipeline.policy` | No (optional) | Local read-only declaration, but no diagnostic callback installed |
 | `pipeline.stt`, `pipeline.llm`, `pipeline.tts` | No (optional) | Permissioned/provider-cost; not wired / not checked here |
 | `host.connection` | No | Optional permissioned/network host/GPU placeholder; not configured / not run |
-| `planning.catalog` | Yes (optional) | Local read-only: which copy of the model catalog Recommended setup plans with (the daily copy, the shipped snapshot, or Martlet's own list alone; [Recommendation design](RECOMMENDATION_DESIGN.md#build-stages)); reads files only, downloads nothing |
+| `planning.catalog` | Yes (optional) | Local read-only: which copy of the model catalog Recommended setup plans with (the daily copy, the shipped snapshot, or Martlet's own list alone); reads files only, downloads nothing |
 
 Stage labels Mic/VAD use existing `Stage.Application`; no shared stage enum was
 invented. The desktop maps their stable probe IDs to explicit pipeline labels.
