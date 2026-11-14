@@ -1,5 +1,13 @@
 # MCP: The app's window
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (selected UI tool schemas, snapshot behavior, toggle permissions, picture saving and log refresh traced to source)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/UiTools.cs`, `src/Martlet.Mcp.Protocol/DesktopAutomation.cs`, `src/Martlet.Mcp.Protocol/DesktopAutomation.Character.cs`, `src/Martlet.Mcp.Protocol/DesktopAutomation.Tray.cs`, `src/Martlet.Mcp.Protocol/DesktopAutomation.LongTexts.cs`, `src/Martlet.Mcp.Protocol/AutomationPolicy.Rules.cs`, `src/Martlet.Mcp.Protocol/AutomationPolicy.Clicks.cs`, `src/Martlet.Mcp.Protocol/AutomationPolicy.Values.cs`, `src/Martlet.Mcp.Protocol/AutomationPolicy.Redaction.cs`, `src/Martlet.Desktop/MainWindow.Logs.QueueLogRefresh.cs`
+
+**Verification boundary:** All page sections were read, but most desktop control IDs, detailed UI behavior, configuration, defaults and numerical claims were not traced to their owners. No live desktop, hardware, provider or credential checks were run.
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *The app's window* area of `martlet_guide` (driving the desktop window: `ui_*` tools, the character window and the notification area). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)
@@ -112,7 +120,7 @@ first, `TouchZoneRect-<n>-<k>` for area k from 2, inside
 Saving binds the zones to the model again with the probe kept beside the
 picture, so a box moved onto a tail gets that tail's areas, and the page then
 shows them. `TouchZonesShowOnCharacter` (*Show the zones on the character*, a
-check box for this session only; `ui_toggle`, like every check box, needs
+check box for this session only; `ui_toggle` on this check box needs
 `--allow-ui-effects`) draws the zones' areas over the showing character as they
 move; `character_zones` reads them, drawn or not.
 `ui_snapshot` lists the picture and each area's box on it as custom controls;
@@ -252,7 +260,7 @@ long emotes list).
 (`windowManagerLimit`, `gdiLimit`, 10,000 each by default), and its windows
 (`windows`, also hidden and message-only ones, on `windowThreads` threads) with the
 ten largest `windowClasses` (`{class, count}`; GUIDs in class names read `*`, as in
-`HwndWrapper[Martlet.Desktop;;*]`). A count that keeps growing is a leak: at the
+`HwndWrapper[Martlet.Desktop;;*]`). A count that keeps growing can indicate a leak: at the
 limit, timers and windows fail with *The current process has used all of its system
 allowance of handles for Window Manager objects*. The desktop log has the same
 reading as *Window resources: ...* lines (`logs_tail` `contains` `Window resources`):
@@ -1117,8 +1125,8 @@ and `LogSource-<computer>` (`all`, this PC's device ID such as
 computer's ID); each returns its label as its value (*From: All computers*,
 *From: This PC (desktop-diva, diva-host)*, *From: gpu-pc*). All are passive clicks, and snapshots
 report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
-`--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
-it is passive (it reads each paired host's new lines); `LogsCopy` (clipboard),
+`--allow-ui-effects`). `LogsRefresh` reads local logs and requests new lines from paired hosts.
+The automation policy allows this click without `--allow-ui-effects`; `LogsCopy` (clipboard),
 `LogsOpenFolder` (Explorer) and `LogsSave` (*Save logs to share...*: a save
 dialog, then the ZIP written and shown in Explorer; `logs_export` writes the
 same ZIP headlessly) are not. There is no log host to choose: `LogShareStatus`
@@ -1364,9 +1372,8 @@ small parts such as the eyes larger. It returns `taken`, `picture` and `saved`.
 each time), `width` and `height` in pixels, and `left`, `top`, `cropWidth` and
 `cropHeight`: where it sits on the overlay's drawing, as fractions like
 `character_face`'s positions. When the picture can't be taken, `picture` has
-`error`. `saved` is the copy at `outputPath` (a full path to a `.png` file)
-when given. It changes nothing on the character, so it needs no
-`--allow-ui-effects`. `MoveAvatar`'s value then shows the last picture as
+`error`. `saved` is the copy at `outputPath` when given. The path must be a full path to a new local `.png` file.
+Taking a picture needs no `--allow-ui-effects`. Saving a copy needs `--allow-changes`. `MoveAvatar`'s value then shows the last picture as
 `picture`.
 
 **Where the touch zones are now**: `character_zones` reads where each area of
@@ -1451,8 +1458,7 @@ can't be used never stops the character. `MoveAvatar`'s value in
    15 to 18 degrees from straight down again.
 4. Call it again with only `name`: the kept clip plays again.
 
-On this PC, each pose reading takes about 2 seconds, so sample a clip that is
-longer than 2 seconds to see it play.
+Pose reading time depends on the renderer. Use a longer clip if it ends before the readings arrive.
 
 **Who moves the character's mouth**: while Martlet speaks, its voice has the
 character's mouth, and an emote's mouth comes back about a second after the

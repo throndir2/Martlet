@@ -1,5 +1,12 @@
 # MCP: Other
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (selected tool registrations, limits and result shapes traced)
+**Verification boundary:** The section Local MCP control was not fully traced. Live desktop, hardware, local model and credential behaviour were not verified.
+**Code:** `src/Martlet.Mcp.Protocol/Tools/OtherTools.cs`, `src/Martlet.Mcp.Protocol/GreetingCheck.cs`, `src/Martlet.Mcp.Protocol/SearchEngineCheck.cs`, `src/Martlet.Mcp.Protocol/MeaningSearchCheck.cs`, `src/Martlet.Mcp.Protocol/SituationCheck.cs`, `src/Martlet.Mcp.Protocol/LanguagesCheck.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Other* area of `martlet_guide` (situations, greetings, search and other checks). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)
@@ -68,7 +75,7 @@ by words it doesn't say (search words); an index without positions grows
 while it is searched; reciprocal rank fusion puts a document both lists have
 first and adds one only the second list has; and the first stage and ranking
 of a query on 100,000 documents (`medianMicroseconds`, `p95Microseconds`;
-passes under 10,000). Each source's own ranking is in `memory_recall_check`,
+passes when the median is under 10,000). Each source's own ranking is in `memory_recall_check`,
 `app_guides_check` and `conversation_history_check`. It reads and writes nothing.
 
 `meaning_search_check` (optional `measure`, a boolean, and `model`) rehearses
@@ -82,7 +89,7 @@ nearest first, embeds a changed text again, drops a deleted document, is saved
 and read back and refuses another model's file; 10,000 vectors of 768 numbers
 are searched in milliseconds (`medianMilliseconds`, under 50); 7 held-out
 questions in other words (*What should I cook tonight?* for *The user is
-vegetarian.*) find their fact in the first 3 when fused but not by words
+vegetarian.*) find their fact in the first 3 when fused; words alone miss at least one
 (`lexicalRecallAt3`, `fusedRecallAt3`); a question that names *Rex* or *Ana*
 still finds that fact first; tidying groups *lives in Seattle* with *moved to
 Portland last spring* by meaning only; a forgotten fact's vector is dropped;

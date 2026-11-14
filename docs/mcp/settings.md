@@ -1,12 +1,19 @@
 # MCP: Settings
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool registrations, selected result shapes, self-test steps and fixture inputs traced)
+**Verification boundary:** Desktop control behaviour, the recommended-setup planner outcomes, the reply-closing and skill-prompt text, and some shared-setting details were not traced. Runtime behaviour was not verified.
+**Code:** `src/Martlet.Mcp.Protocol/Tools/SettingsTools.cs`, `src/Martlet.Mcp.Protocol/Tools/SettingsTools.SkillDirectory.cs`, `src/Martlet.Mcp.Protocol/SettingsConfiguration.cs`, `src/Martlet.NodeLinkCheck/SettingsRehearsal.cs`, `src/Martlet.Desktop/RecommendedSetupInputs.cs`, `src/Martlet.Core/Sync/SharedSettings.cs`, `src/Martlet.Core/Cluster/ClusterSyncChoice.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Settings* area of `martlet_guide` (settings, prompts, shared settings and the recommended setup). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)
 
 `settings_sync_status` reads [one Martlet on every computer](../CLUSTER.md#one-martlet-on-every-computer)
 from a data directory (optional absolute `dataDirectory`, default the current
-user's): `sync` as above, `state` (`none` before the first sync, else `loaded`),
+user's): `sync` (`off`, `on` or `on (default)`), `state` (`none` when the shared settings file is absent, else `loaded`),
 the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
 `replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
@@ -18,7 +25,7 @@ Martlet's), `updatedBy`, `updatedAt`,
 `revision`, `usesKey`, `characters`, `off` (the value is null) and `here`:
 `same` when this PC had exactly that value at its last sync, `different` while
 it can't follow it yet (or changed it since), `unknown` when it never had the
-setting. `value` is shown only for non-personal settings: each job's route
+setting. `value` can include personal data, including reminder text. It can show each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
 memory, how you talk, speech bubbles and subtitles, the theme and the custom
 palette's colors (`Colors` by role), recognizing
@@ -82,7 +89,7 @@ hosts keep both people's copies apart; a copy with an API key is refused before
 sending and an unsigned request for a person's settings is refused. Loopback
 only; the folder is deleted and the real vault is never touched. Two more simulated desktops (`lab-desktop-e`, `lab-desktop-f`) also carry
 the files that travel as their own shared settings (`voice-clips`,
-`character-touch-zones`, `character-eyes`, `vroid-hub-looks`, `discord` with
+`character-touch-zones`, `vroid-hub-looks`, `discord` with
 its bot token and `messaging` with its secrets, through the real sections and a
 stand-in credential store): E's choices, zones, credit, bot and chats reach F,
 F connects no bot, and no token is in F's files or the shared value.
@@ -242,7 +249,7 @@ it is shortened). The SKILL.md text in `SkillDirectoryPreview` is not returned.
 `updated` or `best_match`), `source` (`all`, `clawhub` or `skills-sh`),
 `minimumDownloads`, `hideFlagged` (default `true`), `cursor` (the
 `nextCursor` of a list without a search) and `limit` (default 20). It returns
-`found`, `nextCursor` and each skill's `id`, `source`, `owner`, `slug`,
+`found` (the count before `limit`), `nextCursor` and each skill's `id`, `source`, `owner`, `slug`,
 `name`, `summary`, `downloads`, `installs`, `stars`, `recentInstalls`,
 `created`, `updated`, `official`, `featured`, `flagged`, `repository` (a
 skills.sh skill's GitHub `owner/repo`) and `page`. `skill_directory_add`
@@ -325,7 +332,7 @@ E2B and `suggestions` has *Gemma 4 12B on gpu-box: smarter, ...*; with
 `applied`.
 Give `fixture: "bighost"` to plan the built-in big-hardware network (**NOT real
 computers**) with the model catalog: this PC, a companion PC with no graphics
-card, and `big-box`, a Linux host with five RTX 5090s (32 GB each) that thinks
+card, and `big-box`, a Linux host with six RTX 5090s (32 GB each) that thinks
 with Gemma 4 E2B and runs Deep thinking with Gemma 4 E4B. Its recommendation
 keeps live Thinking on the fast Gemma 4 E2B and has a `ChangeModel` that
 switches Deep thinking to a smarter model a free card has room for (Gemma 4 26B

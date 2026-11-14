@@ -1,5 +1,12 @@
 # MCP: Diagnostics and logs
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (selected tool registrations, result shapes and limits traced)
+**Verification boundary:** The sections Local MCP control, Latency, Slow Thinking and Check your computers, If Thinking fails: how long Martlet waits, and Martlet for Linux and macOS were not fully traced. Live desktop, hardware, Linux, macOS and credential behaviour were not verified. The simulated-microphone text may be wrong: when a clip is not valid, the desktop may use the real microphone (`src/Martlet.Desktop/SimulatedAudio.cs`).
+**Code:** `src/Martlet.Mcp.Protocol/Tools/DiagnosticsTools.cs`, `src/Martlet.Mcp.Protocol/LatencyReport.cs`, `src/Martlet.Mcp.Protocol/LogTail.cs`, `src/Martlet.Conversation/ReplyLatency.cs`, `src/Martlet.Desktop/SimulatedAudio.cs`
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Diagnostics and logs* area of `martlet_guide` (Doctor, logs, latency and the Linux and macOS companion app). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)
@@ -35,7 +42,7 @@ every source for more than seven days (`model-catalog-status.json`): Martlet
 plans with the last good copy. `recommended_setup_status` gives the details
 for each option, and `model_catalog_status` the refresh's details.
 
-`logs_tail` reads the last `lines` (1-400, default 100) of one local log under
+`logs_tail` reads up to `lines` (1-400, default 100) from the last 256 KiB of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
 `host-runs`), optionally only lines that `contains` some text (case-insensitive,
 at most 200 characters). It returns `{log, exists, truncated, lines}` and never
@@ -52,7 +59,7 @@ Logs can
 include local paths and provider error text (never keys or conversation content).
 
 ### Latency
-Every reply writes one *Reply latency* line to the desktop log: how long from
+A reply with words or audio can write one *Reply latency* line to the desktop log: how long from
 when you stopped talking (always listening), let go of the talk button or sent
 your message to the first audio (or the first words when nothing was spoken),
 then each step in parentheses, each the wait that ended there, so they add up
@@ -165,7 +172,7 @@ that turn, from *Live floor: held 2 pool jobs, stopped 1 (think longer).*, else 
 *Backup Thinking won at 1104 ms (diva (qwen3-8b), asked at 912 ms).* and the like, else null),
 `legacy`), `quickSounds`
 (replies that played a quick sound in Martlet's own voice: `replies`, `atMs` and their `firstAudio`
-statistics) and `backupThinking` (replies that asked Backup Thinking: `replies`, `won`, `lost`,
+statistics) and `backupThinking` (replies that tried Backup Thinking, including when no member was available: `replies`, `won`, `lost`,
 `noAnswer`, `noMember`, and `askedAtMs`, `wonAtMs` and `firstAudioWon` statistics). It only reads the log: no audio, network or provider
 request.
 

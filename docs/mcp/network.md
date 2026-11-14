@@ -1,5 +1,20 @@
 # MCP: Computers, network and accounts
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against b1688a8de (tool registrations and schemas, network status fields, router-port data, reachability output, and selected checks)
+**Code:** `src/Martlet.Mcp.Protocol/Tools/NetworkTools.cs`, `src/Martlet.Mcp.Protocol/Tools/NetworkTools.Labs.cs`, `src/Martlet.Mcp.Protocol/Tools/NetworkTools.Status.cs`, `src/Martlet.Mcp.Protocol/AccountsStatus.cs`, `src/Martlet.Mcp.Protocol/HouseholdSharingStatus.cs`, `src/Martlet.Mcp.Protocol/AccountSecurityStatus.cs`, `src/Martlet.Mcp.Protocol/HostEngineCheck.cs`, `src/Martlet.Mcp.Protocol/HostSupplyCheck.cs`, `src/Martlet.Mcp.Protocol/HostDockerShellCheck.cs`, `src/Martlet.Mcp.Protocol/HostUpdateCheck.cs`, `src/Martlet.Mcp.Protocol/AppUpdateCheck.cs`, `src/Martlet.Mcp.Protocol/MacHostCheck.cs`, `src/Martlet.Mcp.Protocol/OutsidePathCheck.cs`, `src/Martlet.Mcp.Protocol/ProxyManagerCheck.cs`, `src/Martlet.Mcp.Protocol/WorkSharingCheck.cs`, `src/Martlet.Mcp.Protocol/ExternalEndpointsCheck.cs`, `src/Martlet.Mcp.Protocol/NodePresenceCheck.cs`, `src/Martlet.HostClient/HostRoutes.cs`, `src/Martlet.Core/Network/HostFind.cs`, `src/Martlet.Core/Accounts/AccountBindingRules.cs`, `src/Martlet.Core/Accounts/SamePerson.cs`, `src/Martlet.NodeLinkCheck/AccountRehearsal.cs`
+
+**Verification boundary:** I traced selected claims in *Local MCP control (Windows)*.
+I did not fully trace the UI walkthroughs or every scenario for `network_selftest`,
+`signin_selftest`, `signin_lab`, `role_lab`, and `exposure_selftest`.
+I did not fully trace `host_move_selftest`, `host_reinstall_selftest`,
+`api_selftest`, `openai_selftest`, `front_door_selftest`, `gpu_priority_selftest`,
+or `node_link_check`. I did not trace every host-engine scenario.
+I did not test real hosts, networks, routers, Docker images, Mac hardware, TPM
+hardware, credentials, or provider sign-in.
+
 Part of [MCP in Martlet](../MCP.md): the tools and screens of the *Computers, network and accounts* area of `martlet_guide` (your computers, hosts, the network, accounts, sign-in and sharing). The [index](../MCP.md#pages) lists the other pages.
 
 ## Local MCP control (Windows)
@@ -130,7 +145,7 @@ Martlet opened on the router for this PC's host service
 ([opening a port on your router](../NETWORK.md#opening-a-port-on-your-router),
 `router-port.json`: `hostId`, `router`, `externalPort`, `internalPort`,
 `openedAt`, `renewedAt`, `problem` and `answeredFromInside`; never an address),
-or null. `device` is this data folder's device ID (`id`
+null when no record exists, or `unreadable` when the record cannot be read. `device` is this data folder's device ID (`id`
 and `source`): `saved` in `device.json` (one per Windows user, so two Windows
 users on one PC never share one); `pairings` or `legacy` when the desktop hasn't
 saved one yet and keeps the ID its pairings use or an older Martlet's
@@ -254,7 +269,7 @@ builds this checkout's `Martlet.Gateway.Host.Linux` in the
 `mcr.microsoft.com/dotnet/sdk:10.0.401` image (NuGet packages cached in the
 `martlet-outside-check-nuget` volume) and runs it as uid 1000 in disposable
 `mcr.microsoft.com/dotnet/aspnet:10.0.12` containers with `host.json` and its
-state on an ext4 named volume. The containers are on a Docker network numbered from TEST-NET-3
+state on a named Docker volume. The containers are on a Docker network numbered from TEST-NET-3
 (`203.0.113.0/24`) with the gateway port published on `127.0.0.1` only, so the
 gateway sees every connection coming from `203.0.113.1`: a real outside source.
 The host's home origin, `https://192.168.77.20:9443`, answers nothing. It returns
@@ -285,15 +300,17 @@ network. Not covered: a real router, overlay or internet path.
 
 `outside_reachability_check` checks how each host in a data directory's
 network can be reached (optional absolute `dataDirectory`; `contactHosts`).
-Without `contactHosts: true` it only lists each host's `id` and how many
-`outsideAddresses` it has (`checkedNow: false`) and contacts nothing. With it,
-it dials each host's home address and each outside address directly, checks the
-TLS key against the roster's pin and asks `GET /health/live` (no credential):
-per host `home` and `outside` (by `address` number) with `reachable`, `ms` and
-`problem` (`refused`, `no answer in time`, `name not found`, `another key`,
-or `answered 429 ...` when the key answered but the guard throttled the
-address), and `wouldUse` (`home`, `outside <n>` or `none`, home first as the
-desktop dials). It never returns the addresses themselves.
+Without `contactHosts: true`, it lists each host's `id` and number of
+`outsideAddresses` (`checkedNow: false`). It contacts no host.
+With it, it dials each host's home address and each outside address directly.
+It checks the TLS key against the roster's pin and asks `GET /health/live`
+without credentials. Each host result has `home` and `outside` (by `address`
+number), with `reachable`, `ms` and `problem` (`refused`, `no answer in time`,
+`name not found`, `another key`, `unexpected answer`, or `answered 429 ...`
+when the key answered but the guard throttled the address).
+`wouldUse` is `home`, `outside <n>`, or `none`. It selects a reachable home
+address first, then the first reachable outside address. It never returns the
+addresses themselves.
 
 `exposure_selftest` (no arguments) rehearses a host reachable from outside
 home ([NETWORK](../NETWORK.md#reaching-your-network-from-outside-home)) with the
@@ -1061,7 +1078,7 @@ with the production `HostSupplier` and `HostCheckout` and this checkout's real
 engine. It archives this checkout like GitHub's source archive and starts one
 disposable `ubuntu:24.04` container (`--pull never`) on an internal Docker
 network (a private LAN address, no route out) with its home folder on a
-disposable ext4 volume; container, volume and network are removed afterwards.
+disposable Docker volume; container, volume and network are removed afterwards.
 This PC downloads the .NET SDK and the gateway's NuGet packages for real (about
 240 MB the first time, cached in `cacheDirectory`); the container gets them only
 from this PC, through `docker exec` instead of SSH. It returns `{exitCode,
