@@ -4,7 +4,9 @@
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
 **Last verified:** 2026-11-13 against 5f40af2d9 (historical scope and access-date labels only; upstream claims and links not rechecked)
-**Code:** Not applicable: this page records dated upstream research, not implemented behavior.
+**Code:** Current research and catalog sources: `src/Martlet.Conversation/Research/`, `src/Martlet.Core/Planning/Catalog/`.
+
+This ledger keeps historical research and provenance. Use [deep research](DEEP_RESEARCH.md) for the current research workflow and the [model catalog](MODEL_CATALOG.md) for current model metadata.
 
 **Accessed 2026-09-12, America/Los_Angeles, unless stated otherwise.**
 Sources below are primary upstream documentation, repositories, or model

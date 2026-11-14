@@ -4,7 +4,7 @@
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
 **Last verified:** 2026-11-13 against 5f40af2d9 (page map and local Markdown links checked; page bodies are verified separately)
-**Code:** Not applicable: this page indexes documentation and code areas.
+**Code:** Indexed areas include `src/Martlet.Core/`, `src/Martlet.Conversation/`, and `src/Martlet.Desktop/`.
 
 Search this knowledge base with `kb_search`, then read cited sections with
 `kb_read_section`. Follow their `Code` lines to the source.
@@ -91,7 +91,7 @@ identifies the owner of a rule. The [glossary](GLOSSARY.md) defines its terms.
 - [Reading](READING.md): How does OCR read the screen and which computers can run it?
 - [Recommendation design](RECOMMENDATION_DESIGN.md): Which recommendation design was replaced?
 - [Recommended setups](RECOMMENDED_SETUPS.md): How does Martlet choose a setup?
-- [Research ledger](RESEARCH.md): Which sources and past evidence informed the work?
+- [Research ledger](RESEARCH.md): Which historical sources informed earlier design work?
 - [Resource footprints](RESOURCE_FOOTPRINTS.md): How are resource measurements recorded?
 - [Screen commentary](SCREEN_COMMENTARY.md): How does Martlet comment on a screen?
 - [Search](SEARCH.md): How does search retrieve information?
@@ -101,7 +101,7 @@ identifies the owner of a rule. The [glossary](GLOSSARY.md) defines its terms.
 - [Smart home](SMART_HOME.md): How does Martlet use Home Assistant?
 - [Troubleshooting](TROUBLESHOOTING.md): How do users inspect and recover problems?
 - [UI design](UI_DESIGN.md): Which interface rules and current patterns apply?
-- [User stories](USER_STORIES.md): Which user flows exist or remain planned?
+- [User stories](USER_STORIES.md): Which user flows does Martlet target?
 - [VAD](VAD.md): How does voice activity detection find speech?
 - [Validation](VALIDATION.md): How do developers run targeted local checks?
 - [Voices](VOICES.md): How do users select and test a voice route?
