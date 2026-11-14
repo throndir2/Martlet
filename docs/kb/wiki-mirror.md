@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against 495ea0cdc
+**Last verified:** 2026-11-13 against 271c842ac
 **Code:** `scripts/kb/publish_wiki.py`, `scripts/kb/test_publish_wiki.py`
 
 ## Source and output
@@ -21,6 +21,9 @@ its name conflicts with a wiki page. It stops if other names still conflict.
 The script rewrites relative links to flattened wiki pages. It keeps heading
 anchors. It links repository files outside `docs/` to GitHub source pages. It
 copies non-Markdown files under `docs/` to the wiki's `assets/` folder.
+
+The script checks every absolute wiki page and heading link in the repository
+root `README.md`. It stops if the mirror would remove one of those targets.
 
 The script builds `Home.md` and `_Sidebar.md`. It uses
 `docs/wiki/Home.md` as the home page when that file exists. It adds the
