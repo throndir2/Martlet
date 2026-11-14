@@ -3,8 +3,8 @@
 **Status:** Implemented
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against b1688a8de
-**Code:** `src/Martlet.Core/Reading/ReadingPool.cs`, `src/Martlet.Desktop/Pages/Reading/ReadingPage.cs`, `src/Martlet.Gateway.Ocr/OcrRelayWorker.cs`, `workers/ocr/host/`
+**Last verified:** 2026-11-13 against 5f40af2d9 (source flow and limits; measurements not rerun)
+**Code:** `src/Martlet.Core/Reading/`, `src/Martlet.Desktop/ScreenReading.cs`, `src/Martlet.Desktop/LiveConversationWindow.Vision.cs`, `src/Martlet.Desktop/ReadingList.cs`, `src/Martlet.Desktop/MainWindow.Reading.cs`, `src/Martlet.Desktop/Pages/Reading/`, `src/Martlet.Gateway.Ocr/OcrRelayWorker.cs`, `workers/ocr/host/`
 
 ## How does OCR read the screen and which computers can run it?
 
@@ -54,6 +54,8 @@ The Reading role is often better with game fonts. It has these models:
 
 Windows OCR read 145 of the same 192 lines. PP-OCRv5 reads Chinese, English
 and Japanese. RapidOCR reads Chinese and English.
+These times and line counts are measurements from drawn test images, not
+guarantees for other machines. This audit did not rerun them.
 The models that use a graphics card are for an NVIDIA graphics card only. The
 page disables them on a computer without one. On a processor, the server model
 is too slow for the gateway's 15 s limit. A graphics card is always optional:

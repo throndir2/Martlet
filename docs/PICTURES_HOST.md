@@ -1,5 +1,11 @@
 # Picture making host role
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (port, role configuration, and model pins; API behavior, hardware results, and licenses not rechecked)
+**Code:** `workers/pictures/martlet_pictures/host.py`, `workers/pictures/martlet_pictures/pins.py`, `deploy/host/roles/pictures/role.conf`
+
 The `pictures` host role lets a paired Martlet desktop draw pictures on a Martlet host through the authenticated gateway. It runs ComfyUI in a container, bound only to `127.0.0.1:50086` inside the host/gateway network namespace. The gateway relay is a thin, validated pass-through to ComfyUI's own HTTP API; there is no custom image service.
 
 The user-facing picture feature is described in [Picture making](PICTURES.md).

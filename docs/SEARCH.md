@@ -1,5 +1,11 @@
 # Search engine
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (shared index and ranker types only; source-specific profiles and tuning values not rechecked)
+**Code:** `src/Martlet.Core/Search/`, `src/Martlet.Core/Text/`
+
 Martlet searches three kinds of knowledge with one search engine:
 
 - remembered facts ([Memory](MEMORY.md#lexical-retrieval-and-reranking)),
@@ -13,6 +19,9 @@ embedding search) is made one time and all three kinds get it.
 
 Lorebooks do not use the engine: their keywords and regular expressions
 ([Lorebooks](LOREBOOKS.md)) must match exactly as the author wrote them.
+
+This audit checked the shared index and ranking types. It did not recheck the
+source-specific weights, limits, or evaluation results in this page.
 
 A search runs in this process, in memory and without a model. It runs on the
 reply's path, so it must stay fast (see

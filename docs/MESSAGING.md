@@ -1,9 +1,14 @@
 # Messaging apps
 
-Martlet can be reached from a messaging app on your phone: Telegram and
-WhatsApp. The design (`src\Martlet.Messaging`) keeps each app behind one
-transport and shares pairing, the allow-list, typing, splitting and retries
-(`MessagingBridge`), so others can follow.
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** People who connect Telegram or WhatsApp to Martlet
+**Last verified:** 2026-11-13 against 29b352d47
+**Code:** `src/Martlet.Messaging/`, `src/Martlet.Desktop/Messaging.cs`, `src/Martlet.Desktop/MainWindow.Messaging.cs`, `src/Martlet.Desktop/LiveConversationWindow.Messaging.cs`, `src/Martlet.Desktop/WindowsMessagingSecretVault.cs`, `src/Martlet.Desktop/MainWindow.SettingsSync.SettingsSyncClaim_Click.cs`, `src/Martlet.Mcp.Protocol/Tools/AppsTools.cs`
+
+Martlet can answer paired one-to-one chats through Telegram and WhatsApp.
+Both transports use `MessagingBridge` for pairing, message limits and retries.
+Other messaging transports are planned.
 
 ## Telegram
 
@@ -30,8 +35,9 @@ How it works:
   address, open port or webhook. Messages travel through Telegram's servers.
   The token goes only to `api.telegram.org`.
 - Only paired one-to-one chats are answered. Group chats are ignored; an
-  unpaired chat is told once (per run) how to pair and never reaches the
-  Thinking model. Five wrong codes end the pairing code.
+  unpaired chat never reaches the Thinking model. Martlet tells at most 1,000
+  unpaired chats per run how to pair, once each. Each chat gets five guesses.
+  Fifty wrong guesses across all chats end the pairing code.
 - Each text message becomes a typed message in the conversation (shown in the
   talk window as "*Name* (Telegram)"); the conversation starts hidden when none
   is running. While Martlet answers, the chat shows "typing". Replies longer
@@ -77,19 +83,13 @@ public web address (a webhook); Martlet sets that up itself.
 Set it up in **Companion › Messaging › WhatsApp** (the card has buttons for
 each link):
 
-1. [Create a Meta app](https://developers.facebook.com/apps/creation/) with
-   the use case *Connect with customers through WhatsApp* and a business
-   portfolio (Meta offers to make one).
-2. In the app, open **WhatsApp › API Setup**. Meta gives you a free test
-   number. Under *To*, add your own phone number and confirm it with the code
-   WhatsApp sends you (the test number can only talk to up to five confirmed
-   numbers).
-3. Make a permanent access token: in
-   [System users](https://business.facebook.com/latest/settings/system_users)
-   add a system user (Admin), assign it your app and your WhatsApp account with
-   full control, then **Generate token** with `whatsapp_business_messaging` and
-   `whatsapp_business_management`. API Setup's temporary token also works, for
-   24 hours.
+1. Create a Meta app with WhatsApp Cloud API access and a WhatsApp Business
+   account.
+2. Use Meta's WhatsApp API setup to add a business number and a destination
+   number. Follow Meta's current steps to verify each number.
+3. Create an access token with `whatsapp_business_messaging` and
+   `whatsapp_business_management`. A temporary API setup token works for
+   24 hours; use a system-user token for continued use.
 4. In the app, open **App settings › Basic** and copy the **App secret**.
 5. Paste both in Martlet and press **Connect**. Leave the phone number ID and
    WhatsApp Business account ID empty and Martlet finds them from the token
@@ -127,11 +127,11 @@ proxy)? Put it in **Public address**; it must forward to the
 app for Martlet only.
 
 Everything else matches Telegram: only paired one-to-one chats are answered,
-strangers are told once how to pair, text only, answered while Windows is
-locked, optional **Also say replies aloud on this PC**, **Disconnect** deletes
-the secrets and forgets the chats, **Remove** unpairs one chat. Business
-numbers may reply freely within 24 hours of your last message, which every
-answer is.
+unpaired chats get the same capped pairing notice, text only, answered while
+Windows is locked, optional **Also say replies aloud on this PC**, **Disconnect**
+deletes the secrets and forgets the chats, **Remove** unpairs one chat. Martlet
+stops waiting for a reply after three minutes. Meta controls which outbound
+messages it accepts.
 
 ## Files and diagnostics
 
@@ -149,15 +149,16 @@ answer is.
   fake Bot API or Graph API for MCP verification; with the latter, a loopback
   `http://` public address is accepted too.
 
-## Other apps
+## Planned: other transports
 
 A new app implements `IMessagingTransport` (connect, receive, send, typing,
 longest message) and reuses `MessagingBridge` for pairing, the allow-list,
 typing, splitting and retries. An app whose bot may find, delete and edit its
 messages also implements `IMessagingMessageControl` (send returning the
 message's ID, delete, edit), so the record of conversations keeps those IDs and
-deletes or edits there through `MessagingPlatform`. Discord has its own, richer foundation (servers,
-channels, people and chat modes) in [Discord](DISCORD.md). Other candidates:
+deletes or edits there through `MessagingPlatform`. Discord has its own, richer
+foundation (servers, channels, people and chat modes) in [Discord](DISCORD.md).
+These candidate transports are not implemented:
 Matrix (`/sync` long polling, no public address needed) and Signal through
 `signal-cli`. A webhook-based app can reuse WhatsApp's pieces: a local
 listener and `IPublicAddress` (Cloudflare quick tunnel or an own address).

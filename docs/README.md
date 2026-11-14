@@ -3,7 +3,8 @@
 **Status:** Implemented
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against 2cc87d918
+**Last verified:** 2026-11-13 against 5f40af2d9 (page map and local Markdown links checked; page bodies are verified separately)
+**Code:** Not applicable: this page indexes documentation and code areas.
 
 Search this knowledge base with `kb_search`, then read cited sections with
 `kb_read_section`. Follow their `Code` lines to the source.
@@ -52,7 +53,7 @@ identifies the owner of a rule. The [glossary](GLOSSARY.md) defines its terms.
 - [Cleanup](CLEANUP.md): How do developers remove their build output?
 - [Cluster](CLUSTER.md): How do computers share roles and settings?
 - [Companion requirements](COMPANION_REQUIREMENTS.md): What must a companion provide?
-- [Components](COMPONENTS.md): Which components make up Martlet?
+- [Components](COMPONENTS.md): Which component design note was replaced?
 - [Conversation](CONVERSATION.md): How do replies and background jobs run?
 - [Creations](CREATIONS.md): How does Martlet create and track output?
 - [Decision map](DECISION_MAP.md): Which source owns each important decision?
@@ -104,7 +105,7 @@ identifies the owner of a rule. The [glossary](GLOSSARY.md) defines its terms.
 - [VAD](VAD.md): How does voice activity detection find speech?
 - [Validation](VALIDATION.md): How do developers run targeted local checks?
 - [Voices](VOICES.md): How do users select and test a voice route?
-- [Voice latency](VOICE_LATENCY.md): How is reply-to-speech delay measured?
+- [Voice latency](VOICE_LATENCY.md): What did the 2026-10-03 latency run measure?
 - [Voice recognition host](VOICE_RECOGNITION_HOST.md): How does a host identify a voice?
 - [Voice studio](VOICE_STUDIO.md): Which voice setup design did the current voice controls replace?
 - [Welcome wizard](WELCOME_WIZARD.md): How does first-run setup work?

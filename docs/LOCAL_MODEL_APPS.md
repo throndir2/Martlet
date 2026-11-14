@@ -1,5 +1,11 @@
 # Local model apps
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (loopback checks and Ollama, LM Studio, KoboldCpp, and Jan endpoints; other app rows and test behavior not rechecked)
+**Code:** `src/Martlet.Providers/LocalModelServers.cs`, `src/Martlet.Desktop/MainWindow.LocalServers.cs`, `src/Martlet.Companion/LocalModelChoice.cs`
+
 Martlet can think with a model that runs on this PC's own graphics card. This
 page tells you which apps Martlet works with, how it finds them and what each
 one needs. The user stories are C0, C2, C2a and C2b in

@@ -1,9 +1,9 @@
 # Live conversation
 
-**Status:** Implemented
+**Status:** Partial
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against b1688a8de
+**Last verified:** 2026-11-13 against 5f40af2d9 (game-state references only; other behavior claims not rechecked)
 **Code:** `src/Martlet.Core/`, `src/Martlet.Conversation/`, `src/Martlet.Audio/`, `src/Martlet.Providers/`, `src/Martlet.Desktop/`
 
 **Internal functional integration, not account/device/release qualification.**
@@ -1882,9 +1882,8 @@ request is what it always was.
 
 ### Where you are in a game
 
-Hints and the user's preferences are in progress: see the
-[game-state plan](GAME_STATE_PLAN.md). This section describes the current
-behavior of the game state.
+Current game-state behavior is described below. For hints and the user's
+preferences, see [Hints and secrets](APP_GUIDES.md#hints-and-secrets).
 
 The screen summary tells only the last seconds of the screen, and it is fresh
 for 45 seconds. So Martlet also keeps a **game state** for each game: where you
@@ -2080,7 +2079,7 @@ hints read the same block for `gaming/<game>` before each hint, and a
 preference such as *stop giving hints* stops them ([Hints and
 secrets](APP_GUIDES.md#hints-and-secrets)).
 
-**Read contract for other features** (such as hints, [GAME_STATE_PLAN.md](GAME_STATE_PLAN.md)):
+**Read contract for other features**, such as [Hints and secrets](APP_GUIDES.md#hints-and-secrets):
 
 - `UserPreferences.ApplyingNow(string? activity)` gives the preferences that
   apply while the user does `activity` (for example `gaming/ELDEN RING`; null:

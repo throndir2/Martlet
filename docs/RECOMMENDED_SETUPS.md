@@ -3,7 +3,7 @@
 **Status:** Partial
 **Last Updated:** 2026-11-13
 **Audience:** Martlet users and developers
-**Last verified:** 2026-11-13 against b1688a8de (planner and input gathering only)
+**Last verified:** 2026-11-13 against 5f40af2d9 (planner, input gathering and voice engine catalog only; other claims not rechecked)
 **Code:** `src/Martlet.Core/Planning/`, `src/Martlet.Core/Settings/`, `src/Martlet.Core/Installation/`, `src/Martlet.Desktop/`
 
 This page answers "what must run on my PC,
@@ -108,11 +108,11 @@ never to a cloud provider).
 | --- | --- | --- | --- | --- |
 | Speech-to-text (STT) | OpenAI transcription | Windows offline recognizer; whisper.cpp `base.en` (~150 MB, ~0.4 GB RAM) | Whisper large-v3-turbo class, ~2-4 GB VRAM | Most privacy-sensitive: raw microphone audio. CPU is enough for short push-to-talk turns. |
 | Conversation LLM | Any OpenAI-compatible Chat Completions endpoint: **OpenRouter**, any chat model on **NVIDIA Build**, OpenAI, or another HTTPS provider | Not recommended (slow) | Ollama/llama.cpp: 7-9B Q4 ~5-7 GB, 12-14B Q4 ~9-11 GB, 24-32B Q4 ~16-22 GB, plus ~1-2 GB context | Largest VRAM consumer and the easiest role to offload. Hosted models are usually larger and smarter than what fits locally. |
-| Text-to-speech (TTS) | OpenAI (fixed voices) | Chatterbox Nano on the processor (free, about 8 threads, needs Docker) | One Voice Studio engine (Chatterbox Turbo ~6 GB, the default, which can also laugh and sigh; F5 ~6 GB, XTTS-v2 ~4 GB, GPT-SoVITS ~4 GB or Dia ~8 GB (English only, can laugh, sigh and cough); Qwen3-TTS planned), ~2-6 GB | A custom or cloned voice requires self-hosted GPU TTS. Keep one engine resident. XTTS-v2 streams while it generates, so replies start sooner; F5 often sounds closer to the recording. The F5 and XTTS-v2 models are non-commercial only; Chatterbox and GPT-SoVITS are MIT; Dia is Apache-2.0. |
+| Text-to-speech (TTS) | See [Voices](VOICES.md) for current cloud routes | Chatterbox Nano can run on the processor | Current self-hosted engines are Chatterbox Turbo, Chatterbox Original, Chatterbox Nano, F5-TTS, XTTS-v2, GPT-SoVITS and Dia; see [Voices](VOICES.md) and the engine guides for setup, limits and licences | Choose an engine and destination in Companion › Voice. Engine requirements and supported voice inputs differ. |
 | Lip-sync analysis | None supported | Loudness lip-sync (built in) | NVIDIA Audio2Face-3D on a Martlet host (open-source engine, no key; or NVIDIA's NIM with an NGC key), NVIDIA RTX 20+ only, 4 GB+ | Automatic mode uses local Audio2Face, then a paired host, then loudness. |
 | Screen understanding (future) | Vision-capable models on OpenRouter, NVIDIA Build or OpenAI | Tesseract OCR | Pinned unquantized LLaVA-NeXT 7B, ~16 GB+ | Bursty and heavy; keep it off the live voice GPU when possible. |
 | Memory embeddings (finding by meaning) | Yes | A small model in Ollama on this PC's processor | Optional | Used away from the reply only (remembering, tidying, the find tools, `search_guide`); see [Finding by meaning](SEARCH.md#finding-by-meaning). |
-| Voice Studio training (future) | None | No | Often most of a 12-24 GB card for hours | Run it where it cannot stall live conversation. |
+| Voice-model training | Not in the current voice-engine catalog | No | Not available | The superseded Voice Studio design record is historical, not a setup guide. |
 
 **Nothing requires a GPU or an account.** The minimum working setup is the
 Windows app on its own: Thinking runs a small model on the processor (slower,
@@ -265,7 +265,7 @@ machine. Add one when you want a local LLM, local vision or voice training:
 - **Host 1: voice host** for latency-critical work: TTS, STT, Audio2Face, and
   the LLM if it is local.
 - **Host 2: context host** for bursty or long jobs: vision/OCR, future memory
-  embeddings/reranking, Voice Studio training and previews.
+  embeddings/reranking and other optional long-running jobs.
 
 This split keeps a screenshot question or training job from taking VRAM from
 live speech. If you want a local LLM and Host 1 cannot fit it with speech,
@@ -289,7 +289,7 @@ flowchart LR
     Speech["Speech host<br/>STT + TTS"]
     Face["Face host<br/>Audio2Face"]
     Context["Context host<br/>vision, OCR, memory"]
-    Train["Training box<br/>Voice Studio"]
+    Train["Optional training box<br/>(future design only)"]
     PC <--> LLM
     PC <--> Speech
     PC <--> Face
@@ -304,7 +304,7 @@ flowchart LR
 | Speech host | STT (large Whisper class) and your TTS voice | 16-24 GB | STT and TTS run back to back on every turn; nothing else delays them |
 | Face host | Audio2Face | 8-16 GB NVIDIA | Animates one sentence while TTS makes the next, with no contention |
 | Context host | Vision/OCR, future memory embeddings/reranking | 24-48 GB for a local vision model | Screenshot questions are bursty and heavy |
-| Training box | Voice Studio fine-tuning and previews | 24 GB+ | Hours of training never touch the live path |
+| Training box | Voice-model training, if added later | Not established | Future design only; not a current Martlet role |
 
 With four or five machines, merge in this order: training box into the context
 host, face host into the speech host, then the context host into the speech
@@ -323,9 +323,13 @@ host or a hosted vision model. Rules that still apply:
   F5 and vision workers run one job at a time (a second request gets `busy`),
   so desktops sharing a host take turns.
 
-## 7. What works today
+## 7. Historical implementation status
 
-| Route | Status in the current Desktop |
+The status notes below are not a current product inventory. This page's
+verification covers planner and input gathering only. Use [Voices](VOICES.md)
+for current voice routes; the other status claims below were not rechecked.
+
+| Route | Historical status snapshot |
 | --- | --- |
 | OpenAI STT, LLM, TTS | **Working** conversation route |
 | OpenAI-compatible Chat Completions LLM (OpenRouter, NVIDIA Build, any HTTPS `/v1` API, loopback Ollama/LM Studio/llama.cpp/vLLM) | **Working** conversation route for the LLM; STT/TTS still use OpenAI |
@@ -333,20 +337,18 @@ host or a hosted vision model. Rules that still apply:
 | Audio2Face on this PC or a paired Martlet host | **Working path**; Docker method verified with a stand-in role, **not yet run on a real GPU** |
 | Local memory, personas | **Working**, local only |
 | Windows offline STT | Library and setup exist; **not yet dispatched** (Windows voices were removed) |
-| Host LLM (Ollama), F5 TTS, STT, vision | Worker/adapter foundations; **no host role or gateway relay yet** |
-| whisper.cpp local STT, VAD/barge-in, Voice Studio synthesis/training | Disabled candidates or preparation only |
+| Self-hosted voice engines | Chatterbox Turbo, Chatterbox Original, Chatterbox Nano, F5-TTS, XTTS-v2, GPT-SoVITS and Dia are in the current catalog; see [Voices](VOICES.md) |
+| Voice-model training | Not in the current voice-engine catalog; Voice Studio proposals are historical |
 
-Today, a single GPU PC can run Martlet with API STT/TTS, an LLM on OpenAI,
-OpenRouter, NVIDIA Build or a local loopback LLM server, plus a local avatar
-and Audio2Face. The recommended layouts need these pieces, smallest first:
+The following implementation steps are historical and are not current
+recommendations:
 
-1. Dispatch the Windows offline STT/TTS routes for free, offline CPU speech.
-2. Add gateway relay workers and `martlet-host` roles for F5 TTS, STT and the LLM,
-   so GPU speech and LLM can run on this PC or a host.
+1. Dispatch the Windows offline STT route.
+2. Add the remaining host roles described by their current feature guides.
 
 See [installation design](INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup),
 [Martlet host](../deploy/host/README.md), [architecture](ARCHITECTURE.md#1-components-ownership-and-topology)
-and [Voice Studio](VOICE_STUDIO.md) for details.
+and [Voices](VOICES.md) for current voice routes.
 
 ## Recommended setup for all your computers
 
@@ -521,8 +523,8 @@ small work inside Martlet that the footprints count as always on):
 | Check-ins and reminders | Thinking or the Thinking pool | Optional | Yes | Companion › Check-ins |
 | Cloud providers | Online accounts and keys for Thinking, the voice, listening, Vision and Hearing | Optional | Yes | The page of each part |
 
-Not in Martlet yet: Voice Studio training (it would take most of a large
-graphics card for hours). When it ships, it becomes a ranked part. Web
+Not in Martlet yet: voice-model training. The superseded Voice Studio page is
+a historical design record. When training ships, it becomes a ranked part. Web
 research could use a SearXNG you run yourself, but Martlet has no search
 provider for it yet; when one ships, it becomes a ranked part too.
 
@@ -643,7 +645,7 @@ The planner uses these rules, in this order of importance:
 ### Your recommendation preferences
 
 Martlet plans with your saved **recommendation preferences**
-([Recommendation design](RECOMMENDATION_DESIGN.md#recommendation-preferences-a-saved-setting)).
+([the preferences listed below](#your-recommendation-preferences)).
 The welcome wizard asks the first three; the others start at their defaults.
 Recommended setup shows all of them under **Your preferences**, above the
 plan: a change plans again at once and is saved. Settings › **Recommended
@@ -667,8 +669,7 @@ changes only a Thinking model the planner places new, or one you unlock (below).
 ### Your choices and a better setup
 
 Recommended setup shows **Your choices** under Your preferences: each job, who
-does it today, its lock and Martlet's suggestion
-([Recommendation design](RECOMMENDATION_DESIGN.md#owners-who-run-their-own-models)).
+does it today, its lock and Martlet's suggestion.
 
 - **Locks.** Thinking, Listening and Lip-sync each have a **Locked** box. A job
   starts locked: Martlet keeps what runs today, as rule 7 and rule 8 say, and
@@ -782,8 +783,7 @@ later (`PreferHostModels`).
 
 The review shows **Three plans** under *Who does each job*. Each plan says
 where each live job (Thinking, Speaking and Listening) goes in one situation.
-Martlet changes between the plans by itself while it runs
-([Recommendation design](RECOMMENDATION_DESIGN.md#build-stages), stage 2).
+Martlet changes between the plans by itself while it runs.
 
 | Plan | When | Where live Thinking goes |
 | --- | --- | --- |
@@ -818,8 +818,7 @@ and a real reply through the moved route are **NOT RUN**.
 The model choices keep up with the times by themselves: Recommended setup, *Set
 it all up for me* and the option lists get their models from Martlet's
 [model catalog](MODEL_CATALOG.md), which refreshes once a day without a key, off
-the reply path ([Recommendation design](RECOMMENDATION_DESIGN.md#build-stages),
-stage 3). A new model needs no Martlet release. Martlet's own list
+the reply path. A new model needs no Martlet release. Martlet's own list
 (`FootprintCatalog.Seed.cs`) stays as the offline fallback, and its measured
 numbers win.
 

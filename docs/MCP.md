@@ -1,5 +1,11 @@
 # MCP in Martlet
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (root overview and page map only; MCP feature details belong to the separate MCP pages)
+**Code:** `src/Martlet.Mcp/Program.cs`, `src/Martlet.Mcp.Protocol/McpServer.Discovery.cs`
+
 Martlet speaks the Model Context Protocol in both directions:
 
 - **As a client** ([Tools while you talk](mcp/apps.md#tools-while-you-talk-mcp-client)): MCP

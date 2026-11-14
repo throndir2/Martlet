@@ -6,13 +6,16 @@
 **Last verified:** 2026-11-13 against 29b352d47
 **Code:** `src/Martlet.Home`, `src/Martlet.Desktop`, `src/Martlet.Gateway`, `src/Martlet.HostClient`, `src/Martlet.Credentials.Windows`, `deploy/host/roles/home-assistant`
 
-**Home Assistant control delivered 2026-10-01 (SH00); the rest is dated
-research and plan. Every device result is NOT RUN.** The owner asked whether
+**Home Assistant control and parts of setup and management are implemented.**
+The delivery table marks each slice. Real Linux host installation and real
+device use are **NOT RUN**. Live camera requests and native Matter are planned.
+The owner asked whether
 Martlet can support smart home technology such as Matter, which other stacks
 exist, whether IP security cameras fit, and how a user can optionally let the
 companion act as a smart home assistant ("turn the lights down", "is the
 garage open?", "who's at the door?"), then asked to add it. Whether Martlet
-can also install, onboard and manage Home Assistant is researched in
+can also install, onboard and manage Home Assistant is covered by the current
+setup code below and the dated research in
 [Installing and managing Home Assistant](#installing-and-managing-home-assistant-research-2026-10-01).
 
 This is a separate post-MVP track, like the [iOS plan](IOS.md). It touches an
@@ -91,12 +94,10 @@ address; plain `http` is accepted only for local-network addresses). With
    can't be read, intents that address a device only by name ask first.
    Requires Home Assistant's Model Context Protocol Server integration.
 
-Code: `src/Martlet.Home` (endpoint rules, REST client, guard, persona
-context), `src/Martlet.Desktop/SmartHome.cs` (connection, preferences in
-`smart-home.json`, turn step, managed MCP server and its approval policy),
-`src/Martlet.Desktop/Pages/SmartHome` (the page, its model `SmartHomePageModel` and
-`ISmartHomePageServices`) and `src/Martlet.Desktop/MainWindow.SmartHome.cs` (what the page's
-buttons run).
+The main implementation is in `src/Martlet.Home/` and
+`src/Martlet.Desktop/SmartHome.cs`. The page and its model are in
+`src/Martlet.Desktop/Pages/SmartHome/`; its buttons call
+`src/Martlet.Desktop/MainWindow.SmartHome.cs`.
 
 Device aliases
 defined only in Home Assistant's voice settings are not in the sensitive-name
@@ -178,12 +179,13 @@ Assistant without leaving Martlet:
    container gets new Home Assistant versions with **Update host**, which now
    re-applies role files that changed.
 
-Code: `src/Martlet.Home` (`HomeAssistantClient.Setup.cs`,
-`HomeAssistantClient.Admin.cs`, `HomeAssistantSocket.cs`,
-`HomeAssistantSignIn.cs`, `HomeAssistantDiscovery.cs`),
-`src/Martlet.Desktop/SmartHome.cs`, `src/Martlet.Desktop/Pages/SmartHome`, `src/Martlet.Desktop/MainWindow.SmartHome.cs`,
-`src/Martlet.Desktop/MainWindow.HomeShare.cs`, `src/Martlet.Desktop/HomeAssistantHosts.cs`,
-`src/Martlet.Gateway/GatewayHomeAssistant.cs` and `deploy/host/roles/home-assistant`. MCP:
+Home Assistant setup code is in `src/Martlet.Home/` and
+`src/Martlet.Desktop/SmartHome.cs`. The page is in
+`src/Martlet.Desktop/Pages/SmartHome/`. Shared-host setup uses
+`src/Martlet.Desktop/MainWindow.HomeShare.cs`,
+`src/Martlet.Desktop/HomeAssistantHosts.cs`,
+`src/Martlet.Gateway/GatewayHomeAssistant.cs` and
+`deploy/host/roles/home-assistant`. MCP:
 `home_assistant_probe`, `home_assistant_find`, `smart_home_status` and the
 Smart home page's status fields ([MCP](MCP.md)).
 

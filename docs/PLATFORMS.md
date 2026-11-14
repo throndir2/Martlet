@@ -1,14 +1,24 @@
 # Platforms: what each device can do
 
-> **2026-10-06:** Martlet for Linux and macOS (`src/Martlet.Companion`, DX01)
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (platform catalog and coverage rules only; supported app matrix and device qualification not rechecked)
+**Code:** `src/Martlet.Core/Platforms/PlatformCatalog.cs`, `src/Martlet.Core/Platforms/JobCoverage.cs`
+
+This page contains dated support snapshots and platform plans. Do not use it as
+a current device support matrix. The catalog and coverage rules are implemented;
+the platform and feature matrix below was not rechecked in this audit.
+
+> **Historical snapshot, 2026-10-06:** Martlet for Linux and macOS (`src/Martlet.Companion`, DX01)
 > works on Linux: typed and push-to-talk conversation with cloud or local
 > Chat Completions, OpenAI listening and speaking, and the VRM/Live2D character
 > on the Linux screen. The same app builds for macOS but has **not been run on
 > a Mac (NOT RUN)**. See [Linux and macOS desktop companion](DESKTOP_LINUX_MACOS.md)
 > (slices DX01-DX05).
 
-**Status, 2026-10-01.** Only the **Windows companion** and **Linux / Windows
-Docker hosts** exist today. Everything marked *planned* comes from the
+**Historical status snapshot, 2026-10-01.** The page recorded the **Windows
+companion** and **Linux / Windows Docker hosts**. Everything marked *planned* comes from the
 [iOS](IOS.md), [macOS](MACOS.md) and [Android](ANDROID.md) plans and has not
 been built. No result on a Mac, iPhone, iPad or Android device has been run
 (**NOT RUN**).

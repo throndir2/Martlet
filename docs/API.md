@@ -3,7 +3,7 @@
 **Status:** Partial
 **Last Updated:** 2026-11-13
 **Audience:** Developers and people who connect apps to a Martlet host
-**Last verified:** 2026-11-13 against 29b352d47
+**Last verified:** 2026-11-13 against 5f40af2d9; token format, key-list limits, bearer validation, scope enforcement and `GET /version` identity checked. UI flow, sync timing and other endpoint contracts remain unchecked.
 **Code:** `src/Martlet.Core/Access/ApiKeys.cs`, `src/Martlet.Gateway/`, `src/Martlet.Gateway.Host.Linux/`, `src/Martlet.Gateway.Persistence/`, `src/Martlet.HostClient/HostApiKeys.cs`, `src/Martlet.Desktop/MainWindow.ApiKeys.cs`, `src/Martlet.Desktop/ApiKeyDialogs.cs`, `src/Martlet.Mcp.Protocol/`, `src/Martlet.NodeLinkCheck/ApiRehearsal.cs`
 
 The desktop creates and synchronizes API keys. A separate Gateway host
@@ -207,5 +207,7 @@ or another real integration, and two physical PCs on a real LAN.
 The OpenAI-compatible endpoint over the same keys has its own page:
 [Share your language models](OPENAI_ENDPOINT.md) (MCP `openai_selftest`).
 
-Not built yet: an API on the desktop itself (for example asking the companion
-to say something).
+## Planned: Desktop API
+
+A direct API on the desktop (for example, asking the companion to speak) is
+not implemented.

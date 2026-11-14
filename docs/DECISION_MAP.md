@@ -1,5 +1,11 @@
 # Decision map: which file owns each decision
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (page purpose and cited owner examples only; owner, test, and MCP rows not re-audited)
+**Code:** Not applicable: this index names source owners in its entries.
+
 This page is for developers and coding agents. It names, for each important
 decision in Martlet, the one place in the code that makes it (its **owner**),
 the tests that check it and the MCP tools that show it. Pages, status files

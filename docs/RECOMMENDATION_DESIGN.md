@@ -3,7 +3,8 @@
 **Status:** Superseded
 **Last Updated:** 2026-11-13
 **Audience:** Developers and coding agents
-**Last verified:** 2026-11-13 against b1688a8de
+**Last verified:** 2026-11-13 against 5f40af2d9; current replacement links and source owners checked; historical proposals are not current behavior.
+**Code:** Current replacements: `src/Martlet.Core/Planning/`, `src/Martlet.Core/Preferences/UserPreferences.cs`, `src/Martlet.Core/Settings/`, `src/Martlet.Core/Installation/`, `src/Martlet.Conversation/Guides/`, `src/Martlet.Desktop/`
 
 **Historical record:** This page preserves an earlier design. Its plans and
 some details do not describe current behavior. Use

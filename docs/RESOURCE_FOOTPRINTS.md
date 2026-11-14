@@ -1,5 +1,11 @@
 # Resource footprints
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (catalog source reference and evidence labels; footprint values and hardware measurements not rechecked)
+**Code:** `src/Martlet.Core/Planning/FootprintCatalog.Seed.cs`
+
 **2026-10-06.** How much graphics memory (VRAM), system memory (RAM), processor
 and disk each Martlet component takes on a machine, per selectable model or
 engine. These numbers are the data of the placement planner's catalog,
@@ -242,7 +248,7 @@ holds its own copy.
   Hiyori model to show.
 - **Audio2Face-3D (E):** derived, not measured alone: on DIVA's RTX 4070 the
   Chatterbox, whisper.cpp large-v3-turbo and Audio2Face roles together held
-  about 7.0 GB ([Singing](SINGING.md#does-singing-need-its-own-graphics-card)),
+  about 7.0 GB ([Singing](SINGING.md#hardware-notes-from-the-measured-setup)),
   less Chatterbox's 3.7-4.2 and Whisper's ~2 leaves about 1-1.3 GB. NVIDIA
   asks for a 4 GB+ card ([Audio2Face-3D SDK](https://github.com/NVIDIA/Audio2Face-3D-SDK)).
   Models from [`models.lock`](../workers/audio2face/models.lock): Claire

@@ -1,5 +1,11 @@
 # User stories and target flows
 
+**Status:** Planned
+**Last Updated:** 2026-11-13
+**Audience:** Product designers and developers
+**Last verified:** 2026-11-13 against 5f40af2d9 (target-specification scope only; current-state claims, measurements, and click paths not rechecked)
+**Code:** Not applicable: this page specifies target UX; [UI design](UI_DESIGN.md) describes shipped behavior.
+
 Martlet's flows grew one feature at a time, and it shows. To change one
 thing, a user clicks a button that opens a page, then a button on that page
 that opens a window, then a console that asks them to type `yes`. This

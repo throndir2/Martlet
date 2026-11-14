@@ -1,14 +1,25 @@
 # The welcome wizard
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (entry flow and setup-plan handoff only)
+**Code:** `src/Martlet.Desktop/MainWindow.RoleTour.cs`, `src/Martlet.Desktop/MainWindow.Welcome.Step1NewOrExisting.cs`, `src/Martlet.Desktop/MainWindow.Welcome.WizardAccept_Click.cs`, `src/Martlet.Desktop/MainWindow.DefaultSetup.cs`, `src/Martlet.Desktop/DefaultSetup.cs`, `src/Martlet.Desktop/MainWindow.xaml`, `src/Martlet.Core/Planning/`
+
+This audit checked the wizard entry points and setup-plan handoff only.
+Hardware, provisioning, and detailed step claims were not rechecked.
+
 The welcome wizard is the first thing Martlet shows after it is installed and
 started on a computer that hasn't chosen its role yet (no `device-role.txt` in
 the [PC folder](ACCOUNTS.md#pc-scope), `%ProgramData%\Martlet`). It also shows
 for a Windows user who hasn't chosen yet on a companion PC that another Windows
 user set up; on a host PC that user lands on the host dashboard. Settings ›
 *This PC's role* › *Replay the welcome tour* shows it again.
-The code is in `src/Martlet.Desktop/MainWindow.Welcome.cs` (steps),
-`MainWindow.xaml` (the `Tour` overlay), `DefaultSetup.cs` (planning) and
-`MainWindow.DefaultSetup.cs` (applying).
+The steps are in `MainWindow.RoleTour.cs`,
+`MainWindow.Welcome.Step1NewOrExisting.cs`, and
+`MainWindow.Welcome.WizardAccept_Click.cs`. The `Tour` overlay is in
+`MainWindow.xaml`. Planning is in `DefaultSetup.cs`; applying it is in
+`MainWindow.DefaultSetup.cs`.
 
 ## How it worked before (up to 0.49)
 
@@ -89,7 +100,7 @@ flowchart TD
    NVIDIA cards, including the memory in use now; otherwise the card Windows
    reports, with its vendor), memory and processor threads, all on this PC,
    and builds the planning contract's `MachineSpecs.ThisPc`.
-3. **Three questions** ([Recommendation design](RECOMMENDATION_DESIGN.md#what-martlet-asks)).
+3. **Three questions.**
    Martlet asks no question about models, memory or graphics cards.
    - *Do you play games or use heavy apps on this PC?* Yes or No. Martlet
      selects Yes when it finds a game library with a game in it on this PC

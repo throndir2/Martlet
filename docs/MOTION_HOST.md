@@ -1,5 +1,11 @@
 # Motion host role
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (service operations, model files, and output conversion; hardware, license, and UI claims not rechecked)
+**Code:** `workers/motion/martlet_motion/host.py`, `workers/motion/martlet_motion/generator.py`, `workers/motion/martlet_motion/pins.py`, `src/Martlet.Core/Motion/MotionPool.cs`
+
 The `motion` host role lets a paired Martlet desktop make body motions for VRM characters on a Martlet host. It runs
 Tencent's [HY-Motion 1.0](https://github.com/Tencent-Hunyuan/HY-Motion-1.0), an open text-to-motion model, in a container.
 The container listens only on `127.0.0.1:50090` in the gateway's network namespace. The gateway relay

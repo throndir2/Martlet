@@ -1,11 +1,18 @@
 # Lorebooks
 
+**Status:** Implemented
+**Last Updated:** 2026-11-13
+**Audience:** Users and developers
+**Last verified:** 2026-11-13 against 5f40af2d9; activation, scanning, limits, storage, import/export, prompt insertion and editor behavior checked.
+**Code:** `src/Martlet.Core/Lorebooks/Lorebook.cs`, `src/Martlet.Core/Lorebooks/LorebookScanner.cs`, `src/Martlet.Core/Lorebooks/LorebookStore.cs`, `src/Martlet.Core/Lorebooks/SillyTavernLorebooks.cs`, `src/Martlet.Core/Settings/CharacterCard.cs`, `src/Martlet.Core/Sync/AppSettingsSections.cs`, `src/Martlet.Core/Text/SearchTerms.cs`, `src/Martlet.Desktop/LiveConversationConfiguration.cs`, `src/Martlet.Desktop/LiveConversationController.ReplyPreparation.cs`, `src/Martlet.Desktop/LorebookPromptContext.cs`, `src/Martlet.Desktop/LorebookWindow.xaml.cs`
+
 Martlet's lorebooks work like SillyTavern's World Info: each entry has
 keywords, and when one comes up in the conversation the entry's text is added
-to what Martlet knows for that reply. Always-on entries are added every time.
-Open **Companion › Lorebook** (in *Who it is*, between Personality and Memory)
-to see which lorebooks are on, turn one on or off, import one, or open the
-editor.
+to what Martlet sends for that reply. Always-on entries are eligible whenever
+their lorebook is on for the active persona; chance, entry and byte limits still
+apply. Open **Companion › Lorebook** (in *Who it is*, between Personality and
+Memory) to see which lorebooks are on, turn one on or off, import one, or open
+the editor.
 
 ## What happens on a reply
 
@@ -28,9 +35,10 @@ editor.
    of them*. Always-on entries need no keyword. An entry with a **chance** below
    100% is then rolled once.
 5. Triggered entries are kept by priority (always-on first, then higher
-   **order**) until the **budget** is used (4,096 UTF-8 bytes by default,
-   256-12,288). With **recursion** on, triggered entries' text is searched again
-   (up to five rounds) so one entry can bring in another.
+   **order**) up to 64 entries and the **budget** (4,096 UTF-8 bytes by
+   default, 256-12,288). An entry that does not fit is skipped; a later,
+   smaller entry may still fit. With **recursion** on, included entries' text
+   is searched again (up to five rounds) so one entry can bring in another.
 6. The kept entries are written into the notes on the message (see
    [Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
    as labeled blocks, the **before**-persona block first and then the
@@ -70,8 +78,7 @@ Lorebooks are the same on all your computers: they travel as a
 hosts. Only triggered entries are sent to a model, inside the
 already-authorized LLM request to the Thinking model you chose, so they count
 toward that request's size (and any per-request cost). The conversation
-window's disclosure says so before each action, and its status line lists how
-many entries were used or left out and their titles (never their text).
+disclosure says matching lorebooks may be included.
 Lorebooks are user content: they are not permissions and can't change routing,
 consent, tools or safety rules.
 
@@ -81,8 +88,9 @@ consent, tools or safety rules.
 lorebooks; add, duplicate, find and edit entries (title, keywords, filter
 keywords and rule, content, enabled, always on, placement, order, chance and
 the per-entry options); change the scan settings shared by all lorebooks; and
-**Try it**: type a message to see which entries it would trigger and exactly
-what would be added, without sending anything. There is no Save button: every
+**Try it**: type a message to see the entries it would add, their triggers and
+positions, and any chance, without sending anything. It treats chance checks
+as passed for entries with a chance above zero. There is no Save button: every
 edit saves on its own (a moment after typing stops, at once for adding,
 duplicating, deleting or importing), the footer says *All changes saved.* or
 why the latest edit isn't saved yet (such as an invalid scan depth), and
@@ -126,14 +134,12 @@ again for the same persona replaces that lorebook's entries.
 - At most 1,000 lorebooks, 100,000 entries each, 64 keywords per entry (256
   characters each) and 32,768 characters of content per entry. A lorebook can
   be on for up to 1,000 personas (as many as Martlet keeps).
-- `lorebooks.json` and import files are at most 256 MB each, so a lorebook you
-  can import can also be saved (character cards: 8 MB of card text). Martlet
-  reads the whole file at once, so this limit keeps one damaged or very large
-  file from using all the memory. A file that is too large is refused with a
-  message, and the import message counts the entries it skipped (empty ones,
-  and any past 100,000, which it names as the reason).
+- `lorebooks.json` and lorebook import files are at most 256 MB each.
+  Character cards are limited to 8 MB. Martlet reads the whole lorebook file
+  at once, so this limit bounds the memory used by one file. A file that is too
+  large is refused with a message, and the import message counts entries it
+  skipped, including empty entries and entries past the 100,000-entry limit.
 - Scan depth 0-1,000 messages. Only the messages the conversation has are
-  searched, so a deep scan costs no more than the conversation is long. Each
-  reply searches every entry that is on, so a very large lorebook makes each
-  reply a little slower to start (about 0.15 s for 100,000 entries on a
-  desktop PC).
+  searched, so a deep scan does not read beyond the conversation. Each reply
+  checks the entries in active lorebooks; response latency depends on the
+  library and the computer.

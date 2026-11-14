@@ -1,6 +1,17 @@
 # Voice latency: from you stopping talking to Martlet's voice
 
-**Findings and plan, 2026-10-03.** Goal: Martlet starts speaking less than
+**Status:** Superseded
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (historical scope and current link only; timings and runtime claims not rechecked)
+**Code:** `src/Martlet.Conversation/`, `src/Martlet.Desktop/`
+
+This page records measurements from 2026-10-03. Its times, machines, tools,
+targets, and statements about what happens "now" describe that run, not current
+performance. See [live conversation](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)
+for current behavior.
+
+**Historical findings and plan, 2026-10-03.** Goal: Martlet starts speaking less than
 **800 ms** after you stop talking, while always keeping voice cloning and
 non-verbal sounds (`[sigh]`, `[laugh]`). Measured on IMOUTO (RTX 5080, the
 desktop and the `imouto-host` Chatterbox Turbo voice in Docker Desktop) with

@@ -1,5 +1,11 @@
 # Your Martlet network
 
+**Status:** Partial
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (pinned pairing, 20-second sync interval, and friend marker; discovery, revocation, and route restrictions not rechecked)
+**Code:** `src/Martlet.Core/Network/`, `src/Martlet.Gateway/GatewayNetwork.cs`, `src/Martlet.HostClient/NetworkSync.cs`, `src/Martlet.HostClient/HostNetwork.cs`, `src/Martlet.Desktop/MainWindow.Network.cs`
+
 Pair a host once and every computer you own can use it. The owner's desktops
 and hosts form one **Martlet network**: hosts trust every member desktop, and
 member desktops pair with every host of the network by themselves. A Linux

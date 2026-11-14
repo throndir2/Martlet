@@ -1,5 +1,11 @@
 # Research and provenance ledger
 
+**Status:** Superseded
+**Last Updated:** 2026-11-13
+**Audience:** Developers and coding agents
+**Last verified:** 2026-11-13 against 5f40af2d9 (historical scope and access-date labels only; upstream claims and links not rechecked)
+**Code:** Not applicable: this page records dated upstream research, not implemented behavior.
+
 **Accessed 2026-09-12, America/Los_Angeles, unless stated otherwise.**
 Sources below are primary upstream documentation, repositories, or model
 metadata read without installing software, cloning additional repositories,
